@@ -45,7 +45,7 @@ jobs:
           echo "${files}"
           # Fail closed: anything NOT on the docs-only allowlist triggers the
           # full suite (including workflow, project, and config changes).
-          non_docs=$(echo "${files}" | grep -vE '^(docs/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|.*\.md)$' || true)
+          non_docs=$(echo "${files}" | grep -vE '^(docs/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
           if [[ -n "${non_docs}" ]]; then
             echo "Non-docs changes detected — running the full suite:"
             echo "${non_docs}"
