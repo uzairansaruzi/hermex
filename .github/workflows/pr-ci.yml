@@ -1,4 +1,11 @@
-# Contributor CI: build and run the full XCTest suite on every pull request.
+# Contributor CI: build and run the full XCTest suite on every pull request
+# that touches app code. Docs-only PRs (markdown, docs/, community files) skip
+# the macOS runner entirely and pass via the cheap gate job.
+#
+# The required branch-protection check is "CI Gate", not "Build and Test":
+# a skipped required check would block merges forever, so the gate always
+# runs and passes when the suite either succeeded or was legitimately skipped.
+#
 # Uses no repository secrets, so PRs from forks get green CI too.
 #
 # Code signing is disabled (CODE_SIGNING_ALLOWED=NO) — fine for compile/test
@@ -12,14 +19,46 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_ios: ${{ steps.filter.outputs.run_ios }}
+    steps:
+      - name: Classify changed files
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename')
+          echo "Changed files:"
+          echo "${files}"
+          # Fail closed: anything NOT on the docs-only allowlist triggers the
+          # full suite (including workflow, project, and config changes).
+          non_docs=$(echo "${files}" | grep -vE '^(docs/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|.*\.md)$' || true)
+          if [[ -n "${non_docs}" ]]; then
+            echo "Non-docs changes detected — running the full suite:"
+            echo "${non_docs}"
+            echo "run_ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only change — skipping the macOS runner."
+            echo "run_ios=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Build and Test
+    needs: changes
+    if: needs.changes.outputs.run_ios == 'true'
     runs-on: macos-26
     timeout-minutes: 90
 
@@ -78,3 +117,24 @@ jobs:
           name: test-results
           path: TestResults.xcresult
           if-no-files-found: ignore
+
+  gate:
+    name: CI Gate
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check results
+        run: |
+          set -euo pipefail
+          echo "changes: ${{ needs.changes.result }}"
+          echo "test: ${{ needs.test.result }}"
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "Path detection failed — failing the gate." >&2
+            exit 1
+          fi
+          case "${{ needs.test.result }}" in
+            success|skipped) echo "Gate passed." ;;
+            *) echo "Build and Test did not pass — failing the gate." >&2; exit 1 ;;
+          esac
