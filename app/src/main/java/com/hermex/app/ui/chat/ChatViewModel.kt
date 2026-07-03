@@ -124,7 +124,8 @@ class ChatViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val apiClient: ApiClient,
     private val sseClient: SseClient,
-    private val notificationManager: HermexNotificationManager
+    private val notificationManager: HermexNotificationManager,
+    private val messageDao: com.hermex.app.data.persistence.MessageDao
 ) : ViewModel() {
 
     private val sessionId: String = savedStateHandle.get<String>("sessionId")
@@ -135,6 +136,12 @@ class ChatViewModel @Inject constructor(
 
     private var currentStreamId: String? = null
     private var streamingJob: Job? = null
+    // A3 fix: generation counter prevents a stale handleStreamError coroutine
+    // from resurrecting a stream the user already cancelled.
+    private var streamGeneration = 0L
+    // A4 fix: prevents double notification/reload when Done + late Error
+    // both try to finalize the same response.
+    private var hasFinalized = false
 
     private var pendingAssistantTokenChunks = mutableListOf<String>()
     private var pendingReasoningChunks = mutableListOf<String>()
@@ -178,7 +185,12 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        stopStreaming()
+        // A6 fix: do NOT call stopStreaming() — the server-side run should
+        // continue after the user navigates away (matching iOS).  Only the
+        // explicit Stop button sends /api/chat/cancel.  Cancel only the
+        // local SSE subscription and clean up resources.
+        streamingJob?.cancel()
+        currentStreamId = null
         textToSpeech?.stop()
         textToSpeech?.shutdown()
     }
@@ -218,10 +230,72 @@ class ChatViewModel @Inject constructor(
                     )
                 }
                 emitScrollToBottom()
+
+                // F3: cache messages for offline fallback
+                cacheMessages(loadedMessages)
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Failed to load messages") }
+                // F3: on transient failures, serve cached messages instead of
+                // showing a blank error screen (matches iOS CacheFallbackPolicy).
+                if (com.hermex.app.data.network.CacheFallbackPolicy.shouldUseCache(e)) {
+                    serveCachedMessagesOrError(e)
+                } else {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Failed to load messages") }
+                }
             }
         }
+    }
+
+    /** Cache messages locally for offline fallback. */
+    private suspend fun cacheMessages(messages: List<ChatMessage>) {
+        try {
+            messageDao.clearSession(sessionId)
+            messageDao.insertMessages(messages.mapNotNull { msg ->
+                val id = msg.messageId ?: return@mapNotNull null
+                com.hermex.app.data.persistence.CachedMessage(
+                    messageId = id,
+                    sessionId = sessionId,
+                    role = msg.role,
+                    content = msg.content,
+                    timestamp = msg.timestamp,
+                    name = msg.name,
+                    reasoning = msg.reasoning
+                )
+            })
+        } catch (_: Exception) {
+            // Cache failure is non-fatal — proceed without caching.
+        }
+    }
+
+    /** Attempt to load messages from Room; show error if cache is also empty. */
+    private suspend fun serveCachedMessagesOrError(originalError: Exception) {
+        try {
+            val cachedList = messageDao.getMessages(sessionId).first()
+            if (cachedList.isNotEmpty()) {
+                val loadedMessages = cachedList.map { cached ->
+                    ChatMessage(
+                        role = cached.role,
+                        content = cached.content,
+                        timestamp = cached.timestamp,
+                        messageId = cached.messageId,
+                        name = cached.name,
+                        reasoning = cached.reasoning
+                    )
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        isLoading = false,
+                        messages = loadedMessages,
+                        displayedTranscriptMessages = buildTranscriptMessages(loadedMessages, null, 0),
+                        errorMessage = "Showing cached messages (offline)"
+                    )
+                }
+                emitScrollToBottom()
+                return
+            }
+        } catch (_: Exception) {
+            // Cache read failed — fall through to show original error.
+        }
+        _uiState.update { it.copy(isLoading = false, errorMessage = originalError.message ?: "Failed to load messages") }
     }
 
     // -------------------------------------------------------------------------
@@ -364,7 +438,7 @@ class ChatViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isStartingChat = false,
-                            sendErrorMessage = response.streamId?.let { null } ?: "The server did not return a stream ID."
+                            sendErrorMessage = "The server did not return a stream ID."
                         )
                     }
                     return@launch
@@ -392,6 +466,8 @@ class ChatViewModel @Inject constructor(
         // server stream is still running and must not be cancelled.
         streamingJob?.cancel()
         currentStreamId = streamId
+        val myGeneration = ++streamGeneration   // A3: new generation
+        hasFinalized = false                    // A4: allow finalization
         val url = apiClient.streamUrl(streamId)
 
         streamingJob = viewModelScope.launch {
@@ -435,9 +511,13 @@ class ChatViewModel @Inject constructor(
      * is no longer running.
      */
     private fun handleStreamError(streamId: String, errorMessage: String) {
+        val myGeneration = streamGeneration  // A3: capture generation before async work
         viewModelScope.launch {
             try {
                 val status = apiClient.chatStreamStatus(streamId)
+                // A3: if the user stopped or a new stream started while we were
+                // awaiting the status check, abandon this recovery path.
+                if (streamGeneration != myGeneration) return@launch
                 if (status.active == true) {
                     // Server stream is still running — reattach.
                     isReplayingConnection = true
@@ -458,6 +538,7 @@ class ChatViewModel @Inject constructor(
                     _uiState.update { it.copy(sendErrorMessage = errorMessage) }
                 }
             } catch (_: Exception) {
+                if (streamGeneration != myGeneration) return@launch
                 // Status check itself failed — show the original SSE error.
                 _uiState.update { it.copy(sendErrorMessage = errorMessage) }
             }
@@ -549,6 +630,11 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun finalizeMessage(usage: UsageSnapshot?) {
+        // A4 fix: guard against double finalization (Done + late Error / status-done
+        // racing can both reach this path for the same response).
+        if (hasFinalized) return
+        hasFinalized = true
+
         flushPendingStreamingContent()
         _uiState.update { state ->
             state.copy(
@@ -582,6 +668,7 @@ class ChatViewModel @Inject constructor(
 
     fun stopStreaming() {
         val streamId = currentStreamId ?: return
+        streamGeneration++  // A3: invalidate any in-flight handleStreamError
         viewModelScope.launch {
             _uiState.update { it.copy(isCancellingStream = true) }
             try {

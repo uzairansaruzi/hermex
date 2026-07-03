@@ -8,6 +8,7 @@ import com.hermex.app.data.model.ProjectSummary
 import com.hermex.app.data.model.SessionMutationResponse
 import com.hermex.app.data.model.SessionSummary
 import com.hermex.app.data.network.ApiClient
+import com.hermex.app.data.network.CacheFallbackPolicy
 import com.hermex.app.data.persistence.CachedSession
 import com.hermex.app.data.persistence.SessionDao
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,7 +24,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -429,13 +429,12 @@ class SessionListViewModel @Inject constructor(
         apiClient.configure(serverUrl)
     }
 
-    private fun shouldUseCache(error: Throwable): Boolean {
-        return error is IOException ||
-            (error.message?.contains("Unable to resolve host", ignoreCase = true) == true) ||
-            (error.message?.contains("Connect", ignoreCase = true) == true) ||
-            (error.message?.contains("Socket", ignoreCase = true) == true) ||
-            (error.message?.contains("timeout", ignoreCase = true) == true)
-    }
+    // F1/F4 fix: delegate to the extracted, typed CacheFallbackPolicy.
+    // This replaces the old substring-matching heuristic with typed exception
+    // matching that correctly handles transient HTTP 408/502/503/504 and
+    // never serves cache on 401/4xx.
+    private fun shouldUseCache(error: Throwable): Boolean =
+        CacheFallbackPolicy.shouldUseCache(error)
 
     private suspend fun cacheSessions(sessions: List<SessionSummary>) {
         sessionDao.insertSessions(sessions.map { it.toCachedSession() })

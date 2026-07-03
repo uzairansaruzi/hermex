@@ -21,7 +21,25 @@ fun normalizeServerUrl(input: String): String {
     ) {
         trimmed
     } else {
-        "https://$trimmed"
+        // E1 fix: bracket bare IPv6 literals so the URL is valid
+        // (e.g., "::1" → "https://[::1]", "::1:8080" stays as port notation).
+        val host = if (trimmed.contains(':') && !trimmed.contains('[')) {
+            // Looks like an IPv6 literal (contains colon but no brackets).
+            // However, "host:port" also contains a colon — distinguish by
+            // checking if it parses as a valid port suffix.
+            val lastColon = trimmed.lastIndexOf(':')
+            val afterColon = trimmed.substring(lastColon + 1)
+            if (afterColon.toIntOrNull() != null && trimmed.count { it == ':' } == 1) {
+                // Single colon with numeric suffix → host:port, not IPv6
+                trimmed
+            } else {
+                // Multiple colons or non-numeric suffix → IPv6 literal
+                "[$trimmed]"
+            }
+        } else {
+            trimmed
+        }
+        "https://$host"
     }
 }
 

@@ -26,7 +26,9 @@ class SseClient @Inject constructor(
     private val json: Json
 ) {
     fun stream(url: HttpUrl): Flow<SSEEvent> = flow {
-        val channel = Channel<SSEEvent>(Channel.BUFFERED)
+        // A1 fix: UNLIMITED prevents silent token drops under backpressure.
+        // SSE token volume is bounded per-turn, so unbounded buffering is safe.
+        val channel = Channel<SSEEvent>(Channel.UNLIMITED)
 
         val factory = EventSources.createFactory(okHttpClient)
         val request = Request.Builder()
@@ -73,6 +75,18 @@ class SseClient @Inject constructor(
     internal fun parseEvent(type: String?, data: String): SSEEvent? {
         if (data.isBlank() || data.startsWith(":")) return null
 
+        // A2 fix: malformed "done" must never be silently swallowed — it leaves
+        // the UI stuck waiting for finalization.  Surface as an Error event so
+        // handleStreamError can trigger reconnect / status check.
+        if (type == "done") {
+            return try {
+                if (data == "{}") SSEEvent.Done(DoneStreamEvent())
+                else SSEEvent.Done(json.decodeFromString<DoneStreamEvent>(data))
+            } catch (_: Exception) {
+                SSEEvent.Error("Malformed stream completion event")
+            }
+        }
+
         return try {
             when (type) {
                 "token" -> SSEEvent.Token(textPayload(data))
@@ -80,12 +94,22 @@ class SseClient @Inject constructor(
                 "tool", "tool_call", "tool_started" -> SSEEvent.ToolStarted(json.decodeFromString<ToolStreamEvent>(data))
                 "tool_complete", "tool_result", "tool_completed" -> SSEEvent.ToolCompleted(json.decodeFromString<ToolStreamEvent>(data))
                 "title" -> SSEEvent.Title(textPayload(data))
-                "done" -> {
-                    if (data.isBlank() || data == "{}") SSEEvent.Done(DoneStreamEvent())
-                    else SSEEvent.Done(json.decodeFromString<DoneStreamEvent>(data))
+
+                // A10 fix: real backend event types are "initial", "approval", "clarify"
+                // (not "approval_pending" / "clarification_pending").
+                // "initial" can be either approval or clarification — detect by checking
+                // for clarification-specific keys (matches iOS SSEClient.swift:216-219).
+                "initial" -> {
+                    if (containsClarificationMarkers(data)) {
+                        SSEEvent.ClarificationPending(json.decodeFromString(data))
+                    } else {
+                        SSEEvent.ApprovalPending(json.decodeFromString(data))
+                    }
                 }
-                "approval_pending" -> SSEEvent.ApprovalPending(json.decodeFromString(data))
-                "clarification_pending" -> SSEEvent.ClarificationPending(json.decodeFromString(data))
+                "approval" -> SSEEvent.ApprovalPending(json.decodeFromString(data))
+                "clarify" -> SSEEvent.ClarificationPending(json.decodeFromString(data))
+
+                "pending_steer_leftover" -> SSEEvent.SteerLeftover(textPayload(data))
                 "interim_assistant" -> SSEEvent.InterimAssistant(json.decodeFromString(data))
                 "stream_end" -> SSEEvent.StreamEnd
                 "cancel" -> SSEEvent.Cancelled
@@ -95,6 +119,19 @@ class SseClient @Inject constructor(
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Detects whether an "initial" event payload contains clarification markers
+     * (question / choices_offered) to distinguish from approval events.
+     * Matches iOS ClarificationPendingResponse.containsClarificationMarkers().
+     */
+    private fun containsClarificationMarkers(data: String): Boolean {
+        val obj = runCatching { json.parseToJsonElement(data) }.getOrNull() as? JsonObject ?: return false
+        val candidate = (obj["pending"] as? JsonObject) ?: obj
+        return candidate.containsKey("question") ||
+                candidate.containsKey("choices_offered") ||
+                candidate.containsKey("choicesOffered")
     }
 
     private fun textPayload(data: String): String {

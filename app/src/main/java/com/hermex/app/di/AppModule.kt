@@ -37,14 +37,24 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCookieJar(): CookieJar = object : CookieJar {
-        private val cookieStore = ConcurrentHashMap<String, List<Cookie>>()
+        // B1 fix: merge by cookie name instead of clobbering the entire list.
+        // A response setting only one cookie (e.g. CSRF token) must not wipe
+        // the existing session cookie for the same host.
+        private val cookieStore = ConcurrentHashMap<String, ConcurrentHashMap<String, Cookie>>()
 
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            cookieStore[url.host] = cookies
+            val hostMap = cookieStore.getOrPut(url.host) { ConcurrentHashMap() }
+            for (cookie in cookies) {
+                if (cookie.expiresAt <= System.currentTimeMillis()) {
+                    hostMap.remove(cookie.name)
+                } else {
+                    hostMap[cookie.name] = cookie
+                }
+            }
         }
 
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            return cookieStore[url.host] ?: emptyList()
+            return cookieStore[url.host]?.values?.toList().orEmpty()
         }
     }
 

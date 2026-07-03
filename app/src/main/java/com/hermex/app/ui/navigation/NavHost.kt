@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -37,7 +39,8 @@ object Routes {
     fun chat(sessionId: String, initialDraft: String = "", autoStartVoice: Boolean = false): String {
         return "chat/${Uri.encode(sessionId)}?draft=${Uri.encode(initialDraft)}&voice=$autoStartVoice"
     }
-    fun fileBrowser(sessionId: String) = "file_browser/$sessionId"
+    // C2 fix: URI-encode sessionId to prevent route-breaking chars (/, ?, #).
+    fun fileBrowser(sessionId: String) = "file_browser/${Uri.encode(sessionId)}"
 }
 
 @Composable
@@ -49,10 +52,30 @@ fun HermexNavHost(
     val authState by authManager.authState.collectAsState(initial = AuthState.UNCONFIGURED)
     val pendingRequest by launchRequestViewModel.pendingRequest.collectAsState()
 
-    val startDestination = when (authState) {
-        AuthState.UNCONFIGURED -> Routes.ONBOARDING
-        AuthState.LOGGED_OUT -> Routes.ONBOARDING
-        AuthState.LOGGED_IN -> Routes.SESSIONS
+    // C4 fix: compute startDestination once and freeze it. Live authState
+    // changes are handled by the LaunchedEffect below, not by rebuilding
+    // the NavGraph (which would reset the back stack mid-session).
+    val startDestination by rememberSaveable {
+        mutableStateOf(
+            when (authState) {
+                AuthState.LOGGED_IN -> Routes.SESSIONS
+                else -> Routes.ONBOARDING
+            }
+        )
+    }
+
+    // B5 fix: redirect to onboarding when auth is lost mid-session.
+    // This replaces the old pattern where only startDestination changed
+    // (causing a silent back-stack reset) with an explicit navigation.
+    LaunchedEffect(authState) {
+        if (authState == AuthState.LOGGED_OUT || authState == AuthState.UNCONFIGURED) {
+            val currentRoute = navController.currentBackStackEntry?.destination?.route
+            if (currentRoute != null && currentRoute != Routes.ONBOARDING) {
+                navController.navigate(Routes.ONBOARDING) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
     }
 
     // Dispatch pending launch requests when authenticated.

@@ -101,7 +101,8 @@ class ApiClient @Inject constructor(
     suspend fun chatStart(request: ChatStartRequest): ChatStartResponse = post(Endpoints.CHAT_START, request)
 
     suspend fun chatCancel(streamId: String) {
-        get<Unit>("${Endpoints.CHAT_CANCEL}?stream_id=$streamId")
+        // E3 fix: use typed query params instead of string interpolation.
+        get<Unit>(Endpoints.CHAT_CANCEL, mapOf("stream_id" to streamId))
     }
 
     suspend fun chatStreamStatus(streamId: String): StreamStatusResponse {
@@ -171,7 +172,8 @@ class ApiClient @Inject constructor(
     suspend fun memory(): MemoryResponse = get(Endpoints.MEMORY)
 
     fun streamUrl(streamId: String): HttpUrl {
-        return "${baseUrl}${Endpoints.CHAT_STREAM}?stream_id=$streamId".toHttpUrl()
+        // E3 fix: use HttpUrl.Builder for proper query encoding.
+        return buildUrl(Endpoints.CHAT_STREAM, mapOf("stream_id" to streamId))
     }
 
     fun rawUrl(path: String): String {
@@ -233,7 +235,14 @@ class ApiClient @Inject constructor(
 
     private suspend inline fun <reified T> executeRequest(request: Request): T {
         return withContext(Dispatchers.IO) {
-            val response = okHttpClient.newCall(request).execute()
+            // B4 fix: wrap raw IOException as ApiException.Network so callers
+            // (ViewModels, CacheFallbackPolicy) can distinguish network failures
+            // from HTTP errors and decode errors.
+            val response = try {
+                okHttpClient.newCall(request).execute()
+            } catch (e: IOException) {
+                throw ApiException.Network(e)
+            }
             val body = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {

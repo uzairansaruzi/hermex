@@ -92,4 +92,31 @@ class ServerUrlsTest {
     fun httpFallbackUrlFromHttpReturnsNull() {
         assertNull(httpFallbackUrl("http://192.168.1.100:5000"))
     }
+
+    // G4 fix: edge cases identified in audit dimension E1
+    @Test
+    fun normalizeServerUrlBracketsIpv6Literal() {
+        assertEquals("https://[::1]", normalizeServerUrl("::1"))
+    }
+
+    @Test
+    fun normalizeServerUrlBracketsFullIpv6() {
+        // Zone ID is preserved as-is (URI encoding happens downstream in OkHttp).
+        assertEquals("https://[fe80::1%eth0]", normalizeServerUrl("fe80::1%eth0"))
+    }
+
+    @Test
+    fun normalizeServerUrlPreservesExistingBracketedIpv6() {
+        assertEquals("http://[::1]:8080", normalizeServerUrl("http://[::1]:8080"))
+    }
+
+    @Test
+    fun normalizeServerUrlHandlesSubpathDeployment() {
+        assertEquals("https://myserver.com/hermes", normalizeServerUrl("myserver.com/hermes/"))
+    }
+
+    @Test
+    fun normalizeServerUrlHandlesUppercaseScheme() {
+        assertEquals("HTTPS://myserver.com", normalizeServerUrl("HTTPS://myserver.com/"))
+    }
 }
