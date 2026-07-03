@@ -179,7 +179,7 @@ class ApiClient @Inject constructor(
     suspend fun memory(): MemoryResponse = get(Endpoints.MEMORY)
 
     suspend fun gitStatus(sessionId: String): GitStatusResponse {
-        return get(Endpoints.GIT_STATUS, mapOf("session_id" to sessionId))
+        return get<GitStatusEnvelope>(Endpoints.GIT_STATUS, mapOf("session_id" to sessionId)).git ?: GitStatusResponse()
     }
 
     suspend fun gitBranches(sessionId: String): GitBranchesResponse {

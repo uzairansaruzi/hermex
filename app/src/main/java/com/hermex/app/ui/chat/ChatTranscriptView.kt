@@ -198,19 +198,18 @@ private suspend fun scrollToBottom(listState: LazyListState) {
 private fun buildActionContext(transcriptMessage: TranscriptMessage): MessageActionContext? {
     val message = transcriptMessage.message
     val content = message.content?.takeIf { it.isNotBlank() } ?: return null
-    val keepCount = transcriptMessage.loadedIndex + 1
     return when (message.role) {
         "user" -> MessageActionContext.UserContext(
             visibleIndex = transcriptMessage.loadedIndex,
-            fullHistoryIndex = transcriptMessage.loadedIndex,
-            keepCountThroughMessage = keepCount,
+            fullHistoryIndex = transcriptMessage.fullHistoryIndex,
+            keepCountThroughMessage = transcriptMessage.keepCountThroughMessage,
             messageId = message.id,
             copyText = content
         )
         "assistant" -> MessageActionContext.AssistantContext(
             visibleIndex = transcriptMessage.loadedIndex,
-            fullHistoryIndex = transcriptMessage.loadedIndex,
-            keepCountThroughMessage = keepCount,
+            fullHistoryIndex = transcriptMessage.fullHistoryIndex,
+            keepCountThroughMessage = transcriptMessage.keepCountThroughMessage,
             messageId = message.id,
             copyText = content
         )

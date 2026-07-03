@@ -138,4 +138,92 @@ class ServerModelsTest {
         assertEquals("session-1", element["session_id"]?.jsonPrimitive?.content)
         assertEquals("commit message", element["message"]?.jsonPrimitive?.content)
     }
+
+    @Test
+    fun sessionResponseDecodesMessagesOffsetForHistoryActions() {
+        val decoded = json.decodeFromString<SessionResponse>(
+            """
+            {
+              "session": {
+                "session_id": "abc",
+                "messages_offset": 42,
+                "messages_total": 92,
+                "messages": [{ "role": "user", "content": "latest", "timestamp": 1.0 }]
+              }
+            }
+            """.trimIndent()
+        )
+
+        assertEquals(42, decoded.session?.messagesOffset)
+        assertEquals(92, decoded.session?.messagesTotal)
+    }
+
+    @Test
+    fun workspaceEntriesTreatDirAndIsDirAsDirectories() {
+        val decoded = json.decodeFromString<FileListResponse>(
+            """
+            {
+              "entries": [
+                { "name": "src", "path": "/repo/src", "type": "dir" },
+                { "name": "linked", "path": "/repo/linked", "type": "file", "is_dir": true },
+                { "name": "README.md", "path": "/repo/README.md", "type": "file" }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertEquals(true, decoded.entries?.get(0)?.isDirectory)
+        assertEquals(true, decoded.entries?.get(1)?.isDirectory)
+        assertEquals(false, decoded.entries?.get(2)?.isDirectory)
+    }
+
+    @Test
+    fun gitStatusResponseDecodesGitEnvelopeAndTotals() {
+        val decoded = json.decodeFromString<GitStatusEnvelope>(
+            """
+            {
+              "git": {
+                "is_git": true,
+                "branch": "feature/foo",
+                "upstream": "origin/feature/foo",
+                "ahead": 1,
+                "behind": 2,
+                "totals": { "changed": 2, "staged": 1, "unstaged": 1, "untracked": 1, "conflicts": 0 },
+                "files": [
+                  { "path": "Sources/App.swift", "status": "M", "staged": false, "unstaged": true, "ignored": false },
+                  { "path": "New.swift", "status": "??", "untracked": true, "ignored": false }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+
+        val status = decoded.git
+        assertEquals(true, status?.isGit)
+        assertEquals("feature/foo", status?.branch)
+        assertEquals(1, status?.stagedCount)
+        assertEquals(1, status?.modifiedCount)
+        assertEquals(1, status?.untrackedCount)
+        assertEquals(2, status?.files?.size)
+    }
+
+    @Test
+    fun memoryResponseDecodesUpstreamFieldNames() {
+        val decoded = json.decodeFromString<MemoryResponse>(
+            """
+            {
+              "memory": "agent notes",
+              "user": "user profile",
+              "soul": "long-term soul",
+              "memory_path": "/mem/MEMORY.md",
+              "user_path": "/mem/USER.md"
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("agent notes", decoded.notes)
+        assertEquals("user profile", decoded.userProfile)
+        assertEquals("long-term soul", decoded.soul)
+        assertEquals("/mem/MEMORY.md", decoded.memoryPath)
+    }
 }
