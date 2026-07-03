@@ -134,6 +134,7 @@ private struct TranscriptMediaAudioView: View {
                     await loadMediaData(reference)
                 }
             )
+            .id(reference.id)
             .frame(maxWidth: 300, alignment: .leading)
         } else {
             TranscriptMediaUnavailableChip(reference: reference)
