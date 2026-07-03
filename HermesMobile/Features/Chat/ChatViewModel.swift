@@ -348,6 +348,7 @@ final class ChatViewModel {
         backgroundPollTask?.cancel()
         pendingStreamingScrollTriggerTask?.cancel()
         pendingStreamingContentFlushTask?.cancel()
+        listenPreparationTask?.cancel()
     }
 
     func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {
@@ -5155,6 +5156,16 @@ extension ServerTTSAudioPlayer: AVAudioPlayerDelegate {
     // touching main-actor listen state. Finished-with-error still ends playback,
     // so both flag values route to `onFinish`.
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            self.onFinish?()
+        }
+    }
+
+    // A mid-playback decode error fires this callback instead of (or as well as)
+    // the finish one — without it the listen state would stay stuck "listening"
+    // forever. Route it to `onFinish` too; a double fire is harmless because the
+    // completion handler drops callbacks from a no-longer-active player.
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in
             self.onFinish?()
         }
