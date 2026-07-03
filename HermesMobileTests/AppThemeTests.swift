@@ -59,6 +59,13 @@ final class AppThemeTests: XCTestCase {
         XCTAssertEqual(ZoraBrand.accessibilityLabel, "Zora")
     }
 
+    func testZoraBrandSessionPinActionTintUsesWarmPalette() {
+        XCTAssertEqual(
+            UIColor(ZoraBrand.sessionPinActionTint),
+            UIColor(ZoraBrand.terracotta)
+        )
+    }
+
     func testZoraSpacingMatchesDocumentedTokenScale() {
         XCTAssertEqual(ZoraSpacing.xs, 8)
         XCTAssertEqual(ZoraSpacing.sm, 12)

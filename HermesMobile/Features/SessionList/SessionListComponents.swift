@@ -453,7 +453,7 @@ struct SessionListRowsSection: View {
                 Label(session.pinned == true ? "Unpin" : "Pin", systemImage: "pin")
             }
             .disabled(viewModel.isMutating(session))
-            .tint(.accentColor)
+            .tint(ZoraBrand.sessionPinActionTint)
         }
     }
 

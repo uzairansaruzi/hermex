@@ -64,6 +64,7 @@ enum ZoraBrand {
     static let backgroundBottom = ember
     static let warmHighlight = paper
     static let selectionAccent = paper
+    static let sessionPinActionTint = terracotta
     static let success = Color(red: 112.0 / 255.0, green: 214.0 / 255.0, blue: 142.0 / 255.0)
     static let warning = Color(red: 255.0 / 255.0, green: 194.0 / 255.0, blue: 107.0 / 255.0)
     static let danger = Color(red: 255.0 / 255.0, green: 112.0 / 255.0, blue: 88.0 / 255.0)
