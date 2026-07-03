@@ -1,10 +1,12 @@
 package com.hermex.app.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +21,8 @@ import com.hermex.app.data.model.ModelsResponse
 import com.hermex.app.data.model.ProfilesResponse
 import com.hermex.app.data.model.SettingsResponse
 import com.hermex.app.data.network.ApiClient
+import com.hermex.app.ui.components.HermexCard
+import com.hermex.app.ui.components.HermexSectionHeader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -189,27 +193,36 @@ fun SettingsScreen(
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
-                        SettingsInfoCard(
-                            serverUrl = viewModel.authManager.serverUrl.orEmpty(),
-                            serverVersion = settings?.webuiVersion.orEmpty(),
-                            appVersion = appVersion
-                        )
-                        SettingsButton(
-                            label = "Change Model",
-                            onClick = { viewModel.showModelDialog() }
-                        )
-                        SettingsButton(
-                            label = "Switch Profile",
-                            onClick = { viewModel.showProfileDialog() }
-                        )
-                        Button(
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            HermexSectionHeader("Server")
+                            SettingsInfoCard(
+                                serverUrl = viewModel.authManager.serverUrl.orEmpty(),
+                                serverVersion = settings?.webuiVersion.orEmpty(),
+                                appVersion = appVersion
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            HermexSectionHeader("Agent")
+                            HermexCard(modifier = Modifier.fillMaxWidth()) {
+                                SettingsActionRow(
+                                    label = "Change Model",
+                                    onClick = { viewModel.showModelDialog() }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                                SettingsActionRow(
+                                    label = "Switch Profile",
+                                    onClick = { viewModel.showProfileDialog() }
+                                )
+                            }
+                        }
+                        TextButton(
                             onClick = { viewModel.signOut(onSignOut) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Text("Sign Out")
+                            Text("Sign Out", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -251,12 +264,12 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsInfoCard(serverUrl: String, serverVersion: String, appVersion: String) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    HermexCard(modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             InfoRow(label = "Server URL", value = serverUrl.takeIf { it.isNotBlank() } ?: "Not configured")
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             InfoRow(label = "Server Version", value = serverVersion.takeIf { it.isNotBlank() } ?: "Unknown")
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             InfoRow(label = "App Version", value = appVersion)
         }
     }
@@ -271,9 +284,21 @@ private fun InfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun SettingsButton(label: String, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Text(label)
+private fun SettingsActionRow(label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

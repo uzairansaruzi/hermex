@@ -13,8 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.hermex.app.data.model.ProfileInfo
+import com.hermex.app.ui.theme.HermexTheme
 import com.hermex.app.ui.chat.slash.ParsedSlashQuery
 import com.hermex.app.ui.chat.slash.SlashCommandCatalog
 import com.hermex.app.ui.chat.slash.SlashCommandSubArgs
@@ -200,44 +202,63 @@ fun ChatComposerView(
                     ),
                     modifier = Modifier.weight(1f),
                     minLines = 1,
-                    maxLines = 6
+                    maxLines = 6,
+                    shape = RoundedCornerShape(22.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        focusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                    )
                 )
 
                 if (!isStreaming) {
                     FilledTonalIconButton(
                         onClick = { startVoiceInput() },
                         enabled = !isSending,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     ) {
-                        Icon(Icons.Default.Mic, contentDescription = "Voice input")
+                        Icon(Icons.Default.Mic, contentDescription = "Voice input", modifier = Modifier.size(20.dp))
                     }
                 }
 
                 if (isStreaming) {
                     FilledIconButton(
                         onClick = onStop,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(44.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            containerColor = HermexTheme.colors.monochrome,
+                            contentColor = HermexTheme.colors.onMonochrome
                         )
                     ) {
                         if (isCancellingStream) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.Stop, contentDescription = "Stop response")
+                            Icon(Icons.Default.Stop, contentDescription = "Stop response", modifier = Modifier.size(18.dp))
                         }
                     }
                 } else {
                     FilledIconButton(
                         onClick = onSend,
                         enabled = canSend,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = HermexTheme.colors.monochrome,
+                            contentColor = HermexTheme.colors.onMonochrome,
+                            disabledContainerColor = HermexTheme.colors.monochrome.copy(alpha = 0.15f),
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     ) {
                         if (isSending) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                            Icon(Icons.Default.ArrowUpward, contentDescription = "Send", modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -332,7 +353,12 @@ private fun CompactDropdownChip(
     Box {
         AssistChip(
             onClick = { onExpandedChange(!expanded) },
-            label = { Text(label, maxLines = 1) }
+            label = { Text(label, maxLines = 1) },
+            border = null,
+            colors = AssistChipDefaults.assistChipColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         )
         DropdownMenu(
             expanded = expanded,

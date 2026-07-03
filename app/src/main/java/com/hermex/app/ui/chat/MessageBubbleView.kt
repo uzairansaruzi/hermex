@@ -1,6 +1,7 @@
 package com.hermex.app.ui.chat
 
 import android.widget.TextView
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,7 +81,8 @@ private fun UserMessageBubble(
         Surface(
             color = MaterialTheme.colorScheme.secondaryContainer,
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.padding(start = 64.dp, top = 2.dp, bottom = 2.dp)
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)),
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp, bottom = 2.dp)
         ) {
             Text(
                 text = content,
@@ -114,8 +116,8 @@ private fun AssistantMessageBubble(
             factory = { ctx ->
                 TextView(ctx).apply {
                     setTextColor(textColor.toArgb())
-                    textSize = 16f
-                    setLineSpacing(0f, 1.2f)
+                    textSize = 17f
+                    setLineSpacing(0f, 1.25f)
                 }
             },
             update = { textView ->
