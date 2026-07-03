@@ -25,6 +25,8 @@ import javax.inject.Inject
  */
 data class TranscriptMessage(
     val loadedIndex: Int,
+    val fullHistoryIndex: Int,
+    val keepCountThroughMessage: Int,
     val renderId: String,
     val anchorId: String,
     val message: ChatMessage
@@ -79,6 +81,7 @@ sealed class MessageActionContext(
 data class ChatUiState(
     val title: String = "",
     val messages: List<ChatMessage> = emptyList(),
+    val messageOffset: Int = 0,
     val displayedTranscriptMessages: List<TranscriptMessage> = emptyList(),
     val isLoading: Boolean = false,
     val isStartingChat: Boolean = false,
@@ -190,12 +193,14 @@ class ChatViewModel @Inject constructor(
                 val response = apiClient.session(sessionId, messages = true, msgLimit = 50)
                 val session = response.session
                 val loadedMessages = session?.messages ?: emptyList()
+                val messageOffset = session?.messagesOffset ?: 0
                 val title = session?.title?.takeIf { it.isNotBlank() } ?: "Untitled Session"
 
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,
                         messages = loadedMessages,
+                        messageOffset = messageOffset,
                         title = title,
                         currentModel = session?.model ?: state.currentModel,
                         currentModelProvider = session?.modelProvider ?: state.currentModelProvider,
@@ -207,7 +212,7 @@ class ChatViewModel @Inject constructor(
                             estimatedCost = session?.estimatedCost,
                             contextLength = session?.contextLength
                         ),
-                        displayedTranscriptMessages = buildTranscriptMessages(loadedMessages, null),
+                        displayedTranscriptMessages = buildTranscriptMessages(loadedMessages, null, messageOffset),
                         errorMessage = null
                     )
                 }
@@ -342,7 +347,7 @@ class ChatViewModel @Inject constructor(
             _uiState.update { state ->
                 state.copy(
                     messages = previousMessages + optimisticMessage,
-                    displayedTranscriptMessages = buildTranscriptMessages(previousMessages + optimisticMessage, null)
+                    displayedTranscriptMessages = buildTranscriptMessages(previousMessages + optimisticMessage, null, state.messageOffset)
                 )
             }
             emitScrollToBottom()
@@ -377,7 +382,7 @@ class ChatViewModel @Inject constructor(
                         isStartingChat = false,
                         sendErrorMessage = e.message ?: "Failed to send message",
                         messages = messagesWithoutOptimistic,
-                        displayedTranscriptMessages = buildTranscriptMessages(messagesWithoutOptimistic, null)
+                        displayedTranscriptMessages = buildTranscriptMessages(messagesWithoutOptimistic, null, state.messageOffset)
                     )
                 }
             }
@@ -460,7 +465,7 @@ class ChatViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         messages = messages,
-                        displayedTranscriptMessages = buildTranscriptMessages(messages, streamingId)
+                        displayedTranscriptMessages = buildTranscriptMessages(messages, streamingId, it.messageOffset)
                     )
                 }
                 emitScrollToBottom()
@@ -529,7 +534,7 @@ class ChatViewModel @Inject constructor(
                 streamingAssistantMessageId = null,
                 liveReasoningText = "",
                 liveToolCalls = emptyList(),
-                displayedTranscriptMessages = buildTranscriptMessages(messages, null)
+                displayedTranscriptMessages = buildTranscriptMessages(messages, null, state.messageOffset)
             )
         }
     }
@@ -585,7 +590,7 @@ class ChatViewModel @Inject constructor(
             val updated = state.messages + message
             state.copy(
                 messages = updated,
-                displayedTranscriptMessages = buildTranscriptMessages(updated, state.streamingAssistantMessageId)
+                displayedTranscriptMessages = buildTranscriptMessages(updated, state.streamingAssistantMessageId, state.messageOffset)
             )
         }
         emitScrollToBottom()
@@ -606,7 +611,7 @@ class ChatViewModel @Inject constructor(
             state.copy(
                 messages = state.messages + newMessage,
                 streamingAssistantMessageId = id,
-                displayedTranscriptMessages = buildTranscriptMessages(state.messages + newMessage, id)
+                displayedTranscriptMessages = buildTranscriptMessages(state.messages + newMessage, id, state.messageOffset)
             )
         }
         emitScrollToBottom()
@@ -653,7 +658,7 @@ class ChatViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 messages = messages,
-                displayedTranscriptMessages = buildTranscriptMessages(messages, streamingId)
+                displayedTranscriptMessages = buildTranscriptMessages(messages, streamingId, it.messageOffset)
             )
         }
         return true
@@ -715,8 +720,7 @@ class ChatViewModel @Inject constructor(
     fun actionContextFor(message: ChatMessage, visibleIndex: Int): MessageActionContext? {
         val content = message.content ?: return null
         if (content.isBlank()) return null
-        val offset = 0
-        val fullHistoryIndex = offset + visibleIndex
+        val fullHistoryIndex = _uiState.value.messageOffset + visibleIndex
         val keepCount = fullHistoryIndex + 1
         return when (message.role) {
             "user" -> MessageActionContext.UserContext(visibleIndex, fullHistoryIndex, keepCount, message.id, content)
@@ -747,7 +751,7 @@ class ChatViewModel @Inject constructor(
                 _uiState.update { state ->
                     state.copy(
                         messages = truncatedMessages,
-                        displayedTranscriptMessages = buildTranscriptMessages(truncatedMessages, null),
+                        displayedTranscriptMessages = buildTranscriptMessages(truncatedMessages, null, state.messageOffset),
                         isEditingMessage = false
                     )
                 }
@@ -791,10 +795,10 @@ class ChatViewModel @Inject constructor(
                 val keepCount = context.keepCountThroughMessage - 1
                 val truncateResponse = apiClient.sessionTruncate(sessionId, keepCount)
                 val truncatedMessages = messages.take(index)
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    state.copy(
                         messages = truncatedMessages,
-                        displayedTranscriptMessages = buildTranscriptMessages(truncatedMessages, null),
+                        displayedTranscriptMessages = buildTranscriptMessages(truncatedMessages, null, state.messageOffset),
                         isRegeneratingMessage = false
                     )
                 }
@@ -887,15 +891,19 @@ class ChatViewModel @Inject constructor(
 
     private fun buildTranscriptMessages(
         messages: List<ChatMessage>,
-        hidingStreamingAssistantId: String?
+        hidingStreamingAssistantId: String?,
+        messageOffset: Int
     ): List<TranscriptMessage> {
         return messages.mapIndexedNotNull { index, message ->
             if (message.role == "tool") return@mapIndexedNotNull null
             if (hidingStreamingAssistantId != null && message.messageId == hidingStreamingAssistantId) return@mapIndexedNotNull null
             val anchorId = message.messageId ?: "anchor-$index"
+            val fullHistoryIndex = messageOffset + index
             TranscriptMessage(
                 loadedIndex = index,
-                renderId = "transcript-$index",
+                fullHistoryIndex = fullHistoryIndex,
+                keepCountThroughMessage = fullHistoryIndex + 1,
+                renderId = "transcript-$fullHistoryIndex",
                 anchorId = anchorId,
                 message = message
             )

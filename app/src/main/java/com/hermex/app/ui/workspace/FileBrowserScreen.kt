@@ -166,7 +166,7 @@ fun FileBrowserScreen(
                             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
                                 items(entries, key = { it.path.orEmpty() }) { entry ->
                                     FileEntryRow(entry = entry, onClick = {
-                                        if (entry.type == "directory") {
+                                        if (entry.isDirectory) {
                                             viewModel.navigateInto(entry.name.orEmpty())
                                         } else {
                                             viewModel.openFile(entry)
@@ -213,7 +213,7 @@ private fun BreadcrumbBar(pathStack: List<String>, onSegmentClick: (Int) -> Unit
 
 @Composable
 private fun FileEntryRow(entry: WorkspaceEntry, onClick: () -> Unit) {
-    val isDirectory = entry.type == "directory"
+    val isDirectory = entry.isDirectory
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
         headlineContent = { Text(entry.name.orEmpty()) },
