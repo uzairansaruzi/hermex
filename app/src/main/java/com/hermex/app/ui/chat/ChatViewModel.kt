@@ -998,7 +998,7 @@ class ChatViewModel @Inject constructor(
                 // The server needs the approval_id to resolve the pending approval.
                 val request = ApprovalRespondRequest(
                     sessionId = sessionId,
-                    choice = if (approved) "approve" else "reject",
+                    choice = if (approved) "once" else "deny",
                     approvalId = pending.pending?.approvalId
                 )
                 apiClient.approvalRespond(request)
