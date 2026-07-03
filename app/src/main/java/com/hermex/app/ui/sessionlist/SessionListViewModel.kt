@@ -8,7 +8,6 @@ import com.hermex.app.data.model.ProjectSummary
 import com.hermex.app.data.model.SessionMutationResponse
 import com.hermex.app.data.model.SessionSummary
 import com.hermex.app.data.network.ApiClient
-import com.hermex.app.data.network.ApiException
 import com.hermex.app.data.persistence.CachedSession
 import com.hermex.app.data.persistence.SessionDao
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -137,7 +136,8 @@ class SessionListViewModel @Inject constructor(
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val response = withAuthenticatedClient { apiClient.sessions() }
+                configureFromSavedServer()
+                val response = apiClient.sessions()
                 val visible = response.sessions.orEmpty().filter { it.archived != true }
                 _sessions.value = visible
                 _isViewingCachedData.value = false
@@ -161,7 +161,8 @@ class SessionListViewModel @Inject constructor(
             _isRefreshing.value = true
             _errorMessage.value = null
             try {
-                val response = withAuthenticatedClient { apiClient.sessions() }
+                configureFromSavedServer()
+                val response = apiClient.sessions()
                 val visible = response.sessions.orEmpty().filter { it.archived != true }
                 _sessions.value = visible
                 _isViewingCachedData.value = false
@@ -188,9 +189,8 @@ class SessionListViewModel @Inject constructor(
             _isCreatingSession.value = true
             _actionErrorMessage.value = null
             try {
-                val response = withAuthenticatedClient {
-                    apiClient.sessionNew(profile = profileName)
-                }
+                configureFromSavedServer()
+                val response = apiClient.sessionNew(profile = profileName)
                 if (response.ok == true || response.session != null) {
                     val newSession = response.session
                     if (newSession?.sessionId?.isNotBlank() == true) {
@@ -307,7 +307,8 @@ class SessionListViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoadingProjects.value = true
             try {
-                val response = withAuthenticatedClient { apiClient.projects() }
+                configureFromSavedServer()
+                val response = apiClient.projects()
                 _projects.value = response.projects.orEmpty()
             } catch (e: Exception) {
                 // Silently fail; projects are a secondary feature
@@ -338,7 +339,8 @@ class SessionListViewModel @Inject constructor(
             mutatingSessionIds.value += sessionId
             _actionErrorMessage.value = null
             try {
-                withAuthenticatedClient { block() }
+                configureFromSavedServer()
+                block()
             } catch (e: Exception) {
                 _actionErrorMessage.value = e.message ?: "Session action failed"
             } finally {
@@ -416,35 +418,15 @@ class SessionListViewModel @Inject constructor(
         }
     }
 
-    private suspend fun <T> withAuthenticatedClient(block: suspend () -> T): T {
-        configureFromSavedServer()
-        return try {
-            block()
-        } catch (unauthorized: ApiException.Unauthorized) {
-            reauthenticate()
-            block()
-        }
-    }
-
+    /**
+     * Ensures ApiClient is configured from saved server URL before API calls.
+     * Reauth on 401 is now handled transparently by [HermesAuthenticator] at
+     * the OkHttp layer, so this only needs to ensure the base URL is set.
+     */
     private fun configureFromSavedServer() {
         val serverUrl = authManager.serverUrl?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Server is not configured. Tap Reconnect to sign in again.")
         apiClient.configure(serverUrl)
-    }
-
-    private suspend fun reauthenticate() {
-        val password = authManager.getPassword()?.takeIf { it.isNotBlank() }
-            ?: run {
-                authManager.markLoggedOut()
-                throw ApiException.Unauthorized(401, "Session expired. Tap Reconnect to sign in again.")
-            }
-        val response = apiClient.login(password)
-        if (response.ok == true) {
-            authManager.markLoggedIn()
-        } else {
-            authManager.markLoggedOut()
-            throw ApiException.Unauthorized(401, response.error ?: "Login failed. Tap Reconnect to sign in again.")
-        }
     }
 
     private fun shouldUseCache(error: Throwable): Boolean {

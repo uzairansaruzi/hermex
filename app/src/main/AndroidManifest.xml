@@ -4,9 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE removed: no attachment or
+         upload flow exists yet; re-add when /api/upload UI is implemented. -->
 
     <application
         android:name=".HermexApplication"
@@ -41,16 +40,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
-            </intent-filter>
+            <!-- image/* and */* SEND filters removed: HermesLaunchRequest only
+                 handles EXTRA_TEXT today.  Re-add when URI attachment flow is
+                 implemented to avoid silently dropping shared content. -->
         </activity>
 
         <receiver

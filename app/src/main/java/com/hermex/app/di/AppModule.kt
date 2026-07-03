@@ -15,6 +15,7 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import com.hermex.app.data.network.HermesAuthenticator
 import com.hermex.app.data.network.LocalCleartextInterceptor
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -49,9 +50,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(cookieJar: CookieJar): OkHttpClient {
+    fun provideOkHttpClient(
+        cookieJar: CookieJar,
+        authenticator: HermesAuthenticator
+    ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(LocalCleartextInterceptor())
+            .authenticator(authenticator)
             .cookieJar(cookieJar)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS) // Long for SSE

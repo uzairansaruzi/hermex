@@ -61,6 +61,7 @@ import com.hermex.app.data.auth.AuthManager
 import com.hermex.app.data.model.LoginResponse
 import com.hermex.app.data.network.ApiClient
 import com.hermex.app.data.network.ApiException
+import com.hermex.app.data.network.httpFallbackUrl
 import com.hermex.app.ui.theme.HermexTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -186,10 +187,10 @@ class OnboardingViewModel @Inject constructor(
         try {
             block(originalUrl)
         } catch (error: Exception) {
-            val fallbackUrl = httpFallbackUrl(originalUrl)
-            if (fallbackUrl != null && error.looksLikePlainHttpBehindHttps()) {
+            val fallback = httpFallbackUrl(originalUrl)
+            if (fallback != null && error.looksLikePlainHttpBehindHttps()) {
                 try {
-                    block(fallbackUrl)
+                    block(fallback)
                     return
                 } catch (fallbackError: Exception) {
                     handleConnectionError(fallbackError)
@@ -197,20 +198,6 @@ class OnboardingViewModel @Inject constructor(
                 }
             }
             handleConnectionError(error)
-        }
-    }
-
-    private fun httpFallbackUrl(url: String): String? {
-        val trimmed = url.trim()
-        return when {
-            trimmed.startsWith("https://", ignoreCase = true) ->
-                "http://" + trimmed.substringAfter("://")
-            // Bare hosts (no scheme) are now configured as HTTPS by default.
-            // Fall back to explicit http:// so local/private LAN servers still
-            // connect via LocalCleartextInterceptor's allowlist.
-            !trimmed.startsWith("http://", ignoreCase = true) ->
-                "http://$trimmed"
-            else -> null
         }
     }
 

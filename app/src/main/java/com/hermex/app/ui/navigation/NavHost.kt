@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -51,6 +52,7 @@ fun HermexNavHost(
     navController: NavHostController = rememberNavController()
 ) {
     val authState by authManager.authState.collectAsState(initial = AuthState.UNCONFIGURED)
+    val launchRequestViewModel: LaunchRequestViewModel = hiltViewModel()
 
     val startDestination = when (authState) {
         AuthState.UNCONFIGURED -> Routes.ONBOARDING
@@ -58,12 +60,16 @@ fun HermexNavHost(
         AuthState.LOGGED_IN -> Routes.SESSIONS
     }
 
-    // Handle launch requests (deep links, notification taps, SEND intents) at the
-    // nav-host level so they work regardless of which screen is currently visible.
-    // Without this, an intent arriving while on chat/settings/etc. is never consumed
-    // because the SessionListScreen LaunchedEffect isn't in the composition.
-    LaunchedEffect(pendingLaunchRequest) {
+    // HermexNavHost is the SOLE consumer of launch requests.  This prevents
+    // duplicate navigation (NavHost + SessionListScreen both acting on the
+    // same request) and ensures intents work from any screen.
+    //
+    // Guard with LOGGED_IN: deep links arriving during onboarding stay pending
+    // until auth completes, preventing unauthenticated navigation to chat.
+    LaunchedEffect(pendingLaunchRequest, authState) {
         val request = pendingLaunchRequest ?: return@LaunchedEffect
+        if (authState != AuthState.LOGGED_IN) return@LaunchedEffect
+
         when (request) {
             is HermesLaunchRequest.OpenSession -> {
                 navController.navigate(Routes.chat(request.sessionId)) {
@@ -71,17 +77,13 @@ fun HermexNavHost(
                 }
             }
             is HermesLaunchRequest.NewChat -> {
-                // Navigate to sessions first so the SessionListScreen can create
-                // the session and navigate to it.  This is handled below in
-                // SessionListScreen's own LaunchedEffect for backward compat.
-                val currentRoute = navController.currentBackStackEntry?.destination?.route
-                if (currentRoute != Routes.SESSIONS) {
-                    navController.navigate(Routes.SESSIONS) {
-                        popUpTo(Routes.SESSIONS) { inclusive = true }
+                launchRequestViewModel.createSession(profileName = request.profileName) { sessionId ->
+                    navController.navigate(
+                        Routes.chat(sessionId, request.initialDraft, request.autoStartVoice)
+                    ) {
+                        popUpTo(Routes.SESSIONS) { inclusive = false }
                     }
                 }
-                // Don't consume — let SessionListScreen handle creation + nav.
-                return@LaunchedEffect
             }
         }
         onLaunchRequestConsumed()
@@ -109,8 +111,6 @@ fun HermexNavHost(
                 onNewChatCreated = { sessionId, initialDraft, autoStartVoice ->
                     navController.navigate(Routes.chat(sessionId, initialDraft, autoStartVoice))
                 },
-                pendingLaunchRequest = pendingLaunchRequest,
-                onLaunchRequestConsumed = onLaunchRequestConsumed,
                 onReconnectClick = {
                     authManager.markLoggedOut()
                     navController.navigate(Routes.ONBOARDING) {
