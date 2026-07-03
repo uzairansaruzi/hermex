@@ -124,7 +124,8 @@ class ChatViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val apiClient: ApiClient,
     private val sseClient: SseClient,
-    private val notificationManager: HermexNotificationManager
+    private val notificationManager: HermexNotificationManager,
+    private val messageDao: com.hermex.app.data.persistence.MessageDao
 ) : ViewModel() {
 
     private val sessionId: String = savedStateHandle.get<String>("sessionId")
@@ -135,11 +136,18 @@ class ChatViewModel @Inject constructor(
 
     private var currentStreamId: String? = null
     private var streamingJob: Job? = null
+    // A3 fix: generation counter prevents a stale handleStreamError coroutine
+    // from resurrecting a stream the user already cancelled.
+    private var streamGeneration = 0L
+    // A4 fix: prevents double notification/reload when Done + late Error
+    // both try to finalize the same response.
+    private var hasFinalized = false
 
     private var pendingAssistantTokenChunks = mutableListOf<String>()
     private var pendingReasoningChunks = mutableListOf<String>()
     private var pendingStreamingContentFlushJob: Job? = null
     private var pendingScrollTriggerJob: Job? = null
+    private var isReplayingConnection = false
 
     private val _scrollToBottomEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val scrollToBottomEvent: SharedFlow<Unit> = _scrollToBottomEvent.asSharedFlow()
@@ -177,7 +185,12 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        stopStreaming()
+        // A6 fix: do NOT call stopStreaming() — the server-side run should
+        // continue after the user navigates away (matching iOS).  Only the
+        // explicit Stop button sends /api/chat/cancel.  Cancel only the
+        // local SSE subscription and clean up resources.
+        streamingJob?.cancel()
+        currentStreamId = null
         textToSpeech?.stop()
         textToSpeech?.shutdown()
     }
@@ -217,10 +230,72 @@ class ChatViewModel @Inject constructor(
                     )
                 }
                 emitScrollToBottom()
+
+                // F3: cache messages for offline fallback
+                cacheMessages(loadedMessages)
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Failed to load messages") }
+                // F3: on transient failures, serve cached messages instead of
+                // showing a blank error screen (matches iOS CacheFallbackPolicy).
+                if (com.hermex.app.data.network.CacheFallbackPolicy.shouldUseCache(e)) {
+                    serveCachedMessagesOrError(e)
+                } else {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Failed to load messages") }
+                }
             }
         }
+    }
+
+    /** Cache messages locally for offline fallback. */
+    private suspend fun cacheMessages(messages: List<ChatMessage>) {
+        try {
+            messageDao.clearSession(sessionId)
+            messageDao.insertMessages(messages.mapNotNull { msg ->
+                val id = msg.messageId ?: return@mapNotNull null
+                com.hermex.app.data.persistence.CachedMessage(
+                    messageId = id,
+                    sessionId = sessionId,
+                    role = msg.role,
+                    content = msg.content,
+                    timestamp = msg.timestamp,
+                    name = msg.name,
+                    reasoning = msg.reasoning
+                )
+            })
+        } catch (_: Exception) {
+            // Cache failure is non-fatal — proceed without caching.
+        }
+    }
+
+    /** Attempt to load messages from Room; show error if cache is also empty. */
+    private suspend fun serveCachedMessagesOrError(originalError: Exception) {
+        try {
+            val cachedList = messageDao.getMessages(sessionId).first()
+            if (cachedList.isNotEmpty()) {
+                val loadedMessages = cachedList.map { cached ->
+                    ChatMessage(
+                        role = cached.role,
+                        content = cached.content,
+                        timestamp = cached.timestamp,
+                        messageId = cached.messageId,
+                        name = cached.name,
+                        reasoning = cached.reasoning
+                    )
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        isLoading = false,
+                        messages = loadedMessages,
+                        displayedTranscriptMessages = buildTranscriptMessages(loadedMessages, null, 0),
+                        errorMessage = "Showing cached messages (offline)"
+                    )
+                }
+                emitScrollToBottom()
+                return
+            }
+        } catch (_: Exception) {
+            // Cache read failed — fall through to show original error.
+        }
+        _uiState.update { it.copy(isLoading = false, errorMessage = originalError.message ?: "Failed to load messages") }
     }
 
     // -------------------------------------------------------------------------
@@ -259,20 +334,16 @@ class ChatViewModel @Inject constructor(
     }
 
     fun selectModel(model: String, provider: String?) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isUpdatingComposerConfig = true, composerErrorMessage = null) }
-            try {
-                apiClient.defaultModel(model)
-                _uiState.update { state ->
-                    state.copy(
-                        isUpdatingComposerConfig = false,
-                        currentModel = model,
-                        currentModelProvider = provider
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isUpdatingComposerConfig = false, composerErrorMessage = e.message) }
-            }
+        // Model selection is session-scoped: it only affects the model passed to
+        // /api/chat/start for the current conversation.  Do NOT call
+        // apiClient.defaultModel() here — that would change the server-wide
+        // default, making a temporary chat selection affect future sessions and
+        // the Settings screen unexpectedly.
+        _uiState.update { state ->
+            state.copy(
+                currentModel = model,
+                currentModelProvider = provider
+            )
         }
     }
 
@@ -358,7 +429,8 @@ class ChatViewModel @Inject constructor(
                         sessionId = sessionId,
                         message = trimmed,
                         workspace = _uiState.value.currentWorkspace,
-                        model = _uiState.value.currentModel
+                        model = _uiState.value.currentModel,
+                        modelProvider = _uiState.value.currentModelProvider
                     )
                 )
 
@@ -367,7 +439,7 @@ class ChatViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isStartingChat = false,
-                            sendErrorMessage = response.streamId?.let { null } ?: "The server did not return a stream ID."
+                            sendErrorMessage = "The server did not return a stream ID."
                         )
                     }
                     return@launch
@@ -390,8 +462,13 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun startStream(streamId: String) {
-        stopStreaming()
+        // Cancel only the local SSE subscription — do NOT call stopStreaming()
+        // which sends /api/chat/cancel to the server.  During reattachment the
+        // server stream is still running and must not be cancelled.
+        streamingJob?.cancel()
         currentStreamId = streamId
+        val myGeneration = ++streamGeneration   // A3: new generation
+        hasFinalized = false                    // A4: allow finalization
         val url = apiClient.streamUrl(streamId)
 
         streamingJob = viewModelScope.launch {
@@ -407,8 +484,7 @@ class ChatViewModel @Inject constructor(
                         is SSEEvent.StreamEnd -> finishStream()
                         is SSEEvent.Cancelled -> finishStream()
                         is SSEEvent.Error -> {
-                            _uiState.update { it.copy(sendErrorMessage = event.message) }
-                            finishStream()
+                            handleStreamError(streamId, event.message)
                         }
                         is SSEEvent.ApprovalPending -> {
                             _uiState.update { it.copy(approvalPending = event.response) }
@@ -423,30 +499,77 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(sendErrorMessage = e.message ?: "Stream error") }
-                finishStream()
+                handleStreamError(streamId, e.message ?: "Stream error")
             }
+        }
+    }
+
+    /**
+     * When the SSE connection drops (transient network change, Cloudflare idle
+     * timeout, etc.), check whether the server-side stream is still active before
+     * giving up.  If it is, reattach by reopening the SSE connection with replay
+     * deduplication enabled.  Only finalize when the server confirms the stream
+     * is no longer running.
+     */
+    private fun handleStreamError(streamId: String, errorMessage: String) {
+        val myGeneration = streamGeneration  // A3: capture generation before async work
+        viewModelScope.launch {
+            try {
+                val status = apiClient.chatStreamStatus(streamId)
+                // A3: if the user stopped or a new stream started while we were
+                // awaiting the status check, abandon this recovery path.
+                if (streamGeneration != myGeneration) return@launch
+                if (status.active == true) {
+                    // Server stream is still running — reattach.
+                    isReplayingConnection = true
+                    startStream(streamId)
+                    return@launch
+                }
+                if (status.done == true) {
+                    // Server finished while SSE was disconnected.
+                    // Reload the full transcript instead of showing an error.
+                    finalizeMessage(null)
+                    return@launch
+                }
+                // Server reports an error or unknown state — show it.
+                val serverError = status.error
+                if (serverError != null) {
+                    _uiState.update { it.copy(sendErrorMessage = serverError) }
+                } else {
+                    _uiState.update { it.copy(sendErrorMessage = errorMessage) }
+                }
+            } catch (_: Exception) {
+                if (streamGeneration != myGeneration) return@launch
+                // Status check itself failed — show the original SSE error.
+                _uiState.update { it.copy(sendErrorMessage = errorMessage) }
+            }
+            finishStream()
         }
     }
 
     private fun appendToken(token: String) {
         if (token.isEmpty()) return
         val streamingId = ensureStreamingAssistantMessage()
-        val flushedContent = _uiState.value.messages.find { it.messageId == streamingId }?.content ?: ""
-        val effectiveContent = flushedContent + pendingAssistantTokenChunks.joinToString("")
-        val remainder = deduplicateToken(token, effectiveContent)
-        if (remainder.isEmpty()) return
-        pendingAssistantTokenChunks.add(remainder)
+        val effectiveToken = if (isReplayingConnection) {
+            val flushedContent = _uiState.value.messages.find { it.messageId == streamingId }?.content ?: ""
+            val effectiveContent = flushedContent + pendingAssistantTokenChunks.joinToString("")
+            val remainder = deduplicateToken(token, effectiveContent)
+            if (remainder.isNotEmpty()) {
+                isReplayingConnection = false
+            }
+            remainder
+        } else {
+            token
+        }
+        if (effectiveToken.isEmpty()) return
+        pendingAssistantTokenChunks.add(effectiveToken)
         scheduleStreamingContentFlush()
     }
 
     private fun appendReasoning(text: String) {
         if (text.isEmpty()) return
-        val streamingId = ensureStreamingAssistantMessage()
-        val effectiveContent = _uiState.value.liveReasoningText + pendingReasoningChunks.joinToString("")
-        val remainder = deduplicateToken(text, effectiveContent)
-        if (remainder.isEmpty()) return
-        pendingReasoningChunks.add(remainder)
+        ensureStreamingAssistantMessage()
+        pendingReasoningChunks.add(text)
         scheduleStreamingContentFlush()
     }
 
@@ -508,6 +631,11 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun finalizeMessage(usage: UsageSnapshot?) {
+        // A4 fix: guard against double finalization (Done + late Error / status-done
+        // racing can both reach this path for the same response).
+        if (hasFinalized) return
+        hasFinalized = true
+
         flushPendingStreamingContent()
         _uiState.update { state ->
             state.copy(
@@ -541,6 +669,7 @@ class ChatViewModel @Inject constructor(
 
     fun stopStreaming() {
         val streamId = currentStreamId ?: return
+        streamGeneration++  // A3: invalidate any in-flight handleStreamError
         viewModelScope.launch {
             _uiState.update { it.copy(isCancellingStream = true) }
             try {
@@ -680,6 +809,7 @@ class ChatViewModel @Inject constructor(
         pendingReasoningChunks.clear()
         pendingStreamingContentFlushJob?.cancel()
         pendingStreamingContentFlushJob = null
+        isReplayingConnection = false
     }
 
     private fun archiveLiveStreamingIfNeeded() {
@@ -736,7 +866,7 @@ class ChatViewModel @Inject constructor(
 
     fun editMessage(context: MessageActionContext, newText: String) {
         val messages = _uiState.value.messages
-        val index = messages.indexOfFirst { it.messageId == context.messageId }
+        val index = messages.indexOfFirst { it.id == context.messageId }
         if (index < 0) return
         val edited = newText.trim()
         if (edited.isEmpty()) return
@@ -783,18 +913,24 @@ class ChatViewModel @Inject constructor(
     fun regenerateAssistantResponse(context: MessageActionContext) {
         if (context.role != MessageActionContext.Role.Assistant) return
         val messages = _uiState.value.messages
-        val index = messages.indexOfFirst { it.messageId == context.messageId }
-        val userText = if (index > 0) {
-            messages.subList(0, index).findLast { it.role == "user" }?.content?.trim()?.takeIf { it.isNotEmpty() }
-        } else null
-        if (userText == null) return
+        val assistantIndex = messages.indexOfFirst { it.id == context.messageId }
+        if (assistantIndex < 0) return
+
+        // Find the preceding user message to replay
+        val userMessageIndex = messages.subList(0, assistantIndex)
+            .indexOfLast { it.role == "user" }
+        if (userMessageIndex < 0) return
+        val userText = messages[userMessageIndex].content?.trim()?.takeIf { it.isNotEmpty() } ?: return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isRegeneratingMessage = true, messageActionErrorMessage = null) }
             try {
-                val keepCount = context.keepCountThroughMessage - 1
-                val truncateResponse = apiClient.sessionTruncate(sessionId, keepCount)
-                val truncatedMessages = messages.take(index)
+                // Truncate BEFORE the user message — sendMessage will re-post it,
+                // so keeping the original user message would produce a
+                // "user, user, assistant" sequence in the server history.
+                val keepCount = _uiState.value.messageOffset + userMessageIndex
+                apiClient.sessionTruncate(sessionId, keepCount)
+                val truncatedMessages = messages.take(userMessageIndex)
                 _uiState.update { state ->
                     state.copy(
                         messages = truncatedMessages,
@@ -858,8 +994,14 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRespondingToPendingAction = true, pendingActionErrorMessage = null) }
             try {
-                val request = ChatSteerRequest(sessionId, if (approved) "approve" else "reject")
-                apiClient.chatSteer(request)
+                // Use the dedicated approval endpoint (matching iOS), NOT /api/chat/steer.
+                // The server needs the approval_id to resolve the pending approval.
+                val request = ApprovalRespondRequest(
+                    sessionId = sessionId,
+                    choice = if (approved) "once" else "deny",
+                    approvalId = pending.pending?.approvalId
+                )
+                apiClient.approvalRespond(request)
                 _uiState.update { it.copy(isRespondingToPendingAction = false, approvalPending = null) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isRespondingToPendingAction = false, pendingActionErrorMessage = e.message) }
@@ -872,8 +1014,13 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRespondingToPendingAction = true, pendingActionErrorMessage = null) }
             try {
-                val request = ChatSteerRequest(sessionId, choice)
-                apiClient.chatSteer(request)
+                // Use the dedicated clarify endpoint (matching iOS), NOT /api/chat/steer.
+                val request = ClarificationRespondRequest(
+                    sessionId = sessionId,
+                    response = choice,
+                    clarifyId = pending.pending?.clarifyId
+                )
+                apiClient.clarifyRespond(request)
                 _uiState.update { it.copy(isRespondingToPendingAction = false, clarificationPending = null) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isRespondingToPendingAction = false, pendingActionErrorMessage = e.message) }

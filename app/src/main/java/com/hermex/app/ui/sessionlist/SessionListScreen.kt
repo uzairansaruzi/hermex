@@ -90,7 +90,6 @@ import com.hermex.app.ui.components.HermexAvatar
 import com.hermex.app.ui.theme.HermexTheme
 import com.hermex.app.data.model.ProjectSummary
 import com.hermex.app.data.model.SessionSummary
-import com.hermex.app.ui.navigation.HermesLaunchRequest
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -104,8 +103,6 @@ import java.util.Locale
 fun SessionListScreen(
     onSessionClick: (String) -> Unit,
     onNewChatCreated: (sessionId: String, initialDraft: String, autoStartVoice: Boolean) -> Unit = { sessionId, _, _ -> onSessionClick(sessionId) },
-    pendingLaunchRequest: HermesLaunchRequest? = null,
-    onLaunchRequestConsumed: () -> Unit = {},
     onReconnectClick: () -> Unit = {},
     onSettingsClick: () -> Unit,
     onTasksClick: () -> Unit,
@@ -125,17 +122,6 @@ fun SessionListScreen(
                     viewModel.clearActionError()
                 }
             }
-    }
-
-    LaunchedEffect(pendingLaunchRequest) {
-        val request = pendingLaunchRequest ?: return@LaunchedEffect
-        when (request) {
-            is HermesLaunchRequest.OpenSession -> onSessionClick(request.sessionId)
-            is HermesLaunchRequest.NewChat -> viewModel.createSession(profileName = request.profileName) { sessionId ->
-                onNewChatCreated(sessionId, request.initialDraft, request.autoStartVoice)
-            }
-        }
-        onLaunchRequestConsumed()
     }
 
     var sessionToDelete by remember { mutableStateOf<SessionSummary?>(null) }

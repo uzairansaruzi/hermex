@@ -1,8 +1,10 @@
 package com.hermex.app.data.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNames
 
 @Serializable
 data class SessionsResponse(
@@ -39,12 +41,16 @@ data class SessionResponse(
     val session: SessionDetail? = null
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class SessionDetail(
     @SerialName("session_id") val sessionId: String? = null,
     val title: String? = null,
     val messages: List<ChatMessage>? = null,
-    @SerialName("messages_offset") val messagesOffset: Int? = null,
+    // Server sends "_messages_offset" (leading underscore); accept all known variants.
+    @SerialName("_messages_offset")
+    @JsonNames("messages_offset", "_messagesOffset")
+    val messagesOffset: Int? = null,
     @SerialName("messages_total") val messagesTotal: Int? = null,
     @SerialName("last_message_at") val lastMessageAt: Double? = null,
     @SerialName("created_at") val createdAt: Double? = null,

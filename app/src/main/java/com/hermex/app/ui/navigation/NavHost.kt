@@ -2,8 +2,12 @@ package com.hermex.app.ui.navigation
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,7 +25,6 @@ import com.hermex.app.ui.memory.MemoryScreen
 import com.hermex.app.ui.insights.InsightsScreen
 import com.hermex.app.ui.settings.SettingsScreen
 import com.hermex.app.ui.workspace.FileBrowserScreen
-import com.hermex.app.ui.git.GitWorkspaceScreen
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -33,28 +36,80 @@ object Routes {
     const val INSIGHTS = "insights"
     const val SETTINGS = "settings"
     const val FILE_BROWSER = "file_browser/{sessionId}"
-    const val GIT_WORKSPACE = "git/{sessionId}"
-
     fun chat(sessionId: String, initialDraft: String = "", autoStartVoice: Boolean = false): String {
         return "chat/${Uri.encode(sessionId)}?draft=${Uri.encode(initialDraft)}&voice=$autoStartVoice"
     }
-    fun fileBrowser(sessionId: String) = "file_browser/$sessionId"
-    fun git(sessionId: String) = "git/$sessionId"
+    // C2 fix: URI-encode sessionId to prevent route-breaking chars (/, ?, #).
+    fun fileBrowser(sessionId: String) = "file_browser/${Uri.encode(sessionId)}"
 }
 
 @Composable
 fun HermexNavHost(
     authManager: AuthManager,
-    pendingLaunchRequest: HermesLaunchRequest? = null,
-    onLaunchRequestConsumed: () -> Unit = {},
+    launchRequestViewModel: LaunchRequestViewModel = hiltViewModel(),
     navController: NavHostController = rememberNavController()
 ) {
-    val authState by authManager.authState.collectAsState(initial = AuthState.UNCONFIGURED)
+    // authState is a StateFlow — collectAsState() reads the current value
+    // synchronously (no dummy initial needed), so startDestination is correct
+    // on the very first frame even for logged-in users.
+    val authState by authManager.authState.collectAsState()
+    val pendingRequest by launchRequestViewModel.pendingRequest.collectAsState()
 
-    val startDestination = when (authState) {
-        AuthState.UNCONFIGURED -> Routes.ONBOARDING
-        AuthState.LOGGED_OUT -> Routes.ONBOARDING
-        AuthState.LOGGED_IN -> Routes.SESSIONS
+    // C4 fix: compute startDestination once and freeze it. Live authState
+    // changes are handled by the LaunchedEffect below, not by rebuilding
+    // the NavGraph (which would reset the back stack mid-session).
+    val startDestination by rememberSaveable {
+        mutableStateOf(
+            when (authState) {
+                AuthState.LOGGED_IN -> Routes.SESSIONS
+                else -> Routes.ONBOARDING
+            }
+        )
+    }
+
+    // B5 fix: redirect to onboarding when auth is lost mid-session, and
+    // redirect to sessions when logged-in state is reached while stuck on
+    // onboarding (safety net for any startDestination freeze edge case).
+    LaunchedEffect(authState) {
+        val currentRoute = navController.currentBackStackEntry?.destination?.route
+        when {
+            authState == AuthState.LOGGED_IN && currentRoute == Routes.ONBOARDING -> {
+                navController.navigate(Routes.SESSIONS) {
+                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                }
+            }
+            (authState == AuthState.LOGGED_OUT || authState == AuthState.UNCONFIGURED)
+                && currentRoute != null && currentRoute != Routes.ONBOARDING -> {
+                navController.navigate(Routes.ONBOARDING) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+    }
+
+    // Dispatch pending launch requests when authenticated.
+    // The ViewModel clears pendingRequest synchronously in dispatch() and
+    // emits a LaunchNavEvent asynchronously — no navController capture.
+    LaunchedEffect(pendingRequest, authState) {
+        val request = pendingRequest ?: return@LaunchedEffect
+        if (authState != AuthState.LOGGED_IN) return@LaunchedEffect
+        launchRequestViewModel.dispatch(request)
+    }
+
+    // Collect one-shot navigation events from the ViewModel.
+    // Channel.BUFFERED ensures events survive configuration changes.
+    LaunchedEffect(Unit) {
+        launchRequestViewModel.navEvents.collect { event ->
+            when (event) {
+                is LaunchNavEvent.OpenChat -> {
+                    navController.navigate(
+                        Routes.chat(event.sessionId, event.initialDraft, event.autoStartVoice)
+                    ) {
+                        popUpTo(Routes.SESSIONS) { inclusive = false }
+                    }
+                }
+            }
+        }
     }
 
     NavHost(
@@ -79,8 +134,6 @@ fun HermexNavHost(
                 onNewChatCreated = { sessionId, initialDraft, autoStartVoice ->
                     navController.navigate(Routes.chat(sessionId, initialDraft, autoStartVoice))
                 },
-                pendingLaunchRequest = pendingLaunchRequest,
-                onLaunchRequestConsumed = onLaunchRequestConsumed,
                 onReconnectClick = {
                     authManager.markLoggedOut()
                     navController.navigate(Routes.ONBOARDING) {
@@ -125,9 +178,6 @@ fun HermexNavHost(
                 onNewSession = { navController.navigate(Routes.SESSIONS) },
                 onNavigateToFileBrowser = { sid ->
                     navController.navigate(Routes.fileBrowser(sid))
-                },
-                onNavigateToGit = { sid ->
-                    navController.navigate(Routes.git(sid))
                 }
             )
         }
@@ -166,17 +216,6 @@ fun HermexNavHost(
         ) { backStackEntry ->
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: return@composable
             FileBrowserScreen(
-                sessionId = sessionId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            route = Routes.GIT_WORKSPACE,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: return@composable
-            GitWorkspaceScreen(
                 sessionId = sessionId,
                 onBack = { navController.popBackStack() }
             )

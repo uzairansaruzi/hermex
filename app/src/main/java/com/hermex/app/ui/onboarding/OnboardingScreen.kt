@@ -61,6 +61,7 @@ import com.hermex.app.data.auth.AuthManager
 import com.hermex.app.data.model.LoginResponse
 import com.hermex.app.data.network.ApiClient
 import com.hermex.app.data.network.ApiException
+import com.hermex.app.data.network.httpFallbackUrl
 import com.hermex.app.ui.theme.HermexTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,8 +142,30 @@ class OnboardingViewModel @Inject constructor(
         authManager.saveServer(apiClient.baseUrl)
         _serverUrl.value = apiClient.baseUrl
 
+        // Check if the server requires authentication.
+        // Catch only 404 (legacy server without /api/auth/status endpoint).
+        // Connection errors (host unreachable, timeout) must propagate so they
+        // don't silently bypass password checks and "log in" to offline hosts.
+        val authStatus = try {
+            apiClient.authStatus()
+        } catch (e: ApiException.Http) {
+            if (e.code == 404) null else throw e
+        }
+
         val password = _password.value
-        if (password.isNotBlank()) {
+        if (authStatus?.authEnabled == true) {
+            if (password.isBlank()) {
+                _status.value = ConnectionStatus.Error("This server requires a password.")
+                return
+            }
+            authManager.savePassword(password)
+            val loginResponse: LoginResponse = apiClient.login(password)
+            if (loginResponse.ok != true) {
+                val error = loginResponse.error ?: "Login failed."
+                _status.value = ConnectionStatus.Error(error)
+                return
+            }
+        } else if (password.isNotBlank()) {
             authManager.savePassword(password)
             val loginResponse: LoginResponse = apiClient.login(password)
             if (loginResponse.ok != true) {
@@ -164,10 +187,10 @@ class OnboardingViewModel @Inject constructor(
         try {
             block(originalUrl)
         } catch (error: Exception) {
-            val fallbackUrl = httpFallbackUrl(originalUrl)
-            if (fallbackUrl != null && error.looksLikePlainHttpBehindHttps()) {
+            val fallback = httpFallbackUrl(originalUrl)
+            if (fallback != null && error.looksLikePlainHttpBehindHttps()) {
                 try {
-                    block(fallbackUrl)
+                    block(fallback)
                     return
                 } catch (fallbackError: Exception) {
                     handleConnectionError(fallbackError)
@@ -175,15 +198,6 @@ class OnboardingViewModel @Inject constructor(
                 }
             }
             handleConnectionError(error)
-        }
-    }
-
-    private fun httpFallbackUrl(url: String): String? {
-        val trimmed = url.trim()
-        return if (trimmed.startsWith("https://", ignoreCase = true)) {
-            "http://" + trimmed.substringAfter("://")
-        } else {
-            null
         }
     }
 

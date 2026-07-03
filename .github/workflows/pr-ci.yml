@@ -1,6 +1,6 @@
 # Contributor CI: build and run the full XCTest suite on every pull request
-# that touches app code. Docs-only PRs (markdown, docs/, community files) skip
-# the macOS runner entirely and pass via the cheap gate job.
+# that touches iOS code. Android-only or docs-only PRs skip the macOS runner
+# entirely and pass via the cheap gate job.
 #
 # The required branch-protection check is "CI Gate", not "Build and Test":
 # a skipped required check would block merges forever, so the gate always
@@ -43,15 +43,16 @@ jobs:
             --paginate --jq '.[].filename')
           echo "Changed files:"
           echo "${files}"
-          # Fail closed: anything NOT on the docs-only allowlist triggers the
-          # full suite (including workflow, project, and config changes).
-          non_docs=$(echo "${files}" | grep -vE '^(docs/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
-          if [[ -n "${non_docs}" ]]; then
-            echo "Non-docs changes detected — running the full suite:"
-            echo "${non_docs}"
+          # Fail closed: anything NOT on the skip-allowlist triggers the suite.
+          # Android-only changes (app/**, *.gradle*, gradle/**, settings.gradle*)
+          # also skip the iOS suite — they have their own workflow.
+          non_ios=$(echo "${files}" | grep -vE '^(docs/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|\.github/workflows/android-ci\.yml|.*\.md|app/.*|.*\.gradle\.kts|.*\.gradle|gradle/.*|gradlew.*|settings\.gradle.*)$' || true)
+          if [[ -n "${non_ios}" ]]; then
+            echo "iOS-relevant changes detected — running the full suite:"
+            echo "${non_ios}"
             echo "run_ios=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Docs-only change — skipping the macOS runner."
+            echo "No iOS-relevant changes — skipping the macOS runner."
             echo "run_ios=false" >> "$GITHUB_OUTPUT"
           fi
 

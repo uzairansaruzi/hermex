@@ -29,15 +29,7 @@ class ApiClient @Inject constructor(
         private set
 
     fun configure(serverUrl: String) {
-        val trimmed = serverUrl.trim().trimEnd('/')
-        baseUrl = if (
-            trimmed.startsWith("http://", ignoreCase = true) ||
-            trimmed.startsWith("https://", ignoreCase = true)
-        ) {
-            trimmed
-        } else {
-            "http://$trimmed"
-        }
+        baseUrl = normalizeServerUrl(serverUrl)
     }
 
     suspend fun health(): HealthResponse = get(Endpoints.HEALTH)
@@ -109,7 +101,8 @@ class ApiClient @Inject constructor(
     suspend fun chatStart(request: ChatStartRequest): ChatStartResponse = post(Endpoints.CHAT_START, request)
 
     suspend fun chatCancel(streamId: String) {
-        get<Unit>("${Endpoints.CHAT_CANCEL}?stream_id=$streamId")
+        // E3 fix: use typed query params instead of string interpolation.
+        get<Unit>(Endpoints.CHAT_CANCEL, mapOf("stream_id" to streamId))
     }
 
     suspend fun chatStreamStatus(streamId: String): StreamStatusResponse {
@@ -117,6 +110,12 @@ class ApiClient @Inject constructor(
     }
 
     suspend fun chatSteer(request: ChatSteerRequest): ChatSteerResponse = post(Endpoints.CHAT_STEER, request)
+
+    suspend fun approvalRespond(request: ApprovalRespondRequest): ApprovalRespondResponse =
+        post(Endpoints.APPROVAL_RESPOND, request)
+
+    suspend fun clarifyRespond(request: ClarificationRespondRequest): ClarificationRespondResponse =
+        post(Endpoints.CLARIFY_RESPOND, request)
 
     suspend fun workspaces(): WorkspacesResponse = get(Endpoints.WORKSPACES)
 
@@ -178,28 +177,9 @@ class ApiClient @Inject constructor(
 
     suspend fun memory(): MemoryResponse = get(Endpoints.MEMORY)
 
-    suspend fun gitStatus(sessionId: String): GitStatusResponse {
-        return get<GitStatusEnvelope>(Endpoints.GIT_STATUS, mapOf("session_id" to sessionId)).git ?: GitStatusResponse()
-    }
-
-    suspend fun gitBranches(sessionId: String): GitBranchesResponse {
-        return get(Endpoints.GIT_BRANCHES, mapOf("session_id" to sessionId))
-    }
-
-    suspend fun gitDiff(sessionId: String): GitDiffResponse {
-        return get(Endpoints.GIT_DIFF, mapOf("session_id" to sessionId))
-    }
-
-    suspend fun gitCommit(sessionId: String, message: String): GitCommitResponse {
-        return post(Endpoints.GIT_COMMIT, GitCommitRequest(sessionId = sessionId, message = message))
-    }
-
-    suspend fun gitCheckout(sessionId: String, branch: String) {
-        post<Unit>(Endpoints.GIT_CHECKOUT, mapOf("session_id" to sessionId, "branch" to branch))
-    }
-
     fun streamUrl(streamId: String): HttpUrl {
-        return "${baseUrl}${Endpoints.CHAT_STREAM}?stream_id=$streamId".toHttpUrl()
+        // E3 fix: use HttpUrl.Builder for proper query encoding.
+        return buildUrl(Endpoints.CHAT_STREAM, mapOf("stream_id" to streamId))
     }
 
     fun rawUrl(path: String): String {
@@ -235,8 +215,9 @@ class ApiClient @Inject constructor(
         is LoginRequest -> json.encodeToString(body)
         is ChatStartRequest -> json.encodeToString(body)
         is ChatSteerRequest -> json.encodeToString(body)
+        is ApprovalRespondRequest -> json.encodeToString(body)
+        is ClarificationRespondRequest -> json.encodeToString(body)
         is ReasoningRequest -> json.encodeToString(body)
-        is GitCommitRequest -> json.encodeToString(body)
         else -> error("Unsupported request body type: ${body::class.qualifiedName}")
     }
 
@@ -262,7 +243,14 @@ class ApiClient @Inject constructor(
 
     private suspend inline fun <reified T> executeRequest(request: Request): T {
         return withContext(Dispatchers.IO) {
-            val response = okHttpClient.newCall(request).execute()
+            // B4 fix: wrap raw IOException as ApiException.Network so callers
+            // (ViewModels, CacheFallbackPolicy) can distinguish network failures
+            // from HTTP errors and decode errors.
+            val response = try {
+                okHttpClient.newCall(request).execute()
+            } catch (e: IOException) {
+                throw ApiException.Network(e)
+            }
             val body = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {

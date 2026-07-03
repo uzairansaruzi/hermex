@@ -31,13 +31,44 @@ data class ChatMessage(
     @SerialName("content_parts") val contentParts: List<JsonElement>? = null,
     val reasoning: String? = null,
     val attachments: List<MessageAttachment>? = null,
-    @SerialName("_ts") val ts: Double? = null
+    @SerialName("_ts")
+    @Serializable(with = FlexibleDoubleSerializer::class)
+    val ts: Double? = null
 ) {
     val id: String
         get() = messageId ?: "${role ?: "unknown"}-${effectiveTimestamp}-${content ?: ""}"
 
     val effectiveTimestamp: Double
         get() = ts ?: timestamp ?: 0.0
+}
+
+/**
+ * Handles `_ts` values that arrive as either a JSON number or a quoted
+ * numeric string (`"1770000000.5"`).  The upstream server is inconsistent
+ * about which form it sends — iOS uses `decodeLossyDoubleIfPresent` for
+ * the same reason.
+ */
+object FlexibleDoubleSerializer : KSerializer<Double?> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor(
+        "FlexibleDouble",
+        PrimitiveKind.DOUBLE
+    )
+
+    override fun deserialize(decoder: Decoder): Double? {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return try { decoder.decodeDouble() } catch (_: Exception) { null }
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            JsonNull -> null
+            is JsonPrimitive -> element.contentOrNull?.toDoubleOrNull()
+            else -> null
+        }
+    }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    override fun serialize(encoder: Encoder, value: Double?) {
+        if (value == null) encoder.encodeNull()
+        else encoder.encodeDouble(value)
+    }
 }
 
 object MessageContentAsStringSerializer : KSerializer<String?> {
@@ -104,6 +135,7 @@ data class ChatStartRequest(
     val message: String,
     val workspace: String? = null,
     val model: String? = null,
+    @SerialName("model_provider") val modelProvider: String? = null,
     val attachments: List<ChatAttachment>? = null
 )
 
@@ -139,5 +171,31 @@ data class ChatSteerResponse(
 data class StreamStatusResponse(
     val active: Boolean? = null,
     val done: Boolean? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class ApprovalRespondRequest(
+    @SerialName("session_id") val sessionId: String,
+    val choice: String,
+    @SerialName("approval_id") val approvalId: String? = null
+)
+
+@Serializable
+data class ApprovalRespondResponse(
+    val ok: Boolean? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class ClarificationRespondRequest(
+    @SerialName("session_id") val sessionId: String,
+    val response: String,
+    @SerialName("clarify_id") val clarifyId: String? = null
+)
+
+@Serializable
+data class ClarificationRespondResponse(
+    val ok: Boolean? = null,
     val error: String? = null
 )

@@ -8,6 +8,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
@@ -37,7 +38,7 @@ class AuthManager @Inject constructor(
     )
 
     private val _authState = MutableStateFlow(determineState())
-    val authState: Flow<AuthState> = _authState.asStateFlow()
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     val isLoggedIn: Flow<Boolean> = authState.map { it == AuthState.LOGGED_IN }
 

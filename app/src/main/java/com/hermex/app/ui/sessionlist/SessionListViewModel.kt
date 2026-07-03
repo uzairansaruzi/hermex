@@ -8,7 +8,7 @@ import com.hermex.app.data.model.ProjectSummary
 import com.hermex.app.data.model.SessionMutationResponse
 import com.hermex.app.data.model.SessionSummary
 import com.hermex.app.data.network.ApiClient
-import com.hermex.app.data.network.ApiException
+import com.hermex.app.data.network.CacheFallbackPolicy
 import com.hermex.app.data.persistence.CachedSession
 import com.hermex.app.data.persistence.SessionDao
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -137,7 +136,8 @@ class SessionListViewModel @Inject constructor(
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val response = withAuthenticatedClient { apiClient.sessions() }
+                configureFromSavedServer()
+                val response = apiClient.sessions()
                 val visible = response.sessions.orEmpty().filter { it.archived != true }
                 _sessions.value = visible
                 _isViewingCachedData.value = false
@@ -161,7 +161,8 @@ class SessionListViewModel @Inject constructor(
             _isRefreshing.value = true
             _errorMessage.value = null
             try {
-                val response = withAuthenticatedClient { apiClient.sessions() }
+                configureFromSavedServer()
+                val response = apiClient.sessions()
                 val visible = response.sessions.orEmpty().filter { it.archived != true }
                 _sessions.value = visible
                 _isViewingCachedData.value = false
@@ -188,9 +189,8 @@ class SessionListViewModel @Inject constructor(
             _isCreatingSession.value = true
             _actionErrorMessage.value = null
             try {
-                val response = withAuthenticatedClient {
-                    apiClient.sessionNew(profile = profileName)
-                }
+                configureFromSavedServer()
+                val response = apiClient.sessionNew(profile = profileName)
                 if (response.ok == true || response.session != null) {
                     val newSession = response.session
                     if (newSession?.sessionId?.isNotBlank() == true) {
@@ -234,7 +234,10 @@ class SessionListViewModel @Inject constructor(
         val sessionId = session.sessionId ?: return
         mutateSession(sessionId) {
             val newPinned = session.pinned != true
-            apiClient.sessionPin(sessionId, pinned = newPinned)
+            val response = apiClient.sessionPin(sessionId, pinned = newPinned)
+            // Update local state so the UI reflects the change immediately
+            // without waiting for a full refresh.
+            updateSessionLocally(sessionId) { it.copy(pinned = newPinned) }
         }
     }
 
@@ -307,7 +310,8 @@ class SessionListViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoadingProjects.value = true
             try {
-                val response = withAuthenticatedClient { apiClient.projects() }
+                configureFromSavedServer()
+                val response = apiClient.projects()
                 _projects.value = response.projects.orEmpty()
             } catch (e: Exception) {
                 // Silently fail; projects are a secondary feature
@@ -322,15 +326,15 @@ class SessionListViewModel @Inject constructor(
     }
 
     private fun observeCachedSessions() {
-        sessionDao.getAllSessions()
-            .map { cached -> cached.map { it.toSummary() } }
-            .onEach { cachedSessions ->
-                // Only show cached sessions when we are offline and have no server data.
-                if (_isViewingCachedData.value && _sessions.value.isEmpty()) {
-                    _sessions.value = cachedSessions.filter { it.archived != true }
-                }
+        combine(
+            sessionDao.getAllSessions().map { cached -> cached.map { it.toSummary() } },
+            _isViewingCachedData
+        ) { cachedSessions, isViewingCached ->
+            // Show cached sessions when we are offline and have no server data.
+            if (isViewingCached && _sessions.value.isEmpty()) {
+                _sessions.value = cachedSessions.filter { it.archived != true }
             }
-            .launchIn(viewModelScope)
+        }.launchIn(viewModelScope)
     }
 
     private fun mutateSession(sessionId: String, block: suspend () -> Unit) {
@@ -338,7 +342,8 @@ class SessionListViewModel @Inject constructor(
             mutatingSessionIds.value += sessionId
             _actionErrorMessage.value = null
             try {
-                withAuthenticatedClient { block() }
+                configureFromSavedServer()
+                block()
             } catch (e: Exception) {
                 _actionErrorMessage.value = e.message ?: "Session action failed"
             } finally {
@@ -416,44 +421,23 @@ class SessionListViewModel @Inject constructor(
         }
     }
 
-    private suspend fun <T> withAuthenticatedClient(block: suspend () -> T): T {
-        configureFromSavedServer()
-        return try {
-            block()
-        } catch (unauthorized: ApiException.Unauthorized) {
-            reauthenticate()
-            block()
-        }
-    }
-
+    /**
+     * Ensures ApiClient is configured from saved server URL before API calls.
+     * Reauth on 401 is now handled transparently by [HermesAuthenticator] at
+     * the OkHttp layer, so this only needs to ensure the base URL is set.
+     */
     private fun configureFromSavedServer() {
         val serverUrl = authManager.serverUrl?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Server is not configured. Tap Reconnect to sign in again.")
         apiClient.configure(serverUrl)
     }
 
-    private suspend fun reauthenticate() {
-        val password = authManager.getPassword()?.takeIf { it.isNotBlank() }
-            ?: run {
-                authManager.markLoggedOut()
-                throw ApiException.Unauthorized(401, "Session expired. Tap Reconnect to sign in again.")
-            }
-        val response = apiClient.login(password)
-        if (response.ok == true) {
-            authManager.markLoggedIn()
-        } else {
-            authManager.markLoggedOut()
-            throw ApiException.Unauthorized(401, response.error ?: "Login failed. Tap Reconnect to sign in again.")
-        }
-    }
-
-    private fun shouldUseCache(error: Throwable): Boolean {
-        return error is IOException ||
-            (error.message?.contains("Unable to resolve host", ignoreCase = true) == true) ||
-            (error.message?.contains("Connect", ignoreCase = true) == true) ||
-            (error.message?.contains("Socket", ignoreCase = true) == true) ||
-            (error.message?.contains("timeout", ignoreCase = true) == true)
-    }
+    // F1/F4 fix: delegate to the extracted, typed CacheFallbackPolicy.
+    // This replaces the old substring-matching heuristic with typed exception
+    // matching that correctly handles transient HTTP 408/502/503/504 and
+    // never serves cache on 401/4xx.
+    private fun shouldUseCache(error: Throwable): Boolean =
+        CacheFallbackPolicy.shouldUseCache(error)
 
     private suspend fun cacheSessions(sessions: List<SessionSummary>) {
         sessionDao.insertSessions(sessions.map { it.toCachedSession() })

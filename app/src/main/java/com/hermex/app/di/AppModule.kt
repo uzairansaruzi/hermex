@@ -15,6 +15,7 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import com.hermex.app.data.network.HermesAuthenticator
 import com.hermex.app.data.network.LocalCleartextInterceptor
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -36,22 +37,36 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCookieJar(): CookieJar = object : CookieJar {
-        private val cookieStore = ConcurrentHashMap<String, List<Cookie>>()
+        // B1 fix: merge by cookie name instead of clobbering the entire list.
+        // A response setting only one cookie (e.g. CSRF token) must not wipe
+        // the existing session cookie for the same host.
+        private val cookieStore = ConcurrentHashMap<String, ConcurrentHashMap<String, Cookie>>()
 
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            cookieStore[url.host] = cookies
+            val hostMap = cookieStore.getOrPut(url.host) { ConcurrentHashMap() }
+            for (cookie in cookies) {
+                if (cookie.expiresAt <= System.currentTimeMillis()) {
+                    hostMap.remove(cookie.name)
+                } else {
+                    hostMap[cookie.name] = cookie
+                }
+            }
         }
 
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            return cookieStore[url.host] ?: emptyList()
+            return cookieStore[url.host]?.values?.toList().orEmpty()
         }
     }
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(cookieJar: CookieJar): OkHttpClient {
+    fun provideOkHttpClient(
+        cookieJar: CookieJar,
+        authenticator: HermesAuthenticator
+    ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(LocalCleartextInterceptor())
+            .authenticator(authenticator)
             .cookieJar(cookieJar)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS) // Long for SSE
