@@ -58,11 +58,10 @@ final class SkillsViewModel {
 
     func setSkill(_ skill: SkillSummary, enabled: Bool) async {
         guard let name = skill.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return }
+        guard togglingSkillNames.insert(name).inserted else { return }
 
-        let previousSkills = skills
         lastError = nil
         errorMessage = nil
-        togglingSkillNames.insert(name)
         updateSkill(named: name, disabled: !enabled)
         defer { togglingSkillNames.remove(name) }
 
@@ -70,7 +69,7 @@ final class SkillsViewModel {
             _ = try await client.toggleSkill(name: name, enabled: enabled)
             await load()
         } catch {
-            skills = previousSkills
+            updateSkill(named: name, disabled: enabled)
             lastError = error
             errorMessage = error.localizedDescription
         }
@@ -109,7 +108,7 @@ final class SkillsViewModel {
 
     private func updateSkill(named name: String, disabled: Bool) {
         skills = skills.map { skill in
-            guard skill.name == name else { return skill }
+            guard skill.name?.trimmingCharacters(in: .whitespacesAndNewlines) == name else { return skill }
             return SkillSummary(
                 name: skill.name,
                 category: skill.category,
