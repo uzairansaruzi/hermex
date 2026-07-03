@@ -387,7 +387,10 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun startStream(streamId: String) {
-        stopStreaming()
+        // Cancel only the local SSE subscription — do NOT call stopStreaming()
+        // which sends /api/chat/cancel to the server.  During reattachment the
+        // server stream is still running and must not be cancelled.
+        streamingJob?.cancel()
         currentStreamId = streamId
         val url = apiClient.streamUrl(streamId)
 
@@ -441,10 +444,23 @@ class ChatViewModel @Inject constructor(
                     startStream(streamId)
                     return@launch
                 }
+                if (status.done == true) {
+                    // Server finished while SSE was disconnected.
+                    // Reload the full transcript instead of showing an error.
+                    finalizeMessage(null)
+                    return@launch
+                }
+                // Server reports an error or unknown state — show it.
+                val serverError = status.error
+                if (serverError != null) {
+                    _uiState.update { it.copy(sendErrorMessage = serverError) }
+                } else {
+                    _uiState.update { it.copy(sendErrorMessage = errorMessage) }
+                }
             } catch (_: Exception) {
-                // Status check itself failed — fall through to finalize.
+                // Status check itself failed — show the original SSE error.
+                _uiState.update { it.copy(sendErrorMessage = errorMessage) }
             }
-            _uiState.update { it.copy(sendErrorMessage = errorMessage) }
             finishStream()
         }
     }
@@ -705,6 +721,7 @@ class ChatViewModel @Inject constructor(
         pendingReasoningChunks.clear()
         pendingStreamingContentFlushJob?.cancel()
         pendingStreamingContentFlushJob = null
+        isReplayingConnection = false
     }
 
     private fun archiveLiveStreamingIfNeeded() {

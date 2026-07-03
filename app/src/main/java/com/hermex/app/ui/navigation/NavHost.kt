@@ -2,6 +2,7 @@ package com.hermex.app.ui.navigation
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
@@ -55,6 +56,35 @@ fun HermexNavHost(
         AuthState.UNCONFIGURED -> Routes.ONBOARDING
         AuthState.LOGGED_OUT -> Routes.ONBOARDING
         AuthState.LOGGED_IN -> Routes.SESSIONS
+    }
+
+    // Handle launch requests (deep links, notification taps, SEND intents) at the
+    // nav-host level so they work regardless of which screen is currently visible.
+    // Without this, an intent arriving while on chat/settings/etc. is never consumed
+    // because the SessionListScreen LaunchedEffect isn't in the composition.
+    LaunchedEffect(pendingLaunchRequest) {
+        val request = pendingLaunchRequest ?: return@LaunchedEffect
+        when (request) {
+            is HermesLaunchRequest.OpenSession -> {
+                navController.navigate(Routes.chat(request.sessionId)) {
+                    popUpTo(Routes.SESSIONS) { inclusive = false }
+                }
+            }
+            is HermesLaunchRequest.NewChat -> {
+                // Navigate to sessions first so the SessionListScreen can create
+                // the session and navigate to it.  This is handled below in
+                // SessionListScreen's own LaunchedEffect for backward compat.
+                val currentRoute = navController.currentBackStackEntry?.destination?.route
+                if (currentRoute != Routes.SESSIONS) {
+                    navController.navigate(Routes.SESSIONS) {
+                        popUpTo(Routes.SESSIONS) { inclusive = true }
+                    }
+                }
+                // Don't consume — let SessionListScreen handle creation + nav.
+                return@LaunchedEffect
+            }
+        }
+        onLaunchRequestConsumed()
     }
 
     NavHost(

@@ -1,16 +1,22 @@
 package com.hermex.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import com.hermex.app.data.auth.AuthManager
 import com.hermex.app.data.network.ApiClient
 import com.hermex.app.ui.navigation.HermesLaunchRequest
@@ -44,8 +50,23 @@ class MainActivity : ComponentActivity() {
         setContent {
             val isDarkTheme by authManager.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
 
+            // Request POST_NOTIFICATIONS permission on Android 13+ so
+            // response-complete notifications are actually delivered.
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission()
+            ) { /* granted or denied — no-op, notifications are best-effort */ }
+
             LaunchedEffect(Unit) {
                 notificationManager.ensureChannels()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val granted = ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (!granted) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
             }
 
             HermexTheme(darkTheme = isDarkTheme) {
