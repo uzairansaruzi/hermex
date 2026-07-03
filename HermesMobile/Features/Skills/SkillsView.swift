@@ -135,21 +135,25 @@ private struct SkillCategorySection: View {
                             onAPIError: onAPIError
                         )
                     } label: {
-                        SkillRow(skill: skill)
+                        SkillRow(
+                            skill: skill,
+                            isToggling: isToggling(skill),
+                            onToggle: canToggle(skill) ? { enabled in
+                                Task { await onToggleSkill(skill, enabled) }
+                            } : nil
+                        )
                     }
                     .buttonStyle(.plain)
                     .opacity(skill.disabled == true ? 0.55 : 1)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        if skill.disabled != nil,
-                           let name = skill.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                    .contextMenu {
+                        if canToggle(skill) {
                             let isDisabled = skill.disabled == true
                             Button {
                                 Task { await onToggleSkill(skill, isDisabled) }
                             } label: {
                                 Label(isDisabled ? "Enable" : "Disable", systemImage: isDisabled ? "checkmark.circle" : "pause.circle")
                             }
-                            .tint(isDisabled ? .green : .orange)
-                            .disabled(togglingSkillNames.contains(name))
+                            .disabled(isToggling(skill))
                         }
                     }
 
@@ -161,10 +165,23 @@ private struct SkillCategorySection: View {
             }
         }
     }
+
+    private func canToggle(_ skill: SkillSummary) -> Bool {
+        guard skill.disabled != nil else { return false }
+        let name = skill.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !(name ?? "").isEmpty
+    }
+
+    private func isToggling(_ skill: SkillSummary) -> Bool {
+        guard let name = skill.name?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return togglingSkillNames.contains(name)
+    }
 }
 
 private struct SkillRow: View {
     let skill: SkillSummary
+    var isToggling: Bool = false
+    var onToggle: ((Bool) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -212,6 +229,18 @@ private struct SkillRow: View {
 
             Spacer(minLength: 8)
 
+            if let onToggle {
+                Toggle(skill.disabled == true ? "Enable" : "Disable", isOn: Binding(
+                    get: { skill.disabled != true },
+                    set: { onToggle($0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .scaleEffect(0.8, anchor: .trailing)
+                .disabled(isToggling)
+                .padding(.top, 6)
+            }
+
             Image(systemName: "chevron.forward")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.tertiary)
@@ -220,6 +249,14 @@ private struct SkillRow: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityActions {
+            if let onToggle {
+                Button(skill.disabled == true ? "Enable" : "Disable") {
+                    guard !isToggling else { return }
+                    onToggle(skill.disabled == true)
+                }
+            }
+        }
     }
 
     private var displayName: String {
