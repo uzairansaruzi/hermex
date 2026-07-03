@@ -70,15 +70,14 @@ final class SessionListViewModel {
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
 
-        // Sweep exports leaked by a previous run (view dismissed while a
+        // Sweep exports leaked by a previous app run (view dismissed while a
         // download was in flight, so the share sheet — and its on-dismiss
-        // cleanup — never appeared). Done at init, not per export: no export
-        // from this instance can be in flight yet, and a previous view's
-        // share sheet was already dismissed when that view went away, so
-        // nothing being shared can be deleted.
-        Task.detached(priority: .utility) {
-            Self.sweepLeakedExports()
-        }
+        // cleanup — never appeared). `State(initialValue:)` re-runs this init
+        // on every parent redraw, so the sweep must be once-per-process (the
+        // lazy static below), or it would delete a file an active share sheet
+        // is presenting. The first-ever init always precedes the first export,
+        // so the single sweep can never race an in-flight export.
+        _ = Self.sweepLeakedExportsOnce
     }
 
     /// Root temp directory holding one UUID subdirectory per export
@@ -88,9 +87,10 @@ final class SessionListViewModel {
             .appendingPathComponent("session-exports", isDirectory: true)
     }
 
-    nonisolated private static func sweepLeakedExports() {
+    /// Lazy static ⇒ runs exactly once per process, on first access.
+    nonisolated private static let sweepLeakedExportsOnce: Void = {
         try? FileManager.default.removeItem(at: exportsRootDirectory)
-    }
+    }()
 
     var sections: [SessionListSection] {
         let sortedSessions = sessions.sorted { left, right in
