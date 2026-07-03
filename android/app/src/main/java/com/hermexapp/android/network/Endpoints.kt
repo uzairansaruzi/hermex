@@ -10,4 +10,13 @@ enum class Endpoint(val path: String) {
     AUTH_STATUS("/api/auth/status"),
     LOGIN("/api/auth/login"),
     LOGOUT("/api/auth/logout"),
+    SESSIONS("/api/sessions"),
+    SESSIONS_SEARCH("/api/sessions/search"),
+    SESSION("/api/session"),
+    SESSION_STATUS("/api/session/status"),
+    SESSION_NEW("/api/session/new"),
+    CHAT_START("/api/chat/start"),
+    CHAT_STREAM("/api/chat/stream"),
+    CHAT_CANCEL("/api/chat/cancel"),
+    CHAT_STEER("/api/chat/steer"),
 }

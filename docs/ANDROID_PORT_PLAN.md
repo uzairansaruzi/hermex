@@ -191,14 +191,24 @@ development at the same cadence as the iOS build). Check phases off as they land
 - [x] **Phase 2 — Onboarding** (2 days)
   - [x] Welcome → connect (URL + password) → Tailscale/tunnel guidance pages
   - [x] Connection troubleshooting states
-- [ ] **Phase 3 — Session list** (3 days)
-  - [ ] Fetch/search/resume sessions; projects & profiles
-  - [ ] Room cache for offline reads; pull-to-refresh
+- [x] **Phase 3 — Session list** (3 days)
+  - [x] Fetch/search/resume sessions (server-side search, pinned-first sort,
+        cron/CLI badges); project/profile fields decoded — management UI is a
+        phase 5 composer concern
+  - [x] Room cache for offline reads (raw-JSON payload cache per host) with an
+        offline banner; refresh action (pull-to-refresh gesture deferred to
+        polish)
 - [ ] **Phase 4 — Chat + SSE streaming** *(the hardest slice, same as iOS)* (6–8 days)
-  - [ ] SSE client: token / tool_call / stream_end / error events
-  - [ ] Streaming markdown rendering
-  - [ ] Thinking + tool-call cards
-  - [ ] Stop/steer; approvals & clarifications overlays
+  - [x] SSE client (okhttp-sse): token / reasoning / interim_assistant / tool /
+        tool_complete / title / done / cancel / stream_end / error events,
+        unknown types ignored
+  - [ ] Streaming markdown rendering — transcript renders plain text for now
+        (this is the plan's flagged risk; it lands as its own slice)
+  - [x] Thinking (reasoning) entries + live tool-call cards (running/duration/
+        error, updated in place by stable id)
+  - [x] Stop (`/api/chat/cancel`) and steer-while-running (`/api/chat/steer`)
+  - [ ] Approvals & clarifications overlays (deferred — pending runs show
+        their events but can't be approved from the app yet)
 - [ ] **Phase 5 — Composer** (4–5 days)
   - [ ] Model/reasoning/workspace/profile selectors
   - [ ] Attachments (upload + image picking)

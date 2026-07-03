@@ -18,18 +18,32 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
+ * The app's one tolerant Json configuration (hard rule #3): unknown keys are
+ * ignored, lenient primitives are accepted (numbers-as-strings and vice
+ * versa), explicit nulls fall back to field defaults, and nulls are omitted
+ * when encoding (matching how the iOS encoder omits nil optionals).
+ */
+val ApiJson: Json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    coerceInputValues = true
+    explicitNulls = false
+}
+
+/**
  * The Android counterpart of the iOS `APIClient` actor: one instance per server
  * base URL, JSON in/out, tolerant decoding, and the same error mapping
  * (401 → [ApiError.Unauthorized], other non-2xx → [ApiError.Http], transport →
  * [ApiError.Network], parse → [ApiError.Decoding]).
  *
- * The session cookie rides in the injected [OkHttpClient]'s cookie jar
- * ([SessionCookieJar]), exactly as the iOS client leans on `HTTPCookieStorage`.
+ * Endpoint families live in extension files mirroring the iOS split
+ * (`ApiClientSessions.kt`, `ApiClientChat.kt`), built on [getJson]/[postJson].
+ * The session cookie rides in the injected [OkHttpClient]'s cookie jar.
  */
 class ApiClient(
     val baseUrl: HttpUrl,
-    private val httpClient: OkHttpClient,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    @PublishedApi internal val httpClient: OkHttpClient,
+    @PublishedApi internal val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     init {
         // Defense in depth behind ServerUrlNormalizer: no client may exist for a
@@ -39,35 +53,48 @@ class ApiClient(
         }
     }
 
-    private val json = Json { ignoreUnknownKeys = true }
+    @PublishedApi internal val json: Json = ApiJson
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun health(): HealthResponse = get(Endpoint.HEALTH)
+    suspend fun health(): HealthResponse = getJson(Endpoint.HEALTH)
 
-    suspend fun authStatus(): AuthStatusResponse = get(Endpoint.AUTH_STATUS)
+    suspend fun authStatus(): AuthStatusResponse = getJson(Endpoint.AUTH_STATUS)
 
     suspend fun login(password: String): LoginResponse =
-        post(Endpoint.LOGIN, json.encodeToString(LoginRequest(password)))
+        postJson(Endpoint.LOGIN, json.encodeToString(LoginRequest(password)))
 
-    suspend fun logout(): LoginResponse = post(Endpoint.LOGOUT, "{}")
+    suspend fun logout(): LoginResponse = postJson(Endpoint.LOGOUT, "{}")
 
-    private suspend inline fun <reified T> get(endpoint: Endpoint): T =
-        decode(execute(requestBuilder(endpoint).get().build()))
+    /** Builds an endpoint URL with query parameters, e.g. for the SSE stream. */
+    fun url(endpoint: Endpoint, query: Map<String, String> = emptyMap()): HttpUrl {
+        val builder = baseUrl.newBuilder().encodedPath(endpoint.path)
+        for ((name, value) in query) builder.addQueryParameter(name, value)
+        return builder.build()
+    }
 
-    private suspend inline fun <reified T> post(endpoint: Endpoint, body: String): T =
-        decode(execute(requestBuilder(endpoint).post(body.toRequestBody(jsonMediaType)).build()))
+    suspend inline fun <reified T> getJson(
+        endpoint: Endpoint,
+        query: Map<String, String> = emptyMap(),
+    ): T = decode(executeGet(endpoint, query))
 
-    private fun requestBuilder(endpoint: Endpoint): Request.Builder {
-        val url = baseUrl.newBuilder()
-            .encodedPath(endpoint.path)
-            .build()
-        return Request.Builder()
-            .url(url)
+    suspend inline fun <reified T> postJson(endpoint: Endpoint, body: String): T =
+        decode(executePost(endpoint, body))
+
+    @PublishedApi
+    internal suspend fun executeGet(endpoint: Endpoint, query: Map<String, String>): String =
+        execute(requestBuilder(endpoint, query).get().build())
+
+    @PublishedApi
+    internal suspend fun executePost(endpoint: Endpoint, body: String): String =
+        execute(requestBuilder(endpoint, emptyMap()).post(body.toRequestBody(jsonMediaType)).build())
+
+    private fun requestBuilder(endpoint: Endpoint, query: Map<String, String>): Request.Builder =
+        Request.Builder()
+            .url(url(endpoint, query))
             .header("Accept", "application/json")
             // Mirror the iOS `reloadIgnoringLocalCacheData`: control-plane calls
             // must always hit the server.
             .header("Cache-Control", "no-cache")
-    }
 
     private suspend fun execute(request: Request): String = withContext(ioDispatcher) {
         val response = try {
@@ -91,7 +118,8 @@ class ApiClient(
         }
     }
 
-    private inline fun <reified T> decode(body: String): T = try {
+    @PublishedApi
+    internal inline fun <reified T> decode(body: String): T = try {
         json.decodeFromString<T>(body)
     } catch (e: SerializationException) {
         throw ApiError.Decoding(e)
