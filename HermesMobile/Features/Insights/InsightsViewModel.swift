@@ -215,6 +215,16 @@ final class InsightsViewModel {
         serverInsights?.totalCost ?? analytics.estimatedCost
     }
 
+    /// Cache stats only exist in server insights — nil hides the cards on
+    /// the local fallback and on older servers that don't report them (#24).
+    var totalCacheReadTokens: Int? {
+        serverInsights?.totalCacheReadTokens
+    }
+
+    var totalCacheHitPercent: Double? {
+        serverInsights?.totalCacheHitPercent
+    }
+
     var sessionCount: Int {
         serverInsights?.totalSessions ?? analytics.sessionCount
     }

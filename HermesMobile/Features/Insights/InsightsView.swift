@@ -72,6 +72,14 @@ struct InsightsView: View {
                     AnalyticsCard(title: String(localized: "Output Tokens"), value: formatTokens(viewModel.totalOutputTokens), icon: "arrow.up.circle", color: .orange)
                     AnalyticsCard(title: String(localized: "Total Tokens"), value: formatTokens(viewModel.totalTokens), icon: "sum", color: .purple)
                     AnalyticsCard(title: String(localized: "Estimated Cost"), value: viewModel.estimatedCost.formattedCost(collapsingZeroCents: true), icon: "dollarsign.circle", color: .indigo)
+
+                    if let cacheHitPercent = viewModel.totalCacheHitPercent {
+                        AnalyticsCard(title: String(localized: "Cache Hit Rate"), value: formatPercent(cacheHitPercent), icon: "bolt.circle", color: .teal)
+                    }
+
+                    if let cacheReadTokens = viewModel.totalCacheReadTokens {
+                        AnalyticsCard(title: String(localized: "Cache Read Tokens"), value: formatTokens(cacheReadTokens), icon: "arrow.counterclockwise.circle", color: .mint)
+                    }
                 } header: {
                     Text(viewModel.periodTitle)
                         .textCase(.uppercase)
@@ -176,6 +184,10 @@ struct InsightsView: View {
     private func formatHour(_ value: Int?) -> String {
         guard let value else { return String(localized: "Unknown") }
         return "\(String(format: "%02d", value)):00"
+    }
+
+    private func formatPercent(_ value: Double) -> String {
+        insightsFormattedPercent(value)
     }
 }
 

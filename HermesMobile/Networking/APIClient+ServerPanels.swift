@@ -68,6 +68,17 @@ extension APIClient {
         )
     }
 
+    /// Creates a new profile (`POST /api/profile/create`). Upstream also accepts
+    /// `clone_from`/`clone_config`/`base_url`/`api_key`/`default_model`/`model_provider`;
+    /// this slice only sends `name` (#24). Rejected with 403 in single-profile mode.
+    func createProfile(name: String) async throws -> ProfileCreateResponse {
+        try await send(
+            endpoint: .createProfile,
+            method: "POST",
+            body: ProfileCreateRequest(name: name)
+        )
+    }
+
     func providers() async throws -> ProvidersResponse {
         try await send(endpoint: .providers, method: "GET")
     }
@@ -127,6 +138,10 @@ private struct PersonalitySetRequest: Encodable {
 }
 
 private struct ProfileSwitchRequest: Encodable {
+    let name: String
+}
+
+private struct ProfileCreateRequest: Encodable {
     let name: String
 }
 

@@ -50,6 +50,7 @@ final class SessionListViewModel {
     private(set) var activeProfileModel: String?
     private(set) var activeProfileProvider: String?
     private(set) var profileOptions: [ProfileSummary] = []
+    private(set) var isSingleProfileMode = false
     private(set) var isLoadingActiveProfile = false
     private(set) var isSwitchingActiveProfile = false
     private(set) var switchingActiveProfileName: String?
@@ -240,7 +241,13 @@ final class SessionListViewModel {
             }
 
             let resolvedName = Self.nonEmpty(response.active) ?? profileName
-            let profileResponse = ProfilesResponse(profiles: response.profiles ?? profileOptions, active: resolvedName)
+            // The switch response has no `single_profile_mode` field; carry the
+            // last known value forward so the switcher visibility doesn't flap.
+            let profileResponse = ProfilesResponse(
+                profiles: response.profiles ?? profileOptions,
+                active: resolvedName,
+                singleProfileMode: isSingleProfileMode
+            )
             applyActiveProfile(
                 profileResponse,
                 fallbackProfile: profile,
@@ -920,6 +927,12 @@ final class SessionListViewModel {
         fallbackDefaultModel: String? = nil
     ) {
         profileOptions = response.profiles ?? profileOptions
+
+        // Tolerant: only a present field moves the flag, so an older server
+        // (or the carried-forward switch-response value) keeps today's behavior.
+        if let singleProfileMode = response.singleProfileMode {
+            isSingleProfileMode = singleProfileMode
+        }
 
         // Keep the App Intents profile cache fresh so the "New Chat in <Profile>" picker
         // (#339) stays populated when the Shortcuts app resolves it in the background, where

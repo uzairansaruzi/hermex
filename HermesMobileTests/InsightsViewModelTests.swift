@@ -104,6 +104,8 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.totalOutputTokens, 27)
         XCTAssertEqual(viewModel.totalTokens, 42)
         XCTAssertEqual(viewModel.estimatedCost, 0.15, accuracy: 0.0001)
+        XCTAssertNil(viewModel.totalCacheReadTokens)
+        XCTAssertNil(viewModel.totalCacheHitPercent)
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertEqual(viewModel.fallbackReason, "Server insights unavailable")
     }
@@ -119,7 +121,9 @@ final class InsightsViewModelTests: XCTestCase {
               "total_input_tokens": 100,
               "total_output_tokens": 250,
               "total_tokens": 350,
-              "total_cost": 0.42
+              "total_cost": 0.42,
+              "total_cache_read_tokens": 80,
+              "total_cache_hit_percent": 64.2
             }
             """)),
             sessionsResult: .failure(StubInsightsError())
@@ -137,6 +141,8 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.totalOutputTokens, 250)
         XCTAssertEqual(viewModel.totalTokens, 350)
         XCTAssertEqual(viewModel.estimatedCost, 0.42, accuracy: 0.0001)
+        XCTAssertEqual(viewModel.totalCacheReadTokens, 80)
+        XCTAssertEqual(try XCTUnwrap(viewModel.totalCacheHitPercent), 64.2, accuracy: 0.0001)
         XCTAssertTrue(viewModel.sessions.isEmpty)
     }
 

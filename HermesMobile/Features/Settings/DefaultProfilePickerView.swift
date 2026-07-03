@@ -22,6 +22,8 @@ struct DefaultProfilePickerView: View {
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var saveError: String?
+    @State private var isSingleProfileMode = false
+    @State private var showsCreateProfile = false
 
     var body: some View {
         NavigationStack {
@@ -37,6 +39,12 @@ struct DefaultProfilePickerView: View {
                     }
 
                     profileListContent
+
+                    // The server 403s profile creation in single-profile mode,
+                    // so the affordance is hidden there (#24).
+                    if !isSingleProfileMode {
+                        newProfileButton
+                    }
                 }
                 .padding()
             }
@@ -52,7 +60,42 @@ struct DefaultProfilePickerView: View {
             .task {
                 await loadProfiles()
             }
+            .sheet(isPresented: $showsCreateProfile) {
+                CreateProfileSheet(server: server) { createdProfile in
+                    // Optimistic append so the new profile is visible immediately,
+                    // then a fresh fetch reconciles paths/flags from the server.
+                    if let createdProfile, !profiles.contains(createdProfile) {
+                        profiles.append(createdProfile)
+                    }
+                    Task { await loadProfiles() }
+                }
+            }
         }
+    }
+
+    private var newProfileButton: some View {
+        Button {
+            showsCreateProfile = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .font(.subheadline)
+                    .accessibilityHidden(true)
+
+                Text("New Profile")
+                    .font(.subheadline.weight(.medium))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .disabled(isLoading)
+        .accessibilityHint("Opens the new profile form.")
     }
 
     @ViewBuilder
@@ -209,6 +252,7 @@ struct DefaultProfilePickerView: View {
             let response = try await APIClient(baseURL: server).profiles()
             profiles = response.profiles ?? []
             activeProfileName = response.effectiveDefaultProfileName ?? currentDefaultProfileName
+            isSingleProfileMode = response.singleProfileMode ?? false
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -247,6 +291,90 @@ struct DefaultProfilePickerView: View {
             dismiss()
         } catch {
             saveError = error.localizedDescription
+        }
+    }
+}
+
+private struct CreateProfileSheet: View {
+    let server: URL
+    /// Called with the server-reported profile on success (nil if the response
+    /// omitted it); the picker reconciles with a fresh `/api/profiles` fetch.
+    let onCreated: (ProfileSummary?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var isCreating = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Profile name", text: $name)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .disabled(isCreating)
+                } footer: {
+                    Text("Lowercase letters, numbers, hyphens, and underscores; must start with a letter or number.")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("New Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isCreating)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    if isCreating {
+                        ProgressView()
+                    } else {
+                        Button("Create") {
+                            Task { await create() }
+                        }
+                        .disabled(!ProfileNameRules.isValid(trimmedName))
+                    }
+                }
+            }
+            .interactiveDismissDisabled(isCreating)
+        }
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func create() async {
+        let profileName = trimmedName
+        guard ProfileNameRules.isValid(profileName) else { return }
+
+        isCreating = true
+        errorMessage = nil
+        defer { isCreating = false }
+
+        do {
+            let response = try await APIClient(baseURL: server).createProfile(name: profileName)
+            if let error = response.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
+                errorMessage = error
+                return
+            }
+
+            onCreated(response.profile)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

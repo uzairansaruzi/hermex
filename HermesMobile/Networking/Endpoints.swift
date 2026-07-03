@@ -72,6 +72,7 @@ enum Endpoint {
     case setPersonality
     case profiles
     case switchProfile
+    case createProfile
     case providers
     case settings
     case updatesCheck
@@ -237,6 +238,8 @@ enum Endpoint {
             return "/api/profiles"
         case .switchProfile:
             return "/api/profile/switch"
+        case .createProfile:
+            return "/api/profile/create"
         case .providers:
             return "/api/providers"
         case .settings:

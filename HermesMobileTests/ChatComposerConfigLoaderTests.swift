@@ -189,4 +189,39 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
         XCTAssertEqual(requestPaths, ["/api/profiles", "/api/models", "/api/commands"])
     }
+
+    func testLoadStoresSingleProfileModeFromProfilesResponse() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse("""
+                {
+                  "active": "default",
+                  "profiles": [
+                    {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true, "is_active": true}
+                  ],
+                  "single_profile_mode": true
+                }
+                """, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [], "last": null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: ChatComposerConfigState()
+        )
+
+        XCTAssertNil(result.configurationError)
+        XCTAssertTrue(result.state.isSingleProfileMode)
+    }
 }

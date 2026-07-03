@@ -163,6 +163,7 @@ struct ChatView: View {
             skillSuggestions: viewModel.skillSlashSuggestions,
             agentCommands: viewModel.agentCommands,
             profileOptions: viewModel.profileOptions,
+            isSingleProfileMode: viewModel.isSingleProfileMode,
             selectedProfileName: viewModel.selectedProfileName,
             selectedProfileTitle: viewModel.selectedProfileTitle,
             isLoadingModels: viewModel.isLoadingComposerConfiguration,
