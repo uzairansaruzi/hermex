@@ -31,7 +31,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testListenCreatesSpeechSynthesizerOnlyWhenRequested() throws {
+    func testListenCreatesSpeechSynthesizerOnlyWhenRequested() async throws {
         let speechSynthesizer = SpySpeechSynthesizer()
         var createdSynthesizers = 0
         let viewModel = try makeViewModel(
@@ -40,8 +40,10 @@ final class ChatViewModelSendTests: XCTestCase {
                 return speechSynthesizer
             }
         ) { request in
-            XCTFail("Listening to an already loaded message should not request network work.")
-            return apiTestJSONResponse("{}", for: request)
+            // Listen now prefers server TTS (#15); refuse it so the on-device
+            // fallback path is what creates the synthesizer.
+            XCTAssertEqual(request.url?.path, "/api/tts")
+            return Self.ttsUnavailableResponse(for: request)
         }
         let context = try XCTUnwrap(MessageActionContext(
             message: ChatMessage(
@@ -55,6 +57,8 @@ final class ChatViewModelSendTests: XCTestCase {
         ))
 
         viewModel.toggleListening(to: context)
+        XCTAssertEqual(viewModel.listeningMessageID, "assistant-1")
+        await viewModel.listenPreparationTask?.value
 
         XCTAssertEqual(createdSynthesizers, 1)
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Playback should be explicit."])
@@ -72,7 +76,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testListenActivatesAudioSessionBeforeSpeaking() throws {
+    func testListenActivatesAudioSessionBeforeSpeaking() async throws {
         let recorder = ListenCallRecorder()
         let speechSynthesizer = SpySpeechSynthesizer(recorder: recorder)
         let audioSession = SpyListenAudioSession(recorder: recorder)
@@ -80,8 +84,7 @@ final class ChatViewModelSendTests: XCTestCase {
             speechSynthesizerFactory: { speechSynthesizer },
             listenAudioSession: audioSession
         ) { request in
-            XCTFail("Listening should not request network work.")
-            return apiTestJSONResponse("{}", for: request)
+            Self.ttsUnavailableResponse(for: request)
         }
         let context = try XCTUnwrap(MessageActionContext(
             message: ChatMessage(
@@ -95,6 +98,7 @@ final class ChatViewModelSendTests: XCTestCase {
         ))
 
         viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
 
         XCTAssertEqual(audioSession.activateCount, 1)
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Out loud, please."])
@@ -114,8 +118,7 @@ final class ChatViewModelSendTests: XCTestCase {
             speechSynthesizerFactory: { speechSynthesizer },
             listenAudioSession: audioSession
         ) { request in
-            XCTFail("Listening should not request network work.")
-            return apiTestJSONResponse("{}", for: request)
+            Self.ttsUnavailableResponse(for: request)
         }
         func makeContext(_ id: String, _ text: String, _ timestamp: Double) throws -> MessageActionContext {
             try XCTUnwrap(MessageActionContext(
@@ -127,8 +130,10 @@ final class ChatViewModelSendTests: XCTestCase {
 
         // Start listening to A, then switch to B while A is still "speaking".
         viewModel.toggleListening(to: try makeContext("assistant-A", "First message.", 1_770_000_010))
+        await viewModel.listenPreparationTask?.value
         let utteranceA = try XCTUnwrap(speechSynthesizer.spokenUtterances.first)
         viewModel.toggleListening(to: try makeContext("assistant-B", "Second message.", 1_770_000_011))
+        await viewModel.listenPreparationTask?.value
 
         XCTAssertEqual(viewModel.listeningMessageID, "assistant-B")
         let deactivationsBeforeStaleCallback = audioSession.deactivateCount
@@ -151,15 +156,14 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testStoppingListeningReleasesAudioSession() throws {
+    func testStoppingListeningReleasesAudioSession() async throws {
         let speechSynthesizer = SpySpeechSynthesizer()
         let audioSession = SpyListenAudioSession()
         let viewModel = try makeViewModel(
             speechSynthesizerFactory: { speechSynthesizer },
             listenAudioSession: audioSession
         ) { request in
-            XCTFail("Listening should not request network work.")
-            return apiTestJSONResponse("{}", for: request)
+            Self.ttsUnavailableResponse(for: request)
         }
         let context = try XCTUnwrap(MessageActionContext(
             message: ChatMessage(
@@ -173,12 +177,238 @@ final class ChatViewModelSendTests: XCTestCase {
         ))
 
         viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
         let deactivationsAfterStart = audioSession.deactivateCount
 
         viewModel.stopListening()
 
         XCTAssertGreaterThan(audioSession.deactivateCount, deactivationsAfterStart)
         XCTAssertNil(viewModel.listeningMessageID)
+    }
+
+    @MainActor
+    func testListenPrefersServerTTSAndPlaysReturnedAudio() async throws {
+        let audioSession = SpyListenAudioSession()
+        let player = SpyListenAudioPlayer()
+        var receivedAudioData: [Data] = []
+        var createdSynthesizers = 0
+        let serverAudio = Data([0xFF, 0xF3, 0x18, 0xC4])
+        let viewModel = try makeViewModel(
+            speechSynthesizerFactory: {
+                createdSynthesizers += 1
+                return SpySpeechSynthesizer()
+            },
+            listenAudioSession: audioSession,
+            serverTTSAudioPlayerFactory: { data in
+                receivedAudioData.append(data)
+                return player
+            }
+        ) { request in
+            XCTAssertEqual(request.url?.path, "/api/tts")
+            guard let body = apiTestBodyData(from: request),
+                  let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+                XCTFail("Missing TTS request body")
+                throw URLError(.badServerResponse)
+            }
+            XCTAssertEqual(json["text"] as? String, "Neural, please.")
+            XCTAssertEqual(json["voice"] as? String, ServerTTSPolicy.defaultVoice)
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, serverAudio)
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Neural, please.",
+                timestamp: 1_770_000_020,
+                messageId: "assistant-20"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
+
+        // Server audio plays; the on-device synthesizer is never touched.
+        XCTAssertEqual(receivedAudioData, [serverAudio])
+        XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(createdSynthesizers, 0)
+        XCTAssertEqual(viewModel.listeningMessageID, "assistant-20")
+        XCTAssertEqual(audioSession.activateCount, 1)
+
+        // Natural finish tears listen state down and releases the session. The
+        // defensive stopListening() at the start of toggleListening also
+        // deactivates once, so assert the finish-driven delta, not a total.
+        let deactivationsBeforeFinish = audioSession.deactivateCount
+        player.finishPlayback()
+        XCTAssertNil(viewModel.listeningMessageID)
+        XCTAssertGreaterThan(audioSession.deactivateCount, deactivationsBeforeFinish)
+    }
+
+    @MainActor
+    func testListenFallsBackToSynthesizerSilentlyWhenServerTTSFails() async throws {
+        let speechSynthesizer = SpySpeechSynthesizer()
+        var playerFactoryCalls = 0
+        let viewModel = try makeViewModel(
+            speechSynthesizerFactory: { speechSynthesizer },
+            serverTTSAudioPlayerFactory: { _ in
+                playerFactoryCalls += 1
+                return SpyListenAudioPlayer()
+            }
+        ) { request in
+            // A raw 429 from the ~2 s rate limit must never surface to the user.
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 429,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"error": "rate limit exceeded — please wait"}"#.utf8))
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Fall back quietly.",
+                timestamp: 1_770_000_021,
+                messageId: "assistant-21"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
+
+        XCTAssertEqual(playerFactoryCalls, 0)
+        XCTAssertEqual(speechSynthesizer.spokenStrings, ["Fall back quietly."])
+        XCTAssertEqual(viewModel.listeningMessageID, "assistant-21")
+        // Silent fallback: no error alert for the user (#15).
+        XCTAssertNil(viewModel.messageActionErrorMessage)
+    }
+
+    @MainActor
+    func testListenFallsBackToSynthesizerWhenServerAudioIsUndecodable() async throws {
+        let speechSynthesizer = SpySpeechSynthesizer()
+        let viewModel = try makeViewModel(
+            speechSynthesizerFactory: { speechSynthesizer },
+            serverTTSAudioPlayerFactory: { _ in
+                throw URLError(.cannotDecodeContentData)
+            }
+        ) { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, Data("not really audio".utf8))
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Bad bytes, good fallback.",
+                timestamp: 1_770_000_022,
+                messageId: "assistant-22"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
+
+        XCTAssertEqual(speechSynthesizer.spokenStrings, ["Bad bytes, good fallback."])
+        XCTAssertNil(viewModel.messageActionErrorMessage)
+    }
+
+    @MainActor
+    func testListenOverServerLimitSkipsServerTTSEntirely() async throws {
+        let speechSynthesizer = SpySpeechSynthesizer()
+        let viewModel = try makeViewModel(
+            speechSynthesizerFactory: { speechSynthesizer }
+        ) { request in
+            XCTFail("Text over the 5000-char cap must not hit /api/tts.")
+            return apiTestJSONResponse("{}", for: request)
+        }
+        let longText = String(repeating: "a", count: ServerTTSPolicy.maximumTextLength + 1)
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: longText,
+                timestamp: 1_770_000_023,
+                messageId: "assistant-23"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+
+        // Straight to the on-device path — synchronous, no preparation task.
+        XCTAssertNil(viewModel.listenPreparationTask)
+        XCTAssertEqual(speechSynthesizer.spokenStrings, [longText])
+        XCTAssertEqual(viewModel.listeningMessageID, "assistant-23")
+    }
+
+    @MainActor
+    func testSecondTapWhileFetchingServerAudioStopsInsteadOfRestarting() async throws {
+        let speechSynthesizer = SpySpeechSynthesizer()
+        var playerFactoryCalls = 0
+        var ttsRequests = 0
+        let viewModel = try makeViewModel(
+            speechSynthesizerFactory: { speechSynthesizer },
+            serverTTSAudioPlayerFactory: { _ in
+                playerFactoryCalls += 1
+                return SpyListenAudioPlayer()
+            }
+        ) { request in
+            ttsRequests += 1
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Tap tap.",
+                timestamp: 1_770_000_024,
+                messageId: "assistant-24"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        let firstFetch = viewModel.listenPreparationTask
+        // Second tap lands while the server fetch is still in flight: it must act
+        // as "Stop Listening", not queue a second /api/tts call (#15 double-tap).
+        viewModel.toggleListening(to: context)
+
+        XCTAssertNil(viewModel.listeningMessageID)
+        XCTAssertNil(viewModel.listenPreparationTask)
+
+        // Even if the first response completes after the stop, its stale request
+        // ID must not start playback or speech.
+        await firstFetch?.value
+        XCTAssertEqual(playerFactoryCalls, 0)
+        XCTAssertTrue(speechSynthesizer.spokenStrings.isEmpty)
+        XCTAssertNil(viewModel.listeningMessageID)
+        XCTAssertLessThanOrEqual(ttsRequests, 1)
+    }
+
+    func testServerTTSPolicyRoutesByServerTextCap() {
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 5000)))
+        XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 5001)))
+        XCTAssertEqual(ServerTTSPolicy.defaultVoice, "en-US-AriaNeural")
     }
 
     @MainActor
@@ -6156,6 +6386,18 @@ final class ChatViewModelSendTests: XCTestCase {
         await Task { @MainActor in }.value
     }
 
+    /// A `503 {"error": ...}` for `/api/tts` — the canonical "server TTS refused,
+    /// use the on-device fallback" stimulus for Listen tests (#15).
+    private static func ttsUnavailableResponse(for request: URLRequest) -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 503,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, Data(#"{"error": "TTS engine unavailable"}"#.utf8))
+    }
+
     @MainActor
     private func makeViewModel(
         streamClient: SSEStreamingClient? = nil,
@@ -6167,6 +6409,7 @@ final class ChatViewModelSendTests: XCTestCase {
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
         speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
+        serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) throws -> ChatViewModel {
         MockURLProtocol.requestHandler = handler
@@ -6196,7 +6439,8 @@ final class ChatViewModelSendTests: XCTestCase {
             streamingScrollCoalescingDelayNanoseconds: streamingScrollCoalescingDelayNanoseconds,
             speechSynthesizerFactory: speechSynthesizerFactory,
             // Default to a spy so unit tests never drive the live shared AVAudioSession.
-            listenAudioSession: listenAudioSession ?? SpyListenAudioSession()
+            listenAudioSession: listenAudioSession ?? SpyListenAudioSession(),
+            serverTTSAudioPlayerFactory: serverTTSAudioPlayerFactory
         )
 
         if let spyStreamClient = resolvedStreamClient as? SpySSEStreamingClient {
@@ -6427,6 +6671,28 @@ private final class SpySpeechSynthesizer: ChatSpeechSynthesizing {
     /// delegate ignores the synthesizer argument, so a throwaway instance is fine.
     func fireDidCancel(_ utterance: AVSpeechUtterance) {
         delegate?.speechSynthesizer?(AVSpeechSynthesizer(), didCancel: utterance)
+    }
+}
+
+@MainActor
+private final class SpyListenAudioPlayer: ListenAudioPlaying {
+    var onFinish: (@MainActor () -> Void)?
+    var playResult = true
+    private(set) var playCount = 0
+    private(set) var stopCount = 0
+
+    func play() -> Bool {
+        playCount += 1
+        return playResult
+    }
+
+    func stop() {
+        stopCount += 1
+    }
+
+    /// Simulates the wrapped `AVAudioPlayer` finishing naturally.
+    func finishPlayback() {
+        onFinish?()
     }
 }
 

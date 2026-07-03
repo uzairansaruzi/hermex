@@ -241,6 +241,23 @@ final class ChatViewModel {
     // from a superseded utterance (e.g. switching messages mid-playback) is ignored so
     // it can't clear the new listen state or deactivate the session. See #252.
     private var activeListeningUtteranceID: ObjectIdentifier?
+    // Server-TTS playback seam (#15): the factory builds an audio player from the
+    // server's synthesized bytes; injectable so tests never construct a real
+    // `AVAudioPlayer` (which requires decodable audio data).
+    private let serverTTSAudioPlayerFactory: @MainActor (Data) throws -> any ListenAudioPlaying
+    private var listenAudioPlayer: (any ListenAudioPlaying)?
+    // Identity of the server-TTS player currently playing. Mirrors
+    // `activeListeningUtteranceID`: a stale finish callback from a superseded player
+    // must not clear the new listen state or deactivate the session.
+    private var activeListenPlayerID: ObjectIdentifier?
+    // In-flight `POST /api/tts` fetch for the Listen action. Cancelled by
+    // `stopListening()`; exposed (read-only) so tests can await the async
+    // server-first path deterministically.
+    @ObservationIgnored private(set) var listenPreparationTask: Task<Void, Never>?
+    // Identity of the Listen request the in-flight fetch belongs to. A response
+    // arriving after stop/switch carries a stale ID and is dropped instead of
+    // starting audio the user no longer wants.
+    private var activeListenRequestID: UUID?
     private var showsLiveActivityResponseExcerpts: Bool
     private var hasCompletedCurrentResponse: Bool { streamCoordinator.hasCompletedCurrentResponse }
     private var isStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
@@ -283,7 +300,8 @@ final class ChatViewModel {
         streamingWordRevealCadenceNanoseconds: UInt64 = 48_000_000,
         streamingMaxRevealLagNanoseconds: UInt64 = 1_000_000_000,
         speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
-        listenAudioSession: (any ListenAudioSessionControlling)? = nil
+        listenAudioSession: (any ListenAudioSessionControlling)? = nil,
+        serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil
     ) {
         sessionID = session.sessionId
         currentWorkspace = session.workspace
@@ -318,6 +336,8 @@ final class ChatViewModel {
         self.streamingMaxRevealLagNanoseconds = streamingMaxRevealLagNanoseconds
         self.speechSynthesizerFactory = speechSynthesizerFactory
         self.listenAudioSession = listenAudioSession ?? ListenAudioSessionController()
+        self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
+            ?? { try ServerTTSAudioPlayer(data: $0) }
         displayTitle = Self.displayTitle(from: session.title)
         self.streamCoordinator.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
@@ -3218,30 +3238,76 @@ final class ChatViewModel {
             return
         }
 
-        if listeningMessageID == context.messageID, speechSynthesizer?.isSpeaking == true {
+        // Tapping the message that is already listening — fetching server audio or
+        // playing on either engine — toggles it off. Matching on `listeningMessageID`
+        // alone (not `isSpeaking`) also debounces rapid double-taps: the second tap
+        // stops cleanly instead of firing a second `/api/tts` call into the server's
+        // ~2 s rate limit or stacking audio (#15).
+        if listeningMessageID == context.messageID {
             stopListening()
             return
         }
 
         stopListening()
-        let speechSynthesizer = speechSynthesizerForListening()
         // Route speech to the speaker (not the receiver/earpiece) before speaking;
         // released again in `finishListening()` once playback ends. See #252.
         listenAudioSession.activate()
-        let utterance = AVSpeechUtterance(string: listenText)
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        activeListeningUtteranceID = ObjectIdentifier(utterance)
         listeningMessageID = context.messageID
-        speechSynthesizer.speak(utterance)
-    }
 
-    func stopListening() {
-        guard let speechSynthesizer else {
-            finishListening()
+        guard ServerTTSPolicy.shouldUseServerTTS(for: listenText) else {
+            // Over the server's 5000-char request cap: go straight to the on-device
+            // path (chunking is a non-goal of #15).
+            speakWithOnDeviceSynthesizer(listenText)
             return
         }
 
-        if speechSynthesizer.isSpeaking || speechSynthesizer.isPaused {
+        // Prefer the server's neural TTS; on any failure (offline, 4xx/5xx, rate
+        // limit, undecodable audio) fall back silently to the on-device
+        // synthesizer — no error alert (#15).
+        let requestID = UUID()
+        activeListenRequestID = requestID
+        listenPreparationTask = Task { [weak self, client] in
+            guard !Task.isCancelled else {
+                // Stopped before the fetch began (e.g. a rapid second tap): skip
+                // the request entirely instead of issuing one whose response
+                // would be dropped anyway.
+                return
+            }
+            let audioData: Data?
+            do {
+                audioData = try await client.synthesizeSpeech(
+                    text: listenText,
+                    voice: ServerTTSPolicy.defaultVoice
+                )
+            } catch {
+                audioData = nil
+            }
+
+            guard let self, !Task.isCancelled, self.activeListenRequestID == requestID else {
+                // Stopped or superseded while the fetch was in flight — the user no
+                // longer wants this audio; never start playback from a stale response.
+                return
+            }
+
+            if let audioData, self.startServerAudioPlayback(audioData) {
+                return
+            }
+            self.speakWithOnDeviceSynthesizer(listenText)
+        }
+    }
+
+    func stopListening() {
+        // Cancel any in-flight server-TTS fetch so a late response can't start
+        // audio after the user asked to stop (or switched messages).
+        listenPreparationTask?.cancel()
+        listenPreparationTask = nil
+        activeListenRequestID = nil
+
+        // `AVAudioPlayer.stop()` does not fire the finish delegate, so no stale
+        // callback follows; state is torn down synchronously in `finishListening()`.
+        listenAudioPlayer?.stop()
+
+        if let speechSynthesizer, speechSynthesizer.isSpeaking || speechSynthesizer.isPaused {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
         finishListening()
@@ -4145,10 +4211,53 @@ final class ChatViewModel {
 
     private func finishListening() {
         activeListeningUtteranceID = nil
+        activeListenPlayerID = nil
+        activeListenRequestID = nil
+        listenAudioPlayer = nil
         listeningMessageID = nil
         // Release the shared session so any audio we interrupted can resume. Safe to
         // call when nothing was speaking: `setActive(false)` no-ops via `try?`.
         listenAudioSession.deactivate()
+    }
+
+    /// Speaks `text` with the on-device `AVSpeechSynthesizer` — the pre-#15 Listen
+    /// path, kept as the offline/failure fallback for server TTS.
+    private func speakWithOnDeviceSynthesizer(_ text: String) {
+        let speechSynthesizer = speechSynthesizerForListening()
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        activeListeningUtteranceID = ObjectIdentifier(utterance)
+        speechSynthesizer.speak(utterance)
+    }
+
+    /// Attempts to start playback of server-synthesized audio bytes. Returns
+    /// `false` when the bytes can't be decoded into a player or playback fails to
+    /// start, so the caller can fall back to the on-device synthesizer.
+    private func startServerAudioPlayback(_ audioData: Data) -> Bool {
+        guard let player = try? serverTTSAudioPlayerFactory(audioData) else {
+            return false
+        }
+
+        let playerID = ObjectIdentifier(player)
+        player.onFinish = { [weak self] in
+            self?.handleListenPlayerCompletion(for: playerID)
+        }
+
+        guard player.play() else {
+            return false
+        }
+
+        listenAudioPlayer = player
+        activeListenPlayerID = playerID
+        return true
+    }
+
+    /// Completion routed from the server-TTS audio player. Mirrors
+    /// `handleListenCompletion(for:)`: a stale callback from a superseded player
+    /// must not clear the new listen state or deactivate the session.
+    private func handleListenPlayerCompletion(for playerID: ObjectIdentifier) {
+        guard playerID == activeListenPlayerID else { return }
+        finishListening()
     }
 
     /// Completion routed from the speech-synthesizer delegate. Switching messages mid-
@@ -4983,6 +5092,72 @@ struct SpeechTextNormalizer {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return normalized.isEmpty ? nil : normalized
+    }
+}
+
+/// Routing policy for the "Listen" action (#15): prefer the server's neural TTS
+/// (`POST /api/tts`, edge engine — no API key needed) and fall back to the
+/// on-device synthesizer when the server can't serve the request.
+enum ServerTTSPolicy {
+    /// Server-enforced request cap (`400 text too long` above it); longer text
+    /// routes straight to the on-device synthesizer (chunking is a non-goal).
+    static let maximumTextLength = 5000
+    /// The server's own default voice is `zh-CN-XiaoxiaoNeural`, so the client
+    /// must always send an explicit voice. A voice picker is a non-goal of #15;
+    /// this is the issue-specified default (verified live 2026-07-02).
+    static let defaultVoice = "en-US-AriaNeural"
+
+    static func shouldUseServerTTS(for text: String) -> Bool {
+        text.count <= maximumTextLength
+    }
+}
+
+/// Playback seam for server-synthesized "Listen" audio. Injectable so tests can
+/// drive playback outcomes without constructing a real `AVAudioPlayer` (which
+/// requires decodable audio bytes).
+@MainActor
+protocol ListenAudioPlaying: AnyObject {
+    /// Fired on the main actor when playback finishes naturally.
+    /// `stop()` must not fire it.
+    var onFinish: (@MainActor () -> Void)? { get set }
+
+    @discardableResult
+    func play() -> Bool
+    func stop()
+}
+
+/// Production `ListenAudioPlaying`: wraps `AVAudioPlayer` and forwards its finish
+/// delegate onto the main actor. `init` throws when the bytes aren't decodable
+/// audio, which the caller treats as "fall back to the on-device synthesizer".
+@MainActor
+final class ServerTTSAudioPlayer: NSObject, ListenAudioPlaying {
+    private let player: AVAudioPlayer
+    var onFinish: (@MainActor () -> Void)?
+
+    init(data: Data) throws {
+        player = try AVAudioPlayer(data: data)
+        super.init()
+        player.delegate = self
+    }
+
+    @discardableResult
+    func play() -> Bool {
+        player.play()
+    }
+
+    func stop() {
+        player.stop()
+    }
+}
+
+extension ServerTTSAudioPlayer: AVAudioPlayerDelegate {
+    // `AVAudioPlayer` may call its delegate off the main thread; hop back before
+    // touching main-actor listen state. Finished-with-error still ends playback,
+    // so both flag values route to `onFinish`.
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            self.onFinish?()
+        }
     }
 }
 
