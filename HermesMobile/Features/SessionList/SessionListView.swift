@@ -98,15 +98,14 @@ struct SessionListView: View {
             .navigationDestination(item: $selectedUtilityDestination) { destination in
                 switch destination {
                 case .settings(let scrollTo):
-                    SettingsView(authManager: authManager, server: server, initialScrollTarget: scrollTo)
+                    SettingsView(
+                        authManager: authManager,
+                        server: server,
+                        initialScrollTarget: scrollTo,
+                        onAPIError: authManager.handleAPIError
+                    )
                 case .tasks:
                     TasksView(server: server, onAPIError: authManager.handleAPIError)
-                case .skills:
-                    SkillsView(server: server, onAPIError: authManager.handleAPIError)
-                case .memory:
-                    MemoryView(server: server, onAPIError: authManager.handleAPIError)
-                case .insights:
-                    InsightsView(server: server, onAPIError: authManager.handleAPIError)
                 }
             }
             .sheet(item: $sessionPendingRename) { session in
@@ -945,9 +944,6 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     /// passes `.servers`, a plain avatar tap passes `nil` (#283).
     case settings(SettingsScrollAnchor?)
     case tasks
-    case skills
-    case memory
-    case insights
 
     var id: Self { self }
 }

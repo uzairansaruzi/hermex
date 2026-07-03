@@ -70,12 +70,8 @@ struct SessionSidebarUtilityRows: View {
     // driven by a value-based .animation on the List in SessionListView, which
     // works even though the disclosure booleans are @AppStorage-backed.
     var body: some View {
-        utilityLinks
-            .padding(.top, topPadding)
-            .sessionsScreenListRow()
-
         activeProfileHeader
-            .padding(.top, Self.rowSpacing)
+            .padding(.top, topPadding)
             .sessionsScreenListRow()
 
         if profilesAreExpanded {
@@ -97,34 +93,6 @@ struct SessionSidebarUtilityRows: View {
             .padding(.top, Self.rowSpacing)
             .sessionsScreenListRow()
             .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
-    }
-
-    private var utilityLinks: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: 10, alignment: .top),
-                GridItem(.flexible(), spacing: 10, alignment: .top)
-            ],
-            alignment: .leading,
-            spacing: 10
-        ) {
-            SidebarNavButton(title: String(localized: "Tasks"), assetImage: "LucideCalendarClock") {
-                openDestination(.tasks)
-            }
-
-            SidebarNavButton(title: String(localized: "Skills"), assetImage: "LucideHammer") {
-                openDestination(.skills)
-            }
-
-            SidebarNavButton(title: String(localized: "Memory"), assetImage: "LucideBrain") {
-                openDestination(.memory)
-            }
-
-            SidebarNavButton(title: String(localized: "Insights"), assetImage: "LucideChartColumnIncreasing") {
-                openDestination(.insights)
-            }
-        }
-        .padding(.horizontal, 24)
     }
 
     private var activeProfileHeader: some View {
@@ -248,6 +216,16 @@ struct SessionSidebarUtilityRows: View {
 
     @ViewBuilder
     private var projectOptionRows: some View {
+        disclosureSubrow {
+            SidebarNavigationSubrow(
+                title: String(localized: "Automations"),
+                subtitle: String(localized: "Scheduled jobs"),
+                assetImage: "LucideCalendarClock"
+            ) {
+                openDestination(.tasks)
+            }
+        }
+
         if viewModel.isLoadingProjects && viewModel.projects.isEmpty {
             disclosureSubrow {
                 CompactStatusRow(title: String(localized: "Loading projects..."), systemImage: "folder")
@@ -957,6 +935,49 @@ struct SidebarSubrowSelectionStyle: ViewModifier {
 extension View {
     func sidebarSubrowSelectionStyle(isSelected: Bool) -> some View {
         modifier(SidebarSubrowSelectionStyle(isSelected: isSelected))
+    }
+}
+
+struct SidebarNavigationSubrow: View {
+    let title: String
+    let subtitle: String?
+    let assetImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 18) {
+                SidebarUtilityIcon(assetImage: assetImage)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.forward")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 10)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint("Opens \(title).")
     }
 }
 

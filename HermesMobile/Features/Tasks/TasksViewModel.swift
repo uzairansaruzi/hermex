@@ -75,7 +75,7 @@ final class TasksViewModel {
             )
 
             guard response.ok != false else {
-                actionErrorMessage = response.error ?? String(localized: "Could not create task.")
+                actionErrorMessage = response.error ?? String(localized: "Could not create automation.")
                 return false
             }
 

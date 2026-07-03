@@ -14,11 +14,18 @@ struct SettingsView: View {
     let server: URL
     /// When set, Settings scrolls to this section once on first appear (#283).
     let initialScrollTarget: SettingsScrollAnchor?
+    let onAPIError: (Error) -> Void
 
-    init(authManager: AuthManager, server: URL, initialScrollTarget: SettingsScrollAnchor? = nil) {
+    init(
+        authManager: AuthManager,
+        server: URL,
+        initialScrollTarget: SettingsScrollAnchor? = nil,
+        onAPIError: @escaping (Error) -> Void = { _ in }
+    ) {
         self.authManager = authManager
         self.server = server
         self.initialScrollTarget = initialScrollTarget
+        self.onAPIError = onAPIError
     }
 
     @ScaledMetric(relativeTo: .body) private var settingsCardSpacing: CGFloat = 18
@@ -94,6 +101,33 @@ struct SettingsView: View {
                         ArchivedSessionsView(server: server)
                     } label: {
                         SettingsAccessoryRow(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                SettingsCard(title: String(localized: "Tools")) {
+                    NavigationLink {
+                        SkillsView(server: server, onAPIError: onAPIError)
+                    } label: {
+                        SettingsAccessoryRow(title: String(localized: "Skills"), systemImage: "hammer")
+                    }
+                    .buttonStyle(.plain)
+
+                    SettingsDivider()
+
+                    NavigationLink {
+                        MemoryView(server: server, onAPIError: onAPIError)
+                    } label: {
+                        SettingsAccessoryRow(title: String(localized: "Memory"), systemImage: "brain.head.profile")
+                    }
+                    .buttonStyle(.plain)
+
+                    SettingsDivider()
+
+                    NavigationLink {
+                        InsightsView(server: server, onAPIError: onAPIError)
+                    } label: {
+                        SettingsAccessoryRow(title: String(localized: "Insights"), systemImage: "chart.bar.xaxis")
                     }
                     .buttonStyle(.plain)
                 }

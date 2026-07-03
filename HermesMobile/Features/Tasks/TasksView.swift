@@ -15,19 +15,19 @@ struct TasksView: View {
 
     var body: some View {
         content
-            .navigationTitle("Tasks")
+            .navigationTitle("Automations")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         viewModel.clearActionError()
                         isPresentingCreateTask = true
                     } label: {
-                        Label("New Task", systemImage: "plus")
+                        Label("New Automation", systemImage: "plus")
                     }
                     .disabled(viewModel.isMutating)
 
                     Button {
-                        Task { await loadTasks() }
+                        Task { await loadAutomations() }
                     } label: {
                         if viewModel.isLoading {
                             ProgressView()
@@ -40,7 +40,7 @@ struct TasksView: View {
             }
             .sheet(isPresented: $isPresentingCreateTask) {
                 CronJobEditorSheet(
-                    title: String(localized: "New Task"),
+                    title: String(localized: "New Automation"),
                     draft: CronJobEditorDraft(),
                     saveTitle: String(localized: "Create"),
                     isSaving: viewModel.isMutating,
@@ -55,7 +55,7 @@ struct TasksView: View {
                 }
             }
             .task {
-                await loadTasks()
+                await loadAutomations()
             }
             .zoraBrandedScreen()
     }
@@ -63,22 +63,22 @@ struct TasksView: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading && viewModel.jobs.isEmpty {
-            ProgressView("Loading tasks...")
+            ProgressView("Loading automations...")
         } else if let errorMessage = viewModel.errorMessage, viewModel.jobs.isEmpty {
             ContentUnavailableView {
-                Label("Could Not Load Tasks", systemImage: "exclamationmark.triangle")
+                Label("Could Not Load Automations", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(errorMessage)
             } actions: {
                 Button("Try Again") {
-                    Task { await loadTasks() }
+                    Task { await loadAutomations() }
                 }
             }
         } else if viewModel.jobs.isEmpty {
             ContentUnavailableView {
-                Label("No Tasks", systemImage: "calendar.badge.clock")
+                Label("No Automations", systemImage: "calendar.badge.clock")
             } description: {
-                Text("Scheduled jobs from the Hermes server will appear here.")
+                Text("Scheduled automations from the Hermes server will appear here.")
             }
         } else {
             ScrollView {
@@ -86,7 +86,7 @@ struct TasksView: View {
                     runningSummaryRow
                         .padding(.bottom, 22)
 
-                    Text("Scheduled Jobs")
+                    Text("Scheduled Automations")
                         .textCase(.uppercase)
                         .font(AppFont.caption(weight: .semibold))
                         .foregroundStyle(ZoraBrand.secondaryForeground)
@@ -127,7 +127,7 @@ struct TasksView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable {
-                await loadTasks()
+                await loadAutomations()
             }
             .background(Color.clear)
         }
@@ -161,7 +161,7 @@ struct TasksView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func loadTasks() async {
+    private func loadAutomations() async {
         await viewModel.load()
 
         if let lastError = viewModel.lastError {
@@ -312,7 +312,7 @@ struct CronJobEditorSheet: View {
                     }
                 }
 
-                Section("Task") {
+                Section("Automation") {
                     TextField("Name", text: $draft.name)
 
                     TextField("Prompt", text: $draft.prompt, axis: .vertical)

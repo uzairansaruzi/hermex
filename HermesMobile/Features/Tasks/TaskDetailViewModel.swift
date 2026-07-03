@@ -133,7 +133,7 @@ final class TaskDetailViewModel {
         do {
             let response = try await client.deleteCron(jobID: jobID)
             guard response.ok != false else {
-                actionErrorMessage = response.error ?? String(localized: "Could not delete task.")
+                actionErrorMessage = response.error ?? String(localized: "Could not delete automation.")
                 return false
             }
 
@@ -163,7 +163,7 @@ final class TaskDetailViewModel {
         do {
             let response = try await action(jobID)
             guard response.ok != false else {
-                actionErrorMessage = response.error ?? String(localized: "Could not update task.")
+                actionErrorMessage = response.error ?? String(localized: "Could not update automation.")
                 return false
             }
 

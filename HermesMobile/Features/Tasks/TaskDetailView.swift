@@ -55,7 +55,7 @@ struct TaskDetailView: View {
                     ContentUnavailableView {
                         Label("No Recent Runs", systemImage: "doc.text")
                     } description: {
-                        Text("This task has not produced any output yet.")
+                        Text("This automation has not produced any output yet.")
                     }
                     .padding(.top, 24)
                 }
@@ -108,14 +108,14 @@ struct TaskDetailView: View {
                     }
                     .disabled(isActionDisabled)
                 } label: {
-                    Label("Task Actions", systemImage: "ellipsis.circle")
+                    Label("Automation Actions", systemImage: "ellipsis.circle")
                 }
                 .disabled(viewModel.isMutating)
             }
         }
         .sheet(isPresented: $isPresentingEditTask) {
             CronJobEditorSheet(
-                title: String(localized: "Edit Task"),
+                title: String(localized: "Edit Automation"),
                 draft: CronJobEditorDraft(job: viewModel.job),
                 saveTitle: String(localized: "Save"),
                 isSaving: viewModel.isMutating,
@@ -126,13 +126,13 @@ struct TaskDetailView: View {
                 return didUpdate
             }
         }
-        .alert("Delete Task?", isPresented: $isConfirmingDelete) {
+        .alert("Delete Automation?", isPresented: $isConfirmingDelete) {
             Button("Delete", role: .destructive) {
                 Task { await deleteTask() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the scheduled task from the Hermes server.")
+            Text("This removes the scheduled automation from the Hermes server.")
         }
         .task {
             await loadOutput()
@@ -170,7 +170,7 @@ struct TaskDetailView: View {
         if viewModel.isMutating {
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Updating task...")
+                Text("Updating automation...")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -262,7 +262,7 @@ struct TaskDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("Open the chat created by the latest task run")
+                            Text("Open the chat created by the latest automation run")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
