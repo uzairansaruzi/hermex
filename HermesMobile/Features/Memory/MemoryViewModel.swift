@@ -10,6 +10,12 @@ final class MemoryViewModel {
     private(set) var memoryMtime: Date?
     private(set) var userMtime: Date?
     private(set) var soulMtime: Date?
+    private(set) var projectContextText: String?
+    private(set) var projectContextName: String?
+    private(set) var projectContextWorkspace: String?
+    private(set) var projectContextMtime: Date?
+    private(set) var isProjectContextShadowed = false
+    private(set) var isExternalNotesEnabled: Bool?
     private(set) var hasLoaded = false
     private(set) var isLoading = false
     private(set) var isSaving = false
@@ -40,6 +46,23 @@ final class MemoryViewModel {
 
     func clearActionError() {
         actionErrorMessage = nil
+    }
+
+    /// The read-only project-context section only appears when the server sent a
+    /// non-empty document. Servers without the field (or with an empty/blank one,
+    /// which is what upstream returns when no readable context file exists) render
+    /// the screen exactly as before.
+    var showsProjectContext: Bool {
+        guard let text = projectContextText else { return false }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Non-localized "name — workspace" detail line for the project-context section.
+    var projectContextDetail: String? {
+        let parts = [projectContextName, projectContextWorkspace]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " — ")
     }
 
     func content(for section: MemorySection) -> String {
@@ -94,6 +117,12 @@ final class MemoryViewModel {
         memoryMtime = response.memoryMtime.map { Date(timeIntervalSince1970: $0) }
         userMtime = response.userMtime.map { Date(timeIntervalSince1970: $0) }
         soulMtime = response.soulMtime.map { Date(timeIntervalSince1970: $0) }
+        projectContextText = response.projectContext
+        projectContextName = response.projectContextName
+        projectContextWorkspace = response.projectContextWorkspace
+        projectContextMtime = response.projectContextMtime.map { Date(timeIntervalSince1970: $0) }
+        isProjectContextShadowed = response.projectContextShadowed ?? false
+        isExternalNotesEnabled = response.externalNotesEnabled
         hasLoaded = true
     }
 }

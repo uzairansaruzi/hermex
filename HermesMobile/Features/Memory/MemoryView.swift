@@ -85,6 +85,20 @@ struct MemoryView: View {
                         }
                     }
                 }
+
+                if viewModel.showsProjectContext {
+                    Section {
+                        MarkdownRenderer(content: viewModel.projectContextText ?? "")
+                            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    } header: {
+                        ProjectContextSectionHeader(modifiedAt: viewModel.projectContextMtime)
+                    } footer: {
+                        ProjectContextSectionFooter(
+                            detail: viewModel.projectContextDetail,
+                            isShadowed: viewModel.isProjectContextShadowed
+                        )
+                    }
+                }
             }
             .refreshable {
                 await loadMemory()
@@ -122,6 +136,43 @@ private struct MemorySectionHeader: View {
             }
             .disabled(isEditingDisabled)
             .buttonStyle(.borderless)
+        }
+    }
+}
+
+/// Header for the read-only project-context document: no edit affordance — the
+/// server has no write path for this section — so a lock icon marks it read-only.
+private struct ProjectContextSectionHeader: View {
+    let modifiedAt: Date?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label("Project Context", systemImage: "folder.badge.gearshape")
+            Spacer()
+            if let modifiedAt {
+                Text("Modified \(modifiedAt, style: .relative) ago")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Image(systemName: "lock.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(Text("Read-only"))
+        }
+    }
+}
+
+private struct ProjectContextSectionFooter: View {
+    let detail: String?
+    let isShadowed: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let detail {
+                Text(verbatim: detail)
+            }
+            if isShadowed {
+                Text("A workspace-local file is overriding the global project context.")
+            }
         }
     }
 }

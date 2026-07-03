@@ -89,6 +89,102 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.hasLoaded)
     }
 
+    @MainActor
+    func testLoadSurfacesProjectContextDocument() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+
+            return apiTestJSONResponse("""
+            {
+              "memory": "# Notes",
+              "user": "# Profile",
+              "soul": "# Soul",
+              "project_context": "# Project rules",
+              "project_context_name": "AGENTS.md",
+              "project_context_workspace": "/Users/test/workspace",
+              "project_context_mtime": 1770000300,
+              "project_context_shadowed": [
+                {
+                  "name": "PROJECT.md",
+                  "path": "/Users/test/PROJECT.md"
+                }
+              ],
+              "external_notes_enabled": true
+            }
+            """, for: request)
+        }
+        let viewModel = MemoryViewModel(
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.showsProjectContext)
+        XCTAssertEqual(viewModel.projectContextText, "# Project rules")
+        XCTAssertEqual(viewModel.projectContextName, "AGENTS.md")
+        XCTAssertEqual(viewModel.projectContextWorkspace, "/Users/test/workspace")
+        XCTAssertEqual(viewModel.projectContextMtime, Date(timeIntervalSince1970: 1_770_000_300))
+        XCTAssertTrue(viewModel.isProjectContextShadowed)
+        XCTAssertEqual(viewModel.isExternalNotesEnabled, true)
+        XCTAssertEqual(viewModel.projectContextDetail, "AGENTS.md — /Users/test/workspace")
+    }
+
+    @MainActor
+    func testProjectContextSectionHiddenWithoutFields() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+
+            return apiTestJSONResponse("""
+            {
+              "memory": "# Notes",
+              "user": "# Profile",
+              "soul": "# Soul"
+            }
+            """, for: request)
+        }
+        let viewModel = MemoryViewModel(
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.hasLoaded)
+        XCTAssertFalse(viewModel.showsProjectContext)
+        XCTAssertFalse(viewModel.isProjectContextShadowed)
+        XCTAssertNil(viewModel.projectContextDetail)
+        XCTAssertNil(viewModel.isExternalNotesEnabled)
+    }
+
+    @MainActor
+    func testProjectContextSectionHiddenForBlankDocumentAndDetailOmitsEmptyParts() async throws {
+        // Upstream returns "" (not null) when no readable project-context file exists.
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+
+            return apiTestJSONResponse("""
+            {
+              "memory": "# Notes",
+              "project_context": "  \\n ",
+              "project_context_name": "",
+              "project_context_workspace": "/Users/test/workspace",
+              "project_context_shadowed": []
+            }
+            """, for: request)
+        }
+        let viewModel = MemoryViewModel(
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.showsProjectContext)
+        XCTAssertFalse(viewModel.isProjectContextShadowed)
+        XCTAssertEqual(viewModel.projectContextDetail, "/Users/test/workspace")
+    }
+
     private func makeClient(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> APIClient {

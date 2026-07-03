@@ -18,6 +18,13 @@ struct MemoryResponse: Decodable, Equatable {
     let memoryMtime: Double?
     let userMtime: Double?
     let soulMtime: Double?
+    let projectContext: String?
+    let projectContextName: String?
+    let projectContextPath: String?
+    let projectContextWorkspace: String?
+    let projectContextMtime: Double?
+    let projectContextShadowed: Bool?
+    let externalNotesEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case memory
@@ -29,6 +36,13 @@ struct MemoryResponse: Decodable, Equatable {
         case memoryMtime
         case userMtime
         case soulMtime
+        case projectContext
+        case projectContextName
+        case projectContextPath
+        case projectContextWorkspace
+        case projectContextMtime
+        case projectContextShadowed
+        case externalNotesEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -42,6 +56,25 @@ struct MemoryResponse: Decodable, Equatable {
         memoryMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .memoryMtime)
         userMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .userMtime)
         soulMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .soulMtime)
+        projectContext = try container.decodeIfPresent(String.self, forKey: .projectContext)
+        projectContextName = try container.decodeIfPresent(String.self, forKey: .projectContextName)
+        projectContextPath = try container.decodeIfPresent(String.self, forKey: .projectContextPath)
+        projectContextWorkspace = try container.decodeIfPresent(
+            String.self,
+            forKey: .projectContextWorkspace
+        )
+        projectContextMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .projectContextMtime)
+        // Upstream (routes.py @ 312d3fab, verified live 2026-07-03) returns a *list* of
+        // shadowed-file objects here; the API docs describe a boolean flag. Accept both:
+        // `true` or a non-empty list means the active document shadows another file.
+        if let flag = try? container.decode(Bool.self, forKey: .projectContextShadowed) {
+            projectContextShadowed = flag
+        } else if let list = try? container.nestedUnkeyedContainer(forKey: .projectContextShadowed) {
+            projectContextShadowed = (list.count ?? 0) > 0
+        } else {
+            projectContextShadowed = nil
+        }
+        externalNotesEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .externalNotesEnabled)) ?? nil
     }
 }
 
