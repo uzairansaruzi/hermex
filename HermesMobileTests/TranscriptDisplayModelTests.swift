@@ -513,18 +513,30 @@ final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("HermesMobile/Features/Chat/ChatTranscriptView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let sourceLines = source.components(separatedBy: .newlines).map {
-            $0.trimmingCharacters(in: .whitespaces)
-        }
+        let sourceWithoutComments = source
+            .replacingOccurrences(of: #"(?s)/\*.*?\*/"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?m)//.*$"#, with: "", options: .regularExpression)
 
         XCTAssertTrue(
-            sourceLines.contains("LazyVStack(spacing: transcriptMessageSpacing) {"),
+            sourceWithoutComments.range(
+                of: #"\bLazyVStack\s*\(\s*spacing:\s*transcriptMessageSpacing\s*\)"#,
+                options: .regularExpression
+            ) != nil,
             "The chat transcript should lazily realize message rows so long conversations do not lay out every bubble while scrolling."
         )
         XCTAssertFalse(
-            sourceLines.contains("VStack(spacing: transcriptMessageSpacing) {"),
+            sourceWithoutComments.range(
+                of: #"\bVStack\s*\(\s*spacing:\s*transcriptMessageSpacing\s*\)"#,
+                options: .regularExpression
+            ) != nil,
             "A plain VStack eagerly builds every transcript row and regresses long-chat scroll performance."
+        )
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"\.scrollTargetLayout\s*\(\s*\)"#,
+                options: .regularExpression
+            ) != nil,
+            "The lazy transcript stack should opt into scroll target layout so prepending older messages can restore the captured row ID."
         )
     }
 }

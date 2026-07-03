@@ -265,6 +265,9 @@ struct ChatTranscriptView: View {
                 .id(bottomAnchorID)
                 .allowsHitTesting(false)
         }
+        // Keep lazy transcript rows registered as scroll targets so older-message
+        // prepends can restore the captured row ID without falling back to eager layout.
+        .scrollTargetLayout()
         .padding(.top, 16)
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
