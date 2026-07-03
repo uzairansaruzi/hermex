@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SessionRowView: View {
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption2) private var pinnedIconSize: CGFloat = 11
     @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 8
@@ -11,6 +13,8 @@ struct SessionRowView: View {
     var isViewingCachedData = false
 
     var body: some View {
+        let rowShape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
         HStack(alignment: .top, spacing: 10) {
             if Self.isActiveStreaming(session) {
                 ActiveSessionStreamingIndicator()
@@ -19,10 +23,17 @@ struct SessionRowView: View {
 
             rowContent
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, verticalPadding)
+        .padding(.horizontal, 14)
+        .padding(.vertical, rowVerticalPadding)
         .frame(minHeight: rowMinimumHeight, alignment: .center)
-        .contentShape(Rectangle())
+        .background(rowFill, in: rowShape)
+        .overlay {
+            rowShape
+                .stroke(rowStroke, lineWidth: colorSchemeContrast == .increased ? 1.1 : 0.75)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: rowShadowColor, radius: rowShadowRadius, y: rowShadowYOffset)
+        .contentShape(rowShape)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
     }
@@ -141,7 +152,7 @@ struct SessionRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(displayTitle)
                 .font(AppFont.headline(weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(ZoraBrand.foreground)
                 .lineLimit(titleLineLimit)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
@@ -150,7 +161,7 @@ struct SessionRowView: View {
             if session.pinned == true {
                 Image(systemName: "pin.fill")
                     .font(.system(size: pinnedIconSize, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(ZoraBrand.selectionAccent)
                     .accessibilityHidden(true)
             }
         }
@@ -159,7 +170,7 @@ struct SessionRowView: View {
     private func relativeDateText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ZoraBrand.tertiaryForeground)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -201,7 +212,7 @@ struct SessionRowView: View {
     private func metadataText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ZoraBrand.secondaryForeground)
             .lineLimit(metadataLineLimit)
             .truncationMode(.middle)
             .fixedSize(horizontal: false, vertical: true)
@@ -229,8 +240,12 @@ struct SessionRowView: View {
         dynamicTypeSize.isAccessibilitySize ? 6 : 4
     }
 
+    private var rowVerticalPadding: CGFloat {
+        verticalPadding + (dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+    }
+
     private var rowMinimumHeight: CGFloat {
-        showsSupplementalContent ? 54 : 46
+        showsSupplementalContent ? 62 : 52
     }
 
     private var titleLineLimit: Int {
@@ -242,7 +257,37 @@ struct SessionRowView: View {
     }
 
     private var streamingIndicatorTopPadding: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 8 : 7
+        dynamicTypeSize.isAccessibilitySize ? 10 : 9
+    }
+
+    private var rowFill: Color {
+        if reduceTransparency {
+            return ZoraBrand.backgroundMid.opacity(Self.isActiveStreaming(session) ? 0.98 : 0.92)
+        }
+
+        return Self.isActiveStreaming(session) ? ZoraBrand.cardFillStrong : ZoraBrand.cardFill
+    }
+
+    private var rowStroke: Color {
+        if colorSchemeContrast == .increased {
+            return ZoraBrand.foreground.opacity(0.38)
+        }
+
+        return Self.isActiveStreaming(session) ? ZoraBrand.selectionAccent.opacity(0.34) : ZoraBrand.cardStroke
+    }
+
+    private var rowShadowColor: Color {
+        Self.isActiveStreaming(session)
+            ? ZoraBrand.selectionAccent.opacity(reduceTransparency ? 0.10 : 0.18)
+            : Color.black.opacity(reduceTransparency ? 0.08 : 0.16)
+    }
+
+    private var rowShadowRadius: CGFloat {
+        reduceTransparency ? 8 : (Self.isActiveStreaming(session) ? 18 : 14)
+    }
+
+    private var rowShadowYOffset: CGFloat {
+        reduceTransparency ? 4 : 8
     }
 
     private var relativeDate: String? {
@@ -301,13 +346,25 @@ private struct SessionRowStateBadge: View {
     let badge: SessionRowStateBadgeKind
 
     var body: some View {
-        Text(badge.title)
-            .font(AppFont.caption2(weight: .semibold))
-            .foregroundStyle(badge.tint)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(badge.tint.opacity(0.12), in: Capsule())
-            .accessibilityHidden(true)
+        HStack(spacing: 4) {
+            Circle()
+                .fill(badge.tint)
+                .frame(width: 5, height: 5)
+
+            Text(badge.title)
+                .font(AppFont.caption2(weight: .bold))
+                .tracking(0.2)
+        }
+        .foregroundStyle(ZoraBrand.foreground)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(badge.tint.opacity(0.22), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(badge.tint.opacity(0.34), lineWidth: 0.75)
+                .allowsHitTesting(false)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -320,6 +377,7 @@ private struct ActiveSessionStreamingIndicator: View {
             .fill(.green)
             .frame(width: 9, height: 9)
             .scaleEffect(reduceMotion ? 1 : (isExpanded ? 1.4 : 1.0))
+            .shadow(color: Color.green.opacity(0.42), radius: 8)
             .accessibilityHidden(true)
             .onAppear {
                 updateAnimation()

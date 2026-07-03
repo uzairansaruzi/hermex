@@ -447,7 +447,7 @@ struct BottomComposerMaterialFade: View {
 
                 if colorScheme == .dark {
                     Rectangle()
-                        .fill(Color.black.opacity(0.58))
+                        .fill(ZoraBrand.backgroundBottom.opacity(0.78))
                 }
             }
             .frame(height: max(96, composerHeight + 34))

@@ -1382,7 +1382,7 @@ private struct SettingsCard<Content: View>: View {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                shape.fill(ZoraBrand.cardFill.opacity(cardFillOpacity))
+                shape.fill(cardFill)
             }
             .adaptiveGlass(
                 .regular,
@@ -1391,18 +1391,19 @@ private struct SettingsCard<Content: View>: View {
             )
             .overlay {
                 shape
-                    .stroke(ZoraBrand.cardStroke.opacity(max(0.55, cardStrokeOpacity * 2)), lineWidth: 0.7)
+                    .stroke(cardStroke, lineWidth: colorSchemeContrast == .increased ? 1 : 0.75)
                     .allowsHitTesting(false)
             }
+            .shadow(color: Color.black.opacity(reduceTransparency ? 0.16 : 0.22), radius: 18, y: 10)
         }
     }
 
-    private var cardFillOpacity: Double {
-        reduceTransparency ? 1 : 0.34
+    private var cardFill: Color {
+        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.94) : ZoraBrand.cardFillStrong
     }
 
-    private var cardStrokeOpacity: Double {
-        colorSchemeContrast == .increased ? 0.16 : 0.06
+    private var cardStroke: Color {
+        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.42) : ZoraBrand.cardStroke
     }
 }
 

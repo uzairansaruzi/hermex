@@ -906,9 +906,10 @@ struct SidebarSelectedSubrowIndicator: View {
     var body: some View {
         Image(systemName: "checkmark")
             .font(.caption2.weight(.bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(ZoraBrand.backgroundBottom)
             .frame(width: 18, height: 18)
-            .background(Color.accentColor, in: Circle())
+            .background(ZoraBrand.selectionAccent, in: Circle())
+            .shadow(color: ZoraBrand.selectionAccent.opacity(0.28), radius: 8, y: 3)
             .accessibilityHidden(true)
     }
 }
@@ -923,10 +924,10 @@ struct SidebarSubrowSelectionStyle: ViewModifier {
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.10))
+                        .fill(ZoraBrand.selectionAccent.opacity(0.13))
                         .overlay {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color.accentColor.opacity(0.20), lineWidth: 1)
+                                .stroke(ZoraBrand.selectionAccent.opacity(0.28), lineWidth: 1)
                         }
                 }
             }

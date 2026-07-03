@@ -1992,11 +1992,11 @@ struct ChatHeaderBackgroundGradient: View {
     }
 
     private var gradientColor: Color {
-        Color(.systemBackground)
+        ZoraBrand.backgroundTop
     }
 
     private var fadeKneeOpacity: Double {
-        colorScheme == .dark ? 0.72 : 0.64
+        colorScheme == .dark ? 0.78 : 0.68
     }
 }
 

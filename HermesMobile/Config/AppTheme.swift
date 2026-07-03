@@ -44,15 +44,59 @@ enum AppTheme: String, CaseIterable, Identifiable {
 enum ZoraBrand {
     static let accessibilityLabel = String(localized: "Zora")
     static let foreground = Color.white
-    static let secondaryForeground = Color.white.opacity(0.72)
+    static let secondaryForeground = Color.white.opacity(0.76)
+    static let tertiaryForeground = Color.white.opacity(0.54)
+
     static let lightBackground = Color(red: 0.92, green: 0.035, blue: 0.028)
     static let darkBackground = Color(red: 0.54, green: 0.0, blue: 0.018)
-    static let cardFill = Color.white.opacity(0.10)
-    static let cardStroke = Color.white.opacity(0.18)
-    static let subtleFill = Color.white.opacity(0.075)
+    static let backgroundTop = Color(red: 0.68, green: 0.018, blue: 0.035)
+    static let backgroundMid = Color(red: 0.46, green: 0.0, blue: 0.045)
+    static let backgroundBottom = Color(red: 0.16, green: 0.0, blue: 0.022)
+    static let ember = Color(red: 1.0, green: 0.18, blue: 0.10)
+    static let roseGlow = Color(red: 1.0, green: 0.34, blue: 0.28)
+    static let warmHighlight = Color(red: 1.0, green: 0.82, blue: 0.64)
+    static let selectionAccent = Color(red: 1.0, green: 0.70, blue: 0.54)
+
+    static let cardFill = Color.white.opacity(0.13)
+    static let cardFillStrong = Color.white.opacity(0.18)
+    static let cardStroke = Color.white.opacity(0.24)
+    static let subtleFill = Color.white.opacity(0.10)
+    static let hairline = Color.white.opacity(0.16)
 
     static func background(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark ? darkBackground : lightBackground
+    }
+}
+
+struct ZoraBrandBackground: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                stops: [
+                    .init(color: ZoraBrand.backgroundTop, location: 0),
+                    .init(color: ZoraBrand.backgroundMid, location: 0.48),
+                    .init(color: ZoraBrand.backgroundBottom, location: 1)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: [ZoraBrand.roseGlow.opacity(0.38), .clear],
+                center: .topTrailing,
+                startRadius: 8,
+                endRadius: 420
+            )
+            .blendMode(.screen)
+
+            RadialGradient(
+                colors: [ZoraBrand.ember.opacity(0.22), .clear],
+                center: .bottomLeading,
+                startRadius: 12,
+                endRadius: 360
+            )
+            .blendMode(.plusLighter)
+        }
     }
 }
 
@@ -66,10 +110,21 @@ struct ZoraHeaderWordmark: View {
     }
 
     var body: some View {
-        ZoraWaveformMark(color: isBrandLocked ? ZoraBrand.foreground : selectedColor)
-            .frame(width: 156, height: 44)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(ZoraBrand.accessibilityLabel)
+        let foreground = isBrandLocked ? ZoraBrand.foreground : selectedColor
+
+        HStack(spacing: 11) {
+            ZoraWaveformMark(color: foreground)
+                .frame(width: 52, height: 28)
+
+            Text("Zora")
+                .font(.system(size: 31, weight: .semibold, design: .rounded))
+                .tracking(-1.15)
+                .foregroundStyle(foreground)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(width: 156, height: 44, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ZoraBrand.accessibilityLabel)
     }
 }
 
@@ -87,18 +142,27 @@ private struct ZoraWaveformMark: View {
         TimelineView(.animation) { timeline in
             GeometryReader { proxy in
                 let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                let barWidth = max(4, proxy.size.width / CGFloat((amplitudes.count * 3) - 2))
-                let spacing = barWidth * 1.55
+                let barWidth = max(3, proxy.size.width / CGFloat((amplitudes.count * 3) - 2))
+                let spacing = barWidth * 1.45
                 let maxHeight = max(1, proxy.size.height)
 
                 HStack(alignment: .center, spacing: spacing) {
                     ForEach(Array(amplitudes.enumerated()), id: \.offset) { index, base in
-                        let pulse = (sin((phase * 2.65) + (Double(index) * 0.74)) + 1) / 2
-                        let ratio = min(1, max(0.18, (base * 0.62) + (pulse * 0.38)))
+                        let pulse = (sin((phase * 2.45) + (Double(index) * 0.74)) + 1) / 2
+                        let ratio = min(1, max(0.20, (base * 0.66) + (pulse * 0.30)))
 
                         Capsule(style: .continuous)
-                            .fill(color.opacity(0.58 + (ratio * 0.42)))
-                            .frame(width: barWidth, height: max(8, maxHeight * ratio))
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        color.opacity(0.58 + (ratio * 0.34)),
+                                        ZoraBrand.warmHighlight.opacity(0.28 + (ratio * 0.20))
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .frame(width: barWidth, height: max(7, maxHeight * ratio))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -110,11 +174,9 @@ private struct ZoraWaveformMark: View {
 }
 
 private struct ZoraBrandedScreenModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-
     func body(content: Content) -> some View {
         content
-            .background(ZoraBrand.background(for: colorScheme).ignoresSafeArea())
+            .background(ZoraBrandBackground().ignoresSafeArea())
             .environment(\.colorScheme, .dark)
             .tint(ZoraBrand.foreground)
     }
