@@ -28,40 +28,40 @@ enum AppIconChoice: String, CaseIterable, Identifiable {
         case .system:
             String(localized: "System")
         case .light:
-            String(localized: "Light")
+            String(localized: "Zora Light")
         case .dark:
-            String(localized: "Dark")
+            String(localized: "Zora Ember")
         case .disco:
-            String(localized: "Disco")
+            String(localized: "Zora Pulse")
         case .monochromeLight:
-            String(localized: "Monochrome Light")
+            String(localized: "Zora Monochrome Light")
         case .monochromeDark:
-            String(localized: "Monochrome Dark")
+            String(localized: "Zora Monochrome Dark")
         case .gradientLight:
-            String(localized: "Gradient Light")
+            String(localized: "Zora Gradient Light")
         case .gradientDark:
-            String(localized: "Gradient Dark")
+            String(localized: "Zora Gradient Dark")
         }
     }
 
     var subtitle: String {
         switch self {
         case .system:
-            String(localized: "Matches device appearance")
+            String(localized: "Adapts between the Zora light and ember icons")
         case .light:
-            String(localized: "Always use the light icon")
+            String(localized: "Warm coral Samantha-style icon")
         case .dark:
-            String(localized: "Always use the dark icon")
+            String(localized: "Deep ember Samantha-style icon")
         case .disco:
-            String(localized: "Always use the disco icon")
+            String(localized: "Higher-energy Zora pulse icon")
         case .monochromeLight:
-            String(localized: "Always use the monochrome light icon")
+            String(localized: "Quiet monochrome Zora light icon")
         case .monochromeDark:
-            String(localized: "Always use the monochrome dark icon")
+            String(localized: "Quiet monochrome Zora ember icon")
         case .gradientLight:
-            String(localized: "Always use the gradient light icon")
+            String(localized: "Saturated Zora light gradient")
         case .gradientDark:
-            String(localized: "Always use the gradient dark icon")
+            String(localized: "Saturated Zora ember gradient")
         }
     }
 

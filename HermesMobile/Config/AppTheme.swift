@@ -43,59 +43,201 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
 enum ZoraBrand {
     static let accessibilityLabel = String(localized: "Zora")
-    static let foreground = Color.white
-    static let secondaryForeground = Color.white.opacity(0.76)
-    static let tertiaryForeground = Color.white.opacity(0.54)
 
-    static let lightBackground = Color(red: 0.92, green: 0.035, blue: 0.028)
-    static let darkBackground = Color(red: 0.54, green: 0.0, blue: 0.018)
-    static let backgroundTop = Color(red: 0.68, green: 0.018, blue: 0.035)
-    static let backgroundMid = Color(red: 0.46, green: 0.0, blue: 0.045)
-    static let backgroundBottom = Color(red: 0.16, green: 0.0, blue: 0.022)
-    static let ember = Color(red: 1.0, green: 0.18, blue: 0.10)
-    static let roseGlow = Color(red: 1.0, green: 0.34, blue: 0.28)
-    static let warmHighlight = Color(red: 1.0, green: 0.82, blue: 0.64)
-    static let selectionAccent = Color(red: 1.0, green: 0.70, blue: 0.54)
+    // Samantha / Her-inspired core palette. Keep brand surfaces warm: coral,
+    // vermillion, terracotta, ember, and cream — no cold greys or blue accents.
+    static let ink = Color(red: 42.0 / 255.0, green: 11.0 / 255.0, blue: 3.0 / 255.0)
+    static let coral = Color(red: 250.0 / 255.0, green: 113.0 / 255.0, blue: 61.0 / 255.0)
+    static let vermillion = Color(red: 226.0 / 255.0, green: 74.0 / 255.0, blue: 37.0 / 255.0)
+    static let terracotta = Color(red: 179.0 / 255.0, green: 60.0 / 255.0, blue: 30.0 / 255.0)
+    static let ember = Color(red: 122.0 / 255.0, green: 36.0 / 255.0, blue: 16.0 / 255.0)
+    static let paper = Color(red: 254.0 / 255.0, green: 240.0 / 255.0, blue: 219.0 / 255.0)
 
-    static let cardFill = Color.white.opacity(0.13)
-    static let cardFillStrong = Color.white.opacity(0.18)
-    static let cardStroke = Color.white.opacity(0.24)
-    static let subtleFill = Color.white.opacity(0.10)
-    static let hairline = Color.white.opacity(0.16)
+    static let foreground = paper
+    static let secondaryForeground = paper.opacity(0.72)
+    static let tertiaryForeground = paper.opacity(0.54)
+
+    static let lightBackground = coral
+    static let darkBackground = ember
+    static let backgroundTop = coral
+    static let backgroundMid = vermillion
+    static let backgroundBottom = ember
+    static let warmHighlight = paper
+    static let selectionAccent = paper
+    static let success = Color(red: 112.0 / 255.0, green: 214.0 / 255.0, blue: 142.0 / 255.0)
+    static let warning = Color(red: 255.0 / 255.0, green: 194.0 / 255.0, blue: 107.0 / 255.0)
+    static let danger = Color(red: 255.0 / 255.0, green: 112.0 / 255.0, blue: 88.0 / 255.0)
+
+    static let veil = paper.opacity(0.72)
+    static let whisper = paper.opacity(0.14)
+    static let cardFill = paper.opacity(0.11)
+    static let cardFillStrong = paper.opacity(0.16)
+    static let cardStroke = whisper
+    static let subtleFill = paper.opacity(0.09)
+    static let hairline = whisper
 
     static func background(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark ? darkBackground : lightBackground
     }
 }
 
+enum ZoraSpacing {
+    static let unit: CGFloat = 8
+    static let compact: CGFloat = 12
+    static let screenInset: CGFloat = 24
+    static let card: CGFloat = 16
+    static let section: CGFloat = 24
+    static let large: CGFloat = 32
+
+    static let xs = unit
+    static let sm = compact
+    static let md = card
+    static let lg = section
+    static let xl = large
+}
+
+enum ZoraRadius {
+    static let control: CGFloat = 999
+    static let card: CGFloat = 22
+    static let sheet: CGFloat = 28
+    static let small: CGFloat = 8
+}
+
+enum ZoraMotion {
+    static let standard = Animation.smooth(duration: 0.6)
+    static let sheet = Animation.spring(response: 0.55, dampingFraction: 0.85)
+    static let tap = Animation.spring(response: 0.3, dampingFraction: 0.7)
+}
+
+enum ZoraSurfaceLevel {
+    case subtle
+    case card
+    case strong
+    case chrome
+
+    func fill(reduceTransparency: Bool) -> Color {
+        switch self {
+        case .subtle:
+            return reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.82) : ZoraBrand.subtleFill
+        case .card:
+            return reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.92) : ZoraBrand.cardFill
+        case .strong:
+            return reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.96) : ZoraBrand.cardFillStrong
+        case .chrome:
+            return reduceTransparency ? ZoraBrand.backgroundBottom.opacity(0.90) : ZoraBrand.paper.opacity(0.075)
+        }
+    }
+
+    var stroke: Color {
+        switch self {
+        case .subtle, .chrome:
+            return ZoraBrand.hairline
+        case .card:
+            return ZoraBrand.cardStroke
+        case .strong:
+            return ZoraBrand.foreground.opacity(0.22)
+        }
+    }
+}
+
+struct ZoraPrimaryButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = ZoraRadius.small
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(AppFont.subheadline(weight: .semibold))
+            .foregroundStyle(ZoraBrand.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 15)
+            .background(ZoraBrand.foreground, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(color: ZoraBrand.foreground.opacity(configuration.isPressed ? 0.08 : 0.18), radius: 14, y: 6)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .animation(ZoraMotion.tap, value: configuration.isPressed)
+    }
+}
+
+struct ZoraSecondaryButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = ZoraRadius.small
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(AppFont.subheadline(weight: .semibold))
+            .foregroundStyle(ZoraBrand.secondaryForeground)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 15)
+            .background(ZoraSurfaceLevel.subtle.fill(reduceTransparency: false), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(ZoraBrand.hairline, lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.76 : 1)
+            .animation(ZoraMotion.tap, value: configuration.isPressed)
+    }
+}
+
+private struct ZoraSurfaceModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    let level: ZoraSurfaceLevel
+    let cornerRadius: CGFloat
+    let showsShadow: Bool
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        content
+            .background(shape.fill(level.fill(reduceTransparency: reduceTransparency)))
+            .overlay(
+                shape
+                    .stroke(
+                        colorSchemeContrast == .increased ? ZoraBrand.foreground.opacity(0.42) : level.stroke,
+                        lineWidth: colorSchemeContrast == .increased ? 1 : 0.75
+                    )
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: showsShadow ? Color.black.opacity(reduceTransparency ? 0.14 : 0.20) : .clear, radius: showsShadow ? 16 : 0, y: showsShadow ? 8 : 0)
+    }
+}
+
 struct ZoraBrandBackground: View {
     var body: some View {
         ZStack {
-            LinearGradient(
+            RadialGradient(
                 stops: [
-                    .init(color: ZoraBrand.backgroundTop, location: 0),
-                    .init(color: ZoraBrand.backgroundMid, location: 0.48),
-                    .init(color: ZoraBrand.backgroundBottom, location: 1)
+                    .init(color: ZoraBrand.coral, location: 0),
+                    .init(color: ZoraBrand.vermillion, location: 0.42),
+                    .init(color: ZoraBrand.terracotta, location: 0.72),
+                    .init(color: ZoraBrand.ember, location: 1)
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                center: .top,
+                startRadius: 40,
+                endRadius: 920
             )
 
             RadialGradient(
-                colors: [ZoraBrand.roseGlow.opacity(0.38), .clear],
+                colors: [ZoraBrand.paper.opacity(0.20), .clear],
                 center: .topTrailing,
-                startRadius: 8,
-                endRadius: 420
+                startRadius: 16,
+                endRadius: 460
             )
             .blendMode(.screen)
 
             RadialGradient(
-                colors: [ZoraBrand.ember.opacity(0.22), .clear],
-                center: .bottomLeading,
-                startRadius: 12,
-                endRadius: 360
+                colors: [ZoraBrand.ember.opacity(0.52), .clear],
+                center: .bottom,
+                startRadius: 20,
+                endRadius: 560
             )
-            .blendMode(.plusLighter)
+            .blendMode(.multiply)
         }
     }
 }
@@ -114,11 +256,12 @@ struct ZoraHeaderWordmark: View {
 
         HStack(spacing: 11) {
             ZoraWaveformMark(color: foreground)
-                .frame(width: 52, height: 28)
+                .frame(width: 54, height: 28)
 
             Text("Zora")
-                .font(.system(size: 31, weight: .semibold, design: .rounded))
-                .tracking(-1.15)
+                .font(.system(size: 31, weight: .regular, design: .serif))
+                .italic()
+                .tracking(-0.62)
                 .foregroundStyle(foreground)
                 .minimumScaleFactor(0.82)
         }
@@ -128,48 +271,177 @@ struct ZoraHeaderWordmark: View {
     }
 }
 
-private struct ZoraWaveformMark: View {
+enum ZoraWaveState: Equatable {
+    case idle
+    case listening
+    case speaking(intensity: Double)
+    case thinking
+
+    var amplitude: Double {
+        switch self {
+        case .idle:
+            return 0.08
+        case .listening:
+            return 0.35
+        case let .speaking(intensity):
+            return 0.45 + (0.45 * max(0, min(1, intensity)))
+        case .thinking:
+            return 0.22
+        }
+    }
+
+    var speed: Double {
+        switch self {
+        case .idle:
+            return 0.35
+        case .listening:
+            return 0.9
+        case .speaking:
+            return 1.6
+        case .thinking:
+            return 1.1
+        }
+    }
+
+    var harmonics: Int {
+        switch self {
+        case .idle:
+            return 2
+        case .listening, .thinking:
+            return 3
+        case .speaking:
+            return 4
+        }
+    }
+
+    var envelope: ZoraWaveShape.Envelope {
+        switch self {
+        case .thinking:
+            return .traveling
+        default:
+            return .centered
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .idle:
+            return String(localized: "Zora is idle")
+        case .listening:
+            return String(localized: "Zora is listening")
+        case .speaking:
+            return String(localized: "Zora is speaking")
+        case .thinking:
+            return String(localized: "Zora is thinking")
+        }
+    }
+}
+
+struct ZoraWaveform: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let color: Color
-
-    private let amplitudes: [Double] = [
-        0.30, 0.62, 0.42, 0.86, 0.56, 0.72, 0.98,
-        0.68, 0.48, 0.80, 0.38, 0.60, 0.28
-    ]
+    var state: ZoraWaveState = .idle
+    var tint: Color = ZoraBrand.foreground
+    var lineWidth: CGFloat = 3
+    var glow = true
 
     var body: some View {
-        TimelineView(.animation) { timeline in
-            GeometryReader { proxy in
-                let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                let barWidth = max(3, proxy.size.width / CGFloat((amplitudes.count * 3) - 2))
-                let spacing = barWidth * 1.45
-                let maxHeight = max(1, proxy.size.height)
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+            let renderedState: ZoraWaveState = reduceMotion ? .idle : state
+            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * renderedState.speed
 
-                HStack(alignment: .center, spacing: spacing) {
-                    ForEach(Array(amplitudes.enumerated()), id: \.offset) { index, base in
-                        let pulse = (sin((phase * 2.45) + (Double(index) * 0.74)) + 1) / 2
-                        let ratio = min(1, max(0.20, (base * 0.66) + (pulse * 0.30)))
+            ZoraWaveShape(
+                phase: phase,
+                amplitude: renderedState.amplitude,
+                harmonics: renderedState.harmonics,
+                envelope: renderedState.envelope
+            )
+            .stroke(
+                tint,
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+            )
+            .shadow(color: glow ? tint.opacity(0.55) : .clear, radius: glow ? 8 : 0)
+            .shadow(color: glow ? tint.opacity(0.30) : .clear, radius: glow ? 18 : 0)
+            .animation(ZoraMotion.standard, value: renderedState)
+            .drawingGroup()
+        }
+        .accessibilityLabel(state.accessibilityLabel)
+    }
+}
 
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        color.opacity(0.58 + (ratio * 0.34)),
-                                        ZoraBrand.warmHighlight.opacity(0.28 + (ratio * 0.20))
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .frame(width: barWidth, height: max(7, maxHeight * ratio))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+struct ZoraWaveShape: Shape {
+    enum Envelope {
+        case centered
+        case traveling
+        case uniform
+    }
+
+    var phase: Double
+    var amplitude: Double
+    var harmonics: Int
+    var envelope: Envelope
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(phase, amplitude) }
+        set {
+            phase = newValue.first
+            amplitude = newValue.second
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let midY = rect.midY
+        let maxAmp = rect.height * 0.5 * 0.9
+        let sampleCount = max(64, Int(rect.width / 2))
+
+        for index in 0...sampleCount {
+            let progress = Double(index) / Double(sampleCount)
+            let x = rect.minX + CGFloat(progress) * rect.width
+            let envelopeValue: Double
+
+            switch envelope {
+            case .centered:
+                envelopeValue = pow(sin(.pi * progress), 2)
+            case .traveling:
+                let center = (phase * 0.15).truncatingRemainder(dividingBy: 1.0)
+                let distance = min(abs(progress - center), 1 - abs(progress - center))
+                let windowWidth = 0.28
+                envelopeValue = distance < windowWidth ? pow(cos(.pi * distance / (2 * windowWidth)), 2) : 0
+            case .uniform:
+                envelopeValue = 1
+            }
+
+            var y: Double = 0
+            for harmonic in 1...harmonics {
+                let frequency = Double(harmonic) * 2.2
+                let phaseOffset = phase * (0.7 + (0.35 * Double(harmonic)))
+                let weight = 1.0 / Double(harmonic)
+                y += weight * sin((2 * .pi * frequency * progress) + phaseOffset)
+            }
+
+            y *= 1.0 / (1.0 + log(Double(harmonics)))
+
+            let displacement = y * envelopeValue * amplitude * Double(maxAmp)
+            let point = CGPoint(x: x, y: midY + CGFloat(displacement))
+
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
             }
         }
-        .drawingGroup()
-        .accessibilityHidden(true)
+
+        return path
+    }
+}
+
+private struct ZoraWaveformMark: View {
+    let color: Color
+
+    var body: some View {
+        ZoraWaveform(state: .idle, tint: color, lineWidth: 2.4, glow: true)
+            .accessibilityHidden(true)
     }
 }
 
@@ -186,6 +458,20 @@ extension View {
     func zoraBrandedScreen() -> some View {
         modifier(ZoraBrandedScreenModifier())
     }
+
+    func zoraSurface(
+        _ level: ZoraSurfaceLevel = .card,
+        cornerRadius: CGFloat = ZoraRadius.card,
+        showsShadow: Bool = false
+    ) -> some View {
+        modifier(
+            ZoraSurfaceModifier(
+                level: level,
+                cornerRadius: cornerRadius,
+                showsShadow: showsShadow
+            )
+        )
+    }
 }
 
 struct HeaderLogoColorPreset: Identifiable, Equatable {
@@ -201,15 +487,14 @@ struct HeaderLogoColorPreset: Identifiable, Equatable {
 
 enum HeaderLogoColor {
     static let storageKey = "headerLogoColorHex"
-    static let defaultHex = "#FFD700"
+    static let defaultHex = "#FEF0DB"
 
     static let presets: [HeaderLogoColorPreset] = [
-        HeaderLogoColorPreset(name: String(localized: "Yellow"), hex: "#FFD700"),
-        HeaderLogoColorPreset(name: String(localized: "Blue"), hex: "#5B7CFF"),
-        HeaderLogoColorPreset(name: String(localized: "Purple"), hex: "#AF52DE"),
-        HeaderLogoColorPreset(name: String(localized: "Red"), hex: "#FF3B30"),
-        HeaderLogoColorPreset(name: String(localized: "Green"), hex: "#34C759"),
-        HeaderLogoColorPreset(name: String(localized: "White"), hex: "#FFFFFF")
+        HeaderLogoColorPreset(name: String(localized: "Cream"), hex: "#FEF0DB"),
+        HeaderLogoColorPreset(name: String(localized: "Coral"), hex: "#FA713D"),
+        HeaderLogoColorPreset(name: String(localized: "Vermillion"), hex: "#E24A25"),
+        HeaderLogoColorPreset(name: String(localized: "Terracotta"), hex: "#B33C1E"),
+        HeaderLogoColorPreset(name: String(localized: "Ember"), hex: "#7A2410")
     ]
 
     static func normalizedHex(_ rawValue: String) -> String? {
@@ -226,7 +511,7 @@ enum HeaderLogoColor {
     }
 
     static func color(for rawValue: String) -> Color {
-        Color(hexRGB: normalizedHex(rawValue) ?? defaultHex) ?? Color(red: 1.0, green: 0.843, blue: 0.0)
+        Color(hexRGB: normalizedHex(rawValue) ?? defaultHex) ?? ZoraBrand.foreground
     }
 
     static func prefersDarkForeground(for rawValue: String) -> Bool {
@@ -235,7 +520,7 @@ enum HeaderLogoColor {
         }
 
         let luminance = (0.2126 * components.red) + (0.7152 * components.green) + (0.0722 * components.blue)
-        return luminance > 0.62
+        return luminance > 0.50
     }
 
     static func displayName(for rawValue: String) -> String {

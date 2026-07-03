@@ -15,16 +15,16 @@ final class AppThemeTests: XCTestCase {
     }
 
     func testHeaderLogoColorNormalizesStoredHexValues() {
-        XCTAssertEqual(HeaderLogoColor.normalizedHex("#5b7cff"), "#5B7CFF")
-        XCTAssertEqual(HeaderLogoColor.normalizedHex(" ff3b30 "), "#FF3B30")
+        XCTAssertEqual(HeaderLogoColor.normalizedHex("#fa713d"), "#FA713D")
+        XCTAssertEqual(HeaderLogoColor.normalizedHex(" e24a25 "), "#E24A25")
         XCTAssertNil(HeaderLogoColor.normalizedHex("#123"))
         XCTAssertNil(HeaderLogoColor.normalizedHex("#GG0000"))
     }
 
     func testHeaderLogoColorDisplayNameUsesPresetOrCustomFallback() {
-        XCTAssertEqual(HeaderLogoColor.displayName(for: "#FFD700"), "Yellow")
+        XCTAssertEqual(HeaderLogoColor.displayName(for: "#FEF0DB"), "Cream")
         XCTAssertEqual(HeaderLogoColor.displayName(for: "#123456"), "Custom")
-        XCTAssertEqual(HeaderLogoColor.displayName(for: "not-a-color"), "Yellow")
+        XCTAssertEqual(HeaderLogoColor.displayName(for: "not-a-color"), "Cream")
     }
 
     func testHeaderLogoColorFormatsRGBComponentsAsHex() {
@@ -49,14 +49,22 @@ final class AppThemeTests: XCTestCase {
     }
 
     func testHeaderLogoColorChoosesReadableForeground() {
-        XCTAssertTrue(HeaderLogoColor.prefersDarkForeground(for: "#FFD700"))
-        XCTAssertTrue(HeaderLogoColor.prefersDarkForeground(for: "#FFFFFF"))
-        XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#5B7CFF"))
-        XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#AF52DE"))
+        XCTAssertTrue(HeaderLogoColor.prefersDarkForeground(for: "#FEF0DB"))
+        XCTAssertTrue(HeaderLogoColor.prefersDarkForeground(for: "#FA713D"))
+        XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#B33C1E"))
+        XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#7A2410"))
     }
 
     func testZoraBrandUsesZoraAccessibleBranding() {
         XCTAssertEqual(ZoraBrand.accessibilityLabel, "Zora")
+    }
+
+    func testZoraSpacingMatchesDocumentedTokenScale() {
+        XCTAssertEqual(ZoraSpacing.xs, 8)
+        XCTAssertEqual(ZoraSpacing.sm, 12)
+        XCTAssertEqual(ZoraSpacing.md, 16)
+        XCTAssertEqual(ZoraSpacing.lg, 24)
+        XCTAssertEqual(ZoraSpacing.xl, 32)
     }
 
     func testZoraBrandBackgroundChangesWithTheme() {

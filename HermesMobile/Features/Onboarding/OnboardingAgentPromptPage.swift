@@ -18,9 +18,9 @@ struct OnboardingAgentPromptPage: View {
                     hasCopied: $hasCopiedAgentPrompt
                 )
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 24)
-            .padding(.bottom, 16)
+            .padding(.horizontal, ZoraSpacing.screenInset + (ZoraSpacing.unit / 2))
+            .padding(.top, ZoraSpacing.section)
+            .padding(.bottom, ZoraSpacing.card)
         }
         .scrollBounceBehavior(.basedOnSize)
     }

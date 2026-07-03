@@ -76,8 +76,8 @@ struct SessionListView: View {
 
                 if !isSearchingSessions {
                     newSessionButton
-                        .padding(.trailing, 24)
-                        .padding(.bottom, 22)
+                        .padding(.trailing, ZoraSpacing.screenInset)
+                        .padding(.bottom, ZoraSpacing.section - 2)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -315,8 +315,8 @@ struct SessionListView: View {
             searchChrome
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
+        .padding(.horizontal, ZoraSpacing.screenInset)
+        .padding(.top, ZoraSpacing.section + 4)
         .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: searchChromeIsExpanded)
         .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsSearchClearButton)
         .onChange(of: searchFieldIsFocused) { _, newValue in

@@ -70,7 +70,7 @@ struct GitActionToastOverlay: View {
                 ) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white, .green)
+                        .foregroundStyle(ZoraBrand.ink, ZoraBrand.success)
                         .symbolRenderingMode(.palette)
                 }
                 .id(success.id)
@@ -85,7 +85,7 @@ struct GitActionToastOverlay: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, ZoraSpacing.card)
         .padding(.top, 10)
         .transition(.move(edge: .top).combined(with: .opacity))
     }
@@ -119,10 +119,10 @@ struct GitActionToastOverlay: View {
                 .accessibilityLabel("Dismiss")
             }
         }
-        .padding(14)
-        .adaptiveGlass(in: .rect(cornerRadius: 18))
+        .padding(ZoraSpacing.card - 2)
+        .adaptiveGlass(in: .rect(cornerRadius: ZoraRadius.card - 4))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: ZoraRadius.card - 4, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }

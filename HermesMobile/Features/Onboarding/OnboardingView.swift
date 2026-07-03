@@ -37,7 +37,8 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            ZoraBrand.darkBackground.ignoresSafeArea()
+            ZoraBrandBackground()
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 TabView(selection: $currentPage) {
@@ -101,18 +102,8 @@ struct OnboardingView: View {
             } else {
                 Button(action: handlePrimaryAction) {
                     Text(OnboardingFlowPolicy.primaryButtonTitle(for: currentPage))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(ZoraBrand.darkBackground)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            ZoraBrand.foreground,
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoraPrimaryButtonStyle(cornerRadius: ZoraRadius.small))
                 .accessibilityLabel(OnboardingFlowPolicy.primaryButtonTitle(for: currentPage))
 
                 if OnboardingFlowPolicy.showsServerShortcut(for: currentPage) {
@@ -126,7 +117,7 @@ struct OnboardingView: View {
                 }
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, ZoraSpacing.screenInset)
         .padding(.top, 12)
         .padding(.bottom, 12)
         .background(
@@ -145,7 +136,7 @@ struct OnboardingView: View {
         VStack(spacing: 10) {
             connectActionButtons
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, ZoraSpacing.screenInset - 2)
         .padding(.top, 10)
         .padding(.bottom, 8)
     }
@@ -171,7 +162,7 @@ struct OnboardingView: View {
             Label("Test Connection", systemImage: "network")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(OnboardingSecondaryButtonStyle())
+        .buttonStyle(ZoraSecondaryButtonStyle(cornerRadius: ZoraRadius.small))
         .disabled(viewModel.isWorking || !canSubmitConnection)
     }
 
@@ -182,7 +173,7 @@ struct OnboardingView: View {
             Label("Connect", systemImage: "checkmark.circle.fill")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(OnboardingPrimaryButtonStyle())
+        .buttonStyle(ZoraPrimaryButtonStyle(cornerRadius: ZoraRadius.small))
         .disabled(viewModel.isWorking || !canSubmitConnection)
     }
 

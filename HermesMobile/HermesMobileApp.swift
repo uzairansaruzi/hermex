@@ -513,7 +513,7 @@ private struct ZoraAuditComposer: View {
                 Spacer(minLength: 0)
                 Image(systemName: "mic")
                 Image(systemName: "arrow.up")
-                    .foregroundStyle(ZoraBrand.backgroundBottom)
+                    .foregroundStyle(ZoraBrand.ink)
                     .frame(width: 34, height: 34)
                     .background(ZoraBrand.selectionAccent, in: Circle())
             }
@@ -573,7 +573,7 @@ private struct ZoraAuditToggleRow: View {
                 .frame(width: 44, height: 26)
                 .overlay(alignment: isOn ? .trailing : .leading) {
                     Circle()
-                        .fill(isOn ? ZoraBrand.backgroundBottom : ZoraBrand.secondaryForeground)
+                        .fill(isOn ? ZoraBrand.ink : ZoraBrand.secondaryForeground)
                         .frame(width: 20, height: 20)
                         .padding(3)
                 }
@@ -589,7 +589,7 @@ private struct ZoraAuditFloatingAction: View {
             Text("New Chat")
                 .font(AppFont.subheadline(weight: .bold))
         }
-        .foregroundStyle(ZoraBrand.backgroundBottom)
+        .foregroundStyle(ZoraBrand.ink)
         .padding(.horizontal, 18)
         .frame(height: 54)
         .background(ZoraBrand.selectionAccent, in: Capsule(style: .continuous))
@@ -604,7 +604,7 @@ private struct ZoraAuditAvatar: View {
     var body: some View {
         Text(initials)
             .font(.system(size: size * 0.44, weight: .bold, design: .rounded))
-            .foregroundStyle(ZoraBrand.backgroundBottom)
+            .foregroundStyle(ZoraBrand.ink)
             .frame(width: size, height: size)
             .background(
                 LinearGradient(

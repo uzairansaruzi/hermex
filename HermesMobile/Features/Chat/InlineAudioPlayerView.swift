@@ -67,7 +67,7 @@ struct InlineAudioPlayerView: View {
                     Circle().fill(Color.accentColor)
                     Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ZoraBrand.ink)
                 }
                 .frame(width: 40, height: 40)
             }

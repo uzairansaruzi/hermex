@@ -906,7 +906,7 @@ struct SidebarSelectedSubrowIndicator: View {
     var body: some View {
         Image(systemName: "checkmark")
             .font(.caption2.weight(.bold))
-            .foregroundStyle(ZoraBrand.backgroundBottom)
+            .foregroundStyle(ZoraBrand.ink)
             .frame(width: 18, height: 18)
             .background(ZoraBrand.selectionAccent, in: Circle())
             .shadow(color: ZoraBrand.selectionAccent.opacity(0.28), radius: 8, y: 3)

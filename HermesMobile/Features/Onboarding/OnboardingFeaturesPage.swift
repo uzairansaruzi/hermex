@@ -5,10 +5,10 @@ struct OnboardingFeaturesPage: View {
 
     private let features: [(icon: String, color: Color, title: String, subtitle: String)] = [
         ("bubble.left.and.bubble.right.fill", ZoraBrand.foreground, String(localized: "Chat with your Zora agent from iPhone"), String(localized: "Drive conversations from anywhere on your tailnet.")),
-        ("list.bullet.rectangle.portrait.fill", .green, String(localized: "Manage sessions, tasks, and files remotely"), String(localized: "Browse workspaces and stay on top of agent work.")),
-        ("mic.fill", .purple, String(localized: "Voice input and mobile-friendly composer controls"), String(localized: "Compose naturally with touch-first controls.")),
-        ("checkmark.shield.fill", .cyan, String(localized: "Review approvals and clarifications inline"), String(localized: "Respond to agent prompts without switching apps.")),
-        ("server.rack", .orange, String(localized: "Self-hosted: your machine, your tailnet"), String(localized: "Your Hermes Web UI stays on hardware you control."))
+        ("list.bullet.rectangle.portrait.fill", ZoraBrand.success, String(localized: "Manage sessions, tasks, and files remotely"), String(localized: "Browse workspaces and stay on top of agent work.")),
+        ("mic.fill", ZoraBrand.warning, String(localized: "Voice input and mobile-friendly composer controls"), String(localized: "Compose naturally with touch-first controls.")),
+        ("checkmark.shield.fill", ZoraBrand.paper, String(localized: "Review approvals and clarifications inline"), String(localized: "Respond to agent prompts without switching apps.")),
+        ("server.rack", ZoraBrand.terracotta, String(localized: "Self-hosted: your machine, your tailnet"), String(localized: "Your Hermes Web UI stays on hardware you control."))
     ]
 
     var body: some View {
@@ -17,15 +17,15 @@ struct OnboardingFeaturesPage: View {
                 VStack(spacing: 10) {
                     Text("What you get")
                         .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 26 : 28, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ZoraBrand.foreground)
 
                     Text("Your Zora agent, reachable from iPhone over Tailscale.")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(ZoraBrand.tertiaryForeground)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, 24)
+                .padding(.top, ZoraSpacing.section)
 
                 VStack(spacing: 16) {
                     ForEach(Array(features.enumerated()), id: \.offset) { _, feature in
@@ -38,8 +38,8 @@ struct OnboardingFeaturesPage: View {
                     }
                 }
             }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 24)
+            .padding(.horizontal, ZoraSpacing.screenInset + (ZoraSpacing.unit / 2))
+            .padding(.bottom, ZoraSpacing.section)
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -65,12 +65,12 @@ struct OnboardingFeatureRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ZoraBrand.foreground)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(ZoraBrand.tertiaryForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

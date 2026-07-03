@@ -8,11 +8,10 @@ struct HeroBadge: View {
     var body: some View {
         Label(title, systemImage: systemImage)
             .font(.caption.weight(.medium))
-            .foregroundStyle(.white.opacity(0.68))
+            .foregroundStyle(ZoraBrand.secondaryForeground)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.06), in: Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .zoraSurface(.subtle, cornerRadius: ZoraRadius.control)
     }
 }
 
@@ -28,7 +27,7 @@ struct SetupStepRow: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(ZoraBrand.darkBackground)
+                .foregroundStyle(ZoraBrand.ink)
                 .frame(width: 23, height: 23)
                 .background(ZoraBrand.foreground, in: Circle())
                 .padding(.top, 1)
@@ -36,11 +35,11 @@ struct SetupStepRow: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ZoraBrand.foreground)
 
                 Text(subtitle)
                     .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(ZoraBrand.foreground.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let command {
@@ -62,11 +61,11 @@ struct OnboardingCommandPill: View {
             HStack(spacing: 0) {
                 if let prefix {
                     Text("\(prefix) ")
-                        .foregroundStyle(.white.opacity(0.28))
+                        .foregroundStyle(ZoraBrand.foreground.opacity(0.28))
                 }
 
                 Text(text)
-                    .foregroundStyle(.white.opacity(0.78))
+                    .foregroundStyle(ZoraBrand.foreground.opacity(0.78))
                     .lineLimit(1)
                     .minimumScaleFactor(0.62)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -79,9 +78,9 @@ struct OnboardingCommandPill: View {
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(didCopy ? Color(red: 0.45, green: 0.92, blue: 0.56) : .white.opacity(0.76))
+                        .foregroundStyle(didCopy ? ZoraBrand.success : ZoraBrand.foreground.opacity(0.76))
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .background(ZoraBrand.foreground.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(didCopy ? String(localized: "Copied Web UI repository link") : String(localized: "Copy Web UI repository link"))
@@ -92,11 +91,11 @@ struct OnboardingCommandPill: View {
         .padding(.vertical, 9)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.white.opacity(0.055))
+                .fill(ZoraBrand.foreground.opacity(0.055))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(ZoraBrand.foreground.opacity(0.08), lineWidth: 1)
         )
     }
 }
@@ -116,11 +115,11 @@ struct OnboardingField<Content: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(ZoraBrand.foreground.opacity(0.5))
 
                 content
                     .font(.body.weight(.medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ZoraBrand.foreground)
             }
         }
         .padding(.horizontal, 13)
@@ -128,7 +127,7 @@ struct OnboardingField<Content: View>: View {
         .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(ZoraBrand.foreground.opacity(0.08), lineWidth: 1)
         )
     }
 }
@@ -153,7 +152,7 @@ struct OnboardingStatusBanner: View {
 
             Text(text)
                 .font(.footnote.weight(.medium))
-                .foregroundStyle(.white.opacity(0.76))
+                .foregroundStyle(ZoraBrand.foreground.opacity(0.76))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 12)
@@ -164,21 +163,6 @@ struct OnboardingStatusBanner: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(tint.opacity(0.18), lineWidth: 1)
         )
-    }
-}
-
-struct OnboardingPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(ZoraBrand.darkBackground)
-            .lineLimit(1)
-            .minimumScaleFactor(0.78)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 15)
-            .background(ZoraBrand.foreground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 
@@ -194,11 +178,11 @@ struct OnboardingStepHeader: View {
         VStack(spacing: 20) {
             Image(systemName: icon)
                 .font(.system(size: 30, weight: .light))
-                .foregroundStyle(.white)
+                .foregroundStyle(ZoraBrand.foreground)
                 .frame(width: 80, height: 80)
                 .background(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(ZoraBrand.foreground.opacity(0.06))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -214,13 +198,13 @@ struct OnboardingStepHeader: View {
 
                 Text(title)
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ZoraBrand.foreground)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(description)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(ZoraBrand.foreground.opacity(0.45))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -240,7 +224,7 @@ struct OnboardingAgentPromptCard: View {
             ScrollView(.vertical, showsIndicators: true) {
                 Text(prompt)
                     .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(ZoraBrand.foreground.opacity(0.82))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
@@ -258,18 +242,11 @@ struct OnboardingAgentPromptCard: View {
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(OnboardingPrimaryButtonStyle())
+            .buttonStyle(ZoraPrimaryButtonStyle(cornerRadius: ZoraRadius.small))
             .accessibilityLabel(didCopyRecently ? String(localized: "Agent setup prompt copied") : String(localized: "Copy agent setup prompt"))
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.055))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
+        .padding(ZoraSpacing.card)
+        .zoraSurface(.subtle, cornerRadius: ZoraRadius.card)
     }
 }
 
@@ -281,31 +258,12 @@ struct OnboardingPageIndicator: View {
         HStack(spacing: 8) {
             ForEach(0..<pageCount, id: \.self) { index in
                 Capsule()
-                    .fill(index == currentPage ? Color.white : Color.white.opacity(0.18))
+                    .fill(index == currentPage ? ZoraBrand.foreground : ZoraBrand.foreground.opacity(0.18))
                     .frame(width: index == currentPage ? 24 : 8, height: 8)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentPage)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Page \(currentPage + 1) of \(pageCount)"))
-    }
-}
-
-struct OnboardingSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.84))
-            .lineLimit(1)
-            .minimumScaleFactor(0.78)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 15)
-            .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
-            .opacity(configuration.isPressed ? 0.72 : 1)
     }
 }

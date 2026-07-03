@@ -1291,7 +1291,7 @@ private struct HeaderLogoColorSettings: View {
                 Circle()
                     .fill(HeaderLogoColor.color(for: selectedHex))
                     .frame(width: 34, height: 34)
-                    .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 1))
+                    .overlay(Circle().stroke(ZoraBrand.hairline, lineWidth: 1))
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
@@ -1336,7 +1336,7 @@ private struct HeaderLogoColorPresetButton: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(preset.hex == "#FFFFFF" ? .black : .white)
+                        .foregroundStyle(HeaderLogoColor.prefersDarkForeground(for: preset.hex) ? ZoraBrand.ink : ZoraBrand.foreground)
                         .accessibilityHidden(true)
                 }
             }

@@ -45,14 +45,14 @@ struct OnboardingWelcomePage: View {
 
                     ZoraHeaderWordmark()
                         .frame(width: iconSize * 1.45, height: iconSize * 0.42)
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, ZoraSpacing.lg - (ZoraSpacing.unit / 4))
                         .padding(.vertical, 26)
                         .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
                                 .stroke(
                                     LinearGradient(
-                                        colors: [.white.opacity(0.34), .white.opacity(0.08)],
+                                        colors: [ZoraBrand.foreground.opacity(0.34), ZoraBrand.foreground.opacity(0.08)],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
@@ -69,14 +69,14 @@ struct OnboardingWelcomePage: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Control your Zora agent from iPhone.")
                         .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 27 : 31, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ZoraBrand.foreground)
                         .lineLimit(3)
                         .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text("Connect to your self-hosted Hermes Web UI over Tailscale.")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 8) {
@@ -85,8 +85,8 @@ struct OnboardingWelcomePage: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 28)
-                .padding(.bottom, 16)
+                .padding(.horizontal, ZoraSpacing.screenInset + (ZoraSpacing.unit / 2))
+                .padding(.bottom, ZoraSpacing.card)
             }
         }
     }

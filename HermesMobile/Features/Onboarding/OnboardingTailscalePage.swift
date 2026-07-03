@@ -25,19 +25,14 @@ struct OnboardingTailscalePage: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 13)
-                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ZoraSecondaryButtonStyle(cornerRadius: ZoraRadius.small))
                     .accessibilityHint("Opens the Tailscale page in the App Store.")
                 }
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 24)
-            .padding(.bottom, 16)
+            .padding(.horizontal, ZoraSpacing.screenInset + (ZoraSpacing.unit / 2))
+            .padding(.top, ZoraSpacing.section)
+            .padding(.bottom, ZoraSpacing.card)
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -53,13 +48,13 @@ struct OnboardingTailscalePage: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(ZoraBrand.darkBackground)
+                .foregroundStyle(ZoraBrand.ink)
                 .frame(width: 23, height: 23)
                 .background(ZoraBrand.foreground, in: Circle())
 
             Text(text)
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(ZoraBrand.secondaryForeground)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)

@@ -28,11 +28,11 @@ struct OnboardingConnectPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Connect")
                         .font(.title3.weight(.bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ZoraBrand.foreground)
 
                     Text("Enter the Tailscale URL your agent returned, for example `http://<tailnet-ip>:8787`.")
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(ZoraBrand.tertiaryForeground)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -41,7 +41,7 @@ struct OnboardingConnectPage: View {
                         ZStack(alignment: .leading) {
                             if viewModel.serverURLString.isEmpty {
                                 Text(verbatim: "http://100.64.0.1:8787")
-                                    .foregroundStyle(.white.opacity(0.38))
+                                    .foregroundStyle(ZoraBrand.tertiaryForeground)
                                     .allowsHitTesting(false)
                             }
 
@@ -49,7 +49,7 @@ struct OnboardingConnectPage: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(ZoraBrand.foreground)
                                 .submitLabel(.go)
                                 .tint(ZoraBrand.foreground)
                                 .focused($focusedField, equals: .serverURL)
@@ -63,7 +63,7 @@ struct OnboardingConnectPage: View {
                                 "",
                                 text: $viewModel.password,
                                 prompt: Text("Server password")
-                                    .foregroundStyle(.white.opacity(0.38))
+                                    .foregroundStyle(ZoraBrand.tertiaryForeground)
                             )
                             .textContentType(.password)
                             .submitLabel(.go)
@@ -79,15 +79,15 @@ struct OnboardingConnectPage: View {
                 } label: {
                     Label("Advanced", systemImage: "slider.horizontal.3")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(ZoraBrand.secondaryForeground)
                 }
-                .tint(.white.opacity(0.6))
+                .tint(ZoraBrand.secondaryForeground)
 
                 if viewModel.isWorking {
                     OnboardingStatusBanner(
                         text: String(localized: "Checking server..."),
                         systemImage: "arrow.triangle.2.circlepath",
-                        tint: .white.opacity(0.7),
+                        tint: ZoraBrand.secondaryForeground,
                         showsProgress: true
                     )
                 }
@@ -96,7 +96,7 @@ struct OnboardingConnectPage: View {
                     OnboardingStatusBanner(
                         text: connectionMessage,
                         systemImage: "checkmark.circle.fill",
-                        tint: Color(red: 0.45, green: 0.92, blue: 0.56)
+                        tint: ZoraBrand.success
                     )
                 }
 
@@ -104,13 +104,13 @@ struct OnboardingConnectPage: View {
                     OnboardingStatusBanner(
                         text: errorMessage,
                         systemImage: "exclamationmark.triangle.fill",
-                        tint: Color(red: 1.0, green: 0.47, blue: 0.34)
+                        tint: ZoraBrand.danger
                     )
                 }
             }
-            .padding(.horizontal, 22)
+            .padding(.horizontal, ZoraSpacing.screenInset - 2)
             .padding(.top, dynamicTypeSize.isAccessibilitySize ? 18 : 24)
-            .padding(.bottom, 24)
+            .padding(.bottom, ZoraSpacing.section)
         }
         .scrollBounceBehavior(.basedOnSize)
     }

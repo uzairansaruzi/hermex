@@ -113,6 +113,7 @@ The app is developed and tested against the `hermes-webui` commit pinned in [`UP
 - [`PROJECT_INTENT.md`](PROJECT_INTENT.md): short orientation; useful for product tradeoffs, not implementation details.
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): local development workflow, server setup notes, and the maintainer release runbook.
 - [`TESTFLIGHT.md`](TESTFLIGHT.md): maintainer-only TestFlight/App Store Connect operations.
+- [`DESIGN.md`](DESIGN.md): Zora visual design-system tokens, palette, typography, surfaces, and SwiftUI usage guidance.
 - [`CONTRACT_TESTS.md`](CONTRACT_TESTS.md): upstream contract-test readiness and the pin-advance policy.
 - [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
 - [`docs/agents/`](docs/agents): repo-local agent workflow conventions (issues, triage labels, domain notes).

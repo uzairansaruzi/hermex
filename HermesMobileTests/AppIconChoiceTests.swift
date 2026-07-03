@@ -45,24 +45,24 @@ final class AppIconChoiceTests: XCTestCase {
 
     func testExistingChoiceDisplayMetadata() {
         XCTAssertEqual(AppIconChoice.system.title, "System")
-        XCTAssertEqual(AppIconChoice.system.subtitle, "Matches device appearance")
-        XCTAssertEqual(AppIconChoice.light.title, "Light")
-        XCTAssertEqual(AppIconChoice.light.subtitle, "Always use the light icon")
-        XCTAssertEqual(AppIconChoice.dark.title, "Dark")
-        XCTAssertEqual(AppIconChoice.dark.subtitle, "Always use the dark icon")
-        XCTAssertEqual(AppIconChoice.disco.title, "Disco")
-        XCTAssertEqual(AppIconChoice.disco.subtitle, "Always use the disco icon")
+        XCTAssertEqual(AppIconChoice.system.subtitle, "Adapts between the Zora light and ember icons")
+        XCTAssertEqual(AppIconChoice.light.title, "Zora Light")
+        XCTAssertEqual(AppIconChoice.light.subtitle, "Warm coral Samantha-style icon")
+        XCTAssertEqual(AppIconChoice.dark.title, "Zora Ember")
+        XCTAssertEqual(AppIconChoice.dark.subtitle, "Deep ember Samantha-style icon")
+        XCTAssertEqual(AppIconChoice.disco.title, "Zora Pulse")
+        XCTAssertEqual(AppIconChoice.disco.subtitle, "Higher-energy Zora pulse icon")
     }
 
     func testNewChoiceDisplayMetadata() {
-        XCTAssertEqual(AppIconChoice.monochromeLight.title, "Monochrome Light")
-        XCTAssertEqual(AppIconChoice.monochromeLight.subtitle, "Always use the monochrome light icon")
-        XCTAssertEqual(AppIconChoice.monochromeDark.title, "Monochrome Dark")
-        XCTAssertEqual(AppIconChoice.monochromeDark.subtitle, "Always use the monochrome dark icon")
-        XCTAssertEqual(AppIconChoice.gradientLight.title, "Gradient Light")
-        XCTAssertEqual(AppIconChoice.gradientLight.subtitle, "Always use the gradient light icon")
-        XCTAssertEqual(AppIconChoice.gradientDark.title, "Gradient Dark")
-        XCTAssertEqual(AppIconChoice.gradientDark.subtitle, "Always use the gradient dark icon")
+        XCTAssertEqual(AppIconChoice.monochromeLight.title, "Zora Monochrome Light")
+        XCTAssertEqual(AppIconChoice.monochromeLight.subtitle, "Quiet monochrome Zora light icon")
+        XCTAssertEqual(AppIconChoice.monochromeDark.title, "Zora Monochrome Dark")
+        XCTAssertEqual(AppIconChoice.monochromeDark.subtitle, "Quiet monochrome Zora ember icon")
+        XCTAssertEqual(AppIconChoice.gradientLight.title, "Zora Gradient Light")
+        XCTAssertEqual(AppIconChoice.gradientLight.subtitle, "Saturated Zora light gradient")
+        XCTAssertEqual(AppIconChoice.gradientDark.title, "Zora Gradient Dark")
+        XCTAssertEqual(AppIconChoice.gradientDark.subtitle, "Saturated Zora ember gradient")
     }
 
     func testExplicitIconNamesAndPreviewNamesAreUnique() {
