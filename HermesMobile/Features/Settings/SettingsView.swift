@@ -109,7 +109,7 @@ struct SettingsView: View {
                     NavigationLink {
                         SkillsView(server: server, onAPIError: onAPIError)
                     } label: {
-                        SettingsAccessoryRow(title: String(localized: "Skills"), systemImage: "hammer")
+                        SettingsAccessoryRow(title: String(localized: "Skills"), systemImage: "wrench.and.screwdriver")
                     }
                     .buttonStyle(.plain)
 

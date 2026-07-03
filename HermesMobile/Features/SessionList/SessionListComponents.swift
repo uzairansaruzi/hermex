@@ -219,7 +219,7 @@ struct SessionSidebarUtilityRows: View {
         disclosureSubrow {
             SidebarNavigationSubrow(
                 title: String(localized: "Automations"),
-                subtitle: String(localized: "Scheduled jobs"),
+                subtitle: String(localized: "Scheduled automations"),
                 assetImage: "LucideCalendarClock"
             ) {
                 openDestination(.tasks)
