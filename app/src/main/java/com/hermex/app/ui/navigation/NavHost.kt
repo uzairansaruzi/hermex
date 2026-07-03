@@ -49,7 +49,10 @@ fun HermexNavHost(
     launchRequestViewModel: LaunchRequestViewModel = hiltViewModel(),
     navController: NavHostController = rememberNavController()
 ) {
-    val authState by authManager.authState.collectAsState(initial = AuthState.UNCONFIGURED)
+    // authState is a StateFlow — collectAsState() reads the current value
+    // synchronously (no dummy initial needed), so startDestination is correct
+    // on the very first frame even for logged-in users.
+    val authState by authManager.authState.collectAsState()
     val pendingRequest by launchRequestViewModel.pendingRequest.collectAsState()
 
     // C4 fix: compute startDestination once and freeze it. Live authState
@@ -64,13 +67,19 @@ fun HermexNavHost(
         )
     }
 
-    // B5 fix: redirect to onboarding when auth is lost mid-session.
-    // This replaces the old pattern where only startDestination changed
-    // (causing a silent back-stack reset) with an explicit navigation.
+    // B5 fix: redirect to onboarding when auth is lost mid-session, and
+    // redirect to sessions when logged-in state is reached while stuck on
+    // onboarding (safety net for any startDestination freeze edge case).
     LaunchedEffect(authState) {
-        if (authState == AuthState.LOGGED_OUT || authState == AuthState.UNCONFIGURED) {
-            val currentRoute = navController.currentBackStackEntry?.destination?.route
-            if (currentRoute != null && currentRoute != Routes.ONBOARDING) {
+        val currentRoute = navController.currentBackStackEntry?.destination?.route
+        when {
+            authState == AuthState.LOGGED_IN && currentRoute == Routes.ONBOARDING -> {
+                navController.navigate(Routes.SESSIONS) {
+                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                }
+            }
+            (authState == AuthState.LOGGED_OUT || authState == AuthState.UNCONFIGURED)
+                && currentRoute != null && currentRoute != Routes.ONBOARDING -> {
                 navController.navigate(Routes.ONBOARDING) {
                     popUpTo(0) { inclusive = true }
                 }
