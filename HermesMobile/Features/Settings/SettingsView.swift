@@ -349,6 +349,19 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     NavigationLink {
+                        ProvidersView(server: server)
+                    } label: {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Providers"),
+                            systemImage: "key.horizontal"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens the provider status screen.")
+
+                    SettingsDivider()
+
+                    NavigationLink {
                         CustomHeadersSettingsView(authManager: authManager)
                     } label: {
                         SettingsAccessoryRow(
