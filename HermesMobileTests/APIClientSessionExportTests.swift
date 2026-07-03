@@ -37,6 +37,9 @@ final class APIClientSessionExportTests: APIClientTestCase {
             XCTAssertEqual(request.url?.path, "/api/session/export")
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.httpBody)
+            // The response is a file download, so the export request must not
+            // claim it only accepts JSON.
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "*/*")
 
             let response = HTTPURLResponse(
                 url: request.url!,

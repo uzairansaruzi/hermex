@@ -38,7 +38,10 @@ extension APIClient {
         let (data, response) = try await sendDataReturningResponse(
             endpoint: .exportSession(sessionID: id, format: format),
             method: "GET",
-            encodedBody: nil
+            encodedBody: nil,
+            // The 2xx response is a file download (text/html or
+            // application/json), so don't claim we only accept JSON.
+            accept: "*/*"
         )
 
         let filename = SessionExportFile.filename(

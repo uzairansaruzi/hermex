@@ -577,6 +577,14 @@ final class SessionListViewModel {
         actionErrorMessage = nil
         lastError = nil
 
+        // Sweep exports leaked by earlier runs (e.g. the view was dismissed
+        // while a download was in flight, so the share sheet — and its
+        // cleanup — never appeared). Safe here: starting a new export means
+        // no share sheet is currently presenting a previous file.
+        let exportsRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("session-exports", isDirectory: true)
+        try? FileManager.default.removeItem(at: exportsRoot)
+
         do {
             let file = try await client.exportSession(
                 id: sessionId,
@@ -584,9 +592,7 @@ final class SessionListViewModel {
                 fallbackTitle: session.title
             )
 
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("session-exports", isDirectory: true)
-                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let directory = exportsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
             let fileURL = directory.appendingPathComponent(file.filename)
