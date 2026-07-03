@@ -3,7 +3,6 @@ package com.hermex.app.ui.chat
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
@@ -26,7 +25,6 @@ fun ChatScreen(
     onNavigateToSession: (String) -> Unit = {},
     onNewSession: () -> Unit = {},
     onNavigateToFileBrowser: (String) -> Unit,
-    onNavigateToGit: (String) -> Unit,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -111,11 +109,6 @@ fun ChatScreen(
                             text = { Text("Files") },
                             onClick = { showMenu = false; onNavigateToFileBrowser(sessionId) },
                             leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Git") },
-                            onClick = { showMenu = false; onNavigateToGit(sessionId) },
-                            leadingIcon = { Icon(Icons.Default.Code, contentDescription = null) }
                         )
                     }
                 }

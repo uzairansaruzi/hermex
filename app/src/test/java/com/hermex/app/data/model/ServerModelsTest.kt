@@ -1,9 +1,6 @@
 package com.hermex.app.data.model
 
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -131,15 +128,6 @@ class ServerModelsTest {
     }
 
     @Test
-    fun gitCommitRequestIncludesSessionId() {
-        val encoded = json.encodeToString(GitCommitRequest(sessionId = "session-1", message = "commit message"))
-
-        val element = json.parseToJsonElement(encoded).jsonObject
-        assertEquals("session-1", element["session_id"]?.jsonPrimitive?.content)
-        assertEquals("commit message", element["message"]?.jsonPrimitive?.content)
-    }
-
-    @Test
     fun sessionResponseDecodesMessagesOffsetForHistoryActions() {
         val decoded = json.decodeFromString<SessionResponse>(
             """
@@ -175,36 +163,6 @@ class ServerModelsTest {
         assertEquals(true, decoded.entries?.get(0)?.isDirectory)
         assertEquals(true, decoded.entries?.get(1)?.isDirectory)
         assertEquals(false, decoded.entries?.get(2)?.isDirectory)
-    }
-
-    @Test
-    fun gitStatusResponseDecodesGitEnvelopeAndTotals() {
-        val decoded = json.decodeFromString<GitStatusEnvelope>(
-            """
-            {
-              "git": {
-                "is_git": true,
-                "branch": "feature/foo",
-                "upstream": "origin/feature/foo",
-                "ahead": 1,
-                "behind": 2,
-                "totals": { "changed": 2, "staged": 1, "unstaged": 1, "untracked": 1, "conflicts": 0 },
-                "files": [
-                  { "path": "Sources/App.swift", "status": "M", "staged": false, "unstaged": true, "ignored": false },
-                  { "path": "New.swift", "status": "??", "untracked": true, "ignored": false }
-                ]
-              }
-            }
-            """.trimIndent()
-        )
-
-        val status = decoded.git
-        assertEquals(true, status?.isGit)
-        assertEquals("feature/foo", status?.branch)
-        assertEquals(1, status?.stagedCount)
-        assertEquals(1, status?.modifiedCount)
-        assertEquals(1, status?.untrackedCount)
-        assertEquals(2, status?.files?.size)
     }
 
     @Test

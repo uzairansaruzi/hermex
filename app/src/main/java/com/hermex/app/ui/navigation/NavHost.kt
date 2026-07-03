@@ -23,7 +23,6 @@ import com.hermex.app.ui.memory.MemoryScreen
 import com.hermex.app.ui.insights.InsightsScreen
 import com.hermex.app.ui.settings.SettingsScreen
 import com.hermex.app.ui.workspace.FileBrowserScreen
-import com.hermex.app.ui.git.GitWorkspaceScreen
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -35,13 +34,10 @@ object Routes {
     const val INSIGHTS = "insights"
     const val SETTINGS = "settings"
     const val FILE_BROWSER = "file_browser/{sessionId}"
-    const val GIT_WORKSPACE = "git/{sessionId}"
-
     fun chat(sessionId: String, initialDraft: String = "", autoStartVoice: Boolean = false): String {
         return "chat/${Uri.encode(sessionId)}?draft=${Uri.encode(initialDraft)}&voice=$autoStartVoice"
     }
     fun fileBrowser(sessionId: String) = "file_browser/$sessionId"
-    fun git(sessionId: String) = "git/$sessionId"
 }
 
 @Composable
@@ -155,9 +151,6 @@ fun HermexNavHost(
                 onNewSession = { navController.navigate(Routes.SESSIONS) },
                 onNavigateToFileBrowser = { sid ->
                     navController.navigate(Routes.fileBrowser(sid))
-                },
-                onNavigateToGit = { sid ->
-                    navController.navigate(Routes.git(sid))
                 }
             )
         }
@@ -201,15 +194,5 @@ fun HermexNavHost(
             )
         }
 
-        composable(
-            route = Routes.GIT_WORKSPACE,
-            arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: return@composable
-            GitWorkspaceScreen(
-                sessionId = sessionId,
-                onBack = { navController.popBackStack() }
-            )
-        }
     }
 }

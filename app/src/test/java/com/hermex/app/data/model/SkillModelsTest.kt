@@ -24,12 +24,7 @@ class SkillModelsTest {
             """.trimIndent()
         )
 
-        val decodedSkills = decoded.skills as Any?
-        val skill = when (decodedSkills) {
-            is List<*> -> decodedSkills.single() as SkillSummary
-            is Map<*, *> -> decodedSkills.values.filterIsInstance<List<*>>().flatten().single() as SkillSummary
-            else -> error("Unexpected skills container: $decodedSkills")
-        }
+        val skill = decoded.skills!!.single()
         assertEquals("agenttrace-session-audit", skill.name)
         assertEquals("Audit local AI coding-agent sessions with agenttrace.", skill.description)
     }

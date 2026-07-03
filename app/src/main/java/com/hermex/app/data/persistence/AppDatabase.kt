@@ -86,7 +86,7 @@ interface MessageDao {
     suspend fun evictOlderThan(threshold: Long)
 }
 
-@Database(entities = [CachedSession::class, CachedMessage::class], version = 1, exportSchema = false)
+@Database(entities = [CachedSession::class, CachedMessage::class], version = 1)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun sessionDao(): SessionDao
     abstract fun messageDao(): MessageDao

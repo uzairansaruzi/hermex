@@ -18,6 +18,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
@@ -29,8 +30,7 @@ class BackendE2ETest {
         val args = InstrumentationRegistry.getArguments()
         val serverUrl = args.getString("serverUrl")?.trimEnd('/').orEmpty()
         val password = args.getString("password").orEmpty()
-        assertFalse("Instrumentation argument serverUrl is required", serverUrl.isBlank())
-        assertFalse("Instrumentation argument password is required", password.isBlank())
+        assumeTrue("Instrumentation arguments serverUrl and password are required", serverUrl.isNotBlank() && password.isNotBlank())
 
         val cookieJar = InMemoryCookieJar()
         val okHttp = OkHttpClient.Builder()

@@ -46,8 +46,4 @@ object Endpoints {
     const val SKILLS = "/api/skills"
     const val SKILLS_CONTENT = "/api/skills/content"
     const val MEMORY = "/api/memory"
-    const val GIT_STATUS = "/api/git/status"
-    const val GIT_BRANCHES = "/api/git/branches"
-    const val GIT_DIFF = "/api/git/diff"
-    const val TRANSCRIBE = "/api/transcribe"
 }

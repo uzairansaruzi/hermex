@@ -170,18 +170,6 @@ class ApiClient @Inject constructor(
 
     suspend fun memory(): MemoryResponse = get(Endpoints.MEMORY)
 
-    suspend fun gitStatus(sessionId: String): GitStatusResponse {
-        return get<GitStatusEnvelope>(Endpoints.GIT_STATUS, mapOf("session_id" to sessionId)).git ?: GitStatusResponse()
-    }
-
-    suspend fun gitBranches(sessionId: String): GitBranchesResponse {
-        return get(Endpoints.GIT_BRANCHES, mapOf("session_id" to sessionId))
-    }
-
-    suspend fun gitDiff(sessionId: String): GitDiffResponse {
-        return get(Endpoints.GIT_DIFF, mapOf("session_id" to sessionId))
-    }
-
     fun streamUrl(streamId: String): HttpUrl {
         return "${baseUrl}${Endpoints.CHAT_STREAM}?stream_id=$streamId".toHttpUrl()
     }
