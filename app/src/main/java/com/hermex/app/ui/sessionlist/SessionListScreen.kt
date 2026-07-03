@@ -79,6 +79,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -96,7 +99,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun SessionListScreen(
     onSessionClick: (String) -> Unit,
@@ -151,51 +154,97 @@ fun SessionListScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Column(
+        // The header scrolls with the content (as on iOS) so short viewports
+        // (landscape, split-screen) can still reach the session list.
+        val pullState = rememberPullRefreshState(
+            refreshing = uiState.isRefreshing,
+            onRefresh = viewModel::refresh
+        )
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .pullRefresh(pullState)
         ) {
-            HermexHomeHeader(
-                searchQuery = uiState.searchQuery,
-                onSearchQueryChange = viewModel::setSearchQuery,
-                onReconnectClick = onReconnectClick,
-                onSettingsClick = onSettingsClick,
-                onTasksClick = onTasksClick,
-                onSkillsClick = onSkillsClick,
-                onMemoryClick = onMemoryClick,
-                onInsightsClick = onInsightsClick
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 8.dp)
+            ) {
+                item(key = "home_header") {
+                    HermexHomeHeader(
+                        searchQuery = uiState.searchQuery,
+                        onSearchQueryChange = viewModel::setSearchQuery,
+                        onReconnectClick = onReconnectClick,
+                        onSettingsClick = onSettingsClick,
+                        onTasksClick = onTasksClick,
+                        onSkillsClick = onSkillsClick,
+                        onMemoryClick = onMemoryClick,
+                        onInsightsClick = onInsightsClick
+                    )
+                }
+
+                when {
+                    uiState.isLoading && uiState.sections.isEmpty() -> item(key = "loading") {
+                        Box(
+                            modifier = Modifier
+                                .fillParentMaxWidth()
+                                .padding(vertical = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    uiState.sections.isEmpty() -> item(key = "empty") {
+                        EmptyPlaceholder(
+                            isSearchActive = uiState.searchQuery.isNotBlank(),
+                            errorMessage = uiState.errorMessage,
+                            onRefresh = viewModel::refresh,
+                            onReconnect = onReconnectClick,
+                            onSettings = onSettingsClick
+                        )
+                    }
+                    else -> {
+                        if (uiState.isRefreshing) {
+                            item(key = "refreshing") {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                        uiState.sections.forEach { section ->
+                            item(key = "header_${section.kind}") {
+                                SectionHeader(title = section.title)
+                            }
+
+                            items(
+                                items = section.sessions,
+                                key = { it.sessionId ?: it.hashCode().toString() }
+                            ) { session ->
+                                SwipeableSessionRow(
+                                    session = session,
+                                    onClick = { session.sessionId?.let(onSessionClick) },
+                                    onPinToggle = { viewModel.togglePinned(session) },
+                                    onArchive = { viewModel.archive(session) },
+                                    onRestore = { viewModel.restore(session) },
+                                    onDelete = { sessionToDelete = session },
+                                    onRename = { sessionToRename = session },
+                                    onDuplicate = { viewModel.duplicate(session) },
+                                    onMove = { sessionToMove = session },
+                                    isMutating = viewModel.isMutating(session)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            PullRefreshIndicator(
+                refreshing = uiState.isRefreshing,
+                state = pullState,
+                modifier = Modifier.align(Alignment.TopCenter)
             )
 
-            Box(modifier = Modifier.weight(1f)) {
-                when {
-                    uiState.isLoading && uiState.sections.isEmpty() -> LoadingPlaceholder()
-                    uiState.sections.isEmpty() -> EmptyPlaceholder(
-                        isSearchActive = uiState.searchQuery.isNotBlank(),
-                        errorMessage = uiState.errorMessage,
-                        onRefresh = viewModel::refresh,
-                        onReconnect = onReconnectClick,
-                        onSettings = onSettingsClick
-                    )
-                    else -> SessionListContent(
-                        sections = uiState.sections,
-                        isRefreshing = uiState.isRefreshing,
-                        onRefresh = viewModel::refresh,
-                        onSessionClick = onSessionClick,
-                        onPinToggle = viewModel::togglePinned,
-                        onArchive = viewModel::archive,
-                        onRestore = viewModel::restore,
-                        onDelete = { sessionToDelete = it },
-                        onRename = { sessionToRename = it },
-                        onDuplicate = viewModel::duplicate,
-                        onMove = { sessionToMove = it },
-                        isMutating = viewModel::isMutating
-                    )
-                }
-
-                if (uiState.isViewingCachedData) {
-                    OfflineBanner(modifier = Modifier.align(Alignment.TopCenter))
-                }
+            if (uiState.isViewingCachedData) {
+                OfflineBanner(modifier = Modifier.align(Alignment.TopCenter))
             }
         }
     }
@@ -294,12 +343,16 @@ private fun HermexHomeHeader(
                 }
             }
             Spacer(modifier = Modifier.width(10.dp))
+            val settingsLabel = stringResource(R.string.settings)
             Box(
-                modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onSettingsClick
-                )
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        role = Role.Button,
+                        onClick = onSettingsClick
+                    )
+                    .semantics { contentDescription = settingsLabel }
             ) {
                 HermexAvatar(initials = "H")
             }
@@ -402,70 +455,6 @@ private fun NewChatCapsuleButton(onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium
             )
         }
-    }
-}
-
-@OptIn(ExperimentalMaterialApi::class)
-@Composable
-private fun SessionListContent(
-    sections: List<SessionSection>,
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit,
-    onSessionClick: (String) -> Unit,
-    onPinToggle: (SessionSummary) -> Unit,
-    onArchive: (SessionSummary) -> Unit,
-    onRestore: (SessionSummary) -> Unit,
-    onDelete: (SessionSummary) -> Unit,
-    onRename: (SessionSummary) -> Unit,
-    onDuplicate: (SessionSummary) -> Unit,
-    onMove: (SessionSummary) -> Unit,
-    isMutating: (SessionSummary) -> Boolean
-) {
-    val pullState = rememberPullRefreshState(
-        refreshing = isRefreshing,
-        onRefresh = onRefresh
-    )
-
-    Box(modifier = Modifier.pullRefresh(pullState)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            if (isRefreshing) {
-                item(key = "refreshing") {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
-            sections.forEach { section ->
-                item(key = "header_${section.kind}") {
-                    SectionHeader(title = section.title)
-                }
-
-                items(
-                    items = section.sessions,
-                    key = { it.sessionId ?: it.hashCode().toString() }
-                ) { session ->
-                    SwipeableSessionRow(
-                        session = session,
-                        onClick = { session.sessionId?.let(onSessionClick) },
-                        onPinToggle = { onPinToggle(session) },
-                        onArchive = { onArchive(session) },
-                        onRestore = { onRestore(session) },
-                        onDelete = { onDelete(session) },
-                        onRename = { onRename(session) },
-                        onDuplicate = { onDuplicate(session) },
-                        onMove = { onMove(session) },
-                        isMutating = isMutating(session)
-                    )
-                }
-            }
-        }
-
-        PullRefreshIndicator(
-            refreshing = isRefreshing,
-            state = pullState,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
     }
 }
 
@@ -704,8 +693,8 @@ private fun EmptyPlaceholder(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 48.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -741,16 +730,6 @@ private fun EmptyPlaceholder(
                 Text(stringResource(R.string.settings))
             }
         }
-    }
-}
-
-@Composable
-private fun LoadingPlaceholder() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        CircularProgressIndicator()
     }
 }
 
