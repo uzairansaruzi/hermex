@@ -25,10 +25,14 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   Triage bot/review comments before accepting them.
 
 ## Hard rules
-1. **Never invent API endpoints or JSON shapes.** Read the pinned upstream copy at
-   `.codex-tmp/hermes-webui/api/routes.py` (clone it if missing:
-   `git clone https://github.com/nesquena/hermes-webui .codex-tmp/hermes-webui`),
-   or `curl` your own running server. That upstream copy is read-only — never modify it.
+1. **Never invent API endpoints or JSON shapes.** Verify in this precedence order:
+   (a) `curl` your own running server — final arbiter; (b) the official API docs at
+   https://get-hermes.ai/api-docs/ — best for endpoint intent, auth contract, SSE
+   event vocabulary, and conventions (no version pin; tracks the latest release);
+   (c) the pinned upstream copy at `.codex-tmp/hermes-webui/api/routes.py` — ground
+   truth for exact JSON shapes, but may lag the release the docs describe (clone it
+   if missing: `git clone https://github.com/nesquena/hermes-webui .codex-tmp/hermes-webui`).
+   That upstream copy is read-only — never modify it (refreshing via `git pull` is fine).
 2. **No new third-party dependencies** beyond the spec's locked list without approval.
 3. **Tolerant decoding:** every `Codable` model uses optionals for fields upstream
    might add/rename. Never crash on unknown fields.
