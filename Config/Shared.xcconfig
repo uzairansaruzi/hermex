@@ -5,10 +5,10 @@
 // Apple team. Create Config/Local.xcconfig (gitignored) instead — see
 // CONTRIBUTING.md ("Code signing for contributors").
 
-DEVELOPMENT_TEAM = 6GYD9C9N6R
+DEVELOPMENT_TEAM = CY4LHQ7XSH
 APP_IDENTIFIER_SUFFIX =
-APP_BUNDLE_IDENTIFIER = com.uzairansar.hermesmobile$(APP_IDENTIFIER_SUFFIX)
-APP_GROUP_IDENTIFIER = group.com.uzairansar.hermesmobile$(APP_IDENTIFIER_SUFFIX)
+APP_BUNDLE_IDENTIFIER = com.sourcebottle.hermex$(APP_IDENTIFIER_SUFFIX)
+APP_GROUP_IDENTIFIER = group.com.sourcebottle.hermex$(APP_IDENTIFIER_SUFFIX)
 
 // Optional per-machine overrides. This include must stay last: later
 // assignments win, so Local.xcconfig values override the defaults above.

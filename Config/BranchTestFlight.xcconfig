@@ -4,10 +4,10 @@
 // xcodebuild ... -xcconfig Config/BranchTestFlight.xcconfig CURRENT_PROJECT_VERSION=<unique-build-number>
 //
 // The derived bundle IDs are:
-// - com.uzairansar.hermesmobile.branch
-// - com.uzairansar.hermesmobile.branch.shareextension
-// - com.uzairansar.hermesmobile.branch.liveactivitywidget
+// - com.sourcebottle.hermex.branch
+// - com.sourcebottle.hermex.branch.shareextension
+// - com.sourcebottle.hermex.branch.liveactivitywidget
 
 APP_IDENTIFIER_SUFFIX = .branch
-APP_DISPLAY_NAME = Hermex Branch
+APP_DISPLAY_NAME = Zora Branch
 APP_URL_SCHEME_SUFFIX = -branch

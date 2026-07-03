@@ -12,7 +12,7 @@ struct HermesMobileApp: App {
             let arguments = ProcessInfo.processInfo.arguments
             // Launch argument hook so the Streaming Lab can be opened without
             // UI navigation (agent-driven simulator diagnosis, issue #234):
-            // `xcrun simctl launch <udid> com.uzairansar.hermesmobile --streaming-lab`
+            // `xcrun simctl launch <udid> com.sourcebottle.hermex --streaming-lab`
             if arguments.contains("--streaming-lab") {
                 NavigationStack {
                     StreamingLabView()
