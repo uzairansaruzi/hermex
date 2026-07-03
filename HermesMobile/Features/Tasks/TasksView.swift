@@ -44,7 +44,8 @@ struct TasksView: View {
                     draft: CronJobEditorDraft(),
                     saveTitle: String(localized: "Create"),
                     isSaving: viewModel.isMutating,
-                    errorMessage: viewModel.actionErrorMessage
+                    errorMessage: viewModel.actionErrorMessage,
+                    deliveryOptions: viewModel.deliveryOptions
                 ) { draft in
                     let didCreate = await viewModel.create(from: draft)
                     if let lastError = viewModel.lastError {
@@ -183,6 +184,10 @@ private struct CronJobRowView: View {
                     CronJobMetadataRow(title: String(localized: "Model"), value: model)
                 }
 
+                if let provider = job.provider, !provider.isEmpty {
+                    CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
+                }
+
                 if let profile = job.profile, !profile.isEmpty {
                     CronJobMetadataRow(title: String(localized: "Profile"), value: profile)
                 }
@@ -240,12 +245,18 @@ struct CronJobEditorSheet: View {
     @State private var draft: CronJobEditorDraft
     @Environment(\.dismiss) private var dismiss
 
+    /// Picker rows built once from the draft's initial deliver value, so an
+    /// unknown/legacy value keeps its custom row even after the user selects
+    /// another option. `nil` means fall back to free-text entry.
+    private let deliverPickerOptions: [CronDeliverPickerOption]?
+
     init(
         title: String,
         draft: CronJobEditorDraft,
         saveTitle: String,
         isSaving: Bool,
         errorMessage: String?,
+        deliveryOptions: [CronDeliveryOption]? = nil,
         onSave: @escaping (CronJobEditorDraft) async -> Bool
     ) {
         self.title = title
@@ -253,6 +264,10 @@ struct CronJobEditorSheet: View {
         self.isSaving = isSaving
         self.errorMessage = errorMessage
         self.onSave = onSave
+        self.deliverPickerOptions = CronDeliverPicker.options(
+            serverOptions: deliveryOptions,
+            currentValue: draft.deliver
+        )
         _draft = State(initialValue: draft)
     }
 
@@ -271,9 +286,24 @@ struct CronJobEditorSheet: View {
                 }
 
                 Section("Delivery") {
-                    TextField("Deliver", text: $draft.deliver)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    if let deliverPickerOptions {
+                        Picker("Deliver", selection: $draft.deliver) {
+                            ForEach(deliverPickerOptions) { option in
+                                Group {
+                                    if option.isCustom {
+                                        Text("\(option.label) (custom)")
+                                    } else {
+                                        Text(option.label)
+                                    }
+                                }
+                                .tag(option.value)
+                            }
+                        }
+                    } else {
+                        TextField("Deliver", text: $draft.deliver)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
 
                     Toggle("Toast Notifications", isOn: $draft.toastNotifications)
                 }
@@ -285,6 +315,10 @@ struct CronJobEditorSheet: View {
                         .autocorrectionDisabled()
 
                     TextField("Model", text: $draft.model)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    TextField("Provider", text: $draft.provider)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 

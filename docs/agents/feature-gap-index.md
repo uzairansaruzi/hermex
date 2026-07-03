@@ -71,7 +71,6 @@ sub-paths of a group. Do not reorder casually.
 | `/api/git/` | roadmap | P3 | write | Git review & management — branches/diff/commit/stage/push/pull/discard/stash |
 | `/api/rollback/` | roadmap | P3 | write | Git Info & Rollback — checkpoint list/diff/restore |
 | `/api/crons/history` | roadmap | P2 | read | Cron History / Recent Runs |
-| `/api/crons/delivery-options` | roadmap | P2 | read | Cron History / Recent Runs |
 | `/api/session/usage` | roadmap | P2 | read | Session Token Usage — mostly covered by the context ring |
 | `/api/session/clear` | roadmap | P2 | write | Session Clear — destructive; needs confirmation |
 | `/api/session/export` | roadmap | P4 | — | Session Export / Share — owner-deferred |

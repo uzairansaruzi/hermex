@@ -213,6 +213,12 @@ final class ContractReadinessTests: XCTestCase {
                 path: "/api/crons/output",
                 query: ["job_id": "job-123", "limit": "5"]
             ),
+            .init(
+                name: "cron delivery options",
+                method: "GET",
+                endpoint: .cronDeliveryOptions,
+                path: "/api/crons/delivery-options"
+            ),
             .init(name: "memory", method: "GET", endpoint: .memory, path: "/api/memory"),
             .init(name: "memory write", method: "POST", endpoint: .memoryWrite, path: "/api/memory/write"),
             .init(name: "skills", method: "GET", endpoint: .skills, path: "/api/skills"),
