@@ -572,6 +572,14 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertNil(response.error)
     }
 
+    func testProfilePickerCancellationErrorDetection() {
+        XCTAssertTrue(DefaultProfilePickerView.isCancellationError(CancellationError()))
+        XCTAssertTrue(DefaultProfilePickerView.isCancellationError(URLError(.cancelled)))
+        XCTAssertTrue(DefaultProfilePickerView.isCancellationError(APIError.network(underlying: URLError(.cancelled))))
+        XCTAssertFalse(DefaultProfilePickerView.isCancellationError(URLError(.timedOut)))
+        XCTAssertFalse(DefaultProfilePickerView.isCancellationError(APIError.unauthorized))
+    }
+
     func testProfileNameRulesMirrorUpstreamPattern() {
         XCTAssertTrue(ProfileNameRules.isValid("work"))
         XCTAssertTrue(ProfileNameRules.isValid("a"))

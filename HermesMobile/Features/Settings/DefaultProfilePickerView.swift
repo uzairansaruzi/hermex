@@ -254,10 +254,33 @@ struct DefaultProfilePickerView: View {
             activeProfileName = response.effectiveDefaultProfileName ?? currentDefaultProfileName
             isSingleProfileMode = response.singleProfileMode ?? false
         } catch {
-            errorMessage = error.localizedDescription
+            // A cancelled .task (view dismissed mid-load) must not surface a
+            // "cancelled" error into state.
+            if !Self.isCancellationError(error) {
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false
+    }
+
+    /// Mirrors `SessionListViewModel.isCancellationError`: cancellation arrives
+    /// either as `CancellationError` or as a `.cancelled` `URLError`, possibly
+    /// wrapped in `APIError.network`.
+    static func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let underlying: Error
+        if case APIError.network(let wrapped) = error {
+            underlying = wrapped
+        } else {
+            underlying = error
+        }
+
+        guard let urlError = underlying as? URLError else { return false }
+        return urlError.code == .cancelled
     }
 
     private func save(_ profile: ProfileSummary) async {
