@@ -19,6 +19,13 @@ struct SettingsView: View {
         self.authManager = authManager
         self.server = server
         self.initialScrollTarget = initialScrollTarget
+        // The CLI-sessions toggle is server-synced (#19): loads adopt the
+        // server's `show_cli_sessions`, toggles POST it back, failures revert.
+        // Stored per-server so one server's value never leaks into another.
+        _cliSessionsSync = State(initialValue: CliSessionsSyncModel(server: server) { value in
+            let client = APIClient(baseURL: server)
+            _ = try await client.updateSettings(showCliSessions: value)
+        })
     }
 
     @ScaledMetric(relativeTo: .body) private var settingsCardSpacing: CGFloat = 18
@@ -55,7 +62,7 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
-    @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
+    @State private var cliSessionsSync: CliSessionsSyncModel
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
@@ -274,8 +281,17 @@ struct SettingsView: View {
                     SettingsToggleRow(
                         title: String(localized: "CLI Sessions"),
                         systemImage: "terminal",
-                        isOn: $showsCliSessions
+                        isOn: Binding(
+                            get: { cliSessionsSync.showsCliSessions },
+                            set: { cliSessionsSync.setShowsCliSessions($0) }
+                        )
                     )
+
+                    if let syncError = cliSessionsSync.syncErrorMessage {
+                        SettingsErrorFootnote(syncError)
+                    } else if cliSessionsSync.serverSyncsCliSessions {
+                        SettingsFootnote(String(localized: "CLI session visibility is synced with this server, so the WebUI follows it too."))
+                    }
                 }
 
                 SettingsCard(title: String(localized: "Siri & Shortcuts")) {
@@ -865,7 +881,10 @@ struct SettingsView: View {
 
         do {
             let settings = try await client.settings()
-            serverVersion = settings.webuiVersion ?? settings.version
+            serverVersion = settings.webuiVersion
+            // Server wins on conflict: `show_cli_sessions` is the cross-device
+            // truth, the local value is just its offline cache (#19).
+            cliSessionsSync.adopt(serverValue: settings.showCliSessions)
             if serverVersion == nil {
                 serverSettingsError = String(localized: "Unknown")
             }
@@ -1012,7 +1031,7 @@ struct SettingsView: View {
                 continue
             }
 
-            let newVersion = settings.webuiVersion ?? settings.version
+            let newVersion = settings.webuiVersion
             let updateState = (try? await client.updatesCheck())?.webuiUpdateState ?? .unavailable
             let restartConfirmed = (newVersion != nil && newVersion != previousVersion)
                 || updateState == .upToDate
@@ -1463,6 +1482,30 @@ private struct SettingsFootnote: View {
             .font(AppFont.caption())
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A footnote for inline failures (e.g. the CLI-sessions server write): same
+/// footprint as `SettingsFootnote`, plus a warning icon so it reads as an error.
+private struct SettingsErrorFootnote: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(AppFont.caption())
+                .foregroundStyle(.orange)
+
+            Text(text)
+                .font(AppFont.caption())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -91,7 +91,7 @@ sub-paths of a group. Do not reorder casually.
 | `/api/models/refresh` | roadmap | P3 | — | Provider / Model Management |
 | `/api/models/live` | roadmap | P3 | — | Provider / Model Management — live model fetch |
 | `/api/model/` | roadmap | P3 | — | Provider / Model Management |
-| `/api/settings` | roadmap | P3 | secret | Settings Write — bot name + password operations |
+| `/api/settings` | roadmap | P3 | secret | Settings Write — single-key `show_cli_sessions` write shipped (#19); full Settings Write (bot name + password operations) remains roadmap |
 | `/api/profile/` | roadmap | P3 | write | Profile Management — active/create/delete |
 | `/api/skills/` | roadmap | P3 | write | Skill Management — toggle shipped; save/delete remain roadmap |
 | `/api/transcribe` | roadmap | P3 | privacy | Audio Transcription — server-side; audio leaves the device |

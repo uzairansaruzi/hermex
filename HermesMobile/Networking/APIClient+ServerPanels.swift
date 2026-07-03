@@ -102,6 +102,20 @@ extension APIClient {
         try await send(endpoint: .settings, method: "GET")
     }
 
+    /// Writes the single server-synced session-visibility key (#19):
+    /// `POST /api/settings {"show_cli_sessions": <bool>}`. Upstream
+    /// `save_settings(body)` merges exactly the keys sent — nothing else is
+    /// touched — and responds with the full saved settings dict, so the
+    /// response reuses `SettingsResponse`. A general settings editor stays
+    /// out of scope.
+    func updateSettings(showCliSessions: Bool) async throws -> SettingsResponse {
+        try await send(
+            endpoint: .settings,
+            method: "POST",
+            body: ShowCliSessionsUpdateRequest(showCliSessions: showCliSessions)
+        )
+    }
+
     func updatesCheck() async throws -> UpdatesCheckResponse {
         try await send(endpoint: .updatesCheck, method: "GET")
     }
@@ -173,3 +187,7 @@ private struct UpdatesCheckForceRequest: Encodable {
     let force: Bool
 }
 
+private struct ShowCliSessionsUpdateRequest: Encodable {
+    // Encoded as `show_cli_sessions` via the client's convertToSnakeCase strategy.
+    let showCliSessions: Bool
+}

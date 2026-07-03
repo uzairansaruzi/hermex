@@ -42,6 +42,7 @@ to `CacheStore`. Two consequences:
 | Offline session/message cache | SwiftData (`CachedSession`, `CachedMessage`) | Keyed by `serverURLString` (the active server URL's `absoluteString`) on the unique `cacheKey` and on every read/write predicate. See below. |
 | Default model / profile | Not persisted locally | Held in transient `@State` in `SettingsView` and re-fetched from the **active** server's API client each time Settings opens. There is no cross-server storage to leak. New sessions use the server's current default. |
 | Active project / session selection | View-local `@State` only | Not persisted. Destroyed and rebuilt on switch via `.id(server)`. |
+| "Show CLI sessions" toggle | UserDefaults, per-server key (`SessionRowDisplaySettings.showCliSessionsKey(for:)` = `sessionRow.showCliSessions|<server absoluteString>`) | Per-server since #19: the toggle mirrors the server's own `show_cli_sessions` setting (adopted on Settings load, written back via `POST /api/settings`), so an adopted value on one server cannot leak to another. Reads fall back to the pre-#19 global key as a migration seed, then to shown-by-default. Tested in `CliSessionsSyncModelTests`. |
 
 ### Offline cache keying (`Persistence/CacheStore.swift`)
 
@@ -69,7 +70,7 @@ per-server:
 - Haptics (`AppHaptics`)
 - Response-completion notifications + permission flag (`ResponseCompletionNotifications`)
 - Live Activity response-excerpt privacy (`AgentRunLiveActivityPrivacy`)
-- Session-row display toggles (`SessionRowDisplaySettings`: message count, workspace, cron, CLI)
+- Session-row display toggles (`SessionRowDisplaySettings`: message count, workspace, cron — the CLI toggle moved to per-server storage in #19, see the per-server table above)
 - Sidebar disclosure state (`sessionSidebar.profilesAreExpanded` / `projectsAreExpanded`)
 - Chat transcript display toggles (`ChatTranscriptDisplaySettings`: thinking/tool cards, attachment paths, timestamps, code-block wrap)
 - Streamed-text animation (`StreamedTextAnimationSettings`)

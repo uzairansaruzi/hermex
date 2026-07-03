@@ -12030,6 +12030,112 @@
         }
       }
     },
+    "CLI session visibility is synced with this server, so the WebUI follows it too." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تتم مزامنة إظهار جلسات CLI مع هذا الخادم، لذا يتبعها WebUI أيضًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Sichtbarkeit von CLI-Sitzungen wird mit diesem Server synchronisiert, sodass auch die WebUI ihr folgt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La visibilidad de las sesiones CLI se sincroniza con este servidor, así que la WebUI también la sigue."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La visibilité des sessions CLI est synchronisée avec ce serveur ; la WebUI la suit donc aussi."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הצגת מפגשי CLI מסונכרנת עם שרת זה, ולכן גם ה-WebUI עוקב אחריה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La visibilità delle sessioni CLI è sincronizzata con questo server, quindi anche la WebUI la segue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI セッションの表示はこのサーバーと同期されるため、WebUI にも反映されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI 세션 표시 여부는 이 서버와 동기화되므로 WebUI도 이를 따릅니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De zichtbaarheid van CLI-sessies wordt gesynchroniseerd met deze server, dus de WebUI volgt deze ook."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Widoczność sesji CLI jest synchronizowana z tym serwerem, więc WebUI również ją odzwierciedla."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A visibilidade das sessões CLI é sincronizada com este servidor, então a WebUI também a acompanha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Видимость сессий CLI синхронизируется с этим сервером, поэтому WebUI также следует ей."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI oturumlarının görünürlüğü bu sunucuyla eşitlenir, bu yüzden WebUI de bunu izler."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI سیشنز کی نمائش اس سرور کے ساتھ ہم آہنگ رہتی ہے، اس لیے WebUI بھی اسی کی پیروی کرتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI 工作階段的顯示會與此伺服器同步，因此 WebUI 也會跟隨。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI 会话的显示与此服务器同步，因此 WebUI 也会跟随。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "CLI 工作階段的顯示會與此伺服器同步，因此 WebUI 也會跟隨。"
+          }
+        }
+      }
+    },
     "Cached" : {
       "localizations" : {
         "ar" : {
@@ -22944,6 +23050,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "無法儲存記憶。"
+          }
+        }
+      }
+    },
+    "Could not save to the server. The toggle was reverted." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تعذّر الحفظ على الخادم. تمت إعادة المفتاح إلى حالته السابقة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Konnte nicht auf dem Server gespeichert werden. Der Schalter wurde zurückgesetzt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "No se pudo guardar en el servidor. El interruptor se revirtió."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impossible d'enregistrer sur le serveur. Le réglage a été rétabli."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לא ניתן היה לשמור בשרת. המתג הוחזר למצבו הקודם."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impossibile salvare sul server. L'interruttore è stato ripristinato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "サーバーに保存できませんでした。トグルは元に戻されました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "서버에 저장하지 못했습니다. 토글이 되돌려졌습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kon niet opslaan op de server. De schakelaar is teruggezet."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nie udało się zapisać na serwerze. Przełącznik został przywrócony."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Não foi possível salvar no servidor. O botão foi revertido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Не удалось сохранить на сервере. Переключатель был возвращён."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sunucuya kaydedilemedi. Anahtar geri alındı."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سرور پر محفوظ نہیں ہو سکا۔ ٹوگل واپس پلٹا دیا گیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "無法儲存到伺服器。開關已還原。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "无法保存到服务器。开关已恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "無法儲存到伺服器。開關已還原。"
           }
         }
       }

@@ -42,7 +42,10 @@ struct SessionListView: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
-    @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
+    // Per-server key (#19): the CLI toggle mirrors the active server's
+    // `show_cli_sessions`, so its cached value must not leak across servers.
+    // Configured in `init`, where the server URL is known.
+    @AppStorage private var showsCliSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
@@ -63,6 +66,10 @@ struct SessionListView: View {
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
         _viewModel = State(initialValue: SessionListViewModel(server: server))
+        _showsCliSessions = AppStorage(
+            wrappedValue: SessionRowDisplaySettings.showsCliSessions(for: server),
+            SessionRowDisplaySettings.showCliSessionsKey(for: server)
+        )
     }
 
     var body: some View {
