@@ -295,10 +295,27 @@ struct ReasoningStatusResponse: Decodable, Equatable {
     let showReasoning: Bool?
     let reasoningEffort: String?
     let effort: String?
+    /// Model-aware effort vocabulary from `GET /api/reasoning` (`supported_efforts`).
+    /// `nil` on older servers that don't send the field — callers must fall back
+    /// to the static effort list (issue #18).
+    let supportedEfforts: [String]?
+    /// `supports_reasoning_effort` — `false` means the resolved model has no
+    /// effort control at all (hide the picker). `nil` on older servers.
+    let supportsReasoningEffort: Bool?
     let error: String?
 
     var effectiveEffort: String? {
         reasoningEffort ?? effort
+    }
+
+    /// `supported_efforts` trimmed, lowercased, de-duplicated, order preserved.
+    /// Stays `nil` when the server omitted the field (legacy fallback signal).
+    var normalizedSupportedEfforts: [String]? {
+        guard let supportedEfforts else { return nil }
+        var seen = Set<String>()
+        return supportedEfforts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
 
