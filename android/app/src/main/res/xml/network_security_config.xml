@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext must be permitted at the platform level because Android's Network
+  Security Config cannot express the product rule "plain HTTP only toward
+  Tailscale's 100.64.0.0/10 CGNAT range (+ loopback)" — there is no CIDR
+  support. The real rule is enforced in the connection layer instead:
+  ServerUrlNormalizer / ApiClient reject any http:// URL whose host fails
+  CleartextPolicy.allowsCleartext(). See docs/ANDROID_PORT_PLAN.md §2.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -184,13 +184,13 @@ development at the same cadence as the iOS build). Check phases off as they land
   - [x] Path-filtered CI: build + unit tests on `android/**` pushes
   - [x] Locked dependency list + `android/AGENTS.md` committed; wire tests to the
         shared fixtures and root upstream pin
-- [ ] **Phase 1 — Networking core + auth** (2–3 days)
-  - [ ] `ApiClient`, login/health, cookie/token handling
-  - [ ] Keystore-backed secret storage
-  - [ ] Tolerant-decoding test harness with MockWebServer
-- [ ] **Phase 2 — Onboarding** (2 days)
-  - [ ] Welcome → connect (URL + password) → Tailscale/tunnel guidance pages
-  - [ ] Connection troubleshooting states
+- [x] **Phase 1 — Networking core + auth** (2–3 days)
+  - [x] `ApiClient`, login/health, cookie/token handling
+  - [x] Keystore-backed secret storage
+  - [x] Tolerant-decoding test harness with MockWebServer
+- [x] **Phase 2 — Onboarding** (2 days)
+  - [x] Welcome → connect (URL + password) → Tailscale/tunnel guidance pages
+  - [x] Connection troubleshooting states
 - [ ] **Phase 3 — Session list** (3 days)
   - [ ] Fetch/search/resume sessions; projects & profiles
   - [ ] Room cache for offline reads; pull-to-refresh
