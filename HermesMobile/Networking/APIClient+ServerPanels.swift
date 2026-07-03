@@ -68,14 +68,29 @@ extension APIClient {
         )
     }
 
-    /// Creates a new profile (`POST /api/profile/create`). Upstream also accepts
-    /// `clone_from`/`clone_config`/`base_url`/`api_key`/`default_model`/`model_provider`;
-    /// this slice only sends `name` (#24). Rejected with 403 in single-profile mode.
-    func createProfile(name: String) async throws -> ProfileCreateResponse {
+    /// Creates a new profile (`POST /api/profile/create`), mirroring the webui's
+    /// create form payload: `clone_config` is always sent, everything else only
+    /// when provided (`clone_from` is intentionally omitted — the server clones
+    /// from the active profile). Rejected with 403 in single-profile mode.
+    func createProfile(
+        name: String,
+        cloneConfig: Bool = false,
+        defaultModel: String? = nil,
+        modelProvider: String? = nil,
+        baseUrl: String? = nil,
+        apiKey: String? = nil
+    ) async throws -> ProfileCreateResponse {
         try await send(
             endpoint: .createProfile,
             method: "POST",
-            body: ProfileCreateRequest(name: name)
+            body: ProfileCreateRequest(
+                name: name,
+                cloneConfig: cloneConfig,
+                defaultModel: defaultModel,
+                modelProvider: modelProvider,
+                baseUrl: baseUrl,
+                apiKey: apiKey
+            )
         )
     }
 
@@ -143,6 +158,11 @@ private struct ProfileSwitchRequest: Encodable {
 
 private struct ProfileCreateRequest: Encodable {
     let name: String
+    let cloneConfig: Bool
+    let defaultModel: String?
+    let modelProvider: String?
+    let baseUrl: String?
+    let apiKey: String?
 }
 
 private struct UpdatesApplyRequest: Encodable {

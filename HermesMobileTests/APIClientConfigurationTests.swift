@@ -551,7 +551,10 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let data = try XCTUnwrap(apiTestBodyData(from: request))
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["name"] as? String, "research")
-            XCTAssertEqual(body?.count, 1)
+            XCTAssertEqual(body?["clone_config"] as? Bool, false)
+            // Optional fields must be omitted, not sent as null (the server
+            // treats presence as intent).
+            XCTAssertEqual(body?.count, 2)
 
             return apiTestJSONResponse("""
             {
@@ -570,6 +573,44 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.ok, true)
         XCTAssertEqual(response.profile?.name, "research")
         XCTAssertNil(response.error)
+    }
+
+    func testCreateProfileSendsOptionalFieldsWithSnakeCaseKeys() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/profile/create")
+
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["name"] as? String, "research")
+            XCTAssertEqual(body?["clone_config"] as? Bool, true)
+            XCTAssertEqual(body?["default_model"] as? String, "claude-sonnet-4-5")
+            XCTAssertEqual(body?["model_provider"] as? String, "anthropic")
+            XCTAssertEqual(body?["base_url"] as? String, "http://localhost:11434")
+            XCTAssertEqual(body?["api_key"] as? String, "sk-test")
+            XCTAssertEqual(body?.count, 6)
+
+            return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+        }
+
+        let response = try await client.createProfile(
+            name: "research",
+            cloneConfig: true,
+            defaultModel: "claude-sonnet-4-5",
+            modelProvider: "anthropic",
+            baseUrl: "http://localhost:11434",
+            apiKey: "sk-test"
+        )
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertNil(response.profile)
+    }
+
+    func testProfileBaseURLRuleMirrorsUpstream() {
+        XCTAssertTrue(ProfileNameRules.isValidBaseURL("http://localhost:11434"))
+        XCTAssertTrue(ProfileNameRules.isValidBaseURL("https://api.example.com/v1"))
+        XCTAssertFalse(ProfileNameRules.isValidBaseURL("localhost:11434"))
+        XCTAssertFalse(ProfileNameRules.isValidBaseURL("ftp://example.com"))
+        XCTAssertFalse(ProfileNameRules.isValidBaseURL(""))
     }
 
     func testProfilePickerCancellationErrorDetection() {

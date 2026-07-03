@@ -366,6 +366,12 @@ enum ProfileNameRules {
     private static func isLowercaseAlphanumeric(_ character: Character) -> Bool {
         ("a"..."z").contains(character) || ("0"..."9").contains(character)
     }
+
+    /// Mirrors the upstream base-URL rule for profile creation: when provided,
+    /// the value must start with `http://` or `https://` (server 400s otherwise).
+    static func isValidBaseURL(_ value: String) -> Bool {
+        value.hasPrefix("http://") || value.hasPrefix("https://")
+    }
 }
 
 struct ProfileSwitchResponse: Decodable, Equatable {
