@@ -221,6 +221,7 @@ fun ChatScreen(
                 streamingAssistantMessageId = uiState.streamingAssistantMessageId,
                 completedReasoningGroups = uiState.completedReasoningGroups,
                 completedToolCallGroups = uiState.completedToolCallGroups,
+                scrollToBottomEvent = viewModel.scrollToBottomEvent,
                 onScrollToBottom = { },
                 onAction = { context, action ->
                     when (action) {

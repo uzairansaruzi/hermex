@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -45,20 +44,8 @@ class GitWorkspaceViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _isActionLoading = MutableStateFlow(false)
-    val isActionLoading: StateFlow<Boolean> = _isActionLoading.asStateFlow()
-
-    private val _commitMessage = MutableStateFlow(TextFieldValue())
-    val commitMessage: StateFlow<TextFieldValue> = _commitMessage.asStateFlow()
-
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
-
-    private val _success = MutableStateFlow<String?>(null)
-    val success: StateFlow<String?> = _success.asStateFlow()
-
-    private val _showBranchDialog = MutableStateFlow(false)
-    val showBranchDialog: StateFlow<Boolean> = _showBranchDialog.asStateFlow()
 
     fun initialize(sessionId: String) {
         if (_sessionId.value == sessionId) return
@@ -83,66 +70,10 @@ class GitWorkspaceViewModel @Inject constructor(
         }
     }
 
-    fun onCommitMessageChange(value: TextFieldValue) {
-        _commitMessage.value = value
-    }
-
-    fun commit() {
-        val message = _commitMessage.value.text.trim()
-        if (message.isBlank()) {
-            _error.value = "Commit message cannot be empty"
-            return
-        }
-        _isActionLoading.value = true
-        viewModelScope.launch {
-            try {
-                val result = apiClient.gitCommit(_sessionId.value, message)
-                if (result.ok == true) {
-                    _success.value = "Committed ${result.sha?.take(7).orEmpty()}"
-                    _commitMessage.value = TextFieldValue()
-                    loadAll()
-                } else {
-                    _error.value = result.error ?: "Commit failed"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message
-            } finally {
-                _isActionLoading.value = false
-            }
-        }
-    }
-
-    fun showBranchDialog() {
-        _showBranchDialog.value = true
-    }
-
-    fun dismissBranchDialog() {
-        _showBranchDialog.value = false
-    }
-
-    fun checkout(branch: String) {
-        _isActionLoading.value = true
-        viewModelScope.launch {
-            try {
-                apiClient.gitCheckout(_sessionId.value, branch)
-                _success.value = "Switched to $branch"
-                _showBranchDialog.value = false
-                loadAll()
-            } catch (e: Exception) {
-                _error.value = e.message
-            } finally {
-                _isActionLoading.value = false
-            }
-        }
-    }
-
     fun dismissError() {
         _error.value = null
     }
 
-    fun dismissSuccess() {
-        _success.value = null
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -156,11 +87,7 @@ fun GitWorkspaceScreen(
     val branches by viewModel.branches.collectAsState()
     val diff by viewModel.diff.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val isActionLoading by viewModel.isActionLoading.collectAsState()
-    val commitMessage by viewModel.commitMessage.collectAsState()
     val error by viewModel.error.collectAsState()
-    val success by viewModel.success.collectAsState()
-    val showBranchDialog by viewModel.showBranchDialog.collectAsState()
     val scroll = rememberScrollState()
 
     LaunchedEffect(sessionId) { viewModel.initialize(sessionId) }
@@ -196,14 +123,7 @@ fun GitWorkspaceScreen(
                     ) {
                         StatusCard(status = status)
                         BranchRow(
-                            currentBranch = status?.branch,
-                            onSwitchBranch = { viewModel.showBranchDialog() }
-                        )
-                        CommitForm(
-                            message = commitMessage,
-                            onMessageChange = viewModel::onCommitMessageChange,
-                            onCommit = { viewModel.commit() },
-                            isLoading = isActionLoading
+                            currentBranch = status?.branch
                         )
                         DiffCard(diff = diff)
                     }
@@ -212,30 +132,11 @@ fun GitWorkspaceScreen(
         }
     }
 
-    if (showBranchDialog) {
-        BranchSelectionDialog(
-            branches = branches,
-            currentBranch = status?.branch,
-            isLoading = isActionLoading,
-            onSelect = { viewModel.checkout(it) },
-            onDismiss = { viewModel.dismissBranchDialog() }
-        )
-    }
-
     error?.let {
         AlertDialog(
             onDismissRequest = { viewModel.dismissError() },
             confirmButton = { TextButton(onClick = { viewModel.dismissError() }) { Text("OK") } },
             title = { Text("Error") },
-            text = { Text(it) }
-        )
-    }
-
-    success?.let {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissSuccess() },
-            confirmButton = { TextButton(onClick = { viewModel.dismissSuccess() }) { Text("OK") } },
-            title = { Text("Success") },
             text = { Text(it) }
         )
     }
@@ -268,36 +169,9 @@ private fun StatusCount(label: String, count: Int) {
 }
 
 @Composable
-private fun BranchRow(currentBranch: String?, onSwitchBranch: () -> Unit) {
+private fun BranchRow(currentBranch: String?) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text("Current branch: ${currentBranch ?: "Unknown"}", style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = onSwitchBranch) { Text("Switch") }
-    }
-}
-
-@Composable
-private fun CommitForm(
-    message: TextFieldValue,
-    onMessageChange: (TextFieldValue) -> Unit,
-    onCommit: () -> Unit,
-    isLoading: Boolean
-) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Commit", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = message,
-                onValueChange = onMessageChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Commit message") },
-                minLines = 2,
-                maxLines = 4
-            )
-            Button(onClick = onCommit, modifier = Modifier.fillMaxWidth(), enabled = !isLoading) {
-                if (isLoading) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text("Commit")
-            }
-        }
     }
 }
 
@@ -321,47 +195,6 @@ private fun DiffCard(diff: GitDiffResponse?) {
             }
         }
     }
-}
-
-@Composable
-private fun BranchSelectionDialog(
-    branches: GitBranchesResponse?,
-    currentBranch: String?,
-    isLoading: Boolean,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val items = branches?.branches.orEmpty()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = { Text("Switch Branch") },
-        text = {
-            if (items.isEmpty() && isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-            } else if (items.isEmpty()) {
-                Text("No branches found", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                    items.forEach { branch ->
-                        val selected = branch == currentBranch
-                        TextButton(
-                            onClick = { onSelect(branch) },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !selected && !isLoading
-                        ) {
-                            Text(if (selected) "$branch ✓" else branch)
-                        }
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
 }
 
 @Composable

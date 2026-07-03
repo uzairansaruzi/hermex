@@ -140,6 +140,7 @@ class ChatViewModel @Inject constructor(
     private var pendingReasoningChunks = mutableListOf<String>()
     private var pendingStreamingContentFlushJob: Job? = null
     private var pendingScrollTriggerJob: Job? = null
+    private var isReplayingConnection = false
 
     private val _scrollToBottomEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val scrollToBottomEvent: SharedFlow<Unit> = _scrollToBottomEvent.asSharedFlow()
@@ -432,21 +433,26 @@ class ChatViewModel @Inject constructor(
     private fun appendToken(token: String) {
         if (token.isEmpty()) return
         val streamingId = ensureStreamingAssistantMessage()
-        val flushedContent = _uiState.value.messages.find { it.messageId == streamingId }?.content ?: ""
-        val effectiveContent = flushedContent + pendingAssistantTokenChunks.joinToString("")
-        val remainder = deduplicateToken(token, effectiveContent)
-        if (remainder.isEmpty()) return
-        pendingAssistantTokenChunks.add(remainder)
+        val effectiveToken = if (isReplayingConnection) {
+            val flushedContent = _uiState.value.messages.find { it.messageId == streamingId }?.content ?: ""
+            val effectiveContent = flushedContent + pendingAssistantTokenChunks.joinToString("")
+            val remainder = deduplicateToken(token, effectiveContent)
+            if (remainder.isNotEmpty()) {
+                isReplayingConnection = false
+            }
+            remainder
+        } else {
+            token
+        }
+        if (effectiveToken.isEmpty()) return
+        pendingAssistantTokenChunks.add(effectiveToken)
         scheduleStreamingContentFlush()
     }
 
     private fun appendReasoning(text: String) {
         if (text.isEmpty()) return
-        val streamingId = ensureStreamingAssistantMessage()
-        val effectiveContent = _uiState.value.liveReasoningText + pendingReasoningChunks.joinToString("")
-        val remainder = deduplicateToken(text, effectiveContent)
-        if (remainder.isEmpty()) return
-        pendingReasoningChunks.add(remainder)
+        ensureStreamingAssistantMessage()
+        pendingReasoningChunks.add(text)
         scheduleStreamingContentFlush()
     }
 
@@ -736,7 +742,7 @@ class ChatViewModel @Inject constructor(
 
     fun editMessage(context: MessageActionContext, newText: String) {
         val messages = _uiState.value.messages
-        val index = messages.indexOfFirst { it.messageId == context.messageId }
+        val index = messages.indexOfFirst { it.id == context.messageId }
         if (index < 0) return
         val edited = newText.trim()
         if (edited.isEmpty()) return
@@ -783,18 +789,22 @@ class ChatViewModel @Inject constructor(
     fun regenerateAssistantResponse(context: MessageActionContext) {
         if (context.role != MessageActionContext.Role.Assistant) return
         val messages = _uiState.value.messages
-        val index = messages.indexOfFirst { it.messageId == context.messageId }
-        val userText = if (index > 0) {
-            messages.subList(0, index).findLast { it.role == "user" }?.content?.trim()?.takeIf { it.isNotEmpty() }
-        } else null
-        if (userText == null) return
+        val assistantIndex = messages.indexOfFirst { it.id == context.messageId }
+        if (assistantIndex < 0) return
+
+        // Find the preceding user message to replay
+        val userMessageIndex = messages.subList(0, assistantIndex)
+            .indexOfLast { it.role == "user" }
+        if (userMessageIndex < 0) return
+        val userText = messages[userMessageIndex].content?.trim()?.takeIf { it.isNotEmpty() } ?: return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isRegeneratingMessage = true, messageActionErrorMessage = null) }
             try {
-                val keepCount = context.keepCountThroughMessage - 1
+                // Truncate before the user message so sendMessage won't duplicate it
+                val keepCount = _uiState.value.messageOffset + userMessageIndex
                 val truncateResponse = apiClient.sessionTruncate(sessionId, keepCount)
-                val truncatedMessages = messages.take(index)
+                val truncatedMessages = messages.take(userMessageIndex)
                 _uiState.update { state ->
                     state.copy(
                         messages = truncatedMessages,

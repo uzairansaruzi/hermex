@@ -45,6 +45,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.hermex.app.data.model.ChatMessage
 import com.hermex.app.data.model.ToolStreamEvent
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -59,6 +61,7 @@ fun ChatTranscriptView(
     streamingAssistantMessageId: String?,
     completedReasoningGroups: List<ReasoningGroup>,
     completedToolCallGroups: List<ToolCallDisplay>,
+    scrollToBottomEvent: SharedFlow<Unit>? = null,
     onScrollToBottom: suspend () -> Unit,
     onAction: (MessageActionContext, ChatMessageAction) -> Unit,
     modifier: Modifier = Modifier
@@ -80,6 +83,16 @@ fun ChatTranscriptView(
         if (!userScrolledUp) {
             scrollToBottom(listState)
             onScrollToBottom()
+        }
+    }
+
+    if (scrollToBottomEvent != null) {
+        LaunchedEffect(scrollToBottomEvent) {
+            scrollToBottomEvent.collectLatest {
+                if (!userScrolledUp) {
+                    scrollToBottom(listState)
+                }
+            }
         }
     }
 

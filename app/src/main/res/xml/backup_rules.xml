@@ -2,5 +2,5 @@
 <full-backup-content>
     <include domain="sharedpref" path="." />
     <include domain="database" path="." />
-    <exclude domain="sharedpref" path="auth_prefs" />
+    <exclude domain="sharedpref" path="hermex_auth_prefs.xml" />
 </full-backup-content>

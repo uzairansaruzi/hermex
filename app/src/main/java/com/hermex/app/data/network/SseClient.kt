@@ -43,7 +43,13 @@ class SseClient @Inject constructor(
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                if (t != null) channel.trySend(SSEEvent.Error(t.message ?: "Connection failed"))
+                if (t != null) {
+                    channel.trySend(SSEEvent.Error(t.message ?: "Connection failed"))
+                } else if (response != null) {
+                    channel.trySend(SSEEvent.Error("HTTP error ${response.code}: ${response.message}"))
+                } else {
+                    channel.trySend(SSEEvent.Error("Connection failed"))
+                }
                 channel.close()
             }
 

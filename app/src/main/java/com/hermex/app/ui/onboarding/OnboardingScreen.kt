@@ -141,8 +141,27 @@ class OnboardingViewModel @Inject constructor(
         authManager.saveServer(apiClient.baseUrl)
         _serverUrl.value = apiClient.baseUrl
 
+        // Check if the server requires authentication
+        val authStatus = try {
+            apiClient.authStatus()
+        } catch (_: Exception) {
+            null
+        }
+
         val password = _password.value
-        if (password.isNotBlank()) {
+        if (authStatus?.authEnabled == true) {
+            if (password.isBlank()) {
+                _status.value = ConnectionStatus.Error("This server requires a password.")
+                return
+            }
+            authManager.savePassword(password)
+            val loginResponse: LoginResponse = apiClient.login(password)
+            if (loginResponse.ok != true) {
+                val error = loginResponse.error ?: "Login failed."
+                _status.value = ConnectionStatus.Error(error)
+                return
+            }
+        } else if (password.isNotBlank()) {
             authManager.savePassword(password)
             val loginResponse: LoginResponse = apiClient.login(password)
             if (loginResponse.ok != true) {

@@ -190,14 +190,6 @@ class ApiClient @Inject constructor(
         return get(Endpoints.GIT_DIFF, mapOf("session_id" to sessionId))
     }
 
-    suspend fun gitCommit(sessionId: String, message: String): GitCommitResponse {
-        return post(Endpoints.GIT_COMMIT, GitCommitRequest(sessionId = sessionId, message = message))
-    }
-
-    suspend fun gitCheckout(sessionId: String, branch: String) {
-        post<Unit>(Endpoints.GIT_CHECKOUT, mapOf("session_id" to sessionId, "branch" to branch))
-    }
-
     fun streamUrl(streamId: String): HttpUrl {
         return "${baseUrl}${Endpoints.CHAT_STREAM}?stream_id=$streamId".toHttpUrl()
     }
@@ -236,7 +228,6 @@ class ApiClient @Inject constructor(
         is ChatStartRequest -> json.encodeToString(body)
         is ChatSteerRequest -> json.encodeToString(body)
         is ReasoningRequest -> json.encodeToString(body)
-        is GitCommitRequest -> json.encodeToString(body)
         else -> error("Unsupported request body type: ${body::class.qualifiedName}")
     }
 

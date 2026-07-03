@@ -49,7 +49,5 @@ object Endpoints {
     const val GIT_STATUS = "/api/git/status"
     const val GIT_BRANCHES = "/api/git/branches"
     const val GIT_DIFF = "/api/git/diff"
-    const val GIT_COMMIT = "/api/git/commit"
-    const val GIT_CHECKOUT = "/api/git/checkout"
     const val TRANSCRIBE = "/api/transcribe"
 }

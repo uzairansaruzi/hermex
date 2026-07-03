@@ -322,15 +322,15 @@ class SessionListViewModel @Inject constructor(
     }
 
     private fun observeCachedSessions() {
-        sessionDao.getAllSessions()
-            .map { cached -> cached.map { it.toSummary() } }
-            .onEach { cachedSessions ->
-                // Only show cached sessions when we are offline and have no server data.
-                if (_isViewingCachedData.value && _sessions.value.isEmpty()) {
-                    _sessions.value = cachedSessions.filter { it.archived != true }
-                }
+        combine(
+            sessionDao.getAllSessions().map { cached -> cached.map { it.toSummary() } },
+            _isViewingCachedData
+        ) { cachedSessions, isViewingCached ->
+            // Show cached sessions when we are offline and have no server data.
+            if (isViewingCached && _sessions.value.isEmpty()) {
+                _sessions.value = cachedSessions.filter { it.archived != true }
             }
-            .launchIn(viewModelScope)
+        }.launchIn(viewModelScope)
     }
 
     private fun mutateSession(sessionId: String, block: suspend () -> Unit) {
