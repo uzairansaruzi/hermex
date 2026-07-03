@@ -57,6 +57,7 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertNil(ProvidersViewModel.normalizedProviderID(nil))
     }
 
+    @MainActor
     func testDisplayNameFallsBackFromDisplayNameToIDToPlaceholder() {
         XCTAssertEqual(
             ProvidersViewModel.displayName(for: ProviderSummary(id: "openai", displayName: "OpenAI")),
@@ -72,6 +73,7 @@ final class ProvidersViewModelTests: APIClientTestCase {
         )
     }
 
+    @MainActor
     func testKeySourceBadgeCollapsesUpstreamVocabulary() {
         func badge(_ keySource: String?, hasKey: Bool? = true) -> String? {
             ProvidersViewModel.keySourceBadge(
@@ -98,6 +100,7 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertNil(badge("oauth", hasKey: nil))
     }
 
+    @MainActor
     func testAuthErrorTextTrimsAndDropsEmptyValues() {
         XCTAssertEqual(
             ProvidersViewModel.authErrorText(
@@ -109,6 +112,7 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertNil(ProvidersViewModel.authErrorText(for: ProviderSummary(id: "p", authError: nil)))
     }
 
+    @MainActor
     func testModelCountPrefersModelsTotalWhenListIsTrimmed() {
         let trimmed = ProviderSummary(
             id: "nous",
