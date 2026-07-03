@@ -35,6 +35,7 @@ struct SkillsView: View {
                 await loadSkills()
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills...")
+            .zoraBrandedScreen()
     }
 
     private var filteredGroups: [(category: String, skills: [SkillSummary])] {
@@ -87,7 +88,7 @@ struct SkillsView: View {
             .refreshable {
                 await loadSkills()
             }
-            .background(Color(.systemBackground))
+            .background(Color.clear)
         }
     }
 

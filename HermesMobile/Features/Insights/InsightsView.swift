@@ -32,6 +32,7 @@ struct InsightsView: View {
             .task(id: viewModel.selectedTimeframe) {
                 await loadInsights()
             }
+            .zoraBrandedScreen()
     }
 
     @ViewBuilder

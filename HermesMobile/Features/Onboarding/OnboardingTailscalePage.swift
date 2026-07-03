@@ -21,7 +21,7 @@ struct OnboardingTailscalePage: View {
                     Button(action: openTailscaleInAppStore) {
                         Label("Get Tailscale on the App Store", systemImage: "arrow.up.forward.square")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.10))
+                            .foregroundStyle(ZoraBrand.foreground)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 13)
@@ -53,9 +53,9 @@ struct OnboardingTailscalePage: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(ZoraBrand.darkBackground)
                 .frame(width: 23, height: 23)
-                .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: Circle())
+                .background(ZoraBrand.foreground, in: Circle())
 
             Text(text)
                 .font(.subheadline)

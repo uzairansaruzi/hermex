@@ -41,6 +41,91 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+enum ZoraBrand {
+    static let accessibilityLabel = String(localized: "Zora")
+    static let foreground = Color.white
+    static let secondaryForeground = Color.white.opacity(0.72)
+    static let lightBackground = Color(red: 0.92, green: 0.035, blue: 0.028)
+    static let darkBackground = Color(red: 0.54, green: 0.0, blue: 0.018)
+    static let cardFill = Color.white.opacity(0.10)
+    static let cardStroke = Color.white.opacity(0.18)
+    static let subtleFill = Color.white.opacity(0.075)
+
+    static func background(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? darkBackground : lightBackground
+    }
+}
+
+struct ZoraHeaderWordmark: View {
+    let selectedColor: Color
+    let isBrandLocked: Bool
+
+    init(selectedColor: Color = ZoraBrand.foreground, isBrandLocked: Bool = true) {
+        self.selectedColor = selectedColor
+        self.isBrandLocked = isBrandLocked
+    }
+
+    var body: some View {
+        ZoraWaveformMark(color: isBrandLocked ? ZoraBrand.foreground : selectedColor)
+            .frame(width: 156, height: 44)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(ZoraBrand.accessibilityLabel)
+    }
+}
+
+private struct ZoraWaveformMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let color: Color
+
+    private let amplitudes: [Double] = [
+        0.30, 0.62, 0.42, 0.86, 0.56, 0.72, 0.98,
+        0.68, 0.48, 0.80, 0.38, 0.60, 0.28
+    ]
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            GeometryReader { proxy in
+                let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                let barWidth = max(4, proxy.size.width / CGFloat((amplitudes.count * 3) - 2))
+                let spacing = barWidth * 1.55
+                let maxHeight = max(1, proxy.size.height)
+
+                HStack(alignment: .center, spacing: spacing) {
+                    ForEach(Array(amplitudes.enumerated()), id: \.offset) { index, base in
+                        let pulse = (sin((phase * 2.65) + (Double(index) * 0.74)) + 1) / 2
+                        let ratio = min(1, max(0.18, (base * 0.62) + (pulse * 0.38)))
+
+                        Capsule(style: .continuous)
+                            .fill(color.opacity(0.58 + (ratio * 0.42)))
+                            .frame(width: barWidth, height: max(8, maxHeight * ratio))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+        }
+        .drawingGroup()
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ZoraBrandedScreenModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(ZoraBrand.background(for: colorScheme).ignoresSafeArea())
+            .environment(\.colorScheme, .dark)
+            .tint(ZoraBrand.foreground)
+    }
+}
+
+extension View {
+    func zoraBrandedScreen() -> some View {
+        modifier(ZoraBrandedScreenModifier())
+    }
+}
+
 struct HeaderLogoColorPreset: Identifiable, Equatable {
     let name: String
     let hex: String

@@ -37,7 +37,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            ZoraBrand.darkBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 TabView(selection: $currentPage) {
@@ -102,13 +102,13 @@ struct OnboardingView: View {
                 Button(action: handlePrimaryAction) {
                     Text(OnboardingFlowPolicy.primaryButtonTitle(for: currentPage))
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(ZoraBrand.darkBackground)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 15)
                         .background(
-                            Color(red: 1.0, green: 0.74, blue: 0.10),
+                            ZoraBrand.foreground,
                             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                         )
                 }
@@ -120,7 +120,7 @@ struct OnboardingView: View {
                         jumpToConnectPage()
                     }
                     .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
                     .buttonStyle(.plain)
                     .accessibilityHint("Skips setup and opens the connect screen.")
                 }
@@ -131,7 +131,7 @@ struct OnboardingView: View {
         .padding(.bottom, 12)
         .background(
             LinearGradient(
-                colors: [.clear, .black.opacity(0.6), .black],
+                colors: [.clear, ZoraBrand.darkBackground.opacity(0.72), ZoraBrand.darkBackground],
                 startPoint: .top,
                 endPoint: .bottom
             )

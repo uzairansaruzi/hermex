@@ -316,6 +316,7 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
+        .zoraBrandedScreen()
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {

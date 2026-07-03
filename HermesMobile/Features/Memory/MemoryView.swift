@@ -47,6 +47,7 @@ struct MemoryView: View {
             .task {
                 await loadMemory()
             }
+            .zoraBrandedScreen()
     }
 
     @ViewBuilder
@@ -89,6 +90,8 @@ struct MemoryView: View {
             .refreshable {
                 await loadMemory()
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
     }
 

@@ -69,7 +69,7 @@ struct SessionListView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
-                Color(.systemBackground)
+                Color.clear
                     .ignoresSafeArea()
 
                 content
@@ -238,6 +238,7 @@ struct SessionListView: View {
                 )
             )
         }
+        .zoraBrandedScreen()
     }
 
     private var content: some View {
@@ -295,7 +296,7 @@ struct SessionListView: View {
         // with the tightly-packed navigation rows.
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
+        .background(Color.clear)
         .scrollDismissesKeyboard(.interactively)
         // Disclosure subrows are real List rows; drive their fold from the List
         // so insert/remove animates. Value-based so it works with @AppStorage.
@@ -305,7 +306,7 @@ struct SessionListView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: searchChromeIsExpanded ? 0 : 16) {
-            ZoraHeaderWordmark(selectedColor: selectedHeaderLogoColor)
+            ZoraHeaderWordmark()
                 .frame(width: searchChromeIsExpanded ? 0 : 160, alignment: .leading)
                 .opacity(searchChromeIsExpanded ? 0 : 1)
                 .clipped()
@@ -890,29 +891,6 @@ struct SessionListView: View {
 
 }
 
-enum ZoraWordmark {
-    static let text = "Zora"
-    static let accessibilityLabel = "Zora"
-    static let tracking: CGFloat = -1.1
-}
-
-struct ZoraHeaderWordmark: View {
-    let selectedColor: Color
-
-    var body: some View {
-        Text(ZoraWordmark.text)
-            // SF Pro is the system font on iOS; keep the mark as text so it
-            // respects Dynamic Type and avoids carrying the old Hermex artwork.
-            .font(.system(size: 42, weight: .semibold, design: .default))
-            .tracking(ZoraWordmark.tracking)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .foregroundStyle(selectedColor)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ZoraWordmark.accessibilityLabel)
-    }
-}
-
 /// A request from `ContentView` to open the New Chat composer. Carries whether voice
 /// dictation should auto-start (the "New Chat with Voice" App Intent, #338) and an optional
 /// profile name to pin the new session to (the "New Chat in <Profile>" App Intent, #339).
@@ -1044,7 +1022,7 @@ private struct PendingNewChatView: View {
 
     private var pendingContent: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground)
+            Color.clear
                 .ignoresSafeArea()
 
             ContentUnavailableView {
@@ -1165,13 +1143,9 @@ private struct PendingNewChatView: View {
 }
 
 #Preview("Zora Header Wordmark") {
-    VStack(spacing: 16) {
-        ForEach(HeaderLogoColor.presets.prefix(4)) { preset in
-            ZoraHeaderWordmark(selectedColor: preset.color)
-                .frame(width: 220)
-        }
-    }
+    ZoraHeaderWordmark()
+        .frame(width: 220, height: 64)
     .padding(24)
-    .background(Color.black)
+    .background(ZoraBrand.darkBackground)
     .preferredColorScheme(.dark)
 }

@@ -57,6 +57,7 @@ struct TasksView: View {
             .task {
                 await loadTasks()
             }
+            .zoraBrandedScreen()
     }
 
     @ViewBuilder
@@ -114,6 +115,8 @@ struct TasksView: View {
             .refreshable {
                 await loadTasks()
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
     }
 

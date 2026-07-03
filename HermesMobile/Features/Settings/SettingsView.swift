@@ -418,7 +418,7 @@ struct SettingsView: View {
             .padding(.top, 18)
             .padding(.bottom, 36)
         }
-        .background(Color(.systemBackground))
+        .background(Color.clear)
         .navigationTitle("Settings")
         .task {
             await loadServerSettings()
@@ -527,6 +527,7 @@ struct SettingsView: View {
             }
         }
         }
+        .zoraBrandedScreen()
     }
 
     @ViewBuilder
@@ -1269,7 +1270,7 @@ private struct HeaderLogoColorSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Text("Header Logo Color")
+                Text("Accent Color")
                     .foregroundStyle(.primary)
 
                 Spacer(minLength: 12)
@@ -1280,17 +1281,28 @@ private struct HeaderLogoColorSettings: View {
             }
             .font(.subheadline)
 
-            ZoraHeaderWordmark(selectedColor: HeaderLogoColor.color(for: selectedHex))
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.black.opacity(0.26), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                .accessibilityHidden(true)
+            HStack(spacing: 14) {
+                ZoraHeaderWordmark()
+                    .frame(width: 136, height: 40)
+                    .accessibilityHidden(true)
+
+                Spacer(minLength: 8)
+
+                Circle()
+                    .fill(HeaderLogoColor.color(for: selectedHex))
+                    .frame(width: 34, height: 34)
+                    .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 1))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ZoraBrand.cardStroke, lineWidth: 1)
+            )
+
+            SettingsFootnote(String(localized: "The Zora waveform stays white. This color now accents your avatar and optional primary actions."))
 
             HStack(spacing: 10) {
                 ForEach(HeaderLogoColor.presets) { preset in
@@ -1333,9 +1345,9 @@ private struct HeaderLogoColorPresetButton: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "\(preset.name) header logo color"))
+        .accessibilityLabel(String(localized: "\(preset.name) accent color"))
         .accessibilityValue(isSelected ? "Selected" : "")
-        .accessibilityHint("Updates the Sessions header logo color.")
+        .accessibilityHint("Updates the avatar and optional primary-action accent color.")
     }
 }
 
@@ -1370,7 +1382,7 @@ private struct SettingsCard<Content: View>: View {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                shape.fill(Color(.secondarySystemBackground).opacity(cardFillOpacity))
+                shape.fill(ZoraBrand.cardFill.opacity(cardFillOpacity))
             }
             .adaptiveGlass(
                 .regular,
@@ -1379,7 +1391,7 @@ private struct SettingsCard<Content: View>: View {
             )
             .overlay {
                 shape
-                    .stroke(Color.primary.opacity(cardStrokeOpacity), lineWidth: 0.7)
+                    .stroke(ZoraBrand.cardStroke.opacity(max(0.55, cardStrokeOpacity * 2)), lineWidth: 0.7)
                     .allowsHitTesting(false)
             }
         }

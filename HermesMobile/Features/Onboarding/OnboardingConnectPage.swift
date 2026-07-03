@@ -51,7 +51,7 @@ struct OnboardingConnectPage: View {
                                 .keyboardType(.URL)
                                 .foregroundStyle(.white)
                                 .submitLabel(.go)
-                                .tint(Color(red: 1.0, green: 0.74, blue: 0.10))
+                                .tint(ZoraBrand.foreground)
                                 .focused($focusedField, equals: .serverURL)
                                 .onSubmit(submitConnection)
                         }

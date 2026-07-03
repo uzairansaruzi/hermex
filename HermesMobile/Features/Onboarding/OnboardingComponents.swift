@@ -28,9 +28,9 @@ struct SetupStepRow: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(ZoraBrand.darkBackground)
                 .frame(width: 23, height: 23)
-                .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: Circle())
+                .background(ZoraBrand.foreground, in: Circle())
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 7) {
@@ -110,7 +110,7 @@ struct OnboardingField<Content: View>: View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.10))
+                .foregroundStyle(ZoraBrand.foreground)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -125,7 +125,7 @@ struct OnboardingField<Content: View>: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 12)
-        .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(ZoraBrand.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
@@ -171,13 +171,13 @@ struct OnboardingPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.black)
+            .foregroundStyle(ZoraBrand.darkBackground)
             .lineLimit(1)
             .minimumScaleFactor(0.78)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 10)
             .padding(.vertical, 15)
-            .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(ZoraBrand.foreground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
@@ -188,7 +188,7 @@ struct OnboardingStepHeader: View {
     let title: String
     let description: String
 
-    private let accent = Color(red: 1.0, green: 0.74, blue: 0.10)
+    private let accent = ZoraBrand.foreground
 
     var body: some View {
         VStack(spacing: 20) {
