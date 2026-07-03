@@ -69,6 +69,27 @@ final class SessionListViewModel {
         let resolvedClient = client ?? APIClient(baseURL: server)
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
+
+        // Sweep exports leaked by a previous run (view dismissed while a
+        // download was in flight, so the share sheet — and its on-dismiss
+        // cleanup — never appeared). Done at init, not per export: no export
+        // from this instance can be in flight yet, and a previous view's
+        // share sheet was already dismissed when that view went away, so
+        // nothing being shared can be deleted.
+        Task.detached(priority: .utility) {
+            Self.sweepLeakedExports()
+        }
+    }
+
+    /// Root temp directory holding one UUID subdirectory per export
+    /// (see `export(_:format:)`).
+    nonisolated static var exportsRootDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("session-exports", isDirectory: true)
+    }
+
+    nonisolated private static func sweepLeakedExports() {
+        try? FileManager.default.removeItem(at: exportsRootDirectory)
     }
 
     var sections: [SessionListSection] {
@@ -577,14 +598,6 @@ final class SessionListViewModel {
         actionErrorMessage = nil
         lastError = nil
 
-        // Sweep exports leaked by earlier runs (e.g. the view was dismissed
-        // while a download was in flight, so the share sheet — and its
-        // cleanup — never appeared). Safe here: starting a new export means
-        // no share sheet is currently presenting a previous file.
-        let exportsRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("session-exports", isDirectory: true)
-        try? FileManager.default.removeItem(at: exportsRoot)
-
         do {
             let file = try await client.exportSession(
                 id: sessionId,
@@ -592,7 +605,8 @@ final class SessionListViewModel {
                 fallbackTitle: session.title
             )
 
-            let directory = exportsRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let directory = Self.exportsRootDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
             let fileURL = directory.appendingPathComponent(file.filename)
