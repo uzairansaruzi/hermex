@@ -2,7 +2,9 @@ package com.hermex.app.ui.sessionlist
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,20 +23,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pin
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Construction
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -45,7 +46,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,15 +55,15 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +71,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +83,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.hermex.app.R
+import com.hermex.app.ui.components.HermexAvatar
+import com.hermex.app.ui.theme.HermexTheme
 import com.hermex.app.data.model.ProjectSummary
 import com.hermex.app.data.model.SessionSummary
 import com.hermex.app.ui.navigation.HermesLaunchRequest
@@ -137,8 +140,23 @@ fun SessionListScreen(
     var sessionToMove by remember { mutableStateOf<SessionSummary?>(null) }
 
     Scaffold(
-        topBar = {
-            SessionListTopAppBar(
+        floatingActionButton = {
+            NewChatCapsuleButton(
+                onClick = {
+                    viewModel.createSession { sessionId ->
+                        onSessionClick(sessionId)
+                    }
+                }
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            HermexHomeHeader(
                 searchQuery = uiState.searchQuery,
                 onSearchQueryChange = viewModel::setSearchQuery,
                 onReconnectClick = onReconnectClick,
@@ -148,58 +166,36 @@ fun SessionListScreen(
                 onMemoryClick = onMemoryClick,
                 onInsightsClick = onInsightsClick
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    viewModel.createSession { sessionId ->
-                        onSessionClick(sessionId)
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = CircleShape
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.new_session)
-                )
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            when {
-                uiState.isLoading && uiState.sections.isEmpty() -> LoadingPlaceholder()
-                uiState.sections.isEmpty() -> EmptyPlaceholder(
-                    isSearchActive = uiState.searchQuery.isNotBlank(),
-                    errorMessage = uiState.errorMessage,
-                    onRefresh = viewModel::refresh,
-                    onReconnect = onReconnectClick,
-                    onSettings = onSettingsClick
-                )
-                else -> SessionListContent(
-                    sections = uiState.sections,
-                    isRefreshing = uiState.isRefreshing,
-                    onRefresh = viewModel::refresh,
-                    onSessionClick = onSessionClick,
-                    onPinToggle = viewModel::togglePinned,
-                    onArchive = viewModel::archive,
-                    onRestore = viewModel::restore,
-                    onDelete = { sessionToDelete = it },
-                    onRename = { sessionToRename = it },
-                    onDuplicate = viewModel::duplicate,
-                    onMove = { sessionToMove = it },
-                    isMutating = viewModel::isMutating
-                )
-            }
 
-            if (uiState.isViewingCachedData) {
-                OfflineBanner(modifier = Modifier.align(Alignment.TopCenter))
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    uiState.isLoading && uiState.sections.isEmpty() -> LoadingPlaceholder()
+                    uiState.sections.isEmpty() -> EmptyPlaceholder(
+                        isSearchActive = uiState.searchQuery.isNotBlank(),
+                        errorMessage = uiState.errorMessage,
+                        onRefresh = viewModel::refresh,
+                        onReconnect = onReconnectClick,
+                        onSettings = onSettingsClick
+                    )
+                    else -> SessionListContent(
+                        sections = uiState.sections,
+                        isRefreshing = uiState.isRefreshing,
+                        onRefresh = viewModel::refresh,
+                        onSessionClick = onSessionClick,
+                        onPinToggle = viewModel::togglePinned,
+                        onArchive = viewModel::archive,
+                        onRestore = viewModel::restore,
+                        onDelete = { sessionToDelete = it },
+                        onRename = { sessionToRename = it },
+                        onDuplicate = viewModel::duplicate,
+                        onMove = { sessionToMove = it },
+                        isMutating = viewModel::isMutating
+                    )
+                }
+
+                if (uiState.isViewingCachedData) {
+                    OfflineBanner(modifier = Modifier.align(Alignment.TopCenter))
+                }
             }
         }
     }
@@ -242,9 +238,13 @@ fun SessionListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Home header mirroring the iOS session list: gold Hermes wordmark, capsule
+ * search chrome, gold initials avatar, then flat utility nav rows (Tasks,
+ * Skills, Memory, Insights) and a bold "Sessions" section title.
+ */
 @Composable
-private fun SessionListTopAppBar(
+private fun HermexHomeHeader(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onReconnectClick: () -> Unit,
@@ -254,76 +254,155 @@ private fun SessionListTopAppBar(
     onMemoryClick: () -> Unit,
     onInsightsClick: () -> Unit
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.sessions_title)) },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            scrolledContainerColor = MaterialTheme.colorScheme.surface
-        ),
-        navigationIcon = {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 16.dp, top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineMedium,
+                color = HermexTheme.colors.themeGold
+            )
+            Spacer(modifier = Modifier.weight(1f))
             IconButton(onClick = onReconnectClick) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.reconnect)
+                    imageVector = Icons.Outlined.Sync,
+                    contentDescription = stringResource(R.string.reconnect),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        },
-        actions = {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+            ) {
+                IconButton(
+                    onClick = {
+                        searchExpanded = !searchExpanded
+                        if (!searchExpanded) onSearchQueryChange("")
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = stringResource(R.string.search_sessions),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Box(
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onSettingsClick
+                )
+            ) {
+                HermexAvatar(initials = "H")
+            }
+        }
+
+        if (searchExpanded) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
                 placeholder = { Text(stringResource(R.string.search_sessions)) },
                 singleLine = true,
                 modifier = Modifier
-                    .width(180.dp)
-                    .heightIn(min = 40.dp)
-                    .padding(end = 8.dp),
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(24.dp),
-                textStyle = MaterialTheme.typography.bodyMedium
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    focusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                )
             )
-
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = stringResource(R.string.utilities_menu)
-                )
-            }
-
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null) },
-                    text = { Text(stringResource(R.string.tasks)) },
-                    onClick = { menuExpanded = false; onTasksClick() }
-                )
-                DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.Default.Build, contentDescription = null) },
-                    text = { Text(stringResource(R.string.skills)) },
-                    onClick = { menuExpanded = false; onSkillsClick() }
-                )
-                DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.Default.Memory, contentDescription = null) },
-                    text = { Text(stringResource(R.string.memory)) },
-                    onClick = { menuExpanded = false; onMemoryClick() }
-                )
-                DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null) },
-                    text = { Text(stringResource(R.string.insights)) },
-                    onClick = { menuExpanded = false; onInsightsClick() }
-                )
-                HorizontalDivider()
-                DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    text = { Text(stringResource(R.string.settings)) },
-                    onClick = { menuExpanded = false; onSettingsClick() }
-                )
-            }
         }
-    )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        UtilityNavRow(Icons.Outlined.Schedule, stringResource(R.string.tasks), onTasksClick)
+        UtilityNavRow(Icons.Outlined.Construction, stringResource(R.string.skills), onSkillsClick)
+        UtilityNavRow(Icons.Outlined.Psychology, stringResource(R.string.memory), onMemoryClick)
+        UtilityNavRow(Icons.Outlined.BarChart, stringResource(R.string.insights), onInsightsClick)
+
+        Text(
+            text = stringResource(R.string.sessions_title),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(start = 24.dp, top = 20.dp, bottom = 4.dp)
+        )
+    }
+}
+
+/** Flat sidebar-style nav row: icon in a fixed slot + semibold label. */
+@Composable
+private fun UtilityNavRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 24.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+/**
+ * Monochrome capsule "Chat" action mirroring the iOS floating new-chat
+ * button: black-on-white in dark mode, white-on-black in light mode.
+ */
+@Composable
+private fun NewChatCapsuleButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = HermexTheme.colors.monochrome,
+        contentColor = HermexTheme.colors.onMonochrome,
+        shadowElevation = 8.dp,
+        modifier = Modifier.height(58.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 22.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Edit,
+                contentDescription = stringResource(R.string.new_session),
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = stringResource(R.string.chat_fab_label),
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -393,12 +472,12 @@ private fun SessionListContent(
 @Composable
 private fun SectionHeader(title: String) {
     Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 24.dp, vertical = 8.dp)
     )
 }
 
@@ -498,8 +577,8 @@ private fun SessionRow(session: SessionSummary) {
                 Text(
                     text = session.title?.takeIf { it.isNotBlank() }
                         ?: stringResource(R.string.untitled_session),
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
@@ -677,15 +756,16 @@ private fun LoadingPlaceholder() {
 
 @Composable
 private fun OfflineBanner(modifier: Modifier = Modifier) {
+    val warning = HermexTheme.colors.warning
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.errorContainer)
+            .background(warning.copy(alpha = 0.12f))
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Text(
             text = stringResource(R.string.offline_cached_data),
-            color = MaterialTheme.colorScheme.onErrorContainer,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelLarge
         )
     }

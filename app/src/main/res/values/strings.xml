@@ -15,6 +15,7 @@
     <string name="sessions_new">New Chat</string>
     <string name="sessions_search_hint">Search sessions...</string>
     <string name="new_session">New Session</string>
+    <string name="chat_fab_label">Chat</string>
     <string name="search_sessions">Search sessions</string>
     <string name="utilities_menu">Utilities</string>
     <string name="tasks">Tasks</string>

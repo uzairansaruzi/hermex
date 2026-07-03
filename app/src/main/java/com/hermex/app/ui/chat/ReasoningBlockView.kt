@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,13 +38,14 @@ fun ReasoningBlockView(
 
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .clickable { isExpanded = !isExpanded }
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 10.dp, vertical = 9.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -52,18 +54,19 @@ fun ReasoningBlockView(
                 Icon(
                     imageVector = Icons.Default.Psychology,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.outline
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = "Thinking",
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -71,7 +74,7 @@ fun ReasoningBlockView(
                 Text(
                     text = summary,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 4.dp)
@@ -85,7 +88,7 @@ fun ReasoningBlockView(
             ) {
                 Text(
                     text = trimmed,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }

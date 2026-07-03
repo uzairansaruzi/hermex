@@ -61,6 +61,7 @@ import com.hermex.app.data.auth.AuthManager
 import com.hermex.app.data.model.LoginResponse
 import com.hermex.app.data.network.ApiClient
 import com.hermex.app.data.network.ApiException
+import com.hermex.app.ui.theme.HermexTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -301,7 +302,7 @@ private fun WelcomeHeader(
             imageVector = Icons.Default.Link,
             contentDescription = null,
             modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary
+            tint = HermexTheme.colors.themeGold
         )
 
         Text(
