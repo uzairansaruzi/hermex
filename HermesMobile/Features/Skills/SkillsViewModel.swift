@@ -8,11 +8,16 @@ final class SkillsViewModel {
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
+    private(set) var togglingSkillNames: Set<String> = []
 
     private let client: APIClient
 
     init(server: URL) {
         client = APIClient(baseURL: server)
+    }
+
+    init(client: APIClient) {
+        self.client = client
     }
 
     func load() async {
@@ -42,12 +47,33 @@ final class SkillsViewModel {
             let name = skill.name?.localizedCaseInsensitiveContains(query) ?? false
             let description = skill.description?.localizedCaseInsensitiveContains(query) ?? false
             let category = skill.category?.localizedCaseInsensitiveContains(query) ?? false
-            return name || description || category
+            let tags = skill.tags?.contains { $0.localizedCaseInsensitiveContains(query) } ?? false
+            return name || description || category || tags
         }
 
         guard !filtered.isEmpty else { return [] }
 
         return Self.groupedSkills(for: filtered)
+    }
+
+    func setSkill(_ skill: SkillSummary, enabled: Bool) async {
+        guard let name = skill.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return }
+
+        let previousSkills = skills
+        lastError = nil
+        errorMessage = nil
+        togglingSkillNames.insert(name)
+        updateSkill(named: name, disabled: !enabled)
+        defer { togglingSkillNames.remove(name) }
+
+        do {
+            _ = try await client.toggleSkill(name: name, enabled: enabled)
+            await load()
+        } catch {
+            skills = previousSkills
+            lastError = error
+            errorMessage = error.localizedDescription
+        }
     }
 
     static func groupedSkills(for skills: [SkillSummary]) -> [(category: String, skills: [SkillSummary])] {
@@ -79,5 +105,20 @@ final class SkillsViewModel {
             return String(localized: "Unnamed Skill")
         }
         return name
+    }
+
+    private func updateSkill(named name: String, disabled: Bool) {
+        skills = skills.map { skill in
+            guard skill.name == name else { return skill }
+            return SkillSummary(
+                name: skill.name,
+                category: skill.category,
+                description: skill.description,
+                path: skill.path,
+                disabled: disabled,
+                tags: skill.tags,
+                relatedSkills: skill.relatedSkills
+            )
+        }
     }
 }

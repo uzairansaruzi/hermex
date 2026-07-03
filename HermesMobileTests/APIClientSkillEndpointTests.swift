@@ -15,7 +15,7 @@ final class APIClientSkillEndpointTests: APIClientTestCase {
             return apiTestJSONResponse("""
             {
               "skills": [
-                {"name": "swift-refactor", "category": "coding", "description": "Refactors Swift code", "path": "/skills/coding/swift-refactor"},
+                {"name": "swift-refactor", "category": "coding", "description": "Refactors Swift code", "path": "/skills/coding/swift-refactor", "disabled": true, "tags": ["swift", "refactor"], "related_skills": ["test-driven-development"]},
                 {"name": "doc-search", "category": "research", "description": "Searches docs"}
               ]
             }
@@ -27,6 +27,9 @@ final class APIClientSkillEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.skills?[0].name, "swift-refactor")
         XCTAssertEqual(response.skills?[0].category, "coding")
         XCTAssertEqual(response.skills?[0].description, "Refactors Swift code")
+        XCTAssertEqual(response.skills?[0].disabled, true)
+        XCTAssertEqual(response.skills?[0].tags, ["swift", "refactor"])
+        XCTAssertEqual(response.skills?[0].relatedSkills, ["test-driven-development"])
         XCTAssertEqual(response.skills?[1].name, "doc-search")
         XCTAssertEqual(response.skills?[1].category, "research")
     }
@@ -44,6 +47,29 @@ final class APIClientSkillEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.skills?[0].name, "minimal-skill")
         XCTAssertNil(response.skills?[0].category)
         XCTAssertNil(response.skills?[0].description)
+        XCTAssertNil(response.skills?[0].disabled)
+        XCTAssertNil(response.skills?[0].tags)
+        XCTAssertNil(response.skills?[0].relatedSkills)
+    }
+
+    func testToggleSkillPostsExpectedBodyAndDecodesResponse() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/skills/toggle")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let body = try apiTestJSONBody(from: request)
+            XCTAssertEqual(body["name"] as? String, "swift-refactor")
+            XCTAssertEqual(body["enabled"] as? Bool, false)
+
+            return apiTestJSONResponse("""
+            {"ok": true, "name": "swift-refactor", "enabled": false}
+            """, for: request)
+        }
+
+        let response = try await client.toggleSkill(name: "swift-refactor", enabled: false)
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.name, "swift-refactor")
+        XCTAssertEqual(response.enabled, false)
     }
 
     func testSkillContentBuildsExpectedQueryAndDecodesResponse() async throws {

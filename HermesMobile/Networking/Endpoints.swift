@@ -91,6 +91,7 @@ enum Endpoint {
     case memoryWrite
     case skills
     case skillContent(name: String, file: String?)
+    case toggleSkill
     case upload
     case transcribe
 
@@ -276,6 +277,8 @@ enum Endpoint {
             return "/api/skills"
         case .skillContent:
             return "/api/skills/content"
+        case .toggleSkill:
+            return "/api/skills/toggle"
         case .upload:
             return "/api/upload"
         case .transcribe:

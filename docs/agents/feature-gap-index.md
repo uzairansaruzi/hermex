@@ -93,7 +93,7 @@ sub-paths of a group. Do not reorder casually.
 | `/api/model/` | roadmap | P3 | — | Provider / Model Management |
 | `/api/settings` | roadmap | P3 | secret | Settings Write — bot name + password operations |
 | `/api/profile/` | roadmap | P3 | write | Profile Management — active/create/delete |
-| `/api/skills/` | roadmap | P3 | write | Skill Management — save/delete |
+| `/api/skills/` | roadmap | P3 | write | Skill Management — toggle shipped; save/delete remain roadmap |
 | `/api/transcribe` | roadmap | P3 | privacy | Audio Transcription — server-side; audio leaves the device |
 | `/api/workspaces/` | roadmap | P3 | write | Workspace Management — add/remove/rename/reorder |
 | `/api/workspace/` | roadmap | P3 | write | Workspace Management |

@@ -13,6 +13,38 @@ struct SkillSummary: Decodable, Equatable, Identifiable {
     let category: String?
     let description: String?
     let path: String?
+    let disabled: Bool?
+    let tags: [String]?
+    let relatedSkills: [String]?
+
+    init(
+        name: String?,
+        category: String?,
+        description: String?,
+        path: String?,
+        disabled: Bool? = nil,
+        tags: [String]? = nil,
+        relatedSkills: [String]? = nil
+    ) {
+        self.name = name
+        self.category = category
+        self.description = description
+        self.path = path
+        self.disabled = disabled
+        self.tags = tags
+        self.relatedSkills = relatedSkills
+    }
+}
+
+struct ToggleSkillRequest: Encodable, Equatable {
+    let name: String
+    let enabled: Bool
+}
+
+struct ToggleSkillResponse: Decodable, Equatable {
+    let ok: Bool?
+    let name: String?
+    let enabled: Bool?
 }
 
 struct SkillSlashSuggestion: Identifiable, Equatable {

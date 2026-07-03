@@ -75,6 +75,10 @@ struct SkillsView: View {
                             category: group.category,
                             skills: group.skills,
                             server: server,
+                            togglingSkillNames: viewModel.togglingSkillNames,
+                            onToggleSkill: { skill, enabled in
+                                await toggle(skill: skill, enabled: enabled)
+                            },
                             onAPIError: onAPIError
                         )
                     }
@@ -97,12 +101,21 @@ struct SkillsView: View {
             onAPIError(error)
         }
     }
+
+    private func toggle(skill: SkillSummary, enabled: Bool) async {
+        await viewModel.setSkill(skill, enabled: enabled)
+        if let error = viewModel.lastError {
+            onAPIError(error)
+        }
+    }
 }
 
 private struct SkillCategorySection: View {
     let category: String
     let skills: [SkillSummary]
     let server: URL
+    let togglingSkillNames: Set<String>
+    let onToggleSkill: (SkillSummary, Bool) async -> Void
     let onAPIError: (Error) -> Void
 
     var body: some View {
@@ -125,6 +138,20 @@ private struct SkillCategorySection: View {
                         SkillRow(skill: skill)
                     }
                     .buttonStyle(.plain)
+                    .opacity(skill.disabled == true ? 0.55 : 1)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if skill.disabled != nil,
+                           let name = skill.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                            let isDisabled = skill.disabled == true
+                            Button {
+                                Task { await onToggleSkill(skill, isDisabled) }
+                            } label: {
+                                Label(isDisabled ? "Enable" : "Disable", systemImage: isDisabled ? "checkmark.circle" : "pause.circle")
+                            }
+                            .tint(isDisabled ? .green : .orange)
+                            .disabled(togglingSkillNames.contains(name))
+                        }
+                    }
 
                     if index < skills.count - 1 {
                         Divider()
@@ -159,6 +186,28 @@ private struct SkillRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
                 }
+
+                if skill.disabled == true || !tags.isEmpty {
+                    HStack(spacing: 6) {
+                        if skill.disabled == true {
+                            Text("Disabled")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .foregroundStyle(.secondary)
+                                .background(Color(.tertiarySystemFill), in: Capsule())
+                        }
+
+                        ForEach(tags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.caption2.weight(.medium))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .foregroundStyle(.secondary)
+                                .background(Color(.secondarySystemFill).opacity(0.8), in: Capsule())
+                        }
+                    }
+                }
             }
 
             Spacer(minLength: 8)
@@ -184,6 +233,12 @@ private struct SkillRow: View {
     private var description: String? {
         let text = skill.description?.trimmingCharacters(in: .whitespacesAndNewlines)
         return text?.isEmpty == false ? text : nil
+    }
+
+    private var tags: [String] {
+        (skill.tags ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
 
