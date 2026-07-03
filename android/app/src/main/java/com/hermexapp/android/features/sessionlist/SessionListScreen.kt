@@ -2,29 +2,39 @@ package com.hermexapp.android.features.sessionlist
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Badge
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,16 +44,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hermexapp.android.model.SessionSummary
-import java.text.DateFormat
-import java.util.Date
+import com.hermexapp.android.ui.CircleButton
+import com.hermexapp.android.ui.HermexWordmark
+import com.hermexapp.android.ui.relativeTimeAgo
+import com.hermexapp.android.ui.theme.LocalHermexPalette
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/**
+ * The iOS home screen: HERMEX wordmark, panel menu rows, a "Sessions" section
+ * with relative timestamps, and the floating "✎ Chat" pill.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SessionListScreen(
     viewModel: SessionListViewModel,
@@ -54,97 +72,174 @@ fun SessionListScreen(
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+    val palette = LocalHermexPalette.current
+    var searchVisible by remember { mutableStateOf(false) }
     var actionTarget by remember { mutableStateOf<SessionSummary?>(null) }
     var renameTarget by remember { mutableStateOf<SessionSummary?>(null) }
     var deleteTarget by remember { mutableStateOf<SessionSummary?>(null) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("Hermex") },
-                actions = {
-                    TextButton(onClick = { onOpenPanel("TASKS") }) { Text("Tasks") }
-                    TextButton(onClick = { onOpenPanel("SKILLS") }) { Text("Skills") }
-                    TextButton(onClick = { onOpenPanel("MEMORY") }) { Text("Memory") }
-                    TextButton(onClick = { onOpenPanel("INSIGHTS") }) { Text("Usage") }
-                    TextButton(onClick = onOpenSettings) { Text("⚙") }
-                },
-            )
-        },
+        containerColor = palette.canvas,
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                scope.launch { viewModel.createSessionNow()?.let(onOpenSession) }
-            }) { Text("+") }
+            Surface(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    scope.launch { viewModel.createSessionNow()?.let(onOpenSession) }
+                },
+                color = palette.pillBackground,
+                contentColor = palette.pillForeground,
+                shape = CircleShape,
+                shadowElevation = 6.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("✎", fontWeight = FontWeight.Bold)
+                    Text("Chat", style = MaterialTheme.typography.titleSmall, color = palette.pillForeground)
+                }
+            }
         },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = viewModel::updateSearchQuery,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                label = { Text("Search sessions") },
-                singleLine = true,
-            )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HermexWordmark()
+                    Spacer(Modifier.weight(1f))
+                    CircleButton(
+                        onClick = {
+                            searchVisible = !searchVisible
+                            if (!searchVisible) viewModel.updateSearchQuery("")
+                        },
+                        icon = Icons.Filled.Search,
+                        size = 40,
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(palette.accent, CircleShape)
+                            .clickable(onClick = onOpenSettings),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                            tint = palette.canvas,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
 
-            AnimatedVisibility(visible = state.isFromCache) {
+            if (searchVisible) {
+                item {
+                    OutlinedTextField(
+                        value = state.searchQuery,
+                        onValueChange = viewModel::updateSearchQuery,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        placeholder = { Text("Search sessions", color = palette.textSecondary) },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = palette.card,
+                            unfocusedContainerColor = palette.card,
+                            focusedBorderColor = palette.card,
+                            unfocusedBorderColor = palette.card,
+                        ),
+                    )
+                }
+            }
+
+            item {
+                Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+                    MenuRow(Icons.Filled.DateRange, "Tasks") { onOpenPanel("TASKS") }
+                    MenuRow(Icons.Filled.Build, "Skills") { onOpenPanel("SKILLS") }
+                    MenuRow(Icons.Filled.Face, "Memory") { onOpenPanel("MEMORY") }
+                    MenuRow(Icons.Filled.Info, "Insights") { onOpenPanel("INSIGHTS") }
+                }
+            }
+
+            item {
                 Text(
-                    "Offline — showing cached sessions.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    "Sessions",
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.titleLarge,
                 )
             }
 
-            AnimatedVisibility(visible = state.errorMessage != null) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            item {
+                AnimatedVisibility(visible = state.isFromCache) {
                     Text(
-                        state.errorMessage.orEmpty(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        "Offline — showing cached sessions.",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = palette.warning,
                     )
-                    TextButton(onClick = { viewModel.refresh() }) { Text("Retry") }
+                }
+            }
+
+            item {
+                AnimatedVisibility(visible = state.errorMessage != null) {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                        Text(
+                            state.errorMessage.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.destructive,
+                        )
+                        TextButton(onClick = { viewModel.refresh() }) { Text("Retry") }
+                    }
                 }
             }
 
             when {
-                state.isLoading && state.sessions.isEmpty() ->
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                state.isLoading && state.sessions.isEmpty() -> item {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator(color = palette.accent) }
+                }
 
-                state.sessions.isEmpty() && state.errorMessage == null ->
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                if (state.searchQuery.isBlank()) "No sessions yet" else "No matches",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            if (state.searchQuery.isBlank()) {
-                                Button(onClick = {
-                                    scope.launch { viewModel.createSessionNow()?.let(onOpenSession) }
-                                }) { Text("Start your first chat") }
-                            }
-                        }
-                    }
-
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(state.sessions, key = { it.stableId }) { session ->
-                        SessionRow(
-                            session = session,
-                            modifier = Modifier.animateItem(),
-                            onClick = { session.sessionId?.let(onOpenSession) },
-                            onLongClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                actionTarget = session
-                            },
+                state.sessions.isEmpty() && state.errorMessage == null -> item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            if (state.searchQuery.isBlank()) "No sessions yet" else "No matches",
+                            style = MaterialTheme.typography.titleMedium,
                         )
-                        HorizontalDivider()
+                        Text(
+                            if (state.searchQuery.isBlank()) "Tap Chat to start one." else "Try another search.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.textSecondary,
+                        )
                     }
+                }
+
+                else -> items(state.sessions, key = { it.stableId }) { session ->
+                    SessionRow(
+                        session = session,
+                        modifier = Modifier.animateItem(),
+                        onClick = { session.sessionId?.let(onOpenSession) },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            actionTarget = session
+                        },
+                    )
                 }
             }
         }
@@ -187,10 +282,31 @@ fun SessionListScreen(
                 TextButton(onClick = {
                     session.sessionId?.let(viewModel::deleteSession)
                     deleteTarget = null
-                }) { Text("Delete") }
+                }) { Text("Delete", color = palette.destructive) }
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/** The icon + label menu rows under the wordmark (Tasks / Skills / Memory / Insights). */
+@Composable
+private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(label, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -253,6 +369,7 @@ private fun RenameDialog(
     )
 }
 
+/** iOS session row: bold title, "N messages · workspace" caption, relative time. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SessionRow(
@@ -261,56 +378,51 @@ private fun SessionRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    Column(
+    val palette = LocalHermexPalette.current
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (session.pinned == true) Text("📌", style = MaterialTheme.typography.labelSmall)
-            Text(
-                session.title?.ifBlank { null } ?: "Untitled session",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (session.isStreaming == true || session.activeStreamId != null) {
-                Badge { Text("running") }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (session.pinned == true) {
+                    Text("📌", style = MaterialTheme.typography.labelSmall)
+                }
+                Text(
+                    session.title?.ifBlank { null } ?: "Untitled session",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
             Text(
                 listOfNotNull(
-                    session.model,
-                    session.messageCount?.let { "$it msgs" },
+                    session.messageCount?.let { "$it messages" },
+                    session.workspace?.substringAfterLast('/')?.ifBlank { null }
+                        ?: session.profile,
                     if (session.isCronSession) "cron" else null,
                     if (session.isCliSession == true) "cli" else null,
                     if (session.archived == true) "archived" else null,
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                formatTimestamp(session.lastMessageAt ?: session.updatedAt ?: session.createdAt),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = palette.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                relativeTimeAgo(session.lastMessageAt ?: session.updatedAt ?: session.createdAt),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.textSecondary,
+            )
+            if (session.isStreaming == true || session.activeStreamId != null) {
+                Box(Modifier.size(8.dp).background(palette.success, CircleShape))
+            }
+        }
     }
-}
-
-private fun formatTimestamp(epochSeconds: Double?): String {
-    if (epochSeconds == null || epochSeconds <= 0) return ""
-    return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-        .format(Date((epochSeconds * 1000).toLong()))
 }

@@ -11,14 +11,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hermexapp.android.config.AppPrefs
+import com.hermexapp.android.ui.HermexHeader
+import com.hermexapp.android.ui.theme.LocalHermexPalette
 import com.hermexapp.android.config.ThemeChoice
 import com.hermexapp.android.model.ModelCatalogGroup
 import com.hermexapp.android.network.ApiClient
@@ -42,7 +42,6 @@ import com.hermexapp.android.network.serverSettings
 import kotlinx.coroutines.launch
 
 /** Phase 8 settings: server info, default model, theme, sign out. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     client: ApiClient,
@@ -71,12 +70,8 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = { TextButton(onClick = onClose) { Text("Back") } },
-            )
-        },
+        containerColor = LocalHermexPalette.current.canvas,
+        topBar = { HermexHeader(title = "Settings", onBack = onClose) },
     ) { innerPadding ->
         Column(
             modifier = Modifier

@@ -2,6 +2,7 @@ package com.hermexapp.android.features.chat
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,36 +13,36 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hermexapp.android.features.chat.ChatViewModel.TimelineEntry
+import com.hermexapp.android.ui.CircleButton
+import com.hermexapp.android.ui.HermexHeader
+import com.hermexapp.android.ui.theme.LocalHermexPalette
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
@@ -53,6 +54,7 @@ fun ChatScreen(
     val state by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val haptics = LocalHapticFeedback.current
+    val palette = LocalHermexPalette.current
 
     LaunchedEffect(Unit) { viewModel.load() }
     DisposableEffect(Unit) { onDispose { viewModel.teardown() } }
@@ -74,19 +76,15 @@ fun ChatScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize().imePadding(),
+        containerColor = palette.canvas,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        state.title ?: "Chat",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+            HermexHeader(
+                title = state.title ?: "New chat",
+                subtitle = "hermes",
+                onBack = onBack,
                 actions = {
-                    TextButton(onClick = onOpenFiles) { Text("Files") }
-                    TextButton(onClick = onOpenGit) { Text("Git") }
+                    CircleButton(onClick = onOpenFiles, glyph = "📁", size = 40)
+                    CircleButton(onClick = onOpenGit, glyph = "⎇", size = 40)
                 },
             )
         },
@@ -97,7 +95,7 @@ fun ChatScreen(
                     "Offline — showing the cached transcript.",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    color = palette.warning,
                 )
             }
 
@@ -106,14 +104,14 @@ fun ChatScreen(
                     state.errorMessage.orEmpty(),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = palette.destructive,
                 )
             }
 
             when {
                 state.isLoading && state.entries.isEmpty() ->
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(color = palette.accent)
                     }
 
                 state.entries.isEmpty() ->
@@ -121,9 +119,9 @@ fun ChatScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("No messages yet", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Send a message to start the run.",
+                                "Ask anything to start the run.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = palette.textSecondary,
                             )
                         }
                     }
@@ -132,10 +130,10 @@ fun ChatScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     state = listState,
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(state.entries, key = { it.id }) { entry ->
-                        TimelineEntryView(entry)
+                        TimelineEntryView(entry, isStreamingRun = state.isStreaming)
                     }
                 }
             }
@@ -145,20 +143,11 @@ fun ChatScreen(
                 onPick = viewModel::applySlashCommand,
             )
             AttachmentStrip(state, viewModel)
-            ComposerSelectorRow(viewModel, state)
-            Composer(
-                text = state.composerText,
-                isStreaming = state.isStreaming,
-                canSend = state.composerText.isNotBlank() || state.attachments.isNotEmpty(),
-                onTextChange = viewModel::updateComposerText,
-                onSend = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    viewModel.send()
-                },
-                onStop = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    viewModel.stop()
-                },
+            ComposerBar(
+                viewModel = viewModel,
+                state = state,
+                onSendHaptic = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) },
+                onStopHaptic = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
             )
         }
     }
@@ -166,9 +155,10 @@ fun ChatScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TimelineEntryView(entry: TimelineEntry) {
+private fun TimelineEntryView(entry: TimelineEntry, isStreamingRun: Boolean) {
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
+    val palette = LocalHermexPalette.current
 
     fun copyModifier(text: String): Modifier = Modifier.combinedClickable(
         onClick = {},
@@ -179,59 +169,64 @@ private fun TimelineEntryView(entry: TimelineEntry) {
     )
 
     when (entry) {
+        // iOS user bubble: gray rounded, right-aligned, ~80% max width.
         is TimelineEntry.UserMessage -> Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
             Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
+                color = palette.bubble,
                 shape = MaterialTheme.shapes.medium,
-                modifier = copyModifier(entry.text),
+                modifier = Modifier.widthIn(max = 320.dp).then(copyModifier(entry.text)),
             ) {
                 Text(
                     entry.text,
-                    modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyLarge,
                 )
             }
         }
 
+        // iOS assistant text: plain on the black canvas, no bubble.
         is TimelineEntry.AssistantMessage -> Text(
-            // Plain text for now — streaming markdown is its own follow-up slice.
             entry.text + if (entry.isStreaming) " ▍" else "",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             modifier = copyModifier(entry.text),
         )
 
-        is TimelineEntry.Reasoning -> Text(
-            entry.text,
-            style = MaterialTheme.typography.bodySmall,
-            fontStyle = FontStyle.Italic,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = copyModifier(entry.text),
-        )
+        // iOS "Thinking" card: dark, collapsible, preview in the header.
+        is TimelineEntry.Reasoning -> ThinkingCard(entry, isStreamingRun)
 
         is TimelineEntry.ToolCall -> Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
+            color = palette.card,
             shape = MaterialTheme.shapes.small,
         ) {
-            Column(modifier = Modifier.padding(8.dp).fillMaxWidth()) {
-                Text(
-                    listOfNotNull(
+            Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("🛠", style = MaterialTheme.typography.labelMedium)
+                    Text(
                         entry.name ?: "tool",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
                         when {
                             entry.isRunning -> "running…"
                             entry.isError -> "failed"
                             else -> entry.durationSeconds?.let { "%.1fs".format(it) } ?: "done"
                         },
-                    ).joinToString(" — "),
-                    style = MaterialTheme.typography.labelMedium,
-                )
+                        style = MaterialTheme.typography.labelMedium,
+                        color = when {
+                            entry.isError -> palette.destructive
+                            entry.isRunning -> palette.warning
+                            else -> palette.textSecondary
+                        },
+                    )
+                }
                 entry.preview?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = palette.textSecondary,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -243,37 +238,62 @@ private fun TimelineEntryView(entry: TimelineEntry) {
             entry.text,
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = palette.textSecondary,
         )
     }
 }
 
 @Composable
-private fun Composer(
-    text: String,
-    isStreaming: Boolean,
-    canSend: Boolean,
-    onTextChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onStop: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Bottom,
+private fun ThinkingCard(entry: TimelineEntry.Reasoning, isStreamingRun: Boolean) {
+    val palette = LocalHermexPalette.current
+    // Expanded while it streams (like iOS), collapses to the header afterwards
+    // unless the user toggles it.
+    var userToggled by remember(entry.id) { mutableStateOf<Boolean?>(null) }
+    val expanded = userToggled ?: (entry.isStreaming && isStreamingRun)
+
+    Surface(
+        color = palette.card,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = onTextChange,
-            modifier = Modifier.weight(1f),
-            placeholder = { Text(if (isStreaming) "Steer the run…" else "Message") },
-            maxLines = 4,
-        )
-        if (isStreaming) {
-            Button(onClick = onStop) { Text("Stop") }
-        }
-        Button(onClick = onSend, enabled = canSend) {
-            Text(if (isStreaming) "Steer" else "Send")
+        Column(
+            modifier = Modifier
+                .clickable(onClick = { userToggled = !(expanded) })
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("🧠", style = MaterialTheme.typography.labelMedium)
+                Text("Thinking", style = MaterialTheme.typography.labelLarge)
+                if (!expanded) {
+                    Text(
+                        entry.text.lineSequence().firstOrNull().orEmpty(),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = palette.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                }
+                Text(
+                    if (expanded) "⌃" else "⌄",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = palette.textSecondary,
+                )
+            }
+            if (expanded) {
+                Text(
+                    entry.text + if (entry.isStreaming) " ▍" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                )
+            }
         }
     }
 }

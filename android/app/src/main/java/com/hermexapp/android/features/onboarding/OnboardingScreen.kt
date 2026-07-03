@@ -35,7 +35,10 @@ import androidx.compose.ui.unit.dp
 fun OnboardingScreen(viewModel: OnboardingViewModel) {
     val state by viewModel.uiState.collectAsState()
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = com.hermexapp.android.ui.theme.LocalHermexPalette.current.canvas,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -60,7 +63,7 @@ fun OnboardingScreen(viewModel: OnboardingViewModel) {
 @Composable
 private fun WelcomePage(onContinue: () -> Unit) {
     Spacer(Modifier.height(48.dp))
-    Text("Hermex", style = MaterialTheme.typography.displaySmall)
+    com.hermexapp.android.ui.HermexWordmark()
     Text(
         "Control your self-hosted Hermes agent from your phone. " +
             "Your server. Your phone. No middleman.",

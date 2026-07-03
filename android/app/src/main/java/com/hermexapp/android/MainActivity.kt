@@ -11,10 +11,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,6 +37,7 @@ import com.hermexapp.android.features.workspace.FileBrowserScreen
 import com.hermexapp.android.features.workspace.GitScreen
 import com.hermexapp.android.features.workspace.WorkspaceViewModel
 import com.hermexapp.android.platform.RunNotifications
+import com.hermexapp.android.ui.theme.HermexTheme
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
 
@@ -233,16 +230,3 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
 
 /** Composer prefill handoff from a share, consumed on the next chat open. */
 private var sharePrefill: String? = null
-
-@Composable
-fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable () -> Unit) {
-    val dark = when (choice) {
-        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
-        ThemeChoice.LIGHT -> false
-        ThemeChoice.DARK -> true
-    }
-    MaterialTheme(
-        colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
-        content = content,
-    )
-}
