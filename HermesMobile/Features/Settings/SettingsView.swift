@@ -1263,7 +1263,7 @@ private struct HeaderLogoColorSettings: View {
             }
             .font(.subheadline)
 
-            HermesHeaderLogo(selectedColor: HeaderLogoColor.color(for: selectedHex))
+            ZoraHeaderWordmark(selectedColor: HeaderLogoColor.color(for: selectedHex))
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
                 .padding(.horizontal, 12)

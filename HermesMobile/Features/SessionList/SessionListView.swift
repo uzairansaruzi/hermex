@@ -304,7 +304,7 @@ struct SessionListView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: searchChromeIsExpanded ? 0 : 16) {
-            HermesHeaderLogo(selectedColor: selectedHeaderLogoColor)
+            ZoraHeaderWordmark(selectedColor: selectedHeaderLogoColor)
                 .frame(width: searchChromeIsExpanded ? 0 : 160, alignment: .leading)
                 .opacity(searchChromeIsExpanded ? 0 : 1)
                 .clipped()
@@ -884,37 +884,26 @@ struct SessionListView: View {
 
 }
 
-struct HermesHeaderLogo: View {
+enum ZoraWordmark {
+    static let text = "Zora"
+    static let accessibilityLabel = "Zora"
+    static let tracking: CGFloat = -1.1
+}
+
+struct ZoraHeaderWordmark: View {
     let selectedColor: Color
 
-    private static let aspectRatio = 643.0 / 185.0
-
     var body: some View {
-        ZStack {
-            Image("hermes-fill-mask")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(selectedColor)
-
-            Image("hermes-shading-overlay")
-                .resizable()
-                .scaledToFit()
-                .blendMode(.multiply)
-
-            Image("hermes-highlight")
-                .resizable()
-                .scaledToFit()
-                .blendMode(.screen)
-
-            Image("hermes-outline-shadow")
-                .resizable()
-                .scaledToFit()
-        }
-        .aspectRatio(Self.aspectRatio, contentMode: .fit)
-        .compositingGroup()
+        Text(ZoraWordmark.text)
+            // SF Pro is the system font on iOS; keep the mark as text so it
+            // respects Dynamic Type and avoids carrying the old Hermex artwork.
+            .font(.system(size: 42, weight: .semibold, design: .default))
+            .tracking(ZoraWordmark.tracking)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(selectedColor)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("HERMEX")
+        .accessibilityLabel(ZoraWordmark.accessibilityLabel)
     }
 }
 
@@ -1169,10 +1158,10 @@ private struct PendingNewChatView: View {
     }
 }
 
-#Preview("Hermes Header Logo") {
+#Preview("Zora Header Wordmark") {
     VStack(spacing: 16) {
         ForEach(HeaderLogoColor.presets.prefix(4)) { preset in
-            HermesHeaderLogo(selectedColor: preset.color)
+            ZoraHeaderWordmark(selectedColor: preset.color)
                 .frame(width: 220)
         }
     }

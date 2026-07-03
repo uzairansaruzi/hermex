@@ -55,6 +55,12 @@ final class AppThemeTests: XCTestCase {
         XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#AF52DE"))
     }
 
+    func testZoraWordmarkUsesZoraAccessibleBranding() {
+        XCTAssertEqual(ZoraWordmark.text, "Zora")
+        XCTAssertEqual(ZoraWordmark.accessibilityLabel, "Zora")
+        XCTAssertLessThan(ZoraWordmark.tracking, 0)
+    }
+
     func testSessionIdentityInitialsPreferStoredValueThenDisplayName() {
         XCTAssertEqual(
             SessionIdentitySettings.displayInitials(
