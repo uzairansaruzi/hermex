@@ -8,6 +8,8 @@ struct InsightsResponse: Decodable, Equatable {
     let totalOutputTokens: Int?
     let totalTokens: Int?
     let totalCost: Double?
+    let totalCacheReadTokens: Int?
+    let totalCacheHitPercent: Double?
     let models: [InsightsModelBreakdown]?
     let dailyTokens: [InsightsDailyToken]?
     let activityByDay: [InsightsActivityByDay]?
@@ -21,6 +23,8 @@ struct InsightsResponse: Decodable, Equatable {
         case totalOutputTokens
         case totalTokens
         case totalCost
+        case totalCacheReadTokens
+        case totalCacheHitPercent
         case models
         case dailyTokens
         case activityByDay
@@ -36,6 +40,8 @@ struct InsightsResponse: Decodable, Equatable {
         totalOutputTokens = container.decodeLossyIntIfPresent(forKey: .totalOutputTokens)
         totalTokens = container.decodeLossyIntIfPresent(forKey: .totalTokens)
         totalCost = container.decodeLossyCurrencyDoubleIfPresent(forKey: .totalCost)
+        totalCacheReadTokens = container.decodeLossyIntIfPresent(forKey: .totalCacheReadTokens)
+        totalCacheHitPercent = container.decodeLossyCurrencyDoubleIfPresent(forKey: .totalCacheHitPercent)
         models = (try? container.decodeIfPresent([InsightsModelBreakdown].self, forKey: .models)) ?? nil
         dailyTokens = (try? container.decodeIfPresent([InsightsDailyToken].self, forKey: .dailyTokens)) ?? nil
         activityByDay = (try? container.decodeIfPresent([InsightsActivityByDay].self, forKey: .activityByDay)) ?? nil
@@ -50,6 +56,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
     let outputTokens: Int?
     let totalTokens: Int?
     let cost: Double?
+    let cacheHitPercent: Double?
     let sessionShare: Int?
     let tokenShare: Int?
     let costShare: Int?
@@ -61,6 +68,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
         case outputTokens
         case totalTokens
         case cost
+        case cacheHitPercent
         case sessionShare
         case tokenShare
         case costShare
@@ -74,6 +82,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
         outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
         totalTokens = container.decodeLossyIntIfPresent(forKey: .totalTokens)
         cost = container.decodeLossyCurrencyDoubleIfPresent(forKey: .cost)
+        cacheHitPercent = container.decodeLossyCurrencyDoubleIfPresent(forKey: .cacheHitPercent)
         sessionShare = container.decodeLossyIntIfPresent(forKey: .sessionShare)
         tokenShare = container.decodeLossyIntIfPresent(forKey: .tokenShare)
         costShare = container.decodeLossyIntIfPresent(forKey: .costShare)

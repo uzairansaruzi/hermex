@@ -185,6 +185,7 @@ final class ChatViewModel {
     private(set) var personalitySuggestions: [String] = ["none"]
     private(set) var skillSlashSuggestions: [SkillSlashSuggestion] = []
     private(set) var profileOptions: [ProfileSummary] = []
+    private(set) var isSingleProfileMode = false
     private(set) var selectedProfileName: String?
     private(set) var selectedReasoningEffort: String?
     private(set) var isLoadingComposerConfiguration = false
@@ -581,7 +582,8 @@ final class ChatViewModel {
             agentCommands: agentCommands,
             workspaceRoots: workspaceRoots,
             workspaceSuggestions: workspaceSuggestions,
-            profileOptions: profileOptions
+            profileOptions: profileOptions,
+            isSingleProfileMode: isSingleProfileMode
         )
     }
 
@@ -597,6 +599,7 @@ final class ChatViewModel {
         workspaceRoots = state.workspaceRoots
         workspaceSuggestions = state.workspaceSuggestions
         profileOptions = state.profileOptions
+        isSingleProfileMode = state.isSingleProfileMode
     }
 
     func refreshApprovalBypassState() async {

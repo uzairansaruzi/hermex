@@ -12,6 +12,7 @@ struct ChatComposerConfigState: Equatable, Sendable {
     var workspaceRoots: [WorkspaceRoot]
     var workspaceSuggestions: [String]
     var profileOptions: [ProfileSummary]
+    var isSingleProfileMode: Bool
 
     init(
         currentWorkspace: String? = nil,
@@ -24,7 +25,8 @@ struct ChatComposerConfigState: Equatable, Sendable {
         agentCommands: [AgentCommand] = [],
         workspaceRoots: [WorkspaceRoot] = [],
         workspaceSuggestions: [String] = [],
-        profileOptions: [ProfileSummary] = []
+        profileOptions: [ProfileSummary] = [],
+        isSingleProfileMode: Bool = false
     ) {
         self.currentWorkspace = currentWorkspace
         self.currentModel = currentModel
@@ -37,6 +39,7 @@ struct ChatComposerConfigState: Equatable, Sendable {
         self.workspaceRoots = workspaceRoots
         self.workspaceSuggestions = workspaceSuggestions
         self.profileOptions = profileOptions
+        self.isSingleProfileMode = isSingleProfileMode
     }
 }
 
@@ -59,6 +62,7 @@ struct ChatComposerConfigLoader {
         do {
             let profilesResponse = try await client.profiles()
             state.profileOptions = profilesResponse.profiles ?? []
+            state.isSingleProfileMode = profilesResponse.singleProfileMode ?? false
             state.selectedProfileName = Self.nonEmpty(state.currentProfile)
                 ?? Self.nonEmpty(profilesResponse.active)
                 ?? profilesResponse.effectiveDefaultProfileName

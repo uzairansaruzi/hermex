@@ -74,12 +74,16 @@ struct SessionSidebarUtilityRows: View {
             .padding(.top, topPadding)
             .sessionsScreenListRow()
 
-        activeProfileHeader
-            .padding(.top, Self.rowSpacing)
-            .sessionsScreenListRow()
+        // In single-profile mode the server rejects switching, so the whole
+        // "Active Profile" disclosure would only no-op or error — hide it (#24).
+        if !viewModel.isSingleProfileMode {
+            activeProfileHeader
+                .padding(.top, Self.rowSpacing)
+                .sessionsScreenListRow()
 
-        if profilesAreExpanded {
-            activeProfileOptionRows
+            if profilesAreExpanded {
+                activeProfileOptionRows
+            }
         }
 
         projectsHeader

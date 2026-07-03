@@ -286,9 +286,36 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(viewModel.activeProfileModel, "claude-sonnet-4-5")
         XCTAssertEqual(viewModel.activeProfileProvider, "anthropic")
         XCTAssertEqual(viewModel.profileOptions.compactMap(\.normalizedName), ["default", "work"])
+        XCTAssertFalse(viewModel.isSingleProfileMode)
         XCTAssertFalse(viewModel.isLoadingActiveProfile)
         XCTAssertNil(viewModel.activeProfileErrorMessage)
         XCTAssertNil(viewModel.lastError)
+    }
+
+    @MainActor
+    func testLoadActiveProfileStoresSingleProfileMode() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse("""
+                {
+                  "active": "default",
+                  "profiles": [
+                    { "name": "default", "is_default": true, "is_active": true }
+                  ],
+                  "single_profile_mode": true
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadActiveProfile()
+
+        XCTAssertTrue(viewModel.isSingleProfileMode)
+        XCTAssertEqual(viewModel.activeProfileName, "default")
     }
 
     @MainActor

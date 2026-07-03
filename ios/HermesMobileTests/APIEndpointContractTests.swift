@@ -181,6 +181,7 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "set personality", method: "POST", endpoint: .setPersonality, path: "/api/personality/set"),
             .init(name: "profiles", method: "GET", endpoint: .profiles, path: "/api/profiles"),
             .init(name: "switch profile", method: "POST", endpoint: .switchProfile, path: "/api/profile/switch"),
+            .init(name: "create profile", method: "POST", endpoint: .createProfile, path: "/api/profile/create"),
             .init(name: "providers", method: "GET", endpoint: .providers, path: "/api/providers"),
             .init(name: "settings", method: "GET", endpoint: .settings, path: "/api/settings"),
             .init(

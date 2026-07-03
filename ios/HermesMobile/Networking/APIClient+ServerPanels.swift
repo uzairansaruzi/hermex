@@ -68,6 +68,32 @@ extension APIClient {
         )
     }
 
+    /// Creates a new profile (`POST /api/profile/create`), mirroring the webui's
+    /// create form payload: `clone_config` is always sent, everything else only
+    /// when provided (`clone_from` is intentionally omitted — the server clones
+    /// from the active profile). Rejected with 403 in single-profile mode.
+    func createProfile(
+        name: String,
+        cloneConfig: Bool = false,
+        defaultModel: String? = nil,
+        modelProvider: String? = nil,
+        baseUrl: String? = nil,
+        apiKey: String? = nil
+    ) async throws -> ProfileCreateResponse {
+        try await send(
+            endpoint: .createProfile,
+            method: "POST",
+            body: ProfileCreateRequest(
+                name: name,
+                cloneConfig: cloneConfig,
+                defaultModel: defaultModel,
+                modelProvider: modelProvider,
+                baseUrl: baseUrl,
+                apiKey: apiKey
+            )
+        )
+    }
+
     func providers() async throws -> ProvidersResponse {
         try await send(endpoint: .providers, method: "GET")
     }
@@ -128,6 +154,15 @@ private struct PersonalitySetRequest: Encodable {
 
 private struct ProfileSwitchRequest: Encodable {
     let name: String
+}
+
+private struct ProfileCreateRequest: Encodable {
+    let name: String
+    let cloneConfig: Bool
+    let defaultModel: String?
+    let modelProvider: String?
+    let baseUrl: String?
+    let apiKey: String?
 }
 
 private struct UpdatesApplyRequest: Encodable {

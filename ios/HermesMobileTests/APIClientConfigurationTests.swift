@@ -414,7 +414,8 @@ final class APIClientConfigurationTests: APIClientTestCase {
                   "has_env": true,
                   "skill_count": 4
                 }
-              ]
+              ],
+              "single_profile_mode": true
             }
             """, for: request)
         }
@@ -425,6 +426,19 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.profiles?.first?.name, "default")
         XCTAssertEqual(response.profiles?.first?.isDefault, true)
         XCTAssertEqual(response.profiles?.first?.displayName, "Default")
+        XCTAssertEqual(response.singleProfileMode, true)
+    }
+
+    func testProfilesResponseToleratesAbsentSingleProfileMode() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let response = try decoder.decode(
+            ProfilesResponse.self,
+            from: Data(#"{"active": "default", "profiles": []}"#.utf8)
+        )
+
+        XCTAssertNil(response.singleProfileMode)
     }
 
     func testProfilesResponseEffectiveDefaultPrefersActiveName() {
@@ -527,6 +541,101 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.defaultModel, "gpt-5.5")
         XCTAssertEqual(response.defaultWorkspace, "/Users/test/work")
         XCTAssertEqual(response.profiles?.last?.isActive, true)
+    }
+
+    func testCreateProfileBuildsExpectedBodyAndDecodesResponse() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/profile/create")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["name"] as? String, "research")
+            XCTAssertEqual(body?["clone_config"] as? Bool, false)
+            // Optional fields must be omitted, not sent as null (the server
+            // treats presence as intent).
+            XCTAssertEqual(body?.count, 2)
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "profile": {
+                "name": "research",
+                "path": "/Users/test/.hermes/profiles/research",
+                "is_default": false
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.createProfile(name: "research")
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.profile?.name, "research")
+        XCTAssertNil(response.error)
+    }
+
+    func testCreateProfileSendsOptionalFieldsWithSnakeCaseKeys() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/profile/create")
+
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["name"] as? String, "research")
+            XCTAssertEqual(body?["clone_config"] as? Bool, true)
+            XCTAssertEqual(body?["default_model"] as? String, "claude-sonnet-4-5")
+            XCTAssertEqual(body?["model_provider"] as? String, "anthropic")
+            XCTAssertEqual(body?["base_url"] as? String, "http://localhost:11434")
+            XCTAssertEqual(body?["api_key"] as? String, "sk-test")
+            XCTAssertEqual(body?.count, 6)
+
+            return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+        }
+
+        let response = try await client.createProfile(
+            name: "research",
+            cloneConfig: true,
+            defaultModel: "claude-sonnet-4-5",
+            modelProvider: "anthropic",
+            baseUrl: "http://localhost:11434",
+            apiKey: "sk-test"
+        )
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertNil(response.profile)
+    }
+
+    func testProfileBaseURLRuleMirrorsUpstream() {
+        XCTAssertTrue(ProfileNameRules.isValidBaseURL("http://localhost:11434"))
+        XCTAssertTrue(ProfileNameRules.isValidBaseURL("https://api.example.com/v1"))
+        XCTAssertFalse(ProfileNameRules.isValidBaseURL("localhost:11434"))
+        XCTAssertFalse(ProfileNameRules.isValidBaseURL("ftp://example.com"))
+        XCTAssertFalse(ProfileNameRules.isValidBaseURL(""))
+    }
+
+    func testProfilePickerCancellationErrorDetection() {
+        XCTAssertTrue(DefaultProfilePickerView.isCancellationError(CancellationError()))
+        XCTAssertTrue(DefaultProfilePickerView.isCancellationError(URLError(.cancelled)))
+        XCTAssertTrue(DefaultProfilePickerView.isCancellationError(APIError.network(underlying: URLError(.cancelled))))
+        XCTAssertFalse(DefaultProfilePickerView.isCancellationError(URLError(.timedOut)))
+        XCTAssertFalse(DefaultProfilePickerView.isCancellationError(APIError.unauthorized))
+    }
+
+    func testProfileNameRulesMirrorUpstreamPattern() {
+        XCTAssertTrue(ProfileNameRules.isValid("work"))
+        XCTAssertTrue(ProfileNameRules.isValid("a"))
+        XCTAssertTrue(ProfileNameRules.isValid("9lives"))
+        XCTAssertTrue(ProfileNameRules.isValid("team-2_dev"))
+        XCTAssertTrue(ProfileNameRules.isValid(String(repeating: "a", count: 64)))
+
+        XCTAssertFalse(ProfileNameRules.isValid(""))
+        XCTAssertFalse(ProfileNameRules.isValid("-lead"))
+        XCTAssertFalse(ProfileNameRules.isValid("_x"))
+        XCTAssertFalse(ProfileNameRules.isValid("Work"))
+        XCTAssertFalse(ProfileNameRules.isValid("a b"))
+        XCTAssertFalse(ProfileNameRules.isValid("über"))
+        XCTAssertFalse(ProfileNameRules.isValid("name!"))
+        XCTAssertFalse(ProfileNameRules.isValid(String(repeating: "a", count: 65)))
     }
 
     func testSettingsBuildsExpectedPathAndDecodesServerVersion() async throws {

@@ -88,6 +88,7 @@ struct MessageComposerView: View {
     let skillSuggestions: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
     let profileOptions: [ProfileSummary]
+    let isSingleProfileMode: Bool
     let selectedProfileName: String?
     let selectedProfileTitle: String
     let isLoadingModels: Bool
@@ -619,7 +620,13 @@ struct MessageComposerView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         workspaceSelector
-                        profileSelector
+
+                        // Single-profile mode: the server rejects profile switches,
+                        // so the selector could only no-op or error (#24).
+                        if !isSingleProfileMode {
+                            profileSelector
+                        }
+
                         gitBranchPicker
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -632,7 +639,9 @@ struct MessageComposerView: View {
                 HStack(spacing: 8) {
                     workspaceSelector
 
-                    profileSelector
+                    if !isSingleProfileMode {
+                        profileSelector
+                    }
 
                     gitBranchPicker
 

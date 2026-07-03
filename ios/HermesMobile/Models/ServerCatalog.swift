@@ -339,6 +339,39 @@ struct PersonalitySetResponse: Decodable, Equatable {
 struct ProfilesResponse: Decodable, Equatable {
     let profiles: [ProfileSummary]?
     let active: String?
+    let singleProfileMode: Bool?
+
+    init(profiles: [ProfileSummary]?, active: String?, singleProfileMode: Bool? = nil) {
+        self.profiles = profiles
+        self.active = active
+        self.singleProfileMode = singleProfileMode
+    }
+}
+
+struct ProfileCreateResponse: Decodable, Equatable {
+    let ok: Bool?
+    let profile: ProfileSummary?
+    let error: String?
+}
+
+/// Mirrors the upstream profile-name rule (`^[a-z0-9][a-z0-9_-]{0,63}$`) so the
+/// create form can validate before hitting the server.
+enum ProfileNameRules {
+    static func isValid(_ name: String) -> Bool {
+        guard let first = name.first, name.count <= 64 else { return false }
+        guard isLowercaseAlphanumeric(first) else { return false }
+        return name.allSatisfy { isLowercaseAlphanumeric($0) || $0 == "-" || $0 == "_" }
+    }
+
+    private static func isLowercaseAlphanumeric(_ character: Character) -> Bool {
+        ("a"..."z").contains(character) || ("0"..."9").contains(character)
+    }
+
+    /// Mirrors the upstream base-URL rule for profile creation: when provided,
+    /// the value must start with `http://` or `https://` (server 400s otherwise).
+    static func isValidBaseURL(_ value: String) -> Bool {
+        value.hasPrefix("http://") || value.hasPrefix("https://")
+    }
 }
 
 struct ProfileSwitchResponse: Decodable, Equatable {
