@@ -164,7 +164,7 @@ fun SkillsScreen(
                                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                                     )
                                 }
-                                itemsIndexed(skillList, key = { _, skill -> skill.name ?: "" }) { index, skill ->
+                                itemsIndexed(skillList, key = { index, skill -> "${skill.name ?: ""}_$index" }) { index, skill ->
                                     Column {
                                         SkillRow(
                                             name = skill.name ?: "",

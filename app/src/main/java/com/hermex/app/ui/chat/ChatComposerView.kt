@@ -238,7 +238,7 @@ fun ChatComposerView(
                         )
                     ) {
                         if (isCancellingStream) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
                         } else {
                             Icon(Icons.Default.Stop, contentDescription = "Stop response", modifier = Modifier.size(18.dp))
                         }
@@ -256,7 +256,7 @@ fun ChatComposerView(
                         )
                     ) {
                         if (isSending) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
                         } else {
                             Icon(Icons.Default.ArrowUpward, contentDescription = "Send", modifier = Modifier.size(18.dp))
                         }
