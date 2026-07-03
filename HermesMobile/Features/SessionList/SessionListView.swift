@@ -668,11 +668,7 @@ struct SessionListView: View {
                 Task { await viewModel.loadProjects() }
             },
             export: { session, format in
-                Task {
-                    if let fileURL = await viewModel.export(session, format: format) {
-                        sessionExportShareItem = SessionExportShareItem(fileURL: fileURL)
-                    }
-                }
+                Task { await export(session, format: format) }
             }
         )
     }
@@ -835,6 +831,15 @@ struct SessionListView: View {
     private func move(_ session: SessionSummary, to projectID: String?) async {
         await viewModel.move(session, to: projectID, modelContext: modelContext)
         handleLastError()
+    }
+
+    private func export(_ session: SessionSummary, format: SessionExportFormat) async {
+        let fileURL = await viewModel.export(session, format: format)
+        handleLastError()
+
+        if let fileURL {
+            sessionExportShareItem = SessionExportShareItem(fileURL: fileURL)
+        }
     }
 
     private func delete(_ project: ProjectSummary) async {
