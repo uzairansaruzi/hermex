@@ -1,6 +1,7 @@
 package com.hermex.app.data.network
 
 import com.hermex.app.data.auth.AuthManager
+import com.hermex.app.data.model.LoginResponse
 import kotlinx.serialization.json.Json
 import okhttp3.Authenticator
 import okhttp3.CookieJar
@@ -10,6 +11,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.Route
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,16 +45,25 @@ class HermesAuthenticator @Inject constructor(
             return null
         }
 
+        // Capture the Cookie header the failing request was actually sent with.
+        // BridgeInterceptor set this from the jar when the request went out.
+        val sentCookieHeader = originalRequest.header("Cookie")
+
         synchronized(lock) {
-            // Another thread may have already refreshed the session.  Re-check
-            // by looking at the cookie jar: if a fresh cookie was stored for
-            // our host since the failing request, just retry with it.
-            val existingCookies = cookieJar.loadForRequest(originalRequest.url)
-            if (existingCookies.isNotEmpty() && response.priorResponse == null) {
-                // Cookies exist — they *might* be the same stale ones, but
-                // the simplest safe path is to let OkHttp re-send the request
-                // with whatever's in the jar.  If they're still bad, the
-                // priorResponse guard above stops the next retry.
+            // Another thread may have already refreshed the session while we
+            // waited on the lock.  Compare the cookies the jar would send NOW
+            // against what the failing request originally sent.
+            val currentCookieHeader = cookieJar.loadForRequest(originalRequest.url)
+                .joinToString("; ") { "${it.name}=${it.value}" }
+                .ifEmpty { null }
+
+            if (currentCookieHeader != null && currentCookieHeader != sentCookieHeader) {
+                // Fresh cookies from another thread's login — retry the original
+                // request without logging in again.  BridgeInterceptor re-reads
+                // the jar on retry, so we don't set the Cookie header manually.
+                // If the fresh cookies are still bad, the priorResponse guard
+                // above stops the next attempt.
+                return originalRequest
             }
 
             // Build a login request against the same scheme://host:port as the
@@ -82,21 +93,47 @@ class HermesAuthenticator @Inject constructor(
                 .build()
 
             return try {
-                val loginResponse = loginClient.newCall(loginRequest).execute()
-                val body = loginResponse.body?.string().orEmpty()
-                if (loginResponse.isSuccessful) {
-                    val parsed = json.decodeFromString<com.hermex.app.data.model.LoginResponse>(body)
-                    if (parsed.ok == true) {
-                        authManager.markLoggedIn()
-                        // Retry the original request — the cookie jar now has
-                        // the fresh session cookie from the login response.
-                        return originalRequest
+                loginClient.newCall(loginRequest).execute().use { loginResponse ->
+                    val body = loginResponse.body?.string().orEmpty()
+                    when {
+                        loginResponse.isSuccessful -> {
+                            val parsed = runCatching {
+                                json.decodeFromString<LoginResponse>(body)
+                            }.getOrNull()
+                            when (parsed?.ok) {
+                                true -> {
+                                    authManager.markLoggedIn()
+                                    // Retry the original request — the cookie jar
+                                    // now has the fresh session cookie.
+                                    originalRequest
+                                }
+                                false -> {
+                                    // Definitive rejection (bad password).
+                                    authManager.markLoggedOut()
+                                    null
+                                }
+                                null -> {
+                                    // Undecodable 2xx: treat as transient — don't
+                                    // change auth state.
+                                    null
+                                }
+                            }
+                        }
+                        loginResponse.code == 401 || loginResponse.code == 403 -> {
+                            // Definitive auth rejection.
+                            authManager.markLoggedOut()
+                            null
+                        }
+                        else -> {
+                            // Server error (5xx) or other transient failure —
+                            // do NOT change auth state.
+                            null
+                        }
                     }
                 }
-                authManager.markLoggedOut()
-                null
-            } catch (_: Exception) {
-                authManager.markLoggedOut()
+            } catch (_: IOException) {
+                // Network-level failure (timeout, DNS, tunnel blip) — never
+                // change auth state; the user stays logged in and can retry.
                 null
             }
         }

@@ -43,12 +43,11 @@ object Routes {
 @Composable
 fun HermexNavHost(
     authManager: AuthManager,
-    pendingLaunchRequest: HermesLaunchRequest? = null,
-    onLaunchRequestConsumed: () -> Unit = {},
+    launchRequestViewModel: LaunchRequestViewModel = hiltViewModel(),
     navController: NavHostController = rememberNavController()
 ) {
     val authState by authManager.authState.collectAsState(initial = AuthState.UNCONFIGURED)
-    val launchRequestViewModel: LaunchRequestViewModel = hiltViewModel()
+    val pendingRequest by launchRequestViewModel.pendingRequest.collectAsState()
 
     val startDestination = when (authState) {
         AuthState.UNCONFIGURED -> Routes.ONBOARDING
@@ -56,33 +55,29 @@ fun HermexNavHost(
         AuthState.LOGGED_IN -> Routes.SESSIONS
     }
 
-    // HermexNavHost is the SOLE consumer of launch requests.  This prevents
-    // duplicate navigation (NavHost + SessionListScreen both acting on the
-    // same request) and ensures intents work from any screen.
-    //
-    // Guard with LOGGED_IN: deep links arriving during onboarding stay pending
-    // until auth completes, preventing unauthenticated navigation to chat.
-    LaunchedEffect(pendingLaunchRequest, authState) {
-        val request = pendingLaunchRequest ?: return@LaunchedEffect
+    // Dispatch pending launch requests when authenticated.
+    // The ViewModel clears pendingRequest synchronously in dispatch() and
+    // emits a LaunchNavEvent asynchronously — no navController capture.
+    LaunchedEffect(pendingRequest, authState) {
+        val request = pendingRequest ?: return@LaunchedEffect
         if (authState != AuthState.LOGGED_IN) return@LaunchedEffect
+        launchRequestViewModel.dispatch(request)
+    }
 
-        when (request) {
-            is HermesLaunchRequest.OpenSession -> {
-                navController.navigate(Routes.chat(request.sessionId)) {
-                    popUpTo(Routes.SESSIONS) { inclusive = false }
-                }
-            }
-            is HermesLaunchRequest.NewChat -> {
-                launchRequestViewModel.createSession(profileName = request.profileName) { sessionId ->
+    // Collect one-shot navigation events from the ViewModel.
+    // Channel.BUFFERED ensures events survive configuration changes.
+    LaunchedEffect(Unit) {
+        launchRequestViewModel.navEvents.collect { event ->
+            when (event) {
+                is LaunchNavEvent.OpenChat -> {
                     navController.navigate(
-                        Routes.chat(sessionId, request.initialDraft, request.autoStartVoice)
+                        Routes.chat(event.sessionId, event.initialDraft, event.autoStartVoice)
                     ) {
                         popUpTo(Routes.SESSIONS) { inclusive = false }
                     }
                 }
             }
         }
-        onLaunchRequestConsumed()
     }
 
     NavHost(
@@ -193,6 +188,5 @@ fun HermexNavHost(
                 onBack = { navController.popBackStack() }
             )
         }
-
     }
 }
