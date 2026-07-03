@@ -47,7 +47,7 @@ class HermesAuthenticator @Inject constructor(
 
         // Capture the Cookie header the failing request was actually sent with.
         // BridgeInterceptor set this from the jar when the request went out.
-        val sentCookieHeader = originalRequest.header("Cookie")
+        val sentCookieHeader = response.networkResponse?.request?.header("Cookie")
 
         synchronized(lock) {
             // Another thread may have already refreshed the session while we
