@@ -234,7 +234,10 @@ class SessionListViewModel @Inject constructor(
         val sessionId = session.sessionId ?: return
         mutateSession(sessionId) {
             val newPinned = session.pinned != true
-            apiClient.sessionPin(sessionId, pinned = newPinned)
+            val response = apiClient.sessionPin(sessionId, pinned = newPinned)
+            // Update local state so the UI reflects the change immediately
+            // without waiting for a full refresh.
+            updateSessionLocally(sessionId) { it.copy(pinned = newPinned) }
         }
     }
 

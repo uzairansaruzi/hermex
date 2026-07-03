@@ -111,6 +111,12 @@ class ApiClient @Inject constructor(
 
     suspend fun chatSteer(request: ChatSteerRequest): ChatSteerResponse = post(Endpoints.CHAT_STEER, request)
 
+    suspend fun approvalRespond(request: ApprovalRespondRequest): ApprovalRespondResponse =
+        post(Endpoints.APPROVAL_RESPOND, request)
+
+    suspend fun clarifyRespond(request: ClarificationRespondRequest): ClarificationRespondResponse =
+        post(Endpoints.CLARIFY_RESPOND, request)
+
     suspend fun workspaces(): WorkspacesResponse = get(Endpoints.WORKSPACES)
 
     suspend fun listFiles(sessionId: String, path: String): List<WorkspaceEntry> {
@@ -209,6 +215,8 @@ class ApiClient @Inject constructor(
         is LoginRequest -> json.encodeToString(body)
         is ChatStartRequest -> json.encodeToString(body)
         is ChatSteerRequest -> json.encodeToString(body)
+        is ApprovalRespondRequest -> json.encodeToString(body)
+        is ClarificationRespondRequest -> json.encodeToString(body)
         is ReasoningRequest -> json.encodeToString(body)
         else -> error("Unsupported request body type: ${body::class.qualifiedName}")
     }

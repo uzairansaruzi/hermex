@@ -23,6 +23,8 @@ object Endpoints {
     const val CHAT_CANCEL = "/api/chat/cancel"
     const val CHAT_STREAM_STATUS = "/api/chat/stream/status"
     const val CHAT_STEER = "/api/chat/steer"
+    const val APPROVAL_RESPOND = "/api/approval/respond"
+    const val CLARIFY_RESPOND = "/api/clarify/respond"
     const val UPLOAD = "/api/upload"
     const val UPLOAD_EXTRACT = "/api/upload/extract"
     const val WORKSPACES = "/api/workspaces"

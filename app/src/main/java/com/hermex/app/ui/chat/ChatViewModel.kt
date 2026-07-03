@@ -429,7 +429,8 @@ class ChatViewModel @Inject constructor(
                         sessionId = sessionId,
                         message = trimmed,
                         workspace = _uiState.value.currentWorkspace,
-                        model = _uiState.value.currentModel
+                        model = _uiState.value.currentModel,
+                        modelProvider = _uiState.value.currentModelProvider
                     )
                 )
 
@@ -924,9 +925,11 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRegeneratingMessage = true, messageActionErrorMessage = null) }
             try {
-                // Truncate before the user message so sendMessage won't duplicate it
+                // Truncate BEFORE the user message — sendMessage will re-post it,
+                // so keeping the original user message would produce a
+                // "user, user, assistant" sequence in the server history.
                 val keepCount = _uiState.value.messageOffset + userMessageIndex
-                val truncateResponse = apiClient.sessionTruncate(sessionId, keepCount)
+                apiClient.sessionTruncate(sessionId, keepCount)
                 val truncatedMessages = messages.take(userMessageIndex)
                 _uiState.update { state ->
                     state.copy(
@@ -991,8 +994,14 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRespondingToPendingAction = true, pendingActionErrorMessage = null) }
             try {
-                val request = ChatSteerRequest(sessionId, if (approved) "approve" else "reject")
-                apiClient.chatSteer(request)
+                // Use the dedicated approval endpoint (matching iOS), NOT /api/chat/steer.
+                // The server needs the approval_id to resolve the pending approval.
+                val request = ApprovalRespondRequest(
+                    sessionId = sessionId,
+                    choice = if (approved) "approve" else "reject",
+                    approvalId = pending.pending?.approvalId
+                )
+                apiClient.approvalRespond(request)
                 _uiState.update { it.copy(isRespondingToPendingAction = false, approvalPending = null) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isRespondingToPendingAction = false, pendingActionErrorMessage = e.message) }
@@ -1005,8 +1014,13 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRespondingToPendingAction = true, pendingActionErrorMessage = null) }
             try {
-                val request = ChatSteerRequest(sessionId, choice)
-                apiClient.chatSteer(request)
+                // Use the dedicated clarify endpoint (matching iOS), NOT /api/chat/steer.
+                val request = ClarificationRespondRequest(
+                    sessionId = sessionId,
+                    response = choice,
+                    clarifyId = pending.pending?.clarifyId
+                )
+                apiClient.clarifyRespond(request)
                 _uiState.update { it.copy(isRespondingToPendingAction = false, clarificationPending = null) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isRespondingToPendingAction = false, pendingActionErrorMessage = e.message) }

@@ -3,4 +3,8 @@
     <include domain="sharedpref" path="." />
     <include domain="database" path="." />
     <exclude domain="sharedpref" path="hermex_auth_prefs.xml" />
+    <!-- EncryptedSharedPreferences stores its Tink keyset in a separate prefs
+         file.  Without the matching Keystore key (which is NOT backed up), the
+         restored encrypted prefs are unreadable and crash on access. -->
+    <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__hermex_auth_prefs.xml" />
 </full-backup-content>
