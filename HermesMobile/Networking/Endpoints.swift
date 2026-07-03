@@ -22,6 +22,7 @@ enum Endpoint {
     case updateSession
     case moveSession
     case sessionYolo(sessionID: String?)
+    case exportSession(sessionID: String, format: SessionExportFormat)
     case projects
     case createProject
     case renameProject
@@ -140,6 +141,8 @@ enum Endpoint {
             return "/api/session/move"
         case .sessionYolo:
             return "/api/session/yolo"
+        case .exportSession:
+            return "/api/session/export"
         case .projects:
             return "/api/projects"
         case .createProject:
@@ -328,6 +331,11 @@ enum Endpoint {
         case let .sessionYolo(sessionID):
             guard let sessionID else { return [] }
             return [URLQueryItem(name: "session_id", value: sessionID)]
+        case let .exportSession(sessionID, format):
+            return [
+                URLQueryItem(name: "session_id", value: sessionID),
+                URLQueryItem(name: "format", value: format.rawValue)
+            ]
         case let .approvalPending(sessionID),
             let .approvalStream(sessionID),
             let .clarifyPending(sessionID),

@@ -139,6 +139,23 @@ actor APIClient {
         encodedBody: Data?,
         timeout: TimeInterval? = nil
     ) async throws -> Data {
+        try await sendDataReturningResponse(
+            endpoint: endpoint,
+            method: method,
+            encodedBody: encodedBody,
+            timeout: timeout
+        ).0
+    }
+
+    /// Same request/error contract as `sendData`, but also returns the
+    /// `HTTPURLResponse` so callers can read response headers (e.g. the
+    /// `Content-Disposition` filename on `GET /api/session/export`).
+    func sendDataReturningResponse(
+        endpoint: Endpoint,
+        method: String,
+        encodedBody: Data?,
+        timeout: TimeInterval? = nil
+    ) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -177,7 +194,7 @@ actor APIClient {
             )
         }
 
-        return data
+        return (data, httpResponse)
     }
 
     func downloadData(

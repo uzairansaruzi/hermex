@@ -206,7 +206,9 @@
 		C03250000000000000B105 /* APIClientTranscribeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F105 /* APIClientTranscribeTests.swift */; };
 		C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */; };
 		C03260000000000000B101 /* APIClient+TTS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03260000000000000F101 /* APIClient+TTS.swift */; };
+		C03270000000000000B101 /* APIClient+SessionExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03270000000000000F101 /* APIClient+SessionExport.swift */; };
 		C03260000000000000B102 /* APIClientTTSTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03260000000000000F102 /* APIClientTTSTests.swift */; };
+		C03270000000000000B102 /* APIClientSessionExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03270000000000000F102 /* APIClientSessionExportTests.swift */; };
 		C03140000000000000B001 /* GitBranchPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03140000000000000F001 /* GitBranchPickerView.swift */; };
 		C03120000000000000B006 /* APIClientGitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F006 /* APIClientGitTests.swift */; };
 		C03120000000000000B007 /* GitWorkspaceViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */; };
@@ -520,7 +522,9 @@
 		C03250000000000000F105 /* APIClientTranscribeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTranscribeTests.swift; sourceTree = "<group>"; };
 		C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerVoiceNoteRecorderTests.swift; sourceTree = "<group>"; };
 		C03260000000000000F101 /* APIClient+TTS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+TTS.swift"; sourceTree = "<group>"; };
+		C03270000000000000F101 /* APIClient+SessionExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+SessionExport.swift"; sourceTree = "<group>"; };
 		C03260000000000000F102 /* APIClientTTSTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTTSTests.swift; sourceTree = "<group>"; };
+		C03270000000000000F102 /* APIClientSessionExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientSessionExportTests.swift; sourceTree = "<group>"; };
 		C03140000000000000F001 /* GitBranchPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchPickerView.swift; sourceTree = "<group>"; };
 		C03120000000000000F006 /* APIClientGitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientGitTests.swift; sourceTree = "<group>"; };
 		C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspaceViewModelTests.swift; sourceTree = "<group>"; };
@@ -718,6 +722,7 @@
 				C0390000000000000000000D /* APIClientUploadTests.swift */,
 				C03250000000000000F105 /* APIClientTranscribeTests.swift */,
 				C03260000000000000F102 /* APIClientTTSTests.swift */,
+				C03270000000000000F102 /* APIClientSessionExportTests.swift */,
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 					C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */,
 					C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */,
@@ -808,6 +813,7 @@
 				1A2B3C4D5E6F7000000000B8 /* Endpoints.swift */,
 				C03250000000000000F102 /* APIClient+Transcribe.swift */,
 				C03260000000000000F101 /* APIClient+TTS.swift */,
+				C03270000000000000F101 /* APIClient+SessionExport.swift */,
 				C03250000000000000F103 /* MultipartFormData.swift */,
 				1A2B3C4D5E6F7000000000D7 /* SSEClient.swift */,
 				C0FF000000000000000000A2 /* CustomHeader.swift */,
@@ -1361,6 +1367,7 @@
 				C03250000000000000B101 /* TranscribeResponse.swift in Sources */,
 				C03250000000000000B102 /* APIClient+Transcribe.swift in Sources */,
 				C03260000000000000B101 /* APIClient+TTS.swift in Sources */,
+				C03270000000000000B101 /* APIClient+SessionExport.swift in Sources */,
 				C03250000000000000B103 /* MultipartFormData.swift in Sources */,
 				C03250000000000000B104 /* ComposerVoiceNoteRecorder.swift in Sources */,
 				1A2B3C4D5E6F7000000000A3 /* APIError.swift in Sources */,
@@ -1529,6 +1536,7 @@
 				C0391000000000000000000D /* APIClientUploadTests.swift in Sources */,
 				C03250000000000000B105 /* APIClientTranscribeTests.swift in Sources */,
 				C03260000000000000B102 /* APIClientTTSTests.swift in Sources */,
+				C03270000000000000B102 /* APIClientSessionExportTests.swift in Sources */,
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 					C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */,
 					C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */,
