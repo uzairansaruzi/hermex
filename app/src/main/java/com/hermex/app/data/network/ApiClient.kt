@@ -36,7 +36,11 @@ class ApiClient @Inject constructor(
         ) {
             trimmed
         } else {
-            "http://$trimmed"
+            // Default to HTTPS for bare hosts so that public tunnel endpoints
+            // (e.g. hermes.example.com) don't get rejected by
+            // LocalCleartextInterceptor. The HTTPS fallback in
+            // OnboardingViewModel handles downgrading for local HTTP servers.
+            "https://$trimmed"
         }
     }
 

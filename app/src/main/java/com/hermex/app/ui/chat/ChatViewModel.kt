@@ -260,20 +260,16 @@ class ChatViewModel @Inject constructor(
     }
 
     fun selectModel(model: String, provider: String?) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isUpdatingComposerConfig = true, composerErrorMessage = null) }
-            try {
-                apiClient.defaultModel(model)
-                _uiState.update { state ->
-                    state.copy(
-                        isUpdatingComposerConfig = false,
-                        currentModel = model,
-                        currentModelProvider = provider
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isUpdatingComposerConfig = false, composerErrorMessage = e.message) }
-            }
+        // Model selection is session-scoped: it only affects the model passed to
+        // /api/chat/start for the current conversation.  Do NOT call
+        // apiClient.defaultModel() here — that would change the server-wide
+        // default, making a temporary chat selection affect future sessions and
+        // the Settings screen unexpectedly.
+        _uiState.update { state ->
+            state.copy(
+                currentModel = model,
+                currentModelProvider = provider
+            )
         }
     }
 
@@ -408,8 +404,7 @@ class ChatViewModel @Inject constructor(
                         is SSEEvent.StreamEnd -> finishStream()
                         is SSEEvent.Cancelled -> finishStream()
                         is SSEEvent.Error -> {
-                            _uiState.update { it.copy(sendErrorMessage = event.message) }
-                            finishStream()
+                            handleStreamError(streamId, event.message)
                         }
                         is SSEEvent.ApprovalPending -> {
                             _uiState.update { it.copy(approvalPending = event.response) }
@@ -424,9 +419,33 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(sendErrorMessage = e.message ?: "Stream error") }
-                finishStream()
+                handleStreamError(streamId, e.message ?: "Stream error")
             }
+        }
+    }
+
+    /**
+     * When the SSE connection drops (transient network change, Cloudflare idle
+     * timeout, etc.), check whether the server-side stream is still active before
+     * giving up.  If it is, reattach by reopening the SSE connection with replay
+     * deduplication enabled.  Only finalize when the server confirms the stream
+     * is no longer running.
+     */
+    private fun handleStreamError(streamId: String, errorMessage: String) {
+        viewModelScope.launch {
+            try {
+                val status = apiClient.chatStreamStatus(streamId)
+                if (status.active == true) {
+                    // Server stream is still running — reattach.
+                    isReplayingConnection = true
+                    startStream(streamId)
+                    return@launch
+                }
+            } catch (_: Exception) {
+                // Status check itself failed — fall through to finalize.
+            }
+            _uiState.update { it.copy(sendErrorMessage = errorMessage) }
+            finishStream()
         }
     }
 

@@ -141,11 +141,14 @@ class OnboardingViewModel @Inject constructor(
         authManager.saveServer(apiClient.baseUrl)
         _serverUrl.value = apiClient.baseUrl
 
-        // Check if the server requires authentication
+        // Check if the server requires authentication.
+        // Catch only 404 (legacy server without /api/auth/status endpoint).
+        // Connection errors (host unreachable, timeout) must propagate so they
+        // don't silently bypass password checks and "log in" to offline hosts.
         val authStatus = try {
             apiClient.authStatus()
-        } catch (_: Exception) {
-            null
+        } catch (e: ApiException.Http) {
+            if (e.code == 404) null else throw e
         }
 
         val password = _password.value
@@ -199,10 +202,15 @@ class OnboardingViewModel @Inject constructor(
 
     private fun httpFallbackUrl(url: String): String? {
         val trimmed = url.trim()
-        return if (trimmed.startsWith("https://", ignoreCase = true)) {
-            "http://" + trimmed.substringAfter("://")
-        } else {
-            null
+        return when {
+            trimmed.startsWith("https://", ignoreCase = true) ->
+                "http://" + trimmed.substringAfter("://")
+            // Bare hosts (no scheme) are now configured as HTTPS by default.
+            // Fall back to explicit http:// so local/private LAN servers still
+            // connect via LocalCleartextInterceptor's allowlist.
+            !trimmed.startsWith("http://", ignoreCase = true) ->
+                "http://$trimmed"
+            else -> null
         }
     }
 
