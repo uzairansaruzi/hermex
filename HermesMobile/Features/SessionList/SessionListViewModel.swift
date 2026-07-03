@@ -552,6 +552,55 @@ final class SessionListViewModel {
         }
     }
 
+    /// Downloads the session transcript (`GET /api/session/export`) and writes
+    /// it to a unique temp directory so the share sheet can offer it as a file
+    /// with a real filename. Returns the file URL, or nil after surfacing the
+    /// failure through the standard action-error alert. The caller owns
+    /// cleanup of the returned file's parent directory after sharing.
+    func export(_ session: SessionSummary, format: SessionExportFormat) async -> URL? {
+        guard !isViewingCachedData else {
+            actionErrorMessage = String(localized: "Reconnect to the server to export a session.")
+            return nil
+        }
+
+        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            return nil
+        }
+
+        // Reuses the per-session mutation gate: it disables the row's other
+        // actions while the download runs (the "progress state") and blocks a
+        // double-tap from firing two exports.
+        guard beginSessionMutation(sessionId) else { return nil }
+        defer { endSessionMutation(sessionId) }
+
+        actionErrorMessage = nil
+        lastError = nil
+
+        do {
+            let file = try await client.exportSession(
+                id: sessionId,
+                format: format,
+                fallbackTitle: session.title
+            )
+
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("session-exports", isDirectory: true)
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+            let fileURL = directory.appendingPathComponent(file.filename)
+            try file.data.write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            guard !isCancellationError(error) else { return nil }
+
+            lastError = error
+            actionErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func loadProjects() async {
         isLoadingProjects = true
         actionErrorMessage = nil
