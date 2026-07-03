@@ -22,9 +22,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -34,15 +35,10 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
-import androidx.compose.material.DismissDirection
-import androidx.compose.material.DismissValue
 import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.SwipeToDismiss
-import androidx.compose.material.rememberDismissState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -300,7 +296,7 @@ private fun SessionListTopAppBar(
                 onDismissRequest = { menuExpanded = false }
             ) {
                 DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.Default.Assignment, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null) },
                     text = { Text(stringResource(R.string.tasks)) },
                     onClick = { menuExpanded = false; onTasksClick() }
                 )
@@ -315,7 +311,7 @@ private fun SessionListTopAppBar(
                     onClick = { menuExpanded = false; onMemoryClick() }
                 )
                 DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.Default.TrendingUp, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null) },
                     text = { Text(stringResource(R.string.insights)) },
                     onClick = { menuExpanded = false; onInsightsClick() }
                 )
@@ -406,7 +402,7 @@ private fun SectionHeader(title: String) {
     )
 }
 
-@OptIn(ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun SwipeableSessionRow(
     session: SessionSummary,
@@ -422,31 +418,32 @@ private fun SwipeableSessionRow(
 ) {
     val haptic = LocalHapticFeedback.current
     var menuExpanded by remember { mutableStateOf(false) }
-    val dismissState = rememberDismissState(
-        confirmStateChange = { value ->
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
             when (value) {
-                DismissValue.DismissedToEnd -> onArchive()
-                DismissValue.DismissedToStart -> onDelete()
-                DismissValue.Default -> Unit
+                SwipeToDismissBoxValue.StartToEnd -> onArchive()
+                SwipeToDismissBoxValue.EndToStart -> onDelete()
+                SwipeToDismissBoxValue.Settled -> Unit
             }
             false
         }
     )
 
-    SwipeToDismiss(
+    SwipeToDismissBox(
         state = dismissState,
-        directions = setOf(DismissDirection.StartToEnd, DismissDirection.EndToStart),
-        background = {
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
             val direction = dismissState.dismissDirection
             val color = when (direction) {
-                DismissDirection.StartToEnd -> MaterialTheme.colorScheme.secondaryContainer
-                DismissDirection.EndToStart -> MaterialTheme.colorScheme.errorContainer
-                null -> MaterialTheme.colorScheme.surface
+                SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.secondaryContainer
+                SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
+                SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.surface
             }
             val icon = when (direction) {
-                DismissDirection.StartToEnd -> Icons.Default.Archive
-                DismissDirection.EndToStart -> Icons.Default.Delete
-                null -> null
+                SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Archive
+                SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
+                SwipeToDismissBoxValue.Settled -> null
             }
             Box(
                 modifier = Modifier
@@ -454,44 +451,43 @@ private fun SwipeableSessionRow(
                     .background(color)
                     .padding(horizontal = 20.dp),
                 contentAlignment = when (direction) {
-                    DismissDirection.StartToEnd -> Alignment.CenterStart
-                    DismissDirection.EndToStart -> Alignment.CenterEnd
-                    null -> Alignment.Center
+                    SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                    SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+                    SwipeToDismissBoxValue.Settled -> Alignment.Center
                 }
             ) {
                 icon?.let { Icon(imageVector = it, contentDescription = null) }
             }
-        },
-        dismissContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = onClick,
-                        onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuExpanded = true
-                        }
-                    ),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                SessionRow(session = session)
-            }
-            SessionContextMenu(
-                expanded = menuExpanded,
-                session = session,
-                onDismiss = { menuExpanded = false },
-                onPinToggle = { menuExpanded = false; onPinToggle() },
-                onArchive = { menuExpanded = false; onArchive() },
-                onRestore = { menuExpanded = false; onRestore() },
-                onRename = { menuExpanded = false; onRename() },
-                onDuplicate = { menuExpanded = false; onDuplicate() },
-                onMove = { menuExpanded = false; onMove() },
-                onDelete = { menuExpanded = false; onDelete() },
-                isMutating = isMutating
-            )
         }
-    )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuExpanded = true
+                    }
+                ),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            SessionRow(session = session)
+        }
+        SessionContextMenu(
+            expanded = menuExpanded,
+            session = session,
+            onDismiss = { menuExpanded = false },
+            onPinToggle = { menuExpanded = false; onPinToggle() },
+            onArchive = { menuExpanded = false; onArchive() },
+            onRestore = { menuExpanded = false; onRestore() },
+            onRename = { menuExpanded = false; onRename() },
+            onDuplicate = { menuExpanded = false; onDuplicate() },
+            onMove = { menuExpanded = false; onMove() },
+            onDelete = { menuExpanded = false; onDelete() },
+            isMutating = isMutating
+        )
+    }
 }
 
 @Composable

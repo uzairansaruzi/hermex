@@ -1,6 +1,9 @@
 package com.hermex.app.data.model
 
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -93,5 +96,46 @@ class ServerModelsTest {
         )
 
         assertEquals("hello\n\nworld", decoded.session?.messages?.single()?.content)
+    }
+
+    @Test
+    fun fileListResponseAcceptsEntriesEnvelopeReturnedByServer() {
+        val decoded = json.decodeFromString<FileListResponse>(
+            """
+            {
+              "entries": [
+                { "name": "README.md", "path": "/repo/README.md", "type": "file", "size": 12 }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("README.md", decoded.entries?.single()?.name)
+        assertEquals("/repo/README.md", decoded.entries?.single()?.path)
+    }
+
+    @Test
+    fun cronsResponseReadsJobsFieldReturnedByServer() {
+        val decoded = json.decodeFromString<CronsResponse>(
+            """
+            {
+              "jobs": [
+                { "job_id": "job_123", "name": "Daily brief", "enabled": true }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("job_123", decoded.jobList().single().jobId)
+        assertEquals("Daily brief", decoded.jobList().single().name)
+    }
+
+    @Test
+    fun gitCommitRequestIncludesSessionId() {
+        val encoded = json.encodeToString(GitCommitRequest(sessionId = "session-1", message = "commit message"))
+
+        val element = json.parseToJsonElement(encoded).jsonObject
+        assertEquals("session-1", element["session_id"]?.jsonPrimitive?.content)
+        assertEquals("commit message", element["message"]?.jsonPrimitive?.content)
     }
 }

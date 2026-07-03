@@ -5,9 +5,11 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,12 +41,17 @@ class AuthManager @Inject constructor(
 
     val isLoggedIn: Flow<Boolean> = authState.map { it == AuthState.LOGGED_IN }
 
-    val isDarkTheme: Flow<Boolean> = context.getSharedPreferences("hermex_prefs", Context.MODE_PRIVATE)
-        .let { sp ->
-            kotlinx.coroutines.flow.flow {
-                emit(sp.getString("theme", "system") ?: "system")
-            }.map { it == "dark" || (it == "system" && isSystemDark()) }
+    val isDarkTheme: Flow<Boolean> = callbackFlow {
+        val sp = context.getSharedPreferences("hermex_prefs", Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_THEME) {
+                trySend(sp.getString(KEY_THEME, THEME_SYSTEM) ?: THEME_SYSTEM)
+            }
         }
+        sp.registerOnSharedPreferenceChangeListener(listener)
+        trySend(sp.getString(KEY_THEME, THEME_SYSTEM) ?: THEME_SYSTEM)
+        awaitClose { sp.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.map { theme -> theme == THEME_DARK || (theme == THEME_SYSTEM && isSystemDark()) }
 
     val serverUrl: String?
         get() = prefs.getString(KEY_SERVER_URL, null)
@@ -95,5 +102,8 @@ class AuthManager @Inject constructor(
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_PASSWORD = "password"
         private const val KEY_LOGGED_IN = "logged_in"
+        private const val KEY_THEME = "theme"
+        private const val THEME_DARK = "dark"
+        private const val THEME_SYSTEM = "system"
     }
 }

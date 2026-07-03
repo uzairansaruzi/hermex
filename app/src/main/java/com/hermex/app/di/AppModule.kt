@@ -15,6 +15,8 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import com.hermex.app.data.network.LocalCleartextInterceptor
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -34,7 +36,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCookieJar(): CookieJar = object : CookieJar {
-        private val cookieStore = mutableMapOf<String, List<Cookie>>()
+        private val cookieStore = ConcurrentHashMap<String, List<Cookie>>()
 
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
             cookieStore[url.host] = cookies
@@ -49,6 +51,7 @@ object AppModule {
     @Singleton
     fun provideOkHttpClient(cookieJar: CookieJar): OkHttpClient {
         return OkHttpClient.Builder()
+            .addInterceptor(LocalCleartextInterceptor())
             .cookieJar(cookieJar)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS) // Long for SSE

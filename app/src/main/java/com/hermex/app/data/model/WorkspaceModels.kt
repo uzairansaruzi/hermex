@@ -13,6 +13,11 @@ data class WorkspaceEntry(
 )
 
 @Serializable
+data class FileListResponse(
+    val entries: List<WorkspaceEntry>? = null
+)
+
+@Serializable
 data class FileContentResponse(
     val content: String? = null,
     val path: String? = null,
@@ -43,6 +48,7 @@ data class GitDiffResponse(
 
 @Serializable
 data class GitCommitRequest(
+    @SerialName("session_id") val sessionId: String,
     val message: String
 )
 

@@ -6,8 +6,11 @@ import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class CronsResponse(
-    val crons: List<CronJob>? = null
-)
+    val crons: List<CronJob>? = null,
+    val jobs: List<CronJob>? = null
+) {
+    fun jobList(): List<CronJob> = jobs ?: crons.orEmpty()
+}
 
 @Serializable
 data class CronJob(

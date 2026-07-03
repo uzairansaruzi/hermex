@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -148,6 +149,24 @@ class ChatViewModel @Inject constructor(
     init {
         textToSpeech = TextToSpeech(appContext) { status ->
             ttsInitialized = status == TextToSpeech.SUCCESS
+            if (ttsInitialized) {
+                textToSpeech?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+
+                    override fun onDone(utteranceId: String?) {
+                        clearListeningState(utteranceId)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        clearListeningState(utteranceId)
+                    }
+
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        clearListeningState(utteranceId)
+                    }
+                })
+            }
         }
         loadMessages()
         loadComposerConfiguration()
@@ -523,7 +542,6 @@ class ChatViewModel @Inject constructor(
                 apiClient.chatCancel(streamId)
             } catch (_: Exception) {
             } finally {
-                sseClient.stop()
                 streamingJob?.cancel()
                 currentStreamId = null
                 _uiState.update {
@@ -805,7 +823,20 @@ class ChatViewModel @Inject constructor(
         stopListening()
         _uiState.update { it.copy(listeningMessageId = context.messageId, isListening = true) }
         if (ttsInitialized) {
-            textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, context.messageId)
+            val result = textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, context.messageId)
+            if (result == TextToSpeech.ERROR) clearListeningState(context.messageId)
+        } else {
+            clearListeningState(context.messageId)
+        }
+    }
+
+    private fun clearListeningState(utteranceId: String?) {
+        _uiState.update { state ->
+            if (utteranceId == null || state.listeningMessageId == utteranceId) {
+                state.copy(listeningMessageId = null, isListening = false)
+            } else {
+                state
+            }
         }
     }
 

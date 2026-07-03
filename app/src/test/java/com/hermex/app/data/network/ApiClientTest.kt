@@ -29,4 +29,12 @@ class ApiClientTest {
 
         assertEquals("https://hermes.example.com", client.baseUrl)
     }
+
+    @Test
+    fun localCleartextPolicyAllowsOnlyLocalOrPrivateNetworkHosts() {
+        assertEquals(true, isLocalCleartextHost("127.0.0.1"))
+        assertEquals(true, isLocalCleartextHost("10.0.2.2"))
+        assertEquals(true, isLocalCleartextHost("192.168.0.157"))
+        assertEquals(false, isLocalCleartextHost("example.com"))
+    }
 }

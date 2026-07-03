@@ -101,6 +101,10 @@ private fun AssistantMessageBubble(
     val content = message.content?.takeIf { it.isNotBlank() } ?: " "
     val markwon = rememberMarkwon()
     val textColor = LocalContentColor.current
+    val markdown = remember(content, markwon) {
+        val node = markwon.parse(content)
+        markwon.render(node)
+    }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -115,8 +119,7 @@ private fun AssistantMessageBubble(
                 }
             },
             update = { textView ->
-                val node = markwon.parse(content)
-                val markdown = markwon.render(node)
+                textView.setTextColor(textColor.toArgb())
                 markwon.setParsedMarkdown(textView, markdown)
             },
             modifier = Modifier

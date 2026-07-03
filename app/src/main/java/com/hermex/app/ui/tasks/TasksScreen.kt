@@ -54,7 +54,7 @@ class TasksViewModel @Inject constructor(
             _error.value = null
             try {
                 val response = apiClient.crons()
-                _jobs.value = response.crons ?: emptyList()
+                _jobs.value = response.jobList()
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {

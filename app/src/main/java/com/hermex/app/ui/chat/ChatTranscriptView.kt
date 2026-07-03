@@ -76,7 +76,7 @@ fun ChatTranscriptView(
         }.collect { scrolledUp -> userScrolledUp = scrolledUp }
     }
 
-    LaunchedEffect(messages.size, liveReasoningText, liveToolCalls.size) {
+    LaunchedEffect(messages.size, liveToolCalls.size) {
         if (!userScrolledUp) {
             scrollToBottom(listState)
             onScrollToBottom()

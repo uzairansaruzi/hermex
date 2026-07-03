@@ -121,7 +121,8 @@ class ApiClient @Inject constructor(
     suspend fun workspaces(): WorkspacesResponse = get(Endpoints.WORKSPACES)
 
     suspend fun listFiles(sessionId: String, path: String): List<WorkspaceEntry> {
-        return get(Endpoints.LIST_FILES, mapOf("session_id" to sessionId, "path" to path))
+        return get<FileListResponse>(Endpoints.LIST_FILES, mapOf("session_id" to sessionId, "path" to path))
+            .entries.orEmpty()
     }
 
     suspend fun fileContent(sessionId: String, path: String): FileContentResponse {
@@ -190,7 +191,7 @@ class ApiClient @Inject constructor(
     }
 
     suspend fun gitCommit(sessionId: String, message: String): GitCommitResponse {
-        return post(Endpoints.GIT_COMMIT, GitCommitRequest(message = message))
+        return post(Endpoints.GIT_COMMIT, GitCommitRequest(sessionId = sessionId, message = message))
     }
 
     suspend fun gitCheckout(sessionId: String, branch: String) {
