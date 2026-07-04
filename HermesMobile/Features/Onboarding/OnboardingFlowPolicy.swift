@@ -17,7 +17,7 @@ Make the WebUI reachable over Tailscale:
 Set up auto-start appropriate for this OS so the WebUI survives reboots.
 Verify it works: curl http://$(tailscale ip -4):8787/health should return a success response.
 Reply with:
-- The exact server URL I enter in Hermex
+- The exact server URL I enter in Zora
 - The password
 - Any setup steps I still need to do on my iPhone
 Do not use Cloudflare. Optimize for Tailscale + iPhone.

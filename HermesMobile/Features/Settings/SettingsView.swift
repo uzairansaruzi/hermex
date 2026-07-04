@@ -319,16 +319,16 @@ struct SettingsView: View {
                     if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
                         Link(destination: settingsURL) {
                             SettingsAccessoryRow(
-                                title: String(localized: "Open Hermex Settings"),
+                                title: String(localized: "Open Zora Settings"),
                                 systemImage: "gearshape",
                                 accessorySystemImage: "arrow.up.forward"
                             )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Open Hermex Settings")
+                        .accessibilityLabel("Open Zora Settings")
                     }
 
-                    SettingsFootnote(String(localized: "Run Hermex actions like New Chat from Siri, Spotlight, the Lock Screen, or the iPhone Action button. Open Hermex Settings to manage its Siri & Search options. To assign an action to the Action button, open the iOS Settings app, choose Action Button, then Shortcut, and pick a Hermex action."))
+                    SettingsFootnote(String(localized: "Run Zora actions like New Chat from Siri, Spotlight, the Lock Screen, or the iPhone Action button. Open Zora Settings to manage its Siri & Search options. To assign an action to the Action button, open the iOS Settings app, choose Action Button, then Shortcut, and pick a Zora action."))
                 }
 
                 serversCard

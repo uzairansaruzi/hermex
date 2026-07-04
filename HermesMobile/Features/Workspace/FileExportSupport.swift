@@ -53,7 +53,7 @@ enum PhotoLibrarySaveError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthorized:
-            String(localized: "Allow Photos access to save images from Hermex.")
+            String(localized: "Allow Photos access to save images from Zora.")
         case .notImage:
             String(localized: "This file is not an image that can be saved to Photos.")
         case .saveFailed:

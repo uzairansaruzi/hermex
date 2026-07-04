@@ -32,7 +32,7 @@ final class AppIntentRouter {
 /// Shortcuts, Spotlight, and Siri via `HermexShortcuts`.
 struct NewChatIntent: AppIntent {
     static var title: LocalizedStringResource = "New Chat"
-    static var description = IntentDescription("Open Hermex on a new, empty chat.")
+    static var description = IntentDescription("Open Zora on a new, empty chat.")
 
     /// Foregrounds the app so the navigation can run in-process.
     static var openAppWhenRun: Bool = true
@@ -52,7 +52,7 @@ struct NewChatIntent: AppIntent {
 /// the system prompt appears, and if it's denied the composer shows a clear error instead.
 struct NewChatVoiceIntent: AppIntent {
     static var title: LocalizedStringResource = "New Chat with Voice"
-    static var description = IntentDescription("Open Hermex on a new chat and start voice dictation.")
+    static var description = IntentDescription("Open Zora on a new chat and start voice dictation.")
 
     /// Foregrounds the app so the navigation — and the microphone — can run in-process.
     static var openAppWhenRun: Bool = true
@@ -71,7 +71,7 @@ struct NewChatVoiceIntent: AppIntent {
 /// query item, so `PendingNewChatView` can create the session pinned to it.
 struct NewChatInProfileIntent: AppIntent {
     static var title: LocalizedStringResource = "New Chat in Profile"
-    static var description = IntentDescription("Open Hermex on a new chat pinned to a specific profile.")
+    static var description = IntentDescription("Open Zora on a new chat pinned to a specific profile.")
 
     /// Foregrounds the app so the navigation can run in-process.
     static var openAppWhenRun: Bool = true

@@ -22,7 +22,7 @@ final class AuthManager {
     /// Shown when a server has auth on but explicitly reports password auth off,
     /// i.e. it signs in with passkeys (which we can't do yet). See issue #255.
     nonisolated static let passkeyOnlyMessage =
-        String(localized: "This server signs in with passkeys, which Hermex doesn't support yet.")
+        String(localized: "This server signs in with passkeys, which Zora doesn't support yet.")
 
     private(set) var state: State = .unconfigured
     private(set) var lastErrorMessage: String?

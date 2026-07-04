@@ -51,15 +51,15 @@
 		</dict>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Hermex needs microphone access to dictate text into the message composer.</string>
+	<string>Zora needs microphone access to dictate text into the message composer.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Hermex needs photo library access to attach images to chat messages.</string>
+	<string>Zora needs photo library access to attach images to chat messages.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Hermex needs permission to save exported workspace images to Photos.</string>
+	<string>Zora needs permission to save exported workspace images to Photos.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Hermex uses speech recognition to turn dictated audio into editable draft text.</string>
+	<string>Zora uses speech recognition to turn dictated audio into editable draft text.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

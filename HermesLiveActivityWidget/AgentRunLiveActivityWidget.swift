@@ -107,7 +107,7 @@ private struct AgentRunLockScreenView: View {
             AgentRunStatusDot(status: context.state.status, isStale: context.state.isStale, size: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Hermex")
+                Text("Zora")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
                     .textCase(.uppercase)
@@ -180,7 +180,7 @@ private struct AgentRunIslandBadge: View {
     var body: some View {
         HStack(spacing: 6) {
             AgentRunStatusDot(status: status, isStale: false)
-            Text("Hermex")
+            Text("Zora")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
                 .lineLimit(1)
