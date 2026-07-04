@@ -220,20 +220,22 @@ private struct ShakeToReportFeedbackModifier: ViewModifier {
     let client: FeedbackClient
     let screenshotProvider: @MainActor () -> UIImage?
 
-    @State private var draft: FeedbackDraft?
+    @State private var presentation = FeedbackShakePresentationState()
     @State private var didPresentLaunchFeedbackPrompt = false
 
     func body(content: Content) -> some View {
         content
             .background {
-                ShakeDetectorView {
-                    draft = FeedbackDraft(screenName: screenName, screenshot: screenshotProvider(), capturedAt: Date())
+                ShakeDetectorView(responderRefreshID: presentation.responderRefreshID) {
+                    presentFeedbackDraft()
                 }
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
-            .sheet(item: $draft) { draft in
+            .sheet(item: $presentation.draft, onDismiss: {
+                presentation.feedbackSheetDismissed()
+            }) { draft in
                 FeedbackReportSheet(draft: draft, feedbackClient: client)
             }
             .task {
@@ -241,11 +243,29 @@ private struct ShakeToReportFeedbackModifier: ViewModifier {
             }
     }
 
+    private func presentFeedbackDraft() {
+        presentation.present(FeedbackDraft(screenName: screenName, screenshot: screenshotProvider(), capturedAt: Date()))
+    }
+
     private func presentLaunchFeedbackPromptIfNeeded() {
         guard !didPresentLaunchFeedbackPrompt,
               ProcessInfo.processInfo.arguments.contains("-ZoraShowFeedbackPrompt") else { return }
         didPresentLaunchFeedbackPrompt = true
-        draft = FeedbackDraft(screenName: screenName, screenshot: screenshotProvider(), capturedAt: Date())
+        presentFeedbackDraft()
+    }
+}
+
+struct FeedbackShakePresentationState: Equatable {
+    var draft: FeedbackDraft?
+    private(set) var responderRefreshID = UUID()
+
+    mutating func present(_ draft: FeedbackDraft) {
+        self.draft = draft
+    }
+
+    mutating func feedbackSheetDismissed() {
+        draft = nil
+        responderRefreshID = UUID()
     }
 }
 
@@ -260,7 +280,12 @@ extension View {
 }
 
 private struct ShakeDetectorView: UIViewControllerRepresentable {
+    let responderRefreshID: UUID
     let onShake: @MainActor () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(responderRefreshID: responderRefreshID)
+    }
 
     func makeUIViewController(context: Context) -> ShakeDetectorViewController {
         let viewController = ShakeDetectorViewController()
@@ -270,6 +295,18 @@ private struct ShakeDetectorView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: ShakeDetectorViewController, context: Context) {
         uiViewController.onShake = onShake
+        if context.coordinator.responderRefreshID != responderRefreshID {
+            context.coordinator.responderRefreshID = responderRefreshID
+            uiViewController.refreshFirstResponder()
+        }
+    }
+
+    final class Coordinator {
+        var responderRefreshID: UUID
+
+        init(responderRefreshID: UUID) {
+            self.responderRefreshID = responderRefreshID
+        }
     }
 }
 
@@ -280,13 +317,21 @@ private final class ShakeDetectorViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        becomeFirstResponder()
+        refreshFirstResponder()
     }
 
     override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
         guard motion == .motionShake else { return }
         Task { @MainActor in
             onShake?()
+            refreshFirstResponder()
+        }
+    }
+
+    func refreshFirstResponder() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.view.window != nil, !self.isFirstResponder else { return }
+            self.becomeFirstResponder()
         }
     }
 }

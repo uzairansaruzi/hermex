@@ -86,4 +86,27 @@ final class FeedbackReportTests: XCTestCase {
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.feedback?.status, "new")
     }
+
+    func testFeedbackShakePresentationRefreshesResponderAfterSheetDismissal() {
+        var presentation = FeedbackShakePresentationState()
+        let initialRefreshID = presentation.responderRefreshID
+
+        presentation.present(FeedbackDraft(screenName: "SessionList", screenshot: nil, capturedAt: Date()))
+        XCTAssertNotNil(presentation.draft)
+        XCTAssertEqual(presentation.responderRefreshID, initialRefreshID)
+
+        presentation.feedbackSheetDismissed()
+        let firstDismissalRefreshID = presentation.responderRefreshID
+        XCTAssertNil(presentation.draft)
+        XCTAssertNotEqual(firstDismissalRefreshID, initialRefreshID)
+
+        presentation.present(FeedbackDraft(screenName: "Chat", screenshot: nil, capturedAt: Date()))
+        XCTAssertNotNil(presentation.draft)
+        XCTAssertEqual(presentation.responderRefreshID, firstDismissalRefreshID)
+
+        presentation.feedbackSheetDismissed()
+        XCTAssertNil(presentation.draft)
+        XCTAssertNotEqual(presentation.responderRefreshID, initialRefreshID)
+        XCTAssertNotEqual(presentation.responderRefreshID, firstDismissalRefreshID)
+    }
 }
