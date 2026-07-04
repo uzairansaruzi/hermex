@@ -60,6 +60,7 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
     @State private var isSavingCliSessionsVisibility = false
     @State private var cliSessionsVisibilityError: String?
+    @State private var cliSessionsVisibilityTask: Task<Void, Never>?
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
@@ -431,6 +432,10 @@ struct SettingsView: View {
             await loadServerSettings()
             await refreshNotificationPermissionStatus()
         }
+        .onDisappear {
+            cliSessionsVisibilityTask?.cancel()
+            cliSessionsVisibilityTask = nil
+        }
         .alert("Clear this server's cache?", isPresented: $isConfirmingClearCache) {
             Button("Cancel", role: .cancel) {}
             Button("Clear Cache", role: .destructive) {
@@ -668,7 +673,8 @@ struct SettingsView: View {
                 let previousValue = showsCliSessions
                 showsCliSessions = newValue
                 cliSessionsVisibilityError = nil
-                Task {
+                cliSessionsVisibilityTask?.cancel()
+                cliSessionsVisibilityTask = Task {
                     await saveCliSessionsVisibility(newValue, fallback: previousValue, server: server)
                 }
             }
