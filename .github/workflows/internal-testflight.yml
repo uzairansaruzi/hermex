@@ -104,21 +104,25 @@ jobs:
 
 
       - name: Install signing assets
+        timeout-minutes: 5
         run: |
           set -euo pipefail
 
           keychain_path="${RUNNER_TEMP}/sourcebottle-signing.keychain-db"
-          keychain_password="$(LC_ALL=C tr -dc 'A-F0-9' </dev/urandom | head -c 48)"
+          keychain_password="$(openssl rand -hex 24)"
           cert_path="${RUNNER_TEMP}/sourcebottle-distribution.p12"
           profiles_dir="${HOME}/Library/MobileDevice/Provisioning Profiles"
 
+          echo "Preparing signing keychain"
           mkdir -p "${profiles_dir}"
           printf "%s" "${IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64}" | base64 --decode > "${cert_path}"
 
           security create-keychain -p "${keychain_password}" "${keychain_path}"
           security set-keychain-settings -lut 21600 "${keychain_path}"
           security unlock-keychain -p "${keychain_password}" "${keychain_path}"
-          security list-keychains -d user -s "${keychain_path}" $(security list-keychains -d user | sed 's/[" ]//g')
+          security list-keychains -d user -s "${keychain_path}"
+
+          echo "Importing distribution certificate"
           security import "${cert_path}" -k "${keychain_path}" -P "${IOS_DISTRIBUTION_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
 
@@ -133,6 +137,7 @@ jobs:
             echo "Installed ${label} provisioning profile ${uuid}"
           }
 
+          echo "Installing provisioning profiles"
           install_profile "${IOS_PROVISIONING_PROFILE_APP_BASE64}" app
           install_profile "${IOS_PROVISIONING_PROFILE_SHARE_EXTENSION_BASE64}" share-extension
           install_profile "${IOS_PROVISIONING_PROFILE_LIVE_ACTIVITY_BASE64}" live-activity
