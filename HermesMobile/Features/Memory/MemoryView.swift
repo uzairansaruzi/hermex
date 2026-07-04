@@ -210,11 +210,17 @@ private struct ProjectContextContent: View {
         }
     }
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
     private var metadataText: String? {
         let parts = [
             nonEmpty(name),
             nonEmpty(workspace).map { String(localized: "Workspace: \($0)") },
-            modifiedAt.map { String(localized: "Modified \($0, style: .relative) ago") },
+            modifiedAt.map { String(localized: "Modified \(Self.relativeFormatter.localizedString(for: $0, relativeTo: Date()))") },
             nonEmpty(path)
         ].compactMap { $0 }
 
