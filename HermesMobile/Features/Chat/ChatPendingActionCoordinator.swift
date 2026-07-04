@@ -103,6 +103,13 @@ final class ChatPendingActionCoordinator {
             await refreshApprovalPending(sessionID: prompt.sessionID)
             return true
         } catch {
+            if Self.isStalePendingActionError(error) {
+                approvalPendingBySession[prompt.sessionID] = nil
+                approvalPrompt = nil
+                approvalErrorMessage = String(localized: "That approval request expired. The card was cleared; wait for the agent to ask again if needed.")
+                return false
+            }
+
             approvalErrorMessage = error.localizedDescription
             delegate?.pendingActionCoordinatorDidFailAction(error)
             return false
@@ -186,6 +193,13 @@ final class ChatPendingActionCoordinator {
             await refreshClarificationPending(sessionID: prompt.sessionID)
             return true
         } catch {
+            if Self.isStalePendingActionError(error) {
+                clarificationPendingBySession[prompt.sessionID] = nil
+                clarificationPrompt = nil
+                clarificationErrorMessage = String(localized: "That clarification request expired. The card was cleared; wait for the agent to ask again if needed.")
+                return false
+            }
+
             clarificationErrorMessage = error.localizedDescription
             delegate?.pendingActionCoordinatorDidFailAction(error)
             return false
@@ -317,6 +331,11 @@ final class ChatPendingActionCoordinator {
         clarifyStreamClient.start(url: client.clarifyStreamURL(sessionID: sessionID)) { [weak self] event in
             self?.handleClarificationMonitorEvent(event, sessionID: sessionID)
         }
+    }
+
+    private static func isStalePendingActionError(_ error: Error) -> Bool {
+        guard case APIError.http(let statusCode, _) = error else { return false }
+        return statusCode == 409 && (error as? APIError)?.serverStale == true
     }
 
     private func stopClarificationMonitoring(clearPrompt: Bool) {

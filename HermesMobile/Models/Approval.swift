@@ -143,16 +143,27 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
 struct ApprovalRespondResponse: Decodable, Equatable {
     let ok: Bool?
     let choice: ApprovalChoice?
+    let stale: Bool?
+    let staleCleared: Bool?
+    let relayed: Bool?
 
     enum CodingKeys: String, CodingKey {
         case ok
         case choice
+        case stale
+        case staleCleared
+        case staleClearedSnake = "stale_cleared"
+        case relayed
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ok = container.decodeLossyBoolIfPresent(forKey: .ok)
         choice = try? container.decodeIfPresent(ApprovalChoice.self, forKey: .choice)
+        stale = container.decodeLossyBoolIfPresent(forKey: .stale)
+        staleCleared = container.decodeLossyBoolIfPresent(forKey: .staleCleared)
+            ?? container.decodeLossyBoolIfPresent(forKey: .staleClearedSnake)
+        relayed = container.decodeLossyBoolIfPresent(forKey: .relayed)
     }
 }
 

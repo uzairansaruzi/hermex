@@ -55,6 +55,19 @@ final class ClarificationTests: XCTestCase {
         XCTAssertEqual(minimal.pending?.displayChoices, [])
     }
 
+    func testClarificationRespondDecodesStaleAndRelayMetadata() throws {
+        let response = try JSONDecoder().decode(
+            ClarificationRespondResponse.self,
+            from: Data(#"{"ok":true,"response":"Use main","stale":false,"stale_cleared":true,"relayed":true}"#.utf8)
+        )
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.response, "Use main")
+        XCTAssertEqual(response.stale, false)
+        XCTAssertEqual(response.staleCleared, true)
+        XCTAssertEqual(response.relayed, true)
+    }
+
     func testClarificationAPIUsesVerifiedRoutesAndBodies() async throws {
         var requestCount = 0
         var respondBody: [String: Any]?
@@ -265,6 +278,57 @@ final class ClarificationTests: XCTestCase {
         XCTAssertEqual(viewModel.clarificationPrompt?.pending.clarifyId, "clarify-1")
         XCTAssertNotNil(viewModel.lastError)
         XCTAssertEqual(viewModel.clarificationErrorMessage, viewModel.sendErrorMessage)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+    }
+
+    @MainActor
+    func testStaleClarificationResponseClearsPromptWithoutSendFailure() async throws {
+        let streamClient = ClarificationSpySSEStreamingClient()
+        let approvalStreamClient = ClarificationSpySSEStreamingClient()
+        let clarifyStreamClient = ClarificationSpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient,
+            clarifyStreamClient: clarifyStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return jsonResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/clarify/respond":
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 409,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+                return (try XCTUnwrap(response), Data(#"{"stale":true,"error":"clarification expired"}"#.utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Continue")
+        XCTAssertTrue(didStart)
+        clarifyStreamClient.emit(.clarificationPending(ClarificationPendingResponse(
+            pending: PendingClarification(
+                clarifyId: "clarify-1",
+                question: "Which branch?",
+                sessionId: "session-abc"
+            ),
+            pendingCount: 1
+        )))
+
+        let didRespond = await viewModel.respondToClarification("Use main")
+
+        XCTAssertFalse(didRespond)
+        XCTAssertNil(viewModel.clarificationPrompt)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.sendErrorMessage)
+        XCTAssertEqual(
+            viewModel.clarificationErrorMessage,
+            "That clarification request expired. The card was cleared; wait for the agent to ask again if needed."
+        )
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }
 

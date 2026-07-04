@@ -5,6 +5,14 @@ struct SessionDuplicateResult {
     let errorMessage: String?
 }
 
+enum SessionMoveError: LocalizedError {
+    case sessionIsStreaming
+
+    var errorDescription: String? {
+        String(localized: "This session is still responding. Wait for it to finish, then move it.")
+    }
+}
+
 struct SessionMutator {
     let client: APIClient
 
@@ -25,7 +33,11 @@ struct SessionMutator {
     }
 
     func move(sessionID: String, to projectID: String?) async throws {
-        _ = try await client.moveSession(id: sessionID, projectID: projectID)
+        do {
+            _ = try await client.moveSession(id: sessionID, projectID: projectID)
+        } catch APIError.http(let statusCode, _) where statusCode == 503 {
+            throw SessionMoveError.sessionIsStreaming
+        }
     }
 
     func duplicate(sessionID: String, title: String) async throws -> SessionDuplicateResult {

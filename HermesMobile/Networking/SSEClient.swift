@@ -235,7 +235,7 @@ struct SSEEventDecoder {
             return .streamEnd
         case "cancel":
             return .cancelled
-        case "error":
+        case "error", "apperror":
             guard let payload = decodePayload(ErrorPayload.self, eventType: eventType, from: eventData, decoder: decoder) else {
                 return .error(String(localized: "The stream returned a malformed error event."))
             }

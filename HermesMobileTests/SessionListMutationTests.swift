@@ -1089,6 +1089,45 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(isMovingSession)
     }
 
+    func testCreateProjectMoveWhileStreamingShowsSpecificMessage() async throws {
+        let viewModel = try await makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            case "/api/projects/create":
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "project": {
+                    "project_id": "project-new",
+                    "name": "Client Work",
+                    "color": "#7cb9ff"
+                  }
+                }
+                """, for: request)
+            case "/api/session/move":
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 503,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+                return (try XCTUnwrap(response), Data(#"{"error":"session is streaming"}"#.utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let session = try await MainActor.run { try XCTUnwrap(viewModel.sessions.first) }
+        let didMove = await viewModel.createProject(named: "Client Work", color: "#7cb9ff", moving: session)
+
+        XCTAssertFalse(didMove)
+        let actionErrorMessage = await MainActor.run { viewModel.actionErrorMessage }
+        XCTAssertEqual(actionErrorMessage, "This session is still responding. Wait for it to finish, then move it.")
+    }
+
     func testCreateEmptyProjectCreatesProjectWithoutMovingAnySession() async throws {
         var loadCount = 0
         var requestedPaths: [String] = []

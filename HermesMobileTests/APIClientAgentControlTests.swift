@@ -96,6 +96,19 @@ final class APIClientAgentControlTests: APIClientTestCase {
         XCTAssertNil(observedBodies[3]["approval_id"])
     }
 
+    func testApprovalRespondDecodesStaleAndRelayMetadata() throws {
+        let response = try JSONDecoder().decode(
+            ApprovalRespondResponse.self,
+            from: Data(#"{"ok":true,"choice":"once","stale":false,"stale_cleared":true,"relayed":true}"#.utf8)
+        )
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.choice, .once)
+        XCTAssertEqual(response.stale, false)
+        XCTAssertEqual(response.staleCleared, true)
+        XCTAssertEqual(response.relayed, true)
+    }
+
     func testSessionYoloGetAndPostUseUpstreamShape() async throws {
         var requestCount = 0
         let client = makeClient { request in

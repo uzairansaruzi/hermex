@@ -79,6 +79,11 @@ enum APIError: LocalizedError {
         return Self.serverErrorMessage(from: body)
     }
 
+    var serverStale: Bool {
+        guard case .http(_, let body) = self else { return false }
+        return Self.serverErrorPayload(from: body)?.stale == true
+    }
+
     static func privacySafeLogCategory(for error: Error) -> String {
         if let apiError = error as? APIError {
             return apiError.privacySafeLogCategory
@@ -102,6 +107,7 @@ private extension APIError {
         let message: String?
         let detail: String?
         let code: String?
+        let stale: Bool?
     }
 
     static func networkMessage(for error: Error) -> String {

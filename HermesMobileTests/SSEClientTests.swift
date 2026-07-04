@@ -431,6 +431,21 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(event, .transportError("The stream returned a malformed completion event."))
     }
 
+    func testDecodesAppErrorEventAsUserVisibleError() {
+        let event = SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"message":"Tool approval expired before the agent could continue."}"#
+        )
+
+        XCTAssertEqual(event, .error("Tool approval expired before the agent could continue."))
+    }
+
+    func testMalformedAppErrorPayloadSurfacesErrorEvent() {
+        let event = SSEEventDecoder.decode(eventType: "apperror", data: "{")
+
+        XCTAssertEqual(event, .error("The stream returned a malformed error event."))
+    }
+
     func testMalformedDoneUsagePayloadSurfacesTransportError() {
         let event = SSEEventDecoder.decode(eventType: "done", data: #"{"usage":"bad"}"#)
 
