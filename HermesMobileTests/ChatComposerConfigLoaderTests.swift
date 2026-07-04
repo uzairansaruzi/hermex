@@ -49,7 +49,11 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 }
                 """, for: request)
             case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+                XCTAssertEqual(query["model"], openRouterModel)
+                XCTAssertEqual(query["provider"], "openrouter")
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium", "supported_efforts": ["low", "medium"], "supports_reasoning_effort": true}"#, for: request)
             case "/api/workspaces":
                 return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
             case "/api/commands":
@@ -71,6 +75,8 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModelProvider, "openrouter")
         XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
         XCTAssertEqual(result.state.selectedReasoningEffort, "medium")
+        XCTAssertEqual(result.state.supportedReasoningEfforts, ["low", "medium"])
+        XCTAssertEqual(result.state.supportsReasoningEffort, true)
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
         XCTAssertEqual(requestPaths, [
@@ -116,7 +122,11 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 }
                 """, for: request)
             case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "high"}"#, for: request)
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+                XCTAssertEqual(query["model"], sessionModel)
+                XCTAssertEqual(query["provider"], "openai")
+                return apiTestJSONResponse(#"{"reasoning_effort": "high", "supported_efforts": ["low", "medium"], "supports_reasoning_effort": true}"#, for: request)
             case "/api/workspaces":
                 return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}]}"#, for: request)
             case "/api/commands":
@@ -143,7 +153,8 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModel, sessionModel)
         XCTAssertEqual(result.state.currentModelProvider, "openai")
         XCTAssertEqual(result.state.selectedProfileName, "work")
-        XCTAssertEqual(result.state.selectedReasoningEffort, "high")
+        XCTAssertEqual(result.state.selectedReasoningEffort, "low")
+        XCTAssertEqual(result.state.supportedReasoningEfforts, ["low", "medium"])
     }
 
     func testLoadReturnsPartialStateAndStillRefreshesCommandsWhenConfigurationFails() async throws {
@@ -188,6 +199,33 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNil(result.state.currentModelProvider)
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
         XCTAssertEqual(requestPaths, ["/api/profiles", "/api/models", "/api/commands"])
+    }
+
+    func testLoadKeepsLegacyReasoningMenuWhenCapabilityFieldsAreMissing() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"default","profiles":[{"name":"default","model":"gpt-5.4","provider":"openai","is_default":true}]}"#, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"gpt-5.4","groups":[]}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort":"medium"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[]}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands":[]}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(from: ChatComposerConfigState())
+
+        XCTAssertNil(result.configurationError)
+        XCTAssertEqual(result.state.selectedReasoningEffort, "medium")
+        XCTAssertNil(result.state.supportedReasoningEfforts)
+        XCTAssertNil(result.state.supportsReasoningEffort)
     }
 
     func testLoadStoresSingleProfileModeFromProfilesResponse() async throws {

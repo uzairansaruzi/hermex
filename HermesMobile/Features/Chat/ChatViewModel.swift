@@ -188,6 +188,8 @@ final class ChatViewModel {
     private(set) var isSingleProfileMode = false
     private(set) var selectedProfileName: String?
     private(set) var selectedReasoningEffort: String?
+    private(set) var supportedReasoningEfforts: [String]?
+    private(set) var supportsReasoningEffort: Bool?
     private(set) var isLoadingComposerConfiguration = false
     private(set) var isUpdatingComposerConfiguration = false
     private(set) var composerConfigurationErrorMessage: String?
@@ -578,6 +580,8 @@ final class ChatViewModel {
             currentProfile: currentProfile,
             selectedProfileName: selectedProfileName,
             selectedReasoningEffort: selectedReasoningEffort,
+            supportedReasoningEfforts: supportedReasoningEfforts,
+            supportsReasoningEffort: supportsReasoningEffort,
             modelCatalogGroups: modelCatalogGroups,
             agentCommands: agentCommands,
             workspaceRoots: workspaceRoots,
@@ -594,6 +598,8 @@ final class ChatViewModel {
         currentProfile = state.currentProfile
         selectedProfileName = state.selectedProfileName
         selectedReasoningEffort = state.selectedReasoningEffort
+        supportedReasoningEfforts = state.supportedReasoningEfforts
+        supportsReasoningEffort = state.supportsReasoningEffort
         modelCatalogGroups = state.modelCatalogGroups
         agentCommands = state.agentCommands
         workspaceRoots = state.workspaceRoots
@@ -644,6 +650,7 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? option.providerID
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            await refreshReasoningCapabilitiesForCurrentModel()
             return true
         } catch {
             lastError = error
@@ -853,6 +860,31 @@ final class ChatViewModel {
             composerConfigurationErrorMessage = error.localizedDescription
             return false
         }
+    }
+
+    private func refreshReasoningCapabilitiesForCurrentModel() async {
+        do {
+            let response = try await client.reasoning(model: currentModel, provider: currentModelProvider)
+            supportedReasoningEfforts = response.normalizedSupportedEfforts
+            supportsReasoningEffort = response.supportsReasoningEffort
+            selectedReasoningEffort = Self.effectiveReasoningEffort(from: response)
+        } catch {
+            // Non-fatal: keep the last-known/fallback menu if capability refresh fails.
+        }
+    }
+
+    private static func effectiveReasoningEffort(from response: ReasoningStatusResponse) -> String? {
+        let effort = nonEmpty(response.effectiveEffort)
+        guard response.supportsReasoningEffort != false,
+              let supported = response.normalizedSupportedEfforts,
+              !supported.isEmpty,
+              let effort,
+              !supported.contains(effort)
+        else {
+            return effort
+        }
+
+        return supported.first
     }
 
     func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async {

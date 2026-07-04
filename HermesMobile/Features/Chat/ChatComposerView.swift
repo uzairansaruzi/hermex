@@ -93,6 +93,8 @@ struct MessageComposerView: View {
     let selectedProfileTitle: String
     let isLoadingModels: Bool
     let selectedReasoningEffort: String?
+    let supportedReasoningEfforts: [String]?
+    let supportsReasoningEffort: Bool?
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
@@ -760,17 +762,21 @@ struct MessageComposerView: View {
         }
     }
 
+    @ViewBuilder
     private var reasoningMenu: some View {
-        ComposerReasoningMenu(
-            selectedReasoningEffort: selectedReasoningEffort,
-            reasoningTitle: reasoningTitle,
-            isDisabled: isConfigurationControlDisabled,
-            width: reasoningControlWidth,
-            color: metaControlColor,
-            controlFont: metaControlFont,
-            chevronFont: metaChevronFont,
-            onSelectReasoningEffort: onSelectReasoningEffort
-        )
+        if supportsReasoningEffort != false {
+            ComposerReasoningMenu(
+                selectedReasoningEffort: selectedReasoningEffort,
+                supportedReasoningEfforts: supportedReasoningEfforts,
+                reasoningTitle: reasoningTitle,
+                isDisabled: isConfigurationControlDisabled,
+                width: reasoningControlWidth,
+                color: metaControlColor,
+                controlFont: metaControlFont,
+                chevronFont: metaChevronFont,
+                onSelectReasoningEffort: onSelectReasoningEffort
+            )
+        }
     }
 
     private func selectModel(_ option: ModelCatalogOption) {

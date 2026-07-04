@@ -7,6 +7,8 @@ struct ChatComposerConfigState: Equatable, Sendable {
     var currentProfile: String?
     var selectedProfileName: String?
     var selectedReasoningEffort: String?
+    var supportedReasoningEfforts: [String]?
+    var supportsReasoningEffort: Bool?
     var modelCatalogGroups: [ModelCatalogGroup]
     var agentCommands: [AgentCommand]
     var workspaceRoots: [WorkspaceRoot]
@@ -21,6 +23,8 @@ struct ChatComposerConfigState: Equatable, Sendable {
         currentProfile: String? = nil,
         selectedProfileName: String? = nil,
         selectedReasoningEffort: String? = nil,
+        supportedReasoningEfforts: [String]? = nil,
+        supportsReasoningEffort: Bool? = nil,
         modelCatalogGroups: [ModelCatalogGroup] = [],
         agentCommands: [AgentCommand] = [],
         workspaceRoots: [WorkspaceRoot] = [],
@@ -34,6 +38,8 @@ struct ChatComposerConfigState: Equatable, Sendable {
         self.currentProfile = currentProfile
         self.selectedProfileName = selectedProfileName
         self.selectedReasoningEffort = selectedReasoningEffort
+        self.supportedReasoningEfforts = supportedReasoningEfforts
+        self.supportsReasoningEffort = supportsReasoningEffort
         self.modelCatalogGroups = modelCatalogGroups
         self.agentCommands = agentCommands
         self.workspaceRoots = workspaceRoots
@@ -101,8 +107,13 @@ struct ChatComposerConfigLoader {
                     ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
             }
 
-            let reasoningResponse = try await client.reasoning()
-            state.selectedReasoningEffort = reasoningResponse.effectiveEffort
+            let reasoningResponse = try await client.reasoning(
+                model: state.currentModel,
+                provider: state.currentModelProvider
+            )
+            state.supportedReasoningEfforts = reasoningResponse.normalizedSupportedEfforts
+            state.supportsReasoningEffort = reasoningResponse.supportsReasoningEffort
+            state.selectedReasoningEffort = Self.effectiveReasoningEffort(from: reasoningResponse)
 
             let workspaceResponse = try await client.workspaces()
             state.workspaceRoots = workspaceResponse.workspaces ?? []
@@ -124,6 +135,20 @@ struct ChatComposerConfigLoader {
             state: state,
             configurationError: configurationError
         )
+    }
+
+    private static func effectiveReasoningEffort(from response: ReasoningStatusResponse) -> String? {
+        let effort = nonEmpty(response.effectiveEffort)
+        guard response.supportsReasoningEffort != false,
+              let supported = response.normalizedSupportedEfforts,
+              !supported.isEmpty,
+              let effort,
+              !supported.contains(effort)
+        else {
+            return effort
+        }
+
+        return supported.first
     }
 
     private static func profileSummary(

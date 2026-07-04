@@ -295,10 +295,24 @@ struct ReasoningStatusResponse: Decodable, Equatable {
     let showReasoning: Bool?
     let reasoningEffort: String?
     let effort: String?
+    let supportedEfforts: [String]?
+    let supportsReasoningEffort: Bool?
     let error: String?
 
     var effectiveEffort: String? {
         reasoningEffort ?? effort
+    }
+
+    var normalizedSupportedEfforts: [String]? {
+        guard let supportedEfforts else { return nil }
+        var seen = Set<String>()
+        var normalized: [String] = []
+        for effort in supportedEfforts {
+            let trimmed = effort.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { continue }
+            normalized.append(trimmed)
+        }
+        return normalized
     }
 }
 

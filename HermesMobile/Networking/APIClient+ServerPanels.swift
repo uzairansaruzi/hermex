@@ -24,13 +24,13 @@ extension APIClient {
         )
     }
 
-    func reasoning() async throws -> ReasoningStatusResponse {
-        try await send(endpoint: .reasoning, method: "GET")
+    func reasoning(model: String? = nil, provider: String? = nil) async throws -> ReasoningStatusResponse {
+        try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
     func saveReasoningEffort(_ effort: String) async throws -> ReasoningStatusResponse {
         try await send(
-            endpoint: .reasoning,
+            endpoint: .reasoning(model: nil, provider: nil),
             method: "POST",
             body: ReasoningEffortRequest(effort: effort)
         )
@@ -38,7 +38,7 @@ extension APIClient {
 
     func saveReasoningDisplay(_ display: String) async throws -> ReasoningStatusResponse {
         try await send(
-            endpoint: .reasoning,
+            endpoint: .reasoning(model: nil, provider: nil),
             method: "POST",
             body: ReasoningDisplayRequest(display: display)
         )

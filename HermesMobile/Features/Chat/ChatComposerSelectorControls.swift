@@ -241,6 +241,7 @@ struct ComposerModelMenu: View {
 
 struct ComposerReasoningMenu: View {
     let selectedReasoningEffort: String?
+    let supportedReasoningEfforts: [String]?
     let reasoningTitle: String
     let isDisabled: Bool
     let width: CGFloat
@@ -272,7 +273,7 @@ struct ComposerReasoningMenu: View {
         UIMenu(
             title: String(localized: "Reasoning"),
             options: [.displayInline],
-            children: ReasoningEffortOption.allCases.map { option in
+            children: reasoningOptions.map { option in
                 UIAction(
                     title: option.title,
                     state: selectedReasoningEffort == option.id ? .on : .off
@@ -283,6 +284,15 @@ struct ComposerReasoningMenu: View {
                 }
             }
         )
+    }
+
+    private var reasoningOptions: [ReasoningEffortOption] {
+        guard let supportedReasoningEfforts else {
+            return ReasoningEffortOption.allCases
+        }
+
+        let options = supportedReasoningEfforts.map { ReasoningEffortOption(id: $0, title: ReasoningEffortOption.title(for: $0)) }
+        return options.isEmpty ? [] : options
     }
 }
 

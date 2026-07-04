@@ -67,7 +67,7 @@ enum Endpoint {
     case modelsLive
     case commands
     case defaultModel
-    case reasoning
+    case reasoning(model: String?, provider: String?)
     case personalities
     case setPersonality
     case profiles
@@ -367,6 +367,11 @@ enum Endpoint {
                 items.append(URLQueryItem(name: "limit", value: "\(limit)"))
             }
             return items
+        case let .reasoning(model, provider):
+            return [
+                URLQueryItem(name: "model", value: model),
+                URLQueryItem(name: "provider", value: provider)
+            ].filter { $0.value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
         case let .insights(days):
             return [URLQueryItem(name: "days", value: "\(days)")]
         case let .skillContent(name, file):
