@@ -73,6 +73,22 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(payload.modelProvider, "anthropic")
     }
 
+    func testNewChatPayloadDecodesWebFormPlusSpaces() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat?prompt=Review+this+Wiki+App&model=spark-qwen&provider=spark"))
+
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertEqual(payload.initialPrompt, "Review this Wiki App")
+        XCTAssertEqual(payload.model, "spark-qwen")
+        XCTAssertEqual(payload.modelProvider, "spark")
+    }
+
+    func testNewChatPayloadPreservesPercentEncodedLiteralPlus() throws {
+        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat?prompt=C%2B%2B+review"))
+
+        let payload = try XCTUnwrap(HermesDeepLink.newChatPayload(from: url))
+        XCTAssertEqual(payload.initialPrompt, "C++ review")
+    }
+
     func testNewChatPayloadTrimsBlankQueryValues() throws {
         let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat?prompt=%20%20&model=%20&provider=spark"))
 
