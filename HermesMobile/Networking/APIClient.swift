@@ -18,7 +18,9 @@ actor APIClient {
     private let encoder: JSONEncoder
     /// Read when building each request so live edits apply without rebuilding the
     /// client. Defaults to the process-wide store; tests inject a fixed list (#255).
-    private let customHeaderProvider: @Sendable () -> [CustomHeader]
+    /// Internal, not private, because the upload and transcribe extensions build
+    /// their multipart requests by hand and need the same header injection (#61).
+    let customHeaderProvider: @Sendable () -> [CustomHeader]
 
     init(
         baseURL: URL,
