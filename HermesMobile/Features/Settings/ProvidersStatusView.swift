@@ -119,6 +119,7 @@ struct ProvidersStatusView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityValue(isExpanded(provider) ? String(localized: "Expanded") : String(localized: "Collapsed"))
             .accessibilityHint("Shows this provider's models.")
 
             if let authError = provider.authErrorText {
@@ -171,12 +172,15 @@ struct ProvidersStatusView: View {
 
         do {
             let response = try await APIClient(baseURL: server).providers()
+            guard !Task.isCancelled else { return }
             activeProvider = response.activeProvider
             providers = response.providers ?? []
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
 
+        guard !Task.isCancelled else { return }
         isLoading = false
     }
 
@@ -187,10 +191,12 @@ struct ProvidersStatusView: View {
 
     private func toggleExpanded(_ provider: ProviderSummary) {
         guard let id = provider.providerID else { return }
-        if expandedProviderIDs.contains(id) {
-            expandedProviderIDs.remove(id)
-        } else {
-            expandedProviderIDs.insert(id)
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if expandedProviderIDs.contains(id) {
+                expandedProviderIDs.remove(id)
+            } else {
+                expandedProviderIDs.insert(id)
+            }
         }
     }
 }
