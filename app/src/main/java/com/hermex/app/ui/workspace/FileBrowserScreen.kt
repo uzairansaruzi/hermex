@@ -22,6 +22,7 @@ import androidx.lifecycle.viewModelScope
 import com.hermex.app.data.model.FileContentResponse
 import com.hermex.app.data.model.WorkspaceEntry
 import com.hermex.app.data.network.ApiClient
+import com.hermex.app.ui.components.HermexModalSheet
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -243,7 +244,7 @@ private fun FilePreviewDialog(
     error: String?,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    HermexModalSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

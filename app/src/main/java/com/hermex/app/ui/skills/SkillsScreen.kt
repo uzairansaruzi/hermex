@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hermex.app.data.model.*
 import com.hermex.app.data.network.ApiClient
+import com.hermex.app.ui.components.HermexCard
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -192,7 +193,7 @@ fun SkillDetailScreen(skill: SkillSummary, content: SkillContentResponse, onBack
             item {
                 content.content?.let {
                     Spacer(Modifier.height(8.dp))
-                    ElevatedCard { Text(it, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium) }
+                    HermexCard { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 }
             }
             content.linkedFiles?.let { files ->

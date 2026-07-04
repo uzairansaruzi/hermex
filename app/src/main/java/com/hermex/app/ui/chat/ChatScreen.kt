@@ -14,6 +14,9 @@ import com.hermex.app.ui.chat.slash.ClientSideAction
 import com.hermex.app.ui.chat.slash.ParsedSlashQuery
 import com.hermex.app.ui.chat.slash.SlashCommandCatalog
 import com.hermex.app.ui.chat.slash.SlashCommandHandler
+import com.hermex.app.ui.components.HermexAlertDialog
+import com.hermex.app.ui.components.HermexDropdownMenu
+import com.hermex.app.ui.components.HermexDropdownMenuItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +58,7 @@ fun ChatScreen(
     }
 
     editContext?.let { context ->
-        AlertDialog(
+        HermexAlertDialog(
             onDismissRequest = { editContext = null },
             title = { Text("Edit message") },
             text = {
@@ -101,14 +104,14 @@ fun ChatScreen(
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                     }
-                    DropdownMenu(
+                    HermexDropdownMenu(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Files") },
+                        HermexDropdownMenuItem(
+                            text = "Files",
+                            icon = Icons.Default.Folder,
                             onClick = { showMenu = false; onNavigateToFileBrowser(sessionId) },
-                            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
                         )
                     }
                 }
@@ -125,6 +128,7 @@ fun ChatScreen(
                 currentWorkspace = uiState.currentWorkspace,
                 currentProfile = uiState.currentProfile,
                 availableModels = uiState.availableModels,
+                modelsCatalog = uiState.modelsCatalog,
                 availableProfiles = uiState.availableProfiles,
                 availableWorkspaces = uiState.availableWorkspaces,
                 onSend = { sendDraft() },
