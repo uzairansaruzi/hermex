@@ -78,7 +78,6 @@ private struct TranscriptMediaThumbnailView: View {
             // audio bytes for a previous clip.
             .id(reference.id)
             .frame(maxWidth: 300, alignment: .leading)
-            .accessibilityLabel(String(localized: "Voice message \(reference.displayName)"))
         } else if reference.isRasterImageCandidate, let loadMediaImage {
             Button {
                 onPreviewMedia?(reference)
