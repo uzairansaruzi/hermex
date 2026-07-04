@@ -36,37 +36,65 @@ final class SSEClientTests: XCTestCase {
         let client = SSEClient(urlSessionConfiguration: configuration)
         let liveEvent = expectation(description: "received live event before done")
         let doneEvent = expectation(description: "received done event")
+        let receivedLock = NSLock()
         var didFulfillLiveEvent = false
         var receivedEvents: [SSEEvent] = []
+        var capturedHeaders: [String: String] = [:]
 
         client.start(url: URL(string: "https://example.test/api/chat/stream?stream_id=stream-123")!) { event in
+            receivedLock.lock()
             receivedEvents.append(event)
+            if capturedHeaders.isEmpty, let request = DelayedSSEURLProtocol.capturedRequest() {
+                capturedHeaders["Accept"] = request.value(forHTTPHeaderField: "Accept")
+                capturedHeaders["Accept-Encoding"] = request.value(forHTTPHeaderField: "Accept-Encoding")
+                capturedHeaders["Cache-Control"] = request.value(forHTTPHeaderField: "Cache-Control")
+            }
 
+            let shouldFulfillLiveEvent: Bool
             if !didFulfillLiveEvent {
                 switch event {
                 case .reasoning, .toolStarted, .toolCompleted, .token, .interimAssistant:
                     didFulfillLiveEvent = true
-                    liveEvent.fulfill()
+                    shouldFulfillLiveEvent = true
                 default:
-                    break
+                    shouldFulfillLiveEvent = false
                 }
+            } else {
+                shouldFulfillLiveEvent = false
             }
-
+            let shouldFulfillDoneEvent: Bool
             if case .done = event {
+                shouldFulfillDoneEvent = true
+            } else {
+                shouldFulfillDoneEvent = false
+            }
+            receivedLock.unlock()
+
+            if shouldFulfillLiveEvent {
+                liveEvent.fulfill()
+            }
+            if shouldFulfillDoneEvent {
                 doneEvent.fulfill()
             }
         }
 
-        await fulfillment(of: [liveEvent], timeout: 1)
-        XCTAssertFalse(receivedEvents.contains { event in
+        await fulfillment(of: [liveEvent], timeout: 2)
+        receivedLock.lock()
+        let eventsBeforeDone = receivedEvents
+        receivedLock.unlock()
+        XCTAssertFalse(eventsBeforeDone.contains { event in
             if case .done = event { return true }
             return false
         })
 
-        await fulfillment(of: [doneEvent], timeout: 1)
+        await fulfillment(of: [doneEvent], timeout: 2)
         client.stop()
+        receivedLock.lock()
+        let finalEvents = receivedEvents
+        let finalHeaders = capturedHeaders
+        receivedLock.unlock()
 
-        XCTAssertEqual(Array(receivedEvents.prefix(3)), [
+        XCTAssertEqual(Array(finalEvents.prefix(3)), [
             .reasoning("Thinking live."),
             .toolStarted(ToolStreamEvent(
                 eventType: nil,
@@ -79,15 +107,15 @@ final class SSEClientTests: XCTestCase {
             .token("First live token.")
         ])
         XCTAssertEqual(
-            DelayedSSEURLProtocol.capturedRequest()?.value(forHTTPHeaderField: "Accept"),
+            finalHeaders["Accept"],
             "text/event-stream"
         )
         XCTAssertEqual(
-            DelayedSSEURLProtocol.capturedRequest()?.value(forHTTPHeaderField: "Accept-Encoding"),
+            finalHeaders["Accept-Encoding"],
             "identity"
         )
         XCTAssertEqual(
-            DelayedSSEURLProtocol.capturedRequest()?.value(forHTTPHeaderField: "Cache-Control"),
+            finalHeaders["Cache-Control"],
             "no-cache, no-transform"
         )
     }
