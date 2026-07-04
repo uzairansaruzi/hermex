@@ -70,7 +70,9 @@ class TasksViewModel @Inject constructor(
                 try {
                     val status = apiClient.cronStatus()
                     _runningJobs.value = status.running?.jobs ?: emptyMap()
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.w("TasksViewModel", "cronStatus failed", e)
+                }
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
