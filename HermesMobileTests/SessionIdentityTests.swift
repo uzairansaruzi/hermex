@@ -89,6 +89,19 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(SessionRowView.metadataLabel(for: session, showsMessageCount: false, showsWorkspace: false))
     }
 
+    func testSessionRowStateBadgeKindsKeepScheduledStatusOutOfTitleIndentation() {
+        let session = SessionSummary(sessionId: "cron_job123_20260702_120000")
+
+        XCTAssertEqual(
+            SessionRowView.stateBadgeKinds(for: session, isViewingCachedData: true).map(\.title),
+            ["Scheduled", "Cached"]
+        )
+        XCTAssertEqual(
+            SessionRowView.stateBadgeKinds(for: SessionSummary(sessionId: "plain"), isViewingCachedData: false),
+            []
+        )
+    }
+
     func testSessionRowAccessibilityStateLabelsIncludeStreamingPinnedAndCachedState() {
         let session = SessionSummary(
             sessionId: "stateful",
@@ -161,6 +174,10 @@ final class SessionSidebarDisclosureSettingsTests: XCTestCase {
         defaults = nil
         suiteName = nil
         super.tearDown()
+    }
+
+    func testWikiTopLevelDestinationIsNativeUtilityDestination() {
+        XCTAssertEqual(SessionListUtilityDestination.wiki.id, .wiki)
     }
 
     func testDisclosureStatesDefaultToCollapsedWhenUnset() {

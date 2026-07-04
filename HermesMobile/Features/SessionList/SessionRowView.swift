@@ -154,13 +154,6 @@ struct SessionRowView: View {
 
     private var titleAndPin: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            if Self.isScheduledSession(session) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: sourceIconSize, weight: .semibold))
-                    .foregroundStyle(ZoraBrand.selectionAccent)
-                    .accessibilityHidden(true)
-            }
-
             Text(displayTitle)
                 .font(AppFont.headline(weight: .semibold))
                 .foregroundStyle(ZoraBrand.foreground)
@@ -229,14 +222,25 @@ struct SessionRowView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var visibleStateBadges: [SessionRowStateBadgeKind] {
+    static func stateBadgeKinds(
+        for session: SessionSummary,
+        isViewingCachedData: Bool
+    ) -> [SessionRowStateBadgeKind] {
         var badges: [SessionRowStateBadgeKind] = []
+
+        if isScheduledSession(session) {
+            badges.append(.scheduled)
+        }
 
         if isViewingCachedData {
             badges.append(.cached)
         }
 
         return badges
+    }
+
+    private var visibleStateBadges: [SessionRowStateBadgeKind] {
+        Self.stateBadgeKinds(for: session, isViewingCachedData: isViewingCachedData)
     }
 
     private var showsSupplementalContent: Bool {
@@ -302,13 +306,16 @@ struct SessionRowView: View {
     }
 }
 
-private enum SessionRowStateBadgeKind: String, Identifiable {
+enum SessionRowStateBadgeKind: String, Identifiable {
+    case scheduled
     case cached
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .scheduled:
+            return String(localized: "Scheduled")
         case .cached:
             return String(localized: "Cached")
         }
@@ -316,6 +323,8 @@ private enum SessionRowStateBadgeKind: String, Identifiable {
 
     var tint: Color {
         switch self {
+        case .scheduled:
+            return ZoraBrand.selectionAccent
         case .cached:
             return .orange
         }
@@ -327,9 +336,14 @@ private struct SessionRowStateBadge: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(badge.tint)
-                .frame(width: 5, height: 5)
+            if badge == .scheduled {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 9, weight: .bold))
+            } else {
+                Circle()
+                    .fill(badge.tint)
+                    .frame(width: 5, height: 5)
+            }
 
             Text(badge.title)
                 .font(AppFont.caption2(weight: .bold))

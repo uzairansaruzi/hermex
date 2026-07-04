@@ -1419,6 +1419,7 @@ private struct SettingsCard<Content: View>: View {
             .background {
                 shape.fill(cardFill)
             }
+            .compositingGroup()
             .adaptiveGlass(
                 .regular,
                 fallbackMaterial: .regularMaterial,
@@ -1434,7 +1435,7 @@ private struct SettingsCard<Content: View>: View {
     }
 
     private var cardFill: Color {
-        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.94) : ZoraBrand.cardFillStrong
+        reduceTransparency ? ZoraBrand.backgroundMid.opacity(0.94) : ZoraSurfaceLevel.card.fill(reduceTransparency: false)
     }
 
     private var cardStroke: Color {
@@ -1715,6 +1716,7 @@ private struct SettingsToggleRow: View {
             SettingsRowLabel(title: title, systemImage: systemImage)
         }
         .toggleStyle(.switch)
+        .tint(ZoraBrand.selectionAccent)
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
     }
 }
@@ -1792,9 +1794,11 @@ private struct SettingsStatusPill: View {
 
 private struct SettingsDivider: View {
     var body: some View {
-        Divider()
+        Rectangle()
+            .fill(ZoraBrand.listDivider)
+            .frame(height: 0.65)
             .padding(.leading, 2)
-            .opacity(0.72)
+            .accessibilityHidden(true)
     }
 }
 

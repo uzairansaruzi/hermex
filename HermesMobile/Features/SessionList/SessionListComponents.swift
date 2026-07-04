@@ -78,12 +78,13 @@ struct SessionSidebarUtilityRows: View {
             activeProfileOptionRows
         }
 
-        wikiRow
-            .padding(.top, Self.rowSpacing)
+        topLevelUtilityGrid
+            .padding(.horizontal, 24)
+            .padding(.top, Self.rowSpacing + 10)
             .sessionsScreenListRow()
 
         projectsHeader
-            .padding(.top, Self.rowSpacing)
+            .padding(.top, Self.rowSpacing + 8)
             .sessionsScreenListRow()
 
         if projectsAreExpanded {
@@ -154,15 +155,32 @@ struct SessionSidebarUtilityRows: View {
         }
     }
 
-    private var wikiRow: some View {
-        SidebarNavigationSubrow(
-            title: String(localized: "Wiki"),
-            subtitle: String(localized: "Pages and wiki apps"),
-            assetImage: "LucideBrain"
-        ) {
-            openDestination(.wiki)
+    private var topLevelUtilityGrid: some View {
+        LazyVGrid(columns: topLevelUtilityGridColumns, alignment: .leading, spacing: 10) {
+            SidebarNavButton(
+                title: String(localized: "Automations"),
+                subtitle: String(localized: "Scheduled runs"),
+                assetImage: "LucideCalendarClock"
+            ) {
+                openDestination(.tasks)
+            }
+
+            SidebarNavButton(
+                title: String(localized: "Wiki"),
+                subtitle: String(localized: "Pages and wiki apps"),
+                systemImage: "book.pages"
+            ) {
+                openDestination(.wiki)
+            }
         }
-        .padding(.horizontal, 24)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var topLevelUtilityGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(minimum: 124), spacing: 10),
+            GridItem(.flexible(minimum: 124), spacing: 10)
+        ]
     }
 
     private var projectsHeader: some View {
@@ -231,16 +249,6 @@ struct SessionSidebarUtilityRows: View {
 
     @ViewBuilder
     private var projectOptionRows: some View {
-        disclosureSubrow {
-            SidebarNavigationSubrow(
-                title: String(localized: "Automations"),
-                subtitle: String(localized: "Scheduled automations"),
-                assetImage: "LucideCalendarClock"
-            ) {
-                openDestination(.tasks)
-            }
-        }
-
         if viewModel.isLoadingProjects && viewModel.projects.isEmpty {
             disclosureSubrow {
                 CompactStatusRow(title: String(localized: "Loading projects..."), systemImage: "folder")
@@ -820,24 +828,36 @@ struct SessionListFloatingChatButtonStyle: ButtonStyle {
 struct SidebarNavButton: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     let title: String
-    let assetImage: String
+    var subtitle: String? = nil
+    var assetImage: String? = nil
+    var systemImage: String? = nil
     let action: () -> Void
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
         HapticButton(action: action) {
-            VStack(alignment: .leading, spacing: 12) {
-                SidebarUtilityIcon(assetImage: assetImage)
+            VStack(alignment: .leading, spacing: 8) {
+                icon
 
-                Text(title)
-                    .font(AppFont.subheadline(weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(AppFont.subheadline(weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(AppFont.caption())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                }
             }
             .padding(13)
-            .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
             .background(ZoraBrand.subtleFill, in: shape)
             .overlay {
                 shape
@@ -848,6 +868,20 @@ struct SidebarNavButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .accessibilityHint("Opens \(title).")
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if let assetImage {
+            SidebarUtilityIcon(assetImage: assetImage)
+        } else if let systemImage {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 28, height: 21)
+                .accessibilityHidden(true)
+        }
     }
 
     private var tileStroke: Color {

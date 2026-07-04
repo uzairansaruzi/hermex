@@ -2079,19 +2079,19 @@ struct ChatHeaderBackgroundGradient: View {
     }
 
     private var fadeKneeOpacity: Double {
-        colorScheme == .dark ? 0.78 : 0.68
+        colorScheme == .dark ? 0.48 : 0.40
     }
 }
 
 enum ChatHeaderBackgroundGradientLayout {
     /// Inline navigation chrome plus the two-line principal title area.
     static let inlineHeaderBarHeight: CGFloat = 56
-    /// Keep the fully opaque portion slightly below the toolbar so transcript text cannot
-    /// collide with the title/buttons before the fade begins.
-    static let solidExtensionBelowHeader: CGFloat = 14
-    /// Tail of the iMessage-style fade from the header into the transcript.
-    static let fadeTailHeight: CGFloat = 48
-    static let minimumVisibleHeight: CGFloat = 132
+    /// Keep the fully opaque portion just below the toolbar chrome. The transcript should
+    /// only be softened at the very top edge, not washed out under a tall overlay.
+    static let solidExtensionBelowHeader: CGFloat = 4
+    /// Short tail from the header into the first few transcript points.
+    static let fadeTailHeight: CGFloat = 18
+    static let minimumVisibleHeight: CGFloat = 78
 
     static func visibleHeight(topSafeAreaInset: CGFloat) -> CGFloat {
         max(minimumVisibleHeight, solidHeight(topSafeAreaInset: topSafeAreaInset) + fadeTailHeight)
@@ -2107,7 +2107,7 @@ enum ChatHeaderBackgroundGradientLayout {
 
     static func fadeKneeStop(topSafeAreaInset: CGFloat) -> CGFloat {
         let solidStop = solidStop(topSafeAreaInset: topSafeAreaInset)
-        return solidStop + ((1 - solidStop) * 0.46)
+        return solidStop + ((1 - solidStop) * 0.25)
     }
 }
 

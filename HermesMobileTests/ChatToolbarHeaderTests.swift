@@ -38,15 +38,13 @@ final class ChatToolbarHeaderTests: XCTestCase {
         )
     }
 
-    func testHeaderGradientKeepsFadeTailBelowHeader() {
+    func testHeaderGradientKeepsFadeTailToVeryTopOfTranscript() {
         let topSafeAreaInset: CGFloat = 59
         let visibleHeight = ChatHeaderBackgroundGradientLayout.visibleHeight(topSafeAreaInset: topSafeAreaInset)
         let solidHeight = ChatHeaderBackgroundGradientLayout.solidHeight(topSafeAreaInset: topSafeAreaInset)
 
-        XCTAssertGreaterThanOrEqual(
-            visibleHeight - solidHeight,
-            ChatHeaderBackgroundGradientLayout.fadeTailHeight
-        )
+        XCTAssertEqual(visibleHeight - solidHeight, ChatHeaderBackgroundGradientLayout.fadeTailHeight)
+        XCTAssertLessThanOrEqual(ChatHeaderBackgroundGradientLayout.fadeTailHeight, 18)
         XCTAssertLessThan(ChatHeaderBackgroundGradientLayout.solidStop(topSafeAreaInset: topSafeAreaInset), 1)
         XCTAssertLessThan(
             ChatHeaderBackgroundGradientLayout.solidStop(topSafeAreaInset: topSafeAreaInset),
@@ -59,6 +57,12 @@ final class ChatToolbarHeaderTests: XCTestCase {
         XCTAssertEqual(
             ChatHeaderBackgroundGradientLayout.visibleHeight(topSafeAreaInset: 0),
             ChatHeaderBackgroundGradientLayout.minimumVisibleHeight
+        )
+        XCTAssertLessThanOrEqual(
+            ChatHeaderBackgroundGradientLayout.minimumVisibleHeight,
+            ChatHeaderBackgroundGradientLayout.inlineHeaderBarHeight
+                + ChatHeaderBackgroundGradientLayout.solidExtensionBelowHeader
+                + ChatHeaderBackgroundGradientLayout.fadeTailHeight
         )
     }
 

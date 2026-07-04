@@ -144,18 +144,29 @@ struct SessionListView: View {
     }
 
     private var splitNavigationShell: some View {
-        NavigationSplitView {
-            splitSidebarPanel
-        } detail: {
-            splitDetail
+        ZStack {
+            ZoraBrandBackground()
+                .ignoresSafeArea()
+
+            NavigationSplitView {
+                splitSidebarPanel
+            } detail: {
+                splitDetail
+            }
+            .navigationSplitViewStyle(.balanced)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
-        .navigationSplitViewStyle(.balanced)
+        .background(ZoraBrandBackground().ignoresSafeArea())
     }
 
     private var splitSidebarPanel: some View {
         let shape = RoundedRectangle(cornerRadius: ZoraRadius.sheet, style: .continuous)
 
         return ZStack(alignment: .bottomTrailing) {
+            Color.clear
+                .allowsHitTesting(false)
+
             content
 
             if !isSearchingSessions {
@@ -164,19 +175,31 @@ struct SessionListView: View {
             }
         }
         .clipShape(shape)
+        .compositingGroup()
         .background {
-            shape
-                .fill(ZoraSurfaceLevel.chrome.fill(reduceTransparency: reduceTransparency))
-                .overlay(
-                    shape
-                        .stroke(ZoraBrand.surfaceHairlineStrong, lineWidth: 0.85)
-                )
-                .shadow(color: Color.black.opacity(reduceTransparency ? 0.12 : 0.24), radius: 28, y: 18)
+            splitSidebarPanelBackground(shape: shape)
         }
-        .padding(.leading, 18)
-        .padding(.vertical, 18)
-        .frame(minWidth: 360, idealWidth: 420, maxWidth: 460, maxHeight: .infinity, alignment: .leading)
-        .navigationSplitViewColumnWidth(min: 360, ideal: 420, max: 480)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 24)
+        .frame(minWidth: 360, idealWidth: 420, maxWidth: 460, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.clear)
+        .navigationSplitViewColumnWidth(min: 372, ideal: 432, max: 500)
+    }
+
+    private func splitSidebarPanelBackground(shape: RoundedRectangle) -> some View {
+        shape
+            .fill(reduceTransparency ? ZoraSurfaceLevel.chrome.fill(reduceTransparency: true) : Color.clear)
+            .background(.ultraThinMaterial, in: shape)
+            .overlay {
+                shape
+                    .fill(ZoraBrand.cardFill.opacity(reduceTransparency ? 0.72 : 0.18))
+            }
+            .overlay {
+                shape
+                    .stroke(ZoraBrand.surfaceHairlineStrong.opacity(0.72), lineWidth: 0.85)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: Color.black.opacity(reduceTransparency ? 0.10 : 0.18), radius: 24, y: 16)
     }
 
     @ViewBuilder
@@ -1234,6 +1257,7 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
 
     var id: Self { self }
 }
+
 
 private struct SessionSearchTaskID: Hashable {
     let query: String
