@@ -44,6 +44,10 @@ enum Endpoint {
     case backgroundStatus(sessionID: String)
     case workspaces
     case workspaceSuggestions(prefix: String)
+    case workspaceAdd
+    case workspaceRemove
+    case workspaceRename
+    case workspaceReorder
     case directoryList(sessionID: String, path: String?)
     case file(sessionID: String, path: String)
     case rawFile(sessionID: String, path: String)
@@ -186,6 +190,14 @@ enum Endpoint {
             return "/api/workspaces"
         case .workspaceSuggestions:
             return "/api/workspaces/suggest"
+        case .workspaceAdd:
+            return "/api/workspaces/add"
+        case .workspaceRemove:
+            return "/api/workspaces/remove"
+        case .workspaceRename:
+            return "/api/workspaces/rename"
+        case .workspaceReorder:
+            return "/api/workspaces/reorder"
         case .directoryList:
             return "/api/list"
         case .file:

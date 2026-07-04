@@ -9,6 +9,38 @@ extension APIClient {
         try await send(endpoint: .workspaceSuggestions(prefix: prefix), method: "GET")
     }
 
+    func addWorkspace(path: String, name: String? = nil, create: Bool? = nil) async throws -> WorkspaceMutationResponse {
+        try await send(
+            endpoint: .workspaceAdd,
+            method: "POST",
+            body: AddWorkspaceRequest(path: path, name: name, create: create)
+        )
+    }
+
+    func removeWorkspace(path: String) async throws -> WorkspaceMutationResponse {
+        try await send(
+            endpoint: .workspaceRemove,
+            method: "POST",
+            body: RemoveWorkspaceRequest(path: path)
+        )
+    }
+
+    func renameWorkspace(path: String, name: String) async throws -> WorkspaceMutationResponse {
+        try await send(
+            endpoint: .workspaceRename,
+            method: "POST",
+            body: RenameWorkspaceRequest(path: path, name: name)
+        )
+    }
+
+    func reorderWorkspaces(paths: [String]) async throws -> WorkspaceMutationResponse {
+        try await send(
+            endpoint: .workspaceReorder,
+            method: "POST",
+            body: ReorderWorkspacesRequest(paths: paths)
+        )
+    }
+
     func directoryList(sessionID: String, path: String? = nil) async throws -> DirectoryListResponse {
         try await send(
             endpoint: .directoryList(sessionID: sessionID, path: path),

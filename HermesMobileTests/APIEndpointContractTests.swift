@@ -150,6 +150,10 @@ final class ContractReadinessTests: XCTestCase {
                 path: "/api/workspaces/suggest",
                 query: ["prefix": "/Users/uzair"]
             ),
+            .init(name: "workspace add", method: "POST", endpoint: .workspaceAdd, path: "/api/workspaces/add"),
+            .init(name: "workspace remove", method: "POST", endpoint: .workspaceRemove, path: "/api/workspaces/remove"),
+            .init(name: "workspace rename", method: "POST", endpoint: .workspaceRename, path: "/api/workspaces/rename"),
+            .init(name: "workspace reorder", method: "POST", endpoint: .workspaceReorder, path: "/api/workspaces/reorder"),
             .init(
                 name: "directory list root",
                 method: "GET",
