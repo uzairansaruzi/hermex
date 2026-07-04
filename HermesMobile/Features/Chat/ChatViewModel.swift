@@ -675,9 +675,12 @@ final class ChatViewModel {
     }
 
     /// Re-queries `GET /api/reasoning` for the current model/provider and updates
-    /// the effort gating (issue #18). Failures are silent — the composer keeps
-    /// whatever gating it already shows. If the selected effort is no longer
-    /// supported, snaps to the server's coerced `reasoning_effort`.
+    /// the effort gating (issue #18). Failures are silent to the user, but reset
+    /// the gating to the "unknown" fallback (static effort list, control shown) —
+    /// keeping the previous model's gating after a successful model switch could
+    /// hide the control for a model that supports it, or offer efforts the new
+    /// model rejects. If the selected effort is no longer supported, snaps to the
+    /// server's coerced `reasoning_effort`.
     func refreshReasoningEffortGating() async {
         guard !isViewingCachedData else { return }
 
@@ -688,6 +691,10 @@ final class ChatViewModel {
             model: Self.nonEmpty(currentModel),
             provider: Self.nonEmpty(currentModelProvider)
         ) else {
+            if token == reasoningGatingFetchToken {
+                supportedReasoningEfforts = nil
+                supportsReasoningEffort = nil
+            }
             return
         }
 

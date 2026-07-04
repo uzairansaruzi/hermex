@@ -5049,7 +5049,13 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testEffortGatingRefreshFailureKeepsExistingGating() async throws {
+    func testEffortGatingRefreshFailureResetsStaleGatingToFallback() async throws {
+        // First switch lands restrictive gating (no effort support); the second
+        // switch succeeds but its gating refresh fails. The stale "hidden"
+        // gating from the first model must not stick to the new model — it
+        // resets to the unknown fallback (static list, control shown).
+        var reasoningCalls = 0
+        var sessionModel = "gpt-5.4"
         let viewModel = try makeViewModel(
             sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
         ) { request in
@@ -5060,13 +5066,24 @@ final class ChatViewModelSendTests: XCTestCase {
                   "session": {
                     "session_id": "session-abc",
                     "workspace": "/tmp/workspace",
-                    "model": "flaky-model",
+                    "model": "\(sessionModel)",
                     "model_provider": "openai",
                     "profile": "work"
                   }
                 }
                 """, for: request)
             case "/api/reasoning":
+                reasoningCalls += 1
+                if reasoningCalls == 1 {
+                    return apiTestJSONResponse("""
+                    {
+                      "show_reasoning": true,
+                      "reasoning_effort": "",
+                      "supported_efforts": [],
+                      "supports_reasoning_effort": false
+                    }
+                    """, for: request)
+                }
                 throw URLError(.timedOut)
             default:
                 XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
@@ -5074,17 +5091,29 @@ final class ChatViewModelSendTests: XCTestCase {
             }
         }
 
+        sessionModel = "no-effort-model"
+        let didSelectFirst = await viewModel.selectComposerModel(ModelCatalogOption(
+            id: "no-effort-model",
+            displayName: "no-effort-model",
+            providerID: "openai"
+        ))
+        XCTAssertTrue(didSelectFirst)
+        XCTAssertEqual(viewModel.supportsReasoningEffort, false)
+        XCTAssertFalse(viewModel.showsReasoningEffortControl)
+
+        sessionModel = "flaky-model"
         let didSelect = await viewModel.selectComposerModel(ModelCatalogOption(
             id: "flaky-model",
             displayName: "flaky-model",
             providerID: "openai"
         ))
 
-        // The model change still succeeds; the gating silently keeps its
-        // previous (legacy/full) state.
+        // The model change still succeeds; the failed refresh drops the stale
+        // gating instead of applying it to the new model.
         XCTAssertTrue(didSelect)
         XCTAssertEqual(viewModel.selectedModelID, "flaky-model")
         XCTAssertNil(viewModel.supportedReasoningEfforts)
+        XCTAssertNil(viewModel.supportsReasoningEffort)
         XCTAssertTrue(viewModel.showsReasoningEffortControl)
         XCTAssertNil(viewModel.composerConfigurationErrorMessage)
     }
