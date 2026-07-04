@@ -2,27 +2,39 @@ package com.hermex.app.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hermex.app.data.auth.AuthManager
+import com.hermex.app.data.model.ModelGroup
+import com.hermex.app.data.model.ModelOption
 import com.hermex.app.data.model.ModelsResponse
 import com.hermex.app.data.model.ProfilesResponse
 import com.hermex.app.data.model.SettingsResponse
 import com.hermex.app.data.network.ApiClient
 import com.hermex.app.ui.components.HermexCard
 import com.hermex.app.ui.components.HermexSectionHeader
+import com.hermex.app.ui.theme.HermexTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -231,9 +243,9 @@ fun SettingsScreen(
     }
 
     if (showModelDialog) {
-        SelectionDialog(
-            title = "Change Model",
-            items = models?.modelsByProvider()?.values?.flatten().orEmpty().distinct(),
+        ModelPickerSheet(
+            models = models,
+            currentModel = models?.defaultModel,
             isLoading = isActionLoading,
             onSelect = { viewModel.selectModel(it) },
             onDismiss = { viewModel.dismissModelDialog() }
@@ -241,9 +253,8 @@ fun SettingsScreen(
     }
 
     if (showProfileDialog) {
-        SelectionDialog(
-            title = "Switch Profile",
-            items = profiles?.profiles?.mapNotNull { it.name }.orEmpty(),
+        ProfilePickerSheet(
+            profiles = profiles,
             isLoading = isActionLoading,
             onSelect = { viewModel.selectProfile(it) },
             onDismiss = { viewModel.dismissProfileDialog() }
@@ -302,40 +313,261 @@ private fun SettingsActionRow(label: String, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SelectionDialog(
-    title: String,
-    items: List<String>,
+private fun ModelPickerSheet(
+    models: ModelsResponse?,
+    currentModel: String?,
     isLoading: Boolean,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    var searchQuery by remember { mutableStateOf("") }
+    val groups = models?.groups.orEmpty()
+    val flatFallback = models?.modelsByProvider()?.entries?.toList().orEmpty()
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = { Text(title) },
-        text = {
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .heightIn(max = 500.dp)
+        ) {
+            Text(
+                "Change Model",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            // Search field
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search models") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                singleLine = true
+            )
+
+            if (groups.isEmpty() && flatFallback.isEmpty() && isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(bottom = 32.dp)
+                ) {
+                    if (groups.isNotEmpty()) {
+                        groups.forEach { group ->
+                            val provider = group.providerId ?: group.provider ?: "Other"
+                            val filteredModels = group.models.orEmpty().filter { model ->
+                                val id = model.id ?: ""
+                                val label = model.label ?: ""
+                                searchQuery.isBlank() ||
+                                    id.contains(searchQuery, ignoreCase = true) ||
+                                    label.contains(searchQuery, ignoreCase = true) ||
+                                    provider.contains(searchQuery, ignoreCase = true)
+                            }
+                            if (filteredModels.isNotEmpty()) {
+                                item {
+                                    HermexSectionHeader(
+                                        text = provider,
+                                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                    )
+                                }
+                                items(filteredModels) { model ->
+                                    ModelRow(
+                                        model = model,
+                                        isSelected = model.id == currentModel,
+                                        onClick = { model.id?.let(onSelect) }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Flat fallback (older server without groups)
+                        flatFallback.forEach { (provider, modelIds) ->
+                            val filtered = modelIds.filter {
+                                searchQuery.isBlank() || it.contains(searchQuery, ignoreCase = true)
+                            }
+                            if (filtered.isNotEmpty()) {
+                                item {
+                                    HermexSectionHeader(
+                                        text = provider,
+                                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                    )
+                                }
+                                items(filtered) { id ->
+                                    ModelRow(
+                                        model = ModelOption(id = id, label = null),
+                                        isSelected = id == currentModel,
+                                        onClick = { onSelect(id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelRow(model: ModelOption, isSelected: Boolean, onClick: () -> Unit) {
+    val id = model.id ?: return
+    val displayName = model.label?.takeIf { it.isNotBlank() } ?: extractModelName(id)
+    val showSecondaryId = model.label != null && model.label != id
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+        else MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelected) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = HermexTheme.colors.themeGold,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    maxLines = 1
+                )
+                if (showSecondaryId || id.startsWith("@custom:")) {
+                    Text(
+                        text = id,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Extracts a human-readable model name from a provider-prefixed id. */
+private fun extractModelName(id: String): String {
+    // "@provider:model-name" or "provider/model-name" → "model-name"
+    val afterColon = id.substringAfterLast(':')
+    val afterSlash = afterColon.substringAfterLast('/')
+    return afterSlash.ifBlank { id }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfilePickerSheet(
+    profiles: ProfilesResponse?,
+    isLoading: Boolean,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val items = profiles?.profiles?.mapNotNull { it.name }.orEmpty()
+    val activeProfile = profiles?.activeProfile
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .heightIn(max = 400.dp)
+        ) {
+            Text(
+                "Switch Profile",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
             if (items.isEmpty() && isLoading) {
                 Box(modifier = Modifier.fillMaxWidth().height(120.dp)) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
             } else if (items.isEmpty()) {
-                Text("No items available", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "No profiles available",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
             } else {
-                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                    items.forEach { item ->
-                        TextButton(
-                            onClick = { onSelect(item) },
-                            modifier = Modifier.fillMaxWidth()
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 32.dp)
+                ) {
+                    items(items) { name ->
+                        val isSelected = name == activeProfile
+                        Surface(
+                            onClick = { onSelect(name) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+                            else MaterialTheme.colorScheme.surfaceContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 44.dp)
                         ) {
-                            Text(item)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = HermexTheme.colors.themeGold,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                )
+                            }
                         }
                     }
                 }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    )
+    }
 }
