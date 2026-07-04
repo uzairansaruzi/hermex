@@ -4583,6 +4583,12 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
+            case "/api/reasoning":
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+                XCTAssertEqual(query["model"], openRouterModel)
+                XCTAssertEqual(query["provider"], "openrouter")
+                return apiTestJSONResponse(#"{"reasoning_effort":"medium","supported_efforts":["low","medium"],"supports_reasoning_effort":true}"#, for: request)
             case "/api/chat/start":
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 XCTAssertEqual(body["model"] as? String, openRouterModel)
@@ -4609,7 +4615,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Use the selected OpenRouter model")
 
         XCTAssertTrue(didStart)
-        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/chat/start"])
+        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/reasoning", "/api/chat/start"])
         XCTAssertEqual(streamClient.startedURLs.count, 1)
     }
 
@@ -4633,6 +4639,12 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
+            case "/api/reasoning":
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+                XCTAssertEqual(query["model"], openRouterModel)
+                XCTAssertEqual(query["provider"], "openrouter")
+                return apiTestJSONResponse(#"{"reasoning_effort":"medium","supported_efforts":["low","medium"],"supports_reasoning_effort":true}"#, for: request)
             case "/api/chat/start":
                 chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
                 if chatStartBodies.count == 1 {
@@ -4696,6 +4708,12 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
+            case "/api/reasoning":
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+                XCTAssertEqual(query["model"], customModel)
+                XCTAssertEqual(query["provider"], "openrouter")
+                return apiTestJSONResponse(#"{"reasoning_effort":"low","supported_efforts":["low","medium"],"supports_reasoning_effort":true}"#, for: request)
             case "/api/chat/start":
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 XCTAssertEqual(body["model"] as? String, customModel)
@@ -4724,7 +4742,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Use the custom OpenRouter model")
 
         XCTAssertTrue(didStart)
-        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/chat/start"])
+        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/reasoning", "/api/chat/start"])
         XCTAssertEqual(streamClient.startedURLs.count, 1)
     }
 
@@ -4911,6 +4929,12 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
+            case "/api/reasoning":
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+                XCTAssertEqual(query["model"], customModel)
+                XCTAssertEqual(query["provider"], "openrouter")
+                return apiTestJSONResponse(#"{"reasoning_effort":"low","supported_efforts":["low","medium"],"supports_reasoning_effort":true}"#, for: request)
             default:
                 XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
                 throw URLError(.badURL)
@@ -4926,7 +4950,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedModelID, customModel)
         XCTAssertEqual(viewModel.selectedModelProviderID, "openrouter")
         XCTAssertNil(viewModel.composerConfigurationErrorMessage)
-        XCTAssertEqual(requestPaths, ["/api/session/update"])
+        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/reasoning"])
     }
 
     @MainActor
