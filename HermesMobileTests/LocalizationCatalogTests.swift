@@ -87,15 +87,15 @@ final class LocalizationCatalogTests: XCTestCase {
         XCTAssertEqual(root["sourceLanguage"] as? String, "en")
         let strings = try XCTUnwrap(root["strings"] as? [String: Any])
         let expectedPhrases = [
-            "New chat in \\(.applicationName)",
-            "New \\(.applicationName) chat",
-            "Start a new chat in \\(.applicationName)",
-            "New voice chat in \\(.applicationName)",
-            "New \\(.applicationName) voice chat",
-            "Start a voice chat in \\(.applicationName)",
-            "New \\(\\.$profile) chat in \\(.applicationName)",
-            "Start a new \\(\\.$profile) chat in \\(.applicationName)",
-            "New chat in \\(\\.$profile) on \\(.applicationName)"
+            "New chat in ${applicationName}",
+            "New ${applicationName} chat",
+            "Start a new chat in ${applicationName}",
+            "New voice chat in ${applicationName}",
+            "New ${applicationName} voice chat",
+            "Start a voice chat in ${applicationName}",
+            "New ${profile} chat in ${applicationName}",
+            "Start a new ${profile} chat in ${applicationName}",
+            "New chat in ${profile} on ${applicationName}"
         ]
 
         XCTAssertEqual(Set(strings.keys), Set(expectedPhrases))
