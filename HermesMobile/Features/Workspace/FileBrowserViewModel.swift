@@ -84,8 +84,10 @@ final class FileBrowserViewModel {
             currentPath = response.path ?? path
             entries = response.entries ?? []
         } catch {
-            lastError = error
-            errorMessage = error.localizedDescription
+            if !error.isCancellation {
+                lastError = error
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false

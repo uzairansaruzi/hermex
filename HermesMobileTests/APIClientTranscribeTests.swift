@@ -77,6 +77,45 @@ final class APIClientTranscribeTests: APIClientTestCase {
         }
     }
 
+    func testTranscribeAudioEmptyBodyOnServerErrorThrowsHTTP() async {
+        let client = makeClient { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 500,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{}".utf8))
+        }
+
+        // All TranscribeResponse fields are optional, so `{}` decodes — but it
+        // carries no ok/transcript/error signal, so a non-2xx status must surface
+        // as `.http` rather than an all-nil "success".
+        do {
+            _ = try await client.transcribeAudio(data: Data("x".utf8), filename: "v.m4a")
+            XCTFail("Expected APIError.http")
+        } catch APIError.http(let statusCode, _) {
+            XCTAssertEqual(statusCode, 500)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testTranscribeAudioWrapsTransportErrorAsNetwork() async {
+        let client = makeClient { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            _ = try await client.transcribeAudio(data: Data("x".utf8), filename: "v.m4a")
+            XCTFail("Expected APIError.network")
+        } catch APIError.network(let underlying) {
+            XCTAssertEqual((underlying as? URLError)?.code, .notConnectedToInternet)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testTranscribeAudioTolerantToUnknownFields() async throws {
         let client = makeClient { request in
             apiTestJSONResponse("""

@@ -408,7 +408,7 @@ private extension JSONValue {
         case .string(let value):
             return value
         case .number(let value):
-            return value.formatted()
+            return JSONValue.lossyNumberString(value)
         case .bool(let value):
             return value ? "true" : "false"
         case .object, .array, .null:

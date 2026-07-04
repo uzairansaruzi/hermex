@@ -162,22 +162,72 @@ actor APIClient {
             throw APIError.network(underlying: error)
         }
 
+        try validate(response, data: data)
+
+        return data
+    }
+
+    /// Sends a multipart/form-data POST through the same hardened path as
+    /// `sendData`: custom headers applied under the built-ins, transport errors
+    /// wrapped as `.network`, and the shared response validation. Callers with
+    /// body-first semantics (transcribe) pass `requiring2xx: false` to defer the
+    /// success-status check and inspect the body/status themselves; `-1`/401
+    /// mapping still applies.
+    func sendMultipartData(
+        endpoint: Endpoint,
+        multipartBody: Data,
+        boundary: String,
+        requiring2xx: Bool = true
+    ) async throws -> (data: Data, response: HTTPURLResponse) {
+        var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        // Custom headers first, then the built-in Content-Type so the boundary
+        // always wins its key.
+        customHeaderProvider().apply(to: &request)
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = multipartBody
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw APIError.network(underlying: error)
+        }
+
+        let httpResponse = try validate(response, data: data, requiring2xx: requiring2xx)
+        return (data, httpResponse)
+    }
+
+    /// The response-validation block shared by every request path: a non-HTTP
+    /// response maps to `.http(statusCode: -1)`, 401 to `.unauthorized` (when
+    /// `mapsUnauthorized`), and any other non-2xx status to `.http` carrying the
+    /// body text (skipped when `requiring2xx` is false). Returns the
+    /// `HTTPURLResponse` for callers that need the status.
+    @discardableResult
+    func validate(
+        _ response: URLResponse,
+        data: Data,
+        mapsUnauthorized: Bool = true,
+        requiring2xx: Bool = true
+    ) throws -> HTTPURLResponse {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.http(statusCode: -1, body: nil)
         }
 
-        if httpResponse.statusCode == 401 {
+        if mapsUnauthorized && httpResponse.statusCode == 401 {
             throw APIError.unauthorized
         }
 
-        guard (200..<300).contains(httpResponse.statusCode) else {
+        guard !requiring2xx || (200..<300).contains(httpResponse.statusCode) else {
             throw APIError.http(
                 statusCode: httpResponse.statusCode,
                 body: String(data: data, encoding: .utf8)
             )
         }
 
-        return data
+        return httpResponse
     }
 
     func downloadData(
@@ -207,20 +257,7 @@ actor APIClient {
             throw APIError.network(underlying: error)
         }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.http(statusCode: -1, body: nil)
-        }
-
-        if mapsUnauthorized && httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw APIError.http(
-                statusCode: httpResponse.statusCode,
-                body: String(data: data, encoding: .utf8)
-            )
-        }
+        try validate(response, data: data, mapsUnauthorized: mapsUnauthorized)
 
         return data
     }

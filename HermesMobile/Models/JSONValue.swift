@@ -44,4 +44,18 @@ enum JSONValue: Codable, Equatable {
             try container.encodeNil()
         }
     }
+
+    /// Locale-independent number-to-string conversion that mirrors
+    /// `KeyedDecodingContainer.decodeLossyStringIfPresent`: integral values
+    /// collapse to their integer form ("42"), everything else uses Swift's
+    /// default description ("1.5"). Never applies locale formatting, so a
+    /// numeric tool-use ID stringified here always matches the same ID
+    /// decoded through the lossy string path. Not for user-facing display.
+    static func lossyNumberString(_ value: Double) -> String {
+        if let intValue = Int(exactly: value) {
+            return "\(intValue)"
+        }
+
+        return "\(value)"
+    }
 }

@@ -25,6 +25,8 @@ final class SkillsViewModel {
             let response = try await client.skills()
             skills = response.skills ?? []
         } catch {
+            guard !error.isCancellation else { return }
+
             lastError = error
             errorMessage = error.localizedDescription
         }

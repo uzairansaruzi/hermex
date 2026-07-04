@@ -158,6 +158,20 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNotNil(viewModel.lastError)
     }
 
+    @MainActor
+    func testLoadDoesNotSurfaceCancellationAsError() async throws {
+        let client = makeClient { _ in
+            throw URLError(.cancelled)
+        }
+        let viewModel = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
+
+        await viewModel.load()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
     // MARK: - Toolbar availability
 
     @MainActor

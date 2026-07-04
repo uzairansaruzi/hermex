@@ -55,8 +55,10 @@ final class GitWorkspaceViewModel {
             status = response.git
             hasLoaded = true
         } catch {
-            lastError = error
-            errorMessage = error.localizedDescription
+            if !error.isCancellation {
+                lastError = error
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false

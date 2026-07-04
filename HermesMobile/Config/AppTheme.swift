@@ -451,11 +451,20 @@ struct ZoraWaveform: View {
     var tint: Color = ZoraBrand.foreground
     var lineWidth: CGFloat = 3
     var glow = true
+    /// Set false for purely decorative placements (e.g. the static header wordmark) so
+    /// the timeline stays paused and the waveform renders a single static snapshot
+    /// instead of recomputing the path and glow at 60fps while idle. Live states
+    /// (listening/speaking/thinking) should keep this true.
+    var isAnimated = true
+
+    private var isPaused: Bool {
+        reduceMotion || !isAnimated
+    }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: isPaused)) { timeline in
             let renderedState: ZoraWaveState = reduceMotion ? .idle : state
-            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * renderedState.speed
+            let phase = isPaused ? 0 : timeline.date.timeIntervalSinceReferenceDate * renderedState.speed
 
             ZoraWaveShape(
                 phase: phase,
@@ -547,7 +556,9 @@ private struct ZoraWaveformMark: View {
     let color: Color
 
     var body: some View {
-        ZoraWaveform(state: .idle, tint: color, lineWidth: 2.4, glow: true)
+        // Static header decoration: keep the timeline paused so the wordmark doesn't
+        // burn a 60fps redraw (path + two shadow glows) while sitting idle.
+        ZoraWaveform(state: .idle, tint: color, lineWidth: 2.4, glow: true, isAnimated: false)
             .accessibilityHidden(true)
     }
 }

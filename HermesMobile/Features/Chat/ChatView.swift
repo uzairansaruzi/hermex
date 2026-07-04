@@ -338,11 +338,12 @@ struct ChatView: View {
             }
         }
         .task(id: gitAvailabilityTaskID) {
-            let availabilityViewModel = GitWorkspaceAvailabilityViewModel(session: session, server: server)
-            await MainActor.run {
-                gitAvailabilityViewModel = availabilityViewModel
-            }
-            await availabilityViewModel.loadIfNeeded()
+            // The id is stable for a given session/server, but SwiftUI still refires this
+            // task on every reappearance (popping back from sheets/pushes). Keep the
+            // init-time view model and rely on `loadIfNeeded` being idempotent so
+            // refreshed git state survives instead of resetting and flickering the
+            // toolbar button on each return.
+            await gitAvailabilityViewModel.loadIfNeeded()
         }
         .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)

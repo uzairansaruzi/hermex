@@ -280,6 +280,34 @@ final class CronManagementViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testTasksViewModelLoadDoesNotSurfaceCancellationAsError() async throws {
+        let client = makeClient { _ in
+            throw URLError(.cancelled)
+        }
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    @MainActor
+    func testTasksViewModelLoadSurfacesNonCancellationError() async throws {
+        let client = makeClient { _ in
+            throw URLError(.timedOut)
+        }
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertNotNil(viewModel.lastError)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    @MainActor
     func testTaskDetailViewModelPauseUpdatesJobAndPublishesMutation() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/crons/pause")

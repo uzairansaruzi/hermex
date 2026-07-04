@@ -66,8 +66,10 @@ final class FilePreviewViewModel {
                 preview = .text(file)
             }
         } catch {
-            lastError = error
-            errorMessage = error.localizedDescription
+            if !error.isCancellation {
+                lastError = error
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false

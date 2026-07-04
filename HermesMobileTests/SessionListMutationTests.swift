@@ -604,6 +604,63 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testStreamingSessionWithoutStreamIDReloadsOncePerTransitionNotEveryRefresh() async throws {
+        var loadCount = 0
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                loadCount += 1
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {
+                      "session_id": "session-streaming",
+                      "title": "Streaming work",
+                      "archived": false,
+                      "is_streaming": true
+                    }
+                  ]
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-123"}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        XCTAssertEqual(loadCount, 1)
+        XCTAssertEqual(viewModel.sessions.first?.isStreaming, true)
+        XCTAssertNil(viewModel.sessions.first?.activeStreamId)
+
+        // A row flagged `is_streaming` with no stream ID gives the monitor nothing to
+        // poll. The first tick reloads once so a stale flag can clear...
+        let firstRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        XCTAssertEqual(firstRefresh, .reloaded)
+        XCTAssertEqual(loadCount, 2)
+
+        // ...but the 1 Hz ticks that follow must not keep re-fetching the whole list.
+        let secondRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        let thirdRefresh = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        XCTAssertEqual(secondRefresh, .unchanged)
+        XCTAssertEqual(thirdRefresh, .unchanged)
+        XCTAssertEqual(loadCount, 2)
+
+        // Seeing real stream IDs again arms the one-shot reload for the next transition.
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-123"])
+        XCTAssertEqual(loadCount, 2)
+
+        let refreshAfterNewTransition = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: [])
+        XCTAssertEqual(refreshAfterNewTransition, .reloaded)
+        XCTAssertEqual(loadCount, 3)
+    }
+
+    @MainActor
     func testActiveStreamStatusUnauthorizedIsPreservedForAuthHandling() async throws {
         let viewModel = try makeViewModel { request in
             switch request.url?.path {

@@ -37,6 +37,8 @@ final class TasksViewModel {
             runningJobs = statusResult.runningJobs ?? [:]
             jobs = (jobsResult.jobs ?? []).sorted(by: sortJobs)
         } catch {
+            guard !error.isCancellation else { return }
+
             lastError = error
             errorMessage = error.localizedDescription
         }

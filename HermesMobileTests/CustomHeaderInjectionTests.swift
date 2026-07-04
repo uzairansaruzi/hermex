@@ -195,6 +195,35 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
         _ = try? await client.sessions()
     }
 
+    func testUploadRequestCarriesCustomHeadersAndMultipartContentTypeWins() async throws {
+        let (client, _) = makeHeaderClient([
+            CustomHeader(name: "Authorization", value: "Bearer up"),
+            CustomHeader(name: "Content-Type", value: "application/evil")
+        ]) { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer up")
+            // Built-in multipart Content-Type is set after the custom headers, so
+            // the boundary always survives.
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data"),
+                true
+            )
+            return try self.ok(request)
+        }
+
+        _ = try? await client.uploadFile(sessionID: "s1", data: Data("x".utf8), filename: "f.jpg")
+    }
+
+    func testTranscribeRequestCarriesCustomHeaders() async throws {
+        let (client, _) = makeHeaderClient([
+            CustomHeader(name: "X-Api-Key", value: "k1")
+        ]) { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Api-Key"), "k1")
+            return try self.ok(request)
+        }
+
+        _ = try? await client.transcribeAudio(data: Data("x".utf8), filename: "v.m4a")
+    }
+
     func testDownloadRequestCarriesCustomHeaders() async throws {
         let (client, session) = makeHeaderClient([
             CustomHeader(name: "Authorization", value: "Bearer media")

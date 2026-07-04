@@ -895,6 +895,72 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertEqual(groups.first?.toolCalls.last?.args?["query"], .string("Google AI updates 2026"))
     }
 
+    func testJSONValueNumberStringificationMatchesLossyStringDecoding() throws {
+        XCTAssertEqual(JSONValue.lossyNumberString(123_456), "123456")
+        XCTAssertEqual(JSONValue.lossyNumberString(42.0), "42")
+        XCTAssertEqual(JSONValue.lossyNumberString(1.5), "1.5")
+        XCTAssertEqual(JSONValue.lossyNumberString(-7), "-7")
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let messages = try decoder.decode([ChatMessage].self, from: Data("""
+        [
+          { "role": "tool", "message_id": "t1", "tool_call_id": 123456 },
+          { "role": "tool", "message_id": "t2", "tool_call_id": 42 },
+          { "role": "tool", "message_id": "t3", "tool_call_id": 1.5 }
+        ]
+        """.utf8))
+
+        XCTAssertEqual(messages.map(\.toolCallId), ["123456", "42", "1.5"])
+        XCTAssertEqual(
+            messages.map(\.toolCallId),
+            [123_456, 42.0, 1.5].map(JSONValue.lossyNumberString)
+        )
+    }
+
+    func testNumericToolUseIDMatchesLossyDecodedToolResultID() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let messages = try decoder.decode([ChatMessage].self, from: Data("""
+        [
+          {
+            "role": "assistant",
+            "message_id": "assistant-tools",
+            "timestamp": 1770000001,
+            "content": [
+              {
+                "type": "tool_use",
+                "id": 123456,
+                "name": "search_files",
+                "input": { "pattern": "*.md" }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "message_id": "tool-result-1",
+            "timestamp": 1770000002,
+            "tool_call_id": 123456,
+            "content": "3 files matched"
+          }
+        ]
+        """.utf8))
+
+        XCTAssertEqual(messages.last?.toolCallId, "123456")
+
+        let groups = ToolCallGroup.groups(
+            persistedToolCalls: [],
+            messages: messages,
+            messageOffset: nil
+        )
+
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups.first?.anchorMessageID, "assistant-tools")
+        XCTAssertEqual(groups.first?.toolCalls.map(\.id), ["123456"])
+        XCTAssertEqual(groups.first?.toolCalls.first?.name, "search_files")
+        XCTAssertEqual(groups.first?.toolCalls.first?.preview, "3 files matched")
+    }
+
     func testAnthropicToolUseSnapshotsCoalesceIntoOneTurnActivity() {
         let messages = [
             ChatMessage(

@@ -46,4 +46,19 @@ final class APIClientUploadTests: APIClientTestCase {
         XCTAssertEqual(response.mime, "image/jpeg")
         XCTAssertEqual(response.isImage, true)
     }
+
+    func testUploadFileWrapsTransportErrorAsNetwork() async {
+        let client = makeClient { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            _ = try await client.uploadFile(sessionID: "abc123", data: Data("x".utf8), filename: "f.jpg")
+            XCTFail("Expected APIError.network")
+        } catch APIError.network(let underlying) {
+            XCTAssertEqual((underlying as? URLError)?.code, .notConnectedToInternet)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
 }
