@@ -45,6 +45,7 @@ struct SessionListView: View {
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
+    @AppStorage(SessionRowDisplaySettings.showReadOnlySessionsKey) private var showsReadOnlySessions = true
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
@@ -541,7 +542,11 @@ struct SessionListView: View {
     }
 
     private var automatedSessionVisibility: AutomatedSessionVisibility {
-        AutomatedSessionVisibility(showsCron: showsCronSessions, showsCli: showsCliSessions)
+        AutomatedSessionVisibility(
+            showsCron: showsCronSessions,
+            showsCli: showsCliSessions,
+            showsReadOnly: showsReadOnlySessions
+        )
     }
 
     private func childSessions(for parent: SessionSummary) -> [SessionSummary] {
@@ -560,14 +565,18 @@ struct SessionListView: View {
 
     private var emptySessionsDescription: String? {
         if hasActiveSessionFilter {
-            return String(localized: "Try another search or project filter.")
+            return String(localized: "Try another search, project filter, or session visibility setting.")
         }
 
         return String(localized: "Tap Chat to start.")
     }
 
     private var hasActiveSessionFilter: Bool {
-        selectedProjectID != nil || !normalizedSearchText.isEmpty
+        selectedProjectID != nil
+            || !normalizedSearchText.isEmpty
+            || !showsCronSessions
+            || !showsCliSessions
+            || !showsReadOnlySessions
     }
 
     private var showsSearchClearButton: Bool {

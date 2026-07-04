@@ -2022,6 +2022,7 @@ final class SessionListMutationTests: XCTestCase {
         let visibility = AutomatedSessionVisibility.showAll
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "cron_1")))
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "cli-1", isCliSession: true)))
+        XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "readonly-1", readOnly: true)))
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
     }
 
@@ -2042,10 +2043,22 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
     }
 
+    func testAutomatedVisibilityHidesReadOnlyIndependently() {
+        let visibility = AutomatedSessionVisibility(showsCron: true, showsCli: true, showsReadOnly: false)
+        XCTAssertFalse(visibility.shows(SessionSummary(sessionId: "readonly-1", readOnly: true)))
+        XCTAssertFalse(visibility.shows(SessionSummary(sessionId: "readonly-2", isReadOnly: true)))
+        // Cron, CLI, and normal sessions stay visible, including explicit false/false read-only markers.
+        XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "cron_1")))
+        XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "cli-1", isCliSession: true)))
+        XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
+        XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal-explicit", readOnly: false, isReadOnly: false)))
+    }
+
     func testAutomatedVisibilityHidesBothKinds() {
-        let visibility = AutomatedSessionVisibility(showsCron: false, showsCli: false)
+        let visibility = AutomatedSessionVisibility(showsCron: false, showsCli: false, showsReadOnly: false)
         XCTAssertFalse(visibility.shows(SessionSummary(sessionId: "cron_1")))
         XCTAssertFalse(visibility.shows(SessionSummary(sessionId: "cli-1", isCliSession: true)))
+        XCTAssertFalse(visibility.shows(SessionSummary(sessionId: "readonly-1", readOnly: true)))
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
     }
 
@@ -2060,6 +2073,7 @@ final class SessionListMutationTests: XCTestCase {
                 {"session_id": "cron_job_1", "title": "Nightly digest", "last_message_at": 40, "archived": false},
                 {"session_id": "tagged-cron", "title": "Tagged cron", "source_tag": "cron", "last_message_at": 30, "archived": false},
                 {"session_id": "cli-1", "title": "CLI import", "is_cli_session": true, "last_message_at": 20, "archived": false},
+                {"session_id": "readonly-1", "title": "View-only child", "read_only": true, "last_message_at": 15, "archived": false},
                 {"session_id": "normal-2", "title": "Normal two", "last_message_at": 10, "archived": false}
               ]
             }
@@ -2071,7 +2085,7 @@ final class SessionListMutationTests: XCTestCase {
         // Default keeps every row.
         XCTAssertEqual(
             Set(viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId)),
-            ["normal-1", "cron_job_1", "tagged-cron", "cli-1", "normal-2"]
+            ["normal-1", "cron_job_1", "tagged-cron", "cli-1", "readonly-1", "normal-2"]
         )
 
         // Hiding cron only removes cron rows; CLI and normal rows stay.
@@ -2081,7 +2095,7 @@ final class SessionListMutationTests: XCTestCase {
                 selectedProjectID: nil,
                 automatedVisibility: AutomatedSessionVisibility(showsCron: false, showsCli: true)
             ).compactMap(\.sessionId)),
-            ["normal-1", "cli-1", "normal-2"]
+            ["normal-1", "cli-1", "readonly-1", "normal-2"]
         )
 
         // Hiding CLI only removes the CLI row; cron and normal rows stay.
@@ -2091,15 +2105,25 @@ final class SessionListMutationTests: XCTestCase {
                 selectedProjectID: nil,
                 automatedVisibility: AutomatedSessionVisibility(showsCron: true, showsCli: false)
             ).compactMap(\.sessionId)),
-            ["normal-1", "cron_job_1", "tagged-cron", "normal-2"]
+            ["normal-1", "cron_job_1", "tagged-cron", "readonly-1", "normal-2"]
         )
 
-        // Hiding both leaves only the normal WebUI sessions, newest first.
+        // Hiding read-only only removes view-only rows; cron, CLI, and normal rows stay.
+        XCTAssertEqual(
+            Set(viewModel.visibleSessions(
+                searchText: "",
+                selectedProjectID: nil,
+                automatedVisibility: AutomatedSessionVisibility(showsCron: true, showsCli: true, showsReadOnly: false)
+            ).compactMap(\.sessionId)),
+            ["normal-1", "cron_job_1", "tagged-cron", "cli-1", "normal-2"]
+        )
+
+        // Hiding all noisy kinds leaves only the normal WebUI sessions, newest first.
         XCTAssertEqual(
             viewModel.visibleSessions(
                 searchText: "",
                 selectedProjectID: nil,
-                automatedVisibility: AutomatedSessionVisibility(showsCron: false, showsCli: false)
+                automatedVisibility: AutomatedSessionVisibility(showsCron: false, showsCli: false, showsReadOnly: false)
             ).compactMap(\.sessionId),
             ["normal-1", "normal-2"]
         )

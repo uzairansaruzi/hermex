@@ -484,10 +484,12 @@ private enum SessionRelativeDateFormatter {
 enum SessionRowDisplaySettings {
     static let showMessageCountKey = "sessionRow.showMessageCount"
     static let showWorkspaceKey = "sessionRow.showWorkspace"
-    // Cron and CLI sessions are controlled independently (#256); both default to
-    // shown, and their toggles let users hide each kind separately.
+    // Cron, CLI, and read-only/view-only sessions are controlled independently
+    // (#256); all default to shown, and their toggles let users hide each kind
+    // separately.
     static let showCronSessionsKey = "sessionRow.showCronSessions"
     static let showCliSessionsKey = "sessionRow.showCliSessions"
+    static let showReadOnlySessionsKey = "sessionRow.showReadOnlySessions"
 }
 
 enum SessionSidebarDisclosureSettings {

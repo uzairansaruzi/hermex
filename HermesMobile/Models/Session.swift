@@ -364,16 +364,24 @@ extension SessionSummary {
 
 }
 
-/// Which automated session kinds the session list should show. Cron jobs and
-/// CLI-imported sessions are controlled independently (#256) so a user can hide
-/// one without the other. A row that is neither cron nor CLI is always shown, so
-/// unknown/missing source data never hides a normal session.
+/// Which noisy/non-primary session kinds the session list should show. Cron jobs,
+/// CLI-imported sessions, and read-only/view-only child transcripts are controlled
+/// independently (#256), so a user can hide one kind without the others. A row that
+/// has none of these markers is always shown, so unknown/missing source data never
+/// hides a normal session.
 struct AutomatedSessionVisibility: Equatable {
     var showsCron: Bool
     var showsCli: Bool
+    var showsReadOnly: Bool
+
+    init(showsCron: Bool = true, showsCli: Bool = true, showsReadOnly: Bool = true) {
+        self.showsCron = showsCron
+        self.showsCli = showsCli
+        self.showsReadOnly = showsReadOnly
+    }
 
     /// Show every kind — the app's default state.
-    static let showAll = AutomatedSessionVisibility(showsCron: true, showsCli: true)
+    static let showAll = AutomatedSessionVisibility()
 
     /// Whether `session` should remain visible under these toggles.
     ///
@@ -383,6 +391,7 @@ struct AutomatedSessionVisibility: Equatable {
     func shows(_ session: SessionSummary) -> Bool {
         if session.isCronSession, !showsCron { return false }
         if session.isCliSession == true, !showsCli { return false }
+        if session.isReadOnlySession, !showsReadOnly { return false }
         return true
     }
 }

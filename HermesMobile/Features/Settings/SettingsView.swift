@@ -63,6 +63,7 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
+    @AppStorage(SessionRowDisplaySettings.showReadOnlySessionsKey) private var showsReadOnlySessions = true
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
@@ -312,6 +313,14 @@ struct SettingsView: View {
                         title: String(localized: "CLI Sessions"),
                         systemImage: "terminal",
                         isOn: $showsCliSessions
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "View-Only Sessions"),
+                        systemImage: "eye",
+                        isOn: $showsReadOnlySessions
                     )
                 }
 
