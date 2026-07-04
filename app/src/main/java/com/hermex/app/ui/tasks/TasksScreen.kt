@@ -43,8 +43,8 @@ class TasksViewModel @Inject constructor(
     private val _selectedJob = MutableStateFlow<CronJob?>(null)
     val selectedJob: StateFlow<CronJob?> = _selectedJob.asStateFlow()
 
-    private val _jobOutputs = MutableStateFlow<List<CronOutput>>(emptyList())
-    val jobOutputs: StateFlow<List<CronOutput>> = _jobOutputs.asStateFlow()
+    private val _jobOutputs = MutableStateFlow<List<CronOutputItem>>(emptyList())
+    val jobOutputs: StateFlow<List<CronOutputItem>> = _jobOutputs.asStateFlow()
 
     init { loadJobs() }
 
@@ -183,7 +183,7 @@ fun CronJobCard(job: CronJob, onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(4.dp))
-            job.schedule?.let {
+            job.scheduleText?.let {
                 Text("Schedule: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             job.prompt?.let {
@@ -195,7 +195,7 @@ fun CronJobCard(job: CronJob, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TaskDetailScreen(job: CronJob, outputs: List<CronOutput>, onDismiss: () -> Unit) {
+fun TaskDetailScreen(job: CronJob, outputs: List<CronOutputItem>, onDismiss: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -214,12 +214,12 @@ fun TaskDetailScreen(job: CronJob, outputs: List<CronOutput>, onDismiss: () -> U
         ) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    job.schedule?.let { DetailRow("Schedule", it) }
+                    job.scheduleText?.let { DetailRow("Schedule", it) }
                     job.deliver?.let { DetailRow("Delivery", it) }
                     DetailRow("Enabled", if (job.enabled == true) "Yes" else "No")
                     job.lastRunAt?.let { DetailRow("Last Run", formatTimestamp(it)) }
                     job.nextRunAt?.let { DetailRow("Next Run", formatTimestamp(it)) }
-                    job.error?.let { DetailRow("Error", it) }
+                    job.errorText?.let { DetailRow("Error", it) }
                 }
             }
             item {
@@ -240,9 +240,10 @@ fun TaskDetailScreen(job: CronJob, outputs: List<CronOutput>, onDismiss: () -> U
                 items(outputs) { output ->
                     ElevatedCard {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            output.timestamp?.let { Text(formatTimestamp(it), style = MaterialTheme.typography.labelSmall) }
-                            Text(output.output ?: "", style = MaterialTheme.typography.bodySmall)
-                            output.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                            output.filename?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(output.content ?: "", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
