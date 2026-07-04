@@ -67,7 +67,7 @@ enum Endpoint {
     case modelsLive
     case commands
     case defaultModel
-    case reasoning
+    case reasoning(model: String? = nil, provider: String? = nil)
     case personalities
     case setPersonality
     case profiles
@@ -365,6 +365,15 @@ enum Endpoint {
             var items = [URLQueryItem(name: "job_id", value: jobID)]
             if let limit {
                 items.append(URLQueryItem(name: "limit", value: "\(limit)"))
+            }
+            return items
+        case let .reasoning(model, provider):
+            var items: [URLQueryItem] = []
+            if let model, !model.isEmpty {
+                items.append(URLQueryItem(name: "model", value: model))
+            }
+            if let provider, !provider.isEmpty {
+                items.append(URLQueryItem(name: "provider", value: provider))
             }
             return items
         case let .insights(days):

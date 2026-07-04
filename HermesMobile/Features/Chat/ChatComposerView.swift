@@ -93,6 +93,10 @@ struct MessageComposerView: View {
     let selectedProfileTitle: String
     let isLoadingModels: Bool
     let selectedReasoningEffort: String?
+    /// Model-aware effort vocabulary; `nil` → full static list (issue #18).
+    let supportedReasoningEfforts: [String]?
+    /// When false the model has no effort control — hide the reasoning menu.
+    let showsReasoningControl: Bool
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
@@ -304,7 +308,9 @@ struct MessageComposerView: View {
 
                         modelMenu
 
-                        reasoningMenu
+                        if showsReasoningControl {
+                            reasoningMenu
+                        }
 
                         Spacer(minLength: 0)
 
@@ -763,6 +769,7 @@ struct MessageComposerView: View {
     private var reasoningMenu: some View {
         ComposerReasoningMenu(
             selectedReasoningEffort: selectedReasoningEffort,
+            supportedEfforts: supportedReasoningEfforts,
             reasoningTitle: reasoningTitle,
             isDisabled: isConfigurationControlDisabled,
             width: reasoningControlWidth,

@@ -71,6 +71,9 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModelProvider, "openrouter")
         XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
         XCTAssertEqual(result.state.selectedReasoningEffort, "medium")
+        // Older server: no supported_efforts / supports_reasoning_effort fields.
+        XCTAssertNil(result.state.supportedReasoningEfforts)
+        XCTAssertNil(result.state.supportsReasoningEffort)
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
         XCTAssertEqual(requestPaths, [
@@ -86,6 +89,7 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
     func testLoadKeepsSessionModelOverrideWhenProfileHasDifferentDefault() async throws {
         let sessionModel = "@openai:gpt-5.5"
         let profileDefault = "deepseek/deepseek-chat-v3-0324:free"
+        var reasoningQueryItems: [String: String?] = [:]
         let client = makeClient { request in
             switch request.url?.path {
             case "/api/profiles":
@@ -116,7 +120,17 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 }
                 """, for: request)
             case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "high"}"#, for: request)
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                reasoningQueryItems = Dictionary(
+                    uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) }
+                )
+                return apiTestJSONResponse("""
+                {
+                  "reasoning_effort": "high",
+                  "supported_efforts": ["low", "medium", "high"],
+                  "supports_reasoning_effort": true
+                }
+                """, for: request)
             case "/api/workspaces":
                 return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}]}"#, for: request)
             case "/api/commands":
@@ -144,6 +158,12 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModelProvider, "openai")
         XCTAssertEqual(result.state.selectedProfileName, "work")
         XCTAssertEqual(result.state.selectedReasoningEffort, "high")
+        // The reasoning query is scoped to the session's model/provider so the
+        // gating fields are model-accurate (issue #18).
+        XCTAssertEqual(reasoningQueryItems["model"], sessionModel)
+        XCTAssertEqual(reasoningQueryItems["provider"], "openai")
+        XCTAssertEqual(result.state.supportedReasoningEfforts, ["low", "medium", "high"])
+        XCTAssertEqual(result.state.supportsReasoningEffort, true)
     }
 
     func testLoadReturnsPartialStateAndStillRefreshesCommandsWhenConfigurationFails() async throws {
@@ -223,5 +243,62 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
 
         XCTAssertNil(result.configurationError)
         XCTAssertTrue(result.state.isSingleProfileMode)
+    }
+}
+
+/// Pure gating logic for the composer reasoning-effort menu (issue #18):
+/// building the option list from `supported_efforts` and deciding whether
+/// the control is shown at all.
+final class ReasoningEffortGatingTests: XCTestCase {
+    func testOptionsFallBackToStaticListWithoutServerVocabulary() {
+        XCTAssertEqual(
+            ReasoningEffortOption.options(forSupportedEfforts: nil).map(\.id),
+            ["none", "minimal", "low", "medium", "high", "xhigh"]
+        )
+        // Defensive: an empty list also falls back (the control is hidden
+        // before this is rendered because supports_reasoning_effort is false).
+        XCTAssertEqual(
+            ReasoningEffortOption.options(forSupportedEfforts: []).map(\.id),
+            ["none", "minimal", "low", "medium", "high", "xhigh"]
+        )
+    }
+
+    func testOptionsFilterToServerVocabularyPreservingServerOrder() {
+        let options = ReasoningEffortOption.options(forSupportedEfforts: ["high", "low"])
+        XCTAssertEqual(options.map(\.id), ["high", "low"])
+        XCTAssertEqual(options.map(\.title), ["High", "Low"])
+    }
+
+    func testOptionsNormalizeAndKeepUnknownServerEfforts() {
+        let options = ReasoningEffortOption.options(forSupportedEfforts: [" Low ", "low", "", "turbo"])
+        XCTAssertEqual(options.map(\.id), ["low", "turbo"])
+        XCTAssertEqual(options.map(\.title), ["Low", "Turbo"])
+    }
+
+    func testShowsEffortControlFollowsServerFlag() {
+        XCTAssertFalse(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: false,
+            supportedEfforts: ["low"]
+        ))
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: true,
+            supportedEfforts: []
+        ))
+    }
+
+    func testShowsEffortControlInfersFromEffortsWhenFlagMissing() {
+        XCTAssertFalse(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: nil,
+            supportedEfforts: []
+        ))
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: nil,
+            supportedEfforts: ["low"]
+        ))
+        // Older servers send neither field: keep today's behavior (visible).
+        XCTAssertTrue(ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: nil,
+            supportedEfforts: nil
+        ))
     }
 }

@@ -241,6 +241,9 @@ struct ComposerModelMenu: View {
 
 struct ComposerReasoningMenu: View {
     let selectedReasoningEffort: String?
+    /// Server-provided effort vocabulary for the current model; `nil` falls
+    /// back to the full static list (older servers, issue #18).
+    let supportedEfforts: [String]?
     let reasoningTitle: String
     let isDisabled: Bool
     let width: CGFloat
@@ -272,7 +275,7 @@ struct ComposerReasoningMenu: View {
         UIMenu(
             title: String(localized: "Reasoning"),
             options: [.displayInline],
-            children: ReasoningEffortOption.allCases.map { option in
+            children: ReasoningEffortOption.options(forSupportedEfforts: supportedEfforts).map { option in
                 UIAction(
                     title: option.title,
                     state: selectedReasoningEffort == option.id ? .on : .off
@@ -445,5 +448,35 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
     static func title(for effort: String) -> String {
         allCases.first(where: { $0.id == effort })?.title
             ?? effort.capitalized
+    }
+
+    /// Menu options for a server-provided effort vocabulary (issue #18).
+    /// `nil` or empty → the full static list (older servers / defensive fallback;
+    /// an empty list also means `supports_reasoning_effort == false`, which hides
+    /// the control before this is ever rendered). Unknown ids are kept with a
+    /// capitalized title so a newer server's vocabulary still works.
+    static func options(forSupportedEfforts supportedEfforts: [String]?) -> [ReasoningEffortOption] {
+        guard let supportedEfforts, !supportedEfforts.isEmpty else { return allCases }
+
+        var seen = Set<String>()
+        return supportedEfforts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+            .map { id in
+                allCases.first(where: { $0.id == id })
+                    ?? ReasoningEffortOption(id: id, title: id.capitalized)
+            }
+    }
+
+    /// Whether the composer should show the effort control at all (issue #18).
+    /// `supports_reasoning_effort == false` hides it; older servers (both fields
+    /// absent) keep today's behavior and show it.
+    static func showsEffortControl(
+        supportsReasoningEffort: Bool?,
+        supportedEfforts: [String]?
+    ) -> Bool {
+        if let supportsReasoningEffort { return supportsReasoningEffort }
+        if let supportedEfforts { return !supportedEfforts.isEmpty }
+        return true
     }
 }

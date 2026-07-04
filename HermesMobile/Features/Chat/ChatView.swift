@@ -168,6 +168,8 @@ struct ChatView: View {
             selectedProfileTitle: viewModel.selectedProfileTitle,
             isLoadingModels: viewModel.isLoadingComposerConfiguration,
             selectedReasoningEffort: viewModel.selectedReasoningEffort,
+            supportedReasoningEfforts: viewModel.supportedReasoningEfforts,
+            showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration,
             pendingAttachments: viewModel.pendingAttachments,
             isUploadingAttachment: viewModel.isUploadingAttachment,

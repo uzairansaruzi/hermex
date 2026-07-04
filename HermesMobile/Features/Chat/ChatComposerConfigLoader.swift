@@ -7,6 +7,12 @@ struct ChatComposerConfigState: Equatable, Sendable {
     var currentProfile: String?
     var selectedProfileName: String?
     var selectedReasoningEffort: String?
+    /// Model-aware effort vocabulary (`supported_efforts`); `nil` on older
+    /// servers → composer falls back to the full static list (issue #18).
+    var supportedReasoningEfforts: [String]?
+    /// `supports_reasoning_effort`; `false` hides the effort control, `nil`
+    /// (older servers) keeps it visible.
+    var supportsReasoningEffort: Bool?
     var modelCatalogGroups: [ModelCatalogGroup]
     var agentCommands: [AgentCommand]
     var workspaceRoots: [WorkspaceRoot]
@@ -21,6 +27,8 @@ struct ChatComposerConfigState: Equatable, Sendable {
         currentProfile: String? = nil,
         selectedProfileName: String? = nil,
         selectedReasoningEffort: String? = nil,
+        supportedReasoningEfforts: [String]? = nil,
+        supportsReasoningEffort: Bool? = nil,
         modelCatalogGroups: [ModelCatalogGroup] = [],
         agentCommands: [AgentCommand] = [],
         workspaceRoots: [WorkspaceRoot] = [],
@@ -34,6 +42,8 @@ struct ChatComposerConfigState: Equatable, Sendable {
         self.currentProfile = currentProfile
         self.selectedProfileName = selectedProfileName
         self.selectedReasoningEffort = selectedReasoningEffort
+        self.supportedReasoningEfforts = supportedReasoningEfforts
+        self.supportsReasoningEffort = supportsReasoningEffort
         self.modelCatalogGroups = modelCatalogGroups
         self.agentCommands = agentCommands
         self.workspaceRoots = workspaceRoots
@@ -101,8 +111,16 @@ struct ChatComposerConfigLoader {
                     ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
             }
 
-            let reasoningResponse = try await client.reasoning()
+            // Scope the query to the session's resolved model/provider so the
+            // gating fields are model-accurate (issue #18); the seeded effort is
+            // the server's already-coerced value for that model.
+            let reasoningResponse = try await client.reasoning(
+                model: Self.nonEmpty(state.currentModel),
+                provider: Self.nonEmpty(state.currentModelProvider)
+            )
             state.selectedReasoningEffort = reasoningResponse.effectiveEffort
+            state.supportedReasoningEfforts = reasoningResponse.normalizedSupportedEfforts
+            state.supportsReasoningEffort = reasoningResponse.supportsReasoningEffort
 
             let workspaceResponse = try await client.workspaces()
             state.workspaceRoots = workspaceResponse.workspaces ?? []

@@ -24,13 +24,17 @@ extension APIClient {
         )
     }
 
-    func reasoning() async throws -> ReasoningStatusResponse {
-        try await send(endpoint: .reasoning, method: "GET")
+    /// Reasoning status for a specific model/provider (`GET /api/reasoning`).
+    /// Passing the session's current model + provider makes `supported_efforts`
+    /// model-accurate (mirrors the upstream WebUI composer chip, issue #18);
+    /// with no params the server resolves the config default model instead.
+    func reasoning(model: String? = nil, provider: String? = nil) async throws -> ReasoningStatusResponse {
+        try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
     func saveReasoningEffort(_ effort: String) async throws -> ReasoningStatusResponse {
         try await send(
-            endpoint: .reasoning,
+            endpoint: .reasoning(),
             method: "POST",
             body: ReasoningEffortRequest(effort: effort)
         )
@@ -38,7 +42,7 @@ extension APIClient {
 
     func saveReasoningDisplay(_ display: String) async throws -> ReasoningStatusResponse {
         try await send(
-            endpoint: .reasoning,
+            endpoint: .reasoning(),
             method: "POST",
             body: ReasoningDisplayRequest(display: display)
         )

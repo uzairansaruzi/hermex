@@ -188,6 +188,20 @@ final class ChatViewModel {
     private(set) var isSingleProfileMode = false
     private(set) var selectedProfileName: String?
     private(set) var selectedReasoningEffort: String?
+    /// Model-aware effort vocabulary (`supported_efforts` from `GET /api/reasoning`).
+    /// `nil` on older servers → the composer falls back to the static list (issue #18).
+    private(set) var supportedReasoningEfforts: [String]?
+    /// `supports_reasoning_effort`; `false` hides the composer effort control.
+    private(set) var supportsReasoningEffort: Bool?
+    /// Drops out-of-order `GET /api/reasoning` responses after rapid model switches
+    /// so the gating never reflects a stale model (upstream #3750 class of bug).
+    private var reasoningGatingFetchToken = 0
+    var showsReasoningEffortControl: Bool {
+        ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: supportsReasoningEffort,
+            supportedEfforts: supportedReasoningEfforts
+        )
+    }
     private(set) var isLoadingComposerConfiguration = false
     private(set) var isUpdatingComposerConfiguration = false
     private(set) var composerConfigurationErrorMessage: String?
@@ -578,6 +592,8 @@ final class ChatViewModel {
             currentProfile: currentProfile,
             selectedProfileName: selectedProfileName,
             selectedReasoningEffort: selectedReasoningEffort,
+            supportedReasoningEfforts: supportedReasoningEfforts,
+            supportsReasoningEffort: supportsReasoningEffort,
             modelCatalogGroups: modelCatalogGroups,
             agentCommands: agentCommands,
             workspaceRoots: workspaceRoots,
@@ -594,6 +610,8 @@ final class ChatViewModel {
         currentProfile = state.currentProfile
         selectedProfileName = state.selectedProfileName
         selectedReasoningEffort = state.selectedReasoningEffort
+        supportedReasoningEfforts = state.supportedReasoningEfforts
+        supportsReasoningEffort = state.supportsReasoningEffort
         modelCatalogGroups = state.modelCatalogGroups
         agentCommands = state.agentCommands
         workspaceRoots = state.workspaceRoots
@@ -644,11 +662,52 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? option.providerID
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            // Still inside the isUpdatingComposerConfiguration window, so the
+            // effort menu stays disabled until the new model's gating lands —
+            // no interactable flash of the previous model's options (issue #18).
+            await refreshReasoningEffortGating()
             return true
         } catch {
             lastError = error
             composerConfigurationErrorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    /// Re-queries `GET /api/reasoning` for the current model/provider and updates
+    /// the effort gating (issue #18). Failures are silent to the user, but reset
+    /// the gating to the "unknown" fallback (static effort list, control shown) —
+    /// keeping the previous model's gating after a successful model switch could
+    /// hide the control for a model that supports it, or offer efforts the new
+    /// model rejects. If the selected effort is no longer supported, snaps to the
+    /// server's coerced `reasoning_effort`.
+    func refreshReasoningEffortGating() async {
+        guard !isViewingCachedData else { return }
+
+        reasoningGatingFetchToken += 1
+        let token = reasoningGatingFetchToken
+
+        guard let response = try? await client.reasoning(
+            model: Self.nonEmpty(currentModel),
+            provider: Self.nonEmpty(currentModelProvider)
+        ) else {
+            if token == reasoningGatingFetchToken {
+                supportedReasoningEfforts = nil
+                supportsReasoningEffort = nil
+            }
+            return
+        }
+
+        guard token == reasoningGatingFetchToken else { return }
+
+        supportedReasoningEfforts = response.normalizedSupportedEfforts
+        supportsReasoningEffort = response.supportsReasoningEffort
+
+        if let selected = Self.nonEmpty(selectedReasoningEffort)?.lowercased(),
+           let supported = supportedReasoningEfforts,
+           !supported.contains(selected),
+           let serverEffort = Self.nonEmpty(response.effectiveEffort) {
+            selectedReasoningEffort = serverEffort
         }
     }
 
@@ -2283,6 +2342,7 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? match?.providerID ?? currentModelProvider
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            await refreshReasoningEffortGating()
             return .executed(message: nil)
         } catch {
             lastError = error
