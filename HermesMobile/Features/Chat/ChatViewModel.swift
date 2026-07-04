@@ -863,8 +863,15 @@ final class ChatViewModel {
     }
 
     private func refreshReasoningCapabilitiesForCurrentModel() async {
+        let expectedModel = currentModel
+        let expectedProvider = currentModelProvider
+
         do {
-            let response = try await client.reasoning(model: currentModel, provider: currentModelProvider)
+            let response = try await client.reasoning(model: expectedModel, provider: expectedProvider)
+            guard !Task.isCancelled,
+                  currentModel == expectedModel,
+                  currentModelProvider == expectedProvider
+            else { return }
             supportedReasoningEfforts = response.normalizedSupportedEfforts
             supportsReasoningEffort = response.supportsReasoningEffort
             selectedReasoningEffort = Self.effectiveReasoningEffort(from: response)
