@@ -514,6 +514,60 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(attachment.isImage, true)
     }
 
+    func testCacheMessagesRoundTripsToolCallAndStructuredContentFields() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let now = cachedAt.addingTimeInterval(60)
+
+        let toolCalls: [JSONValue] = [
+            .object([
+                "id": .string("call-1"),
+                "function": .object([
+                    "name": .string("read_file"),
+                    "arguments": .string("{\"path\": \"notes.txt\"}")
+                ])
+            ])
+        ]
+        let contentParts: [JSONValue] = [
+            .object(["type": .string("text"), "text": .string("Reading the file")]),
+            .object(["type": .string("tool_use"), "id": .string("call-1")])
+        ]
+
+        let messages = [
+            ChatMessage(
+                role: "assistant",
+                content: "Reading the file",
+                timestamp: 1_770_000_000,
+                messageId: "m1",
+                toolUseId: "call-1",
+                toolCalls: toolCalls,
+                contentParts: contentParts
+            )
+        ]
+
+        try CacheStore.cacheMessages(
+            messages,
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let cachedMessages = try CacheStore.cachedMessages(
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            now: now
+        )
+
+        XCTAssertEqual(cachedMessages.count, 1)
+        let restored = try XCTUnwrap(cachedMessages.first)
+        XCTAssertEqual(restored.toolUseId, "call-1")
+        XCTAssertEqual(restored.toolCalls, toolCalls)
+        XCTAssertEqual(restored.contentParts, contentParts)
+    }
+
     // MARK: - Per-server isolation (#18)
 
     func testCachedMessagesAreScopedToTheirServerForTheSameSessionID() throws {

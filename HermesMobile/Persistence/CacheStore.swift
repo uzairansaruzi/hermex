@@ -311,6 +311,18 @@ private extension ChatMessage {
         } else {
             attachments = nil
         }
+        let toolCalls: [JSONValue]?
+        if let data = cachedMessage.toolCallsData {
+            toolCalls = try? JSONDecoder().decode([JSONValue].self, from: data)
+        } else {
+            toolCalls = nil
+        }
+        let contentParts: [JSONValue]?
+        if let data = cachedMessage.contentPartsData {
+            contentParts = try? JSONDecoder().decode([JSONValue].self, from: data)
+        } else {
+            contentParts = nil
+        }
         self.init(
             role: cachedMessage.role,
             content: cachedMessage.content,
@@ -318,6 +330,9 @@ private extension ChatMessage {
             messageId: cachedMessage.messageId,
             name: cachedMessage.name,
             toolCallId: cachedMessage.toolCallId,
+            toolUseId: cachedMessage.toolUseId,
+            toolCalls: toolCalls,
+            contentParts: contentParts,
             reasoning: cachedMessage.reasoning,
             attachments: attachments
         )
