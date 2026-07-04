@@ -298,10 +298,13 @@ enum CronDeliverPicker {
     /// options missing/empty (endpoint failed or returned nothing usable) or
     /// the current draft value is blank (nothing safe to select).
     /// A current value outside the server list is preserved as an extra
-    /// custom row instead of being clobbered.
+    /// custom row instead of being clobbered. `initialValue` (the draft's
+    /// deliver value when the editor opened) also keeps its custom row so an
+    /// unknown/legacy value can be re-selected after choosing another option.
     static func options(
         serverOptions: [CronDeliveryOption]?,
-        currentValue: String
+        currentValue: String,
+        initialValue: String? = nil
     ) -> [CronDeliverPickerOption]? {
         var seenValues = Set<String>()
         let valid: [CronDeliverPickerOption] = (serverOptions ?? []).compactMap { option in
@@ -329,7 +332,12 @@ enum CronDeliverPicker {
         }
 
         var options = valid
-        if !valid.contains(where: { $0.value == current }) {
+        var knownValues = Set(valid.map(\.value))
+        let initial = initialValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !initial.isEmpty, knownValues.insert(initial).inserted {
+            options.append(CronDeliverPickerOption(value: initial, label: initial, isCustom: true))
+        }
+        if knownValues.insert(current).inserted {
             options.append(CronDeliverPickerOption(value: current, label: current, isCustom: true))
         }
         return options

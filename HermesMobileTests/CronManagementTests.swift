@@ -130,6 +130,59 @@ final class CronManagementModelTests: XCTestCase {
         XCTAssertFalse(knownValue.contains(where: \.isCustom))
     }
 
+    func testCronDeliverPickerPreservesInitialAndLiveCustomValues() throws {
+        let serverOptions = [
+            CronDeliveryOption(value: "local", label: "Local"),
+            CronDeliveryOption(value: "telegram", label: "Telegram")
+        ]
+
+        // The editor's initial legacy value keeps its custom row even after
+        // the user selects a server option (currentValue moved on).
+        let afterSelection = try XCTUnwrap(
+            CronDeliverPicker.options(
+                serverOptions: serverOptions,
+                currentValue: "telegram",
+                initialValue: "legacy-target"
+            )
+        )
+        XCTAssertEqual(afterSelection.map(\.value), ["local", "telegram", "legacy-target"])
+        XCTAssertEqual(afterSelection.map(\.isCustom), [false, false, true])
+
+        // A value typed into the free-text fallback while options were still
+        // loading gets its own row alongside the initial value's row, so the
+        // picker selection always has a matching tag.
+        let typedWhileLoading = try XCTUnwrap(
+            CronDeliverPicker.options(
+                serverOptions: serverOptions,
+                currentValue: "typed-target",
+                initialValue: "local"
+            )
+        )
+        XCTAssertEqual(typedWhileLoading.map(\.value), ["local", "telegram", "typed-target"])
+        XCTAssertEqual(typedWhileLoading.map(\.isCustom), [false, false, true])
+
+        // Identical initial and current custom values collapse to one row.
+        let sameCustom = try XCTUnwrap(
+            CronDeliverPicker.options(
+                serverOptions: serverOptions,
+                currentValue: "legacy-target",
+                initialValue: "legacy-target"
+            )
+        )
+        XCTAssertEqual(sameCustom.map(\.value), ["local", "telegram", "legacy-target"])
+        XCTAssertEqual(sameCustom.filter(\.isCustom).count, 1)
+
+        // A blank initial value adds no row.
+        let blankInitial = try XCTUnwrap(
+            CronDeliverPicker.options(
+                serverOptions: serverOptions,
+                currentValue: "local",
+                initialValue: "   "
+            )
+        )
+        XCTAssertEqual(blankInitial.map(\.value), ["local", "telegram"])
+    }
+
     func testCronJobEditorDraftRequiresPromptAndSchedule() {
         XCTAssertEqual(
             CronJobEditorDraft(prompt: "", schedule: "0 7 * * *").validationMessage,

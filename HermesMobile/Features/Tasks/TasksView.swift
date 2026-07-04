@@ -245,10 +245,25 @@ struct CronJobEditorSheet: View {
     @State private var draft: CronJobEditorDraft
     @Environment(\.dismiss) private var dismiss
 
-    /// Picker rows built once from the draft's initial deliver value, so an
+    /// Server-provided deliver targets. A plain `let` so a re-init while the
+    /// sheet is presented (options finishing their async load) swaps in the
+    /// fresh list, unlike `@State draft`, which keeps the user's edits.
+    private let serverDeliveryOptions: [CronDeliveryOption]?
+    /// The draft's deliver value when the editor opened; stable across
+    /// re-inits because callers rebuild the same draft.
+    private let initialDeliver: String
+
+    /// Picker rows recomputed from the live draft so a value typed while the
+    /// options were still loading keeps a matching row, and the initial
     /// unknown/legacy value keeps its custom row even after the user selects
     /// another option. `nil` means fall back to free-text entry.
-    private let deliverPickerOptions: [CronDeliverPickerOption]?
+    private var deliverPickerOptions: [CronDeliverPickerOption]? {
+        CronDeliverPicker.options(
+            serverOptions: serverDeliveryOptions,
+            currentValue: draft.deliver,
+            initialValue: initialDeliver
+        )
+    }
 
     init(
         title: String,
@@ -264,10 +279,8 @@ struct CronJobEditorSheet: View {
         self.isSaving = isSaving
         self.errorMessage = errorMessage
         self.onSave = onSave
-        self.deliverPickerOptions = CronDeliverPicker.options(
-            serverOptions: deliveryOptions,
-            currentValue: draft.deliver
-        )
+        self.serverDeliveryOptions = deliveryOptions
+        self.initialDeliver = draft.deliver
         _draft = State(initialValue: draft)
     }
 
