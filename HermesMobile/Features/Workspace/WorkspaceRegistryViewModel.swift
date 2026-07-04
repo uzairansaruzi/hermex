@@ -94,13 +94,14 @@ final class WorkspaceRegistryViewModel {
         pendingRemoval = nil
     }
 
+    /// Performs the removal for a workspace the user already confirmed in the
+    /// dialog. Takes the workspace explicitly (rather than reading
+    /// `pendingRemoval`) because SwiftUI clears the presentation binding —
+    /// and with it the staged state — before the confirm action's task runs.
     @discardableResult
-    func confirmPendingRemoval() async -> Bool {
-        guard let path = pendingRemoval?.path, !path.isEmpty else {
-            pendingRemoval = nil
-            return false
-        }
+    func confirmRemoval(of workspace: WorkspaceRoot) async -> Bool {
         pendingRemoval = nil
+        guard let path = workspace.path, !path.isEmpty else { return false }
 
         return await performMutation {
             try await self.client.removeWorkspace(path: path)
@@ -112,14 +113,22 @@ final class WorkspaceRegistryViewModel {
     /// Applies the move locally (trivial optimistic step so the row lands where
     /// the user dropped it), then asks the server to persist the full order.
     /// On failure the list is refetched so local order never drifts from the server.
+    ///
+    /// Offsets are relative to `rows` (what the list renders), not `workspaces`:
+    /// tolerant decoding can leave pathless entries that the UI filters out, so
+    /// the move is applied to the visible rows and any hidden entries are kept
+    /// at the end — mirroring the server, which appends omitted entries.
     @discardableResult
     func moveWorkspaces(fromOffsets source: IndexSet, toOffset destination: Int) async -> Bool {
-        var reordered = workspaces
-        reordered.move(fromOffsets: source, toOffset: destination)
-        guard reordered != workspaces else { return true }
-        workspaces = reordered
+        let originalRows = rows
+        var reorderedRows = originalRows
+        reorderedRows.move(fromOffsets: source, toOffset: destination)
+        guard reorderedRows != originalRows else { return true }
 
-        let paths = reordered.compactMap { workspace -> String? in
+        let hiddenEntries = workspaces.filter { !($0.path?.isEmpty == false) }
+        workspaces = reorderedRows + hiddenEntries
+
+        let paths = reorderedRows.compactMap { workspace -> String? in
             guard let path = workspace.path, !path.isEmpty else { return nil }
             return path
         }

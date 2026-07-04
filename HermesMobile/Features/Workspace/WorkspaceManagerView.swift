@@ -122,17 +122,22 @@ struct WorkspaceManagerView: View {
             .confirmationDialog(
                 "Remove Workspace?",
                 isPresented: removalDialogBinding,
-                titleVisibility: .visible
-            ) {
+                titleVisibility: .visible,
+                presenting: viewModel.pendingRemoval
+            ) { workspace in
+                // `presenting:` hands the staged workspace to this closure at
+                // presentation time — the dismissal binding clears
+                // `pendingRemoval` before this async task runs, so the target
+                // must not be re-read from the view model here.
                 Button("Remove", role: .destructive) {
-                    Task {
-                        await viewModel.confirmPendingRemoval()
+                    Task { @MainActor in
+                        await viewModel.confirmRemoval(of: workspace)
                     }
                 }
                 Button("Cancel", role: .cancel) {
                     viewModel.cancelPendingRemoval()
                 }
-            } message: {
+            } message: { _ in
                 Text("Removing a workspace only unregisters its path from the server's list. No files are deleted.")
             }
             .onDisappear {

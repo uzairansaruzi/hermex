@@ -128,14 +128,19 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         XCTAssertEqual(removeCallCount, 0)
         XCTAssertEqual(model.rows.count, 2)
 
-        // Confirming with nothing staged is a no-op.
-        let noPending = await model.confirmPendingRemoval()
-        XCTAssertFalse(noPending)
+        // Confirming a pathless workspace is a no-op.
+        let pathless = try JSONDecoder().decode(WorkspaceRoot.self, from: Data("{}".utf8))
+        let noPath = await model.confirmRemoval(of: pathless)
+        XCTAssertFalse(noPath)
         XCTAssertEqual(removeCallCount, 0)
 
-        // Only stage + confirm performs the removal.
+        // Confirm performs the removal even after the presentation binding
+        // already cleared the staged state (the dialog-dismissal race the
+        // first review round caught): the confirmed workspace is passed
+        // explicitly, so removal must not depend on `pendingRemoval`.
         model.requestRemoval(of: beta)
-        let succeeded = await model.confirmPendingRemoval()
+        model.cancelPendingRemoval()
+        let succeeded = await model.confirmRemoval(of: beta)
         XCTAssertTrue(succeeded)
         XCTAssertEqual(removeCallCount, 1)
         XCTAssertNil(model.pendingRemoval)
@@ -224,6 +229,43 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
     }
 
     @MainActor
+    func testMoveWorkspacesAppliesOffsetsToVisibleRowsWhenPathlessEntriesExist() async throws {
+        var reorderBody: [String: Any] = [:]
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                // A pathless entry (tolerant decoding) is hidden from the UI,
+                // so move offsets are relative to the two visible rows.
+                return apiTestJSONResponse("""
+                {
+                  "workspaces": [
+                    {"path": "/Users/test/alpha", "name": "Alpha"},
+                    {"name": "Ghost"},
+                    {"path": "/Users/test/beta", "name": "Beta"}
+                  ]
+                }
+                """, for: request)
+            case "/api/workspaces/reorder":
+                reorderBody = try apiTestJSONBody(from: request)
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let model = WorkspaceRegistryViewModel(client: client)
+        await model.load()
+        XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha", "/Users/test/beta"])
+
+        // Move the second *visible* row (beta) to the front. With offsets
+        // applied to the raw list this would move the pathless ghost instead.
+        let succeeded = await model.moveWorkspaces(fromOffsets: IndexSet(integer: 1), toOffset: 0)
+
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(reorderBody["paths"] as? [String], ["/Users/test/beta", "/Users/test/alpha"])
+    }
+
+    @MainActor
     func testMoveWorkspacesRefetchesOnFailure() async throws {
         var workspacesLoadCount = 0
         let client = makeClient { request in
@@ -270,8 +312,9 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         let model = WorkspaceRegistryViewModel(client: client)
         await model.load()
 
-        model.requestRemoval(of: try XCTUnwrap(model.rows.first))
-        let succeeded = await model.confirmPendingRemoval()
+        let target = try XCTUnwrap(model.rows.first)
+        model.requestRemoval(of: target)
+        let succeeded = await model.confirmRemoval(of: target)
 
         XCTAssertTrue(succeeded)
         XCTAssertEqual(workspacesLoadCount, 2, "A mutation response without a workspaces echo must refetch.")
