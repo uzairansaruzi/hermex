@@ -264,6 +264,7 @@ struct ChatView: View {
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.
         .environment(\.layoutDirection, chatLayoutDirection)
+        .zoraAdaptiveContentFrame(.floatingComposer)
     }
 
     var body: some View {
@@ -285,6 +286,7 @@ struct ChatView: View {
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
             composerAccessoryStack
+                .zoraAdaptiveContentFrame(.floatingComposer)
 
             messageComposer
 

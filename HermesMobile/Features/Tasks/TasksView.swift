@@ -125,6 +125,7 @@ struct TasksView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .zoraAdaptiveContentFrame(.readablePage)
             }
             .refreshable {
                 await loadAutomations()

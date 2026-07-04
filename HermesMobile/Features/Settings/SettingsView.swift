@@ -451,6 +451,7 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.top, 18)
             .padding(.bottom, 36)
+            .zoraAdaptiveContentFrame(.readablePage)
         }
         .background(Color.clear)
         .navigationTitle("Settings")

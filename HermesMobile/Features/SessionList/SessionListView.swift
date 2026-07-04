@@ -75,9 +75,7 @@ struct SessionListView: View {
                 content
 
                 if !isSearchingSessions {
-                    newSessionButton
-                        .padding(.trailing, ZoraSpacing.screenInset)
-                        .padding(.bottom, ZoraSpacing.section - 2)
+                    newSessionButtonOverlay
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -301,6 +299,7 @@ struct SessionListView: View {
         // so insert/remove animates. Value-based so it works with @AppStorage.
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: profilesAreExpanded)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
+        .zoraAdaptiveContentFrame(.navigationList)
     }
 
     private var header: some View {
@@ -487,6 +486,16 @@ struct SessionListView: View {
         .disabled(viewModel.isViewingCachedData || pendingNewChat != nil)
         .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
         .accessibilityLabel("New Session")
+    }
+
+    private var newSessionButtonOverlay: some View {
+        HStack {
+            Spacer(minLength: 0)
+            newSessionButton
+        }
+        .padding(.trailing, ZoraSpacing.screenInset)
+        .padding(.bottom, ZoraSpacing.section - 2)
+        .zoraAdaptiveContentFrame(.navigationList)
     }
 
     private var visibleSessions: [SessionSummary] {
@@ -1038,6 +1047,7 @@ private struct PendingNewChatView: View {
 
                 pendingComposer
             }
+            .zoraAdaptiveContentFrame(.floatingComposer)
             .padding(.horizontal)
             .padding(.bottom, 12)
         }

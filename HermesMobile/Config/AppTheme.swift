@@ -127,6 +127,93 @@ enum ZoraMotion {
     static let tap = Animation.spring(response: 0.3, dampingFraction: 0.7)
 }
 
+#if canImport(UIKit)
+enum AppFormFactor: Equatable {
+    case phone
+    case tablet
+    case desktop
+
+    static func current(horizontalSizeClass: UserInterfaceSizeClass?) -> AppFormFactor {
+        resolve(
+            horizontalSizeClass: horizontalSizeClass,
+            idiom: UIDevice.current.userInterfaceIdiom
+        )
+    }
+
+    static func resolve(
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        idiom: UIUserInterfaceIdiom,
+        isMacCatalyst: Bool = Self.isRunningMacCatalyst,
+        isIOSAppOnMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac
+    ) -> AppFormFactor {
+        if isMacCatalyst || isIOSAppOnMac || idiom == .mac {
+            return .desktop
+        }
+
+        if idiom == .pad || (idiom == .unspecified && horizontalSizeClass == .regular) {
+            return .tablet
+        }
+
+        return .phone
+    }
+
+    private static var isRunningMacCatalyst: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        false
+        #endif
+    }
+}
+
+enum ZoraAdaptiveContentRole {
+    case navigationList
+    case readablePage
+    case chatTranscript
+    case floatingComposer
+
+    func maxWidth(for formFactor: AppFormFactor) -> CGFloat? {
+        switch (self, formFactor) {
+        case (_, .phone):
+            return nil
+        case (.navigationList, .tablet):
+            return 560
+        case (.navigationList, .desktop):
+            return 600
+        case (.readablePage, .tablet):
+            return 760
+        case (.readablePage, .desktop):
+            return 820
+        case (.chatTranscript, .tablet):
+            return 860
+        case (.chatTranscript, .desktop):
+            return 940
+        case (.floatingComposer, .tablet):
+            return 760
+        case (.floatingComposer, .desktop):
+            return 860
+        }
+    }
+
+    func outerAlignment(for formFactor: AppFormFactor) -> Alignment {
+        formFactor == .phone ? .topLeading : .top
+    }
+}
+
+private struct ZoraAdaptiveContentFrameModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    let role: ZoraAdaptiveContentRole
+
+    func body(content: Content) -> some View {
+        let formFactor = AppFormFactor.current(horizontalSizeClass: horizontalSizeClass)
+
+        content
+            .frame(maxWidth: role.maxWidth(for: formFactor), alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: role.outerAlignment(for: formFactor))
+    }
+}
+#endif
+
 enum ZoraSurfaceLevel {
     case subtle
     case card
@@ -478,6 +565,12 @@ extension View {
     func zoraBrandedScreen() -> some View {
         modifier(ZoraBrandedScreenModifier())
     }
+
+    #if canImport(UIKit)
+    func zoraAdaptiveContentFrame(_ role: ZoraAdaptiveContentRole) -> some View {
+        modifier(ZoraAdaptiveContentFrameModifier(role: role))
+    }
+    #endif
 
     func zoraSurface(
         _ level: ZoraSurfaceLevel = .card,

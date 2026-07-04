@@ -4,6 +4,7 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let isLoading: Bool
     let errorMessage: String?
@@ -268,7 +269,7 @@ struct ChatTranscriptView: View {
         .padding(.top, 16)
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
-        .frame(width: viewportWidth, alignment: .leading)
+        .frame(width: viewportWidth, alignment: transcriptFrameAlignment)
         .clipped()
         .background {
             ZStack {
@@ -290,8 +291,21 @@ struct ChatTranscriptView: View {
         dynamicTypeSize.isAccessibilitySize ? 20 : 16
     }
 
+    private var formFactor: AppFormFactor {
+        AppFormFactor.current(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private var transcriptFrameAlignment: Alignment {
+        formFactor == .phone ? .leading : .center
+    }
+
     private func transcriptContentWidth(for viewportWidth: CGFloat) -> CGFloat {
-        max(0, viewportWidth - (transcriptHorizontalPadding * 2))
+        let availableWidth = max(0, viewportWidth - (transcriptHorizontalPadding * 2))
+        guard let maxWidth = ZoraAdaptiveContentRole.chatTranscript.maxWidth(for: formFactor) else {
+            return availableWidth
+        }
+
+        return min(availableWidth, maxWidth)
     }
 
     @ViewBuilder

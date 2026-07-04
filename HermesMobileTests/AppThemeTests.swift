@@ -81,6 +81,46 @@ final class AppThemeTests: XCTestCase {
         )
     }
 
+    func testAppFormFactorResolvesFromIdiomAndSizeClass() {
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .compact, idiom: .phone, isMacCatalyst: false),
+            .phone
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .regular, idiom: .phone, isMacCatalyst: false),
+            .phone
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .regular, idiom: .unspecified, isMacCatalyst: false),
+            .tablet
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .compact, idiom: .pad, isMacCatalyst: false),
+            .tablet
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(horizontalSizeClass: .compact, idiom: .phone, isMacCatalyst: true),
+            .desktop
+        )
+        XCTAssertEqual(
+            AppFormFactor.resolve(
+                horizontalSizeClass: .regular,
+                idiom: .pad,
+                isMacCatalyst: false,
+                isIOSAppOnMac: true
+            ),
+            .desktop
+        )
+    }
+
+    func testAdaptiveContentRolesKeepPhoneFluidAndCapWideLayouts() {
+        XCTAssertNil(ZoraAdaptiveContentRole.chatTranscript.maxWidth(for: .phone))
+        XCTAssertEqual(ZoraAdaptiveContentRole.navigationList.maxWidth(for: .tablet), 560)
+        XCTAssertEqual(ZoraAdaptiveContentRole.readablePage.maxWidth(for: .desktop), 820)
+        XCTAssertEqual(ZoraAdaptiveContentRole.floatingComposer.maxWidth(for: .desktop), 860)
+        XCTAssertEqual(ZoraAdaptiveContentRole.chatTranscript.outerAlignment(for: .tablet), .top)
+    }
+
     func testSessionIdentityInitialsPreferStoredValueThenDisplayName() {
         XCTAssertEqual(
             SessionIdentitySettings.displayInitials(
