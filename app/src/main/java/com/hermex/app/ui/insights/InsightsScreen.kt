@@ -5,11 +5,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -17,6 +19,10 @@ import androidx.lifecycle.viewModelScope
 import com.hermex.app.data.model.SessionSummary
 import com.hermex.app.data.model.SessionsResponse
 import com.hermex.app.data.network.ApiClient
+import com.hermex.app.ui.components.HermexCard
+import com.hermex.app.ui.components.HermexEmptyState
+import com.hermex.app.ui.components.HermexErrorState
+import com.hermex.app.ui.components.HermexSectionHeader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,25 +104,33 @@ fun InsightsScreen(onBack: () -> Unit, viewModel: InsightsViewModel = hiltViewMo
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when {
                 isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                error != null -> ErrorState(message = error.orEmpty(), onRetry = { viewModel.loadSessions() })
+                error != null -> {
+                    HermexErrorState(
+                        message = error ?: "Unknown error",
+                        onRetry = { viewModel.loadSessions() },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
                 else -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        item { SummaryCard(totals = totals) }
                         item {
-                            SummaryCard(totals = totals)
-                        }
-                        item {
-                            Text("Per session", style = MaterialTheme.typography.titleMedium)
+                            HermexSectionHeader(
+                                "Per Session",
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
                         }
                         if (sessions.isEmpty()) {
                             item {
-                                Text(
-                                    "No sessions available",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                HermexEmptyState(
+                                    icon = Icons.Default.Analytics,
+                                    title = "No Sessions",
+                                    description = "Usage data will appear after your first conversation",
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         } else {
@@ -133,15 +147,16 @@ fun InsightsScreen(onBack: () -> Unit, viewModel: InsightsViewModel = hiltViewMo
 
 @Composable
 private fun SummaryCard(totals: InsightsViewModel.Totals) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Usage summary", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                SummaryItem(label = "Input", value = formatTokens(totals.inputTokens))
-                SummaryItem(label = "Output", value = formatTokens(totals.outputTokens))
-                SummaryItem(label = "Est. cost", value = "%.4f".format(totals.estimatedCost))
-            }
+    HermexCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "Usage Summary",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            SummaryItem(label = "Input", value = formatTokens(totals.inputTokens))
+            SummaryItem(label = "Output", value = formatTokens(totals.outputTokens))
+            SummaryItem(label = "Est. cost", value = "$%.4f".format(totals.estimatedCost))
         }
     }
 }
@@ -149,22 +164,42 @@ private fun SummaryCard(totals: InsightsViewModel.Totals) {
 @Composable
 private fun SummaryItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleMedium)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
 private fun SessionUsageCard(session: SessionSummary) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(session.title.orEmpty().takeIf { it.isNotBlank() } ?: "Untitled", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Input: ${formatTokens(session.inputTokens ?: 0L)}", style = MaterialTheme.typography.bodySmall)
-                Text("Output: ${formatTokens(session.outputTokens ?: 0L)}", style = MaterialTheme.typography.bodySmall)
-                Text("Cost: %.4f".format(session.estimatedCost ?: 0.0), style = MaterialTheme.typography.bodySmall)
-            }
+    HermexCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            session.title.orEmpty().takeIf { it.isNotBlank() } ?: "Untitled",
+            style = MaterialTheme.typography.titleSmall
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "In: ${formatTokens(session.inputTokens ?: 0L)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Out: ${formatTokens(session.outputTokens ?: 0L)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "$%.4f".format(session.estimatedCost ?: 0.0),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -174,14 +209,5 @@ private fun formatTokens(value: Long): String {
         value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
         value >= 1_000 -> "%.1fk".format(value / 1_000.0)
         else -> value.toString()
-    }
-}
-
-@Composable
-private fun ErrorState(message: String, onRetry: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("Error: $message", color = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.height(12.dp))
-        FilledTonalButton(onClick = onRetry) { Text("Retry") }
     }
 }

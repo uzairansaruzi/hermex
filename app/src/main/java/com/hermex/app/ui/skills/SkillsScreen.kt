@@ -1,13 +1,9 @@
 package com.hermex.app.ui.skills
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -22,8 +18,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hermex.app.data.model.*
 import com.hermex.app.data.network.ApiClient
-import com.hermex.app.ui.components.HermexInsetDivider
-import com.hermex.app.ui.components.HermexSectionHeader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -123,14 +117,7 @@ fun SkillsScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 placeholder = { Text("Search skills...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                    focusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                )
+                singleLine = true
             )
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -154,83 +141,29 @@ fun SkillsScreen(
 
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             filtered.toSortedMap().forEach { (category, skillList) ->
                                 item {
-                                    HermexSectionHeader(
-                                        text = category,
-                                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                                    Text(
+                                        category,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(vertical = 8.dp)
                                     )
                                 }
-                                itemsIndexed(skillList, key = { index, skill -> "${skill.name ?: ""}_$index" }) { index, skill ->
-                                    Column {
-                                        SkillRow(
-                                            name = skill.name ?: "",
-                                            description = skill.description,
-                                            onClick = { viewModel.selectSkill(skill) }
-                                        )
-                                        if (index < skillList.lastIndex) {
-                                            HermexInsetDivider()
-                                        }
-                                    }
+                                items(skillList, key = { it.name ?: "" }) { skill ->
+                                    ListItem(
+                                        headlineContent = { Text(skill.name ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        supportingContent = { skill.description?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) } },
+                                        modifier = Modifier.clickable { viewModel.selectSkill(skill) }
+                                    )
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/** Skill row mirroring iOS: hammer icon in a 40dp tinted circle + semibold title. */
-@Composable
-private fun SkillRow(
-    name: String,
-    description: String?,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Construction,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurface
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            description?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
     }
