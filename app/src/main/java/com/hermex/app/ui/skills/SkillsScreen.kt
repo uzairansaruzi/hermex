@@ -153,7 +153,7 @@ fun SkillsScreen(
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
                                 }
-                                items(skillList, key = { it.name ?: "" }) { skill ->
+                                items(skillList) { skill ->
                                     ListItem(
                                         headlineContent = { Text(skill.name ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                         supportingContent = { skill.description?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) } },

@@ -169,11 +169,12 @@ fun TasksScreen(
                         }
 
                         items(jobs, key = { it.jobId ?: it.name ?: "" }) { job ->
-                            val isRunning = job.jobId != null && runningJobs.containsKey(job.jobId)
+                            val jobId = job.jobId
+                            val isRunning = jobId != null && runningJobs.containsKey(jobId)
                             CronJobCard(
                                 job = job,
                                 isRunning = isRunning,
-                                elapsed = if (isRunning) runningJobs[job.jobId] else null,
+                                elapsed = if (isRunning && jobId != null) runningJobs[jobId] else null,
                                 onClick = { viewModel.selectJob(job) }
                             )
                         }

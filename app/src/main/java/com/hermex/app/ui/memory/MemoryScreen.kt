@@ -81,7 +81,8 @@ fun MemoryScreen(onBack: () -> Unit, viewModel: MemoryViewModel = hiltViewModel(
                     )
                 }
                 memory != null -> {
-                    val hasContent = !memory!!.notes.isNullOrBlank() || !memory!!.userProfile.isNullOrBlank()
+                    val mem = memory!!
+                    val hasContent = !mem.notes.isNullOrBlank() || !mem.userProfile.isNullOrBlank()
                     if (!hasContent) {
                         HermexEmptyState(
                             icon = Icons.Default.Notes,
@@ -94,26 +95,28 @@ fun MemoryScreen(onBack: () -> Unit, viewModel: MemoryViewModel = hiltViewModel(
                             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            if (!memory!!.notes.isNullOrBlank()) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    HermexSectionHeader("Notes")
-                                    HermexCard(modifier = Modifier.fillMaxWidth()) {
-                                        Text(
-                                            memory!!.notes!!,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
+                            val notes = mem.notes
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                HermexSectionHeader("Notes")
+                                HermexCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        if (!notes.isNullOrBlank()) notes else "No notes",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (notes.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
-                            if (!memory!!.userProfile.isNullOrBlank()) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    HermexSectionHeader("User Profile")
-                                    HermexCard(modifier = Modifier.fillMaxWidth()) {
-                                        Text(
-                                            memory!!.userProfile!!,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
+                            val profile = mem.userProfile
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                HermexSectionHeader("User Profile")
+                                HermexCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        if (!profile.isNullOrBlank()) profile else "No profile data",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (profile.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
                         }

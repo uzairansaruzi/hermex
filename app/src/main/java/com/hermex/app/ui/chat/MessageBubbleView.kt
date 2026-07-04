@@ -246,13 +246,15 @@ private fun CodeBlockCard(language: String?, code: String) {
                     .horizontalScroll(rememberScrollState())
                     .padding(start = 16.dp, end = 16.dp, bottom = 14.dp, top = 4.dp)
             ) {
+                val plainColor = if (isDarkTheme) HermexColors.SyntaxPlainDark.toArgb()
+                    else HermexColors.SyntaxPlainLight.toArgb()
                 AndroidView(
                     factory = { ctx ->
                         TextView(ctx).apply {
                             typeface = Typeface.MONOSPACE
                             textSize = 13f
                             setLineSpacing(0f, 1.3f)
-                            setTextColor(HermexColors.SyntaxPlain.toArgb())
+                            setTextColor(plainColor)
                         }
                     },
                     update = { textView ->
@@ -314,7 +316,7 @@ private fun parseCodeBlocks(content: String): List<ContentSegment> {
         if (fenceMatch != null) {
             // Flush prose
             if (proseBuilder.isNotEmpty()) {
-                segments.add(ContentSegment.Prose(proseBuilder.toString().trimEnd()))
+                segments.add(ContentSegment.Prose(proseBuilder.toString().removeSuffix("\n")))
                 proseBuilder.clear()
             }
 
@@ -337,15 +339,14 @@ private fun parseCodeBlocks(content: String): List<ContentSegment> {
             segments.add(ContentSegment.Code(lang, codeBuilder.toString()))
             i++ // skip closing fence
         } else {
-            if (proseBuilder.isNotEmpty()) proseBuilder.append('\n')
-            proseBuilder.append(line)
+            proseBuilder.append(line).append('\n')
             i++
         }
     }
 
     // Flush remaining prose
     if (proseBuilder.isNotEmpty()) {
-        segments.add(ContentSegment.Prose(proseBuilder.toString().trimEnd()))
+        segments.add(ContentSegment.Prose(proseBuilder.toString().removeSuffix("\n")))
     }
 
     return segments

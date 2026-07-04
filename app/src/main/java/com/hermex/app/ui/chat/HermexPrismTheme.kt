@@ -58,11 +58,11 @@ class HermexPrismTheme : io.noties.markwon.syntax.Prism4jTheme {
     }
 
     companion object {
-        @ColorInt private val KEYWORD = 0xFFFF7AB2.toInt()
-        @ColorInt private val TYPE = 0xFFDABAFF.toInt()
-        @ColorInt private val STRING = 0xFFFF8170.toInt()
-        @ColorInt private val NUMBER = 0xFFD9C97C.toInt()
-        @ColorInt private val COMMENT = 0xFF7F8C98.toInt()
-        @ColorInt private val PUNCTUATION = 0xFFAEB2B8.toInt()
+        @ColorInt private val KEYWORD = HermexColors.SyntaxKeyword.toArgb()
+        @ColorInt private val TYPE = HermexColors.SyntaxType.toArgb()
+        @ColorInt private val STRING = HermexColors.SyntaxString.toArgb()
+        @ColorInt private val NUMBER = HermexColors.SyntaxNumber.toArgb()
+        @ColorInt private val COMMENT = HermexColors.SyntaxComment.toArgb()
+        @ColorInt private val PUNCTUATION = HermexColors.SyntaxPunctuation.toArgb()
     }
 }
