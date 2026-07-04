@@ -88,16 +88,223 @@ final class APIClientConfigurationTests: APIClientTestCase {
         let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
         let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
 
-        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), [
-            "assistant-tools",
-            "assistant-post-tools",
-            "assistant-final"
-        ])
-        XCTAssertEqual(reasoningGroups[0].text, "The user wants me to use terminal and search_files. I should run a quick command.")
-        XCTAssertEqual(reasoningGroups[1].text, "Terminal works. Now run search_files to show that works too.")
-        XCTAssertTrue(reasoningGroups[2].text.contains("Both tools worked. I should give a concise summary."))
-        XCTAssertFalse(reasoningGroups[2].text.contains("**Terminal:**"))
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-tools"])
+        XCTAssertEqual(reasoningGroups.first?.id, "reasoning-assistant-tools-0")
+        XCTAssertTrue(reasoningGroups.first?.text.contains("The user wants me to use terminal and search_files. I should run a quick command.") == true)
+        XCTAssertTrue(reasoningGroups.first?.text.contains("Terminal works. Now run search_files to show that works too.") == true)
+        XCTAssertTrue(reasoningGroups.first?.text.contains("Both tools worked. I should give a concise summary.") == true)
+        XCTAssertFalse(reasoningGroups.first?.text.contains("**Terminal:**") == true)
         XCTAssertFalse(transcriptMessages.contains { $0.message.id == "tool-results" })
+    }
+
+    func testReasoningDisplayConcatenatesDistinctConsecutiveThinkingBlocksInTurn() {
+        let messages = [
+            ChatMessage(
+                role: "user",
+                content: "Keep going",
+                timestamp: 1_770_000_000,
+                messageId: "user-turn"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_001,
+                messageId: "assistant-clarify",
+                reasoning: "Clarifying patch schema requirements before editing."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_002,
+                messageId: "assistant-betting",
+                reasoning: "Considering betting actions and legal moves."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_003,
+                messageId: "assistant-skills",
+                reasoning: "Loading skills for development and verification."
+            )
+        ]
+
+        let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-clarify"])
+        XCTAssertEqual(reasoningGroups.first?.text, """
+        Clarifying patch schema requirements before editing.
+
+        Considering betting actions and legal moves.
+
+        Loading skills for development and verification.
+        """)
+    }
+
+    func testReasoningDisplayKeepsSubstringThoughtsAndSeparatesUserTurns() {
+        let messages = [
+            ChatMessage(
+                role: "user",
+                content: "First task",
+                timestamp: 1_770_000_000,
+                messageId: "user-first"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_001,
+                messageId: "assistant-first-a",
+                reasoning: "Thinking about options"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_002,
+                messageId: "assistant-first-b",
+                reasoning: "Thinking more"
+            ),
+            ChatMessage(
+                role: "user",
+                content: "Second task",
+                timestamp: 1_770_000_003,
+                messageId: "user-second"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_004,
+                messageId: "assistant-second-a",
+                reasoning: "Thinking about options"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_005,
+                messageId: "assistant-second-b",
+                reasoning: "Thinking through final response"
+            )
+        ]
+
+        let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-first-a", "assistant-second-a"])
+        XCTAssertEqual(reasoningGroups.map(\.text), [
+            """
+            Thinking about options
+
+            Thinking more
+            """,
+            """
+            Thinking about options
+
+            Thinking through final response
+            """
+        ])
+    }
+
+    func testReasoningDisplayReplacesCumulativePrefixSnapshotsWithinTurn() {
+        let messages = [
+            ChatMessage(
+                role: "user",
+                content: "Use tools",
+                timestamp: 1_770_000_000,
+                messageId: "user-tools"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_001,
+                messageId: "assistant-first-snapshot",
+                reasoning: "I should inspect the file first."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_002,
+                messageId: "assistant-second-snapshot",
+                reasoning: "I should inspect the file first. Then I should run the focused test."
+            )
+        ]
+
+        let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-first-snapshot"])
+        XCTAssertEqual(
+            reasoningGroups.first?.text,
+            "I should inspect the file first. Then I should run the focused test."
+        )
+    }
+
+    func testReasoningDisplayIgnoresShorterRepeatedPrefixSnapshotWithinTurn() {
+        let messages = [
+            ChatMessage(
+                role: "user",
+                content: "Use tools",
+                timestamp: 1_770_000_000,
+                messageId: "user-tools"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_001,
+                messageId: "assistant-first-snapshot",
+                reasoning: "I should inspect the file first."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_002,
+                messageId: "assistant-second-snapshot",
+                reasoning: "I should inspect the file first. Then I should run the focused test."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_003,
+                messageId: "assistant-repeated-prefix-snapshot",
+                reasoning: "I should inspect the file first."
+            )
+        ]
+
+        let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-first-snapshot"])
+        XCTAssertEqual(
+            reasoningGroups.first?.text,
+            "I should inspect the file first. Then I should run the focused test."
+        )
+    }
+
+    func testReasoningDisplayCollapsesCumulativeSnapshotsAcrossWhitespaceChanges() {
+        let messages = [
+            ChatMessage(
+                role: "user",
+                content: "Use tools",
+                timestamp: 1_770_000_000,
+                messageId: "user-tools"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_001,
+                messageId: "assistant-first-snapshot",
+                reasoning: "I should inspect\nthe file\tfirst."
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 1_770_000_002,
+                messageId: "assistant-second-snapshot",
+                reasoning: "I should inspect the file first. Then I should run the focused test."
+            )
+        ]
+
+        let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-first-snapshot"])
+        XCTAssertEqual(
+            reasoningGroups.first?.text,
+            "I should inspect the file first. Then I should run the focused test."
+        )
     }
 
     func testSaveDefaultModelBuildsExpectedBodyAndDecodesResponse() async throws {

@@ -4668,19 +4668,23 @@ extension ChatViewModel {
             }
         }
 
-        var latestCandidateIndexByKey: [String: Int] = [:]
-        for (index, candidate) in candidates.enumerated() {
-            latestCandidateIndexByKey["\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"] = index
+        var turnGroupIndexesByKey: [String: Int] = [:]
+        var turnGroups: [ReasoningTurnGroupBuilder] = []
+
+        for candidate in candidates {
+            if let groupIndex = turnGroupIndexesByKey[candidate.turnKey] {
+                turnGroups[groupIndex].append(candidate)
+            } else {
+                turnGroupIndexesByKey[candidate.turnKey] = turnGroups.count
+                turnGroups.append(ReasoningTurnGroupBuilder(candidate: candidate))
+            }
         }
 
-        return candidates.enumerated().compactMap { index, candidate in
-            let key = "\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"
-            guard latestCandidateIndexByKey[key] == index else { return nil }
-
-            return ReasoningGroup(
-                id: "reasoning-\(candidate.anchorMessageID ?? "unanchored")-\(candidate.order)",
-                anchorMessageID: candidate.anchorMessageID,
-                text: candidate.text
+        return turnGroups.map { group in
+            ReasoningGroup(
+                id: "reasoning-\(group.anchorMessageID ?? "unanchored")-\(group.firstOrder)",
+                anchorMessageID: group.anchorMessageID,
+                text: group.text
             )
         }
     }
@@ -4882,6 +4886,46 @@ private struct ReasoningDisplayCandidate {
     let anchorMessageID: String?
     let turnKey: String
     let text: String
+}
+
+private struct ReasoningTurnGroupBuilder {
+    let firstOrder: Int
+    let anchorMessageID: String?
+    private(set) var text: String
+
+    init(candidate: ReasoningDisplayCandidate) {
+        firstOrder = candidate.order
+        anchorMessageID = candidate.anchorMessageID
+        text = candidate.text
+    }
+
+    mutating func append(_ candidate: ReasoningDisplayCandidate) {
+        text = Self.mergedText(existing: text, incoming: candidate.text)
+    }
+
+    private static func mergedText(existing: String, incoming: String) -> String {
+        let existingKey = normalizedKey(existing)
+        let incomingKey = normalizedKey(incoming)
+
+        if existingKey.isEmpty { return incoming }
+        if incomingKey.isEmpty { return existing }
+        if existingKey == incomingKey { return incoming }
+        if isWholeTextPrefix(existingKey, of: incomingKey) { return incoming }
+        if isWholeTextPrefix(incomingKey, of: existingKey) { return existing }
+
+        return "\(existing)\n\n\(incoming)"
+    }
+
+    private static func isWholeTextPrefix(_ prefix: String, of text: String) -> Bool {
+        text == prefix || text.hasPrefix("\(prefix) ")
+    }
+
+    private static func normalizedKey(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
 }
 
 private extension ToolCall {
