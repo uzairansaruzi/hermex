@@ -71,12 +71,17 @@ final class CliSessionsSyncModel {
 
         writeGeneration += 1
         let generation = writeGeneration
-        // Cancel the superseded write so rapid re-toggles don't race each other
-        // at the server; its failure path is additionally ignored via the
-        // generation guard below.
-        pendingWrite?.cancel()
+        // Serialize behind the in-flight write: cancelling a Task does not
+        // un-send a POST that already left the device, so the previous request
+        // could land at the server *after* a newer one and flip the stored
+        // value against the UI. Holding the next request until the previous
+        // response arrives guarantees the server applies toggles in UI order;
+        // a superseded write skips its POST entirely (the newest queued write
+        // carries the final value), so a long chain collapses to one request.
+        let predecessor = pendingWrite
         pendingWrite = Task { [weak self] in
-            guard let self else { return }
+            await predecessor?.value
+            guard let self, self.writeGeneration == generation else { return }
             do {
                 try await self.writeToServer(newValue)
             } catch {

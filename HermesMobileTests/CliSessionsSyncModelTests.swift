@@ -184,10 +184,10 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
     }
 
     @MainActor
-    func testRapidReToggleCancelsTheStaleWriteAndIgnoresItsFailure() async {
+    func testRapidReToggleIgnoresTheStaleFailureAndWritesTheFinalValue() async {
         // The write for `false` fails; the follow-up write for `true` succeeds.
         // The stale failure must neither revert the newer value nor surface an
-        // error, and the superseded task must be cancelled.
+        // error.
         let model = makeModel(server: serverA) { value in
             if value == false { throw URLError(.timedOut) }
         }
@@ -197,8 +197,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         let staleWrite = model.pendingWrite
         model.setShowsCliSessions(true)
 
-        XCTAssertEqual(staleWrite?.isCancelled, true)
-
         await staleWrite?.value
         await model.pendingWrite?.value
 
@@ -207,6 +205,54 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertEqual(
             defaults.object(forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverA)) as? Bool,
             true
+        )
+    }
+
+    @MainActor
+    func testRapidReTogglesSerializeWritesAndCoalesceToTheFinalValue() async {
+        // Cancelling a Task cannot un-send an in-flight POST, so the model must
+        // instead hold the next write until the previous response lands and
+        // skip superseded writes. Here the first write is suspended while the
+        // user toggles twice more: no second request may be sent while the
+        // first is in flight, and after it completes only the *final* value is
+        // written (the intermediate toggle is coalesced away).
+        var writtenValues: [Bool] = []
+        var releaseFirstWrite: CheckedContinuation<Void, Never>?
+        let model = makeModel(server: serverA) { value in
+            writtenValues.append(value)
+            if writtenValues.count == 1 {
+                await withCheckedContinuation { releaseFirstWrite = $0 }
+            }
+        }
+        model.adopt(serverValue: true)
+
+        model.setShowsCliSessions(false) // write 1 — held in flight below
+
+        // Let write 1 start and suspend inside writeToServer, so it is truly
+        // in flight when the user keeps toggling.
+        while releaseFirstWrite == nil { await Task.yield() }
+
+        model.setShowsCliSessions(true)  // superseded before it can send
+        model.setShowsCliSessions(false) // final desired value
+
+        await Task.yield()
+        XCTAssertEqual(
+            writtenValues, [false],
+            "No follow-up POST may be sent while the first is still in flight"
+        )
+
+        releaseFirstWrite?.resume()
+        await model.pendingWrite?.value
+
+        XCTAssertEqual(
+            writtenValues, [false, false],
+            "The superseded intermediate write must be skipped; only the final value is sent"
+        )
+        XCTAssertFalse(model.showsCliSessions)
+        XCTAssertNil(model.syncErrorMessage)
+        XCTAssertEqual(
+            defaults.object(forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverA)) as? Bool,
+            false
         )
     }
 
