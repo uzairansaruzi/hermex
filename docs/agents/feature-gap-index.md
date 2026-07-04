@@ -93,7 +93,7 @@ sub-paths of a group. Do not reorder casually.
 | `/api/profile/` | roadmap | P3 | write | Profile Management — active/create/delete |
 | `/api/skills/` | roadmap | P3 | write | Skill Management — toggle shipped; save/delete remain roadmap |
 | `/api/transcribe` | roadmap | P3 | privacy | Audio Transcription — server-side; audio leaves the device |
-| `/api/workspaces/` | roadmap | P3 | write | Workspace Management — add/remove/rename/reorder |
+| `/api/workspaces/` | roadmap | P3 | write | Workspace Management — add/remove/rename/reorder shipped (#22); list + `/suggest` were already shipped |
 | `/api/workspace/` | roadmap | P3 | write | Workspace Management |
 | `/api/file/` | roadmap | P4 | write | File Editing / Management — owner-deferred |
 | `/api/folder/` | roadmap | P4 | write | File Editing / Management — owner-deferred |
