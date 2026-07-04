@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +17,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hermex.app.data.model.MemoryResponse
 import com.hermex.app.data.network.ApiClient
+import com.hermex.app.ui.components.HermexCard
+import com.hermex.app.ui.components.HermexEmptyState
+import com.hermex.app.ui.components.HermexErrorState
+import com.hermex.app.ui.components.HermexSectionHeader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,35 +74,51 @@ fun MemoryScreen(onBack: () -> Unit, viewModel: MemoryViewModel = hiltViewModel(
             when {
                 isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 error != null -> {
-                    Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Error: $error", color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(8.dp))
-                        FilledTonalButton(onClick = { viewModel.loadMemory() }) { Text("Retry") }
-                    }
+                    HermexErrorState(
+                        message = error ?: "Unknown error",
+                        onRetry = { viewModel.loadMemory() },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
                 }
                 memory != null -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text("My Notes", style = MaterialTheme.typography.titleMedium)
-                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                memory!!.notes?.takeIf { it.isNotBlank() } ?: "No notes",
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (memory!!.notes.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        HorizontalDivider()
-                        Text("User Profile", style = MaterialTheme.typography.titleMedium)
-                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                memory!!.userProfile?.takeIf { it.isNotBlank() } ?: "No profile data",
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (memory!!.userProfile.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                            )
+                    val mem = memory!!
+                    val hasContent = !mem.notes.isNullOrBlank() || !mem.userProfile.isNullOrBlank()
+                    if (!hasContent) {
+                        HermexEmptyState(
+                            icon = Icons.Default.Notes,
+                            title = "No Memory",
+                            description = "Notes and profile data will appear here",
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            val notes = mem.notes
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                HermexSectionHeader("Notes")
+                                HermexCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        if (!notes.isNullOrBlank()) notes else "No notes",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (notes.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            val profile = mem.userProfile
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                HermexSectionHeader("User Profile")
+                                HermexCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        if (!profile.isNullOrBlank()) profile else "No profile data",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (profile.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
                         }
                     }
                 }
