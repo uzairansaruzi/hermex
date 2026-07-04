@@ -1010,12 +1010,13 @@ final class ChatViewModelSendTests: XCTestCase {
         let didRespond = await viewModel.respondToApproval(.deny)
 
         XCTAssertFalse(didRespond)
-        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+        XCTAssertEqual(viewModel.approvalPrompt?.isExpired, true)
         XCTAssertNil(viewModel.lastError)
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(
             viewModel.approvalErrorMessage,
-            "That approval request expired. The card was cleared; wait for the agent to ask again if needed."
+            "That approval request expired. Wait for the agent to ask again if needed."
         )
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }

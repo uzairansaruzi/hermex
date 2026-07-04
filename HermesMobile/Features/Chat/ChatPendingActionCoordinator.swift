@@ -322,6 +322,7 @@ final class ChatPendingActionCoordinator {
               let prompt = approvalPendingBySession[sessionID]
         else {
             if approvalPrompt?.sessionID == sessionID {
+                guard approvalPrompt?.isExpired != true else { return }
                 approvalPrompt = nil
             }
             return
@@ -432,6 +433,7 @@ final class ChatPendingActionCoordinator {
               let prompt = clarificationPendingBySession[sessionID]
         else {
             if clarificationPrompt?.sessionID == sessionID {
+                guard clarificationPrompt?.isExpired != true else { return }
                 clarificationPrompt = nil
             }
             return

@@ -322,12 +322,13 @@ final class ClarificationTests: XCTestCase {
         let didRespond = await viewModel.respondToClarification("Use main")
 
         XCTAssertFalse(didRespond)
-        XCTAssertNil(viewModel.clarificationPrompt)
+        XCTAssertEqual(viewModel.clarificationPrompt?.pending.clarifyId, "clarify-1")
+        XCTAssertEqual(viewModel.clarificationPrompt?.isExpired, true)
         XCTAssertNil(viewModel.lastError)
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(
             viewModel.clarificationErrorMessage,
-            "That clarification request expired. The card was cleared; wait for the agent to ask again if needed."
+            "That clarification request expired. Wait for the agent to ask again if needed."
         )
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }
