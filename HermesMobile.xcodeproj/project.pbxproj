@@ -22,6 +22,7 @@
 		1A2B3C4D5E6F700000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000014 /* Assets.xcassets */; };
 		10CA110C0DE000000000B001 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
 		10CA110C0DE000000000B003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
+		10CA110C0DE000000000B004 /* AppShortcuts.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */; };
 		10CA110C0DE000000000C001 /* LocalizationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */; };
 		1A2B3C4D5E6F700000000004 /* LDSwiftEventSource in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000094 /* LDSwiftEventSource */; };
 		1A2B3C4D5E6F700000000005 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000095 /* MarkdownUI */; };
@@ -337,6 +338,7 @@
 		1A2B3C4D5E6F700000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10CA110C0DE000000000B002 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = AppShortcuts.xcstrings; sourceTree = "<group>"; };
 		10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000015 /* HermesMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -678,6 +680,7 @@
 			children = (
 				1A2B3C4D5E6F700000000014 /* Assets.xcassets */,
 				10CA110C0DE000000000B002 /* Localizable.xcstrings */,
+				10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */,
 				1A2B3C4D5E6F700000000013 /* Info.plist */,
 				B5A100000000000000000015 /* HermesMobile.entitlements */,
 				1A2B3C4D5E6F70000000301 /* PrivacyInfo.xcprivacy */,
@@ -1286,6 +1289,7 @@
 			files = (
 				1A2B3C4D5E6F700000000003 /* Assets.xcassets in Resources */,
 				10CA110C0DE000000000B001 /* Localizable.xcstrings in Resources */,
+				10CA110C0DE000000000B004 /* AppShortcuts.xcstrings in Resources */,
 				1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */,
 				9E2A653D968A4ACDA19A8142 /* ThirdPartyNotices in Resources */,
 			);
