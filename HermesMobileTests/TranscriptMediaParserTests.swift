@@ -95,6 +95,17 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(media?.isRasterImageCandidate, false)
     }
 
+    func testTranscriptAudioMediaReferenceIsAudioCandidate() throws {
+        let local = TranscriptMediaReference(rawReference: "/tmp/voice-note.m4a")
+        XCTAssertTrue(local.isAudioCandidate)
+        XCTAssertFalse(local.isRasterImageCandidate)
+
+        let remote = TranscriptMediaReference(rawReference: "https://cdn.example.test/audio/reply.OPUS?download=1")
+        XCTAssertEqual(remote.source, .remoteURL(try XCTUnwrap(URL(string: remote.rawReference))))
+        XCTAssertTrue(remote.isAudioCandidate)
+        XCTAssertFalse(remote.isRasterImageCandidate)
+    }
+
     func testEmptyReferenceDisplayNameFallsBackToMedia() {
         XCTAssertEqual(TranscriptMediaReference(rawReference: "").displayName, "Media")
     }

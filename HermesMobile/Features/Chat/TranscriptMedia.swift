@@ -51,6 +51,14 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return false
     }
 
+    /// `MEDIA:` transcript tokens do not carry server MIME metadata, so detect
+    /// audio by the resolved URL/path extension. These render with the same
+    /// inline player as uploaded voice-note attachments instead of falling back
+    /// to the generic unavailable chip.
+    var isAudioCandidate: Bool {
+        AttachmentAudioDetection.audioExtensions.contains(pathExtension)
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):

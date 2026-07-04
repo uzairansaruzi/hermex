@@ -12,17 +12,20 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
 struct TranscriptMediaContentView: View {
     let segments: [TranscriptMediaSegment]
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
 
     init(
         segments: [TranscriptMediaSegment],
         loadMediaImage: ((TranscriptMediaReference) async -> Data?)?,
+        loadMediaData: ((TranscriptMediaReference) async -> Data?)? = nil,
         onPreviewMedia: ((TranscriptMediaReference) -> Void)?,
         isStreaming: Bool = false
     ) {
         self.segments = segments
         self.loadMediaImage = loadMediaImage
+        self.loadMediaData = loadMediaData
         self.onPreviewMedia = onPreviewMedia
         self.isStreaming = isStreaming
     }
@@ -39,6 +42,7 @@ struct TranscriptMediaContentView: View {
                     TranscriptMediaThumbnailView(
                         reference: reference,
                         loadMediaImage: loadMediaImage,
+                        loadMediaData: loadMediaData,
                         onPreviewMedia: onPreviewMedia
                     )
                     // Pin the image container LTR so media keeps its leading-edge
@@ -54,6 +58,7 @@ struct TranscriptMediaContentView: View {
 private struct TranscriptMediaThumbnailView: View {
     let reference: TranscriptMediaReference
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
 
     @State private var image: UIImage?
@@ -63,7 +68,18 @@ private struct TranscriptMediaThumbnailView: View {
     private let thumbnailHeight: CGFloat = 132
 
     var body: some View {
-        if reference.isRasterImageCandidate, let loadMediaImage {
+        if reference.isAudioCandidate, let loadMediaData {
+            InlineAudioPlayerView(
+                title: reference.displayName,
+                load: { await loadMediaData(reference) }
+            )
+            // Keep the player's state tied to the `MEDIA:` token. Without this,
+            // SwiftUI row reuse can leave a scrolled transcript bubble holding
+            // audio bytes for a previous clip.
+            .id(reference.id)
+            .frame(maxWidth: 300, alignment: .leading)
+            .accessibilityLabel(String(localized: "Voice message \(reference.displayName)"))
+        } else if reference.isRasterImageCandidate, let loadMediaImage {
             Button {
                 onPreviewMedia?(reference)
             } label: {
@@ -150,7 +166,9 @@ private struct TranscriptMediaUnavailableChip: View {
     }
 
     private var iconName: String {
-        reference.isRasterImageCandidate ? "photo" : "doc"
+        if reference.isRasterImageCandidate { return "photo" }
+        if reference.isAudioCandidate { return "waveform" }
+        return "doc"
     }
 }
 

@@ -20,7 +20,7 @@ final class AttachmentAudioDetectionTests: XCTestCase {
     // MARK: - Extension detection
 
     func testKnownAudioExtensionsAreAudio() {
-        for ext in ["m4a", "mp3", "wav", "aac", "caf", "ogg", "oga", "opus", "flac"] {
+        for ext in ["m4a", "mp3", "wav", "aac", "caf", "ogg", "oga", "opus", "flac", "webm", "weba"] {
             XCTAssertTrue(
                 AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "clip.\(ext)", path: nil),
                 "Expected .\(ext) to be detected as audio"
