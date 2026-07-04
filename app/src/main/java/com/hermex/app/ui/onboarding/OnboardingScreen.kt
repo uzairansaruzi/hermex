@@ -1,6 +1,10 @@
 package com.hermex.app.ui.onboarding
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -62,7 +67,12 @@ import com.hermex.app.data.model.LoginResponse
 import com.hermex.app.data.network.ApiClient
 import com.hermex.app.data.network.ApiException
 import com.hermex.app.data.network.httpFallbackUrl
+import com.hermex.app.R
 import com.hermex.app.ui.theme.HermexTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -312,12 +322,42 @@ private fun WelcomeHeader(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Icon(
-            imageVector = Icons.Default.Link,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = HermexTheme.colors.themeGold
-        )
+        // App icon hero with radial gold glow (mirrors iOS OnboardingWelcomePage)
+        val gold = HermexTheme.colors.themeGold
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(180.dp),
+        ) {
+            // Radial glow background
+            Box(
+                modifier = Modifier
+                    .size(180.dp)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                gold.copy(alpha = 0.55f),
+                                gold.copy(alpha = 0.22f),
+                                gold.copy(alpha = 0f),
+                            ),
+                        ),
+                        shape = RoundedCornerShape(50),
+                    ),
+            )
+            // App icon
+            Image(
+                painter = painterResource(R.drawable.hermes_app_icon),
+                contentDescription = "Hermex",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(124.dp)
+                    .clip(RoundedCornerShape(27.dp))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(27.dp),
+                    ),
+            )
+        }
 
         Text(
             text = "Welcome to Hermex",

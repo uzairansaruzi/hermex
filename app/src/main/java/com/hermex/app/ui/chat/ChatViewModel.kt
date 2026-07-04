@@ -99,6 +99,7 @@ data class ChatUiState(
     val currentProfile: String? = null,
     val selectedProfileName: String? = null,
     val availableModels: Map<String, List<String>> = emptyMap(),
+    val modelsCatalog: ModelsResponse? = null,
     val availableProfiles: List<ProfileInfo> = emptyList(),
     val availableWorkspaces: List<String> = emptyList(),
     val isLoadingComposerConfig: Boolean = false,
@@ -319,6 +320,7 @@ class ChatViewModel @Inject constructor(
                     state.copy(
                         isLoadingComposerConfig = false,
                         availableModels = models.modelsByProvider(),
+                        modelsCatalog = models,
                         availableProfiles = profiles.profiles ?: emptyList(),
                         availableWorkspaces = workspaces.workspaces.orEmpty()
                             .mapNotNull { it.path?.takeIf(String::isNotBlank) },

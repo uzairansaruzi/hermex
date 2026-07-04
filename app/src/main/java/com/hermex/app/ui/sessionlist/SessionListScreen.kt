@@ -29,22 +29,15 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Pin
-import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.Construction
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -86,8 +79,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.hermex.app.R
+import com.hermex.app.ui.components.HermexAlertDialog
 import com.hermex.app.ui.components.HermexAvatar
+import com.hermex.app.ui.components.HermexDropdownMenu
+import com.hermex.app.ui.components.HermexDropdownMenuItem
+import com.hermex.app.ui.components.HermexWordmark
 import com.hermex.app.ui.theme.HermexTheme
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.res.painterResource
 import com.hermex.app.data.model.ProjectSummary
 import com.hermex.app.data.model.SessionSummary
 import kotlinx.coroutines.flow.collectLatest
@@ -298,11 +297,7 @@ private fun HermexHomeHeader(
                 .padding(start = 24.dp, end = 16.dp, top = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                color = HermexTheme.colors.themeGold
-            )
+            HermexWordmark(modifier = Modifier.width(160.dp))
             Spacer(modifier = Modifier.weight(1f))
             IconButton(onClick = onReconnectClick) {
                 Icon(
@@ -366,10 +361,10 @@ private fun HermexHomeHeader(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        UtilityNavRow(Icons.Outlined.Schedule, stringResource(R.string.tasks), onTasksClick)
-        UtilityNavRow(Icons.Outlined.Construction, stringResource(R.string.skills), onSkillsClick)
-        UtilityNavRow(Icons.Outlined.Psychology, stringResource(R.string.memory), onMemoryClick)
-        UtilityNavRow(Icons.Outlined.BarChart, stringResource(R.string.insights), onInsightsClick)
+        UtilityNavRow(painterResource(R.drawable.ic_lucide_calendar_clock), stringResource(R.string.tasks), onTasksClick)
+        UtilityNavRow(painterResource(R.drawable.ic_lucide_hammer), stringResource(R.string.skills), onSkillsClick)
+        UtilityNavRow(painterResource(R.drawable.ic_lucide_brain), stringResource(R.string.memory), onMemoryClick)
+        UtilityNavRow(painterResource(R.drawable.ic_lucide_chart_column_increasing), stringResource(R.string.insights), onInsightsClick)
 
         Text(
             text = stringResource(R.string.sessions_title),
@@ -383,7 +378,7 @@ private fun HermexHomeHeader(
 /** Flat sidebar-style nav row: icon in a fixed slot + semibold label. */
 @Composable
 private fun UtilityNavRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: Painter,
     label: String,
     onClick: () -> Unit
 ) {
@@ -398,7 +393,7 @@ private fun UtilityNavRow(
     ) {
         Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
             Icon(
-                imageVector = icon,
+                painter = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(22.dp)
@@ -610,61 +605,49 @@ private fun SessionContextMenu(
     onDelete: () -> Unit,
     isMutating: Boolean
 ) {
-    DropdownMenu(
+    HermexDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss
     ) {
-        DropdownMenuItem(
-            leadingIcon = {
-                Icon(
-                    Icons.Filled.Pin,
-                    contentDescription = null
-                )
-            },
-            text = {
-                Text(
-                    if (session.pinned == true) stringResource(R.string.unpin)
-                    else stringResource(R.string.pin)
-                )
-            },
+        HermexDropdownMenuItem(
+            icon = Icons.Filled.Pin,
+            text = if (session.pinned == true) stringResource(R.string.unpin)
+                   else stringResource(R.string.pin),
             onClick = onPinToggle,
-            enabled = !isMutating
+            enabled = !isMutating,
         )
-        DropdownMenuItem(
-            leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
-            text = {
-                Text(
-                    if (session.archived == true) stringResource(R.string.restore)
-                    else stringResource(R.string.archive)
-                )
-            },
+        HermexDropdownMenuItem(
+            icon = Icons.Default.Archive,
+            text = if (session.archived == true) stringResource(R.string.restore)
+                   else stringResource(R.string.archive),
             onClick = if (session.archived == true) onRestore else onArchive,
-            enabled = !isMutating
+            enabled = !isMutating,
         )
-        DropdownMenuItem(
-            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-            text = { Text(stringResource(R.string.rename)) },
+        HermexDropdownMenuItem(
+            icon = Icons.Default.Edit,
+            text = stringResource(R.string.rename),
             onClick = onRename,
-            enabled = !isMutating
+            enabled = !isMutating,
         )
-        DropdownMenuItem(
-            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
-            text = { Text(stringResource(R.string.move_to_project)) },
+        HermexDropdownMenuItem(
+            icon = Icons.Default.Folder,
+            text = stringResource(R.string.move_to_project),
             onClick = onMove,
-            enabled = !isMutating
+            enabled = !isMutating,
         )
-        DropdownMenuItem(
-            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-            text = { Text(stringResource(R.string.duplicate)) },
+        HermexDropdownMenuItem(
+            icon = Icons.Default.Add,
+            text = stringResource(R.string.duplicate),
             onClick = onDuplicate,
-            enabled = !isMutating
+            enabled = !isMutating,
         )
         HorizontalDivider()
-        DropdownMenuItem(
-            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-            text = { Text(stringResource(R.string.delete)) },
+        HermexDropdownMenuItem(
+            icon = Icons.Default.Delete,
+            text = stringResource(R.string.delete),
             onClick = onDelete,
-            enabled = !isMutating
+            enabled = !isMutating,
+            destructive = true,
         )
     }
 }
@@ -742,7 +725,7 @@ private fun DeleteConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    HermexAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.delete_session_title)) },
         text = {
@@ -772,7 +755,7 @@ private fun RenameSessionDialog(
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
 
-    AlertDialog(
+    HermexAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.rename_session)) },
         text = {
@@ -809,7 +792,7 @@ private fun MoveToProjectDialog(
     onDismiss: () -> Unit,
     onRefresh: () -> Unit
 ) {
-    AlertDialog(
+    HermexAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.move_to_project)) },
         text = {
