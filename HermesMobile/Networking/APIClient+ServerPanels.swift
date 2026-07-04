@@ -102,6 +102,14 @@ extension APIClient {
         try await send(endpoint: .settings, method: "GET")
     }
 
+    func saveSettings(showCliSessions: Bool) async throws -> SettingsResponse {
+        try await send(
+            endpoint: .settings,
+            method: "POST",
+            body: SettingsUpdateRequest(showCliSessions: showCliSessions)
+        )
+    }
+
     func updatesCheck() async throws -> UpdatesCheckResponse {
         try await send(endpoint: .updatesCheck, method: "GET")
     }
@@ -167,6 +175,10 @@ private struct ProfileCreateRequest: Encodable {
 
 private struct UpdatesApplyRequest: Encodable {
     let target: String
+}
+
+private struct SettingsUpdateRequest: Encodable {
+    let showCliSessions: Bool
 }
 
 private struct UpdatesCheckForceRequest: Encodable {

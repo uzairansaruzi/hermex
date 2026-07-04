@@ -646,7 +646,9 @@ final class APIClientConfigurationTests: APIClientTestCase {
             {
               "bot_name": "Hermes",
               "webui_version": "v0.50.253",
-              "theme": "system"
+              "agent_version": "v0.17.0",
+              "theme": "system",
+              "show_cli_sessions": false
             }
             """, for: request)
         }
@@ -655,6 +657,31 @@ final class APIClientConfigurationTests: APIClientTestCase {
 
         XCTAssertEqual(response.botName, "Hermes")
         XCTAssertEqual(response.webuiVersion, "v0.50.253")
+        XCTAssertEqual(response.agentVersion, "v0.17.0")
         XCTAssertEqual(response.theme, "system")
+        XCTAssertEqual(response.showCliSessions, false)
+    }
+
+    func testSaveSettingsPostsCliSessionVisibility() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/settings")
+            XCTAssertEqual(request.httpMethod, "POST")
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["show_cli_sessions"] as? Bool, true)
+            XCTAssertEqual(body?.count, 1)
+
+            return apiTestJSONResponse("""
+            {
+              "bot_name": "Hermes",
+              "webui_version": "v0.50.253",
+              "show_cli_sessions": true
+            }
+            """, for: request)
+        }
+
+        let response = try await client.saveSettings(showCliSessions: true)
+
+        XCTAssertEqual(response.showCliSessions, true)
     }
 }

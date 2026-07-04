@@ -144,8 +144,16 @@ struct ProvidersResponse: Decodable, Equatable {
 struct SettingsResponse: Decodable, Equatable {
     let botName: String?
     let webuiVersion: String?
-    let version: String?
+    let agentVersion: String?
     let theme: String?
+    let showCliSessions: Bool?
+    let checkForUpdates: Bool?
+    let maxTokens: Int?
+    let maxTokensEffective: Int?
+    let authEnabled: Bool?
+    let passwordAuthEnabled: Bool?
+    let passkeysEnabled: Bool?
+    let passwordlessEnabled: Bool?
 }
 
 struct DefaultModelResponse: Decodable, Equatable {

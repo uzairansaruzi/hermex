@@ -56,6 +56,8 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
+    @State private var isSavingCliSessionsVisibility = false
+    @State private var cliSessionsVisibilityError: String?
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
@@ -274,8 +276,14 @@ struct SettingsView: View {
                     SettingsToggleRow(
                         title: String(localized: "CLI Sessions"),
                         systemImage: "terminal",
-                        isOn: $showsCliSessions
+                        isOn: cliSessionsVisibilityBinding
                     )
+                    .disabled(isSavingCliSessionsVisibility)
+
+                    if let cliSessionsVisibilityError {
+                        SettingsFootnote(cliSessionsVisibilityError)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 SettingsCard(title: String(localized: "Siri & Shortcuts")) {
@@ -651,6 +659,20 @@ struct SettingsView: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? String(localized: "Unknown")
     }
 
+    private var cliSessionsVisibilityBinding: Binding<Bool> {
+        Binding(
+            get: { showsCliSessions },
+            set: { newValue in
+                let previousValue = showsCliSessions
+                showsCliSessions = newValue
+                cliSessionsVisibilityError = nil
+                Task {
+                    await saveCliSessionsVisibility(newValue, fallback: previousValue)
+                }
+            }
+        )
+    }
+
     private var responseCompletionNotificationBinding: Binding<Bool> {
         Binding(
             get: { isResponseCompletionNotificationsEnabled },
@@ -865,7 +887,10 @@ struct SettingsView: View {
 
         do {
             let settings = try await client.settings()
-            serverVersion = settings.webuiVersion ?? settings.version
+            serverVersion = settings.webuiVersion
+            if let serverShowsCliSessions = settings.showCliSessions {
+                showsCliSessions = serverShowsCliSessions
+            }
             if serverVersion == nil {
                 serverSettingsError = String(localized: "Unknown")
             }
@@ -906,6 +931,22 @@ struct SettingsView: View {
         }
 
         isLoadingDefaultProfile = false
+    }
+
+    private func saveCliSessionsVisibility(_ isVisible: Bool, fallback previousValue: Bool) async {
+        guard !isSavingCliSessionsVisibility else { return }
+        isSavingCliSessionsVisibility = true
+        defer { isSavingCliSessionsVisibility = false }
+
+        do {
+            let response = try await APIClient(baseURL: server).saveSettings(showCliSessions: isVisible)
+            showsCliSessions = response.showCliSessions ?? isVisible
+            cliSessionsVisibilityError = nil
+        } catch {
+            showsCliSessions = previousValue
+            cliSessionsVisibilityError = String(localized: "Could not sync CLI session visibility with the server.")
+            authManager.handleAPIError(error)
+        }
     }
 
     private func checkForUpdatesManually() async {
@@ -1012,7 +1053,7 @@ struct SettingsView: View {
                 continue
             }
 
-            let newVersion = settings.webuiVersion ?? settings.version
+            let newVersion = settings.webuiVersion
             let updateState = (try? await client.updatesCheck())?.webuiUpdateState ?? .unavailable
             let restartConfirmed = (newVersion != nil && newVersion != previousVersion)
                 || updateState == .upToDate
