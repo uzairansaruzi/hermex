@@ -67,6 +67,7 @@ struct ChatTranscriptView: View {
     let onScrollToLatestContent: (ScrollViewProxy, Bool) -> Void
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onOpenWikiRoute: (WikiRoute) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onSubmitClarification: (String) -> Void
     let onSelectText: (MessageActionContext) -> Void
@@ -246,6 +247,7 @@ struct ChatTranscriptView: View {
                     shouldRenderMessageRow: shouldRenderMessageRow,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
+                    onOpenWikiRoute: onOpenWikiRoute,
                     onToggleListening: onToggleListening,
                     onSelectText: onSelectText,
                     onRegenerate: onRegenerate,
@@ -478,6 +480,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let shouldRenderMessageRow: (ChatMessage) -> Bool
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onOpenWikiRoute: (WikiRoute) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
@@ -540,6 +543,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     loadTranscriptMediaData: loadTranscriptMediaData,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
+                    onOpenWikiRoute: onOpenWikiRoute,
                     onToggleListening: onToggleListening,
                     onSelectText: onSelectText,
                     onRegenerate: onRegenerate,
@@ -620,6 +624,7 @@ private struct ChatTranscriptMessageRow: View {
     let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onOpenWikiRoute: (WikiRoute) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
@@ -666,6 +671,7 @@ private struct ChatTranscriptMessageRow: View {
             localAttachmentPreviews: localAttachmentPreviews,
             onPreviewAttachment: onPreviewAttachment,
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,
+            onOpenWikiRoute: onOpenWikiRoute,
             isStreaming: isStreaming
         )
     }

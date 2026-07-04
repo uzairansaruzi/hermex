@@ -39,6 +39,43 @@ private enum TurnDiffPresentation: Identifiable {
     }
 }
 
+private enum WikiRoutePresentation: Identifiable {
+    case native(WikiRoute)
+    case browser(WikiRoute)
+
+    var id: String {
+        switch self {
+        case .native(let route):
+            return "native:\(route.id)"
+        case .browser(let route):
+            return "browser:\(route.id)"
+        }
+    }
+}
+
+private struct WikiRouteSheetModifier: ViewModifier {
+    @Binding var presentation: WikiRoutePresentation?
+    let onOpenRoute: (WikiRoute) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $presentation) { presentation in
+                switch presentation {
+                case .native(let route):
+                    WikiNativePageSheet(
+                        route: route,
+                        onOpenWeb: { route in
+                            self.presentation = .browser(route)
+                        },
+                        onOpenRoute: onOpenRoute
+                    )
+                case .browser(let route):
+                    WikiBrowserSheet(route: route)
+                }
+            }
+    }
+}
+
 struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
     private let transcriptMessageSpacing = ChatTranscriptSpacing.message
@@ -86,6 +123,7 @@ struct ChatView: View {
     @State private var selectableResponseText: SelectableResponseText?
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
+    @State private var wikiRoutePresentation: WikiRoutePresentation?
     @State private var pendingProfileSelection: ProfileSummary?
     @State private var showProfileNewSessionConfirmation = false
     @State private var goalDraft = ""
@@ -268,6 +306,10 @@ struct ChatView: View {
     }
 
     var body: some View {
+        chatPresentationContent
+    }
+
+    private var chatRootContent: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
                 if viewModel.isViewingCachedData {
@@ -315,12 +357,20 @@ struct ChatView: View {
                 .zIndex(10)
             }
         }
+    }
+
+    private var chatChromeContent: some View {
+        chatRootContent
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
         .zoraBrandedScreen()
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var chatLifecycleContent: some View {
+        chatChromeContent
         .task {
             viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
             if loadsInitialMessages {
@@ -393,39 +443,12 @@ struct ChatView: View {
                 guard viewModel.responseCompletionHapticTrigger > 0 else { return }
                 handleResponseCompletionSideEffects()
             }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ChatToolbarTitleLabel(
-                        title: displayTitle,
-                        subtitle: headerSubtitle
-                    )
-                }
+    }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    ChatToolbarActionCluster {
-                        if viewModel.hasActivatedGoalCommand {
-                            ChatToolbarActionSlot {
-                                goalControlMenu
-                            }
-                        }
-
-                        ChatToolbarActionSlot {
-                            NavigationLink {
-                                FileBrowserView(session: session, server: server, onAPIError: onAPIError)
-                            } label: {
-                                Label("Files", systemImage: "folder")
-                            }
-                            .disabled(viewModel.isViewingCachedData)
-                            .accessibilityLabel("Files")
-                        }
-
-                        if gitAvailabilityViewModel.hasRepository {
-                            ChatToolbarActionSlot {
-                                gitActionsMenu
-                            }
-                        }
-                    }
-                }
+    private var chatPresentationContent: some View {
+        chatLifecycleContent
+        .toolbar {
+                chatToolbarContent
             }
             .navigationDestination(item: $forkedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
@@ -453,6 +476,10 @@ struct ChatView: View {
                     onAPIError: onAPIError
                 )
             }
+            .modifier(WikiRouteSheetModifier(
+                presentation: $wikiRoutePresentation,
+                onOpenRoute: presentWikiRoute
+            ))
             .sheet(item: $activeGitSheet, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
             .alert(item: $gitAlert, content: gitAlertPresentation)
@@ -543,6 +570,42 @@ struct ChatView: View {
 
     private var gitAvailabilityTaskID: String {
         "\(session.id)|\(server.absoluteString)"
+    }
+
+    @ToolbarContentBuilder
+    private var chatToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            ChatToolbarTitleLabel(
+                title: displayTitle,
+                subtitle: headerSubtitle
+            )
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            ChatToolbarActionCluster {
+                if viewModel.hasActivatedGoalCommand {
+                    ChatToolbarActionSlot {
+                        goalControlMenu
+                    }
+                }
+
+                ChatToolbarActionSlot {
+                    NavigationLink {
+                        FileBrowserView(session: session, server: server, onAPIError: onAPIError)
+                    } label: {
+                        Label("Files", systemImage: "folder")
+                    }
+                    .disabled(viewModel.isViewingCachedData)
+                    .accessibilityLabel("Files")
+                }
+
+                if gitAvailabilityViewModel.hasRepository {
+                    ChatToolbarActionSlot {
+                        gitActionsMenu
+                    }
+                }
+            }
+        }
     }
 
     private var gitWriteAvailability: GitWriteAvailability {
@@ -656,6 +719,14 @@ struct ChatView: View {
         let files = summary?.diffFiles ?? []
         guard !files.isEmpty else { return }
         turnDiffPresentation = .turnFiles(files)
+    }
+
+    private func presentWikiRoute(_ route: WikiRoute) {
+        if route.prefersNativeRendering {
+            wikiRoutePresentation = .native(route)
+        } else {
+            wikiRoutePresentation = .browser(route)
+        }
     }
 
     @MainActor
@@ -892,6 +963,7 @@ struct ChatView: View {
             onPreviewTranscriptMedia: { reference in
                 transcriptMediaPreviewItem = TranscriptMediaPreviewItem(reference: reference)
             },
+            onOpenWikiRoute: presentWikiRoute,
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
             },

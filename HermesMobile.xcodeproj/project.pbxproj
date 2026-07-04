@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C0DE57000000000000000001 /* WikiLinking.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57000000000000000002 /* WikiLinking.swift */; };
+		C0DE57000000000000000003 /* WikiBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57000000000000000004 /* WikiBrowserView.swift */; };
+		C0DE57000000000000000006 /* WikiLinkingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57000000000000000007 /* WikiLinkingTests.swift */; };
 		031031031031031031031001 /* MarkdownMathSegmenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031002 /* MarkdownMathSegmenter.swift */; };
 		031031031031031031031003 /* MarkdownMathRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031004 /* MarkdownMathRendererTests.swift */; };
 		031031031031031031031005 /* MarkdownMathFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031006 /* MarkdownMathFormatter.swift */; };
@@ -359,6 +362,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C0DE57000000000000000002 /* WikiLinking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLinking.swift; sourceTree = "<group>"; };
+		C0DE57000000000000000004 /* WikiBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBrowserView.swift; sourceTree = "<group>"; };
+		C0DE57000000000000000007 /* WikiLinkingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLinkingTests.swift; sourceTree = "<group>"; };
 		0485E1E1FFB64A24BB729CD4 /* SlashCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandTests.swift; sourceTree = "<group>"; };
 		351C0F1600000000000000A1 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Shared.xcconfig; path = Config/Shared.xcconfig; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000301 /* ServerAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAccount.swift; sourceTree = "<group>"; };
@@ -936,6 +942,7 @@
 				1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */,
 				105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */,
 				0485E1E1FFB64A24BB729CD4 /* SlashCommandTests.swift */,
+				C0DE57000000000000000007 /* WikiLinkingTests.swift */,
 				6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */,
 				A710739233F64F4FA4C2B711 /* ComposerVoiceDraftComposerTests.swift */,
 				C5A0D8F5502048B6B9258B00 /* InsightsViewModelTests.swift */,
@@ -1031,11 +1038,21 @@
 				1A2B3C4D5E6F7000000000F7 /* Settings */,
 				B5A100000000000000000050 /* Share */,
 				3F91D2A54B9A4F66A2C01020 /* Tasks */,
+				C0DE57000000000000000005 /* Wiki */,
 				1A2B3C4D5E6F70000000216 /* Skills */,
 				1A2B3C4D5E6F70000000206 /* Memory */,
 				B50E1CE3A8912B92B1924714 /* Insights */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		C0DE57000000000000000005 /* Wiki */ = {
+			isa = PBXGroup;
+			children = (
+				C0DE57000000000000000004 /* WikiBrowserView.swift */,
+				C0DE57000000000000000002 /* WikiLinking.swift */,
+			);
+			path = Wiki;
 			sourceTree = "<group>";
 		};
 		1A2B3C4D5E6F7000000000C4 /* Onboarding */ = {
@@ -1322,6 +1339,7 @@
 			children = (
 				C09300000000000000000002 /* HapticButton.swift */,
 				C09500000000000000000002 /* AdaptiveGlassModifier.swift */,
+				C0DE90000000000000000002 /* ZoraUIPrimitives.swift */,
 				C09500000000000000000006 /* AdaptiveGlassDebugFixture.swift */,
 				C0FF000000000000000000B2 /* CustomHeadersEditor.swift */,
 			);
@@ -1682,6 +1700,8 @@
 				A02400000000000000000001 /* Goal.swift in Sources */,
 				3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */,
 				3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */,
+				C0DE57000000000000000001 /* WikiLinking.swift in Sources */,
+				C0DE57000000000000000003 /* WikiBrowserView.swift in Sources */,
 				3F91D2A54B9A4F66A2C01003 /* TasksViewModel.swift in Sources */,
 				3F91D2A54B9A4F66A2C01004 /* TaskDetailView.swift in Sources */,
 				3F91D2A54B9A4F66A2C01005 /* TaskDetailViewModel.swift in Sources */,
@@ -1775,6 +1795,7 @@
 				1A2B3C4D5E6F70000000141 /* ModelFavoritesStoreTests.swift in Sources */,
 				105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */,
 				8F63EE9A9B344C4FA579D5A8 /* SlashCommandTests.swift in Sources */,
+				C0DE57000000000000000006 /* WikiLinkingTests.swift in Sources */,
 				0D82B28493C6401D98DA9C0E /* SlashCommandExecutorTests.swift in Sources */,
 				A710739233F64F4FA4C2B701 /* ComposerVoiceDraftComposerTests.swift in Sources */,
 				C5A0D8F5502048B6B9258B01 /* InsightsViewModelTests.swift in Sources */,

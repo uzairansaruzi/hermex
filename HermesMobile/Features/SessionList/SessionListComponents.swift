@@ -78,6 +78,10 @@ struct SessionSidebarUtilityRows: View {
             activeProfileOptionRows
         }
 
+        wikiRow
+            .padding(.top, Self.rowSpacing)
+            .sessionsScreenListRow()
+
         projectsHeader
             .padding(.top, Self.rowSpacing)
             .sessionsScreenListRow()
@@ -148,6 +152,17 @@ struct SessionSidebarUtilityRows: View {
                 }
             }
         }
+    }
+
+    private var wikiRow: some View {
+        SidebarNavigationSubrow(
+            title: String(localized: "Wiki"),
+            subtitle: String(localized: "Pages and wiki apps"),
+            assetImage: "LucideBrain"
+        ) {
+            openDestination(.wiki)
+        }
+        .padding(.horizontal, 24)
     }
 
     private var projectsHeader: some View {

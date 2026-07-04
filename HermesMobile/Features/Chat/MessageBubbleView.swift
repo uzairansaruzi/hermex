@@ -17,6 +17,7 @@ struct MessageBubbleView: View {
     let localAttachmentPreviews: [String: Data]?
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
+    let onOpenWikiRoute: ((WikiRoute) -> Void)?
     let isStreaming: Bool
 
     @State private var isUserBubbleExpanded = false
@@ -29,6 +30,7 @@ struct MessageBubbleView: View {
         localAttachmentPreviews: [String: Data]? = nil,
         onPreviewAttachment: ((MessageAttachment, Data?) -> Void)? = nil,
         onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
+        onOpenWikiRoute: ((WikiRoute) -> Void)? = nil,
         isStreaming: Bool = false
     ) {
         self.message = message
@@ -38,6 +40,7 @@ struct MessageBubbleView: View {
         self.localAttachmentPreviews = localAttachmentPreviews
         self.onPreviewAttachment = onPreviewAttachment
         self.onPreviewTranscriptMedia = onPreviewTranscriptMedia
+        self.onOpenWikiRoute = onOpenWikiRoute
         self.isStreaming = isStreaming
     }
 
@@ -94,7 +97,7 @@ struct MessageBubbleView: View {
                     isStreaming: isStreaming
                 )
             } else {
-                MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+                MarkdownRenderer(content: messageText, isStreaming: isStreaming, onOpenWikiRoute: onOpenWikiRoute)
             }
 
             linkPreview
@@ -179,7 +182,7 @@ struct MessageBubbleView: View {
                 .frame(width: 28, height: 28)
                 .background(iconColor.opacity(colorScheme == .dark ? 0.18 : 0.12), in: Circle())
 
-            MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+            MarkdownRenderer(content: messageText, isStreaming: isStreaming, onOpenWikiRoute: onOpenWikiRoute)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 12)

@@ -8,12 +8,18 @@ import UIKit
 struct MarkdownRenderer: View {
     let content: String
     let isStreaming: Bool
+    let onOpenWikiRoute: ((WikiRoute) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
 
-    init(content: String, isStreaming: Bool = false) {
+    init(
+        content: String,
+        isStreaming: Bool = false,
+        onOpenWikiRoute: ((WikiRoute) -> Void)? = nil
+    ) {
         self.content = content
         self.isStreaming = isStreaming
+        self.onOpenWikiRoute = onOpenWikiRoute
     }
 
     /// Keeps the streaming renderer mounted briefly after streaming ends so
@@ -24,7 +30,7 @@ struct MarkdownRenderer: View {
     var body: some View {
         Group {
             if isStreaming || lingersAfterStreaming {
-                StreamingMarkdownRenderer(content: content)
+                StreamingMarkdownRenderer(content: content, onOpenWikiRoute: onOpenWikiRoute)
             } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(verbatim: " ")
             } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
@@ -62,7 +68,8 @@ struct MarkdownRenderer: View {
                             ChatMarkdownView(
                                 content: markdown,
                                 colorScheme: colorScheme,
-                                isStreaming: isStreaming
+                                isStreaming: isStreaming,
+                                onOpenWikiRoute: onOpenWikiRoute
                             )
                         }
                     case .displayMath(let latex):
@@ -75,7 +82,8 @@ struct MarkdownRenderer: View {
             ChatMarkdownView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: content),
                 colorScheme: colorScheme,
-                isStreaming: isStreaming
+                isStreaming: isStreaming,
+                onOpenWikiRoute: onOpenWikiRoute
             )
             .textSelection(.enabled)
         }
@@ -84,12 +92,14 @@ struct MarkdownRenderer: View {
 
 struct StreamingMarkdownRenderer: View {
     let content: String
+    let onOpenWikiRoute: ((WikiRoute) -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var displayedContent: String
 
-    init(content: String) {
+    init(content: String, onOpenWikiRoute: ((WikiRoute) -> Void)? = nil) {
         self.content = content
+        self.onOpenWikiRoute = onOpenWikiRoute
         _displayedContent = State(initialValue: content)
     }
 
@@ -126,7 +136,8 @@ struct StreamingMarkdownRenderer: View {
                         if !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             StreamingMarkdownChunkedView(
                                 content: markdown,
-                                colorScheme: colorScheme
+                                colorScheme: colorScheme,
+                                onOpenWikiRoute: onOpenWikiRoute
                             )
                         }
                     case .displayMath(let latex):
@@ -137,7 +148,8 @@ struct StreamingMarkdownRenderer: View {
         } else {
             StreamingMarkdownChunkedView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: displayedContent),
-                colorScheme: colorScheme
+                colorScheme: colorScheme,
+                onOpenWikiRoute: onOpenWikiRoute
             )
         }
     }
@@ -147,6 +159,7 @@ struct StreamingMarkdownRenderer: View {
 private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
+    let onOpenWikiRoute: ((WikiRoute) -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
@@ -185,7 +198,8 @@ private struct StreamingMarkdownChunkedView: View {
                 ChatMarkdownView(
                     content: chunk.text,
                     colorScheme: colorScheme,
-                    isStreaming: false
+                    isStreaming: false,
+                    onOpenWikiRoute: onOpenWikiRoute
                 )
             }
 
@@ -193,7 +207,8 @@ private struct StreamingMarkdownChunkedView: View {
                 ChatMarkdownView(
                     content: blockSplit.head,
                     colorScheme: colorScheme,
-                    isStreaming: true
+                    isStreaming: true,
+                    onOpenWikiRoute: onOpenWikiRoute
                 )
             }
 
@@ -208,6 +223,7 @@ private struct StreamingMarkdownChunkedView: View {
                             StreamingFadeBlockView(
                                 text: block.text,
                                 colorScheme: colorScheme,
+                                onOpenWikiRoute: onOpenWikiRoute,
                                 fadeEnabled: block.fadeEnabled,
                                 armOnAppear: block.ordinal > mountBoundaryCount,
                                 clock: context.date.timeIntervalSinceReferenceDate,
@@ -305,6 +321,7 @@ private struct StreamingMarkdownChunkedView: View {
 private struct StreamingFadeBlockView: View {
     let text: String
     let colorScheme: ColorScheme
+    let onOpenWikiRoute: ((WikiRoute) -> Void)?
     let fadeEnabled: Bool
     let armOnAppear: Bool
     let clock: TimeInterval
@@ -314,6 +331,7 @@ private struct StreamingFadeBlockView: View {
     init(
         text: String,
         colorScheme: ColorScheme,
+        onOpenWikiRoute: ((WikiRoute) -> Void)? = nil,
         fadeEnabled: Bool,
         armOnAppear: Bool,
         clock: TimeInterval,
@@ -321,6 +339,7 @@ private struct StreamingFadeBlockView: View {
     ) {
         self.text = text
         self.colorScheme = colorScheme
+        self.onOpenWikiRoute = onOpenWikiRoute
         self.fadeEnabled = fadeEnabled
         self.armOnAppear = armOnAppear
         self.clock = clock
@@ -334,14 +353,16 @@ private struct StreamingFadeBlockView: View {
                     ChatMarkdownView(
                         content: text,
                         colorScheme: colorScheme,
-                        isStreaming: true
+                        isStreaming: true,
+                        onOpenWikiRoute: onOpenWikiRoute
                     )
                     .textRenderer(StreamingTextFadeRenderer(clock: clock, store: store))
                 } else {
                     ChatMarkdownView(
                         content: text,
                         colorScheme: colorScheme,
-                        isStreaming: true
+                        isStreaming: true,
+                        onOpenWikiRoute: onOpenWikiRoute
                     )
                 }
             }
@@ -361,9 +382,14 @@ private struct ChatMarkdownView: View {
     let content: String
     let colorScheme: ColorScheme
     let isStreaming: Bool
+    let onOpenWikiRoute: ((WikiRoute) -> Void)?
+
+    private var displayContent: String {
+        WikiWikilinkPreprocessor.replacingWikilinks(in: content)
+    }
 
     var body: some View {
-        Markdown(content)
+        Markdown(displayContent)
             .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
             .markdownTextStyle {
                 ForegroundColor(.primary)
@@ -398,6 +424,13 @@ private struct ChatMarkdownView: View {
                 }
                 .markdownMargin(top: ChatTranscriptSpacing.turnBlock, bottom: ChatTranscriptSpacing.markdownBlock)
             }
+            .environment(\.openURL, OpenURLAction { url in
+                guard let route = WikiLinkResolver.resolve(url) else {
+                    return .systemAction
+                }
+                onOpenWikiRoute?(route)
+                return .handled
+            })
     }
 }
 

@@ -226,6 +226,8 @@ struct SessionListView: View {
             )
         case .tasks:
             TasksView(server: server, onAPIError: authManager.handleAPIError)
+        case .wiki:
+            WikiBrowserView(initialRoute: WikiRoute(kind: .app(path: "/apps")))
         }
     }
 
@@ -1228,6 +1230,7 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     /// passes `.servers`, a plain avatar tap passes `nil` (#283).
     case settings(SettingsScrollAnchor?)
     case tasks
+    case wiki
 
     var id: Self { self }
 }
