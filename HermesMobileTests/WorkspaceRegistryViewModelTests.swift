@@ -295,6 +295,125 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
     }
 
     @MainActor
+    func testMutationOkFalseIsTreatedAsFailure() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse(Self.twoWorkspacesJSON, for: request)
+            case "/api/workspaces/add":
+                // HTTP 200, but the body reports failure. Upstream uses non-2xx
+                // for failures today, yet the routes are undocumented — an
+                // explicit `ok: false` must never be presented as a success.
+                return apiTestJSONResponse(
+                    #"{"ok": false, "error": "Workspace already in list"}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let model = WorkspaceRegistryViewModel(client: client)
+        await model.load()
+
+        let succeeded = await model.addWorkspace(path: "/Users/test/alpha", name: nil, create: false)
+
+        XCTAssertFalse(succeeded)
+        XCTAssertFalse(model.didMutateRegistry)
+        XCTAssertTrue(model.errorMessage?.contains("Workspace already in list") == true)
+        XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha", "/Users/test/beta"])
+        XCTAssertFalse(model.isMutating)
+    }
+
+    @MainActor
+    func testStaleReorderResponseDoesNotClobberNewerOrder() async throws {
+        let threeWorkspacesJSON = """
+        {
+          "workspaces": [
+            {"path": "/Users/test/alpha", "name": "Alpha"},
+            {"path": "/Users/test/beta", "name": "Beta"},
+            {"path": "/Users/test/gamma", "name": "Gamma"}
+          ]
+        }
+        """
+        // First reorder ([beta, gamma, alpha]) is held back so the second one
+        // ([gamma, alpha, beta]) supersedes it before its stale echo lands.
+        // Whether the hold ends via the signal or the bounded timeout (the mock
+        // URL loading may serialize the two requests), the stale echo is always
+        // processed after the newer reorder began — the generation guard must
+        // ignore it.
+        let firstReorderStarted = expectation(description: "first reorder request in flight")
+        let releaseFirstReorder = DispatchSemaphore(value: 0)
+        var reorderCallCount = 0
+
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse(threeWorkspacesJSON, for: request)
+            case "/api/workspaces/reorder":
+                reorderCallCount += 1
+                if reorderCallCount == 1 {
+                    firstReorderStarted.fulfill()
+                    _ = releaseFirstReorder.wait(timeout: .now() + 2)
+                    return apiTestJSONResponse("""
+                    {
+                      "ok": true,
+                      "workspaces": [
+                        {"path": "/Users/test/beta", "name": "Beta"},
+                        {"path": "/Users/test/gamma", "name": "Gamma"},
+                        {"path": "/Users/test/alpha", "name": "Alpha"}
+                      ]
+                    }
+                    """, for: request)
+                }
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "workspaces": [
+                    {"path": "/Users/test/gamma", "name": "Gamma"},
+                    {"path": "/Users/test/alpha", "name": "Alpha"},
+                    {"path": "/Users/test/beta", "name": "Beta"}
+                  ]
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let model = WorkspaceRegistryViewModel(client: client)
+        await model.load()
+
+        // Move 1: alpha to the end → [beta, gamma, alpha]; response is held.
+        let firstMove = Task { @MainActor in
+            await model.moveWorkspaces(fromOffsets: IndexSet(integer: 0), toOffset: 3)
+        }
+        await fulfillment(of: [firstReorderStarted], timeout: 2)
+        XCTAssertTrue(model.isMutating)
+
+        // Move 2 (overlapping): beta to the end → [gamma, alpha, beta];
+        // completes while move 1 is still awaiting its response.
+        let secondSucceeded = await model.moveWorkspaces(fromOffsets: IndexSet(integer: 0), toOffset: 3)
+        XCTAssertTrue(secondSucceeded)
+        XCTAssertEqual(
+            model.rows.map(\.path),
+            ["/Users/test/gamma", "/Users/test/alpha", "/Users/test/beta"]
+        )
+
+        // Release the stale first response; it must not overwrite the order.
+        releaseFirstReorder.signal()
+        let firstSucceeded = await firstMove.value
+        XCTAssertTrue(firstSucceeded)
+        XCTAssertEqual(
+            model.rows.map(\.path),
+            ["/Users/test/gamma", "/Users/test/alpha", "/Users/test/beta"],
+            "A stale reorder echo must not clobber a newer ordering."
+        )
+        XCTAssertFalse(model.isMutating, "isMutating must stay true until the last overlapping mutation settles, then clear.")
+        XCTAssertTrue(model.didMutateRegistry)
+    }
+
+    @MainActor
     func testMutationWithoutWorkspacesEchoRefetchesList() async throws {
         var workspacesLoadCount = 0
         let client = makeClient { request in

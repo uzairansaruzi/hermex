@@ -29,6 +29,16 @@ final class WorkspaceRegistryViewModel {
 
     private let client: APIClient
 
+    /// Monotonic token for reorder requests: because `@MainActor` methods are
+    /// reentrant across network awaits, a slow older reorder response could
+    /// land after a newer one and overwrite the user's latest ordering. Each
+    /// reorder bumps this; only the most recent one may apply its result.
+    private var reorderGeneration = 0
+
+    /// Count of in-flight mutations, so `isMutating` stays true until the last
+    /// overlapping mutation settles instead of flipping off when the first does.
+    private var inFlightMutations = 0
+
     init(server: URL) {
         client = APIClient(baseURL: server)
     }
@@ -134,10 +144,13 @@ final class WorkspaceRegistryViewModel {
         }
         guard !paths.isEmpty else { return false }
 
-        let succeeded = await performMutation {
+        reorderGeneration += 1
+        let generation = reorderGeneration
+
+        let succeeded = await performMutation(isStale: { generation != self.reorderGeneration }) {
             try await self.client.reorderWorkspaces(paths: paths)
         }
-        if !succeeded {
+        if !succeeded, generation == reorderGeneration {
             // Refetch so local order never drifts from the server, but keep the
             // reorder failure visible (load() clears error state on entry).
             let failureMessage = errorMessage
@@ -153,15 +166,35 @@ final class WorkspaceRegistryViewModel {
 
     // MARK: - Helpers
 
-    private func performMutation(_ operation: @escaping () async throws -> WorkspaceMutationResponse) async -> Bool {
+    /// Runs one mutation call and applies its outcome. `isStale` is checked
+    /// after the await: a stale mutation (a newer reorder superseded it) must
+    /// not apply its echo, refetch, or overwrite error state.
+    private func performMutation(
+        isStale: @escaping () -> Bool = { false },
+        _ operation: @escaping () async throws -> WorkspaceMutationResponse
+    ) async -> Bool {
+        inFlightMutations += 1
         isMutating = true
         errorMessage = nil
         lastError = nil
-        defer { isMutating = false }
+        defer {
+            inFlightMutations -= 1
+            isMutating = inFlightMutations > 0
+        }
 
         do {
             let response = try await operation()
+            // These undocumented routes signal failure via non-2xx today, but
+            // the body explicitly carries `ok`/`error` — honor a 2xx that
+            // reports `ok: false` as a failure instead of a success.
+            if response.ok == false {
+                if !isStale() {
+                    record(WorkspaceMutationRejection(serverMessage: response.error))
+                }
+                return false
+            }
             didMutateRegistry = true
+            guard !isStale() else { return true }
             if let updated = response.workspaces {
                 workspaces = updated
             } else {
@@ -169,7 +202,9 @@ final class WorkspaceRegistryViewModel {
             }
             return true
         } catch {
-            record(error)
+            if !isStale() {
+                record(error)
+            }
             return false
         }
     }

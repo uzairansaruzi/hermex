@@ -47,7 +47,13 @@ struct WorkspaceManagerView: View {
                 if !viewModel.rows.isEmpty {
                     Section {
                         ForEach(viewModel.rows, id: \.path) { workspace in
+                            // moveDisabled blocks new drags while a mutation is
+                            // in flight: actor reentrancy across the network
+                            // await would otherwise let overlapping reorders
+                            // race (the view model's generation guard is the
+                            // second line of defense).
                             workspaceRow(workspace)
+                                .moveDisabled(viewModel.isMutating)
                         }
                         .onMove { source, destination in
                             Task {

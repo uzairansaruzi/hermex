@@ -43,6 +43,22 @@ struct WorkspaceMutationResponse: Decodable, Equatable {
     let error: String?
 }
 
+/// Surfaced when a mutation route answers with HTTP success but reports
+/// `ok: false` in the body. Upstream signals failure via non-2xx today, but
+/// these routes are undocumented, so an explicit body-level failure must not
+/// be presented as a success. Reuses the phrasing (and localization keys) of
+/// `APIError`'s 400 handling.
+struct WorkspaceMutationRejection: LocalizedError, Equatable {
+    let serverMessage: String?
+
+    var errorDescription: String? {
+        if let serverMessage, !serverMessage.isEmpty {
+            return String(localized: "The server rejected the request: \(serverMessage)")
+        }
+        return String(localized: "The server rejected the request.")
+    }
+}
+
 struct AddWorkspaceRequest: Encodable, Equatable {
     let path: String
     let name: String?
