@@ -46,6 +46,9 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 ## Tooling
 - The maintainer works in **VS Code**, not the Xcode UI — prefer terminal validation;
   ask to open Xcode only when the terminal can't answer.
+- Repo-local skills live under `skills/`. When a task matches one, read its
+  `SKILL.md` before editing. For device-family, iPad, Mac Designed-for-iPhone/iPad,
+  or wide-layout changes, use `skills/ios/hermex-ios-form-factors/SKILL.md`.
 - Use **XcodeBuildMCP** for simulator build/test/run/log; fall back to raw
   `xcodebuild`/`xcrun simctl` for release/archive or low-level diagnosis. Defaults live
   in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that
