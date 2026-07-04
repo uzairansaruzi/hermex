@@ -496,7 +496,7 @@
 		C0FF000000000000000000B2 /* CustomHeadersEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomHeadersEditor.swift; sourceTree = "<group>"; };
 		C09300000000000000000004 /* HapticButtonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticButtonTests.swift; sourceTree = "<group>"; };
 		C09500000000000000000002 /* AdaptiveGlassModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveGlassModifier.swift; sourceTree = "<group>"; };
-		C0DE90000000000000000002 /* ZoraUIPrimitives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoraUIPrimitives.swift; sourceTree = "<group>"; };
+		C0DE90000000000000000002 /* ZoraUIPrimitives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Features/Shared/ZoraUIPrimitives.swift; sourceTree = SOURCE_ROOT; };
 		C09500000000000000000004 /* AdaptiveGlassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveGlassTests.swift; sourceTree = "<group>"; };
 		C09500000000000000000006 /* AdaptiveGlassDebugFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveGlassDebugFixture.swift; sourceTree = "<group>"; };
 		FEEDBA000000000000000002 /* ShakeToReportFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShakeToReportFeedback.swift; sourceTree = "<group>"; };

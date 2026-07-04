@@ -89,7 +89,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(prompt.contains("tailscale serve --bg 8787"))
         XCTAssertTrue(prompt.contains("curl http://$(tailscale ip -4):8787/health"))
         XCTAssertTrue(prompt.contains("Do not use Cloudflare. Optimize for Tailscale + iPhone."))
-        XCTAssertTrue(prompt.contains("Hermex"))
+        XCTAssertTrue(prompt.contains("Zora"))
     }
 
     func testTailscaleAppStoreURLUsesITMSDeepLink() {
