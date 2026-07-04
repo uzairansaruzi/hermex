@@ -28,6 +28,13 @@ final class ChatToolbarHeaderTests: XCTestCase {
         XCTAssertNil(ChatToolbarSubtitleResolver.subtitle(workspacePath: "   ", profileTitle: "   "))
     }
 
+    func testReferenceDraftIncludesChatID() {
+        XCTAssertEqual(
+            ChatReferenceDraftBuilder.prompt(for: "session-abc123"),
+            "Reference chat ID: session-abc123"
+        )
+    }
+
     func testHeaderGradientSolidRegionCoversHeaderBarBottom() {
         let topSafeAreaInset: CGFloat = 59
         let headerBarBottom = topSafeAreaInset + ChatHeaderBackgroundGradientLayout.inlineHeaderBarHeight

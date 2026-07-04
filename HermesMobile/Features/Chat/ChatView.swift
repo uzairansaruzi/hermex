@@ -619,6 +619,10 @@ struct ChatView: View {
                 }
 
                 ChatToolbarActionSlot {
+                    chatActionsMenu
+                }
+
+                ChatToolbarActionSlot {
                     NavigationLink {
                         FileBrowserView(session: session, server: server, onAPIError: onAPIError)
                     } label: {
@@ -642,6 +646,38 @@ struct ChatView: View {
             isStreaming: viewModel.activeStreamID != nil,
             isViewingCachedData: viewModel.isViewingCachedData
         )
+    }
+
+    private var chatActionsMenu: some View {
+        Menu {
+            Button {
+                copyChatID()
+            } label: {
+                Label("Copy Chat ID", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                referenceChatInNewChat()
+            } label: {
+                Label("Reference in New Chat", systemImage: "square.and.pencil")
+            }
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .accessibilityLabel("Chat actions")
+        .accessibilityHint("Shows actions for copying or referencing this chat.")
+    }
+
+    private func copyChatID() {
+        UIPasteboard.general.string = session.id
+        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+    }
+
+    @MainActor
+    private func referenceChatInNewChat() {
+        let prompt = ChatReferenceDraftBuilder.prompt(for: session.id)
+        AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newChatLaunchURL(prompt: prompt))
+        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
     }
 
     @ViewBuilder
@@ -2106,6 +2142,12 @@ private struct ChildSessionsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+enum ChatReferenceDraftBuilder {
+    static func prompt(for sessionID: String) -> String {
+        "Reference chat ID: \(sessionID)"
     }
 }
 
