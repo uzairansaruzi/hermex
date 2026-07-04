@@ -1004,6 +1004,7 @@ private struct PendingNewChatView: View {
     @State private var createdSession: SessionSummary?
     @State private var draftMessage = ""
     @State private var didStartCreation = false
+    @State private var didRequestComposerFocus = false
     @State private var creationErrorMessage: String?
     @FocusState private var composerIsFocused: Bool
 
@@ -1161,8 +1162,14 @@ private struct PendingNewChatView: View {
     }
 
     private func requestPendingComposerFocus() {
+        guard !didRequestComposerFocus else { return }
+        didRequestComposerFocus = true
+
         Task { @MainActor in
-            await Task.yield()
+            // Focusing while the navigation push is still animating makes the
+            // keyboard slide in horizontally along with the view. Wait for the
+            // push transition to settle before raising the keyboard (#53).
+            try? await Task.sleep(for: .milliseconds(450))
             guard createdSession == nil else { return }
             composerIsFocused = true
         }

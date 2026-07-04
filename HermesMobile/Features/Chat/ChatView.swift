@@ -1759,7 +1759,7 @@ struct ChatView: View {
 
         guard viewModel.errorMessage == nil, canFocusComposer else { return }
         didApplyInitialComposerFocusPolicy = true
-        requestComposerFocusIfPossible()
+        requestComposerFocusIfPossible(waitingForPushToSettle: true)
     }
 
     private func presentPreviewRestoringComposerFocusIfNeeded(_ present: () -> Void) {
@@ -1776,11 +1776,18 @@ struct ChatView: View {
         requestComposerFocusIfPossible()
     }
 
-    private func requestComposerFocusIfPossible() {
+    private func requestComposerFocusIfPossible(waitingForPushToSettle: Bool = false) {
         guard canFocusComposer else { return }
 
         Task { @MainActor in
-            await Task.yield()
+            if waitingForPushToSettle {
+                // The initial focus can land while the navigation push is
+                // still animating, which makes the keyboard slide in sideways
+                // with the view. Wait for the transition to settle (#53).
+                try? await Task.sleep(for: .milliseconds(450))
+            } else {
+                await Task.yield()
+            }
             guard canFocusComposer else { return }
             composerIsFocused = true
         }
