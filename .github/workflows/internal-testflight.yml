@@ -224,7 +224,6 @@ jobs:
             -derivedDataPath "${DERIVED_DATA_PATH}" \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
             archive
 
       - name: Upload to App Store Connect
