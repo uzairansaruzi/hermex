@@ -662,6 +662,21 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.showCliSessions, false)
     }
 
+
+    func testCliSessionVisibilityStorageKeyIsServerScoped() throws {
+        let first = try XCTUnwrap(URL(string: "https://one.example.test/"))
+        let second = try XCTUnwrap(URL(string: "https://two.example.test"))
+
+        XCTAssertNotEqual(
+            SettingsView.showCliSessionsStorageKey(for: first),
+            SettingsView.showCliSessionsStorageKey(for: second)
+        )
+        XCTAssertEqual(
+            SettingsView.showCliSessionsStorageKey(for: first),
+            "\(SessionRowDisplaySettings.showCliSessionsKey).https://one.example.test"
+        )
+    }
+
     func testSaveSettingsPostsCliSessionVisibility() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/settings")

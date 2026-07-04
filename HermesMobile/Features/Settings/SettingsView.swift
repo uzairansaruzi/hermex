@@ -19,9 +19,15 @@ struct SettingsView: View {
         self.authManager = authManager
         self.server = server
         self.initialScrollTarget = initialScrollTarget
+        _showsCliSessions = AppStorage(wrappedValue: true, Self.showCliSessionsStorageKey(for: server))
     }
 
     @ScaledMetric(relativeTo: .body) private var settingsCardSpacing: CGFloat = 18
+
+    static func showCliSessionsStorageKey(for server: URL) -> String {
+        let normalizedServer = server.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(SessionRowDisplaySettings.showCliSessionsKey).\(normalizedServer)"
+    }
     @State private var isConfirmingReconfigure = false
     @State private var didScrollToInitialTarget = false
     @State private var isPresentingAddServer = false
@@ -667,7 +673,7 @@ struct SettingsView: View {
                 showsCliSessions = newValue
                 cliSessionsVisibilityError = nil
                 Task {
-                    await saveCliSessionsVisibility(newValue, fallback: previousValue)
+                    await saveCliSessionsVisibility(newValue, fallback: previousValue, server: server)
                 }
             }
         )
@@ -933,16 +939,18 @@ struct SettingsView: View {
         isLoadingDefaultProfile = false
     }
 
-    private func saveCliSessionsVisibility(_ isVisible: Bool, fallback previousValue: Bool) async {
+    private func saveCliSessionsVisibility(_ isVisible: Bool, fallback previousValue: Bool, server expectedServer: URL) async {
         guard !isSavingCliSessionsVisibility else { return }
         isSavingCliSessionsVisibility = true
         defer { isSavingCliSessionsVisibility = false }
 
         do {
-            let response = try await APIClient(baseURL: server).saveSettings(showCliSessions: isVisible)
+            let response = try await APIClient(baseURL: expectedServer).saveSettings(showCliSessions: isVisible)
+            guard !Task.isCancelled, server == expectedServer else { return }
             showsCliSessions = response.showCliSessions ?? isVisible
             cliSessionsVisibilityError = nil
         } catch {
+            guard !Task.isCancelled, server == expectedServer else { return }
             showsCliSessions = previousValue
             cliSessionsVisibilityError = String(localized: "Could not sync CLI session visibility with the server.")
             authManager.handleAPIError(error)
