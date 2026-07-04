@@ -1755,6 +1755,33 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testArchivedSessionUnarchiveOkFalseWithoutErrorFieldFailsAndRestoresRow() async throws {
+        // An explicit `ok: false` with no `error` string must still be treated
+        // as a failure — reporting success here would permanently drop the row
+        // from the archived list even though the server did not restore it.
+        let viewModel = try makeArchivedViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.archivedSessionListJSON(), for: request)
+            case "/api/session/archive":
+                return apiTestJSONResponse(#"{"ok": false}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let before = viewModel.sessions
+        let didUnarchive = await viewModel.unarchive(try XCTUnwrap(viewModel.sessions.first))
+
+        XCTAssertFalse(didUnarchive)
+        XCTAssertEqual(viewModel.sessions, before)
+        XCTAssertNotNil(viewModel.actionErrorMessage)
+        XCTAssertFalse(viewModel.isUnarchiving)
+    }
+
+    @MainActor
     func testLoadStoresArchivedCountFromResponseForArchivedEntry() async throws {
         let viewModel = try makeViewModel { request in
             XCTAssertEqual(request.url?.path, "/api/sessions")

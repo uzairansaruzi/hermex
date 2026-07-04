@@ -73,10 +73,18 @@ final class ArchivedSessionsViewModel {
             let response = try await client.archiveSession(id: sessionId, archived: false)
             // Rejections (subagent / read-only CLI sessions) arrive as HTTP 400
             // and throw above; a 200 body with an `error` field is surfaced too
-            // so the server's own message is always shown (issue #17).
+            // so the server's own message is always shown (issue #17). An
+            // explicit `ok: false` without an `error` string is still a failure
+            // (matching the `ok != false` guard used across the app) — only a
+            // missing `ok` is treated as success, per tolerant decoding.
             if let error = Self.nonEmpty(response.error) {
                 restore(removedSession)
                 actionErrorMessage = error
+                return false
+            }
+            if response.ok == false {
+                restore(removedSession)
+                actionErrorMessage = String(localized: "The server could not unarchive this session.")
                 return false
             }
             return true
