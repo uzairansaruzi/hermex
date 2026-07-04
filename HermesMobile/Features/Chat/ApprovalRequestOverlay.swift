@@ -7,6 +7,7 @@ struct ApprovalRequestOverlay: View {
     let errorMessage: String?
     let onChoice: (ApprovalChoice) -> Void
     let onSkipAll: () -> Void
+    let onDismissExpired: () -> Void
 
     var body: some View {
         ZStack {
@@ -101,6 +102,16 @@ struct ApprovalRequestOverlay: View {
 
     private var actions: some View {
         VStack(spacing: 8) {
+            if prompt.isExpired {
+                Button {
+                    onDismissExpired()
+                } label: {
+                    Label("Dismiss expired request", systemImage: "xmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.chatDecision(.secondary))
+            }
+
             HStack(spacing: 8) {
                 approvalButton("Allow once", systemImage: "checkmark.circle.fill", choice: .once, prominent: true)
                 approvalButton("Allow session", systemImage: "lock.open", choice: .session, prominent: false)

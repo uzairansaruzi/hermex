@@ -1019,6 +1019,11 @@ final class ChatViewModelSendTests: XCTestCase {
             "That approval request expired. Wait for the agent to ask again if needed."
         )
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+
+        viewModel.dismissExpiredApprovalPrompt()
+
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertNil(viewModel.approvalErrorMessage)
     }
 
     @MainActor

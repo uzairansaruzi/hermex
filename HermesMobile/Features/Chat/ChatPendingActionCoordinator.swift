@@ -155,6 +155,12 @@ final class ChatPendingActionCoordinator {
         stopClarificationMonitoring(clearPrompt: clearPrompt)
     }
 
+    func dismissExpiredApprovalPrompt() {
+        guard approvalPrompt?.isExpired == true else { return }
+        approvalPrompt = nil
+        approvalErrorMessage = nil
+    }
+
     func applyApprovalUpdate(_ update: ApprovalPendingResponse, sessionID: String) {
         if let pending = update.pending, !pending.isEmpty {
             let prompt = ApprovalPromptState(

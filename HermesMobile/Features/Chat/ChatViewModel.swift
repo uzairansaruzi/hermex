@@ -3381,6 +3381,10 @@ final class ChatViewModel {
         await pendingActionCoordinator.skipApprovalsForCurrentSession()
     }
 
+    func dismissExpiredApprovalPrompt() {
+        pendingActionCoordinator.dismissExpiredApprovalPrompt()
+    }
+
     func applyApprovalUpdate(_ update: ApprovalPendingResponse, sessionID: String) {
         pendingActionCoordinator.applyApprovalUpdate(update, sessionID: sessionID)
     }

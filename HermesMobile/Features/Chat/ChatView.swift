@@ -306,6 +306,9 @@ struct ChatView: View {
                                 ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
                             }
                         }
+                    },
+                    onDismissExpired: {
+                        viewModel.dismissExpiredApprovalPrompt()
                     }
                 )
                 .zIndex(10)
