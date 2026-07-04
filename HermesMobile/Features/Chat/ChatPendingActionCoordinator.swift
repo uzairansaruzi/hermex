@@ -105,13 +105,16 @@ final class ChatPendingActionCoordinator {
         } catch {
             if Self.isStalePendingActionError(error) {
                 approvalPendingBySession[prompt.sessionID] = nil
-                approvalPrompt = ApprovalPromptState(
-                    sessionID: prompt.sessionID,
-                    pending: prompt.pending,
-                    pendingCount: prompt.pendingCount,
-                    isExpired: true
-                )
-                approvalErrorMessage = String(localized: "That approval request expired. Wait for the agent to ask again if needed.")
+                if approvalPrompt?.sessionID == prompt.sessionID,
+                   approvalPrompt?.pending.approvalId == prompt.pending.approvalId {
+                    approvalPrompt = ApprovalPromptState(
+                        sessionID: prompt.sessionID,
+                        pending: prompt.pending,
+                        pendingCount: prompt.pendingCount,
+                        isExpired: true
+                    )
+                    approvalErrorMessage = String(localized: "That approval request expired. Wait for the agent to ask again if needed.")
+                }
                 return false
             }
 
@@ -206,13 +209,16 @@ final class ChatPendingActionCoordinator {
         } catch {
             if Self.isStalePendingActionError(error) {
                 clarificationPendingBySession[prompt.sessionID] = nil
-                clarificationPrompt = ClarificationPromptState(
-                    sessionID: prompt.sessionID,
-                    pending: prompt.pending,
-                    pendingCount: prompt.pendingCount,
-                    isExpired: true
-                )
-                clarificationErrorMessage = String(localized: "That clarification request expired. Wait for the agent to ask again if needed.")
+                if clarificationPrompt?.sessionID == prompt.sessionID,
+                   clarificationPrompt?.pending.clarifyId == prompt.pending.clarifyId {
+                    clarificationPrompt = ClarificationPromptState(
+                        sessionID: prompt.sessionID,
+                        pending: prompt.pending,
+                        pendingCount: prompt.pendingCount,
+                        isExpired: true
+                    )
+                    clarificationErrorMessage = String(localized: "That clarification request expired. Wait for the agent to ask again if needed.")
+                }
                 return false
             }
 
@@ -330,6 +336,9 @@ final class ChatPendingActionCoordinator {
             if approvalPrompt?.sessionID == sessionID {
                 guard approvalPrompt?.isExpired != true else { return }
                 approvalPrompt = nil
+            } else {
+                approvalPrompt = nil
+                approvalErrorMessage = nil
             }
             return
         }
@@ -441,6 +450,9 @@ final class ChatPendingActionCoordinator {
             if clarificationPrompt?.sessionID == sessionID {
                 guard clarificationPrompt?.isExpired != true else { return }
                 clarificationPrompt = nil
+            } else {
+                clarificationPrompt = nil
+                clarificationErrorMessage = nil
             }
             return
         }
