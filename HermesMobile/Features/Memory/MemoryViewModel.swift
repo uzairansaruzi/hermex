@@ -7,6 +7,12 @@ final class MemoryViewModel {
     private(set) var memoryText: String?
     private(set) var userText: String?
     private(set) var soulText: String?
+    private(set) var projectContextText: String?
+    private(set) var projectContextName: String?
+    private(set) var projectContextPath: String?
+    private(set) var projectContextWorkspace: String?
+    private(set) var isProjectContextShadowed = false
+    private(set) var isExternalNotesEnabled = false
     private(set) var memoryMtime: Date?
     private(set) var userMtime: Date?
     private(set) var soulMtime: Date?
@@ -91,6 +97,12 @@ final class MemoryViewModel {
         memoryText = response.memory
         userText = response.user
         soulText = response.soul
+        projectContextText = response.projectContext
+        projectContextName = response.projectContextName
+        projectContextPath = response.projectContextPath
+        projectContextWorkspace = response.projectContextWorkspace
+        isProjectContextShadowed = response.projectContextShadowed == true
+        isExternalNotesEnabled = response.externalNotesEnabled == true
         memoryMtime = response.memoryMtime.map { Date(timeIntervalSince1970: $0) }
         userMtime = response.userMtime.map { Date(timeIntervalSince1970: $0) }
         soulMtime = response.soulMtime.map { Date(timeIntervalSince1970: $0) }

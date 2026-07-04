@@ -18,6 +18,13 @@ struct MemoryResponse: Decodable, Equatable {
     let memoryMtime: Double?
     let userMtime: Double?
     let soulMtime: Double?
+    let projectContext: String?
+    let projectContextName: String?
+    let projectContextPath: String?
+    let projectContextWorkspace: String?
+    let projectContextShadowed: Bool?
+    let projectContextMtime: Double?
+    let externalNotesEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case memory
@@ -29,6 +36,13 @@ struct MemoryResponse: Decodable, Equatable {
         case memoryMtime
         case userMtime
         case soulMtime
+        case projectContext
+        case projectContextName
+        case projectContextPath
+        case projectContextWorkspace
+        case projectContextShadowed
+        case projectContextMtime
+        case externalNotesEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -42,6 +56,13 @@ struct MemoryResponse: Decodable, Equatable {
         memoryMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .memoryMtime)
         userMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .userMtime)
         soulMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .soulMtime)
+        projectContext = try container.decodeIfPresent(String.self, forKey: .projectContext)
+        projectContextName = try container.decodeIfPresent(String.self, forKey: .projectContextName)
+        projectContextPath = try container.decodeIfPresent(String.self, forKey: .projectContextPath)
+        projectContextWorkspace = try container.decodeIfPresent(String.self, forKey: .projectContextWorkspace)
+        projectContextShadowed = try container.decodeIfPresent(Bool.self, forKey: .projectContextShadowed)
+        projectContextMtime = try container.decodeFlexibleDoubleIfPresent(forKey: .projectContextMtime)
+        externalNotesEnabled = try container.decodeIfPresent(Bool.self, forKey: .externalNotesEnabled)
     }
 }
 

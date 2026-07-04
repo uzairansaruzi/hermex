@@ -7,6 +7,36 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class MemoryViewModelTests: XCTestCase {
+    func testMemoryResponseDecodesProjectContextFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            MemoryResponse.self,
+            from: Data("""
+            {
+              "memory": "# Notes",
+              "user": "# User",
+              "soul": "# Soul",
+              "project_context": "# Project",
+              "project_context_name": "AGENTS.md",
+              "project_context_path": "/work/app/AGENTS.md",
+              "project_context_workspace": "/work/app",
+              "project_context_shadowed": true,
+              "project_context_mtime": "1770000300",
+              "external_notes_enabled": true
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(response.projectContext, "# Project")
+        XCTAssertEqual(response.projectContextName, "AGENTS.md")
+        XCTAssertEqual(response.projectContextPath, "/work/app/AGENTS.md")
+        XCTAssertEqual(response.projectContextWorkspace, "/work/app")
+        XCTAssertEqual(response.projectContextShadowed, true)
+        XCTAssertEqual(response.projectContextMtime, 1_770_000_300)
+        XCTAssertEqual(response.externalNotesEnabled, true)
+    }
+
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
         super.tearDown()

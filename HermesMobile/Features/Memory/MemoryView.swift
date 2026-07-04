@@ -85,6 +85,22 @@ struct MemoryView: View {
                         }
                     }
                 }
+
+                if viewModel.projectContextText != nil || viewModel.isExternalNotesEnabled {
+                    Section {
+                        ProjectContextContent(
+                            content: viewModel.projectContextText ?? "",
+                            name: viewModel.projectContextName,
+                            path: viewModel.projectContextPath,
+                            workspace: viewModel.projectContextWorkspace,
+                            isShadowed: viewModel.isProjectContextShadowed,
+                            externalNotesEnabled: viewModel.isExternalNotesEnabled
+                        )
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    } header: {
+                        ProjectContextHeader()
+                    }
+                }
             }
             .refreshable {
                 await loadMemory()
@@ -138,6 +154,73 @@ private struct MemorySectionContent: View {
         } else {
             MarkdownRenderer(content: content)
         }
+    }
+}
+
+private struct ProjectContextHeader: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Label("Project Context", systemImage: "doc.text.magnifyingglass")
+            Spacer()
+            Label("Read only", systemImage: "lock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct ProjectContextContent: View {
+    let content: String
+    let name: String?
+    let path: String?
+    let workspace: String?
+    let isShadowed: Bool
+    let externalNotesEnabled: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let metadataText {
+                Text(metadataText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            if isShadowed {
+                Label("A workspace-local file is overriding the global project context.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            if externalNotesEnabled {
+                Label("External notes are enabled on this server.", systemImage: "note.text")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("No project context is active.")
+                    .foregroundStyle(.secondary)
+                    .italic()
+            } else {
+                MarkdownRenderer(content: content)
+            }
+        }
+    }
+
+    private var metadataText: String? {
+        let parts = [
+            nonEmpty(name),
+            nonEmpty(workspace).map { "Workspace: \($0)" },
+            nonEmpty(path)
+        ].compactMap { $0 }
+
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 
