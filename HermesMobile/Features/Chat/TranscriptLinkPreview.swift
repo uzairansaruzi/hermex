@@ -221,12 +221,27 @@ enum TranscriptLinkPreviewExtractor {
 enum TranscriptLinkPreviewEligibility {
     static func previewURL(for message: ChatMessage, isStreaming: Bool) -> URL? {
         guard !isStreaming,
-              message.role == "user" || message.role == "assistant",
+              isPreviewableRole(message.role),
               let content = message.content
         else {
             return nil
         }
 
         return TranscriptLinkPreviewExtractor.firstWebURL(in: content)
+    }
+
+    static func shouldReservePreviewSpace(for message: ChatMessage, isStreaming: Bool) -> Bool {
+        guard isStreaming,
+              isPreviewableRole(message.role),
+              let content = message.content
+        else {
+            return false
+        }
+
+        return TranscriptLinkPreviewExtractor.firstWebURL(in: content) != nil
+    }
+
+    private static func isPreviewableRole(_ role: String?) -> Bool {
+        role == "user" || role == "assistant"
     }
 }

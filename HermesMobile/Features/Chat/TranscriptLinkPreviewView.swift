@@ -2,6 +2,15 @@
 import SwiftUI
 import UIKit
 
+
+struct TranscriptLinkPreviewPlaceholderView: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color.clear)
+            .frame(minHeight: 84)
+    }
+}
+
 struct TranscriptLinkPreviewView: View {
     let url: URL
 

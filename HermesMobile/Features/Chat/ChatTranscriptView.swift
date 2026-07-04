@@ -14,6 +14,8 @@ struct ChatTranscriptView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    @State private var lastObservedTranscriptContentHeight: CGFloat = 0
+
     let isLoading: Bool
     let errorMessage: String?
     let messages: [ChatMessage]
@@ -285,7 +287,7 @@ struct ChatTranscriptView: View {
         .background {
             ZStack {
                 ChatScrollObserver(isStreaming: activeStreamID != nil) { metrics in
-                    onUpdateScrollMetrics(metrics)
+                    handleScrollMetrics(metrics, proxy: proxy)
                 }
 
                 ChatVerticalScrollAxisGuard()
@@ -340,6 +342,27 @@ struct ChatTranscriptView: View {
             withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
                 proxy.scrollTo(renderID, anchor: .top)
             }
+        }
+    }
+
+    private func handleScrollMetrics(_ metrics: ChatScrollMetrics, proxy: ScrollViewProxy) {
+        let previousContentHeight = lastObservedTranscriptContentHeight
+        let didContentGrow = previousContentHeight > 0 && metrics.contentHeight > previousContentHeight + 0.5
+        lastObservedTranscriptContentHeight = metrics.contentHeight
+
+        onUpdateScrollMetrics(metrics)
+
+        guard didContentGrow,
+              shouldFollowLatestMessage,
+              !metrics.isUserInteracting
+        else {
+            return
+        }
+
+        Task { @MainActor in
+            await Task.yield()
+            guard shouldFollowLatestMessage else { return }
+            onScrollToLatestContent(proxy, false)
         }
     }
 
@@ -524,6 +547,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             if shouldRenderMessageRow(transcriptMessage.message) {
                 ChatTranscriptMessageRow(
                     message: transcriptMessage.message,
+                    rowStateID: transcriptMessage.message.id,
                     visibleIndex: transcriptMessage.loadedIndex,
                     actionContext: actionContext(transcriptMessage.message, transcriptMessage.loadedIndex),
                     localAttachmentPreviews: localAttachmentPreviews,
@@ -610,6 +634,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
 
 private struct ChatTranscriptMessageRow: View {
     let message: ChatMessage
+    let rowStateID: String
     let visibleIndex: Int
     let actionContext: MessageActionContext?
     let localAttachmentPreviews: [String: Data]?
@@ -675,6 +700,7 @@ private struct ChatTranscriptMessageRow: View {
             onOpenWikiRoute: onOpenWikiRoute,
             isStreaming: isStreaming
         )
+        .id(rowStateID)
     }
 }
 

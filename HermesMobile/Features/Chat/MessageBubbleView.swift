@@ -231,11 +231,16 @@ struct MessageBubbleView: View {
         if let url = TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) {
             TranscriptLinkPreviewView(url: url)
                 .frame(maxWidth: 300)
+        } else if TranscriptLinkPreviewEligibility.shouldReservePreviewSpace(for: message, isStreaming: isStreaming) {
+            TranscriptLinkPreviewPlaceholderView()
+                .frame(maxWidth: 300)
+                .accessibilityHidden(true)
         }
     }
 
     private var hasLinkPreview: Bool {
         TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) != nil
+            || TranscriptLinkPreviewEligibility.shouldReservePreviewSpace(for: message, isStreaming: isStreaming)
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked

@@ -97,7 +97,7 @@ final class TranscriptLinkPreviewTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://example.com/result")
     }
 
-    func testStreamingAssistantMessageIsNotEligible() {
+    func testStreamingAssistantMessageReservesPreviewSpaceWithoutLoadingPreview() {
         let message = ChatMessage(
             role: "assistant",
             content: "Still streaming https://example.com/result",
@@ -106,6 +106,18 @@ final class TranscriptLinkPreviewTests: XCTestCase {
         )
 
         XCTAssertNil(TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: true))
+        XCTAssertTrue(TranscriptLinkPreviewEligibility.shouldReservePreviewSpace(for: message, isStreaming: true))
+    }
+
+    func testStreamingAssistantMessageWithoutURLDoesNotReservePreviewSpace() {
+        let message = ChatMessage(
+            role: "assistant",
+            content: "Still streaming plain text",
+            timestamp: nil,
+            messageId: "assistant-1"
+        )
+
+        XCTAssertFalse(TranscriptLinkPreviewEligibility.shouldReservePreviewSpace(for: message, isStreaming: true))
     }
 
     func testPreviewCacheReturnsStoredSnapshotForNormalizedURL() async throws {

@@ -406,7 +406,7 @@ private struct ChatMarkdownView: View {
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
                     .relativeLineSpacing(.em(AppFont.voiceRelativeLineSpacing))
-                    .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownBlock)
+                    .padding(.bottom, ChatTranscriptSpacing.markdownBlock)
             }
             .markdownBlockStyle(\.blockquote) { configuration in
                 HStack(spacing: 12) {
@@ -422,7 +422,8 @@ private struct ChatMarkdownView: View {
                         }
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .markdownMargin(top: ChatTranscriptSpacing.turnBlock, bottom: ChatTranscriptSpacing.markdownBlock)
+                .padding(.top, ChatTranscriptSpacing.turnBlock)
+                .padding(.bottom, ChatTranscriptSpacing.markdownBlock)
             }
             .environment(\.openURL, OpenURLAction { url in
                 guard let route = WikiLinkResolver.resolve(url) else {
@@ -466,6 +467,7 @@ private struct ChatCodeBlock: View {
     private let wrapsCodeBlockLines = false
     @State private var didCopy = false
     @State private var highlightedCode: NSAttributedString?
+    @State private var highlightedRequest: MarkdownCodeHighlightRequest?
 
     private let logger = Logger.hermesMarkdownRendering
 
@@ -538,7 +540,7 @@ private struct ChatCodeBlock: View {
 
     @ViewBuilder
     private var codeText: some View {
-        if let highlightedCode {
+        if let highlightedCode, highlightedRequest == highlightRequest {
             HighlightedCodeBlockText(content: highlightedCode, wraps: wrapsCodeBlockLines)
         } else {
             PlainCodeBlockText(content: content, wraps: wrapsCodeBlockLines)
@@ -572,8 +574,9 @@ private struct ChatCodeBlock: View {
 
     @MainActor
     private func updateHighlightedCode(for request: MarkdownCodeHighlightRequest) async {
-        highlightedCode = nil
-        await Task.yield()
+        if highlightedRequest == request, highlightedCode != nil {
+            return
+        }
 
         guard !Task.isCancelled else { return }
 
@@ -582,8 +585,10 @@ private struct ChatCodeBlock: View {
 
         switch result {
         case .highlighted(let attributedString):
+            highlightedRequest = request
             highlightedCode = attributedString
         case .plain(let reason, let normalizedLanguage):
+            highlightedRequest = nil
             highlightedCode = nil
             logFallback(
                 reason: reason,
@@ -1308,7 +1313,6 @@ private extension MarkdownUI.Theme {
                     configuration.label
                         .relativePadding(.bottom, length: .em(0.3))
                         .relativeLineSpacing(.em(0.125))
-                        .markdownMargin(top: 24, bottom: 16)
                         .markdownTextStyle {
                             FontFamily(.system(.default))
                             FontStyle(.normal)
@@ -1317,13 +1321,14 @@ private extension MarkdownUI.Theme {
                         }
                     Divider().overlay(ZoraBrand.codeBlockStroke)
                 }
+                .padding(.top, 24)
+                .padding(.bottom, 16)
             }
             .heading2 { configuration in
                 VStack(alignment: .leading, spacing: 0) {
                     configuration.label
                         .relativePadding(.bottom, length: .em(0.3))
                         .relativeLineSpacing(.em(0.125))
-                        .markdownMargin(top: 24, bottom: 16)
                         .markdownTextStyle {
                             FontFamily(.system(.default))
                             FontStyle(.normal)
@@ -1332,11 +1337,14 @@ private extension MarkdownUI.Theme {
                         }
                     Divider().overlay(ZoraBrand.codeBlockStroke)
                 }
+                .padding(.top, 24)
+                .padding(.bottom, 16)
             }
             .heading3 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .markdownMargin(top: 24, bottom: 16)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1347,7 +1355,8 @@ private extension MarkdownUI.Theme {
             .heading4 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .markdownMargin(top: 24, bottom: 16)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1357,7 +1366,8 @@ private extension MarkdownUI.Theme {
             .heading5 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .markdownMargin(top: 24, bottom: 16)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1368,7 +1378,8 @@ private extension MarkdownUI.Theme {
             .heading6 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.125))
-                    .markdownMargin(top: 24, bottom: 16)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
                     .markdownTextStyle {
                         FontFamily(.system(.default))
                         FontStyle(.normal)
@@ -1383,14 +1394,25 @@ private extension MarkdownUI.Theme {
                     content: configuration.content,
                     isStreaming: isStreaming
                 )
-                .markdownMargin(top: ChatTranscriptSpacing.turnBlock, bottom: ChatTranscriptSpacing.markdownRichBlock)
+                .padding(.top, ChatTranscriptSpacing.turnBlock)
+                .padding(.bottom, ChatTranscriptSpacing.markdownRichBlock)
             }
             .table { configuration in
                 ChatMarkdownTable(
                     label: configuration.label,
                     colorScheme: colorScheme
                 )
-                .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownRichBlock)
+                .padding(.bottom, ChatTranscriptSpacing.markdownRichBlock)
+            }
+            .listItem { configuration in
+                configuration.label
+                    .padding(.top, 4)
+            }
+            .thematicBreak {
+                Divider()
+                    .relativeFrame(height: .em(0.25))
+                    .overlay(ZoraBrand.codeBlockStroke)
+                    .padding(.vertical, ChatTranscriptSpacing.markdownRichBlock)
             }
             .tableCell { configuration in
                 TableCellWidthCap(

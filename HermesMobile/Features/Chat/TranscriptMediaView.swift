@@ -119,6 +119,7 @@ private struct TranscriptMediaThumbnailView: View {
                 )
         } else if didAttemptLoad {
             TranscriptMediaUnavailableChip(reference: reference)
+                .frame(width: thumbnailWidth, height: thumbnailHeight, alignment: .center)
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(ZoraBrand.subtleFill)
