@@ -90,6 +90,15 @@ private struct TranscriptMediaThumbnailView: View {
                     didAttemptLoad = true
                 }
             }
+        } else if reference.isTextDocumentCandidate, loadMediaData != nil {
+            Button {
+                onPreviewMedia?(reference)
+            } label: {
+                TranscriptMediaDocumentChip(reference: reference)
+            }
+            .buttonStyle(.chatTactile(.card))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityLabel(String(localized: "Open file \(reference.displayName)"))
         } else {
             TranscriptMediaUnavailableChip(reference: reference)
         }
@@ -119,6 +128,40 @@ private struct TranscriptMediaThumbnailView: View {
                         .tint(Color(.tertiaryLabel))
                 }
         }
+    }
+}
+
+private struct TranscriptMediaDocumentChip: View {
+    let reference: TranscriptMediaReference
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(ZoraBrand.secondaryForeground)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reference.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ZoraBrand.foreground)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text("Open file")
+                    .font(.caption2)
+                    .foregroundStyle(ZoraBrand.secondaryForeground)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 240, alignment: .leading)
+        .background(ZoraBrand.subtleFill)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(ZoraBrand.surfaceHairline, lineWidth: 0.5)
+        )
     }
 }
 
@@ -180,6 +223,7 @@ private struct TranscriptMediaUnavailableChip: View {
     private var iconName: String {
         if reference.isRasterImageCandidate { return "photo" }
         if reference.isAudioCandidate { return "waveform" }
+        if reference.isTextDocumentCandidate { return "doc.text" }
         return "doc"
     }
 }
@@ -240,10 +284,12 @@ struct TranscriptMediaPreviewView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.isLoading && viewModel.previewData == nil {
+                if viewModel.isLoading && viewModel.previewData == nil && viewModel.textContent == nil {
                     ProgressView("Loading media...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let errorMessage = viewModel.errorMessage, viewModel.previewData == nil {
+                } else if let errorMessage = viewModel.errorMessage,
+                          viewModel.previewData == nil,
+                          viewModel.textContent == nil {
                     ContentUnavailableView {
                         Label("Could Not Load Media", systemImage: "exclamationmark.triangle")
                     } description: {
@@ -255,6 +301,8 @@ struct TranscriptMediaPreviewView: View {
                     }
                 } else if let data = viewModel.previewData, let image = UIImage(data: data) {
                     imageContent(image)
+                } else if let textContent = viewModel.textContent {
+                    textDocumentContent(textContent)
                 } else {
                     unavailableContent(String(localized: "Preview is not available for this media."))
                 }
@@ -333,6 +381,21 @@ struct TranscriptMediaPreviewView: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel(item.reference.displayName)
+            }
+            .padding()
+        }
+        .background(Color(.systemBackground))
+    }
+
+    private func textDocumentContent(_ content: String) -> some View {
+        ScrollView([.vertical, .horizontal]) {
+            VStack(alignment: .leading, spacing: 12) {
+                mediaHeader
+
+                Text(content)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding()
         }

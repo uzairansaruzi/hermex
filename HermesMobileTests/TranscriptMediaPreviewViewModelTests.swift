@@ -100,6 +100,42 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
+    func testLoadLocalMarkdownUsesMediaEndpointAndDecodesText() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let markdown = """
+        # Audit
+
+        What changed: nothing yet.
+        """
+        let data = Data(markdown.utf8)
+        let mediaPath = "/Users/hermes/workspace/cron-prompt-audit-2026-07-04.md"
+        let client = makeClient { request in
+            recorder.record(request)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/media")
+            return self.response(statusCode: 200, data: data, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            reference: .init(rawReference: mediaPath),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.previewData)
+        XCTAssertEqual(viewModel.textContent, markdown)
+        XCTAssertEqual(viewModel.originalByteCount, data.count)
+        XCTAssertFalse(viewModel.canSaveImageToPhotos)
+
+        let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
+        XCTAssertEqual(queryItems["path"], mediaPath)
+        XCTAssertEqual(recorder.requestCount, 1)
+    }
+
     func testUnsupportedMediaSetsUnavailableStateWithoutRequest() async {
         let recorder = TranscriptMediaPreviewRequestRecorder()
         let client = makeClient { request in

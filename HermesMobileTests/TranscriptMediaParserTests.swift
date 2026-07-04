@@ -110,6 +110,16 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(media.last).isAudioCandidate)
     }
 
+    func testMarkdownMediaReferencesAreTextDocumentCandidates() throws {
+        let segments = TranscriptMediaParser.segments(in: "Report: MEDIA:/tmp/cron-prompt-audit-2026-07-04.md")
+        let media = try XCTUnwrap(mediaReferences(in: segments).first)
+
+        XCTAssertEqual(media.rawReference, "/tmp/cron-prompt-audit-2026-07-04.md")
+        XCTAssertTrue(media.isTextDocumentCandidate)
+        XCTAssertFalse(media.isRasterImageCandidate)
+        XCTAssertFalse(media.isAudioCandidate)
+    }
+
     func testNonAudioMediaReferenceIsNotAudioCandidate() {
         let segments = TranscriptMediaParser.segments(in: "MEDIA:/tmp/result.png MEDIA:/tmp/report.pdf")
         let media = mediaReferences(in: segments)

@@ -55,6 +55,10 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         Self.audioExtensions.contains(pathExtension)
     }
 
+    var isTextDocumentCandidate: Bool {
+        Self.textDocumentExtensions.contains(pathExtension)
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):
@@ -70,6 +74,12 @@ struct TranscriptMediaReference: Equatable, Identifiable {
 
     private static let audioExtensions: Set<String> = [
         "aac", "caf", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav"
+    ]
+
+    private static let textDocumentExtensions: Set<String> = [
+        "bash", "c", "cc", "conf", "cpp", "csv", "css", "diff", "go", "h", "hpp", "htm", "html",
+        "ini", "js", "json", "jsonl", "log", "m", "md", "markdown", "mm", "patch", "plist", "py", "rb",
+        "rs", "sh", "sql", "swift", "toml", "ts", "tsx", "txt", "xml", "yaml", "yml", "zsh"
     ]
 }
 

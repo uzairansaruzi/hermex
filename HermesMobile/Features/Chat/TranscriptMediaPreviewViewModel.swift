@@ -10,6 +10,7 @@ final class TranscriptMediaPreviewViewModel {
     private var originalData: Data?
 
     private(set) var previewData: Data?
+    private(set) var textContent: String?
     private(set) var originalByteCount: Int?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
@@ -28,9 +29,10 @@ final class TranscriptMediaPreviewViewModel {
         guard force || !didLoad else { return }
         didLoad = true
         previewData = nil
+        textContent = nil
         originalByteCount = nil
 
-        guard reference.isRasterImageCandidate else {
+        guard reference.isRasterImageCandidate || reference.isTextDocumentCandidate else {
             errorMessage = String(localized: "Preview is not available for this media type.")
             return
         }
@@ -46,13 +48,19 @@ final class TranscriptMediaPreviewViewModel {
             let data = try await apiClient.transcriptMediaData(for: reference)
             originalData = data
             originalByteCount = data.count
-            if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
-                from: data,
-                maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
-            ) {
-                previewData = downsampled
+            if reference.isRasterImageCandidate {
+                if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
+                    from: data,
+                    maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
+                ) {
+                    previewData = downsampled
+                } else {
+                    errorMessage = String(localized: "Could not decode this image.")
+                }
+            } else if let decodedText = Self.decodedText(from: data) {
+                textContent = decodedText
             } else {
-                errorMessage = String(localized: "Could not decode this image.")
+                errorMessage = String(localized: "Could not decode this text file.")
             }
         } catch {
             lastError = error
@@ -69,5 +77,15 @@ final class TranscriptMediaPreviewViewModel {
         originalData = data
         originalByteCount = data.count
         return data
+    }
+
+    private static func decodedText(from data: Data) -> String? {
+        for encoding in [String.Encoding.utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .isoLatin1, .ascii] {
+            if let value = String(data: data, encoding: encoding) {
+                return value
+            }
+        }
+
+        return nil
     }
 }
