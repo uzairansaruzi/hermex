@@ -65,6 +65,10 @@ struct ChatView: View {
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
     let autoStartsVoiceInput: Bool
+    /// Whether the initial composer focus should wait for the navigation push to
+    /// settle (#53). PendingNewChatView passes false when its keyboard is already
+    /// up at swap time, so the handoff refocuses immediately instead of bouncing.
+    let delaysInitialComposerFocus: Bool
 
     @State private var draftMessage = ""
     @State private var isScrolledNearBottom = true
@@ -113,13 +117,15 @@ struct ChatView: View {
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
-        autoStartsVoiceInput: Bool = false
+        autoStartsVoiceInput: Bool = false,
+        delaysInitialComposerFocus: Bool = true
     ) {
         self.session = session
         self.server = server
         self.onAPIError = onAPIError
         self.loadsInitialMessages = loadsInitialMessages
         self.autoStartsVoiceInput = autoStartsVoiceInput
+        self.delaysInitialComposerFocus = delaysInitialComposerFocus
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
         _viewModel = State(initialValue: ChatViewModel(
@@ -1759,7 +1765,7 @@ struct ChatView: View {
 
         guard viewModel.errorMessage == nil, canFocusComposer else { return }
         didApplyInitialComposerFocusPolicy = true
-        requestComposerFocusIfPossible(waitingForPushToSettle: true)
+        requestComposerFocusIfPossible(waitingForPushToSettle: delaysInitialComposerFocus)
     }
 
     private func presentPreviewRestoringComposerFocusIfNeeded(_ present: () -> Void) {

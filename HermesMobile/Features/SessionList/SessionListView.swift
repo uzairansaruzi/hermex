@@ -1036,7 +1036,8 @@ private struct PendingNewChatView: View {
                     initialDraft: draftMessage,
                     initialAttachments: initialAttachments,
                     loadsInitialMessages: false,
-                    autoStartsVoiceInput: autoStartsVoiceInput
+                    autoStartsVoiceInput: autoStartsVoiceInput,
+                    delaysInitialComposerFocus: !composerIsFocused
                 )
             } else {
                 pendingContent
