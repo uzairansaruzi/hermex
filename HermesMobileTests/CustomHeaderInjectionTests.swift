@@ -234,13 +234,13 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
 @MainActor
 final class CustomHeaderSSEInjectionTests: XCTestCase {
     override func tearDown() {
-        MockURLProtocol.requestHandler = nil
+        SSEHeaderCaptureURLProtocol.requestHandler = nil
         super.tearDown()
     }
 
     func testSSEStreamCarriesCustomHeadersUnderBuiltIns() async throws {
         let captured = expectation(description: "sse request captured")
-        MockURLProtocol.requestHandler = { request in
+        SSEHeaderCaptureURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sse")
             // Built-in Accept must win over a user-supplied Accept.
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "text/event-stream")
@@ -256,7 +256,7 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         }
 
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
+        configuration.protocolClasses = [SSEHeaderCaptureURLProtocol.self]
         let client = SSEClient(
             urlSessionConfiguration: configuration,
             customHeaderProvider: {
@@ -281,7 +281,7 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         CustomHeaderStore.shared.replace(with: [CustomHeader(name: "Authorization", value: "Bearer active-a")])
 
         let captured = expectation(description: "sse request captured")
-        MockURLProtocol.requestHandler = { request in
+        SSEHeaderCaptureURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer active-a")
             captured.fulfill()
             let response = HTTPURLResponse(
@@ -294,7 +294,7 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         }
 
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
+        configuration.protocolClasses = [SSEHeaderCaptureURLProtocol.self]
         // No explicit provider → uses the default active-server store.
         let client = SSEClient(urlSessionConfiguration: configuration)
 
@@ -322,6 +322,36 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         let streamA = try XCTUnwrap(URL(string: "https://a.test/api/chat/stream?stream_id=s1"))
         XCTAssertEqual(storage.cookies(for: streamA)?.map(\.value), ["a-cookie"])
     }
+}
+
+private final class SSEHeaderCaptureURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let requestHandler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try requestHandler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }
 
 // MARK: - AuthManager configure / lifecycle
