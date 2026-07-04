@@ -23,8 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -42,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.hermex.app.ui.components.HermexDropdownMenu
+import com.hermex.app.ui.components.HermexDropdownMenuItem
 import androidx.compose.ui.unit.dp
 import com.hermex.app.data.model.ChatMessage
 import com.hermex.app.data.model.ToolStreamEvent
@@ -237,16 +237,16 @@ private fun MessageActionDropdownMenu(
     onDismiss: () -> Unit,
     onAction: (ChatMessageAction) -> Unit
 ) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(text = { Text("Copy") }, onClick = { onAction(ChatMessageAction.Copy) })
-        DropdownMenuItem(text = { Text("Fork From Here") }, onClick = { onAction(ChatMessageAction.Fork) })
+    HermexDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        HermexDropdownMenuItem(text = "Copy", onClick = { onAction(ChatMessageAction.Copy) })
+        HermexDropdownMenuItem(text = "Fork From Here", onClick = { onAction(ChatMessageAction.Fork) })
         when (context.role) {
             MessageActionContext.Role.User -> {
-                DropdownMenuItem(text = { Text("Edit Message") }, onClick = { onAction(ChatMessageAction.Edit) })
+                HermexDropdownMenuItem(text = "Edit Message", onClick = { onAction(ChatMessageAction.Edit) })
             }
             MessageActionContext.Role.Assistant -> {
-                DropdownMenuItem(text = { Text("Listen") }, onClick = { onAction(ChatMessageAction.Listen) })
-                DropdownMenuItem(text = { Text("Regenerate") }, onClick = { onAction(ChatMessageAction.Regenerate) })
+                HermexDropdownMenuItem(text = "Listen", onClick = { onAction(ChatMessageAction.Listen) })
+                HermexDropdownMenuItem(text = "Regenerate", onClick = { onAction(ChatMessageAction.Regenerate) })
             }
         }
     }

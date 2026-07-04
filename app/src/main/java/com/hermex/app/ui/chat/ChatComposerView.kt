@@ -28,7 +28,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.hermex.app.data.model.ModelsResponse
 import com.hermex.app.data.model.ProfileInfo
+import com.hermex.app.ui.components.HermexAccessorySurface
+import com.hermex.app.ui.components.HermexModelPickerSheet
+import com.hermex.app.ui.components.HermexProfilePickerSheet
+import com.hermex.app.ui.components.HermexWorkspacePickerSheet
 import com.hermex.app.ui.theme.HermexTheme
 import com.hermex.app.ui.chat.slash.ParsedSlashQuery
 import com.hermex.app.ui.chat.slash.SlashCommandCatalog
@@ -46,6 +51,7 @@ fun ChatComposerView(
     currentWorkspace: String?,
     currentProfile: String?,
     availableModels: Map<String, List<String>>,
+    modelsCatalog: ModelsResponse?,
     availableProfiles: List<ProfileInfo>,
     availableWorkspaces: List<String>,
     onSend: () -> Unit,
@@ -58,9 +64,9 @@ fun ChatComposerView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var modelMenuExpanded by remember { mutableStateOf(false) }
-    var workspaceMenuExpanded by remember { mutableStateOf(false) }
-    var profileMenuExpanded by remember { mutableStateOf(false) }
+    var showModelSheet by remember { mutableStateOf(false) }
+    var showWorkspaceSheet by remember { mutableStateOf(false) }
+    var showProfileSheet by remember { mutableStateOf(false) }
     var voiceError by remember { mutableStateOf<String?>(null) }
 
     fun speechIntent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -136,55 +142,35 @@ fun ChatComposerView(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                CompactDropdownChip(
-                    label = currentModel?.substringAfterLast(":")?.substringAfterLast("/") ?: "Model",
-                    expanded = modelMenuExpanded,
-                    onExpandedChange = { modelMenuExpanded = it }
-                ) {
-                    availableModels.forEach { (provider, models) ->
-                        models.forEach { model ->
-                            DropdownMenuItem(
-                                text = { Text("$provider / $model") },
-                                onClick = {
-                                    onModelSelected(model, provider)
-                                    modelMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
+                AssistChip(
+                    onClick = { showModelSheet = true },
+                    label = { Text(currentModel?.substringAfterLast(":")?.substringAfterLast("/") ?: "Model", maxLines = 1) },
+                    border = null,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
 
-                CompactDropdownChip(
-                    label = currentWorkspace?.takeIf { it.isNotBlank() } ?: "Workspace",
-                    expanded = workspaceMenuExpanded,
-                    onExpandedChange = { workspaceMenuExpanded = it }
-                ) {
-                    availableWorkspaces.forEach { workspace ->
-                        DropdownMenuItem(
-                            text = { Text(workspace) },
-                            onClick = {
-                                onWorkspaceSelected(workspace)
-                                workspaceMenuExpanded = false
-                            }
-                        )
-                    }
-                }
+                AssistChip(
+                    onClick = { showWorkspaceSheet = true },
+                    label = { Text(currentWorkspace?.substringAfterLast("/")?.takeIf { it.isNotBlank() } ?: "Workspace", maxLines = 1) },
+                    border = null,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
 
-                CompactDropdownChip(
-                    label = currentProfile?.takeIf { it.isNotBlank() } ?: "Profile",
-                    expanded = profileMenuExpanded,
-                    onExpandedChange = { profileMenuExpanded = it }
-                ) {
-                    availableProfiles.forEach { profile ->
-                        DropdownMenuItem(
-                            text = { Text(profile.name ?: "Default") },
-                            onClick = {
-                                profile.name?.let { onProfileSelected(profile) }
-                                profileMenuExpanded = false
-                            }
-                        )
-                    }
-                }
+                AssistChip(
+                    onClick = { showProfileSheet = true },
+                    label = { Text(currentProfile?.takeIf { it.isNotBlank() } ?: "Profile", maxLines = 1) },
+                    border = null,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
             }
 
             Row(
@@ -265,6 +251,44 @@ fun ChatComposerView(
             }
         }
     }
+
+    if (showModelSheet) {
+        HermexModelPickerSheet(
+            models = modelsCatalog,
+            currentModelId = currentModel,
+            isLoading = false,
+            onSelect = { modelId, providerId ->
+                onModelSelected(modelId, providerId)
+                showModelSheet = false
+            },
+            onDismiss = { showModelSheet = false },
+        )
+    }
+
+    if (showWorkspaceSheet) {
+        HermexWorkspacePickerSheet(
+            workspaces = availableWorkspaces,
+            currentWorkspace = currentWorkspace,
+            onSelect = { workspace ->
+                onWorkspaceSelected(workspace)
+                showWorkspaceSheet = false
+            },
+            onDismiss = { showWorkspaceSheet = false },
+        )
+    }
+
+    if (showProfileSheet) {
+        HermexProfilePickerSheet(
+            profiles = availableProfiles,
+            activeProfileName = currentProfile,
+            isLoading = false,
+            onSelect = { profile ->
+                onProfileSelected(profile)
+                showProfileSheet = false
+            },
+            onDismiss = { showProfileSheet = false },
+        )
+    }
 }
 
 private data class SlashSuggestion(
@@ -315,7 +339,7 @@ private fun SlashSuggestions(
     suggestions: List<SlashSuggestion>,
     onSelect: (SlashSuggestion) -> Unit
 ) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    HermexAccessorySurface(modifier = Modifier.fillMaxWidth()) {
         LazyColumn(modifier = Modifier.heightIn(max = 240.dp)) {
             items(suggestions) { suggestion ->
                 Column(
@@ -343,28 +367,3 @@ private fun SlashSuggestions(
     }
 }
 
-@Composable
-private fun CompactDropdownChip(
-    label: String,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Box {
-        AssistChip(
-            onClick = { onExpandedChange(!expanded) },
-            label = { Text(label, maxLines = 1) },
-            border = null,
-            colors = AssistChipDefaults.assistChipColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { onExpandedChange(false) }
-        ) {
-            content()
-        }
-    }
-}
