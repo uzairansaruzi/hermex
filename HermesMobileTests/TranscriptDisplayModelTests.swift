@@ -383,6 +383,18 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         let content = "hello\n\n[Attached files: /tmp/a.png] and then more text"
         XCTAssertEqual(MessageAttachment.contentWithoutAttachedFilesMarker(in: content), content)
     }
+
+    @MainActor
+    func testReasoningDetailsUseMarkdownRenderer() {
+        let view = ReasoningMarkdownDetailsView(
+            text: "**Inspecting** `Markdown` inside thinking details."
+        )
+
+        XCTAssertTrue(
+            String(describing: type(of: view.body)).contains("MarkdownRenderer"),
+            "Thinking details must render through MarkdownRenderer instead of plain Text so Markdown syntax is formatted."
+        )
+    }
 }
 
 final class ChatActiveRunStatusPolicyTests: XCTestCase {
