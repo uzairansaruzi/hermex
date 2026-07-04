@@ -235,7 +235,13 @@ struct SSEEventDecoder {
             return .streamEnd
         case "cancel":
             return .cancelled
-        case "error":
+        case "error", "apperror":
+            // "apperror" is one of the four socket-closing frames (stream_end, cancel,
+            // error, apperror). The docs describe its payload as {error, type, session,
+            // terminal_state?} while the pinned upstream emits {message, type, hint,
+            // details, …}; decoding both `error` and `message` covers either shape.
+            // Mapping it onto `.error` reuses the existing terminal error path
+            // (surface the message, finish the stream) unchanged.
             guard let payload = decodePayload(ErrorPayload.self, eventType: eventType, from: eventData, decoder: decoder) else {
                 return .error(String(localized: "The stream returned a malformed error event."))
             }

@@ -449,6 +449,38 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(event, .error("The stream returned a malformed error event."))
     }
 
+    func testAppErrorEventDecodesPinnedUpstreamMessageShape() {
+        // Pinned upstream `_provider_error_payload`: {message, type, hint, details, session, …}.
+        let event = SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"message": "Provider exploded", "type": "no_response", "hint": "Check the provider keys.", "details": "Provider exploded", "session_id": "session-abc", "session": {"session_id": "session-abc"}}"#
+        )
+
+        XCTAssertEqual(event, .error("Provider exploded"))
+    }
+
+    func testAppErrorEventDecodesDocsErrorShape() {
+        // API docs describe the payload as {error, type, session, terminal_state?}.
+        let event = SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"error": "Terminal failure", "type": "tool_limit_reached", "terminal_state": "tool_limit_reached"}"#
+        )
+
+        XCTAssertEqual(event, .error("Terminal failure"))
+    }
+
+    func testAppErrorEventWithoutMessageFallsBackToGenericError() {
+        let event = SSEEventDecoder.decode(eventType: "apperror", data: "{}")
+
+        XCTAssertEqual(event, .error("The stream returned an error."))
+    }
+
+    func testMalformedAppErrorPayloadSurfacesExplicitError() {
+        let event = SSEEventDecoder.decode(eventType: "apperror", data: "{")
+
+        XCTAssertEqual(event, .error("The stream returned a malformed error event."))
+    }
+
     func testUnknownStreamEventTypeIsIgnored() {
         let event = SSEEventDecoder.decode(
             eventType: "future_server_event",

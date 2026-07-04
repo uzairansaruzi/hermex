@@ -1803,6 +1803,324 @@
         }
       }
     },
+    "That approval request already expired, so the agent has moved on." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتهت صلاحية طلب الموافقة هذا بالفعل، لذا واصل العميل عمله."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Genehmigungsanfrage ist bereits abgelaufen, der Agent hat daher weitergemacht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esa solicitud de aprobación ya expiró, así que el agente ha continuado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cette demande d'approbation a déjà expiré, l'agent a donc continué."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "בקשת האישור הזו כבר פגה, ולכן הסוכן המשיך הלאה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questa richiesta di approvazione è già scaduta, quindi l'agente è andato avanti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "この承認リクエストはすでに期限切れのため、エージェントは先に進みました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "해당 승인 요청이 이미 만료되어 에이전트가 계속 진행했어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dit goedkeuringsverzoek is al verlopen, dus de agent is verdergegaan."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ta prośba o zatwierdzenie już wygasła, więc agent kontynuował pracę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Essa solicitação de aprovação já expirou, então o agente seguiu em frente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Срок этого запроса на подтверждение уже истёк, поэтому агент продолжил работу."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu onay isteğinin süresi zaten dolduğu için ajan devam etti."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظوری کی یہ درخواست پہلے ہی ختم ہو چکی ہے، اس لیے ایجنٹ آگے بڑھ گیا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "該審批要求已過期，代理已繼續執行。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "该审批请求已过期，智能体已继续执行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "該審核要求已過期，代理人已繼續執行。"
+          }
+        }
+      }
+    },
+    "That clarification prompt already expired, so the agent has moved on." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتهت صلاحية طلب التوضيح هذا بالفعل، لذا واصل العميل عمله."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Rückfrage ist bereits abgelaufen, der Agent hat daher weitergemacht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esa solicitud de aclaración ya expiró, así que el agente ha continuado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cette demande de clarification a déjà expiré, l'agent a donc continué."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "בקשת ההבהרה הזו כבר פגה, ולכן הסוכן המשיך הלאה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questa richiesta di chiarimento è già scaduta, quindi l'agente è andato avanti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "この確認プロンプトはすでに期限切れのため、エージェントは先に進みました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "해당 설명 요청이 이미 만료되어 에이전트가 계속 진행했어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dit verduidelijkingsverzoek is al verlopen, dus de agent is verdergegaan."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ta prośba o wyjaśnienie już wygasła, więc agent kontynuował pracę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esse pedido de esclarecimento já expirou, então o agente seguiu em frente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Срок этого запроса на уточнение уже истёк, поэтому агент продолжил работу."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu açıklama isteminin süresi zaten dolduğu için ajan devam etti."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "وضاحت کا یہ پرامپٹ پہلے ہی ختم ہو چکا ہے، اس لیے ایجنٹ آگے بڑھ گیا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "該澄清提示已過期，代理已繼續執行。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "该澄清提示已过期，智能体已继续执行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "該釐清提示已過期，代理人已繼續執行。"
+          }
+        }
+      }
+    },
+    "This session is still responding, so it can't be moved yet. Try again when it finishes." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لا تزال هذه الجلسة تردّ، لذا لا يمكن نقلها بعد. حاول مرة أخرى عند انتهائها."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Sitzung antwortet noch und kann deshalb noch nicht verschoben werden. Versuche es erneut, sobald sie fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esta sesión todavía está respondiendo, así que aún no se puede mover. Inténtalo de nuevo cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cette session est encore en train de répondre et ne peut pas encore être déplacée. Réessayez quand elle aura terminé."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "המפגש הזה עדיין מגיב, ולכן אי אפשר להעביר אותו כעת. נסה שוב כשיסתיים."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questa sessione sta ancora rispondendo, quindi non può ancora essere spostata. Riprova quando ha finito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このセッションはまだ応答中のため、まだ移動できません。完了してからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 세션은 아직 응답 중이라 지금은 이동할 수 없어요. 완료된 후 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deze sessie is nog aan het antwoorden en kan daarom nog niet worden verplaatst. Probeer het opnieuw zodra deze klaar is."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ta sesja wciąż odpowiada, więc nie można jej jeszcze przenieść. Spróbuj ponownie, gdy się zakończy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esta sessão ainda está respondendo, então não pode ser movida agora. Tente novamente quando ela terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Эта сессия ещё отвечает, поэтому её пока нельзя переместить. Повторите попытку, когда она завершится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu oturum hâlâ yanıt veriyor, bu yüzden henüz taşınamıyor. Bittiğinde yeniden deneyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ سیشن ابھی جواب دے رہا ہے، اس لیے فی الحال اسے منتقل نہیں کیا جا سکتا۔ مکمل ہونے پر دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "該工作階段仍在回覆中，暫時無法移動。請待其完成後再試。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "该会话仍在回复中，暂时无法移动。请等它完成后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "該工作階段仍在回覆中，暫時無法移動。請待其完成後再試。"
+          }
+        }
+      }
+    },
     "Write" : {
       "localizations" : {
         "de" : {

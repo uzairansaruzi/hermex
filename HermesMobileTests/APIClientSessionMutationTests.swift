@@ -279,6 +279,54 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertNil(response.session?.projectId)
     }
 
+    func testSessionMutatorMove503WithServerPayloadMapsToStreamingBusyError() async throws {
+        // Upstream refuses a move while the session streams: 503 + JSON error payload.
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/session/move")
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 503,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"error": "Session is busy (streaming). Please try again in a moment."}"#.utf8))
+        }
+
+        do {
+            try await SessionMutator(client: client).move(sessionID: "abc123", to: "proj123")
+            XCTFail("Expected SessionMoveWhileStreamingError")
+        } catch is SessionMoveWhileStreamingError {
+            XCTAssertEqual(
+                SessionMoveWhileStreamingError().errorDescription,
+                String(localized: "This session is still responding, so it can't be moved yet. Try again when it finishes.")
+            )
+        }
+    }
+
+    func testSessionMutatorMoveProxy503WithoutJSONPayloadKeepsGenericAPIError() async throws {
+        // A tunnel/proxy 503 serves HTML, not the server's JSON payload; keep the
+        // generic connectivity message for that case (issue #25).
+        let client = makeClient { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 503,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/html"]
+            )!
+            return (response, Data("<html>Service Unavailable</html>".utf8))
+        }
+
+        do {
+            try await SessionMutator(client: client).move(sessionID: "abc123", to: nil)
+            XCTFail("Expected APIError.http(503)")
+        } catch let error as APIError {
+            guard case .http(let statusCode, _) = error else {
+                return XCTFail("Expected APIError.http, got \(error)")
+            }
+            XCTAssertEqual(statusCode, 503)
+        }
+    }
+
     func testArchiveSessionBuildsExpectedBodyAndDecodesResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/archive")

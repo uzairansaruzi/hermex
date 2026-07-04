@@ -143,16 +143,30 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
 struct ApprovalRespondResponse: Decodable, Equatable {
     let ok: Bool?
     let choice: ApprovalChoice?
+    /// Server cleared a stale card whose approval already resolved (benign 200; issue #25).
+    let staleCleared: Bool?
+    /// The respond was relayed to a gateway-managed run rather than resolved locally.
+    let relayed: Bool?
+    /// The prompt already expired (paired with a 409 on the docs' respond contract).
+    let stale: Bool?
 
     enum CodingKeys: String, CodingKey {
         case ok
         case choice
+        case staleCleared
+        case staleClearedSnake = "stale_cleared"
+        case relayed
+        case stale
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ok = container.decodeLossyBoolIfPresent(forKey: .ok)
         choice = try? container.decodeIfPresent(ApprovalChoice.self, forKey: .choice)
+        staleCleared = container.decodeLossyBoolIfPresent(forKey: .staleCleared)
+            ?? container.decodeLossyBoolIfPresent(forKey: .staleClearedSnake)
+        relayed = container.decodeLossyBoolIfPresent(forKey: .relayed)
+        stale = container.decodeLossyBoolIfPresent(forKey: .stale)
     }
 }
 

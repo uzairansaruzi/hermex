@@ -79,6 +79,14 @@ enum APIError: LocalizedError {
         return Self.serverErrorMessage(from: body)
     }
 
+    /// True for the documented "prompt already expired" respond rejection:
+    /// HTTP 409 with `{"stale": true, …}` in the body (issue #25). Used to show
+    /// a friendly expired state instead of a generic failure.
+    var indicatesExpiredPendingPrompt: Bool {
+        guard case .http(let statusCode, let body) = self, statusCode == 409 else { return false }
+        return Self.serverErrorPayload(from: body)?.stale == true
+    }
+
     static func privacySafeLogCategory(for error: Error) -> String {
         if let apiError = error as? APIError {
             return apiError.privacySafeLogCategory
@@ -102,6 +110,7 @@ private extension APIError {
         let message: String?
         let detail: String?
         let code: String?
+        let stale: Bool?
     }
 
     static func networkMessage(for error: Error) -> String {

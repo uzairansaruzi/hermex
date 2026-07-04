@@ -109,6 +109,81 @@ final class ClarificationTests: XCTestCase {
         XCTAssertEqual(client.clarifyStreamURL(sessionID: "session-abc").path, "/api/clarify/stream")
     }
 
+    func testClarificationRespondResponseDecodesStaleFieldsTolerantly() throws {
+        let stale = try JSONDecoder().decode(
+            ClarificationRespondResponse.self,
+            from: Data(#"{"ok": false, "error": "Clarification prompt expired or not found.", "stale": true}"#.utf8)
+        )
+        XCTAssertEqual(stale.ok, false)
+        XCTAssertEqual(stale.stale, true)
+        XCTAssertNil(stale.staleCleared)
+        XCTAssertNil(stale.relayed)
+
+        let cleared = try JSONDecoder().decode(
+            ClarificationRespondResponse.self,
+            from: Data(#"{"ok": true, "response": "A", "stale_cleared": "true", "relayed": 1}"#.utf8)
+        )
+        XCTAssertEqual(cleared.ok, true)
+        XCTAssertEqual(cleared.staleCleared, true)
+        XCTAssertEqual(cleared.relayed, true)
+        XCTAssertNil(cleared.stale)
+    }
+
+    @MainActor
+    func testClarificationStale409DismissesPromptWithFriendlyExpiredMessage() async throws {
+        let streamClient = ClarificationSpySSEStreamingClient()
+        let approvalStreamClient = ClarificationSpySSEStreamingClient()
+        let clarifyStreamClient = ClarificationSpySSEStreamingClient()
+        var didRefreshPendingAfterStale = false
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient,
+            clarifyStreamClient: clarifyStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return jsonResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/clarify/respond":
+                return jsonResponse(
+                    #"{"ok": false, "error": "Clarification prompt expired or not found. The agent may have already proceeded.", "stale": true}"#,
+                    statusCode: 409,
+                    for: request
+                )
+            case "/api/clarify/pending":
+                didRefreshPendingAfterStale = true
+                return jsonResponse(#"{"pending": null}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Continue")
+        XCTAssertTrue(didStart)
+        clarifyStreamClient.emit(.clarificationPending(ClarificationPendingResponse(
+            pending: PendingClarification(
+                clarifyId: "clarify-1",
+                question: "Which branch?",
+                sessionId: "session-abc"
+            ),
+            pendingCount: 1
+        )))
+
+        let didRespond = await viewModel.respondToClarification("Use main")
+
+        // Expired prompt: the stale card dismisses with a friendly explanation
+        // instead of sticking around behind a generic failure (issue #25).
+        XCTAssertFalse(didRespond)
+        XCTAssertNil(viewModel.clarificationPrompt)
+        XCTAssertNil(viewModel.clarificationErrorMessage)
+        XCTAssertEqual(
+            viewModel.sendErrorMessage,
+            PendingPromptExpiredError(prompt: .clarification).localizedDescription
+        )
+        XCTAssertTrue(didRefreshPendingAfterStale)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+    }
+
     func testSSEDecoderHandlesClarifyAndInitialEvents() {
         let clarify = SSEEventDecoder.decode(
             eventType: "clarify",

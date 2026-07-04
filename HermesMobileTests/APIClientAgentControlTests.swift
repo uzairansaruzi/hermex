@@ -96,6 +96,37 @@ final class APIClientAgentControlTests: APIClientTestCase {
         XCTAssertNil(observedBodies[3]["approval_id"])
     }
 
+    func testApprovalRespondResponseDecodesStaleFieldsTolerantly() async throws {
+        // Upstream signals a benign stale click with 200 {"ok": true, "stale_cleared": true}
+        // and gateway relays with "relayed" (issue #25).
+        let client = makeClient { request in
+            apiTestJSONResponse(
+                #"{"ok": true, "choice": "once", "stale_cleared": true, "relayed": "true", "future": {"x": 1}}"#,
+                for: request
+            )
+        }
+
+        let response = try await client.respondApproval(
+            sessionID: "abc123",
+            choice: .once,
+            approvalID: "approval-1"
+        )
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.choice, .once)
+        XCTAssertEqual(response.staleCleared, true)
+        XCTAssertEqual(response.relayed, true)
+        XCTAssertNil(response.stale)
+
+        let stale = try JSONDecoder().decode(
+            ApprovalRespondResponse.self,
+            from: Data(#"{"ok": false, "error": "Approval prompt expired.", "stale": true}"#.utf8)
+        )
+        XCTAssertEqual(stale.ok, false)
+        XCTAssertEqual(stale.stale, true)
+        XCTAssertNil(stale.staleCleared)
+    }
+
     func testSessionYoloGetAndPostUseUpstreamShape() async throws {
         var requestCount = 0
         let client = makeClient { request in

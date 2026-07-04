@@ -969,6 +969,64 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testApprovalStale409DismissesPromptWithFriendlyExpiredMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        let clarifyStreamClient = SpySSEStreamingClient()
+        var didRefreshPendingAfterStale = false
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient,
+            clarifyStreamClient: clarifyStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/approval/respond":
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 409,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (response, Data(#"{"ok": false, "error": "Approval prompt expired or not found.", "stale": true}"#.utf8))
+            case "/api/approval/pending":
+                didRefreshPendingAfterStale = true
+                return apiTestJSONResponse(#"{"pending": null}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run the installer")
+        XCTAssertTrue(didStart)
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(
+                approvalId: "approval-1",
+                command: "make install",
+                description: "Install command",
+                patternKey: "install"
+            ),
+            pendingCount: 1
+        )))
+
+        let didRespond = await viewModel.respondToApproval(.once)
+
+        // Expired prompt: the stale card dismisses with a friendly explanation
+        // instead of sticking around behind a generic failure (issue #25).
+        XCTAssertFalse(didRespond)
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertNil(viewModel.approvalErrorMessage)
+        XCTAssertEqual(
+            viewModel.sendErrorMessage,
+            PendingPromptExpiredError(prompt: .approval).localizedDescription
+        )
+        XCTAssertTrue(didRefreshPendingAfterStale)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+    }
+
+    @MainActor
     func testApprovalFallbackPollingFailureStaysDiagnosticOnly() async throws {
         let streamClient = SpySSEStreamingClient()
         let approvalStreamClient = SpySSEStreamingClient()
