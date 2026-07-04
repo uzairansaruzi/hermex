@@ -113,6 +113,13 @@ final class ProvidersViewModelTests: APIClientTestCase {
     }
 
     @MainActor
+    func testExpansionKeyPrefersStableProviderIDWithIndexFallback() {
+        XCTAssertEqual(ProvidersView.expansionKey(for: ProviderSummary(id: " openai "), at: 3), "openai")
+        XCTAssertEqual(ProvidersView.expansionKey(for: ProviderSummary(id: "   "), at: 3), "#3")
+        XCTAssertEqual(ProvidersView.expansionKey(for: ProviderSummary(id: nil), at: 0), "#0")
+    }
+
+    @MainActor
     func testModelCountPrefersModelsTotalWhenListIsTrimmed() {
         let trimmed = ProviderSummary(
             id: "nous",

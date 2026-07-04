@@ -8,7 +8,7 @@ struct ProvidersView: View {
     let server: URL
 
     @State private var viewModel: ProvidersViewModel
-    @State private var expandedProviderIndices: Set<Int> = []
+    @State private var expandedProviderKeys: Set<String> = []
 
     init(server: URL) {
         self.server = server
@@ -56,11 +56,12 @@ struct ProvidersView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(Array(viewModel.providers.enumerated()), id: \.offset) { index, provider in
+                            let key = Self.expansionKey(for: provider, at: index)
                             ProviderRow(
                                 provider: provider,
                                 isActive: viewModel.isActive(provider),
-                                isExpanded: expandedProviderIndices.contains(index),
-                                toggleExpanded: { toggleExpanded(index) }
+                                isExpanded: expandedProviderKeys.contains(key),
+                                toggleExpanded: { toggleExpanded(key) }
                             )
                         }
 
@@ -78,12 +79,23 @@ struct ProvidersView: View {
         }
     }
 
-    private func toggleExpanded(_ index: Int) {
+    /// Expansion is keyed by the provider's stable id so refreshes that reorder
+    /// the list (the server sorts active-first) keep the right rows expanded;
+    /// entries without an id fall back to their position.
+    static func expansionKey(for provider: ProviderSummary, at index: Int) -> String {
+        if let id = provider.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+            return id
+        }
+
+        return "#\(index)"
+    }
+
+    private func toggleExpanded(_ key: String) {
         withAnimation(.snappy(duration: 0.22)) {
-            if expandedProviderIndices.contains(index) {
-                expandedProviderIndices.remove(index)
+            if expandedProviderKeys.contains(key) {
+                expandedProviderKeys.remove(key)
             } else {
-                expandedProviderIndices.insert(index)
+                expandedProviderKeys.insert(key)
             }
         }
     }

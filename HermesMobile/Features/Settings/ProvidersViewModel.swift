@@ -28,6 +28,11 @@ final class ProvidersViewModel {
             let response = try await client.providers()
             providers = response.providers ?? []
             activeProviderID = Self.normalizedProviderID(response.activeProvider)
+        } catch is CancellationError {
+            // The owning view was dismissed (or the refresh gesture was torn
+            // down) mid-request — don't surface "cancelled" as a load error.
+        } catch let error as URLError where error.code == .cancelled {
+            // Same cancellation, surfaced through URLSession.
         } catch {
             errorMessage = error.localizedDescription
         }
