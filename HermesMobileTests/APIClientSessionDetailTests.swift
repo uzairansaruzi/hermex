@@ -436,6 +436,36 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertNil(toolCall.args)
     }
 
+    func testSessionToleratesNumericFieldsOutsideIntRange() async throws {
+        // Values beyond Int range reach the lossy int decoder's Double branch,
+        // which used to trap instead of decoding to nil (#62).
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "huge-numbers",
+                "message_count": 1e300,
+                "input_tokens": -1e300,
+                "output_tokens": "1e300",
+                "context_length": 9223372036854775808,
+                "messages": [
+                  {"role": "assistant", "content": "Still standing"}
+                ]
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.session(id: "huge-numbers")
+        let session = try XCTUnwrap(response.session)
+
+        XCTAssertNil(session.messageCount)
+        XCTAssertNil(session.inputTokens)
+        XCTAssertNil(session.outputTokens)
+        XCTAssertNil(session.contextLength)
+        XCTAssertEqual(session.messages?.first?.content, "Still standing")
+    }
+
     func testSessionDecodesCompressionAnchorMetadata() async throws {
         let client = makeClient { request in
             apiTestJSONResponse("""
@@ -1256,6 +1286,17 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         )
 
         XCTAssertEqual(display?.text, "pwd")
+    }
+
+    func testToolCallDisplayFormatterToleratesOutOfRangeExitCode() {
+        // An exit code beyond Int range comes straight from tool output and
+        // used to trap while rendering the card (#62).
+        let display = ToolCallDisplayFormatter.resultDisplay(
+            preview: #"{"output":"done\n","exit_code":1e300,"error":null}"#,
+            toolName: "terminal"
+        )
+
+        XCTAssertEqual(display?.text, "done")
     }
 
     func testToolCallDisplayFormatterFallsBackToOriginalPreviewWhenParsingFails() {
