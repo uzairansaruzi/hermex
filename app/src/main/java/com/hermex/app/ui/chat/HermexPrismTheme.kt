@@ -19,7 +19,7 @@ class HermexPrismTheme : io.noties.markwon.syntax.Prism4jTheme {
     override fun background(): Int = 0x00000000 // transparent — Compose card handles bg
 
     @ColorInt
-    override fun textColor(): Int = HermexColors.SyntaxPlain.toArgb()
+    override fun textColor(): Int = HermexColors.SyntaxPlainDark.toArgb()
 
     override fun apply(
         language: String,
