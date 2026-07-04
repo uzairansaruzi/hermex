@@ -118,7 +118,7 @@ struct ApprovalRequestOverlay: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.chatDecision(.secondary))
-            .disabled(isResponding)
+            .disabled(isResponding || prompt.isExpired)
         }
     }
 
@@ -138,7 +138,7 @@ struct ApprovalRequestOverlay: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.chatDecision(.primary))
-            .disabled(isResponding)
+            .disabled(isResponding || prompt.isExpired)
         } else {
             Button(role: role) {
                 onChoice(choice)
@@ -147,7 +147,7 @@ struct ApprovalRequestOverlay: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.chatDecision(role == .destructive ? .destructive : .secondary))
-            .disabled(isResponding)
+            .disabled(isResponding || prompt.isExpired)
         }
     }
 

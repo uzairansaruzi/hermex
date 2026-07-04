@@ -127,7 +127,7 @@ struct ClarificationRequestCard: View {
                 .tint(actionButtonBackground)
                 .background(textFieldBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(textFieldBorder)
-                .disabled(isResponding)
+                .disabled(isResponding || prompt.isExpired)
 
             Button {
                 submitDraft()
@@ -139,7 +139,7 @@ struct ClarificationRequestCard: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.chatTactile(.icon))
-            .disabled(isResponding || trimmedDraft.isEmpty)
+            .disabled(isResponding || prompt.isExpired || trimmedDraft.isEmpty)
             .accessibilityLabel("Submit clarification")
         }
     }
@@ -235,7 +235,7 @@ struct ClarificationRequestCard: View {
                 .choiceButtonSurface(reduceTransparency: reduceTransparency)
         }
         .buttonStyle(.chatTactile(.capsule))
-        .disabled(isResponding)
+        .disabled(isResponding || prompt.isExpired)
     }
 
     private var questionBackground: Color {
@@ -252,7 +252,7 @@ struct ClarificationRequestCard: View {
     }
 
     private var actionButtonBackground: Color {
-        if isResponding || trimmedDraft.isEmpty {
+        if isResponding || prompt.isExpired || trimmedDraft.isEmpty {
             return colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)
         }
 
@@ -260,7 +260,7 @@ struct ClarificationRequestCard: View {
     }
 
     private var actionButtonForeground: Color {
-        if isResponding || trimmedDraft.isEmpty {
+        if isResponding || prompt.isExpired || trimmedDraft.isEmpty {
             return Color(.secondaryLabel)
         }
 

@@ -11,6 +11,7 @@ struct ApprovalPromptState: Equatable, Identifiable {
     let sessionID: String
     let pending: PendingApproval
     let pendingCount: Int
+    var isExpired = false
 
     var patternKeys: [String] {
         pending.displayPatternKeys
@@ -25,6 +26,7 @@ struct ClarificationPromptState: Equatable, Identifiable {
     let sessionID: String
     let pending: PendingClarification
     let pendingCount: Int
+    var isExpired = false
 
     var question: String {
         pending.displayQuestion
