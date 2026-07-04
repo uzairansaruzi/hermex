@@ -63,6 +63,7 @@ struct SessionListView: View {
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
         _viewModel = State(initialValue: SessionListViewModel(server: server))
+        _showsCliSessions = AppStorage(wrappedValue: true, SessionRowDisplaySettings.showCliSessionsKey(for: server))
     }
 
     var body: some View {

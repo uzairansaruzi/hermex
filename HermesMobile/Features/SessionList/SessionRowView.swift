@@ -366,6 +366,11 @@ enum SessionRowDisplaySettings {
     // shown, and their toggles let users hide each kind separately.
     static let showCronSessionsKey = "sessionRow.showCronSessions"
     static let showCliSessionsKey = "sessionRow.showCliSessions"
+
+    static func showCliSessionsKey(for server: URL) -> String {
+        let normalizedServer = server.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(showCliSessionsKey).\(normalizedServer)"
+    }
 }
 
 enum SessionSidebarDisclosureSettings {

@@ -19,15 +19,11 @@ struct SettingsView: View {
         self.authManager = authManager
         self.server = server
         self.initialScrollTarget = initialScrollTarget
-        _showsCliSessions = AppStorage(wrappedValue: true, Self.showCliSessionsStorageKey(for: server))
+        _showsCliSessions = AppStorage(wrappedValue: true, SessionRowDisplaySettings.showCliSessionsKey(for: server))
     }
 
     @ScaledMetric(relativeTo: .body) private var settingsCardSpacing: CGFloat = 18
 
-    static func showCliSessionsStorageKey(for server: URL) -> String {
-        let normalizedServer = server.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return "\(SessionRowDisplaySettings.showCliSessionsKey).\(normalizedServer)"
-    }
     @State private var isConfirmingReconfigure = false
     @State private var didScrollToInitialTarget = false
     @State private var isPresentingAddServer = false

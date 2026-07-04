@@ -668,11 +668,11 @@ final class APIClientConfigurationTests: APIClientTestCase {
         let second = try XCTUnwrap(URL(string: "https://two.example.test"))
 
         XCTAssertNotEqual(
-            SettingsView.showCliSessionsStorageKey(for: first),
-            SettingsView.showCliSessionsStorageKey(for: second)
+            SessionRowDisplaySettings.showCliSessionsKey(for: first),
+            SessionRowDisplaySettings.showCliSessionsKey(for: second)
         )
         XCTAssertEqual(
-            SettingsView.showCliSessionsStorageKey(for: first),
+            SessionRowDisplaySettings.showCliSessionsKey(for: first),
             "\(SessionRowDisplaySettings.showCliSessionsKey).https://one.example.test"
         )
     }
