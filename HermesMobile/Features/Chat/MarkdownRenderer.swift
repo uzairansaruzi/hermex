@@ -380,7 +380,7 @@ private struct ChatMarkdownView: View {
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
                     .relativeLineSpacing(.em(0.18))
-                    .markdownMargin(top: 0, bottom: 8)
+                    .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownBlock)
             }
     }
 }
@@ -1201,14 +1201,14 @@ private extension MarkdownUI.Theme {
                     content: configuration.content,
                     isStreaming: isStreaming
                 )
-                .markdownMargin(top: 4, bottom: 12)
+                .markdownMargin(top: ChatTranscriptSpacing.turnBlock, bottom: ChatTranscriptSpacing.markdownRichBlock)
             }
             .table { configuration in
                 ChatMarkdownTable(
                     label: configuration.label,
                     colorScheme: colorScheme
                 )
-                .markdownMargin(top: 0, bottom: 16)
+                .markdownMargin(top: 0, bottom: ChatTranscriptSpacing.markdownRichBlock)
             }
             .tableCell { configuration in
                 TableCellWidthCap(
