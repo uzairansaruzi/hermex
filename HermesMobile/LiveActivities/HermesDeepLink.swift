@@ -136,7 +136,7 @@ enum HermesDeepLink {
             return nil
         }
 
-        let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQueryItems ?? []
         let profileName = isNewChatInProfileURL(url)
             ? Self.profileName(fromNewChatInProfile: url)
             : Self.queryValue(named: profileQueryItem, in: queryItems)
@@ -163,13 +163,12 @@ enum HermesDeepLink {
         guard isNewChatInProfileURL(url) else { return nil }
 
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        guard let raw = components?.queryItems?.first(where: { $0.name == profileQueryItem })?.value
+        guard let raw = components?.percentEncodedQueryItems?.first(where: { $0.name == profileQueryItem })?.value
         else {
             return nil
         }
 
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        return Self.nonEmpty(Self.decodedWebQueryValue(raw))
     }
 
     static func sessionURL(sessionID: String) -> URL? {
@@ -215,7 +214,13 @@ enum HermesDeepLink {
         guard let rawValue = queryItems.first(where: { $0.name == name })?.value else {
             return nil
         }
-        return Self.nonEmpty(rawValue)
+        return Self.nonEmpty(Self.decodedWebQueryValue(rawValue))
+    }
+
+    private static func decodedWebQueryValue(_ rawValue: String) -> String {
+        rawValue
+            .replacingOccurrences(of: "+", with: "%20")
+            .removingPercentEncoding ?? rawValue.replacingOccurrences(of: "+", with: " ")
     }
 
     private static func nonEmpty(_ rawValue: String?) -> String? {
