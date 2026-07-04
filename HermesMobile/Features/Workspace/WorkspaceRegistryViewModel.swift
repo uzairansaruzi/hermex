@@ -29,11 +29,12 @@ final class WorkspaceRegistryViewModel {
 
     private let client: APIClient
 
-    /// Monotonic token for reorder requests: because `@MainActor` methods are
-    /// reentrant across network awaits, a slow older reorder response could
-    /// land after a newer one and overwrite the user's latest ordering. Each
-    /// reorder bumps this; only the most recent one may apply its result.
-    private var reorderGeneration = 0
+    /// Monotonic token for mutation requests: because `@MainActor` methods are
+    /// reentrant across network awaits, a slow older mutation response (add,
+    /// rename, remove, or reorder) could land after a newer one and overwrite
+    /// the newer result with a stale registry echo. Every mutation bumps this;
+    /// only the most recent one may apply its echo, refetch, or record errors.
+    private var mutationGeneration = 0
 
     /// Count of in-flight mutations, so `isMutating` stays true until the last
     /// overlapping mutation settles instead of flipping off when the first does.
@@ -81,7 +82,7 @@ final class WorkspaceRegistryViewModel {
                 name: trimmedName?.isEmpty == false ? trimmedName : nil,
                 create: create ? true : nil
             )
-        }
+        }.succeeded
     }
 
     @discardableResult
@@ -91,7 +92,7 @@ final class WorkspaceRegistryViewModel {
 
         return await performMutation {
             try await self.client.renameWorkspace(path: path, name: trimmedName)
-        }
+        }.succeeded
     }
 
     // MARK: Removal (confirmation-gated)
@@ -115,7 +116,7 @@ final class WorkspaceRegistryViewModel {
 
         return await performMutation {
             try await self.client.removeWorkspace(path: path)
-        }
+        }.succeeded
     }
 
     // MARK: Reorder
@@ -144,13 +145,10 @@ final class WorkspaceRegistryViewModel {
         }
         guard !paths.isEmpty else { return false }
 
-        reorderGeneration += 1
-        let generation = reorderGeneration
-
-        let succeeded = await performMutation(isStale: { generation != self.reorderGeneration }) {
+        let outcome = await performMutation {
             try await self.client.reorderWorkspaces(paths: paths)
         }
-        if !succeeded, generation == reorderGeneration {
+        if !outcome.succeeded, !outcome.superseded {
             // Refetch so local order never drifts from the server, but keep the
             // reorder failure visible (load() clears error state on entry).
             let failureMessage = errorMessage
@@ -161,18 +159,29 @@ final class WorkspaceRegistryViewModel {
                 lastError = failure
             }
         }
-        return succeeded
+        return outcome.succeeded
     }
 
     // MARK: - Helpers
 
-    /// Runs one mutation call and applies its outcome. `isStale` is checked
-    /// after the await: a stale mutation (a newer reorder superseded it) must
-    /// not apply its echo, refetch, or overwrite error state.
+    /// Outcome of one mutation call. `superseded` means a newer mutation
+    /// started while this one was awaiting its response, so this one applied
+    /// nothing locally (its echo would be stale) — the caller must not
+    /// refetch or surface errors for a superseded mutation either.
+    private struct MutationOutcome {
+        let succeeded: Bool
+        let superseded: Bool
+    }
+
+    /// Runs one mutation call and applies its outcome. Staleness is checked
+    /// after the await: a mutation superseded by a newer one (any kind — the
+    /// UI leaves swipe rename/delete reachable while another mutation is in
+    /// flight) must not apply its echo, refetch, or overwrite error state.
     private func performMutation(
-        isStale: @escaping () -> Bool = { false },
         _ operation: @escaping () async throws -> WorkspaceMutationResponse
-    ) async -> Bool {
+    ) async -> MutationOutcome {
+        mutationGeneration += 1
+        let generation = mutationGeneration
         inFlightMutations += 1
         isMutating = true
         errorMessage = nil
@@ -184,28 +193,32 @@ final class WorkspaceRegistryViewModel {
 
         do {
             let response = try await operation()
+            let superseded = generation != mutationGeneration
             // These undocumented routes signal failure via non-2xx today, but
             // the body explicitly carries `ok`/`error` — honor a 2xx that
             // reports `ok: false` as a failure instead of a success.
             if response.ok == false {
-                if !isStale() {
+                if !superseded {
                     record(WorkspaceMutationRejection(serverMessage: response.error))
                 }
-                return false
+                return MutationOutcome(succeeded: false, superseded: superseded)
             }
             didMutateRegistry = true
-            guard !isStale() else { return true }
+            guard !superseded else {
+                return MutationOutcome(succeeded: true, superseded: true)
+            }
             if let updated = response.workspaces {
                 workspaces = updated
             } else {
                 await load()
             }
-            return true
+            return MutationOutcome(succeeded: true, superseded: false)
         } catch {
-            if !isStale() {
+            let superseded = generation != mutationGeneration
+            if !superseded {
                 record(error)
             }
-            return false
+            return MutationOutcome(succeeded: false, superseded: superseded)
         }
     }
 

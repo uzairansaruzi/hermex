@@ -414,6 +414,74 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
     }
 
     @MainActor
+    func testStaleRenameResponseDoesNotResurrectRemovedWorkspace() async throws {
+        // The rename of alpha is held back so an overlapping removal of beta
+        // supersedes it. The stale rename echo still contains beta; the
+        // generation guard must ignore it instead of resurrecting the removed
+        // row. (As above: whether the hold ends via the signal or the bounded
+        // timeout, the stale echo is always processed after the removal began.)
+        let renameStarted = expectation(description: "rename request in flight")
+        let releaseRename = DispatchSemaphore(value: 0)
+
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse(Self.twoWorkspacesJSON, for: request)
+            case "/api/workspaces/rename":
+                renameStarted.fulfill()
+                _ = releaseRename.wait(timeout: .now() + 2)
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "workspaces": [
+                    {"path": "/Users/test/alpha", "name": "Renamed Alpha"},
+                    {"path": "/Users/test/beta", "name": "Beta"}
+                  ]
+                }
+                """, for: request)
+            case "/api/workspaces/remove":
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "workspaces": [
+                    {"path": "/Users/test/alpha", "name": "Renamed Alpha"}
+                  ]
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let model = WorkspaceRegistryViewModel(client: client)
+        await model.load()
+
+        // Rename alpha; the response is held while the removal overlaps it.
+        let renameTask = Task { @MainActor in
+            await model.renameWorkspace(path: "/Users/test/alpha", to: "Renamed Alpha")
+        }
+        await fulfillment(of: [renameStarted], timeout: 2)
+        XCTAssertTrue(model.isMutating)
+
+        let beta = try XCTUnwrap(model.rows.first { $0.path == "/Users/test/beta" })
+        let removalSucceeded = await model.confirmRemoval(of: beta)
+        XCTAssertTrue(removalSucceeded)
+        XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha"])
+
+        // Release the stale rename response; it must not restore beta.
+        releaseRename.signal()
+        let renameSucceeded = await renameTask.value
+        XCTAssertTrue(renameSucceeded)
+        XCTAssertEqual(
+            model.rows.map(\.path),
+            ["/Users/test/alpha"],
+            "A stale rename echo must not resurrect a removed workspace."
+        )
+        XCTAssertFalse(model.isMutating)
+        XCTAssertTrue(model.didMutateRegistry)
+    }
+
+    @MainActor
     func testMutationWithoutWorkspacesEchoRefetchesList() async throws {
         var workspacesLoadCount = 0
         let client = makeClient { request in
