@@ -67,5 +67,6 @@ object HermexColors {
     val SyntaxPlainDark = Color(0xFFFFFFFF)
     val SyntaxPlainLight = Color(0xFF1F1F1F)
     @Deprecated("Use SyntaxPlainDark", replaceWith = ReplaceWith("SyntaxPlainDark"))
-    val SyntaxPlain = SyntaxPlainDark
+    val SyntaxPlainDark = Color(0xFFFFFFFF)
+    val SyntaxPlainLight = Color(0xFF1F1F1F)
 }
