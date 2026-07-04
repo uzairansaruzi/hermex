@@ -87,7 +87,7 @@ sub-paths of a group. Do not reorder casually.
 | `/api/session/recovery/` | roadmap | P4 | write | Advanced Session Maintenance |
 | `/api/sessions/cleanup` | roadmap | P4 | write | Advanced Session Maintenance — bulk cleanup |
 | `/api/provider/` | roadmap | P3 | secret | Provider Management — quota/cost history |
-| `/api/providers` | roadmap | P3 | secret | Provider Management — set/delete API keys |
+| `/api/providers` | partial | P3 | secret | Provider Management — read status shipped; key set/delete remains roadmap |
 | `/api/models/refresh` | roadmap | P3 | — | Provider / Model Management |
 | `/api/models/live` | roadmap | P3 | — | Provider / Model Management — live model fetch |
 | `/api/model/` | roadmap | P3 | — | Provider / Model Management |

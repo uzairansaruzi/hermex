@@ -222,6 +222,121 @@ final class ModelCatalogTests: XCTestCase {
             groups
         )
     }
+
+    // MARK: - /api/providers (issue #26)
+
+    func testProvidersResponseDecodesLiveStatusShape() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            ProvidersResponse.self,
+            from: Data("""
+            {
+              "active_provider": "openai-codex",
+              "providers": [
+                {
+                  "id": "openai-codex",
+                  "display_name": "OpenAI Codex",
+                  "has_key": true,
+                  "configurable": false,
+                  "is_plugin_provider": false,
+                  "is_self_hosted": false,
+                  "base_url": null,
+                  "is_oauth": true,
+                  "key_source": "oauth",
+                  "auth_error": null,
+                  "models": [
+                    {"id": "gpt-5.5", "label": "GPT 5.5"}
+                  ],
+                  "models_total": 5
+                }
+              ]
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(response.activeProvider, "openai-codex")
+        let provider = try XCTUnwrap(response.providers?.first)
+        XCTAssertEqual(provider.id, "openai-codex")
+        XCTAssertEqual(provider.displayName, "OpenAI Codex")
+        XCTAssertEqual(provider.hasKey, true)
+        XCTAssertEqual(provider.configurable, false)
+        XCTAssertEqual(provider.isPluginProvider, false)
+        XCTAssertEqual(provider.isSelfHosted, false)
+        XCTAssertEqual(provider.isOauth, true)
+        XCTAssertEqual(provider.keySource, "oauth")
+        XCTAssertNil(provider.authError)
+        XCTAssertEqual(provider.modelsTotal, 5)
+        XCTAssertEqual(provider.models?.first?.id, "gpt-5.5")
+        XCTAssertEqual(provider.models?.first?.label, "GPT 5.5")
+    }
+
+    func testProvidersResponseToleratesMissingFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            ProvidersResponse.self,
+            from: Data("""
+            {
+              "providers": [
+                {"id": "bare-provider"},
+                {}
+              ]
+            }
+            """.utf8)
+        )
+
+        XCTAssertNil(response.activeProvider)
+        XCTAssertEqual(response.providers?.count, 2)
+        XCTAssertEqual(response.providers?.first?.displayTitle, "bare-provider")
+        XCTAssertEqual(response.providers?.last?.displayTitle, "Provider")
+    }
+
+    func testProviderPresentationHelpersExposeActiveErrorAndKeyStatus() {
+        let keyed = ProviderSummary(
+            id: "openrouter",
+            displayName: "OpenRouter",
+            hasKey: true,
+            configurable: true,
+            isPluginProvider: false,
+            isSelfHosted: false,
+            baseUrl: nil,
+            isOauth: false,
+            keySource: "env_var",
+            authError: "token expired",
+            models: [ProviderModel(id: "anthropic/claude-sonnet", label: "Claude Sonnet")],
+            modelsTotal: 12
+        )
+
+        XCTAssertTrue(keyed.isActive(activeProvider: "openrouter"))
+        XCTAssertEqual(keyed.displayTitle, "OpenRouter")
+        XCTAssertEqual(keyed.keyStatusText, "Has key")
+        XCTAssertEqual(keyed.keySourceBadge, "env var")
+        XCTAssertEqual(keyed.modelCountText, "1 shown · 12 total")
+        XCTAssertEqual(keyed.authErrorText, "token expired")
+
+        let unkeyed = ProviderSummary(
+            id: "local",
+            displayName: nil,
+            hasKey: false,
+            configurable: nil,
+            isPluginProvider: nil,
+            isSelfHosted: true,
+            baseUrl: "http://localhost:11434",
+            isOauth: nil,
+            keySource: "none",
+            authError: nil,
+            models: nil,
+            modelsTotal: nil
+        )
+
+        XCTAssertFalse(unkeyed.isActive(activeProvider: "openrouter"))
+        XCTAssertEqual(unkeyed.displayTitle, "local")
+        XCTAssertEqual(unkeyed.keyStatusText, "No key")
+        XCTAssertEqual(unkeyed.keySourceBadge, "self-hosted")
+        XCTAssertEqual(unkeyed.modelCountText, "No models listed")
+        XCTAssertNil(unkeyed.authErrorText)
+    }
 }
 
 final class PersonalityAutocompleteTests: XCTestCase {

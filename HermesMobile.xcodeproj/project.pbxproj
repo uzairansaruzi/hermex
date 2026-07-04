@@ -214,6 +214,7 @@
 		1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */; };
 		1A2B3C4D5E6F70000000114 /* DefaultModelPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000115 /* DefaultModelPickerView.swift */; };
 		103200000000000000000002 /* DefaultProfilePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103200000000000000000001 /* DefaultProfilePickerView.swift */; };
+		C02600000000000000000001 /* ProvidersStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02600000000000000000002 /* ProvidersStatusView.swift */; };
 		1A2B3C4D5E6F70000000130 /* ContextWindowSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000120 /* ContextWindowSnapshot.swift */; };
 		1A2B3C4D5E6F70000000131 /* ContextWindowIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000121 /* ContextWindowIndicatorView.swift */; };
 		1A2B3C4D5E6F70000000132 /* ContextWindowIndicatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */; };
@@ -524,6 +525,7 @@
 		1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsViewModel.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000115 /* DefaultModelPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultModelPickerView.swift; sourceTree = "<group>"; };
 		103200000000000000000001 /* DefaultProfilePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultProfilePickerView.swift; sourceTree = "<group>"; };
+		C02600000000000000000002 /* ProvidersStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvidersStatusView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000120 /* ContextWindowSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowSnapshot.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000121 /* ContextWindowIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowIndicatorView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowIndicatorTests.swift; sourceTree = "<group>"; };
@@ -1000,6 +1002,7 @@
 				C012400000000000000003 /* AppIconSettingsSection.swift */,
 				1A2B3C4D5E6F70000000115 /* DefaultModelPickerView.swift */,
 				103200000000000000000001 /* DefaultProfilePickerView.swift */,
+				C02600000000000000000002 /* ProvidersStatusView.swift */,
 				1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */,
 				C23400000000000000000002 /* StreamingLabReplay.swift */,
 				C23400000000000000000004 /* StreamingLabView.swift */,
@@ -1377,6 +1380,7 @@
 				C012400000000000000004 /* AppIconSettingsSection.swift in Sources */,
 				1A2B3C4D5E6F70000000114 /* DefaultModelPickerView.swift in Sources */,
 				103200000000000000000002 /* DefaultProfilePickerView.swift in Sources */,
+				C02600000000000000000001 /* ProvidersStatusView.swift in Sources */,
 				1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */,
 				C23400000000000000000001 /* StreamingLabReplay.swift in Sources */,
 				C23400000000000000000003 /* StreamingLabView.swift in Sources */,

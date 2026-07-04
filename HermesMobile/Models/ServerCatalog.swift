@@ -137,8 +137,176 @@ struct AgentCommand: Decodable, Equatable, Identifiable, Sendable {
 }
 
 struct ProvidersResponse: Decodable, Equatable {
-    let providers: [JSONValue]?
+    let providers: [ProviderSummary]?
     let activeProvider: String?
+}
+
+struct ProviderSummary: Decodable, Equatable, Identifiable, Sendable {
+    var id: String? { providerID }
+
+    let providerID: String?
+    let displayName: String?
+    let hasKey: Bool?
+    let configurable: Bool?
+    let isPluginProvider: Bool?
+    let isSelfHosted: Bool?
+    let baseUrl: String?
+    let isOauth: Bool?
+    let keySource: String?
+    let authError: String?
+    let models: [ProviderModel]?
+    let modelsTotal: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case providerID = "id"
+        case displayName
+        case hasKey
+        case configurable
+        case isPluginProvider
+        case isSelfHosted
+        case baseUrl
+        case isOauth
+        case keySource
+        case authError
+        case models
+        case modelsTotal
+    }
+
+    init(
+        id: String?,
+        displayName: String? = nil,
+        hasKey: Bool? = nil,
+        configurable: Bool? = nil,
+        isPluginProvider: Bool? = nil,
+        isSelfHosted: Bool? = nil,
+        baseUrl: String? = nil,
+        isOauth: Bool? = nil,
+        keySource: String? = nil,
+        authError: String? = nil,
+        models: [ProviderModel]? = nil,
+        modelsTotal: Int? = nil
+    ) {
+        self.providerID = id
+        self.displayName = displayName
+        self.hasKey = hasKey
+        self.configurable = configurable
+        self.isPluginProvider = isPluginProvider
+        self.isSelfHosted = isSelfHosted
+        self.baseUrl = baseUrl
+        self.isOauth = isOauth
+        self.keySource = keySource
+        self.authError = authError
+        self.models = models
+        self.modelsTotal = modelsTotal
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providerID = container.decodeLossyStringIfPresent(forKey: .providerID)
+        displayName = container.decodeLossyStringIfPresent(forKey: .displayName)
+        hasKey = container.decodeLossyBoolIfPresent(forKey: .hasKey)
+        configurable = container.decodeLossyBoolIfPresent(forKey: .configurable)
+        isPluginProvider = container.decodeLossyBoolIfPresent(forKey: .isPluginProvider)
+        isSelfHosted = container.decodeLossyBoolIfPresent(forKey: .isSelfHosted)
+        baseUrl = container.decodeLossyStringIfPresent(forKey: .baseUrl)
+        isOauth = container.decodeLossyBoolIfPresent(forKey: .isOauth)
+        keySource = container.decodeLossyStringIfPresent(forKey: .keySource)
+        authError = container.decodeLossyStringIfPresent(forKey: .authError)
+        models = try? container.decodeIfPresent([ProviderModel].self, forKey: .models)
+        modelsTotal = container.decodeLossyIntIfPresent(forKey: .modelsTotal)
+    }
+}
+
+struct ProviderModel: Decodable, Equatable, Identifiable, Sendable {
+    let id: String?
+    let label: String?
+
+    init(id: String?, label: String? = nil) {
+        self.id = id
+        self.label = label
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case label
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyStringIfPresent(forKey: .id)
+        label = container.decodeLossyStringIfPresent(forKey: .label)
+    }
+}
+
+extension ProviderSummary {
+    var displayTitle: String {
+        normalized(displayName) ?? normalized(providerID) ?? String(localized: "Provider")
+    }
+
+    var keyStatusText: String {
+        hasKey == true ? String(localized: "Has key") : String(localized: "No key")
+    }
+
+    var keySourceBadge: String? {
+        if isSelfHosted == true {
+            return String(localized: "self-hosted")
+        }
+
+        if isOauth == true {
+            return String(localized: "oauth")
+        }
+
+        guard let source = normalized(keySource), source != "none" else { return nil }
+        switch source {
+        case "env_var":
+            return String(localized: "env var")
+        case "env_file":
+            return String(localized: "env file")
+        case "config_yaml":
+            return String(localized: "config")
+        default:
+            return source.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+
+    var authErrorText: String? {
+        normalized(authError)
+    }
+
+    var visibleModels: [ProviderModel] {
+        (models ?? []).filter { normalized($0.id) != nil }
+    }
+
+    var modelCountText: String {
+        let shown = visibleModels.count
+        if let modelsTotal {
+            if shown > 0, modelsTotal > shown {
+                return String(localized: "\(shown) shown · \(modelsTotal) total")
+            }
+            return String(localized: "\(modelsTotal) models")
+        }
+
+        if shown > 0 {
+            return String(localized: "\(shown) models")
+        }
+
+        return String(localized: "No models listed")
+    }
+
+    func isActive(activeProvider: String?) -> Bool {
+        guard let providerID = normalized(providerID),
+              let activeProvider = normalized(activeProvider)
+        else {
+            return false
+        }
+
+        return providerID == activeProvider
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
 }
 
 struct SettingsResponse: Decodable, Equatable {

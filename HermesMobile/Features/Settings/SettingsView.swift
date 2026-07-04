@@ -326,6 +326,19 @@ struct SettingsView: View {
 
                     SettingsDivider()
 
+                    NavigationLink {
+                        ProvidersStatusView(server: server)
+                    } label: {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Providers"),
+                            systemImage: "server.rack"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens read-only provider status.")
+
+                    SettingsDivider()
+
                     SettingsValueRow(title: String(localized: "Status")) {
                         serverStatusPill
                     }
