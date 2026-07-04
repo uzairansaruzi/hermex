@@ -37,6 +37,62 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertEqual(response.externalNotesEnabled, true)
     }
 
+
+    func testMemoryResponseToleratesAbsentProjectContextFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            MemoryResponse.self,
+            from: Data("""
+            {
+              "memory": "# Notes"
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(response.memory, "# Notes")
+        XCTAssertNil(response.projectContext)
+        XCTAssertNil(response.projectContextName)
+        XCTAssertNil(response.projectContextPath)
+        XCTAssertNil(response.projectContextWorkspace)
+        XCTAssertNil(response.projectContextShadowed)
+        XCTAssertNil(response.projectContextMtime)
+        XCTAssertNil(response.externalNotesEnabled)
+    }
+
+    @MainActor
+    func testLoadMapsProjectContextFieldsToViewModel() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+            return apiTestJSONResponse("""
+            {
+              "project_context": "# Project",
+              "project_context_name": "AGENTS.md",
+              "project_context_path": "/work/app/AGENTS.md",
+              "project_context_workspace": "/work/app",
+              "project_context_shadowed": true,
+              "project_context_mtime": 1770000300,
+              "external_notes_enabled": true
+            }
+            """, for: request)
+        }
+        let viewModel = MemoryViewModel(
+            server: try XCTUnwrap(URL(string: "https://example.test")),
+            client: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.projectContextText, "# Project")
+        XCTAssertEqual(viewModel.projectContextName, "AGENTS.md")
+        XCTAssertEqual(viewModel.projectContextPath, "/work/app/AGENTS.md")
+        XCTAssertEqual(viewModel.projectContextWorkspace, "/work/app")
+        XCTAssertEqual(viewModel.projectContextMtime, Date(timeIntervalSince1970: 1_770_000_300))
+        XCTAssertTrue(viewModel.isProjectContextShadowed)
+        XCTAssertTrue(viewModel.isExternalNotesEnabled)
+        XCTAssertTrue(viewModel.hasLoaded)
+    }
+
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
         super.tearDown()

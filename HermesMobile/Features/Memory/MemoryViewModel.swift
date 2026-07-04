@@ -11,6 +11,7 @@ final class MemoryViewModel {
     private(set) var projectContextName: String?
     private(set) var projectContextPath: String?
     private(set) var projectContextWorkspace: String?
+    private(set) var projectContextMtime: Date?
     private(set) var isProjectContextShadowed = false
     private(set) var isExternalNotesEnabled = false
     private(set) var memoryMtime: Date?
@@ -101,6 +102,7 @@ final class MemoryViewModel {
         projectContextName = response.projectContextName
         projectContextPath = response.projectContextPath
         projectContextWorkspace = response.projectContextWorkspace
+        projectContextMtime = response.projectContextMtime.map { Date(timeIntervalSince1970: $0) }
         isProjectContextShadowed = response.projectContextShadowed == true
         isExternalNotesEnabled = response.externalNotesEnabled == true
         memoryMtime = response.memoryMtime.map { Date(timeIntervalSince1970: $0) }

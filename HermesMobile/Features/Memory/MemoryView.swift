@@ -93,6 +93,7 @@ struct MemoryView: View {
                             name: viewModel.projectContextName,
                             path: viewModel.projectContextPath,
                             workspace: viewModel.projectContextWorkspace,
+                            modifiedAt: viewModel.projectContextMtime,
                             isShadowed: viewModel.isProjectContextShadowed,
                             externalNotesEnabled: viewModel.isExternalNotesEnabled
                         )
@@ -174,6 +175,7 @@ private struct ProjectContextContent: View {
     let name: String?
     let path: String?
     let workspace: String?
+    let modifiedAt: Date?
     let isShadowed: Bool
     let externalNotesEnabled: Bool
 
@@ -211,7 +213,8 @@ private struct ProjectContextContent: View {
     private var metadataText: String? {
         let parts = [
             nonEmpty(name),
-            nonEmpty(workspace).map { "Workspace: \($0)" },
+            nonEmpty(workspace).map { String(localized: "Workspace: \($0)") },
+            modifiedAt.map { String(localized: "Modified \($0, style: .relative) ago") },
             nonEmpty(path)
         ].compactMap { $0 }
 
