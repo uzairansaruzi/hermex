@@ -12,15 +12,15 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class SharedDraftStore {
 
-    data class SharedContent(val text: String?, val imageUri: String?) {
-        val isEmpty: Boolean get() = text.isNullOrBlank() && imageUri.isNullOrBlank()
+    data class SharedContent(val text: String?, val fileUris: List<String> = emptyList()) {
+        val isEmpty: Boolean get() = text.isNullOrBlank() && fileUris.isEmpty()
     }
 
     private val _pending = MutableStateFlow<SharedContent?>(null)
     val pending: StateFlow<SharedContent?> = _pending
 
-    fun offer(text: String?, imageUri: String? = null) {
-        val content = SharedContent(text?.trim()?.takeIf { it.isNotEmpty() }, imageUri)
+    fun offer(text: String?, fileUris: List<String> = emptyList()) {
+        val content = SharedContent(text?.trim()?.takeIf { it.isNotEmpty() }, fileUris)
         if (!content.isEmpty) _pending.value = content
     }
 

@@ -108,16 +108,26 @@ class MainActivity : ComponentActivity() {
         when {
             intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true ->
                 container.sharedDraftStore.offer(intent.getStringExtra(Intent.EXTRA_TEXT))
-            intent.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true -> {
+            intent.action == Intent.ACTION_SEND -> {
                 @Suppress("DEPRECATION")
                 val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
                 container.sharedDraftStore.offer(
                     text = intent.getStringExtra(Intent.EXTRA_TEXT),
-                    imageUri = uri?.toString(),
+                    fileUris = listOfNotNull(uri?.toString()),
+                )
+            }
+            intent.action == Intent.ACTION_SEND_MULTIPLE -> {
+                @Suppress("DEPRECATION")
+                val uris = intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                container.sharedDraftStore.offer(
+                    text = intent.getStringExtra(Intent.EXTRA_TEXT),
+                    fileUris = uris.orEmpty().map { it.toString() },
                 )
             }
             intent.hasExtra(RunNotifications.EXTRA_SESSION_ID) ->
                 pendingSessionFromNotification = intent.getStringExtra(RunNotifications.EXTRA_SESSION_ID)
+            intent.getBooleanExtra(com.hermexapp.android.platform.HermexWidgetProvider.EXTRA_NEW_CHAT, false) ->
+                pendingNewChatFromWidget = true
         }
     }
 
@@ -130,6 +140,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Session to open when launched from a run-complete notification. */
         var pendingSessionFromNotification: String? = null
+
+        /** Set when launched from the home-screen widget's "New chat" button. */
+        var pendingNewChatFromWidget: Boolean = false
     }
 }
 
@@ -166,13 +179,13 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
             val content = container.sharedDraftStore.consume() ?: return@LaunchedEffect
             val sessionId = sessionListViewModel.createSessionNow() ?: return@LaunchedEffect
             sharePrefill = content.text
-            shareImageUpload = content.imageUri?.let { uriString ->
+            shareFileUploads = content.fileUris.mapNotNull { uriString ->
                 runCatching {
                     val uri = android.net.Uri.parse(uriString)
                     val bytes = withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     }
-                    val name = uri.lastPathSegment?.substringAfterLast('/') ?: "shared-image.jpg"
+                    val name = resolveDisplayName(context, uri)
                     bytes?.let { it to name }
                 }.getOrNull()
             }
@@ -185,6 +198,11 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
         MainActivity.pendingSessionFromNotification?.let {
             MainActivity.pendingSessionFromNotification = null
             screen = Screen.Chat(it)
+        }
+        // The widget's "New chat" button opens a fresh session on launch.
+        if (MainActivity.pendingNewChatFromWidget) {
+            MainActivity.pendingNewChatFromWidget = false
+            sessionListViewModel.createSessionNow()?.let { screen = Screen.Chat(it) }
         }
     }
 
@@ -218,9 +236,12 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
                         onAuthError = container.authManager::handleApiError,
                     ).also { vm ->
                         sharePrefill?.let { vm.updateComposerText(it); sharePrefill = null }
-                        shareImageUpload?.let { (bytes, name) ->
-                            shareImageUpload = null
-                            vm.viewModelScope.launch { vm.addAttachmentNow(bytes, name) }
+                        if (shareFileUploads.isNotEmpty()) {
+                            val uploads = shareFileUploads
+                            shareFileUploads = emptyList()
+                            vm.viewModelScope.launch {
+                                uploads.forEach { (bytes, name) -> vm.addAttachmentNow(bytes, name) }
+                            }
                         }
                     }
                 }
@@ -297,6 +318,21 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
     }
 }
 
-/** Composer prefill + image handoff from a share, consumed on the next chat open. */
+/** Composer prefill + file handoff from a share, consumed on the next chat open. */
 private var sharePrefill: String? = null
-private var shareImageUpload: Pair<ByteArray, String>? = null
+private var shareFileUploads: List<Pair<ByteArray, String>> = emptyList()
+
+/** Best-effort human filename for a shared content URI (falls back to a guess). */
+private fun resolveDisplayName(context: android.content.Context, uri: android.net.Uri): String {
+    if (uri.scheme == "content") {
+        runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(nameIndex)?.takeIf { it.isNotBlank() }?.let { return it }
+                }
+            }
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "shared-file"
+}

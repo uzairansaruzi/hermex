@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hermex widget canvas: near-black rounded card matching the app surface. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#1C1C1E" />
+    <corners android:radius="20dp" />
+</shape>

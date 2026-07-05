@@ -72,9 +72,18 @@ private fun BlockView(block: MdBlock, baseStyle: androidx.compose.ui.text.TextSt
                 block.language?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
                 }
+                val codeColors = CodeColors(
+                    keyword = palette.accent,
+                    string = palette.success,
+                    comment = palette.textSecondary,
+                    number = palette.warning,
+                )
+                val highlighted = remember(block.code, block.language, palette.accent) {
+                    highlightCode(block.code, block.language, codeColors)
+                }
                 Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     Text(
-                        block.code,
+                        highlighted,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         softWrap = false,

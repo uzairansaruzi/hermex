@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Hermex</string>
+    <string name="widget_new_chat">New chat</string>
+    <string name="widget_description">Start a new Hermex chat.</string>
 </resources>

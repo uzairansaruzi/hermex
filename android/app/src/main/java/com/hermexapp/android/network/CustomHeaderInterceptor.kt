@@ -1,6 +1,5 @@
 package com.hermexapp.android.network
 
-import com.hermexapp.android.config.ServerRegistry
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -9,11 +8,16 @@ import okhttp3.Response
  * request, looked up by host so each server in the multi-server registry gets
  * only its own headers. Existing headers on the request win (we never clobber
  * `Accept`/`Cache-Control`); we only add headers the request doesn't set.
+ *
+ * Takes a plain host→headers lookup (usually `ServerRegistry::headersForHost`)
+ * so it stays unit-testable without a `Context`.
  */
-class CustomHeaderInterceptor(private val registry: ServerRegistry) : Interceptor {
+class CustomHeaderInterceptor(
+    private val headersForHost: (String) -> Map<String, String>,
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val extra = registry.headersForHost(request.url.host)
+        val extra = headersForHost(request.url.host)
         if (extra.isEmpty()) return chain.proceed(request)
 
         val builder = request.newBuilder()

@@ -69,8 +69,8 @@ class AppContainer(secretStore: SecretStore, context: Context? = null) {
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
         .apply {
-            serverRegistry?.let {
-                addInterceptor(com.hermexapp.android.network.CustomHeaderInterceptor(it))
+            serverRegistry?.let { registry ->
+                addInterceptor(com.hermexapp.android.network.CustomHeaderInterceptor(registry::headersForHost))
             }
         }
         .build()
