@@ -119,6 +119,44 @@ class SessionRepositoryTest {
         assertEquals(1, cached?.messages?.size)
     }
 
+    @Test
+    fun `duplicate move and branch reach the right endpoints`() = runBlocking {
+        server.enqueue(json("""{"session": {"session_id": "copy1", "title": "T (copy)"}}"""))
+        val copy = repository.duplicateSession("abc")
+        assertEquals("/api/session/duplicate", server.takeRequest().path)
+        assertEquals("copy1", copy?.sessionId)
+
+        server.enqueue(json("""{"ok": true, "session": {"session_id": "abc"}}"""))
+        val move = repository.moveSession("abc", "proj1")
+        assertEquals("/api/session/move", server.takeRequest().path)
+        assertEquals(true, move.ok)
+
+        server.enqueue(json("""{"session_id": "fork1", "title": "T (fork)", "parent_session_id": "abc"}"""))
+        val fork = repository.branchSession("abc")
+        assertEquals("/api/session/branch", server.takeRequest().path)
+        assertEquals("fork1", fork.sessionId)
+    }
+
+    @Test
+    fun `project load and CRUD reach the right endpoints`() = runBlocking {
+        server.enqueue(json("""{"projects": [{"project_id": "p1", "name": "Work", "color": "#FF3B30"}]}"""))
+        val projects = repository.loadProjects()
+        assertEquals("/api/projects", server.takeRequest().path)
+        assertEquals("Work", projects.single().name)
+
+        server.enqueue(json("""{"ok": true, "project": {"project_id": "p2", "name": "New"}}"""))
+        assertEquals(true, repository.createProject("New", "#34C759").ok)
+        assertEquals("/api/projects/create", server.takeRequest().path)
+
+        server.enqueue(json("""{"ok": true, "project": {"project_id": "p2", "name": "Renamed"}}"""))
+        repository.renameProject("p2", "Renamed", null)
+        assertEquals("/api/projects/rename", server.takeRequest().path)
+
+        server.enqueue(json("""{"ok": true}"""))
+        assertEquals(true, repository.deleteProject("p2").ok)
+        assertEquals("/api/projects/delete", server.takeRequest().path)
+    }
+
     private fun json(body: String): MockResponse =
         MockResponse()
             .setResponseCode(200)

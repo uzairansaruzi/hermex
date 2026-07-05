@@ -1,7 +1,6 @@
 package com.hermexapp.android.config
 
 import android.content.Context
-import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -26,56 +25,55 @@ enum class AccentPreset(val displayName: String, val hex: String) {
  * Plain SharedPreferences — secrets live in the Keystore-backed SecretStore,
  * never here. Each pref is a StateFlow so the UI reacts immediately.
  */
-class AppPrefs(context: Context) {
+class AppPrefs(private val store: KeyValueStore) {
 
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences("hermex_prefs", Context.MODE_PRIVATE)
+    constructor(context: Context) : this(KeyValueStore.forPrefs(context, "hermex_prefs"))
 
     private val _theme = MutableStateFlow(
-        runCatching { ThemeChoice.valueOf(prefs.getString(KEY_THEME, null) ?: "") }
+        runCatching { ThemeChoice.valueOf(store.getString(KEY_THEME) ?: "") }
             .getOrDefault(ThemeChoice.SYSTEM),
     )
     val theme: StateFlow<ThemeChoice> = _theme
 
     fun setTheme(choice: ThemeChoice) {
         _theme.value = choice
-        prefs.edit().putString(KEY_THEME, choice.name).apply()
+        store.putString(KEY_THEME, choice.name)
     }
 
     /** Header Logo Color — the brand accent (iOS #261). */
-    private val _accent = MutableStateFlow(AccentPreset.fromHex(prefs.getString(KEY_ACCENT, null)))
+    private val _accent = MutableStateFlow(AccentPreset.fromHex(store.getString(KEY_ACCENT)))
     val accent: StateFlow<AccentPreset> = _accent
 
     fun setAccent(preset: AccentPreset) {
         _accent.value = preset
-        prefs.edit().putString(KEY_ACCENT, preset.hex).apply()
+        store.putString(KEY_ACCENT, preset.hex)
     }
 
     /** "Expand Thinking by default" (iOS chat display setting). */
-    private val _expandThinking = MutableStateFlow(prefs.getBoolean(KEY_EXPAND_THINKING, false))
+    private val _expandThinking = MutableStateFlow(store.getBoolean(KEY_EXPAND_THINKING, false))
     val expandThinking: StateFlow<Boolean> = _expandThinking
 
     fun setExpandThinking(value: Boolean) {
         _expandThinking.value = value
-        prefs.edit().putBoolean(KEY_EXPAND_THINKING, value).apply()
+        store.putBoolean(KEY_EXPAND_THINKING, value)
     }
 
     /** "Expand Tool Calls by default". */
-    private val _expandTools = MutableStateFlow(prefs.getBoolean(KEY_EXPAND_TOOLS, false))
+    private val _expandTools = MutableStateFlow(store.getBoolean(KEY_EXPAND_TOOLS, false))
     val expandTools: StateFlow<Boolean> = _expandTools
 
     fun setExpandTools(value: Boolean) {
         _expandTools.value = value
-        prefs.edit().putBoolean(KEY_EXPAND_TOOLS, value).apply()
+        store.putBoolean(KEY_EXPAND_TOOLS, value)
     }
 
     /** Response-completion notifications master switch (default on). */
-    private val _notificationsEnabled = MutableStateFlow(prefs.getBoolean(KEY_NOTIFICATIONS, true))
+    private val _notificationsEnabled = MutableStateFlow(store.getBoolean(KEY_NOTIFICATIONS, true))
     val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled
 
     fun setNotificationsEnabled(value: Boolean) {
         _notificationsEnabled.value = value
-        prefs.edit().putBoolean(KEY_NOTIFICATIONS, value).apply()
+        store.putBoolean(KEY_NOTIFICATIONS, value)
     }
 
     private companion object {

@@ -1,7 +1,6 @@
 package com.hermexapp.android.config
 
 import android.content.Context
-import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
@@ -28,10 +27,9 @@ data class ServerEntry(
  * catalog + headers. A `@Volatile` host→headers snapshot lets the OkHttp
  * interceptor read headers without suspending.
  */
-class ServerRegistry(context: Context) {
+class ServerRegistry(private val store: KeyValueStore) {
 
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences("hermex_servers", Context.MODE_PRIVATE)
+    constructor(context: Context) : this(KeyValueStore.forPrefs(context, "hermex_servers"))
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -73,11 +71,11 @@ class ServerRegistry(context: Context) {
     private fun update(next: List<ServerEntry>) {
         _servers.value = next
         headersByHost = snapshotByHost(next)
-        prefs.edit().putString(KEY_SERVERS, json.encodeToString(next)).apply()
+        store.putString(KEY_SERVERS, json.encodeToString(next))
     }
 
     private fun load(): List<ServerEntry> {
-        val raw = prefs.getString(KEY_SERVERS, null) ?: return emptyList()
+        val raw = store.getString(KEY_SERVERS) ?: return emptyList()
         return runCatching { json.decodeFromString<List<ServerEntry>>(raw) }.getOrDefault(emptyList())
     }
 

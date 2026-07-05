@@ -187,6 +187,79 @@ class AuthManagerTest {
         assertNull(secretStore.load(SecretStore.Key.SERVER_URL))
     }
 
+    @Test
+    fun `configure registers the server in the multi-server registry`() = runBlocking {
+        val registry = com.hermexapp.android.config.ServerRegistry(
+            com.hermexapp.android.config.InMemoryKeyValueStore(),
+        )
+        enqueueHealthOk()
+        enqueueAuthStatus(authEnabled = false) // no-auth server: connects immediately
+        val manager = AuthManager(
+            secretStore = secretStore,
+            cookieJar = cookieJar,
+            clientFactory = { ApiClient(it, httpClient) },
+            logoutTimeoutMillis = 2_000,
+            registry = registry,
+        )
+
+        manager.configure(serverUrlString(), password = "")
+
+        assertTrue(manager.state.value is AuthManager.State.LoggedIn)
+        val registered = registry.servers.value.single().url
+        assertEquals(server.hostName, registered.substringAfter("://").substringBefore(':').substringBefore('/'))
+    }
+
+    @Test
+    fun `switchTo makes a known server active without a network call`() {
+        val manager = makeManager()
+        manager.switchTo(serverUrlString())
+        // No request was consumed — switching is purely local (0 requests seen).
+        assertEquals(0, server.requestCount)
+        assertTrue(manager.state.value is AuthManager.State.LoggedIn)
+        assertEquals(server.hostName, manager.state.value.server?.host)
+        assertNotNull(secretStore.load(SecretStore.Key.SERVER_URL))
+    }
+
+    @Test
+    fun `beginAddServer drops to onboarding but keeps saved server and cookies`() {
+        secretStore.save(serverUrlString(), SecretStore.Key.SERVER_URL)
+        secretStore.save("cookie-blob", SecretStore.Key.SESSION_COOKIES, scope = server.hostName)
+        val manager = makeManager()
+
+        manager.beginAddServer()
+
+        assertTrue(manager.state.value is AuthManager.State.Unconfigured)
+        // Registry + cookies survive so the user can switch back.
+        assertNotNull(secretStore.load(SecretStore.Key.SERVER_URL))
+        assertNotNull(secretStore.load(SecretStore.Key.SESSION_COOKIES, scope = server.hostName))
+    }
+
+    @Test
+    fun `forgetServer removes the active server and switches to the next`() = runBlocking {
+        val store = com.hermexapp.android.config.InMemoryKeyValueStore()
+        val registry = com.hermexapp.android.config.ServerRegistry(store)
+        registry.addOrKeep(serverUrlString())          // active (this MockWebServer)
+        registry.addOrKeep("https://other.example.com") // fallback
+        secretStore.save(serverUrlString(), SecretStore.Key.SERVER_URL)
+        server.enqueue(json("""{"ok": true}"""))
+
+        val manager = AuthManager(
+            secretStore = secretStore,
+            cookieJar = cookieJar,
+            clientFactory = { ApiClient(it, httpClient) },
+            logoutTimeoutMillis = 2_000,
+            registry = registry,
+        )
+        manager.switchTo(serverUrlString())
+
+        manager.forgetServer(serverUrlString())
+
+        // The active server is gone; the fallback is now active.
+        assertTrue(registry.servers.value.none { it.url == serverUrlString() })
+        assertTrue(manager.state.value is AuthManager.State.LoggedIn)
+        assertEquals("other.example.com", manager.state.value.server?.host)
+    }
+
     private fun enqueueHealthOk() {
         server.enqueue(
             json(
