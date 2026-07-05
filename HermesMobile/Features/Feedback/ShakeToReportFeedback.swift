@@ -216,6 +216,8 @@ enum FeedbackClientError: LocalizedError, Equatable {
 }
 
 private struct ShakeToReportFeedbackModifier: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+
     let screenName: String
     let client: FeedbackClient
     let screenshotProvider: @MainActor () -> UIImage?
@@ -226,7 +228,10 @@ private struct ShakeToReportFeedbackModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
-                ShakeDetectorView(responderRefreshID: presentation.responderRefreshID) {
+                ShakeDetectorView(
+                    responderRefreshID: presentation.responderRefreshID,
+                    isSuspended: presentation.draft != nil
+                ) {
                     presentFeedbackDraft()
                 }
                 .frame(width: 0, height: 0)
@@ -240,6 +245,14 @@ private struct ShakeToReportFeedbackModifier: ViewModifier {
             }
             .task {
                 presentLaunchFeedbackPromptIfNeeded()
+                presentation.refreshResponderIfIdle()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                presentation.refreshResponderIfIdle()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                presentation.refreshResponderIfIdle()
             }
     }
 
@@ -265,6 +278,15 @@ struct FeedbackShakePresentationState: Equatable {
 
     mutating func feedbackSheetDismissed() {
         draft = nil
+        refreshResponder()
+    }
+
+    mutating func refreshResponderIfIdle() {
+        guard draft == nil else { return }
+        refreshResponder()
+    }
+
+    private mutating func refreshResponder() {
         responderRefreshID = UUID()
     }
 }
@@ -281,6 +303,7 @@ extension View {
 
 private struct ShakeDetectorView: UIViewControllerRepresentable {
     let responderRefreshID: UUID
+    let isSuspended: Bool
     let onShake: @MainActor () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -290,11 +313,14 @@ private struct ShakeDetectorView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> ShakeDetectorViewController {
         let viewController = ShakeDetectorViewController()
         viewController.onShake = onShake
+        viewController.isSuspended = isSuspended
         return viewController
     }
 
     func updateUIViewController(_ uiViewController: ShakeDetectorViewController, context: Context) {
         uiViewController.onShake = onShake
+        uiViewController.isSuspended = isSuspended
+        guard !isSuspended else { return }
         if context.coordinator.responderRefreshID != responderRefreshID {
             context.coordinator.responderRefreshID = responderRefreshID
             uiViewController.refreshFirstResponder()
@@ -312,11 +338,28 @@ private struct ShakeDetectorView: UIViewControllerRepresentable {
 
 private final class ShakeDetectorViewController: UIViewController {
     var onShake: (@MainActor () -> Void)?
+    var isSuspended = false {
+        didSet {
+            if oldValue, !isSuspended {
+                refreshFirstResponder()
+            }
+        }
+    }
 
     override var canBecomeFirstResponder: Bool { true }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        refreshFirstResponder()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        refreshFirstResponder()
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
         refreshFirstResponder()
     }
 
@@ -329,8 +372,9 @@ private final class ShakeDetectorViewController: UIViewController {
     }
 
     func refreshFirstResponder() {
+        guard !isSuspended else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.view.window != nil, !self.isFirstResponder else { return }
+            guard let self, !self.isSuspended, self.view.window != nil, !self.isFirstResponder else { return }
             self.becomeFirstResponder()
         }
     }

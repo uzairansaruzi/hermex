@@ -333,9 +333,6 @@ struct ChatView: View {
                     .environment(\.layoutDirection, chatLayoutDirection)
             }
 
-            ChatHeaderBackgroundGradient()
-                .zIndex(1)
-
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
             composerAccessoryStack
@@ -372,6 +369,9 @@ struct ChatView: View {
 
     private var chatChromeContent: some View {
         chatRootContent
+        .overlay(alignment: .top) {
+            ChatHeaderBackgroundGradient()
+        }
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
@@ -2370,6 +2370,16 @@ enum ChatHeaderBackgroundGradientLayout {
     /// Short tail from the header into the first few transcript points.
     static let fadeTailHeight: CGFloat = 18
     static let minimumVisibleHeight: CGFloat = 78
+
+    static let screenTopY: CGFloat = 0
+
+    static func headerBarBottomY(topSafeAreaInset: CGFloat) -> CGFloat {
+        max(0, topSafeAreaInset) + inlineHeaderBarHeight
+    }
+
+    static func solidBottomY(topSafeAreaInset: CGFloat) -> CGFloat {
+        solidHeight(topSafeAreaInset: topSafeAreaInset)
+    }
 
     static func visibleHeight(topSafeAreaInset: CGFloat) -> CGFloat {
         max(minimumVisibleHeight, solidHeight(topSafeAreaInset: topSafeAreaInset) + fadeTailHeight)

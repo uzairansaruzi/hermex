@@ -109,4 +109,17 @@ final class FeedbackReportTests: XCTestCase {
         XCTAssertNotEqual(presentation.responderRefreshID, initialRefreshID)
         XCTAssertNotEqual(presentation.responderRefreshID, firstDismissalRefreshID)
     }
+
+    func testFeedbackShakePresentationRefreshesResponderOnlyWhenIdle() {
+        var presentation = FeedbackShakePresentationState()
+        let initialRefreshID = presentation.responderRefreshID
+
+        presentation.refreshResponderIfIdle()
+        let idleRefreshID = presentation.responderRefreshID
+        XCTAssertNotEqual(idleRefreshID, initialRefreshID)
+
+        presentation.present(FeedbackDraft(screenName: "Chat", screenshot: nil, capturedAt: Date()))
+        presentation.refreshResponderIfIdle()
+        XCTAssertEqual(presentation.responderRefreshID, idleRefreshID)
+    }
 }

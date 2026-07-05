@@ -35,13 +35,18 @@ final class ChatToolbarHeaderTests: XCTestCase {
         )
     }
 
-    func testHeaderGradientSolidRegionCoversHeaderBarBottom() {
+    func testHeaderGradientStartsAtScreenTopAndCoversHeaderBar() {
         let topSafeAreaInset: CGFloat = 59
         let headerBarBottom = topSafeAreaInset + ChatHeaderBackgroundGradientLayout.inlineHeaderBarHeight
 
+        XCTAssertEqual(ChatHeaderBackgroundGradientLayout.screenTopY, 0)
+        XCTAssertEqual(
+            ChatHeaderBackgroundGradientLayout.headerBarBottomY(topSafeAreaInset: topSafeAreaInset),
+            headerBarBottom
+        )
         XCTAssertGreaterThanOrEqual(
-            ChatHeaderBackgroundGradientLayout.solidHeight(topSafeAreaInset: topSafeAreaInset),
-            headerBarBottom + ChatHeaderBackgroundGradientLayout.solidExtensionBelowHeader
+            ChatHeaderBackgroundGradientLayout.solidBottomY(topSafeAreaInset: topSafeAreaInset),
+            headerBarBottom
         )
     }
 
