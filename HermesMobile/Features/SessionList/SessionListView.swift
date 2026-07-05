@@ -226,7 +226,6 @@ struct SessionListView: View {
                 onSessionTitleChange: handleSessionTitleChange,
                 onAPIError: authManager.handleAPIError,
                 onSessionCreated: { session in
-                    guard pendingNewChat?.id == route.id else { return }
                     pendingNewChat = nil
                     selectedDetailSession = session
                     unreadCompletedSessionIDs.remove(session.id)
