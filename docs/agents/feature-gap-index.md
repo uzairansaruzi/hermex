@@ -110,7 +110,6 @@ sub-paths of a group. Do not reorder casually.
 | `/api/mcp/` | roadmap | P5 | admin | MCP Servers & Tools |
 | `/api/wiki/` | roadmap | P5 | read | Wiki / Knowledge System |
 | `/api/notes/` | roadmap | P5 | read | Notes / Knowledge — search/sources/item |
-| `/api/tts` | roadmap | P5 | privacy | Text-to-Speech — server-side; mobile can use native TTS |
 | `/api/project-os/` | roadmap | P5 | read | Project-OS dashboard |
 
 ### Implemented (for reference, derived — not parsed)
