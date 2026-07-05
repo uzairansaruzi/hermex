@@ -204,7 +204,7 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertTrue(session.isChildSession)
     }
 
-    func testSessionSummaryBuiltFromDetailPreservesSidebarMetadata() throws {
+    func testSessionSummaryFromDetailPreservesLineageAndReadOnlyFields() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -213,21 +213,16 @@ final class SessionIdentityTests: XCTestCase {
             from: Data("""
             {
               "session_id": "child-detail",
-              "title": "Deep-linked worker",
+              "title": "Worker transcript",
               "parent_session_id": "parent-1",
               "relationship_type": "child_session",
               "parent_title": "Parent chat",
-              "source_tag": "subagent",
-              "session_source": "subagent",
-              "source_label": "Sub-agent",
-              "match_type": "exact",
               "read_only": true,
-              "is_read_only": true,
+              "session_source": "subagent",
+              "source_tag": "subagent",
               "sidebar_reference_sessions": [
-                {
-                  "session_id": "reference-1",
-                  "title": "Referenced chat"
-                }
+                {"session_id": "parent-1", "title": "Parent chat"},
+                7
               ]
             }
             """.utf8)
@@ -238,13 +233,11 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(summary.parentSessionId, "parent-1")
         XCTAssertEqual(summary.relationshipType, "child_session")
         XCTAssertEqual(summary.parentTitle, "Parent chat")
-        XCTAssertEqual(summary.sourceTag, "subagent")
         XCTAssertEqual(summary.sessionSource, "subagent")
-        XCTAssertEqual(summary.sourceLabel, "Sub-agent")
-        XCTAssertEqual(summary.matchType, "exact")
+        XCTAssertEqual(summary.sourceTag, "subagent")
         XCTAssertTrue(summary.isReadOnlySession)
         XCTAssertTrue(summary.isChildSession)
-        XCTAssertEqual(summary.sidebarReferenceSessions?.map(\.sessionId), ["reference-1"])
+        XCTAssertEqual(summary.sidebarReferenceSessions?.map(\.id), ["parent-1"])
     }
 
     func testSessionSidebarRowsNestChildSessionsUnderVisibleParents() {
