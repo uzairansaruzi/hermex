@@ -729,6 +729,9 @@ final class ChatViewModel {
            !supported.contains(selected),
            let serverEffort = Self.nonEmpty(response.effectiveEffort) {
             selectedReasoningEffort = serverEffort
+        }
+    }
+
     /// Refetches the workspace registry after the manager sheet mutated it
     /// (issue #22), so the picker reflects adds/removes/renames/reorders.
     func refreshWorkspaceRoots() async {
