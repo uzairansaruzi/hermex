@@ -22,9 +22,20 @@ interface CacheStore {
     suspend fun load(key: String): String?
     suspend fun delete(key: String)
 
+    /**
+     * Bound the on-disk cache: drop anything older than [maxAgeMillis] and keep
+     * only the [keepTranscripts] most-recent per-session transcripts. Called
+     * once at startup; a no-op for the in-memory fake. Faithful to the iOS
+     * ports' cache-retention sweep.
+     */
+    suspend fun prune(maxAgeMillis: Long = DEFAULT_MAX_AGE_MILLIS, keepTranscripts: Int = DEFAULT_KEEP_TRANSCRIPTS) {}
+
     companion object {
         fun sessionsKey(host: String) = "sessions::$host"
         fun sessionKey(host: String, sessionId: String) = "session::$host::$sessionId"
+
+        const val DEFAULT_KEEP_TRANSCRIPTS = 50
+        const val DEFAULT_MAX_AGE_MILLIS = 90L * 24 * 60 * 60 * 1000 // 90 days
     }
 }
 
@@ -52,6 +63,17 @@ interface CachedPayloadDao {
 
     @Query("DELETE FROM cached_payloads WHERE `key` = :key")
     suspend fun delete(key: String)
+
+    @Query("DELETE FROM cached_payloads WHERE fetchedAtMillis < :cutoffMillis")
+    suspend fun deleteOlderThan(cutoffMillis: Long)
+
+    /** Drop transcript blobs beyond the [keep] most-recently fetched. */
+    @Query(
+        "DELETE FROM cached_payloads WHERE `key` LIKE 'session::%' AND `key` NOT IN " +
+            "(SELECT `key` FROM cached_payloads WHERE `key` LIKE 'session::%' " +
+            "ORDER BY fetchedAtMillis DESC LIMIT :keep)",
+    )
+    suspend fun trimTranscripts(keep: Int)
 }
 
 @Database(entities = [CachedPayload::class], version = 1, exportSchema = false)
@@ -76,4 +98,9 @@ class RoomCacheStore(private val dao: CachedPayloadDao) : CacheStore {
     override suspend fun load(key: String): String? = dao.get(key)?.json
 
     override suspend fun delete(key: String) = dao.delete(key)
+
+    override suspend fun prune(maxAgeMillis: Long, keepTranscripts: Int) {
+        dao.deleteOlderThan(System.currentTimeMillis() - maxAgeMillis)
+        dao.trimTranscripts(keepTranscripts)
+    }
 }

@@ -19,6 +19,7 @@ import com.hermexapp.android.persistence.RoomCacheStore
 import com.hermexapp.android.platform.AppVisibility
 import com.hermexapp.android.platform.RunNotifications
 import com.hermexapp.android.platform.SharedDraftStore
+import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 
@@ -35,6 +36,10 @@ class HermexApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(KeystoreSecretStore(this), this)
+        // Bound the on-disk transcript cache once per launch (age + count cap).
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            runCatching { container.cacheStore.prune() }
+        }
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {
                 AppVisibility.foregroundActivities++

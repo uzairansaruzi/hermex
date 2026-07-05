@@ -63,6 +63,25 @@ suspend fun ApiClient.pinSession(id: String, pinned: Boolean): SessionMutationRe
 suspend fun ApiClient.archiveSession(id: String, archived: Boolean): SessionMutationResponse =
     postJson(Endpoint.SESSION_ARCHIVE, ApiJson.encodeToString(ArchiveSessionRequest(id, archived)))
 
+/** Deep-copies a session server-side into an independent "(copy)". */
+suspend fun ApiClient.duplicateSession(id: String): SessionResponse =
+    postJson(Endpoint.SESSION_DUPLICATE, ApiJson.encodeToString(SessionIdRequest(id)))
+
+/** Moves a session into [projectId] (null → un-filed / no project). */
+suspend fun ApiClient.moveSession(id: String, projectId: String?): SessionMutationResponse =
+    postJson(Endpoint.SESSION_MOVE, ApiJson.encodeToString(MoveSessionRequest(id, projectId)))
+
+/**
+ * Forks a session from a message point (#465). [keepCount] null copies the full
+ * history; 0 forks an empty conversation. [title] defaults to "<orig> (fork)".
+ */
+suspend fun ApiClient.branchSession(
+    id: String,
+    keepCount: Int? = null,
+    title: String? = null,
+): com.hermexapp.android.model.SessionBranchResponse =
+    postJson(Endpoint.SESSION_BRANCH, ApiJson.encodeToString(BranchSessionRequest(id, keepCount, title)))
+
 @Serializable
 private data class NewSessionRequest(
     val workspace: String? = null,
@@ -90,4 +109,17 @@ private data class PinSessionRequest(
 private data class ArchiveSessionRequest(
     @SerialName("session_id") val sessionId: String,
     val archived: Boolean,
+)
+
+@Serializable
+private data class MoveSessionRequest(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("project_id") val projectId: String? = null,
+)
+
+@Serializable
+private data class BranchSessionRequest(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("keep_count") val keepCount: Int? = null,
+    val title: String? = null,
 )

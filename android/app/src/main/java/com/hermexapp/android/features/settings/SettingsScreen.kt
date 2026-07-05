@@ -2,6 +2,7 @@ package com.hermexapp.android.features.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,15 +27,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hermexapp.android.config.AccentPreset
 import com.hermexapp.android.config.AppPrefs
 import com.hermexapp.android.ui.HermexHeader
 import com.hermexapp.android.ui.HermexPickerSheet
 import com.hermexapp.android.ui.PickerRow
 import com.hermexapp.android.ui.PickerSection
 import com.hermexapp.android.ui.theme.LocalHermexPalette
+import com.hermexapp.android.ui.theme.accentColorFromHex
 import com.hermexapp.android.config.ThemeChoice
 import com.hermexapp.android.model.ModelCatalogGroup
 import com.hermexapp.android.network.ApiClient
@@ -61,6 +69,10 @@ fun SettingsScreen(
     var showModelPicker by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val theme by prefs.theme.collectAsState()
+    val accent by prefs.accent.collectAsState()
+    val expandThinking by prefs.expandThinking.collectAsState()
+    val expandTools by prefs.expandTools.collectAsState()
+    val notificationsEnabled by prefs.notificationsEnabled.collectAsState()
 
     LaunchedEffect(Unit) {
         runCatching { client.serverSettings() }.getOrNull()?.let {
@@ -120,6 +132,35 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Text(
+                "Header Logo Color",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AccentPreset.entries.forEach { preset ->
+                    val selected = accent == preset
+                    Box(
+                        modifier = Modifier
+                            .size(if (selected) 34.dp else 28.dp)
+                            .clip(CircleShape)
+                            .background(accentColorFromHex(preset.hex))
+                            .clickable { prefs.setAccent(preset) },
+                    )
+                }
+            }
+            HorizontalDivider()
+
+            SectionTitle("Chat display")
+            ToggleRow("Expand thinking by default", expandThinking) { prefs.setExpandThinking(it) }
+            ToggleRow("Expand tool calls by default", expandTools) { prefs.setExpandTools(it) }
+            HorizontalDivider()
+
+            SectionTitle("Notifications")
+            ToggleRow("Notify when a response completes", notificationsEnabled) {
+                prefs.setNotificationsEnabled(it)
+            }
             HorizontalDivider()
 
             Button(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
@@ -158,6 +199,18 @@ fun SettingsScreen(
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall)
+}
+
+@Composable
+private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
 }
 
 @Composable

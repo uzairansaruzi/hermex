@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -32,9 +33,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,9 +54,13 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hermexapp.android.model.Project
 import com.hermexapp.android.model.SessionSummary
 import com.hermexapp.android.ui.CircleButton
+import com.hermexapp.android.ui.HermexPickerSheet
 import com.hermexapp.android.ui.HermexWordmark
+import com.hermexapp.android.ui.PickerRow
+import com.hermexapp.android.ui.PickerSection
 import com.hermexapp.android.ui.relativeTimeAgo
 import com.hermexapp.android.ui.theme.LocalHermexPalette
 import kotlinx.coroutines.launch
@@ -68,6 +76,7 @@ fun SessionListScreen(
     onOpenSession: (String) -> Unit,
     onOpenPanel: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenProjects: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
@@ -77,6 +86,7 @@ fun SessionListScreen(
     var actionTarget by remember { mutableStateOf<SessionSummary?>(null) }
     var renameTarget by remember { mutableStateOf<SessionSummary?>(null) }
     var deleteTarget by remember { mutableStateOf<SessionSummary?>(null) }
+    var moveTarget by remember { mutableStateOf<SessionSummary?>(null) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -165,6 +175,7 @@ fun SessionListScreen(
 
             item {
                 Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+                    MenuRow(Icons.Filled.List, "Projects") { onOpenProjects() }
                     MenuRow(Icons.Filled.DateRange, "Tasks") { onOpenPanel("TASKS") }
                     MenuRow(Icons.Filled.Build, "Skills") { onOpenPanel("SKILLS") }
                     MenuRow(Icons.Filled.Face, "Memory") { onOpenPanel("MEMORY") }
@@ -231,13 +242,21 @@ fun SessionListScreen(
                 }
 
                 else -> items(state.sessions, key = { it.stableId }) { session ->
-                    SessionRow(
+                    SwipeableSessionRow(
                         session = session,
                         modifier = Modifier.animateItem(),
                         onClick = { session.sessionId?.let(onOpenSession) },
                         onLongClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             actionTarget = session
+                        },
+                        onArchive = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            session.sessionId?.let { viewModel.archiveSession(it, session.archived != true) }
+                        },
+                        onDelete = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            deleteTarget = session
                         },
                     )
                 }
@@ -259,6 +278,31 @@ fun SessionListScreen(
                 session.sessionId?.let { viewModel.archiveSession(it, session.archived != true) }
                 actionTarget = null
             },
+            onMove = { moveTarget = session; actionTarget = null },
+            onDuplicate = {
+                actionTarget = null
+                session.sessionId?.let { id ->
+                    scope.launch { viewModel.duplicateSessionNow(id)?.let(onOpenSession) }
+                }
+            },
+            onFork = {
+                actionTarget = null
+                session.sessionId?.let { id ->
+                    scope.launch { viewModel.branchSessionNow(id)?.let(onOpenSession) }
+                }
+            },
+        )
+    }
+
+    moveTarget?.let { session ->
+        MoveToProjectSheet(
+            projects = state.projects,
+            currentProjectId = session.projectId,
+            onPick = { projectId ->
+                session.sessionId?.let { viewModel.moveSession(it, projectId) }
+                moveTarget = null
+            },
+            onDismiss = { moveTarget = null },
         )
     }
 
@@ -318,6 +362,9 @@ private fun SessionActionsDialog(
     onDelete: () -> Unit,
     onPinToggle: () -> Unit,
     onArchiveToggle: () -> Unit,
+    onMove: () -> Unit,
+    onDuplicate: () -> Unit,
+    onFork: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -332,6 +379,9 @@ private fun SessionActionsDialog(
         text = {
             Column {
                 TextButton(onClick = onRename) { Text("Rename") }
+                TextButton(onClick = onMove) { Text("Move to project") }
+                TextButton(onClick = onDuplicate) { Text("Duplicate") }
+                TextButton(onClick = onFork) { Text("Fork") }
                 TextButton(onClick = onPinToggle) {
                     Text(if (session.pinned == true) "Unpin" else "Pin")
                 }
@@ -343,6 +393,36 @@ private fun SessionActionsDialog(
                 }
             }
         },
+    )
+}
+
+/** Project picker for "Move to project", with a "No project" un-file row. */
+@Composable
+private fun MoveToProjectSheet(
+    projects: List<Project>,
+    currentProjectId: String?,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Sentinel for the "no project" row — HermexPickerSheet keys on the value.
+    val noProject = ""
+    HermexPickerSheet(
+        title = "Move to project",
+        sections = listOf(
+            PickerSection(
+                header = null,
+                rows = buildList {
+                    add(PickerRow("No project", noProject))
+                    projects.forEach { p ->
+                        add(PickerRow(p.name?.ifBlank { null } ?: "Untitled", p.projectId ?: return@forEach))
+                    }
+                },
+            ),
+        ),
+        isSelected = { value -> value == (currentProjectId ?: noProject) },
+        onPick = { value -> onPick(value.ifBlank { null }) },
+        onDismiss = onDismiss,
+        searchable = false,
     )
 }
 
@@ -367,6 +447,57 @@ private fun RenameDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * iOS-style swipe actions: swipe right to Archive, swipe left to Delete. Neither
+ * gesture actually dismisses the row — both snap back and let the list refresh
+ * reflect the change (delete waits for the confirm dialog).
+ */
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableSessionRow(
+    session: SessionSummary,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onArchive: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val palette = LocalHermexPalette.current
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> onArchive()
+                SwipeToDismissBoxValue.EndToStart -> onDelete()
+                SwipeToDismissBoxValue.Settled -> Unit
+            }
+            false // never settle dismissed; the list refresh handles the change
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = modifier,
+        backgroundContent = {
+            val toEnd = dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+            val color = if (toEnd) palette.warning else palette.destructive
+            val label = if (toEnd) (if (session.archived == true) "Unarchive" else "Archive") else "Delete"
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(color.copy(alpha = 0.18f))
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = if (toEnd) Arrangement.Start else Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, style = MaterialTheme.typography.labelLarge, color = color)
+            }
+        },
+    ) {
+        Surface(color = palette.canvas) {
+            SessionRow(session = session, onClick = onClick, onLongClick = onLongClick)
+        }
+    }
 }
 
 /** iOS session row: bold title, "N messages · workspace" caption, relative time. */

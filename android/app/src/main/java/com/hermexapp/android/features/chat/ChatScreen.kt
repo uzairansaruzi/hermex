@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -44,6 +45,15 @@ import com.hermexapp.android.features.chat.ChatViewModel.TimelineEntry
 import com.hermexapp.android.ui.CircleButton
 import com.hermexapp.android.ui.HermexHeader
 import com.hermexapp.android.ui.theme.LocalHermexPalette
+
+/**
+ * "Expand by default" chat display toggles (iOS chat settings). Provided from
+ * [com.hermexapp.android.config.AppPrefs] at the app root; the Thinking and Tool
+ * cards start expanded when their flag is on unless the user toggles them.
+ */
+data class ChatDisplayPrefs(val expandThinking: Boolean = false, val expandTools: Boolean = false)
+
+val LocalChatDisplayPrefs = staticCompositionLocalOf { ChatDisplayPrefs() }
 
 @Composable
 fun ChatScreen(
@@ -251,39 +261,58 @@ private fun TimelineEntryView(
         // iOS "Thinking" card: dark, collapsible, preview in the header.
         is TimelineEntry.Reasoning -> ThinkingCard(entry, isStreamingRun)
 
-        is TimelineEntry.ToolCall -> Surface(
-            color = palette.card,
-            shape = MaterialTheme.shapes.small,
-        ) {
-            Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("🛠", style = MaterialTheme.typography.labelMedium)
-                    Text(
-                        entry.name ?: "tool",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        when {
-                            entry.isRunning -> "running…"
-                            entry.isError -> "failed"
-                            else -> entry.durationSeconds?.let { "%.1fs".format(it) } ?: "done"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = when {
-                            entry.isError -> palette.destructive
-                            entry.isRunning -> palette.warning
-                            else -> palette.textSecondary
-                        },
-                    )
-                }
-                entry.preview?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.textSecondary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+        is TimelineEntry.ToolCall -> {
+            val hasPreview = !entry.preview.isNullOrBlank()
+            var userToggled by remember(entry.id) { mutableStateOf<Boolean?>(null) }
+            val expanded = userToggled ?: LocalChatDisplayPrefs.current.expandTools
+            Surface(
+                color = palette.card,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .let { if (hasPreview) it.clickable { userToggled = !expanded } else it }
+                        .padding(12.dp)
+                        .fillMaxWidth(),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("🛠", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            entry.name ?: "tool",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(
+                            when {
+                                entry.isRunning -> "running…"
+                                entry.isError -> "failed"
+                                else -> entry.durationSeconds?.let { "%.1fs".format(it) } ?: "done"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = when {
+                                entry.isError -> palette.destructive
+                                entry.isRunning -> palette.warning
+                                else -> palette.textSecondary
+                            },
+                        )
+                        if (hasPreview) {
+                            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                            Text(
+                                if (expanded) "⌃" else "⌄",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = palette.textSecondary,
+                            )
+                        }
+                    }
+                    if (hasPreview && expanded) {
+                        Text(
+                            entry.preview.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.textSecondary,
+                        )
+                    }
                 }
             }
         }
@@ -303,7 +332,8 @@ private fun ThinkingCard(entry: TimelineEntry.Reasoning, isStreamingRun: Boolean
     // Expanded while it streams (like iOS), collapses to the header afterwards
     // unless the user toggles it.
     var userToggled by remember(entry.id) { mutableStateOf<Boolean?>(null) }
-    val expanded = userToggled ?: (entry.isStreaming && isStreamingRun)
+    val expandByDefault = LocalChatDisplayPrefs.current.expandThinking
+    val expanded = userToggled ?: (expandByDefault || (entry.isStreaming && isStreamingRun))
 
     Surface(
         color = palette.card,

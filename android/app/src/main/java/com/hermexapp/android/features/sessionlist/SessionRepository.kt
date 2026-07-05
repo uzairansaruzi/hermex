@@ -7,9 +7,16 @@ import com.hermexapp.android.network.ApiClient
 import com.hermexapp.android.network.ApiError
 import com.hermexapp.android.network.ApiJson
 import com.hermexapp.android.network.archiveSession
+import com.hermexapp.android.network.branchSession
 import com.hermexapp.android.network.createSession
 import com.hermexapp.android.network.deleteSession
+import com.hermexapp.android.network.duplicateSession
+import com.hermexapp.android.network.moveSession
+import com.hermexapp.android.network.createProject
+import com.hermexapp.android.network.deleteProject
 import com.hermexapp.android.network.pinSession
+import com.hermexapp.android.network.projects
+import com.hermexapp.android.network.renameProject
 import com.hermexapp.android.network.renameSession
 import com.hermexapp.android.network.searchSessions
 import com.hermexapp.android.network.session
@@ -85,6 +92,24 @@ class SessionRepository(
     suspend fun pinSession(id: String, pinned: Boolean) = client.pinSession(id, pinned)
 
     suspend fun archiveSession(id: String, archived: Boolean) = client.archiveSession(id, archived)
+
+    suspend fun duplicateSession(id: String): SessionDetail? = client.duplicateSession(id).session
+
+    suspend fun moveSession(id: String, projectId: String?) = client.moveSession(id, projectId)
+
+    suspend fun branchSession(id: String, keepCount: Int? = null, title: String? = null) =
+        client.branchSession(id, keepCount, title)
+
+    /** Projects (folders) for the active profile. Network only, like the list. */
+    suspend fun loadProjects(): List<com.hermexapp.android.model.Project> =
+        client.projects().projects.orEmpty()
+
+    suspend fun createProject(name: String, color: String?) = client.createProject(name, color)
+
+    suspend fun renameProject(id: String, name: String, color: String?) =
+        client.renameProject(id, name, color)
+
+    suspend fun deleteProject(id: String) = client.deleteProject(id)
 
     /** Pinned first, then most recent activity — matches the sidebar ordering. */
     private fun sort(sessions: List<SessionSummary>): List<SessionSummary> =

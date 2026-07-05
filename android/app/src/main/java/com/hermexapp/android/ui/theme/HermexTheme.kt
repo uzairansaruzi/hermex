@@ -147,8 +147,17 @@ private val HermexTypography = Typography().let { base ->
     )
 }
 
+/** Parses a `#RRGGBB` hex to a Compose [Color], falling back to gold. */
+fun accentColorFromHex(hex: String): Color = runCatching {
+    Color(android.graphics.Color.parseColor(hex))
+}.getOrDefault(HermexColors.Gold)
+
 @Composable
-fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable () -> Unit) {
+fun HermexTheme(
+    choice: ThemeChoice = ThemeChoice.SYSTEM,
+    accent: Color = HermexColors.Gold,
+    content: @Composable () -> Unit,
+) {
     val dark = when (choice) {
         ThemeChoice.SYSTEM -> isSystemInDarkTheme()
         ThemeChoice.LIGHT -> false
@@ -157,7 +166,7 @@ fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable (
 
     val palette = if (dark) {
         HermexPalette(
-            accent = HermexColors.Gold,
+            accent = accent,
             canvas = HermexColors.Black,
             card = HermexColors.Surface1Dark,
             bubble = HermexColors.UserBubbleDark,
@@ -173,7 +182,7 @@ fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable (
         )
     } else {
         HermexPalette(
-            accent = Color(0xFFB8960B),
+            accent = accent,
             canvas = HermexColors.White,
             card = HermexColors.Surface1Light,
             bubble = HermexColors.Surface1Light, // iOS user bubble light = systemGray6 (#F2F2F7)
@@ -191,7 +200,7 @@ fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable (
 
     androidx.compose.runtime.CompositionLocalProvider(LocalHermexPalette provides palette) {
         MaterialTheme(
-            colorScheme = if (dark) DarkScheme else LightScheme,
+            colorScheme = if (dark) DarkScheme.copy(primary = accent) else LightScheme.copy(primary = accent),
             shapes = HermexShapes,
             typography = HermexTypography,
             content = content,

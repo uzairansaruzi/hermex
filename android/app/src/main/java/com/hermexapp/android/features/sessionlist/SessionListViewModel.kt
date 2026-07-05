@@ -19,6 +19,7 @@ class SessionListViewModel(
 
     data class UiState(
         val sessions: List<SessionSummary> = emptyList(),
+        val projects: List<com.hermexapp.android.model.Project> = emptyList(),
         val searchQuery: String = "",
         val isLoading: Boolean = false,
         val isFromCache: Boolean = false,
@@ -44,6 +45,10 @@ class SessionListViewModel(
         } catch (e: ApiError) {
             onAuthError(e)
             _uiState.update { it.copy(errorMessage = e.userMessage, isLoading = false) }
+        }
+        // Projects are best-effort: never block or error the session list on them.
+        runCatching { repository.loadProjects() }.getOrNull()?.let { projects ->
+            _uiState.update { it.copy(projects = projects) }
         }
     }
 
@@ -90,6 +95,59 @@ class SessionListViewModel(
 
     fun archiveSession(id: String, archived: Boolean) =
         mutate { repository.archiveSession(id, archived) }
+
+    fun moveSession(id: String, projectId: String?) = mutate { repository.moveSession(id, projectId) }
+
+    /** Duplicates a session server-side; returns the copy's id for navigation. */
+    suspend fun duplicateSessionNow(id: String): String? = try {
+        val created = repository.duplicateSession(id)
+        refreshNow()
+        created?.sessionId
+    } catch (e: ApiError) {
+        onAuthError(e)
+        _uiState.update { it.copy(errorMessage = e.userMessage) }
+        null
+    }
+
+    /** Forks a session from the full history; returns the fork's id. */
+    suspend fun branchSessionNow(id: String): String? = try {
+        val response = repository.branchSession(id)
+        if (response.error != null) {
+            _uiState.update { it.copy(errorMessage = response.error) }
+        }
+        refreshNow()
+        response.sessionId
+    } catch (e: ApiError) {
+        onAuthError(e)
+        _uiState.update { it.copy(errorMessage = e.userMessage) }
+        null
+    }
+
+    fun createProject(name: String, color: String?) = projectMutate {
+        val r = repository.createProject(name, color); r.error
+    }
+
+    fun renameProject(id: String, name: String, color: String?) = projectMutate {
+        val r = repository.renameProject(id, name, color); r.error
+    }
+
+    fun deleteProject(id: String) = projectMutate {
+        val r = repository.deleteProject(id); r.error
+    }
+
+    /** Runs a project mutation (returns a nullable error string), then refreshes. */
+    private fun projectMutate(action: suspend () -> String?) {
+        viewModelScope.launch {
+            try {
+                val error = action()
+                if (error != null) _uiState.update { it.copy(errorMessage = error) }
+                refreshNow()
+            } catch (e: ApiError) {
+                onAuthError(e)
+                _uiState.update { it.copy(errorMessage = e.userMessage) }
+            }
+        }
+    }
 
     private fun mutate(action: suspend () -> com.hermexapp.android.model.SessionMutationResponse) {
         viewModelScope.launch {

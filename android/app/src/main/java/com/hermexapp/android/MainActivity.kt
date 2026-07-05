@@ -26,9 +26,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hermexapp.android.auth.AuthManager
+import com.hermexapp.android.config.AccentPreset
 import com.hermexapp.android.config.ThemeChoice
+import com.hermexapp.android.features.chat.ChatDisplayPrefs
 import com.hermexapp.android.features.chat.ChatScreen
 import com.hermexapp.android.features.chat.ChatViewModel
+import com.hermexapp.android.features.chat.LocalChatDisplayPrefs
 import com.hermexapp.android.features.onboarding.OnboardingScreen
 import com.hermexapp.android.features.onboarding.OnboardingViewModel
 import com.hermexapp.android.features.panels.PanelKind
@@ -42,6 +45,7 @@ import com.hermexapp.android.features.workspace.GitScreen
 import com.hermexapp.android.features.workspace.WorkspaceViewModel
 import com.hermexapp.android.platform.RunNotifications
 import com.hermexapp.android.ui.theme.HermexTheme
+import com.hermexapp.android.ui.theme.accentColorFromHex
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
 
@@ -72,11 +76,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeChoice by (container.prefs?.theme
                 ?: kotlinx.coroutines.flow.MutableStateFlow(ThemeChoice.SYSTEM)).collectAsState()
-            HermexTheme(themeChoice) {
-                val authState by container.authManager.state.collectAsState()
-                when (val state = authState) {
-                    is AuthManager.State.LoggedIn -> ConnectedRoot(container, state.server)
-                    else -> OnboardingScreen(onboardingViewModel)
+            val accent by (container.prefs?.accent
+                ?: kotlinx.coroutines.flow.MutableStateFlow(AccentPreset.GOLD)).collectAsState()
+            val expandThinking by (container.prefs?.expandThinking
+                ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+            val expandTools by (container.prefs?.expandTools
+                ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+            HermexTheme(themeChoice, accentColorFromHex(accent.hex)) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalChatDisplayPrefs provides ChatDisplayPrefs(expandThinking, expandTools),
+                ) {
+                    val authState by container.authManager.state.collectAsState()
+                    when (val state = authState) {
+                        is AuthManager.State.LoggedIn -> ConnectedRoot(container, state.server)
+                        else -> OnboardingScreen(onboardingViewModel)
+                    }
                 }
             }
         }
@@ -126,6 +140,7 @@ private sealed class Screen {
     data class Git(val sessionId: String) : Screen()
     data class Panel(val kind: PanelKind) : Screen()
     data object Settings : Screen()
+    data object Projects : Screen()
 }
 
 @Composable
@@ -180,7 +195,17 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
                 onOpenSession = { screen = Screen.Chat(it) },
                 onOpenPanel = { kind -> screen = Screen.Panel(PanelKind.valueOf(kind)) },
                 onOpenSettings = { screen = Screen.Settings },
+                onOpenProjects = { screen = Screen.Projects },
             )
+
+            Screen.Projects -> {
+                BackHandler { screen = Screen.SessionList }
+                com.hermexapp.android.features.sessionlist.ProjectsScreen(
+                    viewModel = sessionListViewModel,
+                    onOpenSession = { screen = Screen.Chat(it) },
+                    onClose = { screen = Screen.SessionList },
+                )
+            }
 
             is Screen.Chat -> {
                 val appContext = LocalContext.current.applicationContext
@@ -215,7 +240,9 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
                     onOpenFiles = { screen = Screen.Files(current.sessionId) },
                     onOpenGit = { screen = Screen.Git(current.sessionId) },
                     onRunFinished = { title ->
-                        container.notifications?.notifyRunComplete(title, current.sessionId)
+                        if (container.prefs?.notificationsEnabled?.value != false) {
+                            container.notifications?.notifyRunComplete(title, current.sessionId)
+                        }
                     },
                 )
             }
