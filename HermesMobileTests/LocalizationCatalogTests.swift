@@ -79,9 +79,7 @@ final class LocalizationCatalogTests: XCTestCase {
 
     func testAppShortcutPhrasesHaveDedicatedCatalogEntries() throws {
         let url = resourceURL("HermesMobile/Resources/AppShortcuts.xcstrings")
-        guard let data = try? Data(contentsOf: url) else {
-            throw XCTSkip("Could not read App Shortcuts String Catalog at \(url.path).")
-        }
+        let data = try Data(contentsOf: url)
 
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(root["sourceLanguage"] as? String, "en")
