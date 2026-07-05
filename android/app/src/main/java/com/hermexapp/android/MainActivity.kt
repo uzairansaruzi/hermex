@@ -287,6 +287,10 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
                     serverUrl = server.toString(),
                     onSignOut = { scope.launch { container.authManager.signOut() } },
                     onClose = { screen = Screen.SessionList },
+                    registry = container.serverRegistry,
+                    onSwitchServer = { container.authManager.switchTo(it) },
+                    onAddServer = { container.authManager.beginAddServer() },
+                    onForgetServer = { scope.launch { container.authManager.forgetServer(it) } },
                 )
             }
         }

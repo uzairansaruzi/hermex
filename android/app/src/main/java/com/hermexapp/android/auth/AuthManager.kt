@@ -33,6 +33,9 @@ class AuthManager(
     private val cookieJar: SessionCookieJar,
     private val clientFactory: (HttpUrl) -> ApiClient,
     private val logoutTimeoutMillis: Long = 5_000,
+    // Multi-server registry (nullable so tests can omit it). Kept in sync so the
+    // settings server switcher and the header interceptor see every server.
+    private val registry: com.hermexapp.android.config.ServerRegistry? = null,
 ) : AuthGateway {
 
     sealed class State {
@@ -110,9 +113,49 @@ class AuthManager(
             }
 
             secretStore.save(serverUrl.toString(), SecretStore.Key.SERVER_URL)
+            registry?.addOrKeep(serverUrl.toString())
             _state.value = State.LoggedIn(serverUrl)
         } catch (e: ApiError) {
             _lastErrorMessage.value = e.userMessage
+        }
+    }
+
+    /**
+     * Switches the active server to an already-known one (settings server
+     * switcher). Its cookies load per-host automatically; a stale one is demoted
+     * to LoggedOut by the first 401 via [handleApiError], exactly like cold
+     * launch.
+     */
+    fun switchTo(serverUrlString: String) {
+        val url = runCatching { ServerUrlNormalizer.normalize(serverUrlString) }.getOrNull() ?: return
+        secretStore.save(url.toString(), SecretStore.Key.SERVER_URL)
+        _lastErrorMessage.value = null
+        _state.value = State.LoggedIn(url)
+    }
+
+    /**
+     * Drops to onboarding to add another server WITHOUT signing out of the
+     * current one — the registry and cookies are left intact so the user can
+     * switch back. Connecting a new server just makes it the active one.
+     */
+    fun beginAddServer() {
+        _lastErrorMessage.value = null
+        _state.value = State.Unconfigured
+    }
+
+    /** Forgets a server: server-side logout, drop its cookies + registry entry. */
+    suspend fun forgetServer(serverUrlString: String) {
+        val url = runCatching { ServerUrlNormalizer.normalize(serverUrlString) }.getOrNull() ?: return
+        val isActive = _state.value.server?.host == url.host
+        if (isActive && _state.value is State.LoggedIn) {
+            withTimeoutOrNull(logoutTimeoutMillis) { runCatching { clientFactory(url).logout() } }
+        }
+        cookieJar.clear(url.host)
+        registry?.remove(url.toString())
+        if (isActive) {
+            secretStore.delete(SecretStore.Key.SERVER_URL)
+            val next = registry?.servers?.value?.firstOrNull()
+            if (next != null) switchTo(next.url) else _state.value = State.Unconfigured
         }
     }
 

@@ -62,8 +62,17 @@ class AppContainer(secretStore: SecretStore, context: Context? = null) {
 
     val cookieJar = SessionCookieJar(secretStore)
 
+    /** Multi-server registry + per-server custom headers (null in the test path). */
+    val serverRegistry: com.hermexapp.android.config.ServerRegistry? =
+        context?.let { com.hermexapp.android.config.ServerRegistry(it) }
+
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
+        .apply {
+            serverRegistry?.let {
+                addInterceptor(com.hermexapp.android.network.CustomHeaderInterceptor(it))
+            }
+        }
         .build()
 
     val cacheStore: CacheStore = context
@@ -80,6 +89,7 @@ class AppContainer(secretStore: SecretStore, context: Context? = null) {
         secretStore = secretStore,
         cookieJar = cookieJar,
         clientFactory = { baseUrl -> ApiClient(baseUrl, httpClient) },
+        registry = serverRegistry,
     )
 
     fun apiClient(baseUrl: HttpUrl): ApiClient = ApiClient(baseUrl, httpClient)

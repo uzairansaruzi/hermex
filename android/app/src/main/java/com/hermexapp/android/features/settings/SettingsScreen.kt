@@ -52,7 +52,7 @@ import com.hermexapp.android.network.saveDefaultModel
 import com.hermexapp.android.network.serverSettings
 import kotlinx.coroutines.launch
 
-/** Phase 8 settings: server info, default model, theme, sign out. */
+/** Phase 8 settings: servers, custom headers, default model, theme, sign out. */
 @Composable
 fun SettingsScreen(
     client: ApiClient,
@@ -60,6 +60,10 @@ fun SettingsScreen(
     serverUrl: String,
     onSignOut: () -> Unit,
     onClose: () -> Unit,
+    registry: com.hermexapp.android.config.ServerRegistry? = null,
+    onSwitchServer: (String) -> Unit = {},
+    onAddServer: () -> Unit = {},
+    onForgetServer: (String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var serverVersion by remember { mutableStateOf<String?>(null) }
@@ -68,6 +72,14 @@ fun SettingsScreen(
     var modelGroups by remember { mutableStateOf<List<ModelCatalogGroup>>(emptyList()) }
     var showModelPicker by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var showAddHeader by remember { mutableStateOf(false) }
+    val servers by (registry?.servers
+        ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList<com.hermexapp.android.config.ServerEntry>()))
+        .collectAsState()
+    val activeHeaders = servers.firstOrNull {
+        runCatching { it.url.substringAfter("://").substringBefore('/') }.getOrNull() ==
+            serverUrl.substringAfter("://").substringBefore('/')
+    }?.headers.orEmpty()
     val theme by prefs.theme.collectAsState()
     val accent by prefs.accent.collectAsState()
     val expandThinking by prefs.expandThinking.collectAsState()
@@ -105,6 +117,61 @@ fun SettingsScreen(
             InfoRow("Agent", botName ?: "—")
             InfoRow("hermes-webui", serverVersion ?: "—")
             HorizontalDivider()
+
+            if (registry != null) {
+                SectionTitle("Servers")
+                servers.forEach { entry ->
+                    val host = entry.url.substringAfter("://").substringBefore('/')
+                    val isActive = host == serverUrl.substringAfter("://").substringBefore('/')
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !isActive) { onSwitchServer(entry.url) },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            (if (isActive) "● " else "") + host,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isActive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { onForgetServer(entry.url) }) { Text("Forget") }
+                    }
+                }
+                TextButton(onClick = onAddServer) { Text("Add server") }
+                HorizontalDivider()
+
+                SectionTitle("Custom headers")
+                Text(
+                    "Attached to every request to this server.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                activeHeaders.forEach { (name, value) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "$name: $value",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = {
+                            registry.setHeaders(serverUrl, activeHeaders - name)
+                        }) { Text("Remove") }
+                    }
+                }
+                TextButton(onClick = { showAddHeader = true }) { Text("Add header") }
+                HorizontalDivider()
+            }
 
             SectionTitle("Default model")
             Row(
@@ -169,6 +236,16 @@ fun SettingsScreen(
         }
     }
 
+    if (showAddHeader && registry != null) {
+        AddHeaderDialog(
+            onDismiss = { showAddHeader = false },
+            onConfirm = { name, value ->
+                registry.setHeaders(serverUrl, activeHeaders + (name to value))
+                showAddHeader = false
+            },
+        )
+    }
+
     if (showModelPicker) {
         HermexPickerSheet(
             title = "Default model",
@@ -199,6 +276,40 @@ fun SettingsScreen(
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall)
+}
+
+@Composable
+private fun AddHeaderDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var value by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add header") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text("Name") },
+                    placeholder = { Text("CF-Access-Client-Id") },
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    singleLine = true,
+                    label = { Text("Value") },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name.trim(), value.trim()) },
+                enabled = name.isNotBlank(),
+            ) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
