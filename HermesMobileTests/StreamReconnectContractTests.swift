@@ -221,6 +221,62 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertEqual(streamClient.droppedEventCount, 0)
     }
 
+    // MARK: - Scenario 4: active WebUI session messages without message IDs
+
+    @MainActor
+    func testActiveSessionWithNilMessageIDsResumesStreamingIntoLoadedAssistantRow() async throws {
+        let streamClient = ScriptedSSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-123",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Keep working",
+                        "timestamp": 1770000100
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Alpha ",
+                        "timestamp": 1770000101
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active": true, "stream_id": "stream-123", "replay_available": true}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        XCTAssertEqual(assistantContents(of: viewModel), ["Alpha "])
+        XCTAssertEqual(viewModel.streamingAssistantMessageID, "raw:1")
+        XCTAssertTrue(viewModel.isActiveStreamConnectionSuspended)
+
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertEqual(streamClient.startedURLs.count, 1)
+
+        streamClient.emit(.token("bravo."), lastEventID: "stream-123:1")
+
+        XCTAssertEqual(assistantContents(of: viewModel), ["Alpha bravo."])
+        XCTAssertEqual(viewModel.streamingAssistantMessageID, "raw:1")
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
+        XCTAssertFalse(viewModel.isActiveStreamConnectionSuspended)
+    }
+
     // MARK: - Helpers
 
     @MainActor

@@ -50,6 +50,23 @@ final class TranscriptMessageTests: XCTestCase {
         XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a2"])
     }
 
+    func testTranscriptMessagesCanHideActiveStreamingAssistantFallbackAnchor() {
+        let messages = [
+            ChatMessage(role: "user", content: "Use tools", timestamp: 1, messageId: nil),
+            ChatMessage(role: "assistant", content: "", timestamp: 2, messageId: nil),
+            ChatMessage(role: "assistant", content: "Older answer", timestamp: 3, messageId: nil)
+        ]
+
+        let transcriptMessages = ChatViewModel.transcriptMessages(
+            from: messages,
+            messageOffset: 20,
+            hidingStreamingAssistantID: "raw:21"
+        )
+
+        XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 2])
+        XCTAssertEqual(transcriptMessages.map(\.anchorID), ["raw:20", "raw:22"])
+    }
+
     func testTranscriptMessagesKeepStreamingAssistantAnchorStableAcrossContentUpdates() {
         let initialMessages = [
             ChatMessage(role: "user", content: "Write a long answer", timestamp: 1, messageId: "u1"),
@@ -243,18 +260,18 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         ))
     }
 
-    func testStreamingBubbleRenderingDoesNotMatchNilMessageIDs() {
+    func testStreamingBubbleRenderingRequiresAnActiveAssistantAnchor() {
         XCTAssertFalse(ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
             hasActiveStream: true,
             messageRole: "user",
-            messageID: nil,
+            messageAnchorID: nil,
             streamingAssistantMessageID: nil
         ))
 
         XCTAssertFalse(ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
             hasActiveStream: true,
             messageRole: "assistant",
-            messageID: nil,
+            messageAnchorID: nil,
             streamingAssistantMessageID: nil
         ))
     }
@@ -263,14 +280,21 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertTrue(ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
             hasActiveStream: true,
             messageRole: "assistant",
-            messageID: "stream-1",
+            messageAnchorID: "stream-1",
             streamingAssistantMessageID: "stream-1"
+        ))
+
+        XCTAssertTrue(ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
+            hasActiveStream: true,
+            messageRole: "assistant",
+            messageAnchorID: "raw:42",
+            streamingAssistantMessageID: "raw:42"
         ))
 
         XCTAssertFalse(ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
             hasActiveStream: true,
             messageRole: "assistant",
-            messageID: "assistant-1",
+            messageAnchorID: "assistant-1",
             streamingAssistantMessageID: "stream-1"
         ))
     }

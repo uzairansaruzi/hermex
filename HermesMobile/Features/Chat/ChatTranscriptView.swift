@@ -578,7 +578,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     isStreaming: ChatTranscriptDisplaySettings.shouldUseStreamingBubbleRendering(
                         hasActiveStream: hasActiveStream,
                         messageRole: transcriptMessage.message.role,
-                        messageID: transcriptMessage.message.messageId,
+                        messageAnchorID: transcriptMessage.anchorID,
                         streamingAssistantMessageID: streamingAssistantMessageID
                     ),
                     isRegeneratingMessage: isRegeneratingMessage,

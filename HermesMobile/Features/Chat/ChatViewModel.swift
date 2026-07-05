@@ -397,11 +397,18 @@ final class ChatViewModel {
     }
 
     var hasStreamingAssistantMessageContent: Bool {
-        guard let streamingAssistantMessageID,
-              let message = messages.first(where: { $0.messageId == streamingAssistantMessageID })
-        else { return false }
-
+        guard let index = streamingAssistantMessageIndex() else { return false }
+        let message = messages[index]
         return message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func streamingAssistantMessageIndex() -> Int? {
+        guard let streamingAssistantMessageID else { return nil }
+        return Self.assistantMessageIndex(
+            matchingAnchorID: streamingAssistantMessageID,
+            in: messages,
+            messageOffset: messagesOffset
+        )
     }
 
     private func scheduleStreamingScrollTrigger() {
@@ -1342,38 +1349,59 @@ final class ChatViewModel {
 
     nonisolated private static func mergingLoadedMessages(
         _ loadedMessages: [ChatMessage],
+        loadedMessagesOffset: Int,
         withActiveStreamSnapshot snapshot: ActiveChatStreamSnapshot
     ) -> ActiveStreamMessageMerge {
         guard !snapshot.messages.isEmpty else {
             return ActiveStreamMessageMerge(
                 messages: loadedMessages,
-                streamingAssistantMessageID: latestAssistantMessageID(in: loadedMessages),
+                streamingAssistantMessageID: latestAssistantAnchorID(
+                    in: loadedMessages,
+                    messageOffset: loadedMessagesOffset
+                ),
                 usedSnapshotMessagesOffset: false
             )
         }
 
         guard let snapshotAssistantMessageID = snapshot.streamingAssistantMessageID,
-              let snapshotAssistant = snapshot.messages.first(where: { $0.messageId == snapshotAssistantMessageID })
+              let snapshotAssistantIndex = assistantMessageIndex(
+                matchingAnchorID: snapshotAssistantMessageID,
+                in: snapshot.messages,
+                messageOffset: snapshot.messagesOffset
+              )
         else {
             if loadedMessages.isEmpty {
                 return ActiveStreamMessageMerge(
                     messages: snapshot.messages,
-                    streamingAssistantMessageID: latestAssistantMessageID(in: snapshot.messages),
+                    streamingAssistantMessageID: latestAssistantAnchorID(
+                        in: snapshot.messages,
+                        messageOffset: snapshot.messagesOffset
+                    ),
                     usedSnapshotMessagesOffset: true
                 )
             }
 
             return ActiveStreamMessageMerge(
                 messages: loadedMessages,
-                streamingAssistantMessageID: latestAssistantMessageID(in: loadedMessages),
+                streamingAssistantMessageID: latestAssistantAnchorID(
+                    in: loadedMessages,
+                    messageOffset: loadedMessagesOffset
+                ),
                 usedSnapshotMessagesOffset: false
             )
         }
 
+        let snapshotAssistant = snapshot.messages[snapshotAssistantIndex]
+        let snapshotAssistantAnchorID = assistantAnchorID(
+            in: snapshot.messages,
+            at: snapshotAssistantIndex,
+            messageOffset: snapshot.messagesOffset
+        )
+
         guard !loadedMessages.isEmpty else {
             return ActiveStreamMessageMerge(
                 messages: snapshot.messages,
-                streamingAssistantMessageID: snapshotAssistant.messageId,
+                streamingAssistantMessageID: snapshotAssistantAnchorID,
                 usedSnapshotMessagesOffset: true
             )
         }
@@ -1387,7 +1415,9 @@ final class ChatViewModel {
             assistantSearchRange = mergedMessages.startIndex..<mergedMessages.endIndex
         }
 
-        if let assistantIndex = assistantSearchRange.reversed().first(where: { mergedMessages[$0].role == "assistant" }) {
+        if let assistantIndex = assistantSearchRange.reversed().first(where: {
+            mergedMessages[$0].role == "assistant"
+        }) {
             let loadedAssistant = mergedMessages[assistantIndex]
             mergedMessages[assistantIndex] = ChatMessage(
                 role: loadedAssistant.role,
@@ -1407,7 +1437,11 @@ final class ChatViewModel {
             )
             return ActiveStreamMessageMerge(
                 messages: mergedMessages,
-                streamingAssistantMessageID: mergedMessages[assistantIndex].messageId,
+                streamingAssistantMessageID: assistantAnchorID(
+                    in: mergedMessages,
+                    at: assistantIndex,
+                    messageOffset: loadedMessagesOffset
+                ),
                 usedSnapshotMessagesOffset: false
             )
         }
@@ -1418,7 +1452,10 @@ final class ChatViewModel {
 
         return ActiveStreamMessageMerge(
             messages: mergedMessages,
-            streamingAssistantMessageID: snapshotAssistant.messageId,
+            streamingAssistantMessageID: latestAssistantAnchorID(
+                in: mergedMessages,
+                messageOffset: loadedMessagesOffset
+            ) ?? snapshotAssistantAnchorID,
             usedSnapshotMessagesOffset: false
         )
     }
@@ -1606,16 +1643,43 @@ final class ChatViewModel {
         messages.insert(localMessage, at: insertionIndex)
     }
 
-    nonisolated private static func latestAssistantMessageID(in messages: [ChatMessage]) -> String? {
-        messages.last(where: { $0.role == "assistant" })?.messageId
-    }
-
-    nonisolated private static func latestAssistantAnchorID(in messages: [ChatMessage], messageOffset: Int?) -> String? {
+    nonisolated private static func latestAssistantAnchorID(
+        in messages: [ChatMessage],
+        messageOffset: Int?
+    ) -> String? {
         guard let index = messages.lastIndex(where: { $0.role == "assistant" }) else {
             return nil
         }
 
         return TranscriptTurnClassifier.anchorID(
+            for: messages[index],
+            at: index,
+            messageOffset: messageOffset
+        )
+    }
+
+    nonisolated private static func assistantMessageIndex(
+        matchingAnchorID anchorID: String,
+        in messages: [ChatMessage],
+        messageOffset: Int?
+    ) -> Int? {
+        messages.indices.first { index in
+            let message = messages[index]
+            guard message.role == "assistant" else { return false }
+            return TranscriptTurnClassifier.anchorID(
+                for: message,
+                at: index,
+                messageOffset: messageOffset
+            ) == anchorID
+        }
+    }
+
+    nonisolated private static func assistantAnchorID(
+        in messages: [ChatMessage],
+        at index: Int,
+        messageOffset: Int?
+    ) -> String {
+        TranscriptTurnClassifier.anchorID(
             for: messages[index],
             at: index,
             messageOffset: messageOffset
@@ -1940,7 +2004,7 @@ final class ChatViewModel {
             restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
         }
         if streamingAssistantMessageID == nil {
-            streamingAssistantMessageID = Self.latestAssistantMessageID(in: messages)
+            streamingAssistantMessageID = Self.latestAssistantAnchorID(in: messages, messageOffset: messagesOffset)
         }
         if let noticeMessage {
             pinLocalNoticeMessage(noticeMessage)
@@ -3325,7 +3389,11 @@ final class ChatViewModel {
               )
         else { return nil }
 
-        let merge = Self.mergingLoadedMessages(messages, withActiveStreamSnapshot: snapshot)
+        let merge = Self.mergingLoadedMessages(
+            messages,
+            loadedMessagesOffset: messagesOffset,
+            withActiveStreamSnapshot: snapshot
+        )
         messages = merge.messages
         if merge.usedSnapshotMessagesOffset {
             messagesOffset = snapshot.messagesOffset
@@ -3521,8 +3589,7 @@ final class ChatViewModel {
 
         flushPendingStreamingContent()
 
-        if let streamingAssistantMessageID,
-           let index = messages.firstIndex(where: { $0.messageId == streamingAssistantMessageID }) {
+        if let index = streamingAssistantMessageIndex() {
             let existing = messages[index]
             let currentContent = existing.content ?? ""
             let textToAppend = deduplicatedReplayText(
@@ -3687,7 +3754,10 @@ final class ChatViewModel {
     @discardableResult
     private func ensureStreamingAssistantMessage() -> String {
         if let streamingAssistantMessageID {
-            return streamingAssistantMessageID
+            if streamingAssistantMessageIndex() != nil || !streamingAssistantMessageID.hasPrefix("raw:") {
+                return streamingAssistantMessageID
+            }
+            self.streamingAssistantMessageID = nil
         }
 
         let messageID = "stream-\(UUID().uuidString)"
@@ -3872,8 +3942,8 @@ final class ChatViewModel {
         // Dedup at append time against effective content (flushed + pending) so the
         // return value stays a synchronous progress signal for the reconnect watchdog
         // while transcript mutation stays batched behind the coalesced flush.
-        let messageID = ensureStreamingAssistantMessage()
-        let flushedContent = messages.first(where: { $0.messageId == messageID })?.content ?? ""
+        _ = ensureStreamingAssistantMessage()
+        let flushedContent = streamingAssistantMessageIndex().map { messages[$0].content ?? "" } ?? ""
         let effectiveContent = flushedContent + pendingAssistantTokenChunks.joined()
         let remainder = deduplicatedReplayToken(token, existingContent: effectiveContent)
         guard !remainder.isEmpty else { return false }
@@ -3911,7 +3981,7 @@ final class ChatViewModel {
             toolCallAnchorMessageID = messageID
         }
 
-        if let index = messages.firstIndex(where: { $0.messageId == messageID }) {
+        if let index = streamingAssistantMessageIndex() {
             let existing = messages[index]
             messages[index] = ChatMessage(
                 role: existing.role,
@@ -4337,7 +4407,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorLatestAssistantMessageID() -> String? {
-        Self.latestAssistantMessageID(in: messages)
+        Self.latestAssistantAnchorID(in: messages, messageOffset: messagesOffset)
     }
 
     func streamCoordinatorStartAuxiliaryMonitoring() {
@@ -4702,15 +4772,16 @@ extension ChatViewModel {
         for (loadedIndex, message) in messages.enumerated() {
             guard message.role != "tool" else { continue }
             guard !TranscriptTurnClassifier.isToolResultOnlyMessage(message) else { continue }
-            if let streamingAssistantID, message.messageId == streamingAssistantID {
-                continue
-            }
 
             let anchorID = TranscriptTurnClassifier.anchorID(
                 for: message,
                 at: loadedIndex,
                 messageOffset: messageOffset
             )
+            if let streamingAssistantID, anchorID == streamingAssistantID {
+                continue
+            }
+
             let absoluteIndex = offset + loadedIndex
             let renderID = "transcript:\(absoluteIndex)"
 

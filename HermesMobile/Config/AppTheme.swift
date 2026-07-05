@@ -874,13 +874,13 @@ enum ChatTranscriptDisplaySettings {
     static func shouldUseStreamingBubbleRendering(
         hasActiveStream: Bool,
         messageRole: String?,
-        messageID: String?,
+        messageAnchorID: String?,
         streamingAssistantMessageID: String?
     ) -> Bool {
         hasActiveStream &&
             messageRole == "assistant" &&
             streamingAssistantMessageID != nil &&
-            messageID == streamingAssistantMessageID
+            messageAnchorID == streamingAssistantMessageID
     }
 
     /// Whether to draw the per-turn `glyph + timestamp` header above an assistant
