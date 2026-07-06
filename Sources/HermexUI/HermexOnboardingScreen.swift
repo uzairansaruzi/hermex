@@ -50,7 +50,6 @@ public struct HermexOnboardingScreen: View {
             .padding(.top, 24)
             .padding(.bottom, 34)
         }
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var serverPicker: some View {

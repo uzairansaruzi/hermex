@@ -55,24 +55,30 @@ public struct HermexLogoMark: View {
         ZStack {
             hermexLogoImage("hermes-fill-mask")
                 .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
                 .foregroundStyle(HermexUIColors.gold)
             hermexLogoImage("hermes-shading-overlay")
+                .resizable()
+                .scaledToFit()
             hermexLogoImage("hermes-highlight")
+                .resizable()
+                .scaledToFit()
             hermexLogoImage("hermes-outline-shadow")
+                .resizable()
+                .scaledToFit()
         }
         .aspectRatio(HermexLayoutContract.hermexLogoAspectRatio, contentMode: .fit)
         .frame(width: HermexLayoutContract.sessionListLogoWidth)
             .accessibilityLabel("HERMEX")
     }
 
-    private func hermexLogoImage(_ name: String) -> some View {
+    private func hermexLogoImage(_ name: String) -> Image {
 #if SWIFT_PACKAGE
-        Image(name, bundle: .module)
+        return Image(name, bundle: .module)
 #else
-        Image(name)
+        return Image(name)
 #endif
-            .resizable()
-            .scaledToFit()
     }
 }
 
