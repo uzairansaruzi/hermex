@@ -1036,15 +1036,18 @@ private struct PendingNewChatView: View {
                     initialDraft: draftMessage,
                     initialAttachments: initialAttachments,
                     loadsInitialMessages: false,
-                    autoStartsVoiceInput: autoStartsVoiceInput,
-                    delaysInitialComposerFocus: !composerIsFocused
+                    autoStartsVoiceInput: autoStartsVoiceInput
                 )
             } else {
                 pendingContent
             }
         }
+        .background(
+            NavigationAppearanceCompletionObserver(action: requestPendingComposerFocus)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        )
         .task {
-            requestPendingComposerFocus()
             await createSessionIfNeeded()
         }
     }
@@ -1076,9 +1079,6 @@ private struct PendingNewChatView: View {
         }
         .navigationTitle("New Chat")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            requestPendingComposerFocus()
-        }
     }
 
     private var pendingComposer: some View {
@@ -1167,10 +1167,7 @@ private struct PendingNewChatView: View {
         didRequestComposerFocus = true
 
         Task { @MainActor in
-            // Focusing while the navigation push is still animating makes the
-            // keyboard slide in horizontally along with the view. Wait for the
-            // push transition to settle before raising the keyboard (#53).
-            try? await Task.sleep(for: .milliseconds(450))
+            await Task.yield()
             guard createdSession == nil else { return }
             composerIsFocused = true
         }
