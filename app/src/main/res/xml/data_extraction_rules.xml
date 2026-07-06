@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="." />
+        <include domain="database" path="." />
+        <exclude domain="sharedpref" path="hermex_auth_prefs.xml" />
+        <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__hermex_auth_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="." />
+        <include domain="database" path="." />
+        <exclude domain="sharedpref" path="hermex_auth_prefs.xml" />
+        <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__hermex_auth_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

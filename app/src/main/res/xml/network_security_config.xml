@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Android network security config cannot express RFC1918/CIDR private-LAN ranges.
+         Release cleartext is therefore permitted at the platform layer, while
+         LocalCleartextInterceptor rejects public HTTP hosts for all OkHttp traffic
+         and allows only loopback/link-local/site-local self-hosted Hermes endpoints. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
