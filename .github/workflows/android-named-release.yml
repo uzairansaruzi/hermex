@@ -152,6 +152,7 @@ jobs:
           fi
           gh release create "${{ inputs.tag_name }}" "${release_assets[@]}" \
             --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
             --title "${{ inputs.release_name }}" \
             --notes-file release-notes.md \
             $PRERELEASE_FLAG
