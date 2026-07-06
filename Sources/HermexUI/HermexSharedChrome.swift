@@ -184,3 +184,14 @@ public struct HermexPillLabel: View {
         }
     }
 }
+
+extension View {
+    @ViewBuilder
+    func hermexContentShapeRectangle() -> some View {
+#if SKIP
+        self
+#else
+        self.contentShape(Rectangle())
+#endif
+    }
+}

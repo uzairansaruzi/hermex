@@ -106,7 +106,7 @@ public struct HermexWorkspaceScreen: View {
             }
         }
         .padding(.vertical, 10)
-        .contentShape(Rectangle())
+        .hermexContentShapeRectangle()
     }
 
     private func previewPanel(_ preview: HermexFilePreview) -> some View {

@@ -42,7 +42,7 @@ public struct HermexSessionListScreen: View {
                             LazyVStack(spacing: 0) {
                                 ForEach(state.sessions) { session in
                                     sessionRow(session)
-                                        .contentShape(Rectangle())
+                                        .hermexContentShapeRectangle()
                                         .onTapGesture {
                                             onEvent(.openSession(session.id))
                                         }
@@ -165,7 +165,7 @@ public struct HermexSessionListScreen: View {
                     .foregroundStyle(.secondary)
             }
             .frame(minHeight: HermexLayoutContract.sessionListSelectorHeight)
-            .contentShape(Rectangle())
+            .hermexContentShapeRectangle()
         }
         .buttonStyle(.plain)
     }
@@ -243,7 +243,7 @@ public struct HermexSessionListScreen: View {
                 .fill(Color.primary.opacity(HermexLayoutContract.sessionListRowSeparatorOpacity))
                 .frame(height: 0.6)
         }
-        .contentShape(Rectangle())
+        .hermexContentShapeRectangle()
     }
 
     private func sessionMetadata(_ session: HermexSessionDTO) -> String {
