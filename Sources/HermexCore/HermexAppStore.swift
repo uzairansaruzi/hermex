@@ -486,7 +486,7 @@ public final class HermexAppStore {
         onboarding.serverURLString = server.baseURL.absoluteString
         onboarding.displayName = server.displayName
         onboarding.customHeaderText = server.customHeaders
-            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == ComparisonResult.orderedAscending }
             .map { "\($0.key): \($0.value)" }
             .joined(separator: "\n")
         onboarding.errorMessage = nil
