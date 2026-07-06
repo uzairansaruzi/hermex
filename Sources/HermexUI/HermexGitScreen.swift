@@ -91,7 +91,7 @@ public struct HermexGitScreen: View {
                         onEvent(.gitCommand(.commit(message: state.commitMessage)))
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(state.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isMutating)
+                    .disabled(state.commitMessage.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty || state.isMutating)
                 }
             }
             .padding(14)

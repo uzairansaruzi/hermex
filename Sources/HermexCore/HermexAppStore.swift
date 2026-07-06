@@ -457,7 +457,7 @@ public final class HermexAppStore {
     private func connectOnboarding() async {
         guard let server = onboardingServerIdentity() else { return }
         let password = onboarding.password
-        guard !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !password.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
             onboarding.errorMessage = "Password is required."
             return
         }
@@ -511,7 +511,7 @@ public final class HermexAppStore {
     }
 
     private func sendDraft() async {
-        let draft = chat.composer.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let draft = chat.composer.draft.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         guard !draft.isEmpty else { return }
 
         let existingSessionID = appState.selectedSessionID
@@ -543,9 +543,9 @@ public final class HermexAppStore {
     }
 
     private func appendDraftText(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        if chat.composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if chat.composer.draft.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
             chat.composer.draft = trimmed
         } else {
             chat.composer.draft += "\n\(trimmed)"
@@ -870,7 +870,7 @@ public final class HermexAppStore {
     }
 
     private func onboardingServerIdentity() -> HermexServerIdentity? {
-        let trimmedURL = onboarding.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = onboarding.serverURLString.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         guard !trimmedURL.isEmpty else {
             onboarding.errorMessage = "Server URL is required."
             return nil
@@ -887,7 +887,7 @@ public final class HermexAppStore {
         }
 
         let normalizedURL = URL(string: HermexServerURLNormalizer.normalizedID(for: rawURL)) ?? rawURL
-        let displayName = onboarding.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = onboarding.displayName.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         let headers = parsedCustomHeaders()
         return HermexServerIdentity(
             baseURL: normalizedURL,

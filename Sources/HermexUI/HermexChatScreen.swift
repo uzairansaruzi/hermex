@@ -103,7 +103,7 @@ public struct HermexChatScreen: View {
 
     private func messageBlock(_ message: HermexChatMessageDTO) -> some View {
         VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 7) {
-            if let reasoning = message.reasoning, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let reasoning = message.reasoning, !reasoning.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                 transcriptAccessory(title: "Thinking", text: reasoning, systemImage: "brain.head.profile")
             }
 
@@ -209,7 +209,7 @@ public struct HermexChatScreen: View {
                         }
                     }
                 }
-                if !clarification.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if !clarification.draft.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                     Button("Send draft") { onEvent(.clarify(clarification.draft)) }
                 }
             }

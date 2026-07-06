@@ -336,7 +336,7 @@ public struct HermexWorkspacesResponse: Codable, Equatable, Sendable {
     }
 
     public var normalizedRoots: [HermexWorkspaceRootDTO] {
-        (workspaces ?? roots ?? []).filter { !$0.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        (workspaces ?? roots ?? []).filter { !$0.path.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty }
     }
 }
 
@@ -426,7 +426,7 @@ private extension HermexJSONValue {
             }
             return nested
         case .string(let value):
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = value.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             return trimmed.isEmpty ? [] : [HermexModelOption(id: trimmed, provider: inheritedProvider)]
         default:
             return []

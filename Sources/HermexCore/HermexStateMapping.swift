@@ -13,7 +13,7 @@ public extension HermexJSONValue {
 
     var stringValue: String? {
         guard case .string(let value) = self else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = value.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -27,7 +27,7 @@ public extension HermexJSONValue {
         case .number(let value):
             return Int(value)
         case .string(let value):
-            return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+            return Int(value.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines))
         default:
             return nil
         }

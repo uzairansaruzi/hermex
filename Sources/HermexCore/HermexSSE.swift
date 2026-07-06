@@ -16,11 +16,11 @@ public struct HermexSSEDecoder: Sendable {
         var dataLines: [String] = []
 
         for rawLine in block.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = rawLine.trimmingCharacters(in: .newlines)
+            let line = rawLine.trimmingCharacters(in: CharacterSet.newlines)
             if line.hasPrefix("event:") {
-                eventName = String(line.dropFirst("event:".count)).trimmingCharacters(in: .whitespaces)
+                eventName = String(line.dropFirst("event:".count)).trimmingCharacters(in: CharacterSet.whitespaces)
             } else if line.hasPrefix("data:") {
-                dataLines.append(String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces))
+                dataLines.append(String(line.dropFirst("data:".count)).trimmingCharacters(in: CharacterSet.whitespaces))
             }
         }
 

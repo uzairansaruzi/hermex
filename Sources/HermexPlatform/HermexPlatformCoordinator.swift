@@ -75,7 +75,7 @@ public struct HermexPlatformCoordinator: Sendable {
             await store.send(.setVoiceRecording(false))
             guard let transcriber = services.audioTranscriber else { return }
             let response = try await transcriber.transcribeAudio(at: url)
-            if let transcript = response.transcript, !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let transcript = response.transcript, !transcript.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                 await store.send(.appendDraftText(transcript))
             } else if let error = response.error {
                 await store.send(.appendDraftText("Transcription failed: \(error)"))
@@ -128,9 +128,9 @@ public struct HermexPlatformCoordinator: Sendable {
 
 private extension HermexChatMessageDTO {
     var contentOrText: String? {
-        let primary = content?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let primary = content?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         if let primary, !primary.isEmpty { return primary }
-        let fallback = text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = text?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         return fallback?.isEmpty == false ? fallback : nil
     }
 }

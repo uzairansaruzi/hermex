@@ -11,11 +11,8 @@ public struct HermexEndpoint: Equatable, Sendable {
 
     public func url(relativeTo baseURL: URL) -> URL {
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
-        let basePath = components?.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
         let endpointPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        components?.path = "/" + [basePath, endpointPath]
-            .filter { !$0.isEmpty }
-            .joined(separator: "/")
+        components?.path = "/" + endpointPath
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
         return components?.url ?? baseURL.appendingPathComponent(endpointPath)
     }
