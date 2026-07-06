@@ -29,9 +29,7 @@ public struct HermexChatScreen: View {
                     .padding(.horizontal, HermexLayoutContract.chatTranscriptHorizontalPadding)
                     .padding(.top, HermexLayoutContract.chatTranscriptTopPadding)
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Color.clear.frame(height: composerInset)
-                }
+                .hermexComposerBottomReserve(composerInset)
             }
 
             LinearGradient(
@@ -115,7 +113,7 @@ public struct HermexChatScreen: View {
                 if message.role == "user" { Spacer(minLength: 42) }
                 Text(message.content ?? message.text ?? "")
                     .font(.body)
-                    .textSelection(.enabled)
+                    .hermexTextSelectionEnabled()
                     .padding(.horizontal, message.role == "user" ? 14 : 0)
                     .padding(.vertical, message.role == "user" ? 10 : 0)
                     .background(
@@ -215,6 +213,28 @@ public struct HermexChatScreen: View {
             }
             .padding(14)
         }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func hermexComposerBottomReserve(_ height: CGFloat) -> some View {
+#if SKIP
+        self.padding(.bottom, height)
+#else
+        self.safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: height)
+        }
+#endif
+    }
+
+    @ViewBuilder
+    func hermexTextSelectionEnabled() -> some View {
+#if SKIP
+        self
+#else
+        self.textSelection(.enabled)
+#endif
     }
 }
 
