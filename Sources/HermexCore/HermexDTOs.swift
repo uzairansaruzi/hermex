@@ -305,9 +305,9 @@ public struct HermexWorkspaceRootDTO: Codable, Identifiable, Equatable, Sendable
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        path = try container.decodeIfPresent(String.self, forKey: .path) ?? ""
-        name = try container.decodeIfPresent(String.self, forKey: .name)
-        exists = try container.decodeIfPresent(Bool.self, forKey: .exists)
+        path = try container.decodeIfPresent(String.self, forKey: CodingKeys.path) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: CodingKeys.name)
+        exists = try container.decodeIfPresent(Bool.self, forKey: CodingKeys.exists)
     }
 
     enum CodingKeys: String, CodingKey {

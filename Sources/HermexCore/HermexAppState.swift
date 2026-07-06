@@ -71,27 +71,27 @@ public struct HermexOnboardingState: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.serverURLString = try container.decodeIfPresent(String.self, forKey: .serverURLString) ?? ""
-        self.displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+        self.serverURLString = try container.decodeIfPresent(String.self, forKey: CodingKeys.serverURLString) ?? ""
+        self.displayName = try container.decodeIfPresent(String.self, forKey: CodingKeys.displayName) ?? ""
         self.password = ""
-        self.customHeaderText = try container.decodeIfPresent(String.self, forKey: .customHeaderText) ?? ""
-        self.lastValidatedServer = try container.decodeIfPresent(HermexServerIdentity.self, forKey: .lastValidatedServer)
-        self.isTestingConnection = try container.decodeIfPresent(Bool.self, forKey: .isTestingConnection) ?? false
-        self.isSigningIn = try container.decodeIfPresent(Bool.self, forKey: .isSigningIn) ?? false
-        self.statusMessage = try container.decodeIfPresent(String.self, forKey: .statusMessage)
-        self.errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        self.customHeaderText = try container.decodeIfPresent(String.self, forKey: CodingKeys.customHeaderText) ?? ""
+        self.lastValidatedServer = try container.decodeIfPresent(HermexServerIdentity.self, forKey: CodingKeys.lastValidatedServer)
+        self.isTestingConnection = try container.decodeIfPresent(Bool.self, forKey: CodingKeys.isTestingConnection) ?? false
+        self.isSigningIn = try container.decodeIfPresent(Bool.self, forKey: CodingKeys.isSigningIn) ?? false
+        self.statusMessage = try container.decodeIfPresent(String.self, forKey: CodingKeys.statusMessage)
+        self.errorMessage = try container.decodeIfPresent(String.self, forKey: CodingKeys.errorMessage)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(serverURLString, forKey: .serverURLString)
-        try container.encode(displayName, forKey: .displayName)
-        try container.encode(customHeaderText, forKey: .customHeaderText)
-        try container.encodeIfPresent(lastValidatedServer, forKey: .lastValidatedServer)
-        try container.encode(isTestingConnection, forKey: .isTestingConnection)
-        try container.encode(isSigningIn, forKey: .isSigningIn)
-        try container.encodeIfPresent(statusMessage, forKey: .statusMessage)
-        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try container.encode(serverURLString, forKey: CodingKeys.serverURLString)
+        try container.encode(displayName, forKey: CodingKeys.displayName)
+        try container.encode(customHeaderText, forKey: CodingKeys.customHeaderText)
+        try container.encodeIfPresent(lastValidatedServer, forKey: CodingKeys.lastValidatedServer)
+        try container.encode(isTestingConnection, forKey: CodingKeys.isTestingConnection)
+        try container.encode(isSigningIn, forKey: CodingKeys.isSigningIn)
+        try container.encodeIfPresent(statusMessage, forKey: CodingKeys.statusMessage)
+        try container.encodeIfPresent(errorMessage, forKey: CodingKeys.errorMessage)
     }
 }
 

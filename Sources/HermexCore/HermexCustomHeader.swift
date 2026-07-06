@@ -32,7 +32,7 @@ public struct HermexCustomHeader: Codable, Equatable, Sendable {
         "content-length"
     ]
 
-    private static let allowedHeaderNameCharacters = CharacterSet(charactersIn: "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    private static let allowedHeaderNameCharacters: CharacterSet = CharacterSet(charactersIn: "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 }
 
 public extension Sequence where Element == HermexCustomHeader {
