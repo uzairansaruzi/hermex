@@ -3,6 +3,10 @@ import Foundation
 struct SessionsResponse: Decodable {
     let sessions: [SessionSummary]?
     let cliCount: Int?
+    /// Total archived sessions in the active profile (`archived_count`), present
+    /// on every response regardless of `include_archived` (issue #17). Optional so
+    /// older servers that omit it decode fine.
+    let archivedCount: Int?
     let serverTime: Double?
     let serverTz: String?
 }

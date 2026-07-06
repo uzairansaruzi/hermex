@@ -365,7 +365,32 @@ enum SessionRowDisplaySettings {
     // Cron and CLI sessions are controlled independently (#256); both default to
     // shown, and their toggles let users hide each kind separately.
     static let showCronSessionsKey = "sessionRow.showCronSessions"
+    // Legacy global CLI-sessions key. Since #19 the CLI toggle is stored
+    // per-server (it mirrors the server's own `show_cli_sessions` setting, and a
+    // value adopted from server A must not leak to server B); this key survives
+    // only as the migration seed for servers with no per-server value yet.
     static let showCliSessionsKey = "sessionRow.showCliSessions"
+
+    /// Per-server storage key for the CLI-sessions toggle (#19). Keyed by the
+    /// active server's absolute URL, matching how the offline cache scopes rows.
+    static func showCliSessionsKey(for server: URL) -> String {
+        "\(showCliSessionsKey)|\(server.absoluteString)"
+    }
+
+    /// Effective CLI-sessions visibility for `server`: the per-server value if
+    /// one was ever stored, else the pre-#19 global value, else shown-by-default
+    /// like every other session-row toggle.
+    static func showsCliSessions(for server: URL, in defaults: UserDefaults = .standard) -> Bool {
+        if let perServer = defaults.object(forKey: showCliSessionsKey(for: server)) as? Bool {
+            return perServer
+        }
+
+        if let legacy = defaults.object(forKey: showCliSessionsKey) as? Bool {
+            return legacy
+        }
+
+        return true
+    }
 }
 
 enum SessionSidebarDisclosureSettings {

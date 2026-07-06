@@ -7,6 +7,26 @@ private let chatPendingActionCoordinatorLogger = Logger(
     category: "ChatPendingActionCoordinator"
 )
 
+/// Friendly stand-in for the server's 409 `{"stale": true}` respond rejection:
+/// the prompt already expired, so the card is dismissed instead of erroring (issue #25).
+struct PendingPromptExpiredError: LocalizedError, Equatable {
+    enum Prompt: Equatable {
+        case approval
+        case clarification
+    }
+
+    let prompt: Prompt
+
+    var errorDescription: String? {
+        switch prompt {
+        case .approval:
+            String(localized: "That approval request already expired, so the agent has moved on.")
+        case .clarification:
+            String(localized: "That clarification prompt already expired, so the agent has moved on.")
+        }
+    }
+}
+
 @MainActor
 protocol ChatPendingActionCoordinatorDelegate: AnyObject {
     var pendingActionSessionID: String? { get }
@@ -103,6 +123,16 @@ final class ChatPendingActionCoordinator {
             await refreshApprovalPending(sessionID: prompt.sessionID)
             return true
         } catch {
+            if (error as? APIError)?.indicatesExpiredPendingPrompt == true {
+                // The prompt already expired server-side: dismiss the stale card and
+                // explain, instead of leaving a stuck card behind a generic failure.
+                approvalPendingBySession[prompt.sessionID] = nil
+                approvalPrompt = nil
+                delegate?.pendingActionCoordinatorDidFailAction(PendingPromptExpiredError(prompt: .approval))
+                await refreshApprovalPending(sessionID: prompt.sessionID)
+                return false
+            }
+
             approvalErrorMessage = error.localizedDescription
             delegate?.pendingActionCoordinatorDidFailAction(error)
             return false
@@ -186,6 +216,16 @@ final class ChatPendingActionCoordinator {
             await refreshClarificationPending(sessionID: prompt.sessionID)
             return true
         } catch {
+            if (error as? APIError)?.indicatesExpiredPendingPrompt == true {
+                // The prompt already expired server-side: dismiss the stale card and
+                // explain, instead of leaving a stuck card behind a generic failure.
+                clarificationPendingBySession[prompt.sessionID] = nil
+                clarificationPrompt = nil
+                delegate?.pendingActionCoordinatorDidFailAction(PendingPromptExpiredError(prompt: .clarification))
+                await refreshClarificationPending(sessionID: prompt.sessionID)
+                return false
+            }
+
             clarificationErrorMessage = error.localizedDescription
             delegate?.pendingActionCoordinatorDidFailAction(error)
             return false

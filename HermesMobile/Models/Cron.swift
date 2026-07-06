@@ -56,6 +56,7 @@ struct CronJob: Decodable, Equatable, Identifiable {
     let deliver: String?
     let skills: [String]?
     let model: String?
+    let provider: String?
     let profile: String?
     let toastNotifications: Bool?
 
@@ -77,6 +78,7 @@ struct CronJob: Decodable, Equatable, Identifiable {
         case deliver
         case skills
         case model
+        case provider
         case profile
         case toastNotifications
     }
@@ -100,6 +102,7 @@ struct CronJob: Decodable, Equatable, Identifiable {
         deliver = container.decodeLossyStringIfPresent(forKey: .deliver)
         skills = (try? container.decodeIfPresent([String].self, forKey: .skills)) ?? nil
         model = container.decodeLossyStringIfPresent(forKey: .model)
+        provider = container.decodeLossyStringIfPresent(forKey: .provider)
         profile = container.decodeLossyStringIfPresent(forKey: .profile)
         toastNotifications = container.decodeLossyBoolIfPresent(forKey: .toastNotifications)
     }
@@ -237,6 +240,110 @@ struct CronOutputItem: Decodable, Equatable, Identifiable {
     }
 }
 
+struct CronDeliveryOptionsResponse: Decodable, Equatable {
+    let platforms: [CronDeliveryOption]?
+
+    enum CodingKeys: String, CodingKey {
+        case platforms
+    }
+
+    init(platforms: [CronDeliveryOption]?) {
+        self.platforms = platforms
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        platforms = (try? container.decodeIfPresent([CronDeliveryOption].self, forKey: .platforms)) ?? nil
+    }
+}
+
+struct CronDeliveryOption: Decodable, Equatable, Identifiable {
+    var id: String { value ?? label ?? UUID().uuidString }
+
+    let value: String?
+    let label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case value
+        case label
+    }
+
+    init(value: String?, label: String?) {
+        self.value = value
+        self.label = label
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = container.decodeLossyStringIfPresent(forKey: .value)
+        label = container.decodeLossyStringIfPresent(forKey: .label)
+    }
+}
+
+/// One selectable row in the cron deliver picker.
+struct CronDeliverPickerOption: Equatable, Identifiable {
+    let value: String
+    let label: String
+    /// `true` when the row exists only to round-trip a draft value that the
+    /// server did not list (unknown/legacy deliver target).
+    let isCustom: Bool
+
+    var id: String { value }
+}
+
+enum CronDeliverPicker {
+    /// Builds picker rows from server-provided delivery options.
+    ///
+    /// Returns `nil` when the picker should fall back to free-text entry:
+    /// options missing/empty (endpoint failed or returned nothing usable) or
+    /// the current draft value is blank (nothing safe to select).
+    /// A current value outside the server list is preserved as an extra
+    /// custom row instead of being clobbered. `initialValue` (the draft's
+    /// deliver value when the editor opened) also keeps its custom row so an
+    /// unknown/legacy value can be re-selected after choosing another option.
+    static func options(
+        serverOptions: [CronDeliveryOption]?,
+        currentValue: String,
+        initialValue: String? = nil
+    ) -> [CronDeliverPickerOption]? {
+        var seenValues = Set<String>()
+        let valid: [CronDeliverPickerOption] = (serverOptions ?? []).compactMap { option in
+            guard let value = option.value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty,
+                  seenValues.insert(value).inserted else {
+                return nil
+            }
+
+            let label = option.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return CronDeliverPickerOption(
+                value: value,
+                label: (label?.isEmpty == false ? label : nil) ?? value,
+                isCustom: false
+            )
+        }
+
+        guard !valid.isEmpty else {
+            return nil
+        }
+
+        let current = currentValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !current.isEmpty else {
+            return nil
+        }
+
+        var options = valid
+        var knownValues = Set(valid.map(\.value))
+        let initial = initialValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !initial.isEmpty, knownValues.insert(initial).inserted {
+            options.append(CronDeliverPickerOption(value: initial, label: initial, isCustom: true))
+        }
+        if knownValues.insert(current).inserted {
+            options.append(CronDeliverPickerOption(value: current, label: current, isCustom: true))
+        }
+        return options
+    }
+}
+
 enum CronJobStatus: Equatable {
     case active
     case paused
@@ -267,6 +374,7 @@ struct CronJobEditorDraft: Equatable {
     var deliver: String
     var skillsText: String
     var model: String
+    var provider: String
     var profile: String
     var toastNotifications: Bool
 
@@ -277,6 +385,7 @@ struct CronJobEditorDraft: Equatable {
         deliver: String = "local",
         skillsText: String = "",
         model: String = "",
+        provider: String = "",
         profile: String = "",
         toastNotifications: Bool = true
     ) {
@@ -286,6 +395,7 @@ struct CronJobEditorDraft: Equatable {
         self.deliver = deliver
         self.skillsText = skillsText
         self.model = model
+        self.provider = provider
         self.profile = profile
         self.toastNotifications = toastNotifications
     }
@@ -298,6 +408,7 @@ struct CronJobEditorDraft: Equatable {
             deliver: job.deliver ?? "local",
             skillsText: job.skills?.joined(separator: ", ") ?? "",
             model: job.model ?? "",
+            provider: job.provider ?? "",
             profile: job.profile ?? "",
             toastNotifications: job.toastNotifications ?? true
         )
@@ -321,6 +432,10 @@ struct CronJobEditorDraft: Equatable {
 
     var trimmedModel: String? {
         Self.nonEmpty(model)
+    }
+
+    var trimmedProvider: String? {
+        Self.nonEmpty(provider)
     }
 
     var trimmedProfile: String? {

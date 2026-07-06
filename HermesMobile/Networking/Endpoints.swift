@@ -5,7 +5,7 @@ enum Endpoint {
     case authStatus
     case login
     case logout
-    case sessions
+    case sessions(includeArchived: Bool = false, archivedLimit: Int? = nil)
     case sessionsSearch(query: String, content: Bool, depth: Int)
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
     case sessionStatus(id: String)
@@ -22,6 +22,7 @@ enum Endpoint {
     case updateSession
     case moveSession
     case sessionYolo(sessionID: String?)
+    case exportSession(sessionID: String, format: SessionExportFormat)
     case projects
     case createProject
     case renameProject
@@ -43,6 +44,10 @@ enum Endpoint {
     case backgroundStatus(sessionID: String)
     case workspaces
     case workspaceSuggestions(prefix: String)
+    case workspaceAdd
+    case workspaceRemove
+    case workspaceRename
+    case workspaceReorder
     case directoryList(sessionID: String, path: String?)
     case file(sessionID: String, path: String)
     case rawFile(sessionID: String, path: String)
@@ -67,7 +72,7 @@ enum Endpoint {
     case modelsLive
     case commands
     case defaultModel
-    case reasoning
+    case reasoning(model: String? = nil, provider: String? = nil)
     case personalities
     case setPersonality
     case profiles
@@ -87,6 +92,7 @@ enum Endpoint {
     case cronResume
     case cronStatus(jobID: String?)
     case cronOutput(jobID: String, limit: Int?)
+    case cronDeliveryOptions
     case memory
     case memoryWrite
     case skills
@@ -94,6 +100,7 @@ enum Endpoint {
     case toggleSkill
     case upload
     case transcribe
+    case tts
 
     var path: String {
         switch self {
@@ -139,6 +146,8 @@ enum Endpoint {
             return "/api/session/move"
         case .sessionYolo:
             return "/api/session/yolo"
+        case .exportSession:
+            return "/api/session/export"
         case .projects:
             return "/api/projects"
         case .createProject:
@@ -181,6 +190,14 @@ enum Endpoint {
             return "/api/workspaces"
         case .workspaceSuggestions:
             return "/api/workspaces/suggest"
+        case .workspaceAdd:
+            return "/api/workspaces/add"
+        case .workspaceRemove:
+            return "/api/workspaces/remove"
+        case .workspaceRename:
+            return "/api/workspaces/rename"
+        case .workspaceReorder:
+            return "/api/workspaces/reorder"
         case .directoryList:
             return "/api/list"
         case .file:
@@ -269,6 +286,8 @@ enum Endpoint {
             return "/api/crons/status"
         case .cronOutput:
             return "/api/crons/output"
+        case .cronDeliveryOptions:
+            return "/api/crons/delivery-options"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -283,11 +302,25 @@ enum Endpoint {
             return "/api/upload"
         case .transcribe:
             return "/api/transcribe"
+        case .tts:
+            return "/api/tts"
         }
     }
 
     var queryItems: [URLQueryItem] {
         switch self {
+        case let .sessions(includeArchived, archivedLimit):
+            // Opt-in (issue #17): the server's default response excludes archived
+            // rows, so the main list request stays byte-identical when off.
+            // `archived_limit` only means something alongside `include_archived=1`
+            // (`_query_positive_int` in upstream routes.py), so it is only sent then.
+            guard includeArchived else { return [] }
+
+            var items = [URLQueryItem(name: "include_archived", value: "1")]
+            if let archivedLimit {
+                items.append(URLQueryItem(name: "archived_limit", value: "\(archivedLimit)"))
+            }
+            return items
         case let .sessionsSearch(query, content, depth):
             return [
                 URLQueryItem(name: "q", value: query),
@@ -325,6 +358,11 @@ enum Endpoint {
         case let .sessionYolo(sessionID):
             guard let sessionID else { return [] }
             return [URLQueryItem(name: "session_id", value: sessionID)]
+        case let .exportSession(sessionID, format):
+            return [
+                URLQueryItem(name: "session_id", value: sessionID),
+                URLQueryItem(name: "format", value: format.rawValue)
+            ]
         case let .approvalPending(sessionID),
             let .approvalStream(sessionID),
             let .clarifyPending(sessionID),
@@ -365,6 +403,15 @@ enum Endpoint {
             var items = [URLQueryItem(name: "job_id", value: jobID)]
             if let limit {
                 items.append(URLQueryItem(name: "limit", value: "\(limit)"))
+            }
+            return items
+        case let .reasoning(model, provider):
+            var items: [URLQueryItem] = []
+            if let model, !model.isEmpty {
+                items.append(URLQueryItem(name: "model", value: model))
+            }
+            if let provider, !provider.isEmpty {
+                items.append(URLQueryItem(name: "provider", value: provider))
             }
             return items
         case let .insights(days):

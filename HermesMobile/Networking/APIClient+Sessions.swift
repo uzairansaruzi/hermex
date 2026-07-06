@@ -1,8 +1,22 @@
 import Foundation
 
 extension APIClient {
+    /// Parameterless overload kept so `InsightsDataClient` (and any other
+    /// protocol witness) still sees the exact `sessions()` signature — a method
+    /// with defaulted parameters cannot satisfy that requirement.
     func sessions() async throws -> SessionsResponse {
-        try await send(endpoint: .sessions, method: "GET")
+        try await sessions(includeArchived: false, archivedLimit: nil)
+    }
+
+    /// Fetches the session list. `includeArchived` opts in to archived rows
+    /// (merged with the visible ones; each row carries an `archived` flag) and
+    /// `archivedLimit` optionally caps how many archived rows the server appends
+    /// (issue #17). Defaults keep today's request untouched.
+    func sessions(includeArchived: Bool = false, archivedLimit: Int? = nil) async throws -> SessionsResponse {
+        try await send(
+            endpoint: .sessions(includeArchived: includeArchived, archivedLimit: archivedLimit),
+            method: "GET"
+        )
     }
 
     func searchSessions(query: String, content: Bool = true, depth: Int = 5) async throws -> SessionSearchResponse {

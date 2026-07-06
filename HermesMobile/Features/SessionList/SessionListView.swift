@@ -24,6 +24,7 @@ struct SessionListView: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingProjectCreation: SessionSummary?
+    @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
     @State private var isPresentingAddServer = false
     @State private var projectPendingDeletion: ProjectSummary?
@@ -42,7 +43,10 @@ struct SessionListView: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
-    @AppStorage(SessionRowDisplaySettings.showCliSessionsKey) private var showsCliSessions = true
+    // Per-server key (#19): the CLI toggle mirrors the active server's
+    // `show_cli_sessions`, so its cached value must not leak across servers.
+    // Configured in `init`, where the server URL is known.
+    @AppStorage private var showsCliSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
@@ -63,6 +67,10 @@ struct SessionListView: View {
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
         _viewModel = State(initialValue: SessionListViewModel(server: server))
+        _showsCliSessions = AppStorage(
+            wrappedValue: SessionRowDisplaySettings.showsCliSessions(for: server),
+            SessionRowDisplaySettings.showCliSessionsKey(for: server)
+        )
     }
 
     var body: some View {
@@ -106,7 +114,22 @@ struct SessionListView: View {
                     MemoryView(server: server, onAPIError: authManager.handleAPIError)
                 case .insights:
                     InsightsView(server: server, onAPIError: authManager.handleAPIError)
+                case .archived:
+                    ArchivedSessionsView(server: server, onAPIError: authManager.handleAPIError)
                 }
+            }
+            .sheet(item: $sessionExportShareItem) { item in
+                SessionExportShareSheet(fileURL: item.fileURL)
+                    .presentationDetents([.medium, .large])
+                    .ignoresSafeArea()
+                    // The temp file lives in its own UUID directory (see
+                    // SessionListViewModel.export); remove the directory once
+                    // the share sheet is gone, shared and cancelled alike.
+                    .onDisappear {
+                        try? FileManager.default.removeItem(
+                            at: item.fileURL.deletingLastPathComponent()
+                        )
+                    }
             }
             .sheet(item: $sessionPendingRename) { session in
                 SessionRenameSheet(
@@ -282,6 +305,11 @@ struct SessionListView: View {
                 showsWorkspace: showsSessionWorkspace,
                 actions: sessionRowActions
             )
+
+            if showsArchivedEntry {
+                archivedEntryRow
+                    .sessionsScreenListRow()
+            }
 
             Color.clear
                 .frame(height: 104)
@@ -499,6 +527,56 @@ struct SessionListView: View {
         AutomatedSessionVisibility(showsCron: showsCronSessions, showsCli: showsCliSessions)
     }
 
+    /// Bottom-of-list entry to the Archived screen (issue #17). Hidden while
+    /// searching, offline (cached data cannot fetch archived rows), and when the
+    /// server reports zero archived sessions or omits `archived_count` (older
+    /// server) — so the list is unchanged for users with nothing archived.
+    private var showsArchivedEntry: Bool {
+        guard !isSearchingSessions, !viewModel.isViewingCachedData else { return false }
+        return (viewModel.archivedCount ?? 0) > 0
+    }
+
+    private var archivedEntryRow: some View {
+        HapticButton {
+            selectedUtilityDestination = .archived
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "archivebox")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+
+                Text("Archived Sessions")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if let archivedCount = viewModel.archivedCount {
+                    Text("\(archivedCount)")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(.thinMaterial, in: Capsule())
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.forward")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 24)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 12)
+        .accessibilityHint("Shows archived sessions.")
+    }
+
     private var emptySessionsTitle: String {
         if hasActiveSessionFilter {
             return String(localized: "No matching sessions")
@@ -645,6 +723,9 @@ struct SessionListView: View {
             },
             refreshProjects: {
                 Task { await viewModel.loadProjects() }
+            },
+            export: { session, format in
+                Task { await export(session, format: format) }
             }
         )
     }
@@ -807,6 +888,15 @@ struct SessionListView: View {
     private func move(_ session: SessionSummary, to projectID: String?) async {
         await viewModel.move(session, to: projectID, modelContext: modelContext)
         handleLastError()
+    }
+
+    private func export(_ session: SessionSummary, format: SessionExportFormat) async {
+        let fileURL = await viewModel.export(session, format: format)
+        handleLastError()
+
+        if let fileURL {
+            sessionExportShareItem = SessionExportShareItem(fileURL: fileURL)
+        }
     }
 
     private func delete(_ project: ProjectSummary) async {
@@ -975,6 +1065,8 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     case skills
     case memory
     case insights
+    /// Archived sessions screen (issue #17), also reachable from Settings.
+    case archived
 
     var id: Self { self }
 }

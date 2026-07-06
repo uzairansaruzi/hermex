@@ -1627,6 +1627,11 @@ final class SessionListMutationTests: XCTestCase {
         let viewModel = try makeArchivedViewModel { request in
             switch request.url?.path {
             case "/api/sessions":
+                // The archived screen must opt in to archived rows — without
+                // include_archived=1 the server returns none (issue #17).
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+                XCTAssertEqual(query["include_archived"], "1")
                 return apiTestJSONResponse(self.archivedSessionListJSON(), for: request)
             case "/api/session/archive":
                 archiveRequestCount += 1
@@ -1659,6 +1664,11 @@ final class SessionListMutationTests: XCTestCase {
         let viewModel = try makeArchivedViewModel { request in
             switch request.url?.path {
             case "/api/sessions":
+                // The archived screen must opt in to archived rows — without
+                // include_archived=1 the server returns none (issue #17).
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+                XCTAssertEqual(query["include_archived"], "1")
                 return apiTestJSONResponse(self.archivedSessionListJSON(), for: request)
             case "/api/session/archive":
                 let response = HTTPURLResponse(
@@ -1682,6 +1692,120 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(viewModel.sessions, before)
         XCTAssertFalse(viewModel.isUnarchiving)
         XCTAssertNotNil(viewModel.actionErrorMessage)
+    }
+
+    @MainActor
+    func testArchivedSessionUnarchiveRejectionSurfacesServerMessage() async throws {
+        // Mirrors the live contract: subagent and read-only imported CLI sessions
+        // reject archive-state changes with HTTP 400 + an `error` message, which
+        // must reach the user verbatim rather than a generic failure (issue #17).
+        let serverMessage = "Subagent sessions are view-only and cannot be archived from WebUI"
+        let viewModel = try makeArchivedViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.archivedSessionListJSON(), for: request)
+            case "/api/session/archive":
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 400,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+                return (try XCTUnwrap(response), Data(#"{"error":"\#(serverMessage)"}"#.utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let before = viewModel.sessions
+        let didUnarchive = await viewModel.unarchive(try XCTUnwrap(viewModel.sessions.first))
+
+        XCTAssertFalse(didUnarchive)
+        XCTAssertEqual(viewModel.sessions, before)
+        let actionErrorMessage = try XCTUnwrap(viewModel.actionErrorMessage)
+        XCTAssertTrue(
+            actionErrorMessage.contains(serverMessage),
+            "Expected the server's message in: \(actionErrorMessage)"
+        )
+    }
+
+    @MainActor
+    func testArchivedSessionUnarchiveOkResponseWithErrorFieldSurfacesMessageAndRestoresRow() async throws {
+        let viewModel = try makeArchivedViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.archivedSessionListJSON(), for: request)
+            case "/api/session/archive":
+                return apiTestJSONResponse(#"{"ok": false, "error": "Session not writable"}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let before = viewModel.sessions
+        let didUnarchive = await viewModel.unarchive(try XCTUnwrap(viewModel.sessions.first))
+
+        XCTAssertFalse(didUnarchive)
+        XCTAssertEqual(viewModel.sessions, before)
+        XCTAssertEqual(viewModel.actionErrorMessage, "Session not writable")
+    }
+
+    @MainActor
+    func testArchivedSessionUnarchiveOkFalseWithoutErrorFieldFailsAndRestoresRow() async throws {
+        // An explicit `ok: false` with no `error` string must still be treated
+        // as a failure — reporting success here would permanently drop the row
+        // from the archived list even though the server did not restore it.
+        let viewModel = try makeArchivedViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.archivedSessionListJSON(), for: request)
+            case "/api/session/archive":
+                return apiTestJSONResponse(#"{"ok": false}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let before = viewModel.sessions
+        let didUnarchive = await viewModel.unarchive(try XCTUnwrap(viewModel.sessions.first))
+
+        XCTAssertFalse(didUnarchive)
+        XCTAssertEqual(viewModel.sessions, before)
+        XCTAssertNotNil(viewModel.actionErrorMessage)
+        XCTAssertFalse(viewModel.isUnarchiving)
+    }
+
+    @MainActor
+    func testLoadStoresArchivedCountFromResponseForArchivedEntry() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            XCTAssertNil(request.url?.query)
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-abc",
+                  "title": "Planning",
+                  "archived": false
+                }
+              ],
+              "archived_count": 8
+            }
+            """, for: request)
+        }
+
+        XCTAssertNil(viewModel.archivedCount)
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.archivedCount, 8)
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-abc"])
     }
 
     @MainActor

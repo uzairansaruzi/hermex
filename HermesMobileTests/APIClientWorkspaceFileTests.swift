@@ -241,6 +241,154 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertEqual(response.suggestions, ["/Users/test/project", "/Users/test/prototypes"])
     }
 
+    func testAddWorkspaceBuildsExpectedBodyAndDecodesUpdatedList() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/workspaces/add")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let json = try apiTestJSONBody(from: request)
+            XCTAssertEqual(json["path"] as? String, "/Users/test/newproject")
+            XCTAssertEqual(json["name"] as? String, "New Project")
+            XCTAssertEqual(json["create"] as? Bool, true)
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "workspaces": [
+                {"path": "/Users/test/project", "name": "Project"},
+                {"path": "/Users/test/newproject", "name": "New Project"}
+              ]
+            }
+            """, for: request)
+        }
+
+        let response = try await client.addWorkspace(path: "/Users/test/newproject", name: "New Project", create: true)
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.workspaces?.count, 2)
+        XCTAssertEqual(response.workspaces?.last?.path, "/Users/test/newproject")
+        XCTAssertEqual(response.workspaces?.last?.name, "New Project")
+    }
+
+    func testAddWorkspaceOmitsOptionalFieldsWhenNil() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/workspaces/add")
+
+            let json = try apiTestJSONBody(from: request)
+            XCTAssertEqual(json["path"] as? String, "/Users/test/newproject")
+            XCTAssertNil(json["name"])
+            XCTAssertNil(json["create"])
+
+            return apiTestJSONResponse("""
+            {"ok": true, "workspaces": [{"path": "/Users/test/newproject", "name": "newproject"}]}
+            """, for: request)
+        }
+
+        let response = try await client.addWorkspace(path: "/Users/test/newproject")
+
+        XCTAssertEqual(response.ok, true)
+    }
+
+    func testAddWorkspaceSurfacesServerErrorString() async throws {
+        let client = makeClient { request in
+            let (_, data) = apiTestJSONResponse("""
+            {"error": "Workspace already in list"}
+            """, for: request)
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 400,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, data)
+        }
+
+        do {
+            _ = try await client.addWorkspace(path: "/Users/test/project")
+            XCTFail("Expected APIError.http")
+        } catch let error as APIError {
+            XCTAssertEqual(error.serverMessage, "Workspace already in list")
+            XCTAssertTrue(error.localizedDescription.contains("Workspace already in list"))
+        }
+    }
+
+    func testRemoveWorkspaceBuildsExpectedBodyAndDecodesUpdatedList() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/workspaces/remove")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let json = try apiTestJSONBody(from: request)
+            XCTAssertEqual(json["path"] as? String, "/Users/test/oldproject")
+
+            return apiTestJSONResponse("""
+            {"ok": true, "workspaces": [{"path": "/Users/test/project", "name": "Project"}]}
+            """, for: request)
+        }
+
+        let response = try await client.removeWorkspace(path: "/Users/test/oldproject")
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.workspaces?.map(\.path), ["/Users/test/project"])
+    }
+
+    func testRenameWorkspaceBuildsExpectedBodyAndDecodesUpdatedList() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/workspaces/rename")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let json = try apiTestJSONBody(from: request)
+            XCTAssertEqual(json["path"] as? String, "/Users/test/project")
+            XCTAssertEqual(json["name"] as? String, "Renamed")
+
+            return apiTestJSONResponse("""
+            {"ok": true, "workspaces": [{"path": "/Users/test/project", "name": "Renamed"}]}
+            """, for: request)
+        }
+
+        let response = try await client.renameWorkspace(path: "/Users/test/project", name: "Renamed")
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.workspaces?.first?.name, "Renamed")
+    }
+
+    func testReorderWorkspacesBuildsExpectedBodyAndDecodesUpdatedList() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/workspaces/reorder")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let json = try apiTestJSONBody(from: request)
+            XCTAssertEqual(json["paths"] as? [String], ["/Users/test/b", "/Users/test/a"])
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "workspaces": [
+                {"path": "/Users/test/b", "name": "B"},
+                {"path": "/Users/test/a", "name": "A"}
+              ]
+            }
+            """, for: request)
+        }
+
+        let response = try await client.reorderWorkspaces(paths: ["/Users/test/b", "/Users/test/a"])
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.workspaces?.compactMap(\.path), ["/Users/test/b", "/Users/test/a"])
+    }
+
+    func testWorkspaceMutationToleratesMissingWorkspacesEcho() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {"ok": true, "unexpected_new_field": {"nested": 1}}
+            """, for: request)
+        }
+
+        let response = try await client.removeWorkspace(path: "/Users/test/project")
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertNil(response.workspaces)
+    }
+
     func testDirectoryListDecodesUpstreamEntries() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/list")

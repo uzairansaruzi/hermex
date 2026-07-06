@@ -239,6 +239,54 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.showReasoning, true)
         XCTAssertEqual(response.reasoningEffort, "high")
         XCTAssertEqual(response.effectiveEffort, "high")
+        XCTAssertNil(response.supportedEfforts)
+        XCTAssertNil(response.supportsReasoningEffort)
+        XCTAssertNil(response.normalizedSupportedEfforts)
+    }
+
+    func testReasoningStatusPassesModelProviderQueryAndDecodesSupportedEfforts() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/reasoning")
+            XCTAssertEqual(request.httpMethod, "GET")
+
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(
+                uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) }
+            )
+            XCTAssertEqual(query["model"], "gpt-5.4")
+            XCTAssertEqual(query["provider"], "openai")
+
+            return apiTestJSONResponse("""
+            {
+              "show_reasoning": true,
+              "reasoning_effort": "medium",
+              "supported_efforts": ["minimal", "low", "medium", "high", "xhigh"],
+              "supports_reasoning_effort": true
+            }
+            """, for: request)
+        }
+
+        let response = try await client.reasoning(model: "gpt-5.4", provider: "openai")
+
+        XCTAssertEqual(response.supportedEfforts, ["minimal", "low", "medium", "high", "xhigh"])
+        XCTAssertEqual(response.supportsReasoningEffort, true)
+        XCTAssertEqual(response.normalizedSupportedEfforts, ["minimal", "low", "medium", "high", "xhigh"])
+    }
+
+    func testReasoningStatusNormalizesSupportedEfforts() throws {
+        let json = """
+        {
+          "reasoning_effort": "low",
+          "supported_efforts": [" Low ", "low", "", "HIGH"],
+          "supports_reasoning_effort": false
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(ReasoningStatusResponse.self, from: Data(json.utf8))
+
+        XCTAssertEqual(response.normalizedSupportedEfforts, ["low", "high"])
+        XCTAssertEqual(response.supportsReasoningEffort, false)
     }
 
     func testSaveReasoningEffortBuildsExpectedBodyAndDecodesResponse() async throws {

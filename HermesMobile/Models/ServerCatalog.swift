@@ -136,16 +136,196 @@ struct AgentCommand: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// `GET /api/providers` — read-only provider status (#26). Shape verified against
+/// the live server (2026-07-02) and upstream `api/providers.py::get_providers()`
+/// @ `312d3fab`: standard entries carry the full field set, while entries derived
+/// from `custom_providers` in config.yaml (`is_custom == true`) omit `is_oauth`,
+/// `auth_error`, `is_self_hosted`, `base_url`, and `is_plugin_provider` — so every
+/// field stays optional and decoding never fails on a partial entry.
 struct ProvidersResponse: Decodable, Equatable {
-    let providers: [JSONValue]?
+    let providers: [ProviderSummary]?
     let activeProvider: String?
+
+    init(providers: [ProviderSummary]?, activeProvider: String?) {
+        self.providers = providers
+        self.activeProvider = activeProvider
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case providers
+        case activeProvider
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providers = try? container.decodeIfPresent([ProviderSummary].self, forKey: .providers)
+        activeProvider = container.decodeLossyStringIfPresent(forKey: .activeProvider)
+    }
 }
 
+/// One provider entry from `GET /api/providers`. `keySource` vocabulary upstream:
+/// `env_file`, `env_var`, `config_yaml`, `oauth`, `none` — plus `env`, `config`,
+/// and `token` from the live-auth fallback probe. Unknown values are kept verbatim.
+struct ProviderSummary: Decodable, Equatable, Sendable {
+    let id: String?
+    let displayName: String?
+    let hasKey: Bool?
+    let configurable: Bool?
+    let isSelfHosted: Bool?
+    let baseUrl: String?
+    let isPluginProvider: Bool?
+    let isOauth: Bool?
+    let isCustom: Bool?
+    let keySource: String?
+    let authError: String?
+    let models: [ProviderModel]?
+    /// Size of the provider's complete catalog. May exceed `models.count` when the
+    /// server trims the list to a featured subset (e.g. large Nous Portal accounts).
+    let modelsTotal: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case hasKey
+        case configurable
+        case isSelfHosted
+        case baseUrl
+        case isPluginProvider
+        case isOauth
+        case isCustom
+        case keySource
+        case authError
+        case models
+        case modelsTotal
+    }
+
+    init(
+        id: String?,
+        displayName: String? = nil,
+        hasKey: Bool? = nil,
+        configurable: Bool? = nil,
+        isSelfHosted: Bool? = nil,
+        baseUrl: String? = nil,
+        isPluginProvider: Bool? = nil,
+        isOauth: Bool? = nil,
+        isCustom: Bool? = nil,
+        keySource: String? = nil,
+        authError: String? = nil,
+        models: [ProviderModel]? = nil,
+        modelsTotal: Int? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.hasKey = hasKey
+        self.configurable = configurable
+        self.isSelfHosted = isSelfHosted
+        self.baseUrl = baseUrl
+        self.isPluginProvider = isPluginProvider
+        self.isOauth = isOauth
+        self.isCustom = isCustom
+        self.keySource = keySource
+        self.authError = authError
+        self.models = models
+        self.modelsTotal = modelsTotal
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyStringIfPresent(forKey: .id)
+        displayName = container.decodeLossyStringIfPresent(forKey: .displayName)
+        hasKey = container.decodeLossyBoolIfPresent(forKey: .hasKey)
+        configurable = container.decodeLossyBoolIfPresent(forKey: .configurable)
+        isSelfHosted = container.decodeLossyBoolIfPresent(forKey: .isSelfHosted)
+        baseUrl = container.decodeLossyStringIfPresent(forKey: .baseUrl)
+        isPluginProvider = container.decodeLossyBoolIfPresent(forKey: .isPluginProvider)
+        isOauth = container.decodeLossyBoolIfPresent(forKey: .isOauth)
+        isCustom = container.decodeLossyBoolIfPresent(forKey: .isCustom)
+        keySource = container.decodeLossyStringIfPresent(forKey: .keySource)
+        authError = container.decodeLossyStringIfPresent(forKey: .authError)
+        models = try? container.decodeIfPresent([ProviderModel].self, forKey: .models)
+        modelsTotal = container.decodeLossyIntIfPresent(forKey: .modelsTotal)
+    }
+}
+
+/// A model entry inside a provider's `models` list. Upstream normally emits
+/// `{ "id": …, "label": … }` objects, but the docs historically described bare
+/// model-ID strings — both shapes decode.
+struct ProviderModel: Decodable, Equatable, Sendable {
+    let id: String?
+    let label: String?
+
+    init(id: String?, label: String? = nil) {
+        self.id = id
+        self.label = label
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case label
+    }
+
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let raw = try? single.decode(String.self) {
+            id = raw
+            label = raw
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = container.decodeLossyStringIfPresent(forKey: .id)
+        label = container.decodeLossyStringIfPresent(forKey: .label)
+    }
+}
+
+/// `GET /api/settings` (the saved-settings body `POST /api/settings` echoes the
+/// same shape back). The server returns ~75 keys; we decode only the ones with
+/// a consumer or near-term use (#19). Every field is optional and lossy-decoded
+/// — servers omit keys freely and we never crash on an unexpected shape.
 struct SettingsResponse: Decodable, Equatable {
     let botName: String?
     let webuiVersion: String?
-    let version: String?
+    let agentVersion: String?
     let theme: String?
+    let checkForUpdates: Bool?
+    let showCliSessions: Bool?
+    let maxTokens: Int?
+    let maxTokensEffective: Int?
+    let authEnabled: Bool?
+    let passwordAuthEnabled: Bool?
+    let passkeysEnabled: Bool?
+    let passwordlessEnabled: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case botName
+        case webuiVersion
+        case agentVersion
+        case theme
+        case checkForUpdates
+        case showCliSessions
+        case maxTokens
+        case maxTokensEffective
+        case authEnabled
+        case passwordAuthEnabled
+        case passkeysEnabled
+        case passwordlessEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        botName = container.decodeLossyStringIfPresent(forKey: .botName)
+        webuiVersion = container.decodeLossyStringIfPresent(forKey: .webuiVersion)
+        agentVersion = container.decodeLossyStringIfPresent(forKey: .agentVersion)
+        theme = container.decodeLossyStringIfPresent(forKey: .theme)
+        checkForUpdates = container.decodeLossyBoolIfPresent(forKey: .checkForUpdates)
+        showCliSessions = container.decodeLossyBoolIfPresent(forKey: .showCliSessions)
+        maxTokens = container.decodeLossyIntIfPresent(forKey: .maxTokens)
+        maxTokensEffective = container.decodeLossyIntIfPresent(forKey: .maxTokensEffective)
+        authEnabled = container.decodeLossyBoolIfPresent(forKey: .authEnabled)
+        passwordAuthEnabled = container.decodeLossyBoolIfPresent(forKey: .passwordAuthEnabled)
+        passkeysEnabled = container.decodeLossyBoolIfPresent(forKey: .passkeysEnabled)
+        passwordlessEnabled = container.decodeLossyBoolIfPresent(forKey: .passwordlessEnabled)
+    }
 }
 
 struct DefaultModelResponse: Decodable, Equatable {
@@ -295,10 +475,27 @@ struct ReasoningStatusResponse: Decodable, Equatable {
     let showReasoning: Bool?
     let reasoningEffort: String?
     let effort: String?
+    /// Model-aware effort vocabulary from `GET /api/reasoning` (`supported_efforts`).
+    /// `nil` on older servers that don't send the field — callers must fall back
+    /// to the static effort list (issue #18).
+    let supportedEfforts: [String]?
+    /// `supports_reasoning_effort` — `false` means the resolved model has no
+    /// effort control at all (hide the picker). `nil` on older servers.
+    let supportsReasoningEffort: Bool?
     let error: String?
 
     var effectiveEffort: String? {
         reasoningEffort ?? effort
+    }
+
+    /// `supported_efforts` trimmed, lowercased, de-duplicated, order preserved.
+    /// Stays `nil` when the server omitted the field (legacy fallback signal).
+    var normalizedSupportedEfforts: [String]? {
+        guard let supportedEfforts else { return nil }
+        var seen = Set<String>()
+        return supportedEfforts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
 

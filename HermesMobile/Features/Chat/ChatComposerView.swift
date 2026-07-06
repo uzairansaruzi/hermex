@@ -84,6 +84,9 @@ struct MessageComposerView: View {
     let workspaceRoots: [WorkspaceRoot]
     let selectedWorkspacePath: String?
     let workspaceSuggestions: [String]
+    /// Server base URL for the workspace-registry manager; nil hides the
+    /// Manage affordance in the workspace picker.
+    let workspaceManagementServer: URL?
     let personalitySuggestions: [String]
     let skillSuggestions: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
@@ -93,6 +96,10 @@ struct MessageComposerView: View {
     let selectedProfileTitle: String
     let isLoadingModels: Bool
     let selectedReasoningEffort: String?
+    /// Model-aware effort vocabulary; `nil` → full static list (issue #18).
+    let supportedReasoningEfforts: [String]?
+    /// When false the model has no effort control — hide the reasoning menu.
+    let showsReasoningControl: Bool
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
@@ -107,6 +114,7 @@ struct MessageComposerView: View {
     let onSelectModel: (ModelCatalogOption) -> Void
     let onModelPickerOpen: () async -> Void
     let onLoadWorkspaceSuggestions: (String) async -> Void
+    let onWorkspaceRegistryChanged: () async -> Void
     let onLoadPersonalitySuggestions: () async -> Void
     let onLoadSkillSuggestions: () async -> Void
     let onSelectWorkspace: (String) async -> Void
@@ -304,7 +312,9 @@ struct MessageComposerView: View {
 
                         modelMenu
 
-                        reasoningMenu
+                        if showsReasoningControl {
+                            reasoningMenu
+                        }
 
                         Spacer(minLength: 0)
 
@@ -423,12 +433,14 @@ struct MessageComposerView: View {
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
                 suggestions: workspaceSuggestions,
+                managementServer: isOfflineReadOnly ? nil : workspaceManagementServer,
                 onLoadSuggestions: onLoadWorkspaceSuggestions,
                 onSelect: { path in
                     optimisticWorkspacePath = path
                     showsWorkspaceSheet = false
                     await onSelectWorkspace(path)
-                }
+                },
+                onRegistryChanged: onWorkspaceRegistryChanged
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -763,6 +775,7 @@ struct MessageComposerView: View {
     private var reasoningMenu: some View {
         ComposerReasoningMenu(
             selectedReasoningEffort: selectedReasoningEffort,
+            supportedEfforts: supportedReasoningEfforts,
             reasoningTitle: reasoningTitle,
             isDisabled: isConfigurationControlDisabled,
             width: reasoningControlWidth,

@@ -10,6 +10,9 @@ final class APIClientSessionListTests: APIClientTestCase {
     func testSessionsDecodesSnakeCaseResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/sessions")
+            // The default fetch must stay parameterless so the main list request
+            // (and its server-side ordering) is unchanged (issue #17).
+            XCTAssertNil(request.url?.query)
 
             return apiTestJSONResponse("""
             {
@@ -24,6 +27,7 @@ final class APIClientSessionListTests: APIClientTestCase {
                 }
               ],
               "cli_count": 2,
+              "archived_count": 8,
               "server_time": 1770000001,
               "server_tz": "-0400"
             }
@@ -38,6 +42,44 @@ final class APIClientSessionListTests: APIClientTestCase {
         XCTAssertEqual(response.sessions?.first?.lastMessageAt, 1_770_000_000)
         XCTAssertEqual(response.sessions?.first?.pinned, true)
         XCTAssertEqual(response.cliCount, 2)
+        XCTAssertEqual(response.archivedCount, 8)
+    }
+
+    func testSessionsIncludeArchivedBuildsQueryAndDecodesMergedRows() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query, ["include_archived": "1", "archived_limit": "50"])
+
+            // include_archived=1 merges archived rows into the visible list;
+            // each row carries an `archived` flag (upstream routes.py @312d3fab).
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "visible-1",
+                  "title": "Visible",
+                  "archived": false
+                },
+                {
+                  "session_id": "archived-1",
+                  "title": "Old research",
+                  "archived": true
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sessions(includeArchived: true, archivedLimit: 50)
+
+        XCTAssertEqual(response.sessions?.compactMap(\.sessionId), ["visible-1", "archived-1"])
+        XCTAssertEqual(response.sessions?.last?.archived, true)
+        // Tolerant decoding: an older server that omits archived_count still decodes.
+        XCTAssertNil(response.archivedCount)
     }
 
     func testSessionSearchRequestBuildsExpectedQueryAndDecodesContentMatch() async throws {

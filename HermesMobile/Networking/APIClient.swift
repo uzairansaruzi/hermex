@@ -139,6 +139,27 @@ actor APIClient {
         encodedBody: Data?,
         timeout: TimeInterval? = nil
     ) async throws -> Data {
+        try await sendDataReturningResponse(
+            endpoint: endpoint,
+            method: method,
+            encodedBody: encodedBody,
+            timeout: timeout
+        ).0
+    }
+
+    /// Same request/error contract as `sendData`, but also returns the
+    /// `HTTPURLResponse` so callers can read response headers (e.g. the
+    /// `Content-Disposition` filename on `GET /api/session/export`).
+    ///
+    /// `accept` overrides the default `application/json` Accept header for
+    /// endpoints whose 2xx response is a file download rather than JSON.
+    func sendDataReturningResponse(
+        endpoint: Endpoint,
+        method: String,
+        encodedBody: Data?,
+        timeout: TimeInterval? = nil,
+        accept: String = "application/json"
+    ) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -147,7 +168,7 @@ actor APIClient {
         if let timeout { request.timeoutInterval = timeout }
         // Custom headers first, then built-ins so Accept/Content-Type always win.
         customHeaderProvider().apply(to: &request)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
 
         if let encodedBody {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -177,7 +198,7 @@ actor APIClient {
             )
         }
 
-        return data
+        return (data, httpResponse)
     }
 
     func downloadData(

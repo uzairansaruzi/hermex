@@ -2,25 +2,35 @@ import SwiftUI
 
 struct ArchivedSessionsView: View {
     let server: URL
+    /// Forwarded to `ChatView` and used for load/unarchive failures so a 401
+    /// here triggers the same re-login flow as everywhere else.
+    let onAPIError: (Error) -> Void
 
     @State private var viewModel: ArchivedSessionsViewModel
+    @State private var openedSession: SessionSummary?
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
-    init(server: URL) {
+    init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.server = server
+        self.onAPIError = onAPIError
         _viewModel = State(initialValue: ArchivedSessionsViewModel(server: server))
     }
 
     var body: some View {
         content
             .navigationTitle("Archived Sessions")
+            .navigationDestination(item: $openedSession) { session in
+                // Opening an archived session reuses the normal read path —
+                // no special-casing on the chat side (issue #17).
+                ChatView(session: session, server: server, onAPIError: onAPIError)
+            }
             .task {
-                await viewModel.load()
+                await load()
             }
             .refreshable {
-                await viewModel.load()
+                await load()
             }
             .alert(
                 "Action Failed",
@@ -58,7 +68,7 @@ struct ArchivedSessionsView: View {
                             .lineLimit(3)
 
                         Button("Try Again") {
-                            Task { await viewModel.load() }
+                            Task { await load() }
                         }
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
@@ -70,24 +80,7 @@ struct ArchivedSessionsView: View {
                 } else {
                     VStack(spacing: 2) {
                         ForEach(visibleSessions) { session in
-                            SessionRowView(
-                                session: session,
-                                showsMessageCount: showsSessionMessageCount,
-                                showsWorkspace: showsSessionWorkspace
-                            )
-                                .contextMenu {
-                                    Button {
-                                        Task {
-                                            let didUnarchive = await viewModel.unarchive(session)
-                                            if didUnarchive {
-                                                SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
-                                            }
-                                        }
-                                    } label: {
-                                        Label("Unarchive", systemImage: "arrow.up.bin")
-                                    }
-                                    .disabled(viewModel.isUnarchiving(session))
-                                }
+                            archivedSessionRow(for: session)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -95,6 +88,76 @@ struct ArchivedSessionsView: View {
             }
             .padding(.top, 28)
             .padding(.bottom, 44)
+        }
+    }
+
+    private func archivedSessionRow(for session: SessionSummary) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                openedSession = session
+            } label: {
+                SessionRowView(
+                    session: session,
+                    showsMessageCount: showsSessionMessageCount,
+                    showsWorkspace: showsSessionWorkspace
+                )
+            }
+            .buttonStyle(.plain)
+
+            unarchiveButton(for: session)
+        }
+        .contextMenu {
+            Button {
+                unarchive(session)
+            } label: {
+                Label("Unarchive", systemImage: "arrow.up.bin")
+            }
+            .disabled(viewModel.isUnarchiving(session))
+        }
+    }
+
+    /// Always-visible unarchive affordance; the context menu keeps the same
+    /// action for discoverability parity with the main list's row menus.
+    private func unarchiveButton(for session: SessionSummary) -> some View {
+        Button {
+            unarchive(session)
+        } label: {
+            Group {
+                if viewModel.isUnarchiving(session) {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.up.bin")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isUnarchiving(session))
+        .accessibilityLabel("Unarchive")
+    }
+
+    private func unarchive(_ session: SessionSummary) {
+        Task {
+            let didUnarchive = await viewModel.unarchive(session)
+            handleLastError()
+            if didUnarchive {
+                SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
+            }
+        }
+    }
+
+    private func load() async {
+        await viewModel.load()
+        handleLastError()
+    }
+
+    private func handleLastError() {
+        if let lastError = viewModel.lastError {
+            onAPIError(lastError)
         }
     }
 

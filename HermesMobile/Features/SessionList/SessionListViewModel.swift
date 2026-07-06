@@ -56,6 +56,10 @@ final class SessionListViewModel {
     private(set) var switchingActiveProfileName: String?
     private(set) var activeProfileErrorMessage: String?
     private(set) var mutatingSessionIDs: Set<String> = []
+    /// Total archived sessions reported by the last successful list load
+    /// (`archived_count`, issue #17). nil until a load succeeds or when an older
+    /// server omits the field — the Archived entry stays hidden then.
+    private(set) var archivedCount: Int?
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
     private var activeRemoteSearchQuery: String?
@@ -69,7 +73,28 @@ final class SessionListViewModel {
         let resolvedClient = client ?? APIClient(baseURL: server)
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
+
+        // Sweep exports leaked by a previous app run (view dismissed while a
+        // download was in flight, so the share sheet — and its on-dismiss
+        // cleanup — never appeared). `State(initialValue:)` re-runs this init
+        // on every parent redraw, so the sweep must be once-per-process (the
+        // lazy static below), or it would delete a file an active share sheet
+        // is presenting. The first-ever init always precedes the first export,
+        // so the single sweep can never race an in-flight export.
+        _ = Self.sweepLeakedExportsOnce
     }
+
+    /// Root temp directory holding one UUID subdirectory per export
+    /// (see `export(_:format:)`).
+    nonisolated static var exportsRootDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("session-exports", isDirectory: true)
+    }
+
+    /// Lazy static ⇒ runs exactly once per process, on first access.
+    nonisolated private static let sweepLeakedExportsOnce: Void = {
+        try? FileManager.default.removeItem(at: exportsRootDirectory)
+    }()
 
     var sections: [SessionListSection] {
         let sortedSessions = sessions.sorted { left, right in
@@ -150,7 +175,7 @@ final class SessionListViewModel {
         do {
             let response = try await client.sessions()
             let visibleSessions = (response.sessions ?? []).filter { $0.archived != true }
-            applySessions(visibleSessions, animation: animation)
+            applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 
             if let modelContext {
@@ -552,6 +577,54 @@ final class SessionListViewModel {
         }
     }
 
+    /// Downloads the session transcript (`GET /api/session/export`) and writes
+    /// it to a unique temp directory so the share sheet can offer it as a file
+    /// with a real filename. Returns the file URL, or nil after surfacing the
+    /// failure through the standard action-error alert. The caller owns
+    /// cleanup of the returned file's parent directory after sharing.
+    func export(_ session: SessionSummary, format: SessionExportFormat) async -> URL? {
+        guard !isViewingCachedData else {
+            actionErrorMessage = String(localized: "Reconnect to the server to export a session.")
+            return nil
+        }
+
+        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            return nil
+        }
+
+        // Reuses the per-session mutation gate: it disables the row's other
+        // actions while the download runs (the "progress state") and blocks a
+        // double-tap from firing two exports.
+        guard beginSessionMutation(sessionId) else { return nil }
+        defer { endSessionMutation(sessionId) }
+
+        actionErrorMessage = nil
+        lastError = nil
+
+        do {
+            let file = try await client.exportSession(
+                id: sessionId,
+                format: format,
+                fallbackTitle: session.title
+            )
+
+            let directory = Self.exportsRootDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+            let fileURL = directory.appendingPathComponent(file.filename)
+            try file.data.write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            guard !isCancellationError(error) else { return nil }
+
+            lastError = error
+            actionErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func loadProjects() async {
         isLoadingProjects = true
         actionErrorMessage = nil
@@ -853,14 +926,22 @@ final class SessionListViewModel {
         .joined(separator: " ")
     }
 
-    private func applySessions(_ newSessions: [SessionSummary], animation: Animation?) {
+    /// `archivedCount` is applied inside the same transaction as the rows so the
+    /// bottom Archived entry inserts/removes with the list mutation animation.
+    private func applySessions(
+        _ newSessions: [SessionSummary],
+        archivedCount newArchivedCount: Int?,
+        animation: Animation?
+    ) {
         guard let animation else {
             sessions = newSessions
+            archivedCount = newArchivedCount
             return
         }
 
         withAnimation(animation) {
             sessions = newSessions
+            archivedCount = newArchivedCount
         }
     }
 

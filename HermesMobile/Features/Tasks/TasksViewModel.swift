@@ -11,6 +11,9 @@ enum CronJobListMutation: Equatable {
 final class TasksViewModel {
     private(set) var jobs: [CronJob] = []
     private(set) var runningJobs: [String: Double] = [:]
+    /// Server-provided deliver targets; `nil` while unknown or when the
+    /// endpoint is unavailable (the editor then falls back to free text).
+    private(set) var deliveryOptions: [CronDeliveryOption]?
     private(set) var isLoading = false
     private(set) var isMutating = false
     private(set) var errorMessage: String?
@@ -32,10 +35,14 @@ final class TasksViewModel {
         do {
             async let jobsResponse = client.crons()
             async let statusResponse = client.cronStatus()
+            // Optional endpoint: failure must not break the task list, and a
+            // nil result keeps the editor's free-text deliver fallback.
+            async let deliveryOptionsResponse = try? client.cronDeliveryOptions()
 
             let (jobsResult, statusResult) = try await (jobsResponse, statusResponse)
             runningJobs = statusResult.runningJobs ?? [:]
             jobs = (jobsResult.jobs ?? []).sorted(by: sortJobs)
+            deliveryOptions = await deliveryOptionsResponse?.platforms
         } catch {
             lastError = error
             errorMessage = error.localizedDescription
@@ -70,6 +77,7 @@ final class TasksViewModel {
                 deliver: draft.trimmedDeliver,
                 skills: draft.skills,
                 model: draft.trimmedModel,
+                provider: draft.trimmedProvider,
                 profile: draft.trimmedProfile,
                 toastNotifications: draft.toastNotifications
             )

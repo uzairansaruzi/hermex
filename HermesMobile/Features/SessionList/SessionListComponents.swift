@@ -12,6 +12,7 @@ struct SessionListRowActions {
     let move: (SessionSummary, String?) -> Void
     let createProject: (SessionSummary) -> Void
     let refreshProjects: () -> Void
+    let export: (SessionSummary, SessionExportFormat) -> Void
 }
 
 enum SessionListMotion {
@@ -539,6 +540,26 @@ struct SessionRowContextMenu: View {
         }
         .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
 
+        // Export works for any session the server can see (incl. foreign/CLI
+        // ones — upstream's export handler only gates on the active profile),
+        // so it needs a server session ID and a live connection, like Rename.
+        Menu {
+            Button {
+                actions.export(session, .html)
+            } label: {
+                Label("Export as HTML", systemImage: "doc.richtext")
+            }
+
+            Button {
+                actions.export(session, .json)
+            } label: {
+                Label("Export as JSON", systemImage: "curlybraces")
+            }
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+        }
+        .disabled(!canShowSessionMutationActions || isMutating)
+
         Button {
             actions.archive(session)
         } label: {
@@ -720,6 +741,29 @@ extension View {
             in: shape
         )
     }
+}
+
+/// Sheet item for a finished session export: the temp file offered to the
+/// share sheet. Identity is the file URL, which is unique per export.
+struct SessionExportShareItem: Identifiable {
+    let fileURL: URL
+
+    var id: String { fileURL.absoluteString }
+}
+
+/// Minimal `UIActivityViewController` wrapper — the app has no other share
+/// surface and `ShareLink` can't be presented programmatically after an async
+/// download finishes. Cleanup of the temp file happens in the sheet's
+/// `onDismiss`, which runs after the activity UI is gone in both the
+/// completed and cancelled paths.
+struct SessionExportShareSheet: UIViewControllerRepresentable {
+    let fileURL: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private func hasServerSessionID(_ session: SessionSummary) -> Bool {

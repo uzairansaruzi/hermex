@@ -13,7 +13,21 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "auth status", method: "GET", endpoint: .authStatus, path: "/api/auth/status"),
             .init(name: "login", method: "POST", endpoint: .login, path: "/api/auth/login"),
             .init(name: "logout", method: "POST", endpoint: .logout, path: "/api/auth/logout"),
-            .init(name: "sessions", method: "GET", endpoint: .sessions, path: "/api/sessions"),
+            .init(name: "sessions", method: "GET", endpoint: .sessions(), path: "/api/sessions"),
+            .init(
+                name: "sessions including archived",
+                method: "GET",
+                endpoint: .sessions(includeArchived: true, archivedLimit: 3),
+                path: "/api/sessions",
+                query: ["include_archived": "1", "archived_limit": "3"]
+            ),
+            .init(
+                name: "sessions including archived without limit",
+                method: "GET",
+                endpoint: .sessions(includeArchived: true),
+                path: "/api/sessions",
+                query: ["include_archived": "1"]
+            ),
             .init(
                 name: "session search",
                 method: "GET",
@@ -136,6 +150,10 @@ final class ContractReadinessTests: XCTestCase {
                 path: "/api/workspaces/suggest",
                 query: ["prefix": "/Users/uzair"]
             ),
+            .init(name: "workspace add", method: "POST", endpoint: .workspaceAdd, path: "/api/workspaces/add"),
+            .init(name: "workspace remove", method: "POST", endpoint: .workspaceRemove, path: "/api/workspaces/remove"),
+            .init(name: "workspace rename", method: "POST", endpoint: .workspaceRename, path: "/api/workspaces/rename"),
+            .init(name: "workspace reorder", method: "POST", endpoint: .workspaceReorder, path: "/api/workspaces/reorder"),
             .init(
                 name: "directory list root",
                 method: "GET",
@@ -175,8 +193,15 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "models live", method: "GET", endpoint: .modelsLive, path: "/api/models/live"),
             .init(name: "commands", method: "GET", endpoint: .commands, path: "/api/commands"),
             .init(name: "default model", method: "POST", endpoint: .defaultModel, path: "/api/default-model"),
-            .init(name: "reasoning read", method: "GET", endpoint: .reasoning, path: "/api/reasoning"),
-            .init(name: "reasoning save", method: "POST", endpoint: .reasoning, path: "/api/reasoning"),
+            .init(name: "reasoning read", method: "GET", endpoint: .reasoning(), path: "/api/reasoning"),
+            .init(
+                name: "reasoning read scoped to model",
+                method: "GET",
+                endpoint: .reasoning(model: "gpt-5.4", provider: "openai"),
+                path: "/api/reasoning",
+                query: ["model": "gpt-5.4", "provider": "openai"]
+            ),
+            .init(name: "reasoning save", method: "POST", endpoint: .reasoning(), path: "/api/reasoning"),
             .init(name: "personalities", method: "GET", endpoint: .personalities, path: "/api/personalities"),
             .init(name: "set personality", method: "POST", endpoint: .setPersonality, path: "/api/personality/set"),
             .init(name: "profiles", method: "GET", endpoint: .profiles, path: "/api/profiles"),
@@ -212,6 +237,12 @@ final class ContractReadinessTests: XCTestCase {
                 endpoint: .cronOutput(jobID: "job-123", limit: 5),
                 path: "/api/crons/output",
                 query: ["job_id": "job-123", "limit": "5"]
+            ),
+            .init(
+                name: "cron delivery options",
+                method: "GET",
+                endpoint: .cronDeliveryOptions,
+                path: "/api/crons/delivery-options"
             ),
             .init(name: "memory", method: "GET", endpoint: .memory, path: "/api/memory"),
             .init(name: "memory write", method: "POST", endpoint: .memoryWrite, path: "/api/memory/write"),

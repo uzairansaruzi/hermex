@@ -89,7 +89,7 @@ final class InsightsViewModelTests: XCTestCase {
         ])
         let client = StubInsightsClient(
             insightsResult: .failure(StubInsightsError()),
-            sessionsResult: .success(SessionsResponse(sessions: sessions, cliCount: nil, serverTime: nil, serverTz: nil))
+            sessionsResult: .success(SessionsResponse(sessions: sessions, cliCount: nil, archivedCount: nil, serverTime: nil, serverTz: nil))
         )
         let viewModel = InsightsViewModel(client: client)
         viewModel.selectedTimeframe = .last7Days

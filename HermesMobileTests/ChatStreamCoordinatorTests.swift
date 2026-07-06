@@ -542,6 +542,32 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testDecodedAppErrorEventTerminatesStreamAndSurfacesMessage() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-apperror")
+        streamClient.emit(SSEEventDecoder.decode(
+            eventType: "apperror",
+            data: #"{"message": "Auto-compression failed", "type": "compression_error"}"#
+        ))
+
+        // apperror rides the terminal `.error` path: message surfaced, run failed,
+        // socket stopped, stream fully finished (issue #25).
+        XCTAssertEqual(delegate.errorMessages, ["Auto-compression failed"])
+        XCTAssertEqual(liveActivityManager.ends.last?.status, .failed)
+        XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertEqual(streamClient.stopCount, 1)
+        XCTAssertEqual(delegate.finishCount, 1)
+    }
+
+    @MainActor
     private func makeCoordinator(
         streamClient: CoordinatorSpySSEStreamingClient? = nil,
         liveActivityManager: CoordinatorSpyLiveActivityManager? = nil,

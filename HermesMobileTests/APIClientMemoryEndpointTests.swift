@@ -22,7 +22,20 @@ final class APIClientMemoryEndpointTests: APIClientTestCase {
               "soul_path": "/Users/test/.hermes/SOUL.md",
               "memory_mtime": 1770000000,
               "user_mtime": 1770000100,
-              "soul_mtime": "1770000200"
+              "soul_mtime": "1770000200",
+              "project_context": "# Project\\n\\n- Ship it",
+              "project_context_name": "AGENTS.md",
+              "project_context_path": "/Users/test/workspace/AGENTS.md",
+              "project_context_workspace": "/Users/test/workspace",
+              "project_context_mtime": 1770000300,
+              "project_context_shadowed": [
+                {
+                  "name": "PROJECT.md",
+                  "path": "/Users/test/PROJECT.md",
+                  "shadowed_by": "AGENTS.md"
+                }
+              ],
+              "external_notes_enabled": true
             }
             """, for: request)
         }
@@ -38,6 +51,13 @@ final class APIClientMemoryEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.memoryMtime, 1_770_000_000)
         XCTAssertEqual(response.userMtime, 1_770_000_100)
         XCTAssertEqual(response.soulMtime, 1_770_000_200)
+        XCTAssertEqual(response.projectContext, "# Project\n\n- Ship it")
+        XCTAssertEqual(response.projectContextName, "AGENTS.md")
+        XCTAssertEqual(response.projectContextPath, "/Users/test/workspace/AGENTS.md")
+        XCTAssertEqual(response.projectContextWorkspace, "/Users/test/workspace")
+        XCTAssertEqual(response.projectContextMtime, 1_770_000_300)
+        XCTAssertEqual(response.projectContextShadowed, true)
+        XCTAssertEqual(response.externalNotesEnabled, true)
     }
 
     func testMemoryToleratesMissingFields() async throws {
@@ -60,6 +80,69 @@ final class APIClientMemoryEndpointTests: APIClientTestCase {
         XCTAssertNil(response.memoryMtime)
         XCTAssertNil(response.userMtime)
         XCTAssertNil(response.soulMtime)
+        XCTAssertNil(response.projectContext)
+        XCTAssertNil(response.projectContextName)
+        XCTAssertNil(response.projectContextPath)
+        XCTAssertNil(response.projectContextWorkspace)
+        XCTAssertNil(response.projectContextMtime)
+        XCTAssertNil(response.projectContextShadowed)
+        XCTAssertNil(response.externalNotesEnabled)
+    }
+
+    func testMemoryDecodesProjectContextShadowedBooleanShape() async throws {
+        // The API docs describe project_context_shadowed as a boolean flag even though
+        // upstream currently sends a list; both shapes must decode.
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+
+            return apiTestJSONResponse("""
+            {
+              "project_context": "# Project",
+              "project_context_shadowed": true
+            }
+            """, for: request)
+        }
+
+        let response = try await client.memory()
+
+        XCTAssertEqual(response.projectContext, "# Project")
+        XCTAssertEqual(response.projectContextShadowed, true)
+    }
+
+    func testMemoryDecodesEmptyShadowedListAsNotShadowed() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+
+            return apiTestJSONResponse("""
+            {
+              "project_context": "# Project",
+              "project_context_shadowed": []
+            }
+            """, for: request)
+        }
+
+        let response = try await client.memory()
+
+        XCTAssertEqual(response.projectContextShadowed, false)
+    }
+
+    func testMemoryToleratesNullAndUnexpectedShadowedShapes() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/memory")
+
+            return apiTestJSONResponse("""
+            {
+              "project_context": "# Project",
+              "project_context_shadowed": null,
+              "external_notes_enabled": "yes"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.memory()
+
+        XCTAssertNil(response.projectContextShadowed)
+        XCTAssertNil(response.externalNotesEnabled)
     }
 
     func testMemoryWriteBuildsExpectedPathBodyAndDecodesResponse() async throws {

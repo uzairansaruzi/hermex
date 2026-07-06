@@ -8,6 +8,9 @@ final class TaskDetailViewModel {
     private(set) var runningElapsed: Double?
 
     private(set) var outputs: [CronOutputItem] = []
+    /// Server-provided deliver targets; `nil` while unknown or when the
+    /// endpoint is unavailable (the editor then falls back to free text).
+    private(set) var deliveryOptions: [CronDeliveryOption]?
     private(set) var isLoading = false
     private(set) var isMutating = false
     private(set) var errorMessage: String?
@@ -34,6 +37,10 @@ final class TaskDetailViewModel {
         lastError = nil
         defer { isLoading = false }
 
+        // Optional endpoint: failure must not break the detail view, and a
+        // nil result keeps the editor's free-text deliver fallback.
+        async let deliveryOptionsResponse = try? client.cronDeliveryOptions()
+
         do {
             let response = try await client.cronOutput(jobID: jobID, limit: 5)
             outputs = response.outputs ?? []
@@ -41,6 +48,8 @@ final class TaskDetailViewModel {
             lastError = error
             errorMessage = error.localizedDescription
         }
+
+        deliveryOptions = await deliveryOptionsResponse?.platforms
     }
 
     func clearActionError() {
@@ -88,6 +97,7 @@ final class TaskDetailViewModel {
                 deliver: draft.deliver.trimmingCharacters(in: .whitespacesAndNewlines),
                 skills: draft.skills,
                 model: draft.model.trimmingCharacters(in: .whitespacesAndNewlines),
+                provider: draft.provider.trimmingCharacters(in: .whitespacesAndNewlines),
                 profile: draft.profile.trimmingCharacters(in: .whitespacesAndNewlines),
                 toastNotifications: draft.toastNotifications
             )

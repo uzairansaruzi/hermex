@@ -115,7 +115,8 @@ struct TaskDetailView: View {
                 draft: CronJobEditorDraft(job: viewModel.job),
                 saveTitle: String(localized: "Save"),
                 isSaving: viewModel.isMutating,
-                errorMessage: viewModel.actionErrorMessage
+                errorMessage: viewModel.actionErrorMessage,
+                deliveryOptions: viewModel.deliveryOptions
             ) { draft in
                 let didUpdate = await viewModel.update(from: draft)
                 handleActionResult(didUpdate)
@@ -208,6 +209,10 @@ struct TaskDetailView: View {
 
             if let model = viewModel.job.model, !model.isEmpty {
                 CronJobMetadataRow(title: String(localized: "Model"), value: model)
+            }
+
+            if let provider = viewModel.job.provider, !provider.isEmpty {
+                CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
             }
 
             if let profile = viewModel.job.profile, !profile.isEmpty {

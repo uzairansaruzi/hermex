@@ -163,6 +163,7 @@ final class APIClientCronEndpointTests: APIClientTestCase {
             XCTAssertEqual(body?["deliver"] as? String, "local")
             XCTAssertEqual(body?["skills"] as? [String], ["summarize", "notify"])
             XCTAssertEqual(body?["model"] as? String, "@openai:gpt-5.5")
+            XCTAssertNil(body?["provider"], "Omitted provider must not be sent so the server default applies.")
             XCTAssertEqual(body?["profile"] as? String, "work")
             XCTAssertEqual(body?["toast_notifications"] as? Bool, true)
 
@@ -191,6 +192,7 @@ final class APIClientCronEndpointTests: APIClientTestCase {
             deliver: "local",
             skills: ["summarize", "notify"],
             model: "@openai:gpt-5.5",
+            provider: nil,
             profile: "work",
             toastNotifications: true
         )
@@ -216,6 +218,7 @@ final class APIClientCronEndpointTests: APIClientTestCase {
             XCTAssertEqual(body?["deliver"] as? String, "local")
             XCTAssertEqual(body?["skills"] as? [String], ["swift"])
             XCTAssertEqual(body?["model"] as? String, "@anthropic:claude")
+            XCTAssertEqual(body?["provider"] as? String, "anthropic")
             XCTAssertEqual(body?["profile"] as? String, "personal")
             XCTAssertEqual(body?["toast_notifications"] as? Bool, false)
 
@@ -230,6 +233,7 @@ final class APIClientCronEndpointTests: APIClientTestCase {
                 "enabled": true,
                 "state": "scheduled",
                 "model": "@anthropic:claude",
+                "provider": "anthropic",
                 "profile": "personal",
                 "toast_notifications": false
               }
@@ -245,6 +249,7 @@ final class APIClientCronEndpointTests: APIClientTestCase {
             deliver: "local",
             skills: ["swift"],
             model: "@anthropic:claude",
+            provider: "anthropic",
             profile: "personal",
             toastNotifications: false
         )
@@ -253,7 +258,81 @@ final class APIClientCronEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.job?.displayName, "Updated digest")
         XCTAssertEqual(response.job?.scheduleText, "0 8 * * *")
         XCTAssertEqual(response.job?.model, "@anthropic:claude")
+        XCTAssertEqual(response.job?.provider, "anthropic")
         XCTAssertEqual(response.job?.toastNotifications, false)
+    }
+
+    func testCronCreateSendsProviderWhenSet() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/create")
+
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["provider"] as? String, "openai")
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "job": {
+                "id": "job-provider",
+                "prompt": "Run it",
+                "schedule": "0 7 * * *",
+                "provider": "openai"
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.createCron(
+            prompt: "Run it",
+            schedule: "0 7 * * *",
+            name: nil,
+            deliver: nil,
+            skills: [],
+            model: nil,
+            provider: "openai",
+            profile: nil,
+            toastNotifications: true
+        )
+
+        XCTAssertEqual(response.job?.provider, "openai")
+    }
+
+    func testCronDeliveryOptionsBuildsExpectedPathAndDecodesTolerantly() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/crons/delivery-options")
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.url?.query)
+
+            return apiTestJSONResponse("""
+            {
+              "platforms": [
+                {"value": "local", "label": "Local (save output only)"},
+                {"value": "origin", "label": "Origin (reply to creator)"},
+                {"value": "slack", "label": "Slack", "unexpected_field": {"nested": true}},
+                {"value": "telegram"}
+              ],
+              "ignored_new_field": 7
+            }
+            """, for: request)
+        }
+
+        let response = try await client.cronDeliveryOptions()
+        let platforms = try XCTUnwrap(response.platforms)
+
+        XCTAssertEqual(platforms.map(\.value), ["local", "origin", "slack", "telegram"])
+        XCTAssertEqual(platforms.first?.label, "Local (save output only)")
+        XCTAssertNil(platforms.last?.label)
+    }
+
+    func testCronDeliveryOptionsToleratesUnexpectedPlatformsShape() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(#"{"platforms": "unexpected"}"#, for: request)
+        }
+
+        let response = try await client.cronDeliveryOptions()
+
+        XCTAssertNil(response.platforms)
     }
 
     func testCronJobIDMutationsBuildExpectedPathsAndBodies() async throws {
