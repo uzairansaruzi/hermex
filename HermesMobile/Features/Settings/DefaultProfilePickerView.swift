@@ -295,6 +295,7 @@ struct DefaultProfilePickerView: View {
             let response = try await APIClient(baseURL: server).switchProfile(name: name)
             if let error = response.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
                 saveError = error
+                selectedProfileName = nil
                 return
             }
 
@@ -314,6 +315,7 @@ struct DefaultProfilePickerView: View {
             dismiss()
         } catch {
             saveError = error.localizedDescription
+            selectedProfileName = nil
         }
     }
 }
