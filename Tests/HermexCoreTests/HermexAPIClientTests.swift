@@ -152,7 +152,7 @@ final class HermexAPIClientTests: XCTestCase {
     }
 }
 
-private final class RecordingTransport: HermexHTTPTransport {
+private final class RecordingTransport: HermexHTTPTransport, @unchecked Sendable {
     private let data: Data
     private let statusCode: Int
     private(set) var requests: [URLRequest] = []

@@ -16,7 +16,8 @@ final class HermexPlatformCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.appState.pendingSharedDraft, HermexSharedDraft(text: "Imported text", attachmentURLs: [sharedURL]))
         XCTAssertEqual(store.chat.composer.draft, "Imported text")
         XCTAssertEqual(store.chat.composer.attachments.first?.name, "shared-note.txt")
-        XCTAssertTrue(await shareIngress.didClear)
+        let didClear = await shareIngress.didClear
+        XCTAssertTrue(didClear)
     }
 
     func testCacheHydrationAndPersistenceRoutesThroughSharedStore() async throws {
@@ -58,7 +59,8 @@ final class HermexPlatformCoordinatorTests: XCTestCase {
 
         await coordinator.startVoiceRecording(in: store)
         XCTAssertTrue(store.chat.composer.isRecordingVoice)
-        XCTAssertTrue(await recorder.didStart)
+        let didStart = await recorder.didStart
+        XCTAssertTrue(didStart)
 
         await coordinator.stopVoiceRecordingAndTranscribe(into: store)
         let transcribedURL = await transcriber.transcribedURL
@@ -91,12 +93,14 @@ final class HermexPlatformCoordinatorTests: XCTestCase {
         await coordinator.syncStatusNotification(from: store)
         await coordinator.clearStatusNotification(sessionID: "s1")
         let running = await notifier.running
+        let spokenText = await speech.spokenText
+        let clearedSessionID = await notifier.clearedSessionID
 
-        XCTAssertEqual(await speech.spokenText, "Latest")
+        XCTAssertEqual(spokenText, "Latest")
         XCTAssertEqual(running?.sessionID, "s1")
         XCTAssertEqual(running?.streamID, "stream-1")
         XCTAssertEqual(running?.preview, "Latest")
-        XCTAssertEqual(await notifier.clearedSessionID, "s1")
+        XCTAssertEqual(clearedSessionID, "s1")
     }
 
     func testCompletedStatusNotificationWhenStreamIsIdle() async throws {
@@ -109,8 +113,9 @@ final class HermexPlatformCoordinatorTests: XCTestCase {
         let coordinator = HermexPlatformCoordinator(services: HermexPlatformServiceBundle(statusNotifier: notifier))
 
         await coordinator.syncStatusNotification(from: store)
+        let completedSessionID = await notifier.completedSessionID
 
-        XCTAssertEqual(await notifier.completedSessionID, "s1")
+        XCTAssertEqual(completedSessionID, "s1")
     }
 
     func testStreamEventsBridgeIntoSharedStore() async throws {

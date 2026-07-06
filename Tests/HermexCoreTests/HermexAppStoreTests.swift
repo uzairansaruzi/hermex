@@ -65,7 +65,8 @@ final class HermexAppStoreTests: XCTestCase {
 
         await store.send(.cancelStream)
 
-        XCTAssertEqual(await probe.cancelledStreamID, "stream-1")
+        let cancelledStreamID = await probe.cancelledStreamID
+        XCTAssertEqual(cancelledStreamID, "stream-1")
         XCTAssertFalse(store.chat.stream.isStreaming)
     }
 
@@ -136,7 +137,8 @@ final class HermexAppStoreTests: XCTestCase {
         XCTAssertEqual(store.chat.composer.selectedWorkspace, "/tmp")
         XCTAssertEqual(store.chat.composer.selectedProfile, "ops")
         XCTAssertEqual(store.chat.composer.selectedReasoningEffort, "high")
-        XCTAssertEqual(await probe.savedReasoningEffort, "high")
+        let savedReasoningEffort = await probe.savedReasoningEffort
+        XCTAssertEqual(savedReasoningEffort, "high")
     }
 
     func testOnboardingConnectionAndLoginNormalizeServerWithoutStoringPassword() async throws {
@@ -152,7 +154,8 @@ final class HermexAppStoreTests: XCTestCase {
         )
 
         await store.send(.testOnboardingConnection)
-        let testedServer = try XCTUnwrap(await probe.testedServer)
+        let maybeTestedServer = await probe.testedServer
+        let testedServer = try XCTUnwrap(maybeTestedServer)
         XCTAssertEqual(testedServer.baseURL.absoluteString, "https://example.test/")
         XCTAssertEqual(store.appState.auth, .loggedOut(server: testedServer))
         XCTAssertEqual(store.settings.servers.first?.customHeaders["CF-Access-Client-Id"], "abc")
@@ -196,8 +199,9 @@ final class HermexAppStoreTests: XCTestCase {
         await store.send(.gitCommand(.stage(path: "README.md")))
         await store.send(.updateGitCommitMessage("Update README"))
         await store.send(.gitCommand(.commit(message: store.git.commitMessage)))
+        let gitCommands = await probe.gitCommands
         XCTAssertEqual(store.git.commitMessage, "")
-        XCTAssertEqual(await probe.gitCommands, ["diff", "stage", "commit"])
+        XCTAssertEqual(gitCommands, ["diff", "stage", "commit"])
 
         await store.send(.selectPanel(.tasks))
         XCTAssertEqual(store.panels.tasks.map(\.id), ["job-1"])
@@ -341,7 +345,7 @@ private actor StoreProbe {
 
     func loadSession(sessionID: String) async throws -> HermexSessionResponse {
         loadedSessionIDs.append(sessionID)
-        HermexSessionResponse(
+        return HermexSessionResponse(
             session: HermexSessionDTO(sessionId: sessionID, title: "Workspace", messageCount: 1, workspace: "Home"),
             messages: [HermexChatMessageDTO(role: "assistant", content: "Hello")]
         )
