@@ -1,6 +1,6 @@
 import Foundation
 
-public struct HermexAuthRepository {
+public struct HermexAuthRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {
@@ -20,7 +20,7 @@ public struct HermexAuthRepository {
     }
 }
 
-public struct HermexSessionRepository {
+public struct HermexSessionRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {
@@ -80,7 +80,7 @@ public struct HermexSessionRepository {
     }
 }
 
-public struct HermexChatRepository {
+public struct HermexChatRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {
@@ -150,7 +150,7 @@ public struct HermexChatRepository {
     }
 }
 
-public struct HermexWorkspaceRepository {
+public struct HermexWorkspaceRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {
@@ -178,7 +178,7 @@ public struct HermexWorkspaceRepository {
     }
 }
 
-public struct HermexGitRepository {
+public struct HermexGitRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {
@@ -198,7 +198,7 @@ public struct HermexGitRepository {
     public func commit(sessionID: String, message: String) async throws -> HermexJSONValue { try await client.gitCommit(sessionID: sessionID, message: message) }
 }
 
-public struct HermexPanelsRepository {
+public struct HermexPanelsRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {
@@ -215,7 +215,7 @@ public struct HermexPanelsRepository {
     public func insights(days: Int) async throws -> HermexJSONValue { try await client.insights(days: days) }
 }
 
-public struct HermexSettingsRepository {
+public struct HermexSettingsRepository: Sendable {
     private let client: HermexAPIClient
 
     public init(client: HermexAPIClient) {

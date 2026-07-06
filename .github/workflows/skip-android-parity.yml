@@ -82,6 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           brew tap skiptools/skip || true
+          brew trust skiptools/skip
           brew install skip || brew upgrade skip
 
       - name: Run Skip checkup

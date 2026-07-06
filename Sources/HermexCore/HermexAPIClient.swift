@@ -8,11 +8,11 @@ public enum HermexAPIError: Error, Equatable, Sendable {
     case decoding(String)
 }
 
-public protocol HermexHTTPTransport {
+public protocol HermexHTTPTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
-public final class HermexURLSessionTransport: HermexHTTPTransport {
+public final class HermexURLSessionTransport: HermexHTTPTransport, @unchecked Sendable {
     private let session: URLSession
 
     public init(session: URLSession = .shared) {
@@ -48,7 +48,7 @@ public struct HermexJSONObjectBody: Encodable, Equatable, Sendable {
     }
 }
 
-public struct HermexAPIClient {
+public struct HermexAPIClient: @unchecked Sendable {
     private let requestBuilder: HermexAPIRequestBuilder
     private let transport: any HermexHTTPTransport
     private let encoder: JSONEncoder
