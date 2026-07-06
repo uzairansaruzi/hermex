@@ -57,13 +57,15 @@ final class SSEClientTests: XCTestCase {
             }
         }
 
-        await fulfillment(of: [liveEvent], timeout: 1)
+        // Generous deadline: CI runners under parallel-clone load have blown a
+        // 1s budget on wall-clock chunk delays that finish in ~0.3s locally (#76).
+        await fulfillment(of: [liveEvent], timeout: 5)
         XCTAssertFalse(receivedEvents.contains { event in
             if case .done = event { return true }
             return false
         })
 
-        await fulfillment(of: [doneEvent], timeout: 1)
+        await fulfillment(of: [doneEvent], timeout: 5)
         client.stop()
 
         XCTAssertEqual(Array(receivedEvents.prefix(3)), [
