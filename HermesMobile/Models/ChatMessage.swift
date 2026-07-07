@@ -350,7 +350,11 @@ extension KeyedDecodingContainer {
 
         if let value = try? decodeIfPresent(Double.self, forKey: key),
            value.isFinite {
-            return Int(value)
+            // Int(exactly:) instead of Int(_:), which traps on doubles outside
+            // Int range, so a huge server value decodes to nil instead of
+            // crashing (#62). Truncation toward zero matches Int(_:) for
+            // values that fit.
+            return Int(exactly: value.rounded(.towardZero))
         }
 
         guard let stringValue = try? decodeIfPresent(String.self, forKey: key) else {
@@ -368,7 +372,8 @@ extension KeyedDecodingContainer {
             return nil
         }
 
-        return Int(value)
+        // Same out-of-range guard as the numeric branch above (#62).
+        return Int(exactly: value.rounded(.towardZero))
     }
 
     func decodeLossyBoolIfPresent(forKey key: Key) -> Bool? {

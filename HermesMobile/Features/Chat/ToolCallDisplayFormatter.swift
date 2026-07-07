@@ -218,7 +218,9 @@ enum ToolCallDisplayFormatter {
         switch value {
         case .number(let value):
             guard value.isFinite else { return nil }
-            return Int(value)
+            // Int(exactly:) so an out-of-range exit code from tool output
+            // becomes nil instead of trapping (#62).
+            return Int(exactly: value.rounded(.towardZero))
         case .string(let value):
             return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
         case .bool, .object, .array, .null:
