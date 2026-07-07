@@ -52,6 +52,8 @@
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Hermex needs microphone access to dictate text into the message composer.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hermex needs camera access to capture and attach photos directly in chat.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Hermex needs photo library access to attach images to chat messages.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

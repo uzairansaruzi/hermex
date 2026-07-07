@@ -147,6 +147,7 @@ struct MessageComposerView: View {
     @State private var shouldRestoreFocusAfterUpload = false
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
+    @State private var showCameraPicker = false
     @State private var showFileImporter = false
     @State private var voiceInput = ComposerVoiceInputController()
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
@@ -594,6 +595,18 @@ struct MessageComposerView: View {
                 onPhotoItemSelected(item)
             }
         }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPickerView { image in
+                deferFocusRestoreUntilUploadCompletes()
+                onPasteImages([image])
+            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: showCameraPicker) { _, isPresented in
+            if !isPresented {
+                restoreFocusAfterPresentationDismissalSettles()
+            }
+        }
     }
 
     private func composerOptionsMenu() -> UIMenu {
@@ -618,6 +631,16 @@ struct MessageComposerView: View {
                         Task { @MainActor in
                             prepareForComposerPresentation()
                             showPhotoPicker = true
+                        }
+                    },
+                    UIAction(
+                        title: String(localized: "Camera"),
+                        image: UIImage(systemName: "camera"),
+                        attributes: UIImagePickerController.isSourceTypeAvailable(.camera) ? [] : .disabled
+                    ) { _ in
+                        Task { @MainActor in
+                            prepareForComposerPresentation()
+                            showCameraPicker = true
                         }
                     }
                 ]
