@@ -167,6 +167,19 @@ final class ChatAttachmentCoordinator {
         }
     }
 
+    /// Raw `MEDIA:` bytes for transcript audio. Unlike thumbnails, this must not
+    /// downsample or re-encode the data because `AVAudioPlayer` needs the
+    /// original container/codec bytes.
+    func transcriptMediaRawData(for reference: TranscriptMediaReference) async -> Data? {
+        guard reference.isAudioCandidate else { return nil }
+
+        do {
+            return try await client.transcriptMediaData(for: reference)
+        } catch {
+            return nil
+        }
+    }
+
     func prepareForSend(localMessageID: String) -> ChatAttachmentSendPreparation {
         let attachmentsForSend = pendingAttachments
         let messageAttachments = attachmentsForSend.map { pending in

@@ -195,6 +195,29 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(thumbnail, mediaData)
     }
 
+    func testTranscriptAudioMediaReturnsRawBytesWithoutDownsampling() async throws {
+        let audioData = Data("raw-audio-bytes".utf8)
+        let remoteURL = try XCTUnwrap(URL(string: "https://example.test/generated/media/voice-note.m4a"))
+        let client = makeAuthenticatedMediaClient { request in
+            XCTAssertEqual(request.url, remoteURL)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Test-Session"), "authenticated")
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mp4"]
+            )!
+            return (response, audioData)
+        }
+        let coordinator = makeCoordinator(client: client)
+
+        let rawData = await coordinator.transcriptMediaRawData(
+            for: TranscriptMediaReference(rawReference: remoteURL.absoluteString)
+        )
+
+        XCTAssertEqual(rawData, audioData)
+    }
+
     private func makeCoordinator(client: APIClient) -> ChatAttachmentCoordinator {
         let coordinator = ChatAttachmentCoordinator(client: client)
         let delegate = ChatAttachmentCoordinatorDelegateSpy()

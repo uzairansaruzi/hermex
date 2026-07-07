@@ -1119,6 +1119,9 @@ struct ChatView: View {
             loadTranscriptMediaImage: { reference in
                 await viewModel.transcriptMediaThumbnailData(for: reference)
             },
+            loadTranscriptMediaData: { reference in
+                await viewModel.transcriptMediaRawData(for: reference)
+            },
             actionContext: { message, visibleIndex in
                 viewModel.actionContext(for: message, visibleIndex: visibleIndex)
             },

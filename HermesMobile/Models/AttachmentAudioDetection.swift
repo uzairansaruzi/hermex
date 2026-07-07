@@ -5,11 +5,11 @@ import Foundation
 /// `GridAttachmentCell.inferredIsImage` / `ChatAttachmentPreviewItem.inferredIsImage`.
 enum AttachmentAudioDetection {
     /// File extensions we treat as audio. `AVAudioPlayer` natively decodes the
-    /// first group (m4a/mp3/wav/aac/caf); ogg/oga/opus/flac are still detected
+    /// first group (m4a/mp3/wav/aac/caf); ogg/oga/opus/flac/webm/weba are still detected
     /// as audio so they surface an audio player with a graceful "can't play"
     /// state instead of a dead file chip.
     static let audioExtensions: Set<String> = [
-        "m4a", "mp3", "wav", "aac", "caf", "ogg", "oga", "opus", "flac"
+        "m4a", "mp3", "wav", "aac", "caf", "ogg", "oga", "opus", "flac", "webm", "weba"
     ]
 
     /// Audio when the attachment is *not* an image and either its MIME type
