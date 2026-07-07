@@ -67,7 +67,7 @@ struct HermexNewChatIntent: WidgetConfigurationIntent {
     )
 
     @Parameter(title: "Profile")
-    var profile: HermexProfileEntity
+    var profile: HermexProfileEntity?
 }
 
 // MARK: - Deep link helpers (mirrors HermesDeepLink, reads same Info.plist keys)
@@ -107,8 +107,8 @@ struct HermexWidgetProvider: AppIntentTimelineProvider {
     ) async -> HermexWidgetEntry {
         HermexWidgetEntry(
             date: Date(),
-            profileID: configuration.profile.id,
-            profileName: configuration.profile.name
+            profileID: configuration.profile?.id ?? "default",
+            profileName: configuration.profile?.name ?? "Default"
         )
     }
 
@@ -118,8 +118,8 @@ struct HermexWidgetProvider: AppIntentTimelineProvider {
     ) async -> Timeline<HermexWidgetEntry> {
         let entry = HermexWidgetEntry(
             date: Date(),
-            profileID: configuration.profile.id,
-            profileName: configuration.profile.name
+            profileID: configuration.profile?.id ?? "default",
+            profileName: configuration.profile?.name ?? "Default"
         )
         return Timeline(entries: [entry], policy: .never)
     }
