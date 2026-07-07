@@ -739,3 +739,50 @@ External TestFlight is ready when all are true:
 - Share extension auto-launch risk is consciously accepted or removed.
 - No open P0/P1 issue blocks normal use.
 - Beta App Review approves the build.
+
+## CI Signing Credentials
+
+Both TestFlight workflows (`internal-testflight.yml`, `external-testflight.yml`) use **manual signing** — a stored Apple Distribution certificate and three provisioning profiles — rather than automatic signing. This prevents the workflows from minting new distribution certificates on every run and exhausting the Apple Developer cert cap.
+
+### Required GitHub secrets
+
+Add these secrets to **both** the `internal-testflight` and `external-testflight` GitHub environments (Settings → Environments):
+
+| Secret | Contents |
+|---|---|
+| `DIST_CERT_P12_BASE64` | base64-encoded Apple Distribution `.p12` |
+| `DIST_CERT_P12_PASSWORD` | password used when exporting the `.p12` |
+| `PROVISION_PROFILE_APP_BASE64` | base64-encoded App Store profile for `com.uzairansar.hermesmobile` |
+| `PROVISION_PROFILE_SHAREEXT_BASE64` | base64-encoded App Store profile for `com.uzairansar.hermesmobile.shareextension` |
+| `PROVISION_PROFILE_WIDGET_BASE64` | base64-encoded App Store profile for `com.uzairansar.hermesmobile.liveactivitywidget` |
+
+### Exporting the certificate
+
+1. Open **Keychain Access** → My Certificates → find "Apple Distribution: …".
+2. Right-click → Export → choose `.p12` format, set a strong password.
+3. Base64-encode it: `base64 -i cert.p12 | pbcopy` — paste as `DIST_CERT_P12_BASE64`.
+4. Store the password as `DIST_CERT_P12_PASSWORD`.
+
+### Downloading provisioning profiles
+
+Each profile must be the **App Store** variant (not Development or Ad Hoc):
+
+| Bundle ID | Profile name |
+|---|---|
+| `com.uzairansar.hermesmobile` | `Hermes Mobile App Store` |
+| `com.uzairansar.hermesmobile.shareextension` | `Hermes Mobile Share Extension App Store` |
+| `com.uzairansar.hermesmobile.liveactivitywidget` | `Hermes Mobile Live Activity App Store` |
+
+Download from [developer.apple.com](https://developer.apple.com) → Certificates, IDs & Profiles → Profiles, then:
+
+```
+base64 -i HermesMobileAppStore.mobileprovision | pbcopy   # → PROVISION_PROFILE_APP_BASE64
+base64 -i HermesShareExtensionAppStore.mobileprovision | pbcopy   # → PROVISION_PROFILE_SHAREEXT_BASE64
+base64 -i HermesLiveActivityAppStore.mobileprovision | pbcopy   # → PROVISION_PROFILE_WIDGET_BASE64
+```
+
+### Rotation and expiry
+
+- **Distribution certificates** expire after ~1 year. Apple also caps accounts at 3 active distribution certs. Renew in Xcode (Preferences → Accounts → Manage Certificates) or the Developer Portal, re-export the `.p12`, and update the two secrets.
+- **Provisioning profiles** expire after ~1 year (or sooner if the certificate they reference is revoked). Download the renewed profile and update the corresponding secret. Profile names are stable across renewals so the export options plists need no changes.
+- After rotating any secret, trigger one workflow run manually to confirm it resolves before the next scheduled release.

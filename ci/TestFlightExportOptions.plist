@@ -8,8 +8,17 @@
 	<false/>
 	<key>method</key>
 	<string>app-store-connect</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.uzairansar.hermesmobile</key>
+		<string>Hermes Mobile App Store</string>
+		<key>com.uzairansar.hermesmobile.shareextension</key>
+		<string>Hermes Mobile Share Extension App Store</string>
+		<key>com.uzairansar.hermesmobile.liveactivitywidget</key>
+		<string>Hermes Mobile Live Activity App Store</string>
+	</dict>
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
 	<key>teamID</key>
 	<string>6GYD9C9N6R</string>
 	<key>testFlightInternalTestingOnly</key>
