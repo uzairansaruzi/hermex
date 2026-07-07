@@ -171,6 +171,10 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let activeStreamId: String?
     let isStreaming: Bool?
     let isCliSession: Bool?
+    let userMessageCount: Int?
+    let hasPendingUserMessage: Bool?
+    let pendingStartedAt: Double?
+    let worktreePath: String?
     let sourceTag: String?
     let sessionSource: String?
     let sourceLabel: String?
@@ -196,6 +200,10 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         activeStreamId: String? = nil,
         isStreaming: Bool? = nil,
         isCliSession: Bool? = nil,
+        userMessageCount: Int? = nil,
+        hasPendingUserMessage: Bool? = nil,
+        pendingStartedAt: Double? = nil,
+        worktreePath: String? = nil,
         sourceTag: String? = nil,
         sessionSource: String? = nil,
         sourceLabel: String? = nil,
@@ -220,6 +228,10 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.activeStreamId = activeStreamId
         self.isStreaming = isStreaming
         self.isCliSession = isCliSession
+        self.userMessageCount = userMessageCount
+        self.hasPendingUserMessage = hasPendingUserMessage
+        self.pendingStartedAt = pendingStartedAt
+        self.worktreePath = worktreePath
         self.sourceTag = sourceTag
         self.sessionSource = sessionSource
         self.sourceLabel = sourceLabel
@@ -232,7 +244,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         workspace = detail.workspace
         model = detail.model
         modelProvider = detail.modelProvider
-        messageCount = detail.messageCount
+        messageCount = detail.messageCount ?? detail.messages?.count
         createdAt = detail.createdAt
         updatedAt = detail.updatedAt
         lastMessageAt = detail.lastMessageAt
@@ -246,6 +258,14 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         activeStreamId = detail.activeStreamId
         isStreaming = nil
         isCliSession = detail.isCliSession
+        userMessageCount = nil
+        if Self.nonEmpty(detail.pendingUserMessage) != nil || detail.pendingAttachments?.isEmpty == false {
+            hasPendingUserMessage = true
+        } else {
+            hasPendingUserMessage = nil
+        }
+        pendingStartedAt = detail.pendingStartedAt
+        worktreePath = nil
         sourceTag = nil
         sessionSource = nil
         sourceLabel = nil
@@ -275,6 +295,10 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             activeStreamId: activeStreamId,
             isStreaming: isStreaming,
             isCliSession: isCliSession,
+            userMessageCount: userMessageCount,
+            hasPendingUserMessage: hasPendingUserMessage,
+            pendingStartedAt: pendingStartedAt,
+            worktreePath: worktreePath,
             sourceTag: sourceTag,
             sessionSource: sessionSource,
             sourceLabel: sourceLabel,
@@ -284,6 +308,21 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
 }
 
 extension SessionSummary {
+    var shouldAppearInSessionList: Bool {
+        !isEmptySidebarPlaceholder
+    }
+
+    /// Mirrors hermes-webui's visible-sidebar safety net for just-created
+    /// placeholders: hide only the known empty Untitled shape, while keeping rows
+    /// with content, pending work, streaming state, or explicit user/server state.
+    var isEmptySidebarPlaceholder: Bool {
+        guard hasPlaceholderTitle else { return false }
+        guard !hasSidebarState else { return false }
+        guard !hasMessageActivity else { return false }
+
+        return messageCount == 0 || userMessageCount == 0
+    }
+
     /// True when this row originates from a scheduled cron job.
     ///
     /// Mirrors hermes-webui's `is_cron_session` (`api/models.py`): a `cron`
@@ -303,6 +342,32 @@ extension SessionSummary {
             .contains("cron")
     }
 
+    private var hasPlaceholderTitle: Bool {
+        guard let normalizedTitle = Self.nonEmpty(title)?.lowercased() else { return true }
+        return normalizedTitle == "untitled" || normalizedTitle == "untitled session"
+    }
+
+    private var hasSidebarState: Bool {
+        pinned == true
+            || isStreaming == true
+            || Self.nonEmpty(activeStreamId) != nil
+            || hasPendingUserMessage == true
+            || pendingStartedAt != nil
+            || Self.nonEmpty(worktreePath) != nil
+    }
+
+    private var hasMessageActivity: Bool {
+        if let messageCount, messageCount > 0 { return true }
+        if let userMessageCount, userMessageCount > 0 { return true }
+        if let lastMessageAt, lastMessageAt > 0 { return true }
+        return false
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 /// Which automated session kinds the session list should show. Cron jobs and

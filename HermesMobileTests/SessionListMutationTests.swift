@@ -164,6 +164,85 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testLoadFiltersEmptyUntitledPlaceholdersButKeepsRealUntitledRows() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "empty-placeholder",
+                  "title": "Untitled Session",
+                  "message_count": 0,
+                  "archived": false
+                },
+                {
+                  "session_id": "contentful-untitled",
+                  "title": "Untitled Session",
+                  "message_count": 2,
+                  "archived": false
+                },
+                {
+                  "session_id": "recent-untitled",
+                  "title": "Untitled",
+                  "message_count": 0,
+                  "last_message_at": 1770000000,
+                  "archived": false
+                },
+                {
+                  "session_id": "streaming-untitled",
+                  "title": "Untitled",
+                  "message_count": 0,
+                  "active_stream_id": "stream-123",
+                  "archived": false
+                },
+                {
+                  "session_id": "pending-untitled",
+                  "title": "Untitled",
+                  "message_count": 0,
+                  "has_pending_user_message": true,
+                  "archived": false
+                },
+                {
+                  "session_id": "worktree-untitled",
+                  "title": "Untitled",
+                  "message_count": 0,
+                  "worktree_path": "/tmp/hermes-worktree",
+                  "archived": false
+                },
+                {
+                  "session_id": "named-empty",
+                  "title": "Planning",
+                  "message_count": 0,
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load(modelContext: context)
+
+        let expectedIDs = [
+            "contentful-untitled",
+            "recent-untitled",
+            "streaming-untitled",
+            "pending-untitled",
+            "worktree-untitled",
+            "named-empty"
+        ]
+        let loadedIDs = viewModel.sessions.compactMap(\.sessionId)
+        XCTAssertEqual(Set(loadedIDs), Set(expectedIDs))
+        XCTAssertEqual(loadedIDs.count, expectedIDs.count)
+
+        let cachedIDs = try CacheStore.cachedSessions(serverURL: serverURL, in: context).compactMap(\.sessionId)
+        XCTAssertEqual(Set(cachedIDs), Set(expectedIDs))
+        XCTAssertEqual(cachedIDs.count, expectedIDs.count)
+    }
+
+    @MainActor
     func testLoadDoesNotUseCachedSessionsForRealServerError() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
@@ -194,7 +273,9 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
-    func testCreateSessionInsertsReturnedSessionWithoutReloadingSessionList() async throws {
+    func testCreateSessionReturnsEmptyPlaceholderWithoutInsertingIntoSessionList() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
         var requestedPaths: [String] = []
         let viewModel = try makeViewModel { request in
             let path = request.url?.path
@@ -223,7 +304,8 @@ final class SessionListMutationTests: XCTestCase {
                     "session_id": "new-123",
                     "title": "Untitled Session",
                     "workspace": "/tmp/workspace",
-                    "archived": false
+                    "archived": false,
+                    "messages": []
                   }
                 }
                 """, for: request)
@@ -236,10 +318,11 @@ final class SessionListMutationTests: XCTestCase {
             }
         }
 
-        let created = await viewModel.createSession()
+        let created = await viewModel.createSession(modelContext: context)
 
         XCTAssertEqual(created?.sessionId, "new-123")
-        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["new-123"])
+        XCTAssertTrue(viewModel.sessions.isEmpty)
+        XCTAssertTrue(try CacheStore.cachedSessions(serverURL: serverURL, in: context).isEmpty)
         XCTAssertEqual(requestedPaths, ["/api/workspaces", "/api/session/new"])
         XCTAssertFalse(viewModel.isCreatingSession)
         XCTAssertNil(viewModel.actionErrorMessage)

@@ -296,6 +296,10 @@ private extension SessionSummary {
         activeStreamId = cachedSession.activeStreamId
         isStreaming = cachedSession.isStreaming
         isCliSession = cachedSession.isCliSession
+        userMessageCount = cachedSession.userMessageCount
+        hasPendingUserMessage = cachedSession.hasPendingUserMessage
+        pendingStartedAt = cachedSession.pendingStartedAt
+        worktreePath = cachedSession.worktreePath
         sourceTag = cachedSession.sourceTag
         sessionSource = cachedSession.sessionSource
         sourceLabel = cachedSession.sourceLabel
