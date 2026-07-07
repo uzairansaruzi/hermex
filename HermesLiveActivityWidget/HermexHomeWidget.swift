@@ -136,6 +136,22 @@ private let hermexGoldGradient = LinearGradient(
     endPoint: .bottom
 )
 
+// MARK: - Shared background (semi-transparent dark + specular highlight)
+
+private struct HermexWidgetBackground: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.06, green: 0.06, blue: 0.09).opacity(0.88)
+            RadialGradient(
+                colors: [Color.white.opacity(0.11), Color.clear],
+                center: UnitPoint(x: 0.18, y: 0.12),
+                startRadius: 0,
+                endRadius: 90
+            )
+        }
+    }
+}
+
 // MARK: - Small widget (home screen)
 
 private struct HermexSmallWidgetView: View {
@@ -148,21 +164,20 @@ private struct HermexSmallWidgetView: View {
                 .scaledToFit()
                 .frame(width: 70, height: 70)
                 .foregroundStyle(hermexGoldGradient)
+                .shadow(color: Color(red: 0.95, green: 0.55, blue: 0.05).opacity(0.4), radius: 12, x: 0, y: 4)
                 .offset(y: -8)
 
             VStack {
                 Spacer()
                 Text(entry.profileName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
                     .padding(.bottom, 12)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .containerBackground(for: .widget) {
-            Color.black
-        }
+        .containerBackground(for: .widget) { HermexWidgetBackground() }
         .widgetURL(newChatInProfileURL(profileID: entry.profileID))
     }
 }
@@ -179,23 +194,22 @@ private struct HermexMediumWidgetView: View {
                 .scaledToFit()
                 .frame(width: 48, height: 48)
                 .foregroundStyle(hermexGoldGradient)
+                .shadow(color: Color(red: 0.95, green: 0.55, blue: 0.05).opacity(0.4), radius: 10, x: 0, y: 3)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("New Chat")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                 Text(entry.profileName)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.45))
                     .lineLimit(1)
             }
             Spacer()
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .containerBackground(for: .widget) {
-            Color.black
-        }
+        .containerBackground(for: .widget) { HermexWidgetBackground() }
         .widgetURL(newChatInProfileURL(profileID: entry.profileID))
     }
 }
