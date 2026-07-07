@@ -193,7 +193,9 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testListenPrefersServerTTSAndPlaysReturnedAudio() async throws {
         let audioSession = SpyListenAudioSession()
+        let remoteControlCenter = SpyListenRemoteControlCenter()
         let player = SpyListenAudioPlayer()
+        player.duration = 83
         var receivedAudioData: [Data] = []
         var createdSynthesizers = 0
         let serverAudio = Data([0xFF, 0xF3, 0x18, 0xC4])
@@ -203,6 +205,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 return SpySpeechSynthesizer()
             },
             listenAudioSession: audioSession,
+            listenRemoteControlCenter: remoteControlCenter,
             serverTTSAudioPlayerFactory: { data in
                 receivedAudioData.append(data)
                 return player
@@ -236,6 +239,8 @@ final class ChatViewModelSendTests: XCTestCase {
         ))
 
         viewModel.toggleListening(to: context)
+        XCTAssertTrue(viewModel.showsListenPlaybackBar)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .loading)
         // Regression (review on #35): no session activation while the fetch is in
         // flight — only once decoded server audio is about to play.
         XCTAssertEqual(audioSession.activateCount, 0)
@@ -243,10 +248,23 @@ final class ChatViewModelSendTests: XCTestCase {
 
         // Server audio plays; the on-device synthesizer is never touched.
         XCTAssertEqual(receivedAudioData, [serverAudio])
+        XCTAssertEqual(player.prepareToPlayCount, 1)
         XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(player.rate, Float(1))
         XCTAssertEqual(createdSynthesizers, 0)
         XCTAssertEqual(viewModel.listeningMessageID, "assistant-20")
+        XCTAssertTrue(viewModel.showsListenPlaybackBar)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
+        XCTAssertEqual(viewModel.listenPlaybackDuration, 83)
         XCTAssertEqual(audioSession.activateCount, 1)
+        XCTAssertEqual(remoteControlCenter.configureCount, 1)
+        XCTAssertEqual(remoteControlCenter.snapshots.last, ListenNowPlayingSnapshot(
+            title: "Hermex response 1",
+            duration: 83,
+            elapsedTime: 0,
+            speed: .normal,
+            isPlaying: true
+        ))
 
         // Natural finish tears listen state down and releases the session. The
         // defensive stopListening() at the start of toggleListening also
@@ -254,7 +272,189 @@ final class ChatViewModelSendTests: XCTestCase {
         let deactivationsBeforeFinish = audioSession.deactivateCount
         player.finishPlayback()
         XCTAssertNil(viewModel.listeningMessageID)
+        XCTAssertFalse(viewModel.showsListenPlaybackBar)
         XCTAssertGreaterThan(audioSession.deactivateCount, deactivationsBeforeFinish)
+    }
+
+    @MainActor
+    func testListenPlaybackCanPauseResumeSeekAndUseRemoteCommands() async throws {
+        let player = SpyListenAudioPlayer()
+        player.duration = 120
+        let remoteControlCenter = SpyListenRemoteControlCenter()
+        let viewModel = try makeViewModel(
+            listenRemoteControlCenter: remoteControlCenter,
+            serverTTSAudioPlayerFactory: { _ in player }
+        ) { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Give me controls.",
+                timestamp: 1_770_000_025,
+                messageId: "assistant-25"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
+
+        remoteControlCenter.firePause()
+        XCTAssertEqual(player.pauseCount, 1)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .paused)
+        XCTAssertFalse(try XCTUnwrap(remoteControlCenter.snapshots.last).isPlaying)
+
+        remoteControlCenter.firePlay()
+        XCTAssertEqual(player.playCount, 2)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
+        XCTAssertTrue(try XCTUnwrap(remoteControlCenter.snapshots.last).isPlaying)
+
+        remoteControlCenter.fireChangePlaybackPosition(37)
+        XCTAssertEqual(player.currentTime, 37)
+        XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 37)
+
+        viewModel.toggleListenPlaybackPlayPause()
+        XCTAssertEqual(player.pauseCount, 2)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .paused)
+
+        remoteControlCenter.fireTogglePlayPause()
+        XCTAssertEqual(player.playCount, 3)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
+    }
+
+    @MainActor
+    func testListenPlaybackResyncsProgressWhenSceneBecomesActive() async throws {
+        let player = SpyListenAudioPlayer()
+        player.duration = 90
+        let viewModel = try makeViewModel(
+            serverTTSAudioPlayerFactory: { _ in player }
+        ) { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Keep progress honest.",
+                timestamp: 1_770_000_026,
+                messageId: "assistant-26"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
+        XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 0)
+
+        // Simulates background audio advancing while the foreground UI timer is not
+        // firing. Returning to the scene must pull the latest player time into the bar.
+        player.currentTime = 42
+        viewModel.refreshListenPlaybackProgressAfterSceneActivation()
+
+        XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 42)
+        XCTAssertEqual(viewModel.listenPlaybackDisplayTime, 42)
+    }
+
+    @MainActor
+    func testListenPlaybackSeekAndSpeedPersist() async throws {
+        let userDefaults = try makeEphemeralUserDefaults()
+        let player = SpyListenAudioPlayer()
+        player.duration = 120
+        let viewModel = try makeViewModel(
+            serverTTSAudioPlayerFactory: { _ in player },
+            userDefaults: userDefaults
+        ) { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        let context = try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(
+                role: "assistant",
+                content: "Remember my speed.",
+                timestamp: 1_770_000_026,
+                messageId: "assistant-26"
+            ),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+
+        viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
+
+        viewModel.scrubListenPlayback(to: 64)
+        XCTAssertEqual(viewModel.listenPlaybackDisplayTime, 64)
+        XCTAssertEqual(player.currentTime, 0)
+
+        viewModel.setListenPlaybackScrubbing(false)
+        XCTAssertEqual(player.currentTime, 64)
+        XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 64)
+        XCTAssertNil(viewModel.listenPlaybackScrubTime)
+
+        viewModel.setListenPlaybackSpeed(.oneAndHalf)
+        XCTAssertEqual(player.rate, Float(1.5))
+        XCTAssertEqual(userDefaults.double(forKey: ListenPlaybackSpeed.storageKey), 1.5)
+
+        let reloadedViewModel = try makeViewModel(userDefaults: userDefaults) { request in
+            XCTFail("Reading stored playback speed should not hit \(request.url?.path ?? "unknown path")")
+            throw URLError(.badServerResponse)
+        }
+        XCTAssertEqual(reloadedViewModel.listenPlaybackSpeed, .oneAndHalf)
+    }
+
+    @MainActor
+    func testStartingListenOnDifferentMessageStopsCurrentServerAudio() async throws {
+        let firstPlayer = SpyListenAudioPlayer()
+        let secondPlayer = SpyListenAudioPlayer()
+        var players = [firstPlayer, secondPlayer]
+        let viewModel = try makeViewModel(
+            serverTTSAudioPlayerFactory: { _ in
+                players.removeFirst()
+            }
+        ) { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        func makeContext(_ id: String, text: String, visibleIndex: Int) throws -> MessageActionContext {
+            try XCTUnwrap(MessageActionContext(
+                message: ChatMessage(role: "assistant", content: text, timestamp: 1_770_000_030, messageId: id),
+                visibleIndex: visibleIndex,
+                messagesOffset: 0
+            ))
+        }
+
+        viewModel.toggleListening(to: try makeContext("assistant-30", text: "First audio.", visibleIndex: 0))
+        await viewModel.listenPreparationTask?.value
+        viewModel.toggleListening(to: try makeContext("assistant-31", text: "Second audio.", visibleIndex: 1))
+        await viewModel.listenPreparationTask?.value
+
+        XCTAssertEqual(firstPlayer.stopCount, 1)
+        XCTAssertEqual(secondPlayer.playCount, 1)
+        XCTAssertEqual(viewModel.listeningMessageID, "assistant-31")
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
     }
 
     @MainActor
@@ -6652,6 +6852,13 @@ final class ChatViewModelSendTests: XCTestCase {
         return (response, Data(#"{"error": "TTS engine unavailable"}"#.utf8))
     }
 
+    private func makeEphemeralUserDefaults() throws -> UserDefaults {
+        let suiteName = "HermesMobileTests.\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        userDefaults.removePersistentDomain(forName: suiteName)
+        return userDefaults
+    }
+
     @MainActor
     private func makeViewModel(
         streamClient: SSEStreamingClient? = nil,
@@ -6663,7 +6870,9 @@ final class ChatViewModelSendTests: XCTestCase {
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
         speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
+        listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
         serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
+        userDefaults: UserDefaults = .standard,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) throws -> ChatViewModel {
         MockURLProtocol.requestHandler = handler
@@ -6694,7 +6903,9 @@ final class ChatViewModelSendTests: XCTestCase {
             speechSynthesizerFactory: speechSynthesizerFactory,
             // Default to a spy so unit tests never drive the live shared AVAudioSession.
             listenAudioSession: listenAudioSession ?? SpyListenAudioSession(),
-            serverTTSAudioPlayerFactory: serverTTSAudioPlayerFactory
+            listenRemoteControlCenter: listenRemoteControlCenter ?? SpyListenRemoteControlCenter(),
+            serverTTSAudioPlayerFactory: serverTTSAudioPlayerFactory,
+            userDefaults: userDefaults
         )
 
         if let spyStreamClient = resolvedStreamClient as? SpySSEStreamingClient {
@@ -6932,12 +7143,25 @@ private final class SpySpeechSynthesizer: ChatSpeechSynthesizing {
 private final class SpyListenAudioPlayer: ListenAudioPlaying {
     var onFinish: (@MainActor () -> Void)?
     var playResult = true
+    var currentTime: TimeInterval = 0
+    var duration: TimeInterval = 75
+    var rate: Float = 1
     private(set) var playCount = 0
+    private(set) var pauseCount = 0
     private(set) var stopCount = 0
+    private(set) var prepareToPlayCount = 0
+
+    func prepareToPlay() {
+        prepareToPlayCount += 1
+    }
 
     func play() -> Bool {
         playCount += 1
         return playResult
+    }
+
+    func pause() {
+        pauseCount += 1
     }
 
     func stop() {
@@ -6968,6 +7192,55 @@ private final class SpyListenAudioSession: ListenAudioSessionControlling {
     func deactivate() {
         deactivateCount += 1
         recorder?.record("deactivate")
+    }
+}
+
+@MainActor
+private final class SpyListenRemoteControlCenter: ListenRemoteControlControlling {
+    private(set) var configureCount = 0
+    private(set) var clearCount = 0
+    private(set) var snapshots: [ListenNowPlayingSnapshot] = []
+    private var playHandler: (@MainActor () -> Void)?
+    private var pauseHandler: (@MainActor () -> Void)?
+    private var togglePlayPauseHandler: (@MainActor () -> Void)?
+    private var changePlaybackPositionHandler: (@MainActor (TimeInterval) -> Void)?
+
+    func configure(
+        play: @escaping @MainActor () -> Void,
+        pause: @escaping @MainActor () -> Void,
+        togglePlayPause: @escaping @MainActor () -> Void,
+        changePlaybackPosition: @escaping @MainActor (TimeInterval) -> Void
+    ) {
+        configureCount += 1
+        playHandler = play
+        pauseHandler = pause
+        togglePlayPauseHandler = togglePlayPause
+        changePlaybackPositionHandler = changePlaybackPosition
+    }
+
+    func update(_ snapshot: ListenNowPlayingSnapshot) {
+        snapshots.append(snapshot)
+    }
+
+    func clear() {
+        clearCount += 1
+        snapshots.removeAll()
+    }
+
+    func firePlay() {
+        playHandler?()
+    }
+
+    func firePause() {
+        pauseHandler?()
+    }
+
+    func fireTogglePlayPause() {
+        togglePlayPauseHandler?()
+    }
+
+    func fireChangePlaybackPosition(_ position: TimeInterval) {
+        changePlaybackPositionHandler?(position)
     }
 }
 
