@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WidgetKit
 
 @MainActor
 @Observable
@@ -318,6 +319,7 @@ final class AuthManager {
         // profiles, which would leak into Shortcuts / Siri if the new server's fetch is
         // delayed or fails. The new server's profiles reload on the next foreground fetch.
         ProfileEntityCache.shared.save([])
+        WidgetCenter.shared.reloadAllTimelines()
         lastErrorMessage = nil
         state = .loggedIn(server: serverURL)
     }
@@ -351,6 +353,7 @@ final class AuthManager {
         // server being removed, so they're stale whether we switch to another server (its
         // profiles reload on the next foreground fetch) or return to onboarding.
         ProfileEntityCache.shared.save([])
+        WidgetCenter.shared.reloadAllTimelines()
 
         let nextActive = serverRegistry.remove(id: server.absoluteString)
         refreshServers()
@@ -448,6 +451,7 @@ final class AuthManager {
         // Drop the App Intents profile picker cache (#339) so a signed-out user doesn't see
         // the previous server's profiles lingering in Shortcuts / Siri.
         ProfileEntityCache.shared.save([])
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Mirrors the in-memory header snapshot to `server`'s scoped Keychain entry:
