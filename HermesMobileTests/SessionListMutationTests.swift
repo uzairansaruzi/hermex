@@ -179,6 +179,11 @@ final class SessionListMutationTests: XCTestCase {
                   "archived": false
                 },
                 {
+                  "session_id": "empty-placeholder-missing-count",
+                  "title": "Untitled Session",
+                  "archived": false
+                },
+                {
                   "session_id": "contentful-untitled",
                   "title": "Untitled Session",
                   "message_count": 2,
@@ -304,8 +309,7 @@ final class SessionListMutationTests: XCTestCase {
                     "session_id": "new-123",
                     "title": "Untitled Session",
                     "workspace": "/tmp/workspace",
-                    "archived": false,
-                    "messages": []
+                    "archived": false
                   }
                 }
                 """, for: request)

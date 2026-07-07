@@ -320,7 +320,7 @@ extension SessionSummary {
         guard !hasSidebarState else { return false }
         guard !hasMessageActivity else { return false }
 
-        return messageCount == 0 || userMessageCount == 0
+        return (messageCount ?? 0) == 0 && (userMessageCount ?? 0) == 0
     }
 
     /// True when this row originates from a scheduled cron job.
