@@ -217,6 +217,8 @@ private struct HermexMediumWidgetView: View {
 // MARK: - Lock screen: circular
 
 private struct HermexAccessoryCircularView: View {
+    let entry: HermexWidgetEntry
+
     var body: some View {
         ZStack {
             AccessoryWidgetBackground()
@@ -226,6 +228,7 @@ private struct HermexAccessoryCircularView: View {
                 .padding(7)
         }
         .containerBackground(for: .widget) { Color.clear }
+        .widgetURL(newChatInProfileURL(profileID: entry.profileID))
     }
 }
 
@@ -251,6 +254,7 @@ private struct HermexAccessoryRectangularView: View {
             }
         }
         .containerBackground(for: .widget) { Color.clear }
+        .widgetURL(newChatInProfileURL(profileID: entry.profileID))
     }
 }
 
@@ -267,7 +271,7 @@ private struct HermexWidgetEntryView: View {
         case .systemMedium:
             HermexMediumWidgetView(entry: entry)
         case .accessoryCircular:
-            HermexAccessoryCircularView()
+            HermexAccessoryCircularView(entry: entry)
         case .accessoryRectangular:
             HermexAccessoryRectangularView(entry: entry)
         default:
