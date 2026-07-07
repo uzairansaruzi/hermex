@@ -265,7 +265,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             hasPendingUserMessage = nil
         }
         pendingStartedAt = detail.pendingStartedAt
-        worktreePath = nil
+        worktreePath = detail.worktreePath
         sourceTag = nil
         sessionSource = nil
         sourceLabel = nil
@@ -424,6 +424,7 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     let pendingUserMessage: String?
     let pendingAttachments: [JSONValue]?
     let pendingStartedAt: Double?
+    let worktreePath: String?
     let contextLength: Int?
     let thresholdTokens: Int?
     let lastPromptTokens: Int?
@@ -457,6 +458,7 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         case pendingUserMessage
         case pendingAttachments
         case pendingStartedAt
+        case worktreePath
         case contextLength
         case thresholdTokens
         case lastPromptTokens
@@ -499,6 +501,7 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         pendingUserMessage = container.decodeLossyStringIfPresent(forKey: .pendingUserMessage)
         pendingAttachments = try? container.decodeIfPresent([JSONValue].self, forKey: .pendingAttachments)
         pendingStartedAt = container.decodeLossyDoubleIfPresent(forKey: .pendingStartedAt)
+        worktreePath = container.decodeLossyStringIfPresent(forKey: .worktreePath)
         contextLength = container.decodeLossyIntIfPresent(forKey: .contextLength)
         thresholdTokens = container.decodeLossyIntIfPresent(forKey: .thresholdTokens)
         lastPromptTokens = container.decodeLossyIntIfPresent(forKey: .lastPromptTokens)

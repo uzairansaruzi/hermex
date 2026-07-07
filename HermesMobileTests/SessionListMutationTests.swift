@@ -334,6 +334,49 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateSessionKeepsWorktreeBackedUntitledSessionWithoutCounts() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse("""
+                {
+                  "workspaces": [
+                    {"path": "/tmp/workspace", "name": "Workspace"}
+                  ],
+                  "last": "/tmp/workspace"
+                }
+                """, for: request)
+            case "/api/session/new":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "worktree-new",
+                    "title": "Untitled Session",
+                    "workspace": "/tmp/workspace",
+                    "worktree_path": "/tmp/hermes-worktree",
+                    "archived": false
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let created = await viewModel.createSession(modelContext: context)
+
+        XCTAssertEqual(created?.sessionId, "worktree-new")
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["worktree-new"])
+        XCTAssertEqual(
+            try CacheStore.cachedSessions(serverURL: serverURL, in: context).compactMap(\.sessionId),
+            ["worktree-new"]
+        )
+    }
+
+    @MainActor
     func testLoadActiveProfileUsesProfilesEndpointAndStoresCurrentProfile() async throws {
         var requestedPaths: [String] = []
         let viewModel = try makeViewModel { request in
