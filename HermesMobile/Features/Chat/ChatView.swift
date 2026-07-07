@@ -209,6 +209,7 @@ private struct ListenPlaybackBar: View {
         }
         .font(AppFont.caption2().monospacedDigit())
         .foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "\(AudioDurationFormatter.string(from: boundedDisplayTime)) of \(AudioDurationFormatter.string(from: duration))"))
     }
 

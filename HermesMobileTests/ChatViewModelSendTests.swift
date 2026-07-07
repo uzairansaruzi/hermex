@@ -194,6 +194,7 @@ final class ChatViewModelSendTests: XCTestCase {
     func testListenPrefersServerTTSAndPlaysReturnedAudio() async throws {
         let audioSession = SpyListenAudioSession()
         let remoteControlCenter = SpyListenRemoteControlCenter()
+        let userDefaults = try makeEphemeralUserDefaults()
         let player = SpyListenAudioPlayer()
         player.duration = 83
         var receivedAudioData: [Data] = []
@@ -209,7 +210,8 @@ final class ChatViewModelSendTests: XCTestCase {
             serverTTSAudioPlayerFactory: { data in
                 receivedAudioData.append(data)
                 return player
-            }
+            },
+            userDefaults: userDefaults
         ) { request in
             XCTAssertEqual(request.url?.path, "/api/tts")
             guard let body = apiTestBodyData(from: request),
@@ -334,7 +336,9 @@ final class ChatViewModelSendTests: XCTestCase {
     func testListenPlaybackResyncsProgressWhenSceneBecomesActive() async throws {
         let player = SpyListenAudioPlayer()
         player.duration = 90
+        let remoteControlCenter = SpyListenRemoteControlCenter()
         let viewModel = try makeViewModel(
+            listenRemoteControlCenter: remoteControlCenter,
             serverTTSAudioPlayerFactory: { _ in player }
         ) { request in
             let response = HTTPURLResponse(
@@ -359,6 +363,7 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.toggleListening(to: context)
         await viewModel.listenPreparationTask?.value
         XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 0)
+        let nowPlayingUpdatesAfterStart = remoteControlCenter.snapshots.count
 
         // Simulates background audio advancing while the foreground UI timer is not
         // firing. Returning to the scene must pull the latest player time into the bar.
@@ -367,6 +372,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 42)
         XCTAssertEqual(viewModel.listenPlaybackDisplayTime, 42)
+        XCTAssertEqual(remoteControlCenter.snapshots.count, nowPlayingUpdatesAfterStart)
     }
 
     @MainActor

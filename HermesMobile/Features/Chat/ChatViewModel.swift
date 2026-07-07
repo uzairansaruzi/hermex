@@ -65,6 +65,15 @@ protocol ListenRemoteControlControlling {
 final class ListenRemoteControlController: ListenRemoteControlControlling {
     private var commandTargets: [(MPRemoteCommand, Any)] = []
 
+    deinit {
+        commandTargets.forEach { command, target in
+            command.removeTarget(target)
+            command.isEnabled = false
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
+    }
+
     func configure(
         play: @escaping @MainActor () -> Void,
         pause: @escaping @MainActor () -> Void,
@@ -4620,7 +4629,6 @@ final class ChatViewModel {
         guard listenPlaybackScrubTime == nil, let player = listenAudioPlayer else { return }
         listenPlaybackElapsedTime = boundedListenPlaybackTime(player.currentTime)
         listenPlaybackDuration = max(0, player.duration)
-        updateListenNowPlaying()
     }
 
     private func configureListenRemoteControls() {
