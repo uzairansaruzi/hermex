@@ -232,7 +232,6 @@ final class SessionListMutationTests: XCTestCase {
 
         let expectedIDs = [
             "contentful-untitled",
-            "recent-untitled",
             "streaming-untitled",
             "pending-untitled",
             "worktree-untitled",
@@ -309,6 +308,8 @@ final class SessionListMutationTests: XCTestCase {
                     "session_id": "new-123",
                     "title": "Untitled Session",
                     "workspace": "/tmp/workspace",
+                    "updated_at": 1770000000,
+                    "last_message_at": 1770000000,
                     "archived": false
                   }
                 }

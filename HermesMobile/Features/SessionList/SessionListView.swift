@@ -243,6 +243,11 @@ struct SessionListView: View {
             .onChange(of: requestedNewChat) {
                 openRequestedNewChatIfNeeded()
             }
+            .onChange(of: pendingNewChat) { _, newValue in
+                if newValue == nil {
+                    viewModel.removeEmptySidebarPlaceholders()
+                }
+            }
             .refreshable {
                 await refreshSessionsAndActiveProfile()
             }

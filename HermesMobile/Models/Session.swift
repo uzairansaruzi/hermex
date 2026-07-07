@@ -315,6 +315,8 @@ extension SessionSummary {
     /// Mirrors hermes-webui's visible-sidebar safety net for just-created
     /// placeholders: hide only the known empty Untitled shape, while keeping rows
     /// with content, pending work, streaming state, or explicit user/server state.
+    /// Sort timestamps such as ``lastMessageAt`` are intentionally ignored here —
+    /// ``compact()`` sets them from ``updated_at`` even for zero-message sessions.
     var isEmptySidebarPlaceholder: Bool {
         guard hasPlaceholderTitle else { return false }
         guard !hasSidebarState else { return false }
@@ -359,7 +361,6 @@ extension SessionSummary {
     private var hasMessageActivity: Bool {
         if let messageCount, messageCount > 0 { return true }
         if let userMessageCount, userMessageCount > 0 { return true }
-        if let lastMessageAt, lastMessageAt > 0 { return true }
         return false
     }
 

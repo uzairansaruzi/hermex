@@ -887,6 +887,15 @@ final class SessionListViewModel {
         actionErrorMessage = nil
     }
 
+    /// Drops any empty Untitled placeholders still held in memory. Used when
+    /// returning from the pending new-chat flow so stale rows cannot flash during
+    /// the navigation pop animation.
+    func removeEmptySidebarPlaceholders() {
+        let filtered = sessions.filter(\.shouldAppearInSessionList)
+        guard filtered.count != sessions.count else { return }
+        sessions = filtered
+    }
+
     private static func normalizedSearchQuery(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
