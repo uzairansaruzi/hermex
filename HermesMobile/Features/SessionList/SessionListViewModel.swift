@@ -187,7 +187,6 @@ final class SessionListViewModel {
                 }
             }
 
-            writeWidgetSessions(visibleSessions)
             return true
         } catch {
             guard !isCancellationError(error) else { return false }
@@ -1027,6 +1026,9 @@ final class SessionListViewModel {
         if let profiles = response.profiles {
             let changed = ProfileEntityCache.shared.save(profiles)
             ProfileEntityProvider.refreshAppShortcuts(changed: changed)
+            if changed {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
 
         let profileName = response.effectiveDefaultProfileName
@@ -1057,34 +1059,6 @@ final class SessionListViewModel {
             actionErrorMessage = error.localizedDescription
             return false
         }
-    }
-
-    private struct WidgetSessionSnapshot: Codable {
-        let id: String
-        let title: String
-        let lastMessageAt: Double?
-        let serverName: String
-    }
-
-    private func writeWidgetSessions(_ sessions: [SessionSummary]) {
-        let serverName = ServerRegistry.shared.activeServer?.displayName
-            ?? server.host
-            ?? "Hermex"
-        let snapshots = sessions.prefix(5).compactMap { s -> WidgetSessionSnapshot? in
-            guard let id = s.sessionId, !id.isEmpty else { return nil }
-            return WidgetSessionSnapshot(
-                id: id,
-                title: s.title ?? "",
-                lastMessageAt: s.lastMessageAt ?? s.updatedAt,
-                serverName: serverName
-            )
-        }
-        let appGroupID = Bundle.main.object(forInfoDictionaryKey: "HermesAppGroupIdentifier") as? String
-            ?? "group.com.uzairansar.hermesmobile"
-        guard let data = try? JSONEncoder().encode(snapshots),
-              let defaults = UserDefaults(suiteName: appGroupID) else { return }
-        defaults.set(data, forKey: "hermex.widget.recentSessions")
-        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func isCancellationError(_ error: Error) -> Bool {
