@@ -195,6 +195,36 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(thumbnail, mediaData)
     }
 
+    func testTranscriptLocalMediaIncludesSessionIDOnMediaEndpoint() async throws {
+        let mediaData = try XCTUnwrap(Self.imageData())
+        let mediaPath = "/Users/hermes/.hermes/browser_screenshots/example.png"
+        let sessionID = "session-abc"
+        let client = makeAuthenticatedMediaClient { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/media")
+
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+            XCTAssertEqual(query["session_id"], sessionID)
+            XCTAssertEqual(query["path"], mediaPath)
+
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "image/png"]
+            )!
+            return (response, mediaData)
+        }
+        let coordinator = makeCoordinator(client: client)
+
+        let thumbnail = await coordinator.transcriptMediaThumbnailData(
+            for: TranscriptMediaReference(rawReference: mediaPath)
+        )
+
+        XCTAssertNotNil(thumbnail)
+    }
+
     private func makeCoordinator(client: APIClient) -> ChatAttachmentCoordinator {
         let coordinator = ChatAttachmentCoordinator(client: client)
         let delegate = ChatAttachmentCoordinatorDelegateSpy()

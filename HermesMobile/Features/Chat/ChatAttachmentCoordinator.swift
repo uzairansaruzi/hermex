@@ -155,9 +155,10 @@ final class ChatAttachmentCoordinator {
 
     func transcriptMediaThumbnailData(for reference: TranscriptMediaReference) async -> Data? {
         guard reference.isRasterImageCandidate else { return nil }
+        guard let sessionID = delegate?.attachmentSessionID else { return nil }
 
         do {
-            let data = try await client.transcriptMediaData(for: reference)
+            let data = try await client.transcriptMediaData(for: reference, sessionID: sessionID)
             return await ImagePreviewDownsampler.previewDataAsync(
                 from: data,
                 maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize

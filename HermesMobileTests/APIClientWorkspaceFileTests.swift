@@ -517,12 +517,14 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
     func testMediaDataBuildsExpectedQueryAndReturnsBytes() async throws {
         let expectedData = Data([0x89, 0x50, 0x4E, 0x47])
         let mediaPath = "/Users/hermes/.hermes/browser_screenshots/result image.png"
+        let sessionID = "abc123"
         let client = makeClient { request in
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertEqual(request.url?.path, "/api/media")
 
             let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
             let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
+            XCTAssertEqual(query["session_id"], sessionID)
             XCTAssertEqual(query["path"], mediaPath)
 
             let response = HTTPURLResponse(
@@ -534,7 +536,7 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
             return (try XCTUnwrap(response), expectedData)
         }
 
-        let response = try await client.mediaData(path: mediaPath)
+        let response = try await client.mediaData(sessionID: sessionID, path: mediaPath)
 
         XCTAssertEqual(response, expectedData)
     }

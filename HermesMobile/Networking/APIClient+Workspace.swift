@@ -56,8 +56,8 @@ extension APIClient {
         try await sendData(endpoint: .rawFile(sessionID: sessionID, path: path), method: "GET")
     }
 
-    func mediaData(path: String) async throws -> Data {
-        try await sendData(endpoint: .media(path: path), method: "GET")
+    func mediaData(sessionID: String, path: String) async throws -> Data {
+        try await sendData(endpoint: .media(sessionID: sessionID, path: path), method: "GET")
     }
 
     func remoteTranscriptMediaData(from url: URL) async throws -> Data {

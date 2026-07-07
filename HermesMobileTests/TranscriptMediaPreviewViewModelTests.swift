@@ -13,6 +13,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         let recorder = TranscriptMediaPreviewRequestRecorder()
         let imageData = try XCTUnwrap(Self.imageData())
         let mediaPath = "/Users/hermes/.hermes/browser_screenshots/example.png"
+        let sessionID = "session-123"
         let client = makeClient { request in
             recorder.record(request)
             XCTAssertEqual(request.httpMethod, "GET")
@@ -21,6 +22,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
         let viewModel = TranscriptMediaPreviewViewModel(
             server: Self.baseURL,
+            sessionID: sessionID,
             reference: .init(rawReference: mediaPath),
             apiClient: client
         )
@@ -35,6 +37,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.canSaveImageToPhotos)
 
         let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
+        XCTAssertEqual(queryItems["session_id"], sessionID)
         XCTAssertEqual(queryItems["path"], mediaPath)
 
         let originalData = try await viewModel.originalImageData()
@@ -57,6 +60,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
         let viewModel = TranscriptMediaPreviewViewModel(
             server: Self.baseURL,
+            sessionID: "session-123",
             reference: .init(rawReference: remoteURL.absoluteString),
             apiClient: client
         )
@@ -88,6 +92,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
         let viewModel = TranscriptMediaPreviewViewModel(
             server: Self.baseURL,
+            sessionID: "session-123",
             reference: .init(rawReference: externalURL.absoluteString),
             apiClient: client
         )
@@ -108,6 +113,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
         let viewModel = TranscriptMediaPreviewViewModel(
             server: Self.baseURL,
+            sessionID: "session-123",
             reference: .init(rawReference: "/tmp/vector.svg"),
             apiClient: client
         )
@@ -128,6 +134,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
         let viewModel = TranscriptMediaPreviewViewModel(
             server: Self.baseURL,
+            sessionID: "session-123",
             reference: .init(rawReference: "/tmp/forbidden.png"),
             apiClient: client
         )

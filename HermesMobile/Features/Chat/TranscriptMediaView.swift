@@ -201,10 +201,21 @@ struct TranscriptMediaPreviewView: View {
     @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
-    init(server: URL, item: TranscriptMediaPreviewItem, onAPIError: @escaping (Error) -> Void) {
+    init(
+        server: URL,
+        sessionID: String,
+        item: TranscriptMediaPreviewItem,
+        onAPIError: @escaping (Error) -> Void
+    ) {
         self.item = item
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: TranscriptMediaPreviewViewModel(server: server, reference: item.reference))
+        _viewModel = State(
+            initialValue: TranscriptMediaPreviewViewModel(
+                server: server,
+                sessionID: sessionID,
+                reference: item.reference
+            )
+        )
     }
 
     var body: some View {

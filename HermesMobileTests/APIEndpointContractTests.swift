@@ -185,9 +185,9 @@ final class ContractReadinessTests: XCTestCase {
             .init(
                 name: "media",
                 method: "GET",
-                endpoint: .media(path: "Assets/icon.png"),
+                endpoint: .media(sessionID: "session-123", path: "Assets/icon.png"),
                 path: "/api/media",
-                query: ["path": "Assets/icon.png"]
+                query: ["session_id": "session-123", "path": "Assets/icon.png"]
             ),
             .init(name: "models", method: "GET", endpoint: .models, path: "/api/models"),
             .init(name: "models live", method: "GET", endpoint: .modelsLive, path: "/api/models/live"),

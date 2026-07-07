@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class TranscriptMediaPreviewViewModel {
+    private let sessionID: String
     private let reference: TranscriptMediaReference
     private let apiClient: APIClient
     private var didLoad = false
@@ -15,7 +16,13 @@ final class TranscriptMediaPreviewViewModel {
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
 
-    init(server: URL, reference: TranscriptMediaReference, apiClient: APIClient? = nil) {
+    init(
+        server: URL,
+        sessionID: String,
+        reference: TranscriptMediaReference,
+        apiClient: APIClient? = nil
+    ) {
+        self.sessionID = sessionID
         self.reference = reference
         self.apiClient = apiClient ?? APIClient(baseURL: server)
     }
@@ -43,7 +50,7 @@ final class TranscriptMediaPreviewViewModel {
         }
 
         do {
-            let data = try await apiClient.transcriptMediaData(for: reference)
+            let data = try await apiClient.transcriptMediaData(for: reference, sessionID: sessionID)
             originalData = data
             originalByteCount = data.count
             if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
@@ -65,7 +72,7 @@ final class TranscriptMediaPreviewViewModel {
             return originalData
         }
 
-        let data = try await apiClient.transcriptMediaData(for: reference)
+        let data = try await apiClient.transcriptMediaData(for: reference, sessionID: sessionID)
         originalData = data
         originalByteCount = data.count
         return data
