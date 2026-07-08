@@ -128,6 +128,28 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(recorder.requestCount, 0)
     }
 
+    func testLoadLocalImageWithoutSessionIDDoesNotRequestMediaEndpoint() async {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let client = makeClient { request in
+            recorder.record(request)
+            return self.response(statusCode: 200, data: Data(), for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            sessionID: nil,
+            reference: .init(rawReference: "/tmp/generated.png"),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.previewData)
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertNotNil(viewModel.lastError)
+        XCTAssertEqual(recorder.requestCount, 0)
+    }
+
     func testMediaEndpointErrorIsCaptured() async {
         let client = makeClient { request in
             self.response(statusCode: 403, data: Data("forbidden".utf8), for: request)

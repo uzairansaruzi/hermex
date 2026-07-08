@@ -76,7 +76,9 @@ private struct TranscriptMediaThumbnailView: View {
             }
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(String(localized: "Open media image \(reference.displayName)"))
-            .task(id: reference.id) {
+            .task(id: imageCacheKey) {
+                image = nil
+                didAttemptLoad = false
                 let loadedImage = await TranscriptMediaImageCache.shared.image(
                     for: reference,
                     cacheNamespace: cacheNamespace,
@@ -91,6 +93,10 @@ private struct TranscriptMediaThumbnailView: View {
         } else {
             TranscriptMediaUnavailableChip(reference: reference)
         }
+    }
+
+    private var imageCacheKey: TranscriptMediaImageCacheKey {
+        TranscriptMediaImageCacheKey(namespace: cacheNamespace, reference: reference)
     }
 
     @ViewBuilder
@@ -220,7 +226,7 @@ struct TranscriptMediaPreviewView: View {
 
     init(
         server: URL,
-        sessionID: String,
+        sessionID: String?,
         item: TranscriptMediaPreviewItem,
         onAPIError: @escaping (Error) -> Void
     ) {

@@ -497,14 +497,23 @@ struct ChatView: View {
     private func transcriptMediaPreviewView(for item: TranscriptMediaPreviewItem) -> some View {
         TranscriptMediaPreviewView(
             server: server,
-            sessionID: session.sessionId ?? session.id,
+            sessionID: transcriptMediaSessionID,
             item: item,
             onAPIError: onAPIError
         )
     }
 
+    private var transcriptMediaSessionID: String? {
+        guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty
+        else {
+            return nil
+        }
+        return sessionID
+    }
+
     private var transcriptMediaCacheNamespace: String {
-        "\(server.absoluteString)|\(session.sessionId ?? session.id)"
+        "\(server.absoluteString)|\(transcriptMediaSessionID ?? "local:\(session.id)")"
     }
 
     var body: some View {
