@@ -445,6 +445,8 @@ struct TranscriptMediaPreviewView: View {
                     }
                 } else if let data = viewModel.previewData, let image = UIImage(data: data) {
                     imageContent(image)
+                } else if let audioData = viewModel.audioData {
+                    audioContent(audioData)
                 } else if let videoURL = viewModel.videoFileURL {
                     videoContent(videoURL)
                 } else {
@@ -531,6 +533,20 @@ struct TranscriptMediaPreviewView: View {
             }
             .padding()
         }
+        .background(Color(.systemBackground))
+    }
+
+    private func audioContent(_ data: Data) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            mediaHeader
+
+            InlineAudioPlayerView(title: item.reference.displayName) {
+                data
+            }
+            .frame(maxWidth: 360)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.systemBackground))
     }
 

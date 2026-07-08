@@ -249,6 +249,36 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: videoFileURL.path))
     }
 
+    func testExtensionlessRemoteAudioUsesAudioPreviewInsteadOfVideoFallback() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let audioData = Self.wavData()
+        let remoteURL = try XCTUnwrap(URL(string: "https://cdn.example.test/media/voice123"))
+        let client = makeClient { request in
+            recorder.record(request)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url, remoteURL)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Test-Session"), "public")
+            return self.response(statusCode: 200, data: audioData, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            sessionID: "session-123",
+            reference: .init(rawReference: remoteURL.absoluteString),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.previewData)
+        XCTAssertNil(viewModel.videoFileURL)
+        XCTAssertEqual(viewModel.audioData, audioData)
+        XCTAssertEqual(viewModel.originalByteCount, audioData.count)
+        XCTAssertEqual(recorder.requestCount, 1)
+    }
+
     func testMediaEndpointErrorIsCaptured() async {
         let client = makeClient { request in
             self.response(statusCode: 403, data: Data("forbidden".utf8), for: request)
@@ -325,6 +355,31 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
     }
 
+    private static func wavData() -> Data {
+        let sampleRate: UInt32 = 8_000
+        let channelCount: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let sampleCount = 800
+        let dataByteCount = sampleCount * Int(channelCount) * Int(bitsPerSample / 8)
+
+        var data = Data()
+        data.append(contentsOf: "RIFF".utf8)
+        data.appendLittleEndian(UInt32(36 + dataByteCount))
+        data.append(contentsOf: "WAVE".utf8)
+        data.append(contentsOf: "fmt ".utf8)
+        data.appendLittleEndian(UInt32(16))
+        data.appendLittleEndian(UInt16(1))
+        data.appendLittleEndian(channelCount)
+        data.appendLittleEndian(sampleRate)
+        data.appendLittleEndian(sampleRate * UInt32(channelCount) * UInt32(bitsPerSample / 8))
+        data.appendLittleEndian(channelCount * (bitsPerSample / 8))
+        data.appendLittleEndian(bitsPerSample)
+        data.append(contentsOf: "data".utf8)
+        data.appendLittleEndian(UInt32(dataByteCount))
+        data.append(Data(repeating: 0, count: dataByteCount))
+        return data
+    }
+
     private static func hermesCookie(domain: String) -> HTTPCookie? {
         HTTPCookie(properties: [
             .domain: domain,
@@ -387,4 +442,20 @@ private final class TranscriptMediaPreviewMockURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private extension Data {
+    mutating func appendLittleEndian(_ value: UInt16) {
+        var littleEndian = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndian) { buffer in
+            append(contentsOf: buffer)
+        }
+    }
+
+    mutating func appendLittleEndian(_ value: UInt32) {
+        var littleEndian = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndian) { buffer in
+            append(contentsOf: buffer)
+        }
+    }
 }

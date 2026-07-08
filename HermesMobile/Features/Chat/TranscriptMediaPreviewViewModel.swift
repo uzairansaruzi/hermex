@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import SwiftUI
 
@@ -13,6 +14,7 @@ final class TranscriptMediaPreviewViewModel {
     private var temporaryVideoURL: URL?
 
     private(set) var previewData: Data?
+    private(set) var audioData: Data?
     private(set) var videoFileURL: URL?
     private(set) var originalByteCount: Int?
     private(set) var isLoading = false
@@ -40,6 +42,7 @@ final class TranscriptMediaPreviewViewModel {
         let generation = loadGeneration
         didLoad = true
         previewData = nil
+        audioData = nil
         videoFileURL = nil
         originalByteCount = nil
         originalData = nil
@@ -83,9 +86,13 @@ final class TranscriptMediaPreviewViewModel {
                 } else {
                     guard !Task.isCancelled, loadGeneration == generation else { return }
                     if reference.isExtensionlessRemoteMediaCandidate {
-                        let fileURL = try writeTemporaryVideoFile(data)
-                        temporaryVideoURL = fileURL
-                        videoFileURL = fileURL
+                        if Self.isAudioData(data) {
+                            audioData = data
+                        } else {
+                            let fileURL = try writeTemporaryVideoFile(data)
+                            temporaryVideoURL = fileURL
+                            videoFileURL = fileURL
+                        }
                     } else {
                         errorMessage = String(localized: "Could not decode this image.")
                     }
@@ -132,6 +139,9 @@ final class TranscriptMediaPreviewViewModel {
     }
 
     func cleanupTemporaryFiles() {
+        loadGeneration += 1
+        isLoading = false
+        audioData = nil
         removeTemporaryVideoFile()
         videoFileURL = nil
     }
@@ -149,6 +159,10 @@ final class TranscriptMediaPreviewViewModel {
             try? FileManager.default.removeItem(at: temporaryVideoURL)
         }
         temporaryVideoURL = nil
+    }
+
+    private static func isAudioData(_ data: Data) -> Bool {
+        (try? AVAudioPlayer(data: data)) != nil
     }
 
 }
