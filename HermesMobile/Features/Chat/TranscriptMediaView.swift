@@ -11,17 +11,20 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
 
 struct TranscriptMediaContentView: View {
     let segments: [TranscriptMediaSegment]
+    let cacheNamespace: String
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
 
     init(
         segments: [TranscriptMediaSegment],
+        cacheNamespace: String,
         loadMediaImage: ((TranscriptMediaReference) async -> Data?)?,
         onPreviewMedia: ((TranscriptMediaReference) -> Void)?,
         isStreaming: Bool = false
     ) {
         self.segments = segments
+        self.cacheNamespace = cacheNamespace
         self.loadMediaImage = loadMediaImage
         self.onPreviewMedia = onPreviewMedia
         self.isStreaming = isStreaming
@@ -38,6 +41,7 @@ struct TranscriptMediaContentView: View {
                 case let .media(reference):
                     TranscriptMediaThumbnailView(
                         reference: reference,
+                        cacheNamespace: cacheNamespace,
                         loadMediaImage: loadMediaImage,
                         onPreviewMedia: onPreviewMedia
                     )
@@ -53,6 +57,7 @@ struct TranscriptMediaContentView: View {
 
 private struct TranscriptMediaThumbnailView: View {
     let reference: TranscriptMediaReference
+    let cacheNamespace: String
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
 
@@ -74,6 +79,7 @@ private struct TranscriptMediaThumbnailView: View {
             .task(id: reference.id) {
                 let loadedImage = await TranscriptMediaImageCache.shared.image(
                     for: reference,
+                    cacheNamespace: cacheNamespace,
                     loadMediaImage: loadMediaImage
                 )
                 guard !Task.isCancelled else { return }
@@ -157,14 +163,15 @@ private struct TranscriptMediaUnavailableChip: View {
 private actor TranscriptMediaImageCache {
     static let shared = TranscriptMediaImageCache()
 
-    private var cache: [String: UIImage] = [:]
-    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private var cache: [TranscriptMediaImageCacheKey: UIImage] = [:]
+    private var inFlight: [TranscriptMediaImageCacheKey: Task<UIImage?, Never>] = [:]
 
     func image(
         for reference: TranscriptMediaReference,
+        cacheNamespace: String,
         loadMediaImage: @escaping (TranscriptMediaReference) async -> Data?
     ) async -> UIImage? {
-        let key = reference.id
+        let key = TranscriptMediaImageCacheKey(namespace: cacheNamespace, reference: reference)
         if let cached = cache[key] {
             return cached
         }
@@ -188,6 +195,16 @@ private actor TranscriptMediaImageCache {
             cache[key] = image
         }
         return image
+    }
+}
+
+struct TranscriptMediaImageCacheKey: Hashable {
+    let namespace: String
+    let referenceID: String
+
+    init(namespace: String, reference: TranscriptMediaReference) {
+        self.namespace = namespace
+        referenceID = reference.id
     }
 }
 

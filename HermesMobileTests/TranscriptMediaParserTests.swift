@@ -99,6 +99,26 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(TranscriptMediaReference(rawReference: "").displayName, "Media")
     }
 
+    func testImageCacheKeySeparatesSameReferenceAcrossSessions() {
+        let reference = TranscriptMediaReference(rawReference: "/tmp/result.png")
+
+        let firstSessionKey = TranscriptMediaImageCacheKey(
+            namespace: "https://one.example.test|session-a",
+            reference: reference
+        )
+        let secondSessionKey = TranscriptMediaImageCacheKey(
+            namespace: "https://one.example.test|session-b",
+            reference: reference
+        )
+        let secondServerKey = TranscriptMediaImageCacheKey(
+            namespace: "https://two.example.test|session-a",
+            reference: reference
+        )
+
+        XCTAssertNotEqual(firstSessionKey, secondSessionKey)
+        XCTAssertNotEqual(firstSessionKey, secondServerKey)
+    }
+
     private func mediaReferences(in segments: [TranscriptMediaSegment]) -> [TranscriptMediaReference] {
         segments.compactMap { segment in
             if case let .media(reference) = segment {

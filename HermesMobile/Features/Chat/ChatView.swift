@@ -503,6 +503,10 @@ struct ChatView: View {
         )
     }
 
+    private var transcriptMediaCacheNamespace: String {
+        "\(server.absoluteString)|\(session.sessionId ?? session.id)"
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
@@ -1122,6 +1126,7 @@ struct ChatView: View {
             loadTranscriptMediaImage: { reference in
                 await viewModel.transcriptMediaThumbnailData(for: reference)
             },
+            transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
             actionContext: { message, visibleIndex in
                 viewModel.actionContext(for: message, visibleIndex: visibleIndex)
             },
