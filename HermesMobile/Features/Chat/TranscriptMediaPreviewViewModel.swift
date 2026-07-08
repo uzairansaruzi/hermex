@@ -36,6 +36,18 @@ final class TranscriptMediaPreviewViewModel {
         reference.isRasterImageCandidate && previewData != nil
     }
 
+    var canSaveVideoToPhotos: Bool {
+        videoFileURL != nil && originalData != nil
+    }
+
+    var canSaveMediaToPhotos: Bool {
+        canSaveImageToPhotos || canSaveVideoToPhotos
+    }
+
+    var canExportMedia: Bool {
+        originalData != nil
+    }
+
     func load(force: Bool = false) async {
         guard force || !didLoad else { return }
         loadGeneration += 1
@@ -106,6 +118,10 @@ final class TranscriptMediaPreviewViewModel {
     }
 
     func originalImageData() async throws -> Data {
+        try await originalMediaData()
+    }
+
+    func originalMediaData() async throws -> Data {
         if let originalData {
             return originalData
         }
@@ -115,6 +131,15 @@ final class TranscriptMediaPreviewViewModel {
         originalData = data
         originalByteCount = data.count
         return data
+    }
+
+    func exportPayload() async throws -> FileExportPayload {
+        let data = try await originalMediaData()
+        return TranscriptMediaExportSupport.payload(
+            for: reference,
+            data: data,
+            resolvedKind: resolvedExportKind
+        )
     }
 
     private func transcriptMediaData() async throws -> Data {
@@ -165,6 +190,21 @@ final class TranscriptMediaPreviewViewModel {
         (try? AVAudioPlayer(data: data)) != nil
     }
 
+    private var resolvedExportKind: TranscriptMediaResolvedExportKind? {
+        if previewData != nil {
+            return .image
+        }
+
+        if audioData != nil {
+            return .audio
+        }
+
+        if videoFileURL != nil {
+            return .video
+        }
+
+        return nil
+    }
 }
 
 private enum TranscriptMediaPreviewError: LocalizedError {

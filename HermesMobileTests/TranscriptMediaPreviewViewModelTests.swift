@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import UniformTypeIdentifiers
 @testable import HermesMobile
 
 @MainActor
@@ -35,6 +36,8 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNotNil(viewModel.previewData)
         XCTAssertEqual(viewModel.originalByteCount, imageData.count)
         XCTAssertTrue(viewModel.canSaveImageToPhotos)
+        XCTAssertTrue(viewModel.canSaveMediaToPhotos)
+        XCTAssertTrue(viewModel.canExportMedia)
 
         let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
         XCTAssertEqual(queryItems["session_id"], sessionID)
@@ -42,6 +45,12 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
 
         let originalData = try await viewModel.originalImageData()
         XCTAssertEqual(originalData, imageData)
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.data, imageData)
+        XCTAssertEqual(payload.filename, "example.png")
+        XCTAssertEqual(payload.contentType, .png)
+        XCTAssertTrue(payload.isImage)
+        XCTAssertFalse(payload.isVideo)
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
@@ -70,6 +79,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertNotNil(viewModel.previewData)
         XCTAssertEqual(viewModel.originalByteCount, imageData.count)
+        XCTAssertTrue(viewModel.canExportMedia)
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
@@ -102,6 +112,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertNotNil(viewModel.previewData)
         XCTAssertEqual(viewModel.originalByteCount, imageData.count)
+        XCTAssertTrue(viewModel.canExportMedia)
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
@@ -125,6 +136,8 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.previewData)
         XCTAssertNil(viewModel.lastError)
         XCTAssertFalse(viewModel.canSaveImageToPhotos)
+        XCTAssertFalse(viewModel.canSaveMediaToPhotos)
+        XCTAssertFalse(viewModel.canExportMedia)
         XCTAssertEqual(recorder.requestCount, 0)
     }
 
@@ -180,6 +193,16 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: videoFileURL), videoData)
         XCTAssertEqual(viewModel.originalByteCount, videoData.count)
         XCTAssertFalse(viewModel.canSaveImageToPhotos)
+        XCTAssertTrue(viewModel.canSaveVideoToPhotos)
+        XCTAssertTrue(viewModel.canSaveMediaToPhotos)
+        XCTAssertTrue(viewModel.canExportMedia)
+
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.data, videoData)
+        XCTAssertEqual(payload.filename, "movie.mp4")
+        XCTAssertEqual(payload.contentType, .mpeg4Movie)
+        XCTAssertFalse(payload.isImage)
+        XCTAssertTrue(payload.isVideo)
 
         let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
         XCTAssertEqual(queryItems["session_id"], sessionID)
@@ -189,6 +212,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         viewModel.cleanupTemporaryFiles()
         XCTAssertFalse(FileManager.default.fileExists(atPath: videoFileURL.path))
         XCTAssertNil(viewModel.videoFileURL)
+        XCTAssertFalse(viewModel.canSaveMediaToPhotos)
     }
 
     func testLoadLocalVideoWithoutSessionIDDoesNotRequestMediaEndpoint() async {
@@ -243,7 +267,16 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: videoFileURL.path))
         XCTAssertEqual(try Data(contentsOf: videoFileURL), videoData)
         XCTAssertEqual(viewModel.originalByteCount, videoData.count)
+        XCTAssertTrue(viewModel.canSaveVideoToPhotos)
+        XCTAssertTrue(viewModel.canSaveMediaToPhotos)
         XCTAssertEqual(recorder.requestCount, 1)
+
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.data, videoData)
+        XCTAssertEqual(payload.filename, "abc123.mp4")
+        XCTAssertEqual(payload.contentType, .mpeg4Movie)
+        XCTAssertFalse(payload.isImage)
+        XCTAssertTrue(payload.isVideo)
 
         viewModel.cleanupTemporaryFiles()
         XCTAssertFalse(FileManager.default.fileExists(atPath: videoFileURL.path))
@@ -276,7 +309,16 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.videoFileURL)
         XCTAssertEqual(viewModel.audioData, audioData)
         XCTAssertEqual(viewModel.originalByteCount, audioData.count)
+        XCTAssertFalse(viewModel.canSaveMediaToPhotos)
+        XCTAssertTrue(viewModel.canExportMedia)
         XCTAssertEqual(recorder.requestCount, 1)
+
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.data, audioData)
+        XCTAssertEqual(payload.filename, "voice123.wav")
+        XCTAssertEqual(payload.contentType, .wav)
+        XCTAssertFalse(payload.isImage)
+        XCTAssertFalse(payload.isVideo)
     }
 
     func testMediaEndpointErrorIsCaptured() async {
@@ -297,6 +339,8 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNotNil(viewModel.errorMessage)
         XCTAssertNotNil(viewModel.lastError)
         XCTAssertFalse(viewModel.canSaveImageToPhotos)
+        XCTAssertFalse(viewModel.canSaveMediaToPhotos)
+        XCTAssertFalse(viewModel.canExportMedia)
     }
 
     private static let baseURL = URL(string: "https://example.test")!

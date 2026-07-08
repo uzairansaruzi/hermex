@@ -2,6 +2,7 @@ import AVFoundation
 import AVKit
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct TranscriptMediaPreviewItem: Identifiable, Equatable {
     let reference: TranscriptMediaReference
@@ -111,12 +112,16 @@ private struct TranscriptMediaThumbnailView: View {
                 }
             }
         case .audio where loadMediaData != nil:
-            InlineAudioPlayerView(title: reference.displayName) {
-                guard let loadMediaData else { return nil }
-                return await loadMediaData(reference)
+            if let loadMediaData {
+                TranscriptMediaAudioExportView(
+                    reference: reference,
+                    loadMediaData: {
+                        await loadMediaData(reference)
+                    }
+                )
+            } else {
+                TranscriptMediaUnavailableChip(reference: reference)
             }
-            .frame(maxWidth: 280)
-            .accessibilityElement(children: .contain)
 
         case .video:
             Button {
@@ -195,11 +200,11 @@ private struct TranscriptMediaResolvedRemoteView: View {
                 .accessibilityLabel(String(localized: "Open media image \(reference.displayName)"))
 
             case let .audio(data):
-                InlineAudioPlayerView(title: reference.displayName) {
-                    data
-                }
-                .frame(maxWidth: 280)
-                .accessibilityElement(children: .contain)
+                TranscriptMediaAudioExportView(
+                    reference: reference,
+                    initialData: data,
+                    loadMediaData: { data }
+                )
 
             case .video:
                 Button {
@@ -266,6 +271,105 @@ private struct TranscriptMediaResolvedRemoteView: View {
         case audio(Data)
         case video
         case unavailable
+    }
+}
+
+private struct TranscriptMediaAudioExportView: View {
+    let reference: TranscriptMediaReference
+    let loadMediaData: () async -> Data?
+
+    @State private var cachedData: Data?
+    @State private var exportDocument = ExportedFileDocument(data: Data())
+    @State private var exportContentType = UTType.audio
+    @State private var exportFilename = String(localized: "Hermes Media")
+    @State private var isFileExporterPresented = false
+    @State private var isExporting = false
+    @State private var errorMessage: String?
+
+    init(
+        reference: TranscriptMediaReference,
+        initialData: Data? = nil,
+        loadMediaData: @escaping () async -> Data?
+    ) {
+        self.reference = reference
+        self.loadMediaData = loadMediaData
+        _cachedData = State(initialValue: initialData)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            InlineAudioPlayerView(title: reference.displayName) {
+                await audioData()
+            }
+            .frame(maxWidth: 280)
+
+            Button {
+                Task { await exportAudio() }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .buttonStyle(.chatTactile(.icon))
+            .disabled(isExporting)
+            .accessibilityLabel(String(localized: "Export audio \(reference.displayName)"))
+        }
+        .accessibilityElement(children: .contain)
+        .fileExporter(
+            isPresented: $isFileExporterPresented,
+            document: exportDocument,
+            contentType: exportContentType,
+            defaultFilename: exportFilename
+        ) { result in
+            if case let .failure(error) = result {
+                errorMessage = error.localizedDescription
+            }
+        }
+        .alert(
+            "Media Action Failed",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        errorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func audioData() async -> Data? {
+        if let cachedData {
+            return cachedData
+        }
+
+        let data = await loadMediaData()
+        guard !Task.isCancelled else { return nil }
+        cachedData = data
+        return data
+    }
+
+    private func exportAudio() async {
+        isExporting = true
+        defer {
+            isExporting = false
+        }
+
+        guard let data = await audioData() else {
+            errorMessage = String(localized: "Could not load media.")
+            return
+        }
+
+        let payload = TranscriptMediaExportSupport.payload(for: reference, data: data, resolvedKind: .audio)
+        exportDocument = ExportedFileDocument(data: payload.data)
+        exportContentType = payload.contentType
+        exportFilename = payload.filename
+        isFileExporterPresented = true
     }
 }
 
@@ -405,6 +509,11 @@ struct TranscriptMediaPreviewView: View {
 
     private let item: TranscriptMediaPreviewItem
     @State private var viewModel: TranscriptMediaPreviewViewModel
+    @State private var exportDocument = ExportedFileDocument(data: Data())
+    @State private var exportContentType = UTType.data
+    @State private var exportFilename = String(localized: "Hermes Media")
+    @State private var isFileExporterPresented = false
+    @State private var isExportingMedia = false
     @State private var isSavingToPhotos = false
     @State private var saveConfirmationMessage: String?
     @State private var errorMessage: String?
@@ -462,15 +571,25 @@ struct TranscriptMediaPreviewView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    if viewModel.canSaveImageToPhotos {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if viewModel.canSaveMediaToPhotos {
                         Button {
-                            Task { await saveImageToPhotos() }
+                            Task { await saveMediaToPhotos() }
                         } label: {
                             Image(systemName: "photo")
                         }
-                        .disabled(isSavingToPhotos || viewModel.isLoading)
-                        .accessibilityLabel("Save image to Photos")
+                        .disabled(exportActionsAreDisabled)
+                        .accessibilityLabel("Save media to Photos")
+                    }
+
+                    if viewModel.canExportMedia {
+                        Button {
+                            Task { await exportMedia() }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .disabled(exportActionsAreDisabled)
+                        .accessibilityLabel("Export media")
                     }
                 }
             }
@@ -479,6 +598,16 @@ struct TranscriptMediaPreviewView: View {
             }
             .refreshable {
                 await loadMedia(force: true)
+            }
+            .fileExporter(
+                isPresented: $isFileExporterPresented,
+                document: exportDocument,
+                contentType: exportContentType,
+                defaultFilename: exportFilename
+            ) { result in
+                if case let .failure(error) = result {
+                    errorMessage = error.localizedDescription
+                }
             }
             .alert(
                 "Saved",
@@ -619,23 +748,52 @@ struct TranscriptMediaPreviewView: View {
         }
     }
 
-    private func saveImageToPhotos() async {
+    private func exportMedia() async {
+        isExportingMedia = true
+        defer {
+            isExportingMedia = false
+        }
+
+        do {
+            let payload = try await viewModel.exportPayload()
+            exportDocument = ExportedFileDocument(data: payload.data)
+            exportContentType = payload.contentType
+            exportFilename = payload.filename
+            isFileExporterPresented = true
+        } catch {
+            errorMessage = error.localizedDescription
+            onAPIError(error)
+        }
+    }
+
+    private func saveMediaToPhotos() async {
         isSavingToPhotos = true
         defer {
             isSavingToPhotos = false
         }
 
         do {
-            let data = try await viewModel.originalImageData()
-            guard UIImage(data: data) != nil else {
-                throw PhotoLibrarySaveError.notImage
+            let payload = try await viewModel.exportPayload()
+            if payload.isImage {
+                guard UIImage(data: payload.data) != nil else {
+                    throw PhotoLibrarySaveError.notImage
+                }
+                try await PhotoLibrarySaver.saveImageData(payload.data)
+            } else if payload.isVideo {
+                try await PhotoLibrarySaver.saveVideoData(payload.data, contentType: payload.contentType)
+            } else {
+                throw PhotoLibrarySaveError.notPhotosMedia
             }
-            try await PhotoLibrarySaver.saveImageData(data)
-            saveConfirmationMessage = String(localized: "Image saved to Photos.")
+
+            saveConfirmationMessage = String(localized: "Media saved to Photos.")
         } catch {
             errorMessage = error.localizedDescription
             onAPIError(error)
         }
+    }
+
+    private var exportActionsAreDisabled: Bool {
+        viewModel.isLoading || isSavingToPhotos || isExportingMedia
     }
 }
 

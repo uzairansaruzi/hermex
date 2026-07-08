@@ -127,8 +127,13 @@ final class FilePreviewViewModel {
             data: data,
             filename: exportFilename,
             contentType: UTType(filenameExtension: pathExtension) ?? .data,
-            isImage: isRasterImagePath
+            isImage: isRasterImagePath,
+            isVideo: isVideoPath
         )
+    }
+
+    private var isVideoPath: Bool {
+        ["m4v", "mov", "mp4"].contains(pathExtension)
     }
 
     private var exportFilename: String {
@@ -154,6 +159,7 @@ struct FileExportPayload {
     let filename: String
     let contentType: UTType
     let isImage: Bool
+    let isVideo: Bool
 }
 
 enum FileExportError: LocalizedError {
