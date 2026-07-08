@@ -5,6 +5,13 @@ enum TranscriptMediaSource: Equatable {
     case remoteURL(URL)
 }
 
+enum TranscriptMediaKind: Equatable {
+    case image
+    case audio
+    case video
+    case unsupported
+}
+
 struct TranscriptMediaReference: Equatable, Identifiable {
     let rawReference: String
 
@@ -38,17 +45,37 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         }
     }
 
-    var isRasterImageCandidate: Bool {
+    var mediaKind: TranscriptMediaKind {
         let ext = pathExtension
         if Self.rasterImageExtensions.contains(ext) {
-            return true
+            return .image
+        }
+
+        if Self.audioExtensions.contains(ext) {
+            return .audio
+        }
+
+        if Self.videoExtensions.contains(ext) {
+            return .video
         }
 
         if case .remoteURL = source, ext.isEmpty {
-            return true
+            return .image
         }
 
-        return false
+        return .unsupported
+    }
+
+    var isRasterImageCandidate: Bool {
+        mediaKind == .image
+    }
+
+    var isAudioCandidate: Bool {
+        mediaKind == .audio
+    }
+
+    var isVideoCandidate: Bool {
+        mediaKind == .video
     }
 
     private var pathExtension: String {
@@ -62,6 +89,14 @@ struct TranscriptMediaReference: Equatable, Identifiable {
 
     private static let rasterImageExtensions: Set<String> = [
         "bmp", "gif", "heic", "heif", "ico", "jpg", "jpeg", "png", "tif", "tiff", "webp"
+    ]
+
+    private static let audioExtensions: Set<String> = [
+        "aac", "caf", "m4a", "mp3", "wav"
+    ]
+
+    private static let videoExtensions: Set<String> = [
+        "m4v", "mov", "mp4"
     ]
 }
 

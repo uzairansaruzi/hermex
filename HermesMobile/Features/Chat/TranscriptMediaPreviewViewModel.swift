@@ -10,8 +10,10 @@ final class TranscriptMediaPreviewViewModel {
     private var didLoad = false
     private var loadGeneration = 0
     private var originalData: Data?
+    private var temporaryVideoURL: URL?
 
     private(set) var previewData: Data?
+    private(set) var videoFileURL: URL?
     private(set) var originalByteCount: Int?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
@@ -38,10 +40,12 @@ final class TranscriptMediaPreviewViewModel {
         let generation = loadGeneration
         didLoad = true
         previewData = nil
+        videoFileURL = nil
         originalByteCount = nil
         originalData = nil
+        removeTemporaryVideoFile()
 
-        guard reference.isRasterImageCandidate else {
+        guard reference.isRasterImageCandidate || reference.isVideoCandidate else {
             errorMessage = String(localized: "Preview is not available for this media type.")
             return
         }
@@ -60,15 +64,26 @@ final class TranscriptMediaPreviewViewModel {
             guard !Task.isCancelled, loadGeneration == generation else { return }
             originalData = data
             originalByteCount = data.count
-            if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
-                from: data,
-                maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
-            ) {
-                guard !Task.isCancelled, loadGeneration == generation else { return }
-                previewData = downsampled
+
+            if reference.isVideoCandidate {
+                let fileURL = try writeTemporaryVideoFile(data)
+                guard !Task.isCancelled, loadGeneration == generation else {
+                    try? FileManager.default.removeItem(at: fileURL)
+                    return
+                }
+                temporaryVideoURL = fileURL
+                videoFileURL = fileURL
             } else {
-                guard !Task.isCancelled, loadGeneration == generation else { return }
-                errorMessage = String(localized: "Could not decode this image.")
+                if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
+                    from: data,
+                    maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
+                ) {
+                    guard !Task.isCancelled, loadGeneration == generation else { return }
+                    previewData = downsampled
+                } else {
+                    guard !Task.isCancelled, loadGeneration == generation else { return }
+                    errorMessage = String(localized: "Could not decode this image.")
+                }
             }
         } catch {
             guard !Task.isCancelled, loadGeneration == generation else { return }
@@ -109,6 +124,22 @@ final class TranscriptMediaPreviewViewModel {
         }
         return sessionID
     }
+
+    private func writeTemporaryVideoFile(_ data: Data) throws -> URL {
+        let ext = reference.videoFileExtension
+        let filename = "transcript-media-\(UUID().uuidString).\(ext)"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try data.write(to: url, options: [.atomic])
+        return url
+    }
+
+    private func removeTemporaryVideoFile() {
+        if let temporaryVideoURL {
+            try? FileManager.default.removeItem(at: temporaryVideoURL)
+        }
+        temporaryVideoURL = nil
+    }
+
 }
 
 private enum TranscriptMediaPreviewError: LocalizedError {
@@ -116,5 +147,18 @@ private enum TranscriptMediaPreviewError: LocalizedError {
 
     var errorDescription: String? {
         String(localized: "Preview is not available for this media without a server session.")
+    }
+}
+
+private extension TranscriptMediaReference {
+    var videoFileExtension: String {
+        switch source {
+        case let .remoteURL(url):
+            let ext = url.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ext.isEmpty ? "mp4" : ext
+        case let .localPath(path):
+            let ext = URL(fileURLWithPath: path).pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ext.isEmpty ? "mp4" : ext
+        }
     }
 }

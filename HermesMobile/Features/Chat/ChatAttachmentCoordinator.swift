@@ -168,6 +168,18 @@ final class ChatAttachmentCoordinator {
         }
     }
 
+    /// Raw transcript media bytes for inline audio/video playback. Local paths
+    /// still require a real session ID so `/api/media` can authorize session media.
+    func transcriptMediaData(for reference: TranscriptMediaReference) async -> Data? {
+        guard let sessionID = delegate?.attachmentSessionID else { return nil }
+
+        do {
+            return try await client.transcriptMediaData(for: reference, sessionID: sessionID)
+        } catch {
+            return nil
+        }
+    }
+
     func prepareForSend(localMessageID: String) -> ChatAttachmentSendPreparation {
         let attachmentsForSend = pendingAttachments
         let messageAttachments = attachmentsForSend.map { pending in

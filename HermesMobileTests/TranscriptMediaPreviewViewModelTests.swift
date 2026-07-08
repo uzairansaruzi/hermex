@@ -150,6 +150,66 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(recorder.requestCount, 0)
     }
 
+    func testLoadLocalVideoUsesMediaEndpointAndCreatesPlayableFileURL() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let videoData = Data("video-bytes".utf8)
+        let mediaPath = "/tmp/generated/movie.mp4"
+        let sessionID = "session-123"
+        let client = makeClient { request in
+            recorder.record(request)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/media")
+            return self.response(statusCode: 200, data: videoData, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            sessionID: sessionID,
+            reference: .init(rawReference: mediaPath),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.previewData)
+        let videoFileURL = try XCTUnwrap(viewModel.videoFileURL)
+        XCTAssertEqual(videoFileURL.pathExtension, "mp4")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: videoFileURL.path))
+        XCTAssertEqual(try Data(contentsOf: videoFileURL), videoData)
+        XCTAssertEqual(viewModel.originalByteCount, videoData.count)
+        XCTAssertFalse(viewModel.canSaveImageToPhotos)
+
+        let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
+        XCTAssertEqual(queryItems["session_id"], sessionID)
+        XCTAssertEqual(queryItems["path"], mediaPath)
+        XCTAssertEqual(recorder.requestCount, 1)
+    }
+
+    func testLoadLocalVideoWithoutSessionIDDoesNotRequestMediaEndpoint() async {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let client = makeClient { request in
+            recorder.record(request)
+            return self.response(statusCode: 200, data: Data(), for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            sessionID: "   ",
+            reference: .init(rawReference: "/tmp/generated/movie.mov"),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.previewData)
+        XCTAssertNil(viewModel.videoFileURL)
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertNotNil(viewModel.lastError)
+        XCTAssertEqual(recorder.requestCount, 0)
+    }
+
     func testMediaEndpointErrorIsCaptured() async {
         let client = makeClient { request in
             self.response(statusCode: 403, data: Data("forbidden".utf8), for: request)

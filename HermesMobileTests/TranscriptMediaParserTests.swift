@@ -95,6 +95,28 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(media?.isRasterImageCandidate, false)
     }
 
+    func testDetectsAudioAndVideoMediaKinds() {
+        let references = [
+            TranscriptMediaReference(rawReference: "/tmp/output.mp3"),
+            TranscriptMediaReference(rawReference: "/tmp/output.m4a"),
+            TranscriptMediaReference(rawReference: "/tmp/output.wav"),
+            TranscriptMediaReference(rawReference: "/tmp/output.aac"),
+            TranscriptMediaReference(rawReference: "/tmp/output.caf"),
+            TranscriptMediaReference(rawReference: "https://cdn.example.test/output.mp4?download=1"),
+            TranscriptMediaReference(rawReference: "/tmp/output.mov"),
+            TranscriptMediaReference(rawReference: "/tmp/output.m4v")
+        ]
+
+        XCTAssertEqual(references[0].mediaKind, .audio)
+        XCTAssertEqual(references[1].mediaKind, .audio)
+        XCTAssertEqual(references[2].mediaKind, .audio)
+        XCTAssertEqual(references[3].mediaKind, .audio)
+        XCTAssertEqual(references[4].mediaKind, .audio)
+        XCTAssertEqual(references[5].mediaKind, .video)
+        XCTAssertEqual(references[6].mediaKind, .video)
+        XCTAssertEqual(references[7].mediaKind, .video)
+    }
+
     func testEmptyReferenceDisplayNameFallsBackToMedia() {
         XCTAssertEqual(TranscriptMediaReference(rawReference: "").displayName, "Media")
     }

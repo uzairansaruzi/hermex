@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import UIKit
 
@@ -13,6 +14,7 @@ struct TranscriptMediaContentView: View {
     let segments: [TranscriptMediaSegment]
     let cacheNamespace: String
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
 
@@ -20,12 +22,14 @@ struct TranscriptMediaContentView: View {
         segments: [TranscriptMediaSegment],
         cacheNamespace: String,
         loadMediaImage: ((TranscriptMediaReference) async -> Data?)?,
+        loadMediaData: ((TranscriptMediaReference) async -> Data?)?,
         onPreviewMedia: ((TranscriptMediaReference) -> Void)?,
         isStreaming: Bool = false
     ) {
         self.segments = segments
         self.cacheNamespace = cacheNamespace
         self.loadMediaImage = loadMediaImage
+        self.loadMediaData = loadMediaData
         self.onPreviewMedia = onPreviewMedia
         self.isStreaming = isStreaming
     }
@@ -43,6 +47,7 @@ struct TranscriptMediaContentView: View {
                         reference: reference,
                         cacheNamespace: cacheNamespace,
                         loadMediaImage: loadMediaImage,
+                        loadMediaData: loadMediaData,
                         onPreviewMedia: onPreviewMedia
                     )
                     // Pin the image container LTR so media keeps its leading-edge
@@ -59,6 +64,7 @@ private struct TranscriptMediaThumbnailView: View {
     let reference: TranscriptMediaReference
     let cacheNamespace: String
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
+    let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
 
     @State private var image: UIImage?
@@ -68,7 +74,8 @@ private struct TranscriptMediaThumbnailView: View {
     private let thumbnailHeight: CGFloat = 132
 
     var body: some View {
-        if reference.isRasterImageCandidate, let loadMediaImage {
+        switch reference.mediaKind {
+        case .image where loadMediaImage != nil:
             Button {
                 onPreviewMedia?(reference)
             } label: {
@@ -77,6 +84,7 @@ private struct TranscriptMediaThumbnailView: View {
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(String(localized: "Open media image \(reference.displayName)"))
             .task(id: imageCacheKey) {
+                guard let loadMediaImage else { return }
                 image = nil
                 didAttemptLoad = false
                 let loadedImage = await TranscriptMediaImageCache.shared.image(
@@ -90,7 +98,24 @@ private struct TranscriptMediaThumbnailView: View {
                     didAttemptLoad = true
                 }
             }
-        } else {
+        case .audio where loadMediaData != nil:
+            InlineAudioPlayerView(title: reference.displayName) {
+                guard let loadMediaData else { return nil }
+                return await loadMediaData(reference)
+            }
+            .frame(maxWidth: 280)
+            .accessibilityElement(children: .contain)
+
+        case .video:
+            Button {
+                onPreviewMedia?(reference)
+            } label: {
+                TranscriptMediaVideoTile(reference: reference)
+            }
+            .buttonStyle(.chatTactile(.thumbnail))
+            .accessibilityLabel(String(localized: "Open media video \(reference.displayName)"))
+
+        default:
             TranscriptMediaUnavailableChip(reference: reference)
         }
     }
@@ -122,6 +147,40 @@ private struct TranscriptMediaThumbnailView: View {
                     ProgressView()
                         .tint(Color(.tertiaryLabel))
                 }
+        }
+    }
+}
+
+private struct TranscriptMediaVideoTile: View {
+    let reference: TranscriptMediaReference
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+                .frame(width: 210, height: 132)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                )
+
+            VStack(spacing: 8) {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+
+                Text(reference.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 172)
+
+                Text("Video")
+                    .font(.caption2)
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+            .padding(.horizontal, 14)
         }
     }
 }
@@ -162,7 +221,16 @@ private struct TranscriptMediaUnavailableChip: View {
     }
 
     private var iconName: String {
-        reference.isRasterImageCandidate ? "photo" : "doc"
+        switch reference.mediaKind {
+        case .image:
+            "photo"
+        case .audio:
+            "waveform"
+        case .video:
+            "play.rectangle"
+        case .unsupported:
+            "doc"
+        }
     }
 }
 
@@ -259,6 +327,8 @@ struct TranscriptMediaPreviewView: View {
                     }
                 } else if let data = viewModel.previewData, let image = UIImage(data: data) {
                     imageContent(image)
+                } else if let videoURL = viewModel.videoFileURL {
+                    videoContent(videoURL)
                 } else {
                     unavailableContent(String(localized: "Preview is not available for this media."))
                 }
@@ -343,9 +413,27 @@ struct TranscriptMediaPreviewView: View {
         .background(Color(.systemBackground))
     }
 
+    private func videoContent(_ url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            mediaHeader
+
+            TranscriptVideoPreviewPlayerView(url: url)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                )
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.systemBackground))
+    }
+
     private func unavailableContent(_ message: String) -> some View {
         ContentUnavailableView {
-            Label("No Preview", systemImage: item.reference.isRasterImageCandidate ? "photo" : "doc.questionmark")
+            Label("No Preview", systemImage: unavailableIconName)
         } description: {
             VStack(spacing: 8) {
                 Text(message)
@@ -355,6 +443,19 @@ struct TranscriptMediaPreviewView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
+        }
+    }
+
+    private var unavailableIconName: String {
+        switch item.reference.mediaKind {
+        case .image:
+            "photo"
+        case .audio:
+            "waveform"
+        case .video:
+            "play.rectangle"
+        case .unsupported:
+            "doc.questionmark"
         }
     }
 
@@ -397,6 +498,30 @@ struct TranscriptMediaPreviewView: View {
         } catch {
             errorMessage = error.localizedDescription
             onAPIError(error)
+        }
+    }
+}
+
+private struct TranscriptVideoPreviewPlayerView: View {
+    let url: URL
+
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: url) {
+            player?.pause()
+            player = AVPlayer(url: url)
+        }
+        .onDisappear {
+            player?.pause()
         }
     }
 }

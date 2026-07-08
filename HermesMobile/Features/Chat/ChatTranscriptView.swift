@@ -47,6 +47,7 @@ struct ChatTranscriptView: View {
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
@@ -234,6 +235,7 @@ struct ChatTranscriptView: View {
                     loadAttachmentImage: loadAttachmentImage,
                     loadAttachmentData: loadAttachmentData,
                     loadTranscriptMediaImage: loadTranscriptMediaImage,
+                    loadTranscriptMediaData: loadTranscriptMediaData,
                     transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
                     actionContext: actionContext,
                     shouldRenderMessageRow: shouldRenderMessageRow,
@@ -454,6 +456,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
@@ -520,6 +523,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     loadAttachmentImage: loadAttachmentImage,
                     loadAttachmentData: loadAttachmentData,
                     loadTranscriptMediaImage: loadTranscriptMediaImage,
+                    loadTranscriptMediaData: loadTranscriptMediaData,
                     transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
@@ -601,6 +605,7 @@ private struct ChatTranscriptMessageRow: View {
     let loadAttachmentImage: (String) async -> Data?
     let loadAttachmentData: (String) async -> Data?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
+    let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
@@ -647,6 +652,7 @@ private struct ChatTranscriptMessageRow: View {
             loadAttachmentImage: loadAttachmentImage,
             loadAttachmentData: loadAttachmentData,
             loadTranscriptMediaImage: loadTranscriptMediaImage,
+            loadTranscriptMediaData: loadTranscriptMediaData,
             transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
             localAttachmentPreviews: localAttachmentPreviews,
             onPreviewAttachment: onPreviewAttachment,

@@ -1138,6 +1138,10 @@ final class ChatViewModel {
         await attachmentCoordinator.transcriptMediaThumbnailData(for: reference)
     }
 
+    func transcriptMediaData(for reference: TranscriptMediaReference) async -> Data? {
+        await attachmentCoordinator.transcriptMediaData(for: reference)
+    }
+
     func loadMessages(modelContext: ModelContext? = nil) async {
         guard let sessionID else {
             errorMessage = String(localized: "The server did not provide a session ID.")
