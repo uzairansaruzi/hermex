@@ -185,6 +185,10 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(queryItems["session_id"], sessionID)
         XCTAssertEqual(queryItems["path"], mediaPath)
         XCTAssertEqual(recorder.requestCount, 1)
+
+        viewModel.cleanupTemporaryFiles()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: videoFileURL.path))
+        XCTAssertNil(viewModel.videoFileURL)
     }
 
     func testLoadLocalVideoWithoutSessionIDDoesNotRequestMediaEndpoint() async {
@@ -208,6 +212,41 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertNotNil(viewModel.errorMessage)
         XCTAssertNotNil(viewModel.lastError)
         XCTAssertEqual(recorder.requestCount, 0)
+    }
+
+    func testExtensionlessRemoteMediaFallsBackToVideoFileWhenImageDecodeFails() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let videoData = Data("video-bytes".utf8)
+        let remoteURL = try XCTUnwrap(URL(string: "https://cdn.example.test/media/abc123"))
+        let client = makeClient { request in
+            recorder.record(request)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url, remoteURL)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Test-Session"), "public")
+            return self.response(statusCode: 200, data: videoData, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            sessionID: "session-123",
+            reference: .init(rawReference: remoteURL.absoluteString),
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.previewData)
+        let videoFileURL = try XCTUnwrap(viewModel.videoFileURL)
+        XCTAssertEqual(videoFileURL.pathExtension, "mp4")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: videoFileURL.path))
+        XCTAssertEqual(try Data(contentsOf: videoFileURL), videoData)
+        XCTAssertEqual(viewModel.originalByteCount, videoData.count)
+        XCTAssertEqual(recorder.requestCount, 1)
+
+        viewModel.cleanupTemporaryFiles()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: videoFileURL.path))
     }
 
     func testMediaEndpointErrorIsCaptured() async {

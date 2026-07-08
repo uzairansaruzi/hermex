@@ -117,6 +117,16 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(references[7].mediaKind, .video)
     }
 
+    func testExtensionlessRemoteReferenceRemainsImageCandidateButCanFallbackToMedia() throws {
+        let remoteURL = try XCTUnwrap(URL(string: "https://cdn.example.test/media/abc123"))
+        let reference = TranscriptMediaReference(rawReference: remoteURL.absoluteString)
+
+        XCTAssertEqual(reference.source, .remoteURL(remoteURL))
+        XCTAssertEqual(reference.mediaKind, .image)
+        XCTAssertTrue(reference.isRasterImageCandidate)
+        XCTAssertTrue(reference.isExtensionlessRemoteMediaCandidate)
+    }
+
     func testEmptyReferenceDisplayNameFallsBackToMedia() {
         XCTAssertEqual(TranscriptMediaReference(rawReference: "").displayName, "Media")
     }

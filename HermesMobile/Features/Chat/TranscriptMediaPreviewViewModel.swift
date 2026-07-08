@@ -82,7 +82,13 @@ final class TranscriptMediaPreviewViewModel {
                     previewData = downsampled
                 } else {
                     guard !Task.isCancelled, loadGeneration == generation else { return }
-                    errorMessage = String(localized: "Could not decode this image.")
+                    if reference.isExtensionlessRemoteMediaCandidate {
+                        let fileURL = try writeTemporaryVideoFile(data)
+                        temporaryVideoURL = fileURL
+                        videoFileURL = fileURL
+                    } else {
+                        errorMessage = String(localized: "Could not decode this image.")
+                    }
                 }
             }
         } catch {
@@ -123,6 +129,11 @@ final class TranscriptMediaPreviewViewModel {
             return nil
         }
         return sessionID
+    }
+
+    func cleanupTemporaryFiles() {
+        removeTemporaryVideoFile()
+        videoFileURL = nil
     }
 
     private func writeTemporaryVideoFile(_ data: Data) throws -> URL {

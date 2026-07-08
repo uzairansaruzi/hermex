@@ -78,6 +78,13 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         mediaKind == .video
     }
 
+    var isExtensionlessRemoteMediaCandidate: Bool {
+        if case .remoteURL = source, pathExtension.isEmpty {
+            return true
+        }
+        return false
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):

@@ -138,7 +138,11 @@ private struct TranscriptMediaThumbnailView: View {
                         .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
                 )
         } else if didAttemptLoad {
-            TranscriptMediaUnavailableChip(reference: reference)
+            if reference.isExtensionlessRemoteMediaCandidate {
+                TranscriptMediaVideoTile(reference: reference)
+            } else {
+                TranscriptMediaUnavailableChip(reference: reference)
+            }
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color(.systemFill))
@@ -393,6 +397,9 @@ struct TranscriptMediaPreviewView: View {
                 }
             } message: {
                 Text(errorMessage ?? "")
+            }
+            .onDisappear {
+                viewModel.cleanupTemporaryFiles()
             }
         }
     }
