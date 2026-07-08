@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import SwiftUI
 import UIKit
@@ -75,6 +76,17 @@ private struct TranscriptMediaThumbnailView: View {
 
     var body: some View {
         switch reference.mediaKind {
+        case .image where reference.isExtensionlessRemoteMediaCandidate && loadMediaData != nil:
+            if let loadMediaData {
+                TranscriptMediaResolvedRemoteView(
+                    reference: reference,
+                    loadMediaData: loadMediaData,
+                    onPreviewMedia: onPreviewMedia
+                )
+            } else {
+                TranscriptMediaUnavailableChip(reference: reference)
+            }
+
         case .image where loadMediaImage != nil:
             Button {
                 onPreviewMedia?(reference)
@@ -82,7 +94,7 @@ private struct TranscriptMediaThumbnailView: View {
                 thumbnailContent
             }
             .buttonStyle(.chatTactile(.thumbnail))
-            .accessibilityLabel(String(localized: "Open media image \(reference.displayName)"))
+            .accessibilityLabel(imageButtonAccessibilityLabel)
             .task(id: imageCacheKey) {
                 guard let loadMediaImage else { return }
                 image = nil
@@ -124,6 +136,14 @@ private struct TranscriptMediaThumbnailView: View {
         TranscriptMediaImageCacheKey(namespace: cacheNamespace, reference: reference)
     }
 
+    private var imageButtonAccessibilityLabel: String {
+        if image == nil, didAttemptLoad, reference.isExtensionlessRemoteMediaCandidate {
+            return String(localized: "Open media video \(reference.displayName)")
+        }
+
+        return String(localized: "Open media image \(reference.displayName)")
+    }
+
     @ViewBuilder
     private var thumbnailContent: some View {
         if let image {
@@ -152,6 +172,100 @@ private struct TranscriptMediaThumbnailView: View {
                         .tint(Color(.tertiaryLabel))
                 }
         }
+    }
+}
+
+private struct TranscriptMediaResolvedRemoteView: View {
+    let reference: TranscriptMediaReference
+    let loadMediaData: (TranscriptMediaReference) async -> Data?
+    let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
+
+    @State private var resolvedMedia: ResolvedMedia?
+
+    var body: some View {
+        Group {
+            switch resolvedMedia {
+            case let .image(image):
+                Button {
+                    onPreviewMedia?(reference)
+                } label: {
+                    thumbnailContent(image)
+                }
+                .buttonStyle(.chatTactile(.thumbnail))
+                .accessibilityLabel(String(localized: "Open media image \(reference.displayName)"))
+
+            case let .audio(data):
+                InlineAudioPlayerView(title: reference.displayName) {
+                    data
+                }
+                .frame(maxWidth: 280)
+                .accessibilityElement(children: .contain)
+
+            case .video:
+                Button {
+                    onPreviewMedia?(reference)
+                } label: {
+                    TranscriptMediaVideoTile(reference: reference)
+                }
+                .buttonStyle(.chatTactile(.thumbnail))
+                .accessibilityLabel(String(localized: "Open media video \(reference.displayName)"))
+
+            case .unavailable:
+                TranscriptMediaUnavailableChip(reference: reference)
+
+            case nil:
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(.systemFill))
+                    .frame(width: 210, height: 132)
+                    .overlay {
+                        ProgressView()
+                            .tint(Color(.tertiaryLabel))
+                    }
+            }
+        }
+        .task(id: reference.id) {
+            resolvedMedia = nil
+            guard let data = await loadMediaData(reference) else {
+                guard !Task.isCancelled else { return }
+                resolvedMedia = .unavailable
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            resolvedMedia = Self.resolve(data)
+        }
+    }
+
+    private func thumbnailContent(_ image: UIImage) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 210, height: 132)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+            )
+    }
+
+    private static func resolve(_ data: Data) -> ResolvedMedia {
+        if let image = UIImage(data: data) {
+            return .image(image)
+        }
+
+        if (try? AVAudioPlayer(data: data)) != nil {
+            return .audio(data)
+        }
+
+        return .video
+    }
+
+    private enum ResolvedMedia {
+        case image(UIImage)
+        case audio(Data)
+        case video
+        case unavailable
     }
 }
 
