@@ -12,8 +12,8 @@ final class ComposerVoiceInputController {
         case idle
         case requestingPermission
         case listening
-        case serverListening  // Recording for server-side STT
-        case transcribing     // Server is processing audio
+        case serverListening
+        case transcribing
     }
 
     private(set) var state: State = .idle
@@ -22,14 +22,13 @@ final class ComposerVoiceInputController {
 
     private let speechRecognizerFactory: () -> SFSpeechRecognizer?
     private let audioEngineFactory: () -> AVAudioEngine
-    private let apiClient: APIClient?
-    private let locale: Locale
     private var speechRecognizer: SFSpeechRecognizer?
     private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var transcriptionTask: Task<Void, Never>?
     private var draftUpdateSession = ComposerVoiceDraftUpdateSession()
     private var updateDraft: ((String) -> Void)?
     private var suppressNextRecognitionError = false
@@ -37,16 +36,15 @@ final class ComposerVoiceInputController {
     private var audioTapInstalled = false
     private let logger = Logger.hermesVoiceInput
 
+    var apiClient: APIClient?
+    var locale: Locale = .current
+
     init(
         speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
-        audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() },
-        apiClient: APIClient? = nil,
-        locale: Locale = .current
+        audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() }
     ) {
         self.speechRecognizerFactory = speechRecognizerFactory
         self.audioEngineFactory = audioEngineFactory
-        self.apiClient = apiClient
-        self.locale = locale
     }
 
     var isListening: Bool {
@@ -67,7 +65,9 @@ final class ComposerVoiceInputController {
 
     func stopKeepingTranscript() {
         suppressNextRecognitionError = true
-        stopAcceptingDraftUpdates()
+        if state != .serverListening && state != .transcribing {
+            stopAcceptingDraftUpdates()
+        }
         stopAudio(cancelTask: false)
         state = .idle
     }
@@ -90,20 +90,18 @@ final class ComposerVoiceInputController {
         self.updateDraft = updateDraft
         state = .requestingPermission
 
-        // Decide: Apple native STT or server STT?
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+
         let appleSupportsLocale = SFSpeechRecognizer.supportedLocales().contains(locale)
         let useServerSTT = !appleSupportsLocale && apiClient != nil
 
         if useServerSTT {
             logger.info("Locale \(self.locale.identifier) not supported by Apple — using server STT")
-            // Server STT path: only need microphone permission
             let isMicrophonePermissionGranted = await requestMicrophonePermission()
             guard state == .requestingPermission else { return }
             guard isMicrophonePermissionGranted else {
-                fail(
-                    String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."),
-                    logCategory: .microphonePermission
-                )
+                fail(String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."), logCategory: .microphonePermission)
                 return
             }
             guard ComposerVoiceInputStartPolicy.canStart(appIsActive: UIApplication.shared.applicationState == .active) else {
@@ -119,12 +117,8 @@ final class ComposerVoiceInputController {
             return
         }
 
-        // Apple native STT path
         guard let speechRecognizer = speechRecognizerForRecording() else {
-            fail(
-                String(localized: "Speech recognition is not available for the current locale."),
-                logCategory: .speechUnavailable
-            )
+            fail(String(localized: "Speech recognition is not available for the current locale."), logCategory: .speechUnavailable)
             return
         }
 
@@ -157,7 +151,9 @@ final class ComposerVoiceInputController {
         }
     }
 
-    // MARK: - Server STT Recording
+    // MARK: - Server STT
+
+    private static let maxServerRecordingDuration: TimeInterval = 60
 
     private func startServerRecording() throws {
         stopAudio(cancelTask: true)
@@ -178,14 +174,13 @@ final class ComposerVoiceInputController {
             AVSampleRateKey: 16000.0,
             AVNumberOfChannelsKey: 1,
             AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            AVLinearPCMIsFloatKey: false
         ]
 
         let recorder = try AVAudioRecorder(url: recordingURL, settings: settings)
         recorder.prepareToRecord()
         recorder.isMeteringEnabled = true
-        recorder.record()
+        recorder.record(forDuration: Self.maxServerRecordingDuration)
         self.audioRecorder = recorder
 
         ComposerAudioCaptureState.shared.setCapturing(true)
@@ -193,22 +188,25 @@ final class ComposerVoiceInputController {
     }
 
     private func finishServerRecording() async {
-        guard let recorder = audioRecorder, let recordingURL = recordingURL else {
+        guard let recorder = audioRecorder, let recordingURL = self.recordingURL else {
             return
         }
-        recorder.stop()
-        audioRecorder = nil
-        ComposerAudioCaptureState.shared.setCapturing(false)
 
+        if recorder.isRecording {
+            recorder.stop()
+        }
+        ComposerAudioCaptureState.shared.setCapturing(false)
         logger.info("Server STT: recording finished, duration=\(recorder.currentTime)s")
 
         guard let apiClient else {
+            try? FileManager.default.removeItem(at: recordingURL)
+            self.recordingURL = nil
             fail("Speech-to-text is not configured on this server.", logCategory: .speechUnavailable)
             return
         }
 
         state = .transcribing
-        liveTranscript = String(localized: "Transcribing…")
+        liveTranscript = String(localized: "Transcribing...")
 
         do {
             let audioData = try Data(contentsOf: recordingURL)
@@ -219,7 +217,6 @@ final class ComposerVoiceInputController {
                 language: languageCode
             )
 
-            // Clean up temp file
             try? FileManager.default.removeItem(at: recordingURL)
             self.recordingURL = nil
 
@@ -252,21 +249,11 @@ final class ComposerVoiceInputController {
         }
 
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(
-            ComposerVoiceAudioSessionConfiguration.category,
-            mode: ComposerVoiceAudioSessionConfiguration.mode,
-            options: ComposerVoiceAudioSessionConfiguration.options
-        )
+        try audioSession.setCategory(ComposerVoiceAudioSessionConfiguration.category, mode: ComposerVoiceAudioSessionConfiguration.mode, options: ComposerVoiceAudioSessionConfiguration.options)
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         activatedAudioSessionForRecording = true
-        logger.info(
-            "Voice input audio session active inputAvailable=\(audioSession.isInputAvailable, privacy: .public) sampleRate=\(audioSession.sampleRate, privacy: .public) inputChannels=\(audioSession.inputNumberOfChannels, privacy: .public)"
-        )
-        try ComposerVoiceInputStartPolicy.validateAudioSessionInput(
-            isInputAvailable: audioSession.isInputAvailable,
-            sampleRate: audioSession.sampleRate,
-            inputNumberOfChannels: audioSession.inputNumberOfChannels
-        )
+        logger.info("Voice input audio session active inputAvailable=\(audioSession.isInputAvailable, privacy: .public) sampleRate=\(audioSession.sampleRate, privacy: .public) inputChannels=\(audioSession.inputNumberOfChannels, privacy: .public)")
+        try ComposerVoiceInputStartPolicy.validateAudioSessionInput(isInputAvailable: audioSession.isInputAvailable, sampleRate: audioSession.sampleRate, inputNumberOfChannels: audioSession.inputNumberOfChannels)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -279,14 +266,10 @@ final class ComposerVoiceInputController {
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         try ComposerVoiceInputPreflight.validate(recordingFormat: recordingFormat)
-        logger.info(
-            "Voice input installing audio tap sampleRate=\(recordingFormat.sampleRate, privacy: .public) channels=\(recordingFormat.channelCount, privacy: .public)"
-        )
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: recordingFormat) { [weak request] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak request] buffer, _ in
             request?.append(buffer)
         }
         audioTapInstalled = true
-        logger.info("Voice input audio tap installed")
 
         audioEngine.prepare()
 
@@ -336,28 +319,24 @@ final class ComposerVoiceInputController {
     private func stopAudio(cancelTask: Bool) {
         ComposerAudioCaptureState.shared.setCapturing(false)
 
-        // Stop server STT recorder
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+
+        let hadServerRecording = audioRecorder?.isRecording == true && recordingURL != nil
+
         if let recorder = audioRecorder, recorder.isRecording {
             recorder.stop()
             audioRecorder = nil
-            // If we were in serverListening state, finalize the transcription
-            if state == .serverListening {
-                Task { await finishServerRecording() }
-            }
         }
 
         if let audioEngine {
             if audioEngine.isRunning {
                 audioEngine.stop()
-                logger.info("Voice input audio engine stopped")
             }
-
             if audioTapInstalled {
                 audioEngine.inputNode.removeTap(onBus: 0)
                 audioTapInstalled = false
-                logger.info("Voice input audio tap removed")
             }
-
             audioEngine.reset()
         }
         audioEngine = nil
@@ -371,10 +350,16 @@ final class ComposerVoiceInputController {
         recognitionTask = nil
         recognitionRequest = nil
 
+        if hadServerRecording, let url = recordingURL {
+            let task = Task { [weak self] in
+                await self?.finishServerRecording()
+            }
+            transcriptionTask = task
+        }
+
         if activatedAudioSessionForRecording {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             activatedAudioSessionForRecording = false
-            logger.info("Voice input audio session deactivated")
         }
     }
 
@@ -382,7 +367,6 @@ final class ComposerVoiceInputController {
         if let speechRecognizer {
             return speechRecognizer
         }
-
         let speechRecognizer = speechRecognizerFactory()
         self.speechRecognizer = speechRecognizer
         return speechRecognizer
@@ -426,33 +410,21 @@ final class ComposerVoiceInputController {
 
     private static func logDescription(for status: SFSpeechRecognizerAuthorizationStatus) -> String {
         switch status {
-        case .denied:
-            return "denied"
-        case .restricted:
-            return "restricted"
-        case .notDetermined:
-            return "notDetermined"
-        case .authorized:
-            return "authorized"
-        @unknown default:
-            return "unknown"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "notDetermined"
+        case .authorized: return "authorized"
+        @unknown default: return "unknown"
         }
     }
 
     private static func logCategory(for error: Error) -> VoiceInputFailureLogCategory {
-        guard let voiceError = error as? ComposerVoiceInputError else {
-            return .audioStartup
-        }
-
+        guard let voiceError = error as? ComposerVoiceInputError else { return .audioStartup }
         switch voiceError {
-        case .noAudioInput:
-            return .noAudioInput
-        case .invalidInputFormat:
-            return .invalidInputFormat
-        case .appNotActive:
-            return .appNotActive
-        case .audioEngineAlreadyRunning:
-            return .audioEngineAlreadyRunning
+        case .noAudioInput: return .noAudioInput
+        case .invalidInputFormat: return .invalidInputFormat
+        case .appNotActive: return .appNotActive
+        case .audioEngineAlreadyRunning: return .audioEngineAlreadyRunning
         }
     }
 }
@@ -482,7 +454,7 @@ enum ComposerVoiceInputError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noAudioInput:
-            return String(localized: "No microphone input is available. Check the Simulator or device microphone settings.")
+            return String(localized: "No microphone input is available.")
         case .invalidInputFormat:
             return String(localized: "Voice input is not available because the microphone input format is invalid.")
         case .appNotActive:
@@ -505,65 +477,35 @@ enum VoiceInputFailureLogCategory: String {
 }
 
 enum ComposerVoiceInputStartPolicy {
-    static func canStart(appIsActive: Bool) -> Bool {
-        appIsActive
+    static func canStart(appIsActive: Bool) -> Bool { appIsActive }
+    static func validateAudioSessionInput(isInputAvailable: Bool, sampleRate: Double, inputNumberOfChannels: Int) throws {
+        guard isInputAvailable else { throw ComposerVoiceInputError.noAudioInput }
+        try ComposerVoiceInputPreflight.validate(sampleRate: sampleRate, channelCount: UInt32(max(inputNumberOfChannels, 0)))
     }
-
-    static func validateAudioSessionInput(
-        isInputAvailable: Bool,
-        sampleRate: Double,
-        inputNumberOfChannels: Int
-    ) throws {
-        guard isInputAvailable else {
-            throw ComposerVoiceInputError.noAudioInput
-        }
-
-        try ComposerVoiceInputPreflight.validate(
-            sampleRate: sampleRate,
-            channelCount: UInt32(max(inputNumberOfChannels, 0))
-        )
-    }
-
     static func validateAudioEngine(isRunning: Bool) throws {
-        guard !isRunning else {
-            throw ComposerVoiceInputError.audioEngineAlreadyRunning
-        }
+        guard !isRunning else { throw ComposerVoiceInputError.audioEngineAlreadyRunning }
     }
 }
 
 enum ComposerVoiceInputPreflight {
     static let validSampleRateRange: ClosedRange<Double> = 8_000...192_000
     static let validChannelCountRange: ClosedRange<UInt32> = 1...16
-
     static func validate(sampleRate: Double, channelCount: UInt32) throws {
-        guard sampleRate.isFinite,
-              validSampleRateRange.contains(sampleRate),
-              validChannelCountRange.contains(channelCount)
-        else {
+        guard sampleRate.isFinite, validSampleRateRange.contains(sampleRate), validChannelCountRange.contains(channelCount) else {
             throw ComposerVoiceInputError.invalidInputFormat
         }
     }
-
     static func validate(recordingFormat: AVAudioFormat) throws {
-        try validate(
-            sampleRate: recordingFormat.sampleRate,
-            channelCount: recordingFormat.channelCount
-        )
+        try validate(sampleRate: recordingFormat.sampleRate, channelCount: recordingFormat.channelCount)
     }
 }
 
 enum ComposerVoiceDraftComposer {
     static func composedDraft(baseDraft: String, transcript: String) -> String {
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTranscript.isEmpty else {
-            return baseDraft
-        }
-
+        guard !trimmedTranscript.isEmpty else { return baseDraft }
         let trimmedTrailingDraft = baseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTrailingDraft.isEmpty else {
-            return trimmedTranscript
-        }
-
+        guard !trimmedTrailingDraft.isEmpty else { return trimmedTranscript }
         return "\(trimmedTrailingDraft) \(trimmedTranscript)"
     }
 }
@@ -571,31 +513,14 @@ enum ComposerVoiceDraftComposer {
 struct ComposerVoiceDraftUpdateSession {
     private var baseDraft = ""
     private var acceptsUpdates = false
-
-    mutating func begin(baseDraft: String) {
-        self.baseDraft = baseDraft
-        acceptsUpdates = true
-    }
-
-    mutating func stopAcceptingUpdates() {
-        acceptsUpdates = false
-    }
-
+    mutating func begin(baseDraft: String) { self.baseDraft = baseDraft; acceptsUpdates = true }
+    mutating func stopAcceptingUpdates() { acceptsUpdates = false }
     func composedDraft(for transcript: String) -> String? {
-        guard acceptsUpdates else {
-            return nil
-        }
-
-        return ComposerVoiceDraftComposer.composedDraft(
-            baseDraft: baseDraft,
-            transcript: transcript
-        )
+        guard acceptsUpdates else { return nil }
+        return ComposerVoiceDraftComposer.composedDraft(baseDraft: baseDraft, transcript: transcript)
     }
 }
 
 private extension Logger {
-    static let hermesVoiceInput = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile",
-        category: "VoiceInput"
-    )
+    static let hermesVoiceInput = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile", category: "VoiceInput")
 }

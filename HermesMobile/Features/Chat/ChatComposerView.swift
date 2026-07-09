@@ -107,6 +107,7 @@ struct MessageComposerView: View {
     /// When true, dictation auto-starts once this composer appears with the app active —
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
     let autoStartsVoiceInput: Bool
+    let apiClient: APIClient?
     let uploadAttachmentErrorMessage: String?
     let onSend: () -> Void
     let onSendVoiceNote: (Data, String) -> Void
@@ -1015,7 +1016,17 @@ struct MessageComposerView: View {
     }
 
     @MainActor
+    @MainActor
     private func toggleVoiceInput() {
+        voiceInput.apiClient = apiClient
+        voiceInput.locale = .current
+        Task {
+            await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
+                draftMessage = newDraft
+            }
+        }
+    }
+
         Task {
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
                 draftMessage = newDraft
