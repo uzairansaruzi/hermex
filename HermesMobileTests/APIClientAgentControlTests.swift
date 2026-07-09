@@ -62,6 +62,28 @@ final class APIClientAgentControlTests: APIClientTestCase {
         XCTAssertEqual(response.pendingCount, 1)
     }
 
+    func testPendingApprovalDecodesServerIdentifierAliases() throws {
+        let decoder = JSONDecoder()
+
+        let snake = try decoder.decode(
+            PendingApproval.self,
+            from: Data(#"{"approval_id":"approval-snake","command":"make install"}"#.utf8)
+        )
+        let camel = try decoder.decode(
+            PendingApproval.self,
+            from: Data(#"{"approvalId":"approval-camel","command":"make install"}"#.utf8)
+        )
+        let gatewayID = try decoder.decode(
+            PendingApproval.self,
+            from: Data(#"{"approval_id":"   ","id":"approval-gateway","command":"make install"}"#.utf8)
+        )
+
+        XCTAssertEqual(snake.approvalId, "approval-snake")
+        XCTAssertEqual(camel.approvalId, "approval-camel")
+        XCTAssertEqual(gatewayID.approvalId, "approval-gateway")
+        XCTAssertEqual(gatewayID.id, "approval-gateway")
+    }
+
     func testRespondApprovalBuildsExpectedBodyForAllChoices() async throws {
         var observedBodies: [[String: Any]] = []
         let client = makeClient { request in

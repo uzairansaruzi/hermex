@@ -89,7 +89,7 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
         patternKey: String? = nil,
         patternKeys: [String]? = nil
     ) {
-        self.approvalId = approvalId
+        self.approvalId = Self.normalizedApprovalId(approvalId)
         self.command = command
         self.description = description
         self.patternKey = patternKey
@@ -97,6 +97,7 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case id
         case approvalId
         case approvalIdSnake = "approval_id"
         case command
@@ -109,8 +110,7 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        approvalId = container.decodeLossyStringIfPresent(forKey: .approvalId)
-            ?? container.decodeLossyStringIfPresent(forKey: .approvalIdSnake)
+        approvalId = Self.decodeApprovalId(from: container)
         command = container.decodeLossyStringIfPresent(forKey: .command)
         description = container.decodeLossyStringIfPresent(forKey: .description)
         patternKey = container.decodeLossyStringIfPresent(forKey: .patternKey)
@@ -137,6 +137,21 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
         }
 
         return nil
+    }
+
+    private static func decodeApprovalId(from container: KeyedDecodingContainer<CodingKeys>) -> String? {
+        for key in [CodingKeys.approvalId, .approvalIdSnake, .id] {
+            if let value = normalizedApprovalId(container.decodeLossyStringIfPresent(forKey: key)) {
+                return value
+            }
+        }
+
+        return nil
+    }
+
+    private static func normalizedApprovalId(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 
