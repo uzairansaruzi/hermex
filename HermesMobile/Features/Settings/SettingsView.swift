@@ -64,6 +64,7 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @State private var cliSessionsSync: CliSessionsSyncModel
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
+    @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var toolCardsStartExpanded = false
@@ -165,6 +166,20 @@ struct SettingsView: View {
                             Text(behavior.settingsDescription).tag(behavior.rawValue)
                         }
                     }
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Dictation Provider"),
+                        systemImage: "mic",
+                        selection: $sttProviderPreferenceRawValue
+                    ) {
+                        ForEach(ComposerSTTProviderPreference.allCases) { preference in
+                            Text(preference.title).tag(preference.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "On-device only keeps composer dictation audio off your Hermes server."))
                 }
 
                 SettingsCard(title: String(localized: "Chat")) {

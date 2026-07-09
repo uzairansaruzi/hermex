@@ -392,6 +392,7 @@ struct ChatView: View {
             isUploadingAttachment: viewModel.isUploadingAttachment,
             isSendingVoiceNote: viewModel.isSendingVoiceNote,
             autoStartsVoiceInput: autoStartsVoiceInput,
+            apiClient: viewModel.client,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
             onSend: {
                 Task { await sendDraftMessage() }

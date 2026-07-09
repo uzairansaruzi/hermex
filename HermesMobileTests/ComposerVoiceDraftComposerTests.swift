@@ -184,6 +184,86 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(counter.speechRecognizerCalls, 0)
         XCTAssertEqual(counter.audioEngineCalls, 0)
     }
+
+    func testSTTProviderPreferenceDefaultsToServerFirst() {
+        XCTAssertEqual(ComposerSTTProviderPreference.defaultValue, .serverFirst)
+        XCTAssertEqual(
+            ComposerSTTProviderPreference.storedValue("unknown"),
+            .serverFirst
+        )
+    }
+
+    func testServerFirstPolicyPrefersServerThenOnDevice() {
+        XCTAssertEqual(
+            ComposerSTTProviderPolicy.orderedProviders(
+                preference: .serverFirst,
+                serverConfigured: true,
+                onDeviceSupported: true
+            ),
+            [.server, .onDevice]
+        )
+    }
+
+    func testServerFirstPolicyFallsBackToOnDeviceWhenServerIsNotConfigured() {
+        XCTAssertEqual(
+            ComposerSTTProviderPolicy.orderedProviders(
+                preference: .serverFirst,
+                serverConfigured: false,
+                onDeviceSupported: true
+            ),
+            [.onDevice]
+        )
+    }
+
+    func testOnDeviceFirstPolicyFallsBackToServerWhenOnDeviceIsUnsupported() {
+        XCTAssertEqual(
+            ComposerSTTProviderPolicy.orderedProviders(
+                preference: .onDeviceFirst,
+                serverConfigured: true,
+                onDeviceSupported: false
+            ),
+            [.server]
+        )
+    }
+
+    func testOnDeviceOnlyPolicyNeverRoutesToServer() {
+        XCTAssertEqual(
+            ComposerSTTProviderPolicy.orderedProviders(
+                preference: .onDeviceOnly,
+                serverConfigured: true,
+                onDeviceSupported: true
+            ),
+            [.onDevice]
+        )
+        XCTAssertEqual(
+            ComposerSTTProviderPolicy.orderedProviders(
+                preference: .onDeviceOnly,
+                serverConfigured: true,
+                onDeviceSupported: false
+            ),
+            []
+        )
+    }
+
+    func testProviderPolicyReturnsNextFallbackOnly() {
+        XCTAssertEqual(
+            ComposerSTTProviderPolicy.fallbackProvider(
+                after: .server,
+                preference: .serverFirst,
+                serverConfigured: true,
+                onDeviceSupported: true
+            ),
+            .onDevice
+        )
+        XCTAssertNil(
+            ComposerSTTProviderPolicy.fallbackProvider(
+                after: .server,
+                preference: .onDeviceOnly,
+                serverConfigured: true,
+                onDeviceSupported: true
+            )
+        )
+    }
 }
 
 private final class VoiceInputFactoryCounter {

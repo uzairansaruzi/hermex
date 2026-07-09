@@ -367,7 +367,7 @@ final class ChatViewModel {
     private var currentProfile: String?
     private let isCLISession: Bool
     private let server: URL
-    private let client: APIClient
+    let client: APIClient
     private let streamCoordinator: ChatStreamCoordinator
     private let pendingActionCoordinator: ChatPendingActionCoordinator
     private let attachmentCoordinator: ChatAttachmentCoordinator

@@ -12,6 +12,8 @@ final class ComposerVoiceInputController {
         case idle
         case requestingPermission
         case listening
+        case serverListening
+        case transcribing
     }
 
     private(set) var state: State = .idle
@@ -24,12 +26,21 @@ final class ComposerVoiceInputController {
     private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
+    private var audioRecorder: AVAudioRecorder?
+    private var recordingURL: URL?
     private var draftUpdateSession = ComposerVoiceDraftUpdateSession()
     private var updateDraft: ((String) -> Void)?
     private var suppressNextRecognitionError = false
     private var activatedAudioSessionForRecording = false
     private var audioTapInstalled = false
+    @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
+    @ObservationIgnored private var serverRecordingTimeoutTask: Task<Void, Never>?
+    private var activeTranscriptionID: UUID?
     private let logger = Logger.hermesVoiceInput
+
+    @ObservationIgnored var apiClient: APIClient?
+    @ObservationIgnored var providerPreference = ComposerSTTProviderPreference.defaultValue
+    @ObservationIgnored var locale = Locale.current
 
     init(
         speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
@@ -40,7 +51,7 @@ final class ComposerVoiceInputController {
     }
 
     var isListening: Bool {
-        state == .listening
+        state == .listening || state == .serverListening || state == .transcribing
     }
 
     var isRequestingPermission: Bool {
@@ -57,14 +68,26 @@ final class ComposerVoiceInputController {
 
     func stopKeepingTranscript() {
         suppressNextRecognitionError = true
-        stopAcceptingDraftUpdates()
-        stopAudio(cancelTask: false)
-        state = .idle
+        switch state {
+        case .serverListening:
+            stopServerRecordingAndTranscribe()
+        case .transcribing:
+            cancelServerTranscription()
+            stopAcceptingDraftUpdates()
+            stopAudio(cancelTask: true)
+            state = .idle
+        case .idle, .requestingPermission, .listening:
+            stopAcceptingDraftUpdates()
+            stopAudio(cancelTask: false)
+            state = .idle
+        }
     }
 
     func stopBeforeSubmittingDraft() {
         suppressNextRecognitionError = true
+        cancelServerTranscription()
         stopAcceptingDraftUpdates()
+        discardServerRecording()
         stopAudio(cancelTask: true)
         state = .idle
     }
@@ -76,13 +99,80 @@ final class ComposerVoiceInputController {
         errorMessage = nil
         liveTranscript = ""
         suppressNextRecognitionError = false
+        cancelServerTranscription()
+        discardServerRecording()
         draftUpdateSession.begin(baseDraft: currentDraft)
         self.updateDraft = updateDraft
         state = .requestingPermission
 
-        guard let speechRecognizer = speechRecognizerForRecording() else {
+        let canUseServer = apiClient != nil
+        let canUseOnDevice = onDeviceSpeechRecognizerForRecording() != nil
+        let providers = ComposerSTTProviderPolicy.orderedProviders(
+            preference: providerPreference,
+            serverConfigured: canUseServer,
+            onDeviceSupported: canUseOnDevice
+        )
+
+        guard let provider = providers.first else {
             fail(
-                String(localized: "Speech recognition is not available for the current locale."),
+                unavailableMessage(
+                    serverConfigured: canUseServer,
+                    onDeviceSupported: canUseOnDevice
+                ),
+                logCategory: .speechUnavailable
+            )
+            return
+        }
+
+        await start(provider: provider)
+    }
+
+    private func start(provider: ComposerSTTProvider) async {
+        switch provider {
+        case .server:
+            await startServerProvider()
+        case .onDevice:
+            await startOnDeviceProvider()
+        }
+    }
+
+    private func startServerProvider() async {
+        let isMicrophonePermissionGranted = await requestMicrophonePermission()
+        logger.info("Server voice input microphone permission completed granted=\(isMicrophonePermissionGranted, privacy: .public)")
+        guard state == .requestingPermission else { return }
+        guard isMicrophonePermissionGranted else {
+            fail(
+                String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."),
+                logCategory: .microphonePermission
+            )
+            return
+        }
+
+        guard ComposerVoiceInputStartPolicy.canStart(appIsActive: UIApplication.shared.applicationState == .active) else {
+            fail(
+                ComposerVoiceInputError.appNotActive.localizedDescription,
+                logCategory: .appNotActive
+            )
+            return
+        }
+
+        do {
+            try startServerRecording()
+            state = .serverListening
+        } catch {
+            await fallbackOrFail(
+                from: .server,
+                message: error.localizedDescription,
+                logCategory: Self.logCategory(for: error)
+            )
+        }
+    }
+
+    private func startOnDeviceProvider() async {
+        guard let speechRecognizer = onDeviceSpeechRecognizerForRecording() else {
+            await fallbackOrFail(
+                from: .onDevice,
+                message: String(localized: "On-device speech recognition is not available for the current locale."),
                 logCategory: .speechUnavailable
             )
             return
@@ -92,8 +182,9 @@ final class ComposerVoiceInputController {
         logger.info("Voice input speech authorization completed status=\(Self.logDescription(for: speechStatus), privacy: .public)")
         guard state == .requestingPermission else { return }
         guard speechStatus == .authorized else {
-            fail(
-                Self.speechAuthorizationMessage(for: speechStatus),
+            await fallbackOrFail(
+                from: .onDevice,
+                message: Self.speechAuthorizationMessage(for: speechStatus),
                 logCategory: .speechAuthorization
             )
             return
@@ -122,7 +213,323 @@ final class ComposerVoiceInputController {
             try startRecognition(speechRecognizer: speechRecognizer)
             state = .listening
         } catch {
-            fail(error.localizedDescription, logCategory: Self.logCategory(for: error))
+            await fallbackOrFail(
+                from: .onDevice,
+                message: error.localizedDescription,
+                logCategory: Self.logCategory(for: error)
+            )
+        }
+    }
+
+    private func fallbackOrFail(
+        from failedProvider: ComposerSTTProvider,
+        message: String,
+        logCategory: VoiceInputFailureLogCategory
+    ) async {
+        let fallback = ComposerSTTProviderPolicy.fallbackProvider(
+            after: failedProvider,
+            preference: providerPreference,
+            serverConfigured: apiClient != nil,
+            onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil
+        )
+
+        guard let fallback else {
+            fail(message, logCategory: logCategory)
+            return
+        }
+
+        logger.info("Voice input falling back after \(String(describing: failedProvider), privacy: .public)")
+        state = .requestingPermission
+        await start(provider: fallback)
+    }
+
+    private func unavailableMessage(serverConfigured: Bool, onDeviceSupported: Bool) -> String {
+        if providerPreference == .onDeviceOnly {
+            return String(localized: "On-device speech recognition is not available for the current locale.")
+        }
+
+        if !serverConfigured && !onDeviceSupported {
+            return String(localized: "Speech-to-text is not available right now.")
+        }
+
+        if !serverConfigured {
+            return String(localized: "Server speech-to-text is not configured.")
+        }
+
+        return String(localized: "On-device speech recognition is not available for the current locale.")
+    }
+
+    // MARK: - Server STT
+
+    private static let maxServerRecordingDuration: UInt64 = 60
+
+    private static let serverRecordingSettings: [String: Any] = [
+        AVFormatIDKey: Int(kAudioFormatLinearPCM),
+        AVSampleRateKey: 16_000.0,
+        AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16,
+        AVLinearPCMIsFloatKey: false
+    ]
+
+    private func startServerRecording() throws {
+        stopAudio(cancelTask: true)
+        logger.info("Server voice input audio startup preparing")
+
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(
+            ComposerVoiceAudioSessionConfiguration.category,
+            mode: ComposerVoiceAudioSessionConfiguration.mode,
+            options: ComposerVoiceAudioSessionConfiguration.options
+        )
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        activatedAudioSessionForRecording = true
+
+        try ComposerVoiceInputStartPolicy.validateAudioSessionInput(
+            isInputAvailable: audioSession.isInputAvailable,
+            sampleRate: audioSession.sampleRate,
+            inputNumberOfChannels: audioSession.inputNumberOfChannels
+        )
+
+        let recordingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hermex-composer-stt-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+        let recorder = try AVAudioRecorder(url: recordingURL, settings: Self.serverRecordingSettings)
+        recorder.prepareToRecord()
+        guard recorder.record() else {
+            throw ComposerVoiceInputError.audioRecorderStartFailed
+        }
+
+        self.recordingURL = recordingURL
+        audioRecorder = recorder
+        ComposerAudioCaptureState.shared.setCapturing(true)
+        startServerRecordingTimeout()
+        logger.info("Server voice input recording started")
+    }
+
+    private func startServerRecordingTimeout() {
+        serverRecordingTimeoutTask?.cancel()
+        serverRecordingTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.maxServerRecordingDuration * 1_000_000_000)
+            await MainActor.run {
+                guard let self, !Task.isCancelled, self.state == .serverListening else { return }
+                self.stopServerRecordingAndTranscribe()
+            }
+        }
+    }
+
+    private func stopServerRecordingAndTranscribe() {
+        serverRecordingTimeoutTask?.cancel()
+        serverRecordingTimeoutTask = nil
+
+        guard state == .serverListening,
+              let recorder = audioRecorder,
+              let recordingURL
+        else {
+            discardServerRecording()
+            stopAudio(cancelTask: true)
+            state = .idle
+            return
+        }
+
+        if recorder.isRecording {
+            recorder.stop()
+        }
+        audioRecorder = nil
+        ComposerAudioCaptureState.shared.setCapturing(false)
+
+        if activatedAudioSessionForRecording {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            activatedAudioSessionForRecording = false
+        }
+
+        state = .transcribing
+        liveTranscript = ""
+
+        let transcriptionID = UUID()
+        activeTranscriptionID = transcriptionID
+        transcriptionTask = Task { [weak self] in
+            await self?.finishServerRecording(
+                recordingURL: recordingURL,
+                transcriptionID: transcriptionID
+            )
+        }
+    }
+
+    private func finishServerRecording(recordingURL: URL, transcriptionID: UUID) async {
+        guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            return
+        }
+
+        guard let apiClient else {
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            fail(
+                String(localized: "Server speech-to-text is not configured."),
+                logCategory: .speechUnavailable
+            )
+            return
+        }
+
+        do {
+            let audioData = try Data(contentsOf: recordingURL)
+            let response = try await apiClient.transcribeAudio(
+                data: audioData,
+                filename: recordingURL.lastPathComponent
+            )
+
+            guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
+                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+                return
+            }
+
+            if let transcript = response.transcript?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !transcript.isEmpty {
+                liveTranscript = transcript
+                if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
+                    updateDraft?(composedDraft)
+                }
+                stopAcceptingDraftUpdates()
+                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+                state = .idle
+                suppressNextRecognitionError = false
+                return
+            }
+
+            let serverMessage = response.error ?? String(localized: "Transcription returned no text.")
+            await fallbackFromServerFailure(
+                recordingURL: recordingURL,
+                transcriptionID: transcriptionID,
+                message: serverMessage
+            )
+        } catch {
+            guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
+                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+                return
+            }
+
+            await fallbackFromServerFailure(
+                recordingURL: recordingURL,
+                transcriptionID: transcriptionID,
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    private func fallbackFromServerFailure(
+        recordingURL: URL,
+        transcriptionID: UUID,
+        message: String
+    ) async {
+        guard ComposerSTTProviderPolicy.fallbackProvider(
+            after: .server,
+            preference: providerPreference,
+            serverConfigured: apiClient != nil,
+            onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil
+        ) == .onDevice,
+              let speechRecognizer = onDeviceSpeechRecognizerForRecording()
+        else {
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            fail(message, logCategory: .speechUnavailable)
+            return
+        }
+
+        let speechStatus = await requestSpeechAuthorization()
+        guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            return
+        }
+        guard speechStatus == .authorized else {
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            fail(Self.speechAuthorizationMessage(for: speechStatus), logCategory: .speechAuthorization)
+            return
+        }
+
+        do {
+            let transcript = try await recognizeRecordedFile(
+                recordingURL,
+                speechRecognizer: speechRecognizer
+            )
+            guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
+                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+                return
+            }
+
+            liveTranscript = transcript
+            guard !transcript.isEmpty else {
+                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+                fail(
+                    String(localized: "Transcription returned no text."),
+                    logCategory: .speechUnavailable
+                )
+                return
+            }
+            if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
+                updateDraft?(composedDraft)
+            }
+            stopAcceptingDraftUpdates()
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            state = .idle
+            suppressNextRecognitionError = false
+        } catch {
+            guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
+                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+                return
+            }
+
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            fail(error.localizedDescription, logCategory: .speechUnavailable)
+        }
+    }
+
+    private func recognizeRecordedFile(
+        _ recordingURL: URL,
+        speechRecognizer: SFSpeechRecognizer
+    ) async throws -> String {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let request = SFSpeechURLRecognitionRequest(url: recordingURL)
+                request.requiresOnDeviceRecognition = true
+                request.shouldReportPartialResults = false
+
+                let resumeBox = SpeechRecognitionContinuationBox()
+                recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+                    Task { @MainActor in
+                        guard let self, !resumeBox.didResume else { return }
+
+                        if let error {
+                            resumeBox.didResume = true
+                            self.recognitionTask = nil
+                            continuation.resume(throwing: error)
+                            return
+                        }
+
+                        guard let result, result.isFinal else { return }
+                        let transcript = result.bestTranscription.formattedString
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        resumeBox.didResume = true
+                        self.recognitionTask = nil
+                        continuation.resume(returning: transcript)
+                    }
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                self.recognitionTask?.cancel()
+                self.recognitionTask = nil
+            }
+        }
+    }
+
+    private func isActiveTranscription(_ transcriptionID: UUID) -> Bool {
+        activeTranscriptionID == transcriptionID
+    }
+
+    private func cleanupRecordingFile(_ recordingURL: URL, transcriptionID: UUID) {
+        try? FileManager.default.removeItem(at: recordingURL)
+        if isActiveTranscription(transcriptionID) {
+            self.recordingURL = nil
+            activeTranscriptionID = nil
+            transcriptionTask = nil
         }
     }
 
@@ -153,6 +560,7 @@ final class ComposerVoiceInputController {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = true
         recognitionRequest = request
 
         let audioEngine = audioEngineFactory()
@@ -216,6 +624,13 @@ final class ComposerVoiceInputController {
 
     private func stopAudio(cancelTask: Bool) {
         ComposerAudioCaptureState.shared.setCapturing(false)
+        serverRecordingTimeoutTask?.cancel()
+        serverRecordingTimeoutTask = nil
+
+        if let recorder = audioRecorder, recorder.isRecording {
+            recorder.stop()
+        }
+        audioRecorder = nil
 
         if let audioEngine {
             if audioEngine.isRunning {
@@ -249,20 +664,64 @@ final class ComposerVoiceInputController {
         }
     }
 
-    private func speechRecognizerForRecording() -> SFSpeechRecognizer? {
+    private func discardServerRecording() {
+        serverRecordingTimeoutTask?.cancel()
+        serverRecordingTimeoutTask = nil
+
+        if let recorder = audioRecorder, recorder.isRecording {
+            recorder.stop()
+        }
+        audioRecorder = nil
+
+        if let recordingURL {
+            try? FileManager.default.removeItem(at: recordingURL)
+            self.recordingURL = nil
+        }
+    }
+
+    private func cancelServerTranscription() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        activeTranscriptionID = nil
+        if let recordingURL {
+            try? FileManager.default.removeItem(at: recordingURL)
+            self.recordingURL = nil
+        }
+    }
+
+    private func onDeviceSpeechRecognizerForRecording() -> SFSpeechRecognizer? {
         if let speechRecognizer {
-            return speechRecognizer
+            return speechRecognizer.supportsOnDeviceRecognition ? speechRecognizer : nil
         }
 
+        guard Self.isLocaleSupportedBySpeechRecognizer(locale) else {
+            return nil
+        }
         let speechRecognizer = speechRecognizerFactory()
+        guard speechRecognizer?.supportsOnDeviceRecognition == true else {
+            return nil
+        }
         self.speechRecognizer = speechRecognizer
         return speechRecognizer
+    }
+
+    private static func isLocaleSupportedBySpeechRecognizer(_ locale: Locale) -> Bool {
+        let target = normalizedLocaleIdentifier(locale.identifier)
+        return SFSpeechRecognizer.supportedLocales().contains { supportedLocale in
+            normalizedLocaleIdentifier(supportedLocale.identifier) == target
+        }
+    }
+
+    private static func normalizedLocaleIdentifier(_ identifier: String) -> String {
+        identifier.replacingOccurrences(of: "_", with: "-").lowercased()
     }
 
     private func fail(_ message: String, logCategory: VoiceInputFailureLogCategory) {
         logger.error("Voice input failed category=\(logCategory.rawValue, privacy: .public)")
         suppressNextRecognitionError = false
         stopAcceptingDraftUpdates()
+        cancelServerTranscription()
+        discardServerRecording()
         stopAudio(cancelTask: true)
         state = .idle
         errorMessage = message
@@ -322,10 +781,14 @@ final class ComposerVoiceInputController {
             return .invalidInputFormat
         case .appNotActive:
             return .appNotActive
-        case .audioEngineAlreadyRunning:
+        case .audioEngineAlreadyRunning, .audioRecorderStartFailed:
             return .audioEngineAlreadyRunning
         }
     }
+}
+
+private final class SpeechRecognitionContinuationBox {
+    var didResume = false
 }
 
 enum ComposerVoiceMicrophonePermissionRequester {
@@ -349,6 +812,7 @@ enum ComposerVoiceInputError: LocalizedError {
     case invalidInputFormat
     case appNotActive
     case audioEngineAlreadyRunning
+    case audioRecorderStartFailed
 
     var errorDescription: String? {
         switch self {
@@ -360,6 +824,8 @@ enum ComposerVoiceInputError: LocalizedError {
             return String(localized: "Voice input can start only while Hermex is active.")
         case .audioEngineAlreadyRunning:
             return String(localized: "Voice input is already preparing the microphone. Try again in a moment.")
+        case .audioRecorderStartFailed:
+            return String(localized: "Voice input could not start recording. Try again in a moment.")
         }
     }
 }
