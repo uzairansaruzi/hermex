@@ -12,6 +12,8 @@ final class ComposerVoiceInputController {
         case idle
         case requestingPermission
         case listening
+        case serverListening  // Recording for server-side STT
+        case transcribing     // Server is processing audio
     }
 
     private(set) var state: State = .idle
@@ -20,10 +22,14 @@ final class ComposerVoiceInputController {
 
     private let speechRecognizerFactory: () -> SFSpeechRecognizer?
     private let audioEngineFactory: () -> AVAudioEngine
+    private let apiClient: APIClient?
+    private let locale: Locale
     private var speechRecognizer: SFSpeechRecognizer?
     private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
+    private var audioRecorder: AVAudioRecorder?
+    private var recordingURL: URL?
     private var draftUpdateSession = ComposerVoiceDraftUpdateSession()
     private var updateDraft: ((String) -> Void)?
     private var suppressNextRecognitionError = false
@@ -33,14 +39,18 @@ final class ComposerVoiceInputController {
 
     init(
         speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
-        audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() }
+        audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() },
+        apiClient: APIClient? = nil,
+        locale: Locale = .current
     ) {
         self.speechRecognizerFactory = speechRecognizerFactory
         self.audioEngineFactory = audioEngineFactory
+        self.apiClient = apiClient
+        self.locale = locale
     }
 
     var isListening: Bool {
-        state == .listening
+        state == .listening || state == .serverListening
     }
 
     var isRequestingPermission: Bool {
@@ -80,6 +90,36 @@ final class ComposerVoiceInputController {
         self.updateDraft = updateDraft
         state = .requestingPermission
 
+        // Decide: Apple native STT or server STT?
+        let appleSupportsLocale = SFSpeechRecognizer.supportedLocales().contains(locale)
+        let useServerSTT = !appleSupportsLocale && apiClient != nil
+
+        if useServerSTT {
+            logger.info("Locale \(self.locale.identifier) not supported by Apple — using server STT")
+            // Server STT path: only need microphone permission
+            let isMicrophonePermissionGranted = await requestMicrophonePermission()
+            guard state == .requestingPermission else { return }
+            guard isMicrophonePermissionGranted else {
+                fail(
+                    String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."),
+                    logCategory: .microphonePermission
+                )
+                return
+            }
+            guard ComposerVoiceInputStartPolicy.canStart(appIsActive: UIApplication.shared.applicationState == .active) else {
+                fail(ComposerVoiceInputError.appNotActive.localizedDescription, logCategory: .appNotActive)
+                return
+            }
+            do {
+                try startServerRecording()
+                state = .serverListening
+            } catch {
+                fail(error.localizedDescription, logCategory: .audioStartup)
+            }
+            return
+        }
+
+        // Apple native STT path
         guard let speechRecognizer = speechRecognizerForRecording() else {
             fail(
                 String(localized: "Speech recognition is not available for the current locale."),
@@ -92,10 +132,7 @@ final class ComposerVoiceInputController {
         logger.info("Voice input speech authorization completed status=\(Self.logDescription(for: speechStatus), privacy: .public)")
         guard state == .requestingPermission else { return }
         guard speechStatus == .authorized else {
-            fail(
-                Self.speechAuthorizationMessage(for: speechStatus),
-                logCategory: .speechAuthorization
-            )
+            fail(Self.speechAuthorizationMessage(for: speechStatus), logCategory: .speechAuthorization)
             return
         }
 
@@ -103,18 +140,12 @@ final class ComposerVoiceInputController {
         logger.info("Voice input microphone permission completed granted=\(isMicrophonePermissionGranted, privacy: .public)")
         guard state == .requestingPermission else { return }
         guard isMicrophonePermissionGranted else {
-            fail(
-                String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."),
-                logCategory: .microphonePermission
-            )
+            fail(String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."), logCategory: .microphonePermission)
             return
         }
 
         guard ComposerVoiceInputStartPolicy.canStart(appIsActive: UIApplication.shared.applicationState == .active) else {
-            fail(
-                ComposerVoiceInputError.appNotActive.localizedDescription,
-                logCategory: .appNotActive
-            )
+            fail(ComposerVoiceInputError.appNotActive.localizedDescription, logCategory: .appNotActive)
             return
         }
 
@@ -125,6 +156,92 @@ final class ComposerVoiceInputController {
             fail(error.localizedDescription, logCategory: Self.logCategory(for: error))
         }
     }
+
+    // MARK: - Server STT Recording
+
+    private func startServerRecording() throws {
+        stopAudio(cancelTask: true)
+        logger.info("Server STT: preparing audio recording")
+
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .allowBluetoothHFP])
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        activatedAudioSessionForRecording = true
+
+        let recordingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hermex-stt-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+        self.recordingURL = recordingURL
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 16000.0,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+
+        let recorder = try AVAudioRecorder(url: recordingURL, settings: settings)
+        recorder.prepareToRecord()
+        recorder.isMeteringEnabled = true
+        recorder.record()
+        self.audioRecorder = recorder
+
+        ComposerAudioCaptureState.shared.setCapturing(true)
+        logger.info("Server STT: recording started to \(recordingURL.path)")
+    }
+
+    private func finishServerRecording() async {
+        guard let recorder = audioRecorder, let recordingURL = recordingURL else {
+            return
+        }
+        recorder.stop()
+        audioRecorder = nil
+        ComposerAudioCaptureState.shared.setCapturing(false)
+
+        logger.info("Server STT: recording finished, duration=\(recorder.currentTime)s")
+
+        guard let apiClient else {
+            fail("Speech-to-text is not configured on this server.", logCategory: .speechUnavailable)
+            return
+        }
+
+        state = .transcribing
+        liveTranscript = String(localized: "Transcribing…")
+
+        do {
+            let audioData = try Data(contentsOf: recordingURL)
+            let languageCode = locale.language.languageCode?.identifier
+            let response = try await apiClient.transcribeAudio(
+                data: audioData,
+                filename: "recording.wav",
+                language: languageCode
+            )
+
+            // Clean up temp file
+            try? FileManager.default.removeItem(at: recordingURL)
+            self.recordingURL = nil
+
+            if let transcript = response.transcript, !transcript.isEmpty {
+                liveTranscript = transcript
+                if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
+                    updateDraft?(composedDraft)
+                }
+                state = .idle
+            } else if let errorMsg = response.error {
+                fail(errorMsg, logCategory: .speechUnavailable)
+            } else {
+                fail("Transcription returned no text.", logCategory: .speechUnavailable)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: recordingURL)
+            self.recordingURL = nil
+            fail(error.localizedDescription, logCategory: .speechUnavailable)
+        }
+    }
+
+    // MARK: - Apple Native STT
 
     private func startRecognition(speechRecognizer: SFSpeechRecognizer) throws {
         stopAudio(cancelTask: true)
@@ -209,6 +326,8 @@ final class ComposerVoiceInputController {
         }
     }
 
+    // MARK: - Shared
+
     private func stopAcceptingDraftUpdates() {
         draftUpdateSession.stopAcceptingUpdates()
         updateDraft = nil
@@ -216,6 +335,16 @@ final class ComposerVoiceInputController {
 
     private func stopAudio(cancelTask: Bool) {
         ComposerAudioCaptureState.shared.setCapturing(false)
+
+        // Stop server STT recorder
+        if let recorder = audioRecorder, recorder.isRecording {
+            recorder.stop()
+            audioRecorder = nil
+            // If we were in serverListening state, finalize the transcription
+            if state == .serverListening {
+                Task { await finishServerRecording() }
+            }
+        }
 
         if let audioEngine {
             if audioEngine.isRunning {

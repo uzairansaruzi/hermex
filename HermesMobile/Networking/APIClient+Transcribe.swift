@@ -5,22 +5,26 @@ extension APIClient {
     /// the tolerant `{ok, transcript, error}` payload. Mirrors `uploadFile`'s
     /// multipart shape but sends only the `file` field (no `session_id`).
     ///
+    /// When `language` is provided (e.g. `"et"` for Estonian), the server's Whisper
+    /// model uses it as a hint — improving accuracy for low-resource languages.
+    ///
     /// The server returns a JSON `{error: ...}` body even for 503/400/413
     /// responses, so we decode the body regardless of status and let the caller
     /// inspect `.error`. Only `401` maps to `.unauthorized`; a body that isn't the
     /// expected shape on a non-2xx status surfaces as `.http`.
-    func transcribeAudio(data: Data, filename: String) async throws -> TranscribeResponse {
+    func transcribeAudio(data: Data, filename: String, language: String? = nil) async throws -> TranscribeResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: Endpoint.transcribe.url(relativeTo: baseURL))
         request.httpMethod = "POST"
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        // Custom headers first, then built-ins so the multipart Content-Type
-        // always wins. Same reverse proxy requirement as uploadFile (#61).
         customHeaderProvider().apply(to: &request)
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         var body = Data()
         body.appendMultipart(fileField: "file", filename: filename, data: data, boundary: boundary)
+        if let language {
+            body.appendMultipart(textField: "language", value: language, boundary: boundary)
+        }
         body.appendMultipartClosingBoundary(boundary)
         request.httpBody = body
 
@@ -31,9 +35,6 @@ extension APIClient {
         if httpResponse.statusCode == 401 {
             throw APIError.unauthorized
         }
-        // Decode first: the server returns `{error: ...}` even for 503/400/413, so
-        // surfacing `.error` is friendlier than a raw HTTP failure. Fall back to a
-        // thrown HTTP error only when the body isn't the expected JSON shape.
         if let decoded = try? decode(TranscribeResponse.self, from: responseData) {
             return decoded
         }
