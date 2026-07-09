@@ -12,7 +12,8 @@ Clone and install https://github.com/nesquena/hermes-webui — it's a Node.js we
 Enable password authentication by setting the HERMES_WEBUI_PASSWORD environment variable. Generate a secure random password and save it — I'll need it for the iPhone app.
 Install Tailscale on this machine. Search the web for the correct install method for this OS if you're unsure. Authenticate to my Tailscale account — if this requires opening a URL or an auth key, tell me exactly what to do.
 Make the WebUI reachable over Tailscale:
-- Try tailscale serve --bg 8787 first (gives HTTPS + nice hostname).
+- First check if anything is already running on port 443: `tailscale serve status`. If a service is already on 443, use `tailscale serve --bg --https=8787 127.0.0.1:8787` instead.
+- Try `tailscale serve --bg --https=8787 127.0.0.1:8787` (uses dedicated port 8787 so it never silently clobbers existing services on port 443).
 - If Tailscale Serve is disabled on my tailnet, fall back: bind the server to 0.0.0.0 instead of localhost so it listens on the tailnet interface. Before doing this, confirm password auth is active — never expose an unauthenticated WebUI.
 Set up auto-start appropriate for this OS so the WebUI survives reboots.
 Verify it works: curl http://$(tailscale ip -4):8787/health should return a success response.
