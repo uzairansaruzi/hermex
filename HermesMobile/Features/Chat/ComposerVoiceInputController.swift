@@ -188,6 +188,12 @@ final class ComposerVoiceInputController {
     }
 
     private func finishServerRecording() async {
+        guard !Task.isCancelled else {
+            try? FileManager.default.removeItem(at: recordingURL ?? URL(fileURLWithPath: "/dev/null"))
+            recordingURL = nil
+            audioRecorder = nil
+            return
+        }
         guard let recorder = audioRecorder, let recordingURL = self.recordingURL else {
             return
         }
