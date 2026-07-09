@@ -1016,17 +1016,9 @@ struct MessageComposerView: View {
     }
 
     @MainActor
-    @MainActor
     private func toggleVoiceInput() {
         voiceInput.apiClient = apiClient
         voiceInput.locale = .current
-        Task {
-            await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
-                draftMessage = newDraft
-            }
-        }
-    }
-
         Task {
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
                 draftMessage = newDraft

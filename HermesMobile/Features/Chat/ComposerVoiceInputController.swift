@@ -195,10 +195,12 @@ final class ComposerVoiceInputController {
         if recorder.isRecording {
             recorder.stop()
         }
+        audioRecorder = nil
         ComposerAudioCaptureState.shared.setCapturing(false)
         logger.info("Server STT: recording finished, duration=\(recorder.currentTime)s")
 
         guard let apiClient else {
+            audioRecorder = nil
             try? FileManager.default.removeItem(at: recordingURL)
             self.recordingURL = nil
             fail("Speech-to-text is not configured on this server.", logCategory: .speechUnavailable)
@@ -326,7 +328,8 @@ final class ComposerVoiceInputController {
 
         if let recorder = audioRecorder, recorder.isRecording {
             recorder.stop()
-            audioRecorder = nil
+            // Keep audioRecorder non-nil so finishServerRecording can read it.
+            // It will be cleared inside finishServerRecording when done.
         }
 
         if let audioEngine {
