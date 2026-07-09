@@ -388,7 +388,7 @@ struct MessageComposerView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
-                voiceInput.stopKeepingTranscript()
+                voiceInput.stopBeforeSubmittingDraft()
                 // Backgrounding stops the recorder's run-loop ticker, so cancel
                 // the in-flight recording rather than leave it silently stalled.
                 cancelVoiceNote()
@@ -528,7 +528,7 @@ struct MessageComposerView: View {
             keyboardIsVisible = false
         }
         .onDisappear {
-            voiceInput.stopKeepingTranscript()
+            voiceInput.stopBeforeSubmittingDraft()
             cancelVoiceNote()
         }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)

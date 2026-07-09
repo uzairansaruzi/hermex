@@ -296,6 +296,7 @@ final class ComposerVoiceInputController {
         let recorder = try AVAudioRecorder(url: recordingURL, settings: Self.serverRecordingSettings)
         recorder.prepareToRecord()
         guard recorder.record() else {
+            try? FileManager.default.removeItem(at: recordingURL)
             throw ComposerVoiceInputError.audioRecorderStartFailed
         }
 
