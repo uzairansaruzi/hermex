@@ -338,7 +338,7 @@ final class ComposerVoiceInputController {
         transcriptionTask?.cancel()
         transcriptionTask = nil
 
-        let hadServerRecording = audioRecorder?.isRecording == true && recordingURL != nil
+        let hadServerRecording = audioRecorder != nil && recordingURL != nil
 
         if let recorder = audioRecorder, recorder.isRecording {
             recorder.stop()
@@ -367,9 +367,9 @@ final class ComposerVoiceInputController {
         recognitionTask = nil
         recognitionRequest = nil
 
-        if hadServerRecording, let url = recordingURL {
+        if hadServerRecording, let recorder = audioRecorder, let url = recordingURL {
             let task = Task { [weak self] in
-                await self?.finishServerRecording()
+                await self?.finishServerRecording(recorder: recorder, recordingURL: url)
             }
             transcriptionTask = task
         }
