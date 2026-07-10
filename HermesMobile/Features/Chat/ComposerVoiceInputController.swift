@@ -48,7 +48,7 @@ final class ComposerVoiceInputController {
     }
 
     var isListening: Bool {
-        state == .listening || state == .serverListening
+        state == .listening || state == .serverListening || state == .transcribing
     }
 
     var isRequestingPermission: Bool {
@@ -224,6 +224,14 @@ final class ComposerVoiceInputController {
                 filename: "recording.wav",
                 language: languageCode
             )
+
+            guard !Task.isCancelled else {
+                try? FileManager.default.removeItem(at: recordingURL)
+                self.recordingURL = nil
+                audioRecorder = nil
+                stopAcceptingDraftUpdates()
+                return
+            }
 
             try? FileManager.default.removeItem(at: recordingURL)
             self.recordingURL = nil
