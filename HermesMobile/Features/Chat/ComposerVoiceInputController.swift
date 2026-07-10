@@ -259,6 +259,7 @@ final class ComposerVoiceInputController {
             try? FileManager.default.removeItem(at: recordingURL)
             guard self.recordingURL == recordingURL else { return }
             self.recordingURL = nil
+            if (error as? URLError)?.code == .cancelled { return }
             fail(error.localizedDescription, logCategory: .speechUnavailable)
         }
     }
