@@ -241,12 +241,10 @@ final class ComposerVoiceInputController {
             }
 
             try? FileManager.default.removeItem(at: recordingURL)
-            if self.recordingURL == recordingURL {
+            guard self.recordingURL == recordingURL else { return }
             self.recordingURL = nil
-            }
 
             if let transcript = response.transcript, !transcript.isEmpty {
-                guard self.recordingURL == recordingURL else { return }
                 liveTranscript = transcript
                 if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
                     updateDraft?(composedDraft)
