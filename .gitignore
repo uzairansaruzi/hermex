@@ -26,10 +26,13 @@ Config/Local.xcconfig
 UPDATES.md
 .obsidian/
 
-# Local agent tooling (per-machine caches, skills, session state)
+# Local agent tooling (per-machine caches, session state)
 node_modules/
 .codex-tmp/
-.agents/
+.agents/*
+!.agents/skills/
+!.agents/skills/**
+.agents/**/.DS_Store
 .sc/
 .claude/
 .codex/
