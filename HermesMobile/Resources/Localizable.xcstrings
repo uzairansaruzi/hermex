@@ -14150,6 +14150,112 @@
         }
       }
     },
+    "Session visibility is synced with this server, so the WebUI follows it too." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تتم مزامنة إظهار الجلسات مع هذا الخادم، لذا يتبعها WebUI أيضًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Sichtbarkeit von Sitzungen wird mit diesem Server synchronisiert, sodass auch die WebUI ihr folgt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La visibilidad de las sesiones se sincroniza con este servidor, así que la WebUI también la sigue."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La visibilité des sessions est synchronisée avec ce serveur ; la WebUI la suit donc aussi."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הצגת המפגשים מסונכרנת עם שרת זה, ולכן גם ה-WebUI עוקב אחריה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La visibilità delle sessioni è sincronizzata con questo server, quindi anche la WebUI la segue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "セッションの表示設定はこのサーバーと同期されるため、WebUIにも反映されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "세션 표시 설정이 이 서버와 동기화되므로 WebUI에도 반영됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De zichtbaarheid van sessies wordt met deze server gesynchroniseerd, zodat de WebUI deze ook volgt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Widoczność sesji jest synchronizowana z tym serwerem, więc WebUI również ją odzwierciedla."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A visibilidade das sessões é sincronizada com este servidor, então a WebUI também a acompanha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Видимость сессий синхронизируется с этим сервером, поэтому WebUI также следует ей."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Oturum görünürlüğü bu sunucuyla eşitlenir, bu yüzden WebUI de bunu izler."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سیشنز کی نمائش اس سرور کے ساتھ ہم آہنگ رہتی ہے، اس لیے WebUI بھی اسی کی پیروی کرتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "工作階段顯示設定會與此伺服器同步，因此 WebUI 也會跟隨此設定。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "会话显示设置会与此服务器同步，因此 WebUI 也会遵循此设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "工作階段顯示設定會與此伺服器同步，因此 WebUI 也會遵循此設定。"
+          }
+        }
+      }
+    },
     "Cached" : {
       "localizations" : {
         "ar" : {

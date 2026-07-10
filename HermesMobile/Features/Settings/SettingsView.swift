@@ -330,8 +330,9 @@ struct SettingsView: View {
                     if let syncError = cliSessionsSync.syncErrorMessage
                         ?? cliSessionsSync.claudeCodeSyncErrorMessage {
                         SettingsErrorFootnote(syncError)
-                    } else if cliSessionsSync.serverSyncsCliSessions {
-                        SettingsFootnote(String(localized: "CLI session visibility is synced with this server, so the WebUI follows it too."))
+                    } else if cliSessionsSync.serverSyncsCliSessions
+                        || cliSessionsSync.serverSyncsClaudeCodeSessions {
+                        SettingsFootnote(String(localized: "Session visibility is synced with this server, so the WebUI follows it too."))
                     }
                 }
 
