@@ -226,6 +226,7 @@
 		1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */; };
 		1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */; };
 		19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C1150000000000000000A2 /* CliSessionsSyncModel.swift */; };
+		D09800000000000000000001 /* ClaudeCodeSessionsSyncModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09800000000000000000002 /* ClaudeCodeSessionsSyncModel.swift */; };
 		1A2B3C4D5E6F70000000114 /* DefaultModelPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000115 /* DefaultModelPickerView.swift */; };
 		103200000000000000000002 /* DefaultProfilePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103200000000000000000001 /* DefaultProfilePickerView.swift */; };
 		1A2B3C4D5E6F70000000130 /* ContextWindowSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000120 /* ContextWindowSnapshot.swift */; };
@@ -547,6 +548,7 @@
 		1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsViewModel.swift; sourceTree = "<group>"; };
 		19C1150000000000000000A2 /* CliSessionsSyncModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliSessionsSyncModel.swift; sourceTree = "<group>"; };
+		D09800000000000000000002 /* ClaudeCodeSessionsSyncModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeSessionsSyncModel.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000115 /* DefaultModelPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultModelPickerView.swift; sourceTree = "<group>"; };
 		103200000000000000000001 /* DefaultProfilePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultProfilePickerView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000120 /* ContextWindowSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowSnapshot.swift; sourceTree = "<group>"; };
@@ -1047,6 +1049,7 @@
 				C23400000000000000000004 /* StreamingLabView.swift */,
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				19C1150000000000000000A2 /* CliSessionsSyncModel.swift */,
+				D09800000000000000000002 /* ClaudeCodeSessionsSyncModel.swift */,
 				26AB000000000000000000F2 /* ProvidersView.swift */,
 				26AB000000000000000000F1 /* ProvidersViewModel.swift */,
 			);
@@ -1432,6 +1435,7 @@
 				C23400000000000000000003 /* StreamingLabView.swift in Sources */,
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
+				D09800000000000000000001 /* ClaudeCodeSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,

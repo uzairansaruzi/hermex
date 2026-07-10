@@ -334,9 +334,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 }
 
 
-import XCTest
-@testable import HermesMobile
-
 final class ClaudeCodeSessionsSyncModelTests: APIClientTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "ClaudeCodeSessionsSyncModelTests"
@@ -435,6 +432,29 @@ final class ClaudeCodeSessionsSyncModelTests: APIClientTestCase {
 
         XCTAssertTrue(model.showsClaudeCodeSessions)
         XCTAssertTrue(model.serverSyncsClaudeCodeSessions)
+        XCTAssertEqual(
+            defaults.object(forKey: SessionRowDisplaySettings.showClaudeCodeSessionsKey(for: serverA)) as? Bool,
+            true
+        )
+    }
+
+    @MainActor
+    func testAdoptUsesPostAdoptionCliStateWhenServerOmitsParentKey() {
+        defaults.set(false, forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverA))
+        defaults.set(true, forKey: SessionRowDisplaySettings.showClaudeCodeSessionsKey(for: serverA))
+
+        let cliSessionsSync = CliSessionsSyncModel(server: serverA, defaults: defaults) { _ in }
+        let claudeCodeSessionsSync = makeModel(server: serverA)
+
+        cliSessionsSync.adopt(serverValue: nil)
+        claudeCodeSessionsSync.adopt(
+            serverValue: false,
+            cliSessionsEnabled: cliSessionsSync.showsCliSessions
+        )
+
+        XCTAssertFalse(cliSessionsSync.showsCliSessions)
+        XCTAssertTrue(claudeCodeSessionsSync.showsClaudeCodeSessions)
+        XCTAssertTrue(claudeCodeSessionsSync.serverSyncsClaudeCodeSessions)
         XCTAssertEqual(
             defaults.object(forKey: SessionRowDisplaySettings.showClaudeCodeSessionsKey(for: serverA)) as? Bool,
             true

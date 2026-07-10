@@ -339,6 +339,8 @@ struct SettingsView: View {
                         SettingsFootnote(String(localized: "CLI and Claude Code session visibility are synced with this server, so the WebUI follows them too."))
                     } else if cliSessionsSync.serverSyncsCliSessions {
                         SettingsFootnote(String(localized: "CLI session visibility is synced with this server, so the WebUI follows it too."))
+                    } else if claudeCodeSessionsSync.serverSyncsClaudeCodeSessions {
+                        SettingsFootnote(String(localized: "Claude Code session visibility is synced with this server, so the WebUI follows it too."))
                     }
                 }
 
@@ -948,7 +950,7 @@ struct SettingsView: View {
             cliSessionsSync.adopt(serverValue: settings.showCliSessions)
             claudeCodeSessionsSync.adopt(
                 serverValue: settings.showClaudeCodeSessions,
-                cliSessionsEnabled: settings.showCliSessions != false
+                cliSessionsEnabled: cliSessionsSync.showsCliSessions
             )
             if serverVersion == nil {
                 serverSettingsError = String(localized: "Unknown")
