@@ -25,6 +25,9 @@ struct SettingsView: View {
         _cliSessionsSync = State(initialValue: CliSessionsSyncModel(server: server) { value in
             let client = APIClient(baseURL: server)
             _ = try await client.updateSettings(showCliSessions: value)
+        } writeClaudeCodeToServer: { value in
+            let client = APIClient(baseURL: server)
+            _ = try await client.updateSettings(showClaudeCodeSessions: value)
         })
     }
 
@@ -307,12 +310,25 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
+                        title: String(localized: "Claude Code Sessions"),
+                        systemImage: "chevron.left.forwardslash.chevron.right",
+                        isOn: Binding(
+                            get: { cliSessionsSync.showsClaudeCodeSessions },
+                            set: { cliSessionsSync.setShowsClaudeCodeSessions($0) }
+                        )
+                    )
+                    .disabled(!cliSessionsSync.showsCliSessions)
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
                         title: String(localized: "Subagent Sessions"),
                         systemImage: "arrow.triangle.branch",
                         isOn: $showsSubagentSessions
                     )
 
-                    if let syncError = cliSessionsSync.syncErrorMessage {
+                    if let syncError = cliSessionsSync.syncErrorMessage
+                        ?? cliSessionsSync.claudeCodeSyncErrorMessage {
                         SettingsErrorFootnote(syncError)
                     } else if cliSessionsSync.serverSyncsCliSessions {
                         SettingsFootnote(String(localized: "CLI session visibility is synced with this server, so the WebUI follows it too."))
@@ -923,6 +939,7 @@ struct SettingsView: View {
             // Server wins on conflict: `show_cli_sessions` is the cross-device
             // truth, the local value is just its offline cache (#19).
             cliSessionsSync.adopt(serverValue: settings.showCliSessions)
+            cliSessionsSync.adoptClaudeCode(serverValue: settings.showClaudeCodeSessions)
             if serverVersion == nil {
                 serverSettingsError = String(localized: "Unknown")
             }

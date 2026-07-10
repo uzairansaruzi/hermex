@@ -2243,6 +2243,25 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(SessionSummary(sessionId: "normal").isDelegatedSubagentSession)
     }
 
+    func testClaudeCodeSessionRequiresExplicitSourceMetadata() {
+        XCTAssertTrue(SessionSummary(sessionId: "s1", sourceTag: "claude_code").isClaudeCodeSession)
+        XCTAssertTrue(
+            SessionSummary(sessionId: "s2", rawSource: "  Claude_Code ").isClaudeCodeSession
+        )
+
+        XCTAssertFalse(
+            SessionSummary(
+                sessionId: "descriptive-only",
+                title: "Claude Code session",
+                model: "claude-sonnet",
+                isCliSession: true,
+                sessionSource: "claude_code",
+                sourceLabel: "Claude Code"
+            ).isClaudeCodeSession
+        )
+        XCTAssertFalse(SessionSummary(sessionId: "normal").isClaudeCodeSession)
+    }
+
     func testReadOnlyRowsOfferExportButNoMutationActions() {
         let currentShape = SessionSummary(sessionId: "current", readOnly: true)
         let legacyShape = SessionSummary(sessionId: "legacy", isReadOnly: true)
@@ -2302,6 +2321,38 @@ final class SessionListMutationTests: XCTestCase {
         // Cron and normal sessions stay visible.
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "cron_1")))
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
+    }
+
+    func testAutomatedVisibilityAppliesClaudeCodeChildPreferenceUnderCliParent() {
+        let claudeCode = SessionSummary(
+            sessionId: "claude-code",
+            isCliSession: true,
+            sourceTag: "claude_code"
+        )
+        let ordinaryCli = SessionSummary(sessionId: "ordinary-cli", isCliSession: true)
+
+        let childHidden = AutomatedSessionVisibility(
+            showsCron: true,
+            showsCli: true,
+            showsClaudeCode: false
+        )
+        XCTAssertFalse(childHidden.shows(claudeCode))
+        XCTAssertTrue(childHidden.shows(ordinaryCli))
+
+        let childShown = AutomatedSessionVisibility(
+            showsCron: true,
+            showsCli: true,
+            showsClaudeCode: true
+        )
+        XCTAssertTrue(childShown.shows(claudeCode))
+
+        let parentHidden = AutomatedSessionVisibility(
+            showsCron: true,
+            showsCli: false,
+            showsClaudeCode: true
+        )
+        XCTAssertFalse(parentHidden.shows(claudeCode))
+        XCTAssertFalse(parentHidden.shows(ordinaryCli))
     }
 
     func testAutomatedVisibilityHidesBothKinds() {
@@ -2455,6 +2506,66 @@ final class SessionListMutationTests: XCTestCase {
                 automatedVisibility: shown
             ).compactMap(\.sessionId),
             ["subagent-p1"]
+        )
+    }
+
+    @MainActor
+    func testVisibleSessionsFiltersClaudeCodeAcrossSearchAndProjects() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {"session_id": "normal-p1", "title": "Planning", "project_id": "p1", "last_message_at": 40},
+                    {"session_id": "claude-p1", "title": "Imported transcript", "project_id": "p1", "source_tag": "claude_code", "raw_source": "claude_code", "is_cli_session": true, "read_only": true, "last_message_at": 30},
+                    {"session_id": "cli-p1", "title": "Terminal chat", "project_id": "p1", "source_tag": "cli", "is_cli_session": true, "last_message_at": 20},
+                    {"session_id": "normal-p2", "title": "Other project", "project_id": "p2", "last_message_at": 10}
+                  ]
+                }
+                """, for: request)
+            case "/api/sessions/search":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {"session_id": "claude-p1", "title": "Imported transcript", "match_type": "content"},
+                    {"session_id": "cli-p1", "title": "Terminal chat", "match_type": "content"}
+                  ],
+                  "query": "needle",
+                  "count": 2
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let hidden = AutomatedSessionVisibility(
+            showsCron: true,
+            showsCli: true,
+            showsClaudeCode: false
+        )
+
+        XCTAssertEqual(
+            viewModel.visibleSessions(
+                searchText: "",
+                selectedProjectID: "p1",
+                automatedVisibility: hidden
+            ).compactMap(\.sessionId),
+            ["normal-p1", "cli-p1"]
+        )
+
+        await viewModel.searchSessions(query: "needle", debounceNanoseconds: 0)
+
+        XCTAssertEqual(
+            viewModel.visibleSessions(
+                searchText: "needle",
+                selectedProjectID: "p1",
+                automatedVisibility: hidden
+            ).compactMap(\.sessionId),
+            ["cli-p1"]
         )
     }
 

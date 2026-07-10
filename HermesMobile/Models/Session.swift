@@ -342,6 +342,15 @@ extension SessionSummary {
             .contains("subagent")
     }
 
+    /// Claude Code imports are classified only by explicit upstream source
+    /// metadata. Titles, models, and read-only/CLI flags are intentionally not
+    /// descriptive enough to identify this source.
+    var isClaudeCodeSession: Bool {
+        [sourceTag, rawSource]
+            .compactMap(Self.normalizedSourceMarker)
+            .contains("claude_code")
+    }
+
     /// Delegated children are runner-owned and view-only. Upstream has also
     /// emitted both read-only spellings across row sources, so either explicit
     /// true value preserves that safety for other imported sessions.
@@ -417,23 +426,31 @@ extension SessionSummary {
 }
 
 /// Which non-standard session kinds the session list should show. Cron jobs,
-/// CLI imports, and delegated subagents are controlled independently. A row
+/// CLI imports, Claude Code imports, and delegated subagents are controlled independently. A row
 /// with unknown/missing source data remains visible as a normal session.
 struct AutomatedSessionVisibility: Equatable {
     var showsCron: Bool
     var showsCli: Bool
+    var showsClaudeCode: Bool
     var showsSubagents: Bool
 
     /// Show every kind, primarily for explicit opt-in and tests.
     static let showAll = AutomatedSessionVisibility(
         showsCron: true,
         showsCli: true,
+        showsClaudeCode: true,
         showsSubagents: true
     )
 
-    init(showsCron: Bool, showsCli: Bool, showsSubagents: Bool = false) {
+    init(
+        showsCron: Bool,
+        showsCli: Bool,
+        showsClaudeCode: Bool = true,
+        showsSubagents: Bool = false
+    ) {
         self.showsCron = showsCron
         self.showsCli = showsCli
+        self.showsClaudeCode = showsClaudeCode
         self.showsSubagents = showsSubagents
     }
 
@@ -446,6 +463,7 @@ struct AutomatedSessionVisibility: Equatable {
         if session.isDelegatedSubagentSession, !showsSubagents { return false }
         if session.isCronSession, !showsCron { return false }
         if session.isCliSession == true, !showsCli { return false }
+        if session.isClaudeCodeSession, !showsClaudeCode { return false }
         return true
     }
 }

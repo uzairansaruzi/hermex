@@ -120,6 +120,17 @@ extension APIClient {
         )
     }
 
+    /// Writes only the server-synced Claude Code session visibility key.
+    func updateSettings(showClaudeCodeSessions: Bool) async throws -> SettingsResponse {
+        try await send(
+            endpoint: .settings,
+            method: "POST",
+            body: ShowClaudeCodeSessionsUpdateRequest(
+                showClaudeCodeSessions: showClaudeCodeSessions
+            )
+        )
+    }
+
     func updatesCheck() async throws -> UpdatesCheckResponse {
         try await send(endpoint: .updatesCheck, method: "GET")
     }
@@ -194,4 +205,9 @@ private struct UpdatesCheckForceRequest: Encodable {
 private struct ShowCliSessionsUpdateRequest: Encodable {
     // Encoded as `show_cli_sessions` via the client's convertToSnakeCase strategy.
     let showCliSessions: Bool
+}
+
+private struct ShowClaudeCodeSessionsUpdateRequest: Encodable {
+    // Encoded as `show_claude_code_sessions` by convertToSnakeCase.
+    let showClaudeCodeSessions: Bool
 }

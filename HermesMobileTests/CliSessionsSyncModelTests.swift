@@ -33,6 +33,7 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
               "theme": "system",
               "check_for_updates": true,
               "show_cli_sessions": false,
+              "show_claude_code_sessions": true,
               "max_tokens": 4096,
               "max_tokens_effective": 4096,
               "auth_enabled": true,
@@ -52,6 +53,7 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertEqual(response.theme, "system")
         XCTAssertEqual(response.checkForUpdates, true)
         XCTAssertEqual(response.showCliSessions, false)
+        XCTAssertEqual(response.showClaudeCodeSessions, true)
         XCTAssertEqual(response.maxTokens, 4096)
         XCTAssertEqual(response.maxTokensEffective, 4096)
         XCTAssertEqual(response.authEnabled, true)
@@ -73,6 +75,7 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertNil(response.theme)
         XCTAssertNil(response.checkForUpdates)
         XCTAssertNil(response.showCliSessions)
+        XCTAssertNil(response.showClaudeCodeSessions)
         XCTAssertNil(response.maxTokens)
         XCTAssertNil(response.maxTokensEffective)
         XCTAssertNil(response.authEnabled)
@@ -107,6 +110,39 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         XCTAssertEqual(response.showCliSessions, false)
     }
 
+    func testSettingsToleratesMalformedClaudeCodeValue() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(
+                #"{"show_claude_code_sessions":{"future":"shape"},"unknown":true}"#,
+                for: request
+            )
+        }
+
+        let response = try await client.settings()
+
+        XCTAssertNil(response.showClaudeCodeSessions)
+    }
+
+    func testUpdateSettingsPostsExactlyTheShowClaudeCodeSessionsKey() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/settings")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let body = try XCTUnwrap(Self.jsonBody(from: request))
+            XCTAssertEqual(body.count, 1)
+            XCTAssertEqual(body["show_claude_code_sessions"] as? Bool, false)
+
+            return apiTestJSONResponse(
+                #"{"show_cli_sessions":true,"show_claude_code_sessions":false}"#,
+                for: request
+            )
+        }
+
+        let response = try await client.updateSettings(showClaudeCodeSessions: false)
+
+        XCTAssertEqual(response.showClaudeCodeSessions, false)
+    }
+
     // MARK: - Adopt on load
 
     @MainActor
@@ -129,7 +165,10 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
     func testAdoptNilLeavesLocalValueAndKeepsToggleLocalOnly() async {
         defaults.set(false, forKey: SessionRowDisplaySettings.showCliSessionsKey(for: serverA))
         var writtenValues: [Bool] = []
-        let model = makeModel(server: serverA) { writtenValues.append($0) }
+        let model = makeModel(
+            server: serverA,
+            writeToServer: { writtenValues.append($0) }
+        )
 
         model.adopt(serverValue: nil)
 
@@ -153,7 +192,10 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
     @MainActor
     func testToggleWritesTheNewValueToTheServer() async {
         var writtenValues: [Bool] = []
-        let model = makeModel(server: serverA) { writtenValues.append($0) }
+        let model = makeModel(
+            server: serverA,
+            writeToServer: { writtenValues.append($0) }
+        )
         model.adopt(serverValue: true)
 
         model.setShowsCliSessions(false)
@@ -166,7 +208,10 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
     @MainActor
     func testFailedWriteRevertsTheToggleAndSurfacesAnError() async {
-        let model = makeModel(server: serverA) { _ in throw URLError(.notConnectedToInternet) }
+        let model = makeModel(
+            server: serverA,
+            writeToServer: { _ in throw URLError(.notConnectedToInternet) }
+        )
         model.adopt(serverValue: true)
 
         model.setShowsCliSessions(false)
@@ -188,9 +233,12 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         // The write for `false` fails; the follow-up write for `true` succeeds.
         // The stale failure must neither revert the newer value nor surface an
         // error.
-        let model = makeModel(server: serverA) { value in
-            if value == false { throw URLError(.timedOut) }
-        }
+        let model = makeModel(
+            server: serverA,
+            writeToServer: { value in
+                if value == false { throw URLError(.timedOut) }
+            }
+        )
         model.adopt(serverValue: true)
 
         model.setShowsCliSessions(false)
@@ -218,12 +266,15 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         // written (the intermediate toggle is coalesced away).
         var writtenValues: [Bool] = []
         var releaseFirstWrite: CheckedContinuation<Void, Never>?
-        let model = makeModel(server: serverA) { value in
-            writtenValues.append(value)
-            if writtenValues.count == 1 {
-                await withCheckedContinuation { releaseFirstWrite = $0 }
+        let model = makeModel(
+            server: serverA,
+            writeToServer: { value in
+                writtenValues.append(value)
+                if writtenValues.count == 1 {
+                    await withCheckedContinuation { releaseFirstWrite = $0 }
+                }
             }
-        }
+        )
         model.adopt(serverValue: true)
 
         model.setShowsCliSessions(false) // write 1 — held in flight below
@@ -289,14 +340,101 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         )
     }
 
+    // MARK: - Claude Code child setting
+
+    @MainActor
+    func testClaudeCodeSettingAdoptsServerValueAndPersistsPerServer() {
+        defaults.set(
+            true,
+            forKey: SessionRowDisplaySettings.showClaudeCodeSessionsKey(for: serverA)
+        )
+        let model = makeModel(server: serverA)
+
+        model.adoptClaudeCode(serverValue: false)
+
+        XCTAssertFalse(model.showsClaudeCodeSessions)
+        XCTAssertTrue(model.serverSyncsClaudeCodeSessions)
+        XCTAssertFalse(
+            SessionRowDisplaySettings.showsClaudeCodeSessions(for: serverA, in: defaults)
+        )
+        XCTAssertTrue(
+            SessionRowDisplaySettings.showsClaudeCodeSessions(for: serverB, in: defaults),
+            "A newly seen server must retain the shown-by-default preference"
+        )
+    }
+
+    @MainActor
+    func testClaudeCodeSettingOmissionStaysLocalAndDefaultsShown() async {
+        var writtenValues: [Bool] = []
+        let model = makeModel(
+            server: serverA,
+            writeClaudeCodeToServer: { writtenValues.append($0) }
+        )
+
+        model.adoptClaudeCode(serverValue: nil)
+        model.setShowsClaudeCodeSessions(false)
+        await model.pendingClaudeCodeWrite?.value
+
+        XCTAssertFalse(model.showsClaudeCodeSessions)
+        XCTAssertFalse(model.serverSyncsClaudeCodeSessions)
+        XCTAssertEqual(writtenValues, [])
+    }
+
+    @MainActor
+    func testClaudeCodeSettingWritesAndFailedWriteReverts() async {
+        var shouldFail = false
+        var writtenValues: [Bool] = []
+        let model = makeModel(
+            server: serverA,
+            writeClaudeCodeToServer: { value in
+                writtenValues.append(value)
+                if shouldFail { throw URLError(.notConnectedToInternet) }
+            }
+        )
+        model.adoptClaudeCode(serverValue: true)
+
+        model.setShowsClaudeCodeSessions(false)
+        await model.pendingClaudeCodeWrite?.value
+        XCTAssertEqual(writtenValues, [false])
+        XCTAssertFalse(model.showsClaudeCodeSessions)
+
+        shouldFail = true
+        model.setShowsClaudeCodeSessions(true)
+        await model.pendingClaudeCodeWrite?.value
+
+        XCTAssertFalse(model.showsClaudeCodeSessions)
+        XCTAssertNotNil(model.claudeCodeSyncErrorMessage)
+        XCTAssertFalse(
+            SessionRowDisplaySettings.showsClaudeCodeSessions(for: serverA, in: defaults)
+        )
+    }
+
+    @MainActor
+    func testChangingCliParentDoesNotOverwriteClaudeCodePreference() {
+        let model = makeModel(server: serverA)
+        model.adopt(serverValue: true)
+        model.adoptClaudeCode(serverValue: false)
+
+        model.setShowsCliSessions(false)
+        model.setShowsCliSessions(true)
+
+        XCTAssertFalse(model.showsClaudeCodeSessions)
+    }
+
     // MARK: - Helpers
 
     @MainActor
     private func makeModel(
         server: URL,
+        writeClaudeCodeToServer: @escaping @MainActor (Bool) async throws -> Void = { _ in },
         writeToServer: @escaping @MainActor (Bool) async throws -> Void = { _ in }
     ) -> CliSessionsSyncModel {
-        CliSessionsSyncModel(server: server, defaults: defaults, writeToServer: writeToServer)
+        CliSessionsSyncModel(
+            server: server,
+            defaults: defaults,
+            writeToServer: writeToServer,
+            writeClaudeCodeToServer: writeClaudeCodeToServer
+        )
     }
 
     private static func jsonBody(from request: URLRequest) -> [String: Any]? {

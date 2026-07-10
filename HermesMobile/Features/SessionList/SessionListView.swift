@@ -49,6 +49,7 @@ struct SessionListView: View {
     // `show_cli_sessions`, so its cached value must not leak across servers.
     // Configured in `init`, where the server URL is known.
     @AppStorage private var showsCliSessions: Bool
+    @AppStorage private var showsClaudeCodeSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
@@ -72,6 +73,10 @@ struct SessionListView: View {
         _showsCliSessions = AppStorage(
             wrappedValue: SessionRowDisplaySettings.showsCliSessions(for: server),
             SessionRowDisplaySettings.showCliSessionsKey(for: server)
+        )
+        _showsClaudeCodeSessions = AppStorage(
+            wrappedValue: SessionRowDisplaySettings.showsClaudeCodeSessions(for: server),
+            SessionRowDisplaySettings.showClaudeCodeSessionsKey(for: server)
         )
     }
 
@@ -534,6 +539,7 @@ struct SessionListView: View {
         AutomatedSessionVisibility(
             showsCron: showsCronSessions,
             showsCli: showsCliSessions,
+            showsClaudeCode: showsClaudeCodeSessions,
             showsSubagents: showsSubagentSessions
         )
     }

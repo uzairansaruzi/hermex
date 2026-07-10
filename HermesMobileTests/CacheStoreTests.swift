@@ -101,6 +101,55 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertTrue(AutomatedSessionVisibility.showAll.shows(cached))
     }
 
+    func testCachedSessionsPreserveClaudeCodeClassificationAndVisibility() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let response = try decodeSessions("""
+        {
+          "sessions": [
+            {
+              "session_id": "claude-code",
+              "title": "Imported transcript",
+              "source_tag": "claude_code",
+              "raw_source": "claude_code",
+              "is_cli_session": true,
+              "read_only": true,
+              "archived": false
+            },
+            {
+              "session_id": "ordinary-cli",
+              "title": "Terminal chat",
+              "source_tag": "cli",
+              "is_cli_session": true,
+              "archived": false
+            }
+          ]
+        }
+        """)
+
+        try CacheStore.cacheSessions(
+            try XCTUnwrap(response.sessions),
+            serverURL: serverURL,
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let cached = try CacheStore.cachedSessions(
+            serverURL: serverURL,
+            in: context,
+            now: cachedAt.addingTimeInterval(60)
+        )
+        let hidden = AutomatedSessionVisibility(
+            showsCron: true,
+            showsCli: true,
+            showsClaudeCode: false
+        )
+
+        XCTAssertTrue(try XCTUnwrap(cached.first { $0.sessionId == "claude-code" }).isClaudeCodeSession)
+        XCTAssertEqual(cached.filter(hidden.shows).compactMap(\.sessionId), ["ordinary-cli"])
+    }
+
     func testCacheMessagesWritesLoadedWindowAndRemovesStaleMessages() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
