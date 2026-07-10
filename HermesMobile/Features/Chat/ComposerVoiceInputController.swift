@@ -190,19 +190,25 @@ final class ComposerVoiceInputController {
     private func finishServerRecording(recorder: AVAudioRecorder, recordingURL: URL) async {
         guard !Task.isCancelled else {
             try? FileManager.default.removeItem(at: recordingURL)
-            audioRecorder = nil
+            if self.audioRecorder === recorder {
+                self.audioRecorder = nil
+            }
             return
         }
 
         if recorder.isRecording {
             recorder.stop()
         }
-        audioRecorder = nil
+        if self.audioRecorder === recorder {
+            self.audioRecorder = nil
+        }
         ComposerAudioCaptureState.shared.setCapturing(false)
         logger.info("Server STT: recording finished, duration=\(recorder.currentTime)s")
 
         guard let apiClient else {
-            audioRecorder = nil
+            if self.audioRecorder === recorder {
+                self.audioRecorder = nil
+            }
             try? FileManager.default.removeItem(at: recordingURL)
             if self.recordingURL == recordingURL {
             self.recordingURL = nil
@@ -228,7 +234,9 @@ final class ComposerVoiceInputController {
                 if self.recordingURL == recordingURL {
                 self.recordingURL = nil
                 }
-                audioRecorder = nil
+                if self.audioRecorder === recorder {
+                    self.audioRecorder = nil
+                }
                 stopAcceptingDraftUpdates()
                 return
             }
