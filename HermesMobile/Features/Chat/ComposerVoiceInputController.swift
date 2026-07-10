@@ -187,7 +187,7 @@ final class ComposerVoiceInputController {
         logger.info("Server STT: recording started to \(recordingURL.path)")
     }
 
-    private func finishServerRecording() async {
+    private func finishServerRecording(recorder: AVAudioRecorder, recordingURL: URL) async {
         guard !Task.isCancelled else {
             try? FileManager.default.removeItem(at: recordingURL ?? URL(fileURLWithPath: "/dev/null"))
             recordingURL = nil
