@@ -30,6 +30,7 @@ final class ChatAttachmentCoordinator {
     private(set) var uploadAttachmentErrorMessage: String?
     private(set) var localAttachmentPreviews: [String: [String: Data]] = [:]
     private var activeUploadCount = 0
+    private(set) var uploadStartGeneration = 0
 
     var isUploadingAttachment: Bool {
         activeUploadCount > 0
@@ -84,6 +85,7 @@ final class ChatAttachmentCoordinator {
         let uploadFilename = reserveUploadFilename(preferredFilename: displayFilename)
 
         activeUploadCount += 1
+        uploadStartGeneration += 1
         uploadAttachmentErrorMessage = nil
         delegate?.attachmentCoordinatorWillUpload()
         defer {

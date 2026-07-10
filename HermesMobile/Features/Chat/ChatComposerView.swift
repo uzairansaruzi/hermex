@@ -104,6 +104,7 @@ struct MessageComposerView: View {
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
     let attachmentUploadCount: Int
+    let attachmentUploadGeneration: Int
     let isSendingVoiceNote: Bool
     /// When true, dictation auto-starts once this composer appears with the app active —
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
@@ -157,9 +158,8 @@ struct MessageComposerView: View {
 
     private enum DeferredUploadFocusPhase: Equatable {
         case none
-        case waitingForNextUploadToComplete
-        case waitingForExistingUploadsToDrain(existingCount: Int)
-        case waitingForAllUploadsToFinish
+        case waitingForUploadStart(afterGeneration: Int)
+        case waitingForUploadsToFinish
     }
 
     private var showsSlashAutocomplete: Bool {
@@ -518,8 +518,11 @@ struct MessageComposerView: View {
                 restoreFocusAfterPresentationDismissalSettles()
             }
         }
-        .onChange(of: attachmentUploadCount) { oldCount, newCount in
-            handleDeferredUploadFocusTransition(from: oldCount, to: newCount)
+        .onChange(of: attachmentUploadGeneration) { _, newGeneration in
+            handleDeferredUploadStart(newGeneration)
+        }
+        .onChange(of: attachmentUploadCount) { _, newCount in
+            handleDeferredUploadCountChange(newCount)
         }
         .onChange(of: uploadAttachmentErrorMessage) { _, newValue in
             if newValue != nil {
@@ -1117,32 +1120,25 @@ struct MessageComposerView: View {
     private func deferFocusRestoreUntilUploadCompletes() {
         guard shouldRestoreFocusAfterPresentation else { return }
         shouldRestoreFocusAfterPresentation = false
+        deferredUploadFocusPhase = .waitingForUploadStart(afterGeneration: attachmentUploadGeneration)
+    }
 
-        if attachmentUploadCount > 0 {
-            deferredUploadFocusPhase = .waitingForExistingUploadsToDrain(existingCount: attachmentUploadCount)
+    private func handleDeferredUploadStart(_ newGeneration: Int) {
+        guard case let .waitingForUploadStart(afterGeneration) = deferredUploadFocusPhase,
+              newGeneration > afterGeneration
+        else { return }
+
+        if attachmentUploadCount == 0 {
+            restoreFocusAfterDeferredUploadIfNeeded()
         } else {
-            deferredUploadFocusPhase = .waitingForNextUploadToComplete
+            deferredUploadFocusPhase = .waitingForUploadsToFinish
         }
     }
 
-    private func handleDeferredUploadFocusTransition(from oldCount: Int, to newCount: Int) {
-        switch deferredUploadFocusPhase {
-        case .none:
-            return
-        case .waitingForNextUploadToComplete:
-            if oldCount > 0, newCount == 0 {
-                restoreFocusAfterDeferredUploadIfNeeded()
-            }
-        case let .waitingForExistingUploadsToDrain(existingCount):
-            if newCount > existingCount {
-                deferredUploadFocusPhase = .waitingForAllUploadsToFinish
-            } else if newCount == 0 {
-                deferredUploadFocusPhase = .waitingForNextUploadToComplete
-            }
-        case .waitingForAllUploadsToFinish:
-            if newCount == 0 {
-                restoreFocusAfterDeferredUploadIfNeeded()
-            }
+    private func handleDeferredUploadCountChange(_ newCount: Int) {
+        guard case .waitingForUploadsToFinish = deferredUploadFocusPhase else { return }
+        if newCount == 0 {
+            restoreFocusAfterDeferredUploadIfNeeded()
         }
     }
 
