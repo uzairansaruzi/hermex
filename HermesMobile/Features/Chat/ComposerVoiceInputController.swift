@@ -210,10 +210,8 @@ final class ComposerVoiceInputController {
                 self.audioRecorder = nil
             }
             try? FileManager.default.removeItem(at: recordingURL)
-            if self.recordingURL == recordingURL {
-            self.recordingURL = nil
-            }
             guard self.recordingURL == recordingURL else { return }
+            self.recordingURL = nil
             fail("Speech-to-text is not configured on this server.", logCategory: .speechUnavailable)
             return
         }
@@ -261,10 +259,8 @@ final class ComposerVoiceInputController {
             }
         } catch {
             try? FileManager.default.removeItem(at: recordingURL)
-            if self.recordingURL == recordingURL {
-            self.recordingURL = nil
-            }
             guard self.recordingURL == recordingURL else { return }
+            self.recordingURL = nil
             fail(error.localizedDescription, logCategory: .speechUnavailable)
         }
     }
