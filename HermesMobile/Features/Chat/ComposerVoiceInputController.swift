@@ -208,7 +208,9 @@ final class ComposerVoiceInputController {
         guard let apiClient else {
             audioRecorder = nil
             try? FileManager.default.removeItem(at: recordingURL)
+            if self.recordingURL == recordingURL {
             self.recordingURL = nil
+            }
             fail("Speech-to-text is not configured on this server.", logCategory: .speechUnavailable)
             return
         }
@@ -227,14 +229,18 @@ final class ComposerVoiceInputController {
 
             guard !Task.isCancelled else {
                 try? FileManager.default.removeItem(at: recordingURL)
+                if self.recordingURL == recordingURL {
                 self.recordingURL = nil
+                }
                 audioRecorder = nil
                 stopAcceptingDraftUpdates()
                 return
             }
 
             try? FileManager.default.removeItem(at: recordingURL)
+            if self.recordingURL == recordingURL {
             self.recordingURL = nil
+            }
 
             if let transcript = response.transcript, !transcript.isEmpty {
                 liveTranscript = transcript
@@ -249,7 +255,9 @@ final class ComposerVoiceInputController {
             }
         } catch {
             try? FileManager.default.removeItem(at: recordingURL)
+            if self.recordingURL == recordingURL {
             self.recordingURL = nil
+            }
             fail(error.localizedDescription, logCategory: .speechUnavailable)
         }
     }
