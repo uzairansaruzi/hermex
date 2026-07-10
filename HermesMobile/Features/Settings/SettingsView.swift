@@ -26,6 +26,10 @@ struct SettingsView: View {
             let client = APIClient(baseURL: server)
             _ = try await client.updateSettings(showCliSessions: value)
         })
+        _claudeCodeSessionsSync = State(initialValue: ClaudeCodeSessionsSyncModel(server: server) { value in
+            let client = APIClient(baseURL: server)
+            _ = try await client.updateSettings(showClaudeCodeSessions: value)
+        })
     }
 
     @ScaledMetric(relativeTo: .body) private var settingsCardSpacing: CGFloat = 18
@@ -65,6 +69,7 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
     private var showsSubagentSessions = SessionRowDisplaySettings.defaultShowsSubagentSessions
     @State private var cliSessionsSync: CliSessionsSyncModel
+    @State private var claudeCodeSessionsSync: ClaudeCodeSessionsSyncModel
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
@@ -307,6 +312,18 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
+                        title: String(localized: "Claude Code Sessions"),
+                        systemImage: "curlybraces.square",
+                        isOn: Binding(
+                            get: { claudeCodeSessionsSync.showsClaudeCodeSessions },
+                            set: { claudeCodeSessionsSync.setShowsClaudeCodeSessions($0) }
+                        )
+                    )
+                    .disabled(!cliSessionsSync.showsCliSessions)
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
                         title: String(localized: "Subagent Sessions"),
                         systemImage: "arrow.triangle.branch",
                         isOn: $showsSubagentSessions
@@ -314,6 +331,12 @@ struct SettingsView: View {
 
                     if let syncError = cliSessionsSync.syncErrorMessage {
                         SettingsErrorFootnote(syncError)
+                    } else if let syncError = claudeCodeSessionsSync.syncErrorMessage {
+                        SettingsErrorFootnote(syncError)
+                    } else if !cliSessionsSync.showsCliSessions {
+                        SettingsFootnote(String(localized: "Claude Code Sessions follows the CLI Sessions parent toggle and resumes its saved value when CLI Sessions is turned back on."))
+                    } else if cliSessionsSync.serverSyncsCliSessions && claudeCodeSessionsSync.serverSyncsClaudeCodeSessions {
+                        SettingsFootnote(String(localized: "CLI and Claude Code session visibility are synced with this server, so the WebUI follows them too."))
                     } else if cliSessionsSync.serverSyncsCliSessions {
                         SettingsFootnote(String(localized: "CLI session visibility is synced with this server, so the WebUI follows it too."))
                     }
@@ -923,6 +946,10 @@ struct SettingsView: View {
             // Server wins on conflict: `show_cli_sessions` is the cross-device
             // truth, the local value is just its offline cache (#19).
             cliSessionsSync.adopt(serverValue: settings.showCliSessions)
+            claudeCodeSessionsSync.adopt(
+                serverValue: settings.showClaudeCodeSessions,
+                cliSessionsEnabled: settings.showCliSessions != false
+            )
             if serverVersion == nil {
                 serverSettingsError = String(localized: "Unknown")
             }

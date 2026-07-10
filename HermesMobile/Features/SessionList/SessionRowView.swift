@@ -372,11 +372,16 @@ enum SessionRowDisplaySettings {
     // value adopted from server A must not leak to server B); this key survives
     // only as the migration seed for servers with no per-server value yet.
     static let showCliSessionsKey = "sessionRow.showCliSessions"
+    static let showClaudeCodeSessionsKey = "sessionRow.showClaudeCodeSessions"
 
     /// Per-server storage key for the CLI-sessions toggle (#19). Keyed by the
     /// active server's absolute URL, matching how the offline cache scopes rows.
     static func showCliSessionsKey(for server: URL) -> String {
         "\(showCliSessionsKey)|\(server.absoluteString)"
+    }
+
+    static func showClaudeCodeSessionsKey(for server: URL) -> String {
+        "\(showClaudeCodeSessionsKey)|\(server.absoluteString)"
     }
 
     /// Effective CLI-sessions visibility for `server`: the per-server value if
@@ -389,6 +394,14 @@ enum SessionRowDisplaySettings {
 
         if let legacy = defaults.object(forKey: showCliSessionsKey) as? Bool {
             return legacy
+        }
+
+        return true
+    }
+
+    static func showsClaudeCodeSessions(for server: URL, in defaults: UserDefaults = .standard) -> Bool {
+        if let perServer = defaults.object(forKey: showClaudeCodeSessionsKey(for: server)) as? Bool {
+            return perServer
         }
 
         return true

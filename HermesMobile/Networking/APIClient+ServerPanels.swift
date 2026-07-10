@@ -106,8 +106,9 @@ extension APIClient {
         try await send(endpoint: .settings, method: "GET")
     }
 
-    /// Writes the single server-synced session-visibility key (#19):
-    /// `POST /api/settings {"show_cli_sessions": <bool>}`. Upstream
+    /// Writes the single server-synced session-visibility key (#19 / #98):
+    /// `POST /api/settings {"show_cli_sessions": <bool>}` or
+    /// `POST /api/settings {"show_claude_code_sessions": <bool>}`. Upstream
     /// `save_settings(body)` merges exactly the keys sent — nothing else is
     /// touched — and responds with the full saved settings dict, so the
     /// response reuses `SettingsResponse`. A general settings editor stays
@@ -117,6 +118,14 @@ extension APIClient {
             endpoint: .settings,
             method: "POST",
             body: ShowCliSessionsUpdateRequest(showCliSessions: showCliSessions)
+        )
+    }
+
+    func updateSettings(showClaudeCodeSessions: Bool) async throws -> SettingsResponse {
+        try await send(
+            endpoint: .settings,
+            method: "POST",
+            body: ShowClaudeCodeSessionsUpdateRequest(showClaudeCodeSessions: showClaudeCodeSessions)
         )
     }
 
@@ -194,4 +203,9 @@ private struct UpdatesCheckForceRequest: Encodable {
 private struct ShowCliSessionsUpdateRequest: Encodable {
     // Encoded as `show_cli_sessions` via the client's convertToSnakeCase strategy.
     let showCliSessions: Bool
+}
+
+private struct ShowClaudeCodeSessionsUpdateRequest: Encodable {
+    // Encoded as `show_claude_code_sessions` via the client's convertToSnakeCase strategy.
+    let showClaudeCodeSessions: Bool
 }

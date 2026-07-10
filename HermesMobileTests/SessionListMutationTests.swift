@@ -41,6 +41,15 @@ final class SessionListMutationTests: XCTestCase {
                     profile: "work",
                     sourceTag: "subagent",
                     readOnly: true
+                ),
+                SessionSummary(
+                    sessionId: "cached-claude",
+                    title: "Cached Claude Code",
+                    archived: false,
+                    projectId: "project-1",
+                    profile: "work",
+                    isCliSession: true,
+                    rawSource: "claude_code"
                 )
             ],
             serverURL: serverURL,
@@ -62,13 +71,17 @@ final class SessionListMutationTests: XCTestCase {
 
         XCTAssertEqual(
             Set(viewModel.sessions.compactMap(\.sessionId)),
-            Set(["cached-project-one", "cached-project-two", "cached-subagent"])
+            Set(["cached-project-one", "cached-project-two", "cached-subagent", "cached-claude"])
         )
         XCTAssertEqual(
             viewModel.visibleSessions(
                 searchText: "",
                 selectedProjectID: "project-1",
-                automatedVisibility: AutomatedSessionVisibility(showsCron: true, showsCli: true)
+                automatedVisibility: AutomatedSessionVisibility(
+                    showsCron: true,
+                    showsCli: true,
+                    showsClaudeCode: false
+                )
             ).compactMap(\.sessionId),
             ["cached-project-one"]
         )
@@ -78,7 +91,7 @@ final class SessionListMutationTests: XCTestCase {
                 selectedProjectID: "project-1",
                 automatedVisibility: .showAll
             ).compactMap(\.sessionId)),
-            Set(["cached-project-one", "cached-subagent"])
+            Set(["cached-project-one", "cached-subagent", "cached-claude"])
         )
         XCTAssertTrue(viewModel.isViewingCachedData)
         XCTAssertNil(viewModel.errorMessage)
@@ -2311,6 +2324,17 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
     }
 
+    func testClaudeCodeClassificationUsesOnlyExplicitSourceMetadata() {
+        XCTAssertTrue(SessionSummary(sessionId: "claude", rawSource: "claude_code").isClaudeCodeSession)
+        XCTAssertFalse(
+            SessionSummary(
+                sessionId: "ordinary",
+                title: "Claude Code Notes",
+                model: "claude_code"
+            ).isClaudeCodeSession
+        )
+    }
+
     @MainActor
     func testVisibleSessionsFiltersCronAndCliIndependently() async throws {
         let viewModel = try makeViewModel { request in
@@ -2321,6 +2345,7 @@ final class SessionListMutationTests: XCTestCase {
                 {"session_id": "normal-1", "title": "Normal one", "last_message_at": 50, "archived": false},
                 {"session_id": "cron_job_1", "title": "Nightly digest", "last_message_at": 40, "archived": false},
                 {"session_id": "tagged-cron", "title": "Tagged cron", "source_tag": "cron", "last_message_at": 30, "archived": false},
+                {"session_id": "claude-1", "title": "Claude Code import", "is_cli_session": true, "raw_source": "claude_code", "last_message_at": 25, "archived": false},
                 {"session_id": "cli-1", "title": "CLI import", "is_cli_session": true, "last_message_at": 20, "archived": false},
                 {"session_id": "normal-2", "title": "Normal two", "last_message_at": 10, "archived": false}
               ]
@@ -2333,7 +2358,7 @@ final class SessionListMutationTests: XCTestCase {
         // Default keeps every row.
         XCTAssertEqual(
             Set(viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId)),
-            ["normal-1", "cron_job_1", "tagged-cron", "cli-1", "normal-2"]
+            ["normal-1", "cron_job_1", "tagged-cron", "claude-1", "cli-1", "normal-2"]
         )
 
         // Hiding cron only removes cron rows; CLI and normal rows stay.
@@ -2343,7 +2368,7 @@ final class SessionListMutationTests: XCTestCase {
                 selectedProjectID: nil,
                 automatedVisibility: AutomatedSessionVisibility(showsCron: false, showsCli: true)
             ).compactMap(\.sessionId)),
-            ["normal-1", "cli-1", "normal-2"]
+            ["normal-1", "claude-1", "cli-1", "normal-2"]
         )
 
         // Hiding CLI only removes the CLI row; cron and normal rows stay.
@@ -2354,6 +2379,21 @@ final class SessionListMutationTests: XCTestCase {
                 automatedVisibility: AutomatedSessionVisibility(showsCron: true, showsCli: false)
             ).compactMap(\.sessionId)),
             ["normal-1", "cron_job_1", "tagged-cron", "normal-2"]
+        )
+
+        // Hiding Claude Code only removes Claude rows; ordinary CLI, cron, and
+        // normal sessions stay visible.
+        XCTAssertEqual(
+            Set(viewModel.visibleSessions(
+                searchText: "",
+                selectedProjectID: nil,
+                automatedVisibility: AutomatedSessionVisibility(
+                    showsCron: true,
+                    showsCli: true,
+                    showsClaudeCode: false
+                )
+            ).compactMap(\.sessionId)),
+            ["normal-1", "cron_job_1", "tagged-cron", "cli-1", "normal-2"]
         )
 
         // Hiding both leaves only the normal WebUI sessions, newest first.
