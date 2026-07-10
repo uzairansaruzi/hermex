@@ -213,10 +213,12 @@ final class ComposerVoiceInputController {
             if self.recordingURL == recordingURL {
             self.recordingURL = nil
             }
+            guard self.recordingURL == recordingURL else { return }
             fail("Speech-to-text is not configured on this server.", logCategory: .speechUnavailable)
             return
         }
 
+        guard self.recordingURL == recordingURL else { return }
         state = .transcribing
         liveTranscript = String(localized: "Transcribing...")
 
@@ -246,6 +248,7 @@ final class ComposerVoiceInputController {
             }
 
             if let transcript = response.transcript, !transcript.isEmpty {
+                guard self.recordingURL == recordingURL else { return }
                 liveTranscript = transcript
                 if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
                     updateDraft?(composedDraft)
@@ -261,6 +264,7 @@ final class ComposerVoiceInputController {
             if self.recordingURL == recordingURL {
             self.recordingURL = nil
             }
+            guard self.recordingURL == recordingURL else { return }
             fail(error.localizedDescription, logCategory: .speechUnavailable)
         }
     }
