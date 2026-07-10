@@ -103,6 +103,7 @@ struct MessageComposerView: View {
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
+    let attachmentUploadCount: Int
     let isSendingVoiceNote: Bool
     /// When true, dictation auto-starts once this composer appears with the app active —
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
@@ -144,7 +145,7 @@ struct MessageComposerView: View {
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
-    @State private var shouldRestoreFocusAfterUpload = false
+    @State private var deferredUploadFocusPhase: DeferredUploadFocusPhase = .none
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
     @State private var showCameraPicker = false
@@ -153,6 +154,13 @@ struct MessageComposerView: View {
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
     @State private var voiceNoteCancelArmed = false
     @State private var didAutoStartVoiceInput = false
+
+    private enum DeferredUploadFocusPhase: Equatable {
+        case none
+        case waitingForNextUploadToComplete
+        case waitingForExistingUploadsToDrain(existingCount: Int)
+        case waitingForAllUploadsToFinish
+    }
 
     private var showsSlashAutocomplete: Bool {
         let query = draftMessage.drop(while: { $0.isWhitespace })
@@ -464,7 +472,7 @@ struct MessageComposerView: View {
                 }
 
                 shouldRestoreFocusAfterPresentation = false
-                shouldRestoreFocusAfterUpload = false
+                deferredUploadFocusPhase = .none
                 noticeMessage = error.localizedDescription
             }
         }
@@ -510,14 +518,12 @@ struct MessageComposerView: View {
                 restoreFocusAfterPresentationDismissalSettles()
             }
         }
-        .onChange(of: isUploadingAttachment) { _, isUploading in
-            if !isUploading {
-                restoreFocusAfterUploadIfNeeded()
-            }
+        .onChange(of: attachmentUploadCount) { oldCount, newCount in
+            handleDeferredUploadFocusTransition(from: oldCount, to: newCount)
         }
         .onChange(of: uploadAttachmentErrorMessage) { _, newValue in
             if newValue != nil {
-                shouldRestoreFocusAfterUpload = false
+                deferredUploadFocusPhase = .none
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -1111,12 +1117,38 @@ struct MessageComposerView: View {
     private func deferFocusRestoreUntilUploadCompletes() {
         guard shouldRestoreFocusAfterPresentation else { return }
         shouldRestoreFocusAfterPresentation = false
-        shouldRestoreFocusAfterUpload = true
+
+        if attachmentUploadCount > 0 {
+            deferredUploadFocusPhase = .waitingForExistingUploadsToDrain(existingCount: attachmentUploadCount)
+        } else {
+            deferredUploadFocusPhase = .waitingForNextUploadToComplete
+        }
     }
 
-    private func restoreFocusAfterUploadIfNeeded() {
-        guard shouldRestoreFocusAfterUpload else { return }
-        shouldRestoreFocusAfterUpload = false
+    private func handleDeferredUploadFocusTransition(from oldCount: Int, to newCount: Int) {
+        switch deferredUploadFocusPhase {
+        case .none:
+            return
+        case .waitingForNextUploadToComplete:
+            if oldCount > 0, newCount == 0 {
+                restoreFocusAfterDeferredUploadIfNeeded()
+            }
+        case let .waitingForExistingUploadsToDrain(existingCount):
+            if newCount > existingCount {
+                deferredUploadFocusPhase = .waitingForAllUploadsToFinish
+            } else if newCount == 0 {
+                deferredUploadFocusPhase = .waitingForNextUploadToComplete
+            }
+        case .waitingForAllUploadsToFinish:
+            if newCount == 0 {
+                restoreFocusAfterDeferredUploadIfNeeded()
+            }
+        }
+    }
+
+    private func restoreFocusAfterDeferredUploadIfNeeded() {
+        guard deferredUploadFocusPhase != .none else { return }
+        deferredUploadFocusPhase = .none
         requestTextViewFocusIfPossible()
     }
 

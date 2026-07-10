@@ -35,6 +35,10 @@ final class ChatAttachmentCoordinator {
         activeUploadCount > 0
     }
 
+    var uploadInFlightCount: Int {
+        activeUploadCount
+    }
+
     weak var delegate: ChatAttachmentCoordinatorDelegate?
 
     private let client: APIClient

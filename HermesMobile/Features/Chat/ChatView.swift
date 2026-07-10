@@ -174,6 +174,7 @@ struct ChatView: View {
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration,
             pendingAttachments: viewModel.pendingAttachments,
             isUploadingAttachment: viewModel.isUploadingAttachment,
+            attachmentUploadCount: viewModel.attachmentUploadCount,
             isSendingVoiceNote: viewModel.isSendingVoiceNote,
             autoStartsVoiceInput: autoStartsVoiceInput,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
