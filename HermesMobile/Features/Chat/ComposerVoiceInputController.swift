@@ -231,9 +231,8 @@ final class ComposerVoiceInputController {
 
             guard !Task.isCancelled else {
                 try? FileManager.default.removeItem(at: recordingURL)
-                if self.recordingURL == recordingURL {
+                guard self.recordingURL == recordingURL else { return }
                 self.recordingURL = nil
-                }
                 if self.audioRecorder === recorder {
                     self.audioRecorder = nil
                 }
