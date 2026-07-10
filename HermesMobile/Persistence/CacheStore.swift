@@ -301,8 +301,13 @@ private extension SessionSummary {
         pendingStartedAt = cachedSession.pendingStartedAt
         worktreePath = cachedSession.worktreePath
         sourceTag = cachedSession.sourceTag
+        rawSource = cachedSession.rawSource
         sessionSource = cachedSession.sessionSource
         sourceLabel = cachedSession.sourceLabel
+        parentSessionId = cachedSession.parentSessionId
+        relationshipType = cachedSession.relationshipType
+        readOnly = cachedSession.readOnly
+        isReadOnly = cachedSession.isReadOnly
         matchType = nil
     }
 }

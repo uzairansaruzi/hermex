@@ -62,6 +62,8 @@ struct SettingsView: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
+    @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
+    private var showsSubagentSessions = SessionRowDisplaySettings.defaultShowsSubagentSessions
     @State private var cliSessionsSync: CliSessionsSyncModel
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
@@ -300,6 +302,14 @@ struct SettingsView: View {
                             get: { cliSessionsSync.showsCliSessions },
                             set: { cliSessionsSync.setShowsCliSessions($0) }
                         )
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Subagent Sessions"),
+                        systemImage: "arrow.triangle.branch",
+                        isOn: $showsSubagentSessions
                     )
 
                     if let syncError = cliSessionsSync.syncErrorMessage {

@@ -362,9 +362,11 @@ private enum SessionRelativeDateFormatter {
 enum SessionRowDisplaySettings {
     static let showMessageCountKey = "sessionRow.showMessageCount"
     static let showWorkspaceKey = "sessionRow.showWorkspace"
-    // Cron and CLI sessions are controlled independently (#256); both default to
-    // shown, and their toggles let users hide each kind separately.
+    // Cron and CLI sessions default to shown; delegated subagents default to
+    // hidden. Each kind has an independent visibility control.
     static let showCronSessionsKey = "sessionRow.showCronSessions"
+    static let showSubagentSessionsKey = "sessionRow.showSubagentSessions"
+    static let defaultShowsSubagentSessions = false
     // Legacy global CLI-sessions key. Since #19 the CLI toggle is stored
     // per-server (it mirrors the server's own `show_cli_sessions` setting, and a
     // value adopted from server A must not leak to server B); this key survives
@@ -390,6 +392,14 @@ enum SessionRowDisplaySettings {
         }
 
         return true
+    }
+
+    static func showsSubagentSessions(in defaults: UserDefaults = .standard) -> Bool {
+        guard let stored = defaults.object(forKey: showSubagentSessionsKey) as? Bool else {
+            return defaultShowsSubagentSessions
+        }
+
+        return stored
     }
 }
 

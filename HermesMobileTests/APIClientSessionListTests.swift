@@ -45,6 +45,57 @@ final class APIClientSessionListTests: APIClientTestCase {
         XCTAssertEqual(response.archivedCount, 8)
     }
 
+    func testSessionsDecodesDelegationAndReadOnlyMetadataTolerantly() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "subagent-child",
+                  "source_tag": "subagent",
+                  "raw_source": "subagent",
+                  "session_source": "other",
+                  "source_label": "Subagent",
+                  "parent_session_id": "parent-1",
+                  "relationship_type": "child_session",
+                  "read_only": true
+                },
+                {
+                  "session_id": "legacy-read-only",
+                  "is_read_only": true
+                },
+                {
+                  "session_id": "older-server-row"
+                }
+              ]
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sessions()
+        let sessions = try XCTUnwrap(response.sessions)
+        let child = try XCTUnwrap(sessions.first)
+
+        XCTAssertEqual(child.sourceTag, "subagent")
+        XCTAssertEqual(child.rawSource, "subagent")
+        XCTAssertEqual(child.sessionSource, "other")
+        XCTAssertEqual(child.sourceLabel, "Subagent")
+        XCTAssertEqual(child.parentSessionId, "parent-1")
+        XCTAssertEqual(child.relationshipType, "child_session")
+        XCTAssertEqual(child.readOnly, true)
+        XCTAssertNil(child.isReadOnly)
+        XCTAssertTrue(child.isDelegatedSubagentSession)
+        XCTAssertTrue(child.isSessionReadOnly)
+
+        XCTAssertTrue(sessions[1].isSessionReadOnly)
+        XCTAssertNil(sessions[2].sourceTag)
+        XCTAssertNil(sessions[2].parentSessionId)
+        XCTAssertNil(sessions[2].readOnly)
+        XCTAssertFalse(sessions[2].isDelegatedSubagentSession)
+        XCTAssertFalse(sessions[2].isSessionReadOnly)
+    }
+
     func testSessionsIncludeArchivedBuildsQueryAndDecodesMergedRows() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.httpMethod, "GET")
