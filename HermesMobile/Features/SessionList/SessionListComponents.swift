@@ -15,6 +15,16 @@ struct SessionListRowActions {
     let export: (SessionSummary, SessionExportFormat) -> Void
 }
 
+enum SessionRowActionPolicy {
+    static func offersMutationActions(for session: SessionSummary) -> Bool {
+        !session.isSessionReadOnly
+    }
+
+    static func canExport(_ session: SessionSummary, isViewingCachedData: Bool) -> Bool {
+        !isViewingCachedData && hasServerSessionID(session)
+    }
+}
+
 enum SessionListMotion {
     static func disclosureAnimation(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0)
@@ -477,7 +487,9 @@ struct SessionListRowsSection: View {
     }
 
     private func canShowSessionMutationActions(for session: SessionSummary) -> Bool {
-        !viewModel.isViewingCachedData && hasServerSessionID(session)
+        SessionRowActionPolicy.offersMutationActions(for: session)
+            && !viewModel.isViewingCachedData
+            && hasServerSessionID(session)
     }
 }
 
@@ -505,44 +517,45 @@ struct SessionRowContextMenu: View {
             }
         }
 
-        Button {
-            actions.togglePinned(session)
-        } label: {
-            Label(session.pinned == true ? "Unpin" : "Pin", systemImage: "pin")
-        }
-        .disabled(!canShowSessionMutationActions || isMutating)
+        if SessionRowActionPolicy.offersMutationActions(for: session) {
+            Button {
+                actions.togglePinned(session)
+            } label: {
+                Label(session.pinned == true ? "Unpin" : "Pin", systemImage: "pin")
+            }
+            .disabled(!canShowSessionMutationActions || isMutating)
 
-        Button {
-            actions.rename(session)
-        } label: {
-            Label("Rename", systemImage: "pencil")
-        }
-        .disabled(isViewingCachedData || isRenamingSession || !hasServerSessionID(session))
+            Button {
+                actions.rename(session)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .disabled(isViewingCachedData || isRenamingSession || !hasServerSessionID(session))
 
-        Button {
-            actions.duplicate(session)
-        } label: {
-            Label("Duplicate", systemImage: "doc.on.doc")
-        }
-        .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
+            Button {
+                actions.duplicate(session)
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
+            .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
 
-        Menu {
-            SessionProjectMoveMenu(
-                session: session,
-                projects: projects,
-                isCreatingProject: isCreatingProject,
-                isMovingSession: isMovingSession,
-                isLoadingProjects: isLoadingProjects,
-                actions: actions
-            )
-        } label: {
-            Label("Move to Project", systemImage: "folder")
+            Menu {
+                SessionProjectMoveMenu(
+                    session: session,
+                    projects: projects,
+                    isCreatingProject: isCreatingProject,
+                    isMovingSession: isMovingSession,
+                    isLoadingProjects: isLoadingProjects,
+                    actions: actions
+                )
+            } label: {
+                Label("Move to Project", systemImage: "folder")
+            }
+            .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
         }
-        .disabled(isViewingCachedData || session.sessionId == nil || isMutating)
 
-        // Export works for any session the server can see (incl. foreign/CLI
-        // ones — upstream's export handler only gates on the active profile),
-        // so it needs a server session ID and a live connection, like Rename.
+        // Export works for any session the server can see, including read-only
+        // and foreign/CLI rows; it only needs a live server session ID.
         Menu {
             Button {
                 actions.export(session, .html)
@@ -558,25 +571,33 @@ struct SessionRowContextMenu: View {
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")
         }
-        .disabled(!canShowSessionMutationActions || isMutating)
+        .disabled(!canExportSession || isMutating)
 
-        Button {
-            actions.archive(session)
-        } label: {
-            Label("Archive", systemImage: "archivebox")
-        }
-        .disabled(!canShowSessionMutationActions || isMutating)
+        if SessionRowActionPolicy.offersMutationActions(for: session) {
+            Button {
+                actions.archive(session)
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .disabled(!canShowSessionMutationActions || isMutating)
 
-        Button(role: .destructive) {
-            actions.delete(session)
-        } label: {
-            Label("Delete", systemImage: "trash")
+            Button(role: .destructive) {
+                actions.delete(session)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .disabled(!canShowSessionMutationActions || isMutating)
         }
-        .disabled(!canShowSessionMutationActions || isMutating)
     }
 
     private var canShowSessionMutationActions: Bool {
-        !isViewingCachedData && hasServerSessionID(session)
+        SessionRowActionPolicy.offersMutationActions(for: session)
+            && !isViewingCachedData
+            && hasServerSessionID(session)
+    }
+
+    private var canExportSession: Bool {
+        SessionRowActionPolicy.canExport(session, isViewingCachedData: isViewingCachedData)
     }
 }
 

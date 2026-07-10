@@ -176,8 +176,13 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let pendingStartedAt: Double?
     let worktreePath: String?
     let sourceTag: String?
+    let rawSource: String?
     let sessionSource: String?
     let sourceLabel: String?
+    let parentSessionId: String?
+    let relationshipType: String?
+    let readOnly: Bool?
+    let isReadOnly: Bool?
     let matchType: String?
 
     init(
@@ -205,8 +210,13 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         pendingStartedAt: Double? = nil,
         worktreePath: String? = nil,
         sourceTag: String? = nil,
+        rawSource: String? = nil,
         sessionSource: String? = nil,
         sourceLabel: String? = nil,
+        parentSessionId: String? = nil,
+        relationshipType: String? = nil,
+        readOnly: Bool? = nil,
+        isReadOnly: Bool? = nil,
         matchType: String? = nil
     ) {
         self.sessionId = sessionId
@@ -233,8 +243,13 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.pendingStartedAt = pendingStartedAt
         self.worktreePath = worktreePath
         self.sourceTag = sourceTag
+        self.rawSource = rawSource
         self.sessionSource = sessionSource
         self.sourceLabel = sourceLabel
+        self.parentSessionId = parentSessionId
+        self.relationshipType = relationshipType
+        self.readOnly = readOnly
+        self.isReadOnly = isReadOnly
         self.matchType = matchType
     }
 
@@ -266,9 +281,14 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         }
         pendingStartedAt = detail.pendingStartedAt
         worktreePath = detail.worktreePath
-        sourceTag = nil
-        sessionSource = nil
-        sourceLabel = nil
+        sourceTag = detail.sourceTag
+        rawSource = detail.rawSource
+        sessionSource = detail.sessionSource
+        sourceLabel = detail.sourceLabel
+        parentSessionId = detail.parentSessionId
+        relationshipType = detail.relationshipType
+        readOnly = detail.readOnly
+        isReadOnly = detail.isReadOnly
         matchType = nil
     }
 
@@ -300,14 +320,35 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             pendingStartedAt: pendingStartedAt,
             worktreePath: worktreePath,
             sourceTag: sourceTag,
+            rawSource: rawSource,
             sessionSource: sessionSource,
             sourceLabel: sourceLabel,
+            parentSessionId: parentSessionId,
+            relationshipType: relationshipType,
+            readOnly: readOnly,
+            isReadOnly: isReadOnly,
             matchType: matchType
         )
     }
 }
 
 extension SessionSummary {
+    /// Delegated children are identified only by an explicit source marker.
+    /// Parent linkage is shared by ordinary forks and compression continuations,
+    /// so it must never classify a row as a subagent on its own.
+    var isDelegatedSubagentSession: Bool {
+        [sourceTag, rawSource, sessionSource, sourceLabel]
+            .compactMap(Self.normalizedSourceMarker)
+            .contains("subagent")
+    }
+
+    /// Delegated children are runner-owned and view-only. Upstream has also
+    /// emitted both read-only spellings across row sources, so either explicit
+    /// true value preserves that safety for other imported sessions.
+    var isSessionReadOnly: Bool {
+        isDelegatedSubagentSession || readOnly == true || isReadOnly == true
+    }
+
     var shouldAppearInSessionList: Bool {
         !isEmptySidebarPlaceholder
     }
@@ -339,8 +380,8 @@ extension SessionSummary {
             return true
         }
 
-        return [sessionSource, sourceTag, sourceLabel]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        return [sessionSource, sourceTag, rawSource, sourceLabel]
+            .compactMap(Self.normalizedSourceMarker)
             .contains("cron")
     }
 
@@ -369,18 +410,32 @@ extension SessionSummary {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    private static func normalizedSourceMarker(_ value: String?) -> String? {
+        nonEmpty(value)?.lowercased()
+    }
 }
 
-/// Which automated session kinds the session list should show. Cron jobs and
-/// CLI-imported sessions are controlled independently (#256) so a user can hide
-/// one without the other. A row that is neither cron nor CLI is always shown, so
-/// unknown/missing source data never hides a normal session.
+/// Which non-standard session kinds the session list should show. Cron jobs,
+/// CLI imports, and delegated subagents are controlled independently. A row
+/// with unknown/missing source data remains visible as a normal session.
 struct AutomatedSessionVisibility: Equatable {
     var showsCron: Bool
     var showsCli: Bool
+    var showsSubagents: Bool
 
-    /// Show every kind — the app's default state.
-    static let showAll = AutomatedSessionVisibility(showsCron: true, showsCli: true)
+    /// Show every kind, primarily for explicit opt-in and tests.
+    static let showAll = AutomatedSessionVisibility(
+        showsCron: true,
+        showsCli: true,
+        showsSubagents: true
+    )
+
+    init(showsCron: Bool, showsCli: Bool, showsSubagents: Bool = false) {
+        self.showsCron = showsCron
+        self.showsCli = showsCli
+        self.showsSubagents = showsSubagents
+    }
 
     /// Whether `session` should remain visible under these toggles.
     ///
@@ -388,6 +443,7 @@ struct AutomatedSessionVisibility: Equatable {
     /// every row by `_normalize_sidebar_source_flags` in `api/routes.py`); cron
     /// detection is client-side (`SessionSummary.isCronSession`).
     func shows(_ session: SessionSummary) -> Bool {
+        if session.isDelegatedSubagentSession, !showsSubagents { return false }
         if session.isCronSession, !showsCron { return false }
         if session.isCliSession == true, !showsCli { return false }
         return true
@@ -430,6 +486,14 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     let thresholdTokens: Int?
     let lastPromptTokens: Int?
     let isCliSession: Bool?
+    let sourceTag: String?
+    let rawSource: String?
+    let sessionSource: String?
+    let sourceLabel: String?
+    let parentSessionId: String?
+    let relationshipType: String?
+    let readOnly: Bool?
+    let isReadOnly: Bool?
     let messages: [ChatMessage]?
     let toolCalls: [PersistedToolCall]?
     let messagesTruncated: Bool?
@@ -464,6 +528,14 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         case thresholdTokens
         case lastPromptTokens
         case isCliSession
+        case sourceTag
+        case rawSource
+        case sessionSource
+        case sourceLabel
+        case parentSessionId
+        case relationshipType
+        case readOnly
+        case isReadOnly
         case messages
         case toolCalls
         case messagesTruncated
@@ -507,6 +579,14 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         thresholdTokens = container.decodeLossyIntIfPresent(forKey: .thresholdTokens)
         lastPromptTokens = container.decodeLossyIntIfPresent(forKey: .lastPromptTokens)
         isCliSession = container.decodeLossyBoolIfPresent(forKey: .isCliSession)
+        sourceTag = container.decodeLossyStringIfPresent(forKey: .sourceTag)
+        rawSource = container.decodeLossyStringIfPresent(forKey: .rawSource)
+        sessionSource = container.decodeLossyStringIfPresent(forKey: .sessionSource)
+        sourceLabel = container.decodeLossyStringIfPresent(forKey: .sourceLabel)
+        parentSessionId = container.decodeLossyStringIfPresent(forKey: .parentSessionId)
+        relationshipType = container.decodeLossyStringIfPresent(forKey: .relationshipType)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+        isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
         messages = Self.decodeMessagesTolerantly(from: container)
         toolCalls = Self.decodeToolCallsTolerantly(from: container)
         messagesTruncated = container.decodeLossyBoolIfPresent(forKey: .underscoredMessagesTruncated)

@@ -178,6 +178,35 @@ final class SessionSidebarDisclosureSettingsTests: XCTestCase {
     }
 }
 
+final class SessionRowDisplaySettingsTests: XCTestCase {
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "SessionRowDisplaySettingsTests-\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        suiteName = nil
+        super.tearDown()
+    }
+
+    func testSubagentSessionsDefaultHiddenAndPersistStoredChoice() {
+        XCTAssertFalse(SessionRowDisplaySettings.showsSubagentSessions(in: defaults))
+
+        defaults.set(true, forKey: SessionRowDisplaySettings.showSubagentSessionsKey)
+        XCTAssertTrue(SessionRowDisplaySettings.showsSubagentSessions(in: defaults))
+
+        defaults.set(false, forKey: SessionRowDisplaySettings.showSubagentSessionsKey)
+        XCTAssertFalse(SessionRowDisplaySettings.showsSubagentSessions(in: defaults))
+    }
+}
+
 /// The avatar long-press server switcher's menu contents (#283). The switch
 /// action itself is #17's `AuthManager.switchActiveServer`, covered by
 /// `AuthManagerStateTests`; these cover the pure model that decides what the

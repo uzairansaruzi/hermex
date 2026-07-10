@@ -58,6 +58,49 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(updatedSession.expiresAt, secondCachedAt.addingTimeInterval(CachePolicy.ttl))
     }
 
+    func testCachedSessionsPreserveSubagentClassificationAndReadOnlySafety() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let now = cachedAt.addingTimeInterval(60)
+        let response = try decodeSessions("""
+        {
+          "sessions": [
+            {
+              "session_id": "subagent-child",
+              "title": "Delegated research",
+              "source_tag": "subagent",
+              "raw_source": "subagent",
+              "session_source": "other",
+              "source_label": "Subagent",
+              "parent_session_id": "parent-1",
+              "relationship_type": "child_session",
+              "read_only": true,
+              "archived": false
+            }
+          ]
+        }
+        """)
+
+        try CacheStore.cacheSessions(
+            try XCTUnwrap(response.sessions),
+            serverURL: serverURL,
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let cached = try XCTUnwrap(
+            CacheStore.cachedSessions(serverURL: serverURL, in: context, now: now).first
+        )
+        XCTAssertEqual(cached.rawSource, "subagent")
+        XCTAssertEqual(cached.parentSessionId, "parent-1")
+        XCTAssertEqual(cached.relationshipType, "child_session")
+        XCTAssertTrue(cached.isDelegatedSubagentSession)
+        XCTAssertTrue(cached.isSessionReadOnly)
+        XCTAssertFalse(AutomatedSessionVisibility(showsCron: true, showsCli: true).shows(cached))
+        XCTAssertTrue(AutomatedSessionVisibility.showAll.shows(cached))
+    }
+
     func testCacheMessagesWritesLoadedWindowAndRemovesStaleMessages() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
