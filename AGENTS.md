@@ -41,7 +41,7 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 5. **Don't commit broken builds.** If a build or test fails, fix it before writing more code.
 
 ## Tooling
-- The maintainer works in **VS Code**, not the Xcode UI — prefer terminal validation;
+- The maintainer works in Agentic Development Environments (Codex, Claude Code), not the Xcode UI — prefer terminal validation;
   ask to open Xcode only when the terminal can't answer.
 - Use **XcodeBuildMCP** for simulator build/test/run/log; fall back to raw
   `xcodebuild`/`xcrun simctl` for release/archive or low-level diagnosis. Defaults live
