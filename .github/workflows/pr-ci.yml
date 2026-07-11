@@ -67,7 +67,7 @@ jobs:
       SCHEME: HermesMobile
       DERIVED_DATA_PATH: DerivedData
       RESULT_BUNDLE_PATH: TestResults.xcresult
-      TEST_WORKER_COUNT: 1
+      TEST_WORKER_COUNT: 2
 
     steps:
       - name: Check out
@@ -140,6 +140,7 @@ jobs:
 
       - name: Report slowest tests
         if: always()
+        continue-on-error: true
         run: |
           set -euo pipefail
           if [[ ! -d "${RESULT_BUNDLE_PATH}" ]]; then
