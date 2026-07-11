@@ -5513,25 +5513,35 @@ enum ServerTTSPolicy {
     static var defaultVoice: String {
         let lang = Locale.current.language.languageCode?.identifier ?? "en"
         let region = Locale.current.language.region?.identifier ?? ""
-        switch "\(lang)-\(region)" {
-        case "et-EE": return "et-EE-AnuNeural"
-        case "de-DE": return "de-DE-KatjaNeural"
-        case "fr-FR": return "fr-FR-DeniseNeural"
-        case "es-ES": return "es-ES-ElviraNeural"
-        case "it-IT": return "it-IT-ElsaNeural"
-        case "pl-PL": return "pl-PL-AgnieszkaNeural"
-        case "nl-NL": return "nl-NL-FennaNeural"
-        case "tr-TR": return "tr-TR-EmelNeural"
-        case "ru-RU": return "ru-RU-SvetlanaNeural"
-        case "ja-JP": return "ja-JP-NanamiNeural"
-        case "ko-KR": return "ko-KR-SunHiNeural"
-        case "ar-SA": return "ar-SA-ZariyahNeural"
-        case "he-IL": return "he-IL-HilaNeural"
-        case "ur-PK": return "ur-PK-UzmaNeural"
-        case "zh-CN": return "zh-CN-XiaoxiaoNeural"
-        case "zh-TW": return "zh-TW-HsiaoChenNeural"
-        case "zh-HK": return "zh-HK-HiuGaaiNeural"
-        case "pt-BR": return "pt-BR-FranciscaNeural"
+        // Exact lang-region match first, then language-only fallback.
+        // This handles regional variants (de-AT, fr-CA, es-MX, etc.)
+        // by matching the language code when no exact region exists.
+        switch lang {
+        case "et": return "et-EE-AnuNeural"
+        case "de": return "de-DE-KatjaNeural"
+        case "fr": return "fr-FR-DeniseNeural"
+        case "es": return "es-ES-ElviraNeural"
+        case "it": return "it-IT-ElsaNeural"
+        case "pl": return "pl-PL-AgnieszkaNeural"
+        case "nl": return "nl-NL-FennaNeural"
+        case "tr": return "tr-TR-EmelNeural"
+        case "ru": return "ru-RU-SvetlanaNeural"
+        case "ja": return "ja-JP-NanamiNeural"
+        case "ko": return "ko-KR-SunHiNeural"
+        case "ar": return "ar-SA-ZariyahNeural"
+        case "he": return "he-IL-HilaNeural"
+        case "ur": return "ur-PK-UzmaNeural"
+        case "zh":
+            // Match script+region for Chinese variants
+            let script = Locale.current.language.script?.identifier ?? ""
+            switch "\(script)-\(region)" {
+            case "Hant-TW": return "zh-TW-HsiaoChenNeural"
+            case "Hant-HK": return "zh-HK-HiuGaaiNeural"
+            default: return "zh-CN-XiaoxiaoNeural"
+            }
+        case "pt":
+            // Only pt-BR has a distinct voice
+            return "pt-BR-FranciscaNeural"
         default: return "en-US-AriaNeural"
         }
     }
@@ -5541,7 +5551,16 @@ enum ServerTTSPolicy {
     static var onDeviceVoice: AVSpeechSynthesisVoice? {
         let lang = Locale.current.language.languageCode?.identifier ?? "en"
         let region = Locale.current.language.region?.identifier ?? ""
-        let localeId = "\(lang)_\(region)"
+        let script = Locale.current.language.script?.identifier
+        // Build a proper BCP 47 tag with hyphens, supporting
+        // script-based locales (zh-Hans, zh-Hant) correctly.
+        var localeId = lang
+        if let script {
+            localeId += "-\(script)"
+        }
+        if !region.isEmpty {
+            localeId += "-\(region)"
+        }
         return AVSpeechSynthesisVoice(language: localeId)
     }
 
