@@ -65,6 +65,9 @@ jobs:
     env:
       PROJECT_PATH: HermesMobile.xcodeproj
       SCHEME: HermesMobile
+      DERIVED_DATA_PATH: DerivedData
+      RESULT_BUNDLE_PATH: TestResults.xcresult
+      TEST_WORKER_COUNT: 1
 
     steps:
       - name: Check out
@@ -98,24 +101,96 @@ jobs:
           echo "Using simulator: ${name}"
           echo "name=${name}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and test
+      - name: Build for testing
         env:
           SIMULATOR_NAME: ${{ steps.sim.outputs.name }}
         run: |
           set -euo pipefail
-          xcodebuild test \
+          start_seconds=${SECONDS}
+          xcodebuild build-for-testing \
             -project "${PROJECT_PATH}" \
             -scheme "${SCHEME}" \
             -destination "platform=iOS Simulator,name=${SIMULATOR_NAME}" \
-            -resultBundlePath TestResults.xcresult \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO
+          duration_seconds=$((SECONDS - start_seconds))
+          echo "Build-for-testing duration: ${duration_seconds}s"
+          echo "### PR CI timing" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Build for testing: ${duration_seconds}s" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Test without building
+        env:
+          SIMULATOR_NAME: ${{ steps.sim.outputs.name }}
+        run: |
+          set -euo pipefail
+          start_seconds=${SECONDS}
+          xcodebuild test-without-building \
+            -project "${PROJECT_PATH}" \
+            -scheme "${SCHEME}" \
+            -destination "platform=iOS Simulator,name=${SIMULATOR_NAME}" \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -resultBundlePath "${RESULT_BUNDLE_PATH}" \
+            -parallel-testing-enabled YES \
+            -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
+            CODE_SIGNING_ALLOWED=NO
+          duration_seconds=$((SECONDS - start_seconds))
+          echo "Test-without-building duration: ${duration_seconds}s"
+          echo "- Test without building (${TEST_WORKER_COUNT} workers): ${duration_seconds}s" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Report slowest tests
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -d "${RESULT_BUNDLE_PATH}" ]]; then
+            echo "No result bundle is available; skipping slow-test reporting."
+            exit 0
+          fi
+
+          xcrun xcresulttool get test-results tests \
+            --path "${RESULT_BUNDLE_PATH}" \
+            --compact > test-results.json
+
+          python3 - <<'PY' | tee slowest-tests.txt
+          import json
+
+          with open("test-results.json", encoding="utf-8") as results_file:
+              results = json.load(results_file)
+
+          tests = []
+
+          def visit(node, parents):
+              name = node.get("name", "<unnamed>")
+              node_type = node.get("nodeType")
+              path = [*parents, name]
+              duration = node.get("durationInSeconds")
+              if node_type == "Test Case" and isinstance(duration, (int, float)):
+                  tests.append((duration, " / ".join(path)))
+              for child in node.get("children", []):
+                  visit(child, path)
+
+          for root in results.get("testNodes", []):
+              visit(root, [])
+
+          print("Slowest test cases:")
+          for duration, name in sorted(tests, reverse=True)[:20]:
+              print(f"{duration:8.3f}s  {name}")
+          PY
+
+          {
+            echo ""
+            echo "#### Slowest test cases"
+            echo '```text'
+            cat slowest-tests.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload test results on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: TestResults.xcresult
+          path: ${{ env.RESULT_BUNDLE_PATH }}
           if-no-files-found: ignore
 
   gate:
