@@ -73,18 +73,6 @@ jobs:
       - name: Check out
         uses: actions/checkout@v7
 
-      - name: Restore SwiftPM cache
-        id: swiftpm-cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ${{ env.DERIVED_DATA_PATH }}/SourcePackages
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-
-      - name: Report SwiftPM cache result
-        run: 'echo "SwiftPM cache hit: ${{ steps.swiftpm-cache.outputs.cache-hit }}"'
-
       - name: Show Xcode version
         run: xcodebuild -version
 
