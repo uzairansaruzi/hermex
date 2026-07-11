@@ -1290,6 +1290,7 @@
 				Base,
 				de,
 				es,
+				et,
 				fr,
 				it,
 				pl,

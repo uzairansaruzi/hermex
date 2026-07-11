@@ -110,6 +110,12 @@
             "state": "translated",
             "value": "新增 ${applicationName} 聊天"
           }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uus ${applicationName} vestlus"
+          }
         }
       }
     },
@@ -221,6 +227,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "新增 ${applicationName} 語音聊天"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uus ${applicationName} häälega vestlus"
           }
         }
       }
@@ -334,6 +346,12 @@
             "state": "translated",
             "value": "在 ${applicationName} 中新增 ${profile} 聊天"
           }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uus ${profile} vestlus rakenduses ${applicationName}"
+          }
         }
       }
     },
@@ -445,6 +463,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 ${applicationName} 中新增聊天"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uus vestlus rakenduses ${applicationName}"
           }
         }
       }
@@ -558,6 +582,12 @@
             "state": "translated",
             "value": "在 ${applicationName} 的 ${profile} 中新增聊天"
           }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uus vestlus profiilis ${profile} rakenduses ${applicationName}"
+          }
         }
       }
     },
@@ -669,6 +699,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 ${applicationName} 中新增語音聊天"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uus häälega vestlus rakenduses ${applicationName}"
           }
         }
       }
@@ -782,6 +818,12 @@
             "state": "translated",
             "value": "在 ${applicationName} 中開始新的 ${profile} 聊天"
           }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alusta uut ${profile} vestlust rakenduses ${applicationName}"
+          }
         }
       }
     },
@@ -894,6 +936,12 @@
             "state": "translated",
             "value": "在 ${applicationName} 中開始新聊天"
           }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alusta uut vestlust rakenduses ${applicationName}"
+          }
         }
       }
     },
@@ -1005,6 +1053,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 ${applicationName} 中開始語音聊天"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alusta häälega vestlust rakenduses ${applicationName}"
           }
         }
       }

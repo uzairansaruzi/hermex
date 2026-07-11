@@ -16,7 +16,7 @@ final class LocalizationCatalogTests: XCTestCase {
 
     /// Non-English languages compiled into the app. Keep in sync with `knownRegions` in the
     /// project file and the languages present in `Localizable.xcstrings`.
-    private static let shippedLanguages = ["de", "es", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK"]
+    private static let shippedLanguages = ["de", "es", "et", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK"]
 
     private func resourceURL(_ relativePath: String) -> URL {
         URL(fileURLWithPath: #filePath)

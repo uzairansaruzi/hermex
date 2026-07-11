@@ -4539,6 +4539,7 @@ final class ChatViewModel {
         let speechSynthesizer = speechSynthesizerForListening()
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.voice = ServerTTSPolicy.onDeviceVoice
         activeListeningUtteranceID = ObjectIdentifier(utterance)
         speechSynthesizer.speak(utterance)
     }
@@ -5507,10 +5508,42 @@ enum ServerTTSPolicy {
     /// Server-enforced request cap (`400 text too long` above it); longer text
     /// routes straight to the on-device synthesizer (chunking is a non-goal).
     static let maximumTextLength = 5000
-    /// The server's own default voice is `zh-CN-XiaoxiaoNeural`, so the client
-    /// must always send an explicit voice. A voice picker is a non-goal of #15;
-    /// this is the issue-specified default (verified live 2026-07-02).
-    static let defaultVoice = "en-US-AriaNeural"
+    /// Returns the best neural voice for the app's current language.
+    /// Falls back to en-US-AriaNeural when the language has no known voice.
+    static var defaultVoice: String {
+        let lang = Locale.current.language.languageCode?.identifier ?? "en"
+        let region = Locale.current.language.region?.identifier ?? ""
+        switch "\(lang)-\(region)" {
+        case "et-EE": return "et-EE-AnuNeural"
+        case "de-DE": return "de-DE-KatjaNeural"
+        case "fr-FR": return "fr-FR-DeniseNeural"
+        case "es-ES": return "es-ES-ElviraNeural"
+        case "it-IT": return "it-IT-ElsaNeural"
+        case "pl-PL": return "pl-PL-AgnieszkaNeural"
+        case "nl-NL": return "nl-NL-FennaNeural"
+        case "tr-TR": return "tr-TR-EmelNeural"
+        case "ru-RU": return "ru-RU-SvetlanaNeural"
+        case "ja-JP": return "ja-JP-NanamiNeural"
+        case "ko-KR": return "ko-KR-SunHiNeural"
+        case "ar-SA": return "ar-SA-ZariyahNeural"
+        case "he-IL": return "he-IL-HilaNeural"
+        case "ur-PK": return "ur-PK-UzmaNeural"
+        case "zh-CN": return "zh-CN-XiaoxiaoNeural"
+        case "zh-TW": return "zh-TW-HsiaoChenNeural"
+        case "zh-HK": return "zh-HK-HiuGaaiNeural"
+        case "pt-BR": return "pt-BR-FranciscaNeural"
+        default: return "en-US-AriaNeural"
+        }
+    }
+
+    /// Returns a voice suitable for on-device `AVSpeechSynthesisVoice` given
+    /// the app's current language. Falls back to `nil` (system default).
+    static var onDeviceVoice: AVSpeechSynthesisVoice? {
+        let lang = Locale.current.language.languageCode?.identifier ?? "en"
+        let region = Locale.current.language.region?.identifier ?? ""
+        let localeId = "\(lang)_\(region)"
+        return AVSpeechSynthesisVoice(language: localeId)
+    }
 
     static func shouldUseServerTTS(for text: String) -> Bool {
         text.count <= maximumTextLength
