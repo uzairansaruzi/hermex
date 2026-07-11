@@ -5534,10 +5534,15 @@ enum ServerTTSPolicy {
         case "zh":
             // Match script+region for Chinese variants
             let script = Locale.current.language.script?.identifier ?? ""
-            switch "\(script)-\(region)" {
-            case "Hant-TW": return "zh-TW-HsiaoChenNeural"
-            case "Hant-HK": return "zh-HK-HiuGaaiNeural"
-            default: return "zh-CN-XiaoxiaoNeural"
+            switch script {
+            case "Hant":
+                if region == "TW" { return "zh-TW-HsiaoChenNeural" }
+                if region == "HK" { return "zh-HK-HiuGaaiNeural" }
+                return "zh-TW-HsiaoChenNeural"      // zh-Hant default
+            case "Hans":
+                return "zh-CN-XiaoxiaoNeural"       // zh-Hans default
+            default:
+                return "zh-CN-XiaoxiaoNeural"       // zh without script = Simplified
             }
         case "pt":
             // Only pt-BR has a distinct voice
@@ -5554,6 +5559,7 @@ enum ServerTTSPolicy {
         let script = Locale.current.language.script?.identifier
         // Build a proper BCP 47 tag with hyphens, supporting
         // script-based locales (zh-Hans, zh-Hant) correctly.
+        // Avoids trailing dash when region is absent.
         var localeId = lang
         if let script {
             localeId += "-\(script)"
@@ -5561,6 +5567,8 @@ enum ServerTTSPolicy {
         if !region.isEmpty {
             localeId += "-\(region)"
         }
+        // AVSpeechSynthesisVoice accepts hyphens, underscores, or nil locale.
+        // A bare lang code is valid — no trailing punctuation.
         return AVSpeechSynthesisVoice(language: localeId)
     }
 
