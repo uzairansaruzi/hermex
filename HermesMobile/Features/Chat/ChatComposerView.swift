@@ -103,6 +103,8 @@ struct MessageComposerView: View {
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
     let isUploadingAttachment: Bool
+    let attachmentUploadCount: Int
+    let attachmentUploadGeneration: Int
     let isSendingVoiceNote: Bool
     /// When true, dictation auto-starts once this composer appears with the app active —
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
@@ -145,15 +147,22 @@ struct MessageComposerView: View {
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
-    @State private var shouldRestoreFocusAfterUpload = false
+    @State private var deferredUploadFocusPhase: DeferredUploadFocusPhase = .none
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
+    @State private var showCameraPicker = false
     @State private var showFileImporter = false
     @State private var voiceInput = ComposerVoiceInputController()
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
     @State private var voiceNoteCancelArmed = false
     @State private var didAutoStartVoiceInput = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
+
+    private enum DeferredUploadFocusPhase: Equatable {
+        case none
+        case waitingForUploadStart(afterGeneration: Int)
+        case waitingForUploadsToFinish
+    }
 
     private var showsSlashAutocomplete: Bool {
         let query = draftMessage.drop(while: { $0.isWhitespace })
@@ -465,7 +474,7 @@ struct MessageComposerView: View {
                 }
 
                 shouldRestoreFocusAfterPresentation = false
-                shouldRestoreFocusAfterUpload = false
+                deferredUploadFocusPhase = .none
                 noticeMessage = error.localizedDescription
             }
         }
@@ -511,14 +520,15 @@ struct MessageComposerView: View {
                 restoreFocusAfterPresentationDismissalSettles()
             }
         }
-        .onChange(of: isUploadingAttachment) { _, isUploading in
-            if !isUploading {
-                restoreFocusAfterUploadIfNeeded()
-            }
+        .onChange(of: attachmentUploadGeneration) { _, newGeneration in
+            handleDeferredUploadStart(newGeneration)
+        }
+        .onChange(of: attachmentUploadCount) { _, newCount in
+            handleDeferredUploadCountChange(newCount)
         }
         .onChange(of: uploadAttachmentErrorMessage) { _, newValue in
             if newValue != nil {
-                shouldRestoreFocusAfterUpload = false
+                deferredUploadFocusPhase = .none
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -596,6 +606,18 @@ struct MessageComposerView: View {
                 onPhotoItemSelected(item)
             }
         }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPickerView { image in
+                deferFocusRestoreUntilUploadCompletes()
+                onPasteImages([image])
+            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: showCameraPicker) { _, isPresented in
+            if !isPresented {
+                restoreFocusAfterPresentationDismissalSettles()
+            }
+        }
     }
 
     private func composerOptionsMenu() -> UIMenu {
@@ -620,6 +642,16 @@ struct MessageComposerView: View {
                         Task { @MainActor in
                             prepareForComposerPresentation()
                             showPhotoPicker = true
+                        }
+                    },
+                    UIAction(
+                        title: String(localized: "Camera"),
+                        image: UIImage(systemName: "camera"),
+                        attributes: UIImagePickerController.isSourceTypeAvailable(.camera) ? [] : .disabled
+                    ) { _ in
+                        Task { @MainActor in
+                            prepareForComposerPresentation()
+                            showCameraPicker = true
                         }
                     }
                 ]
@@ -1098,12 +1130,31 @@ struct MessageComposerView: View {
     private func deferFocusRestoreUntilUploadCompletes() {
         guard shouldRestoreFocusAfterPresentation else { return }
         shouldRestoreFocusAfterPresentation = false
-        shouldRestoreFocusAfterUpload = true
+        deferredUploadFocusPhase = .waitingForUploadStart(afterGeneration: attachmentUploadGeneration)
     }
 
-    private func restoreFocusAfterUploadIfNeeded() {
-        guard shouldRestoreFocusAfterUpload else { return }
-        shouldRestoreFocusAfterUpload = false
+    private func handleDeferredUploadStart(_ newGeneration: Int) {
+        guard case let .waitingForUploadStart(afterGeneration) = deferredUploadFocusPhase,
+              newGeneration > afterGeneration
+        else { return }
+
+        if attachmentUploadCount == 0 {
+            restoreFocusAfterDeferredUploadIfNeeded()
+        } else {
+            deferredUploadFocusPhase = .waitingForUploadsToFinish
+        }
+    }
+
+    private func handleDeferredUploadCountChange(_ newCount: Int) {
+        guard case .waitingForUploadsToFinish = deferredUploadFocusPhase else { return }
+        if newCount == 0 {
+            restoreFocusAfterDeferredUploadIfNeeded()
+        }
+    }
+
+    private func restoreFocusAfterDeferredUploadIfNeeded() {
+        guard deferredUploadFocusPhase != .none else { return }
+        deferredUploadFocusPhase = .none
         requestTextViewFocusIfPossible()
     }
 
