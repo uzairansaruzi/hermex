@@ -71,6 +71,7 @@ struct DefaultModelPickerView: View {
                 await loadModels()
             }
         }
+        .adaptiveFormPresentation()
     }
 
     @ViewBuilder

@@ -90,6 +90,7 @@ struct SessionListView: View {
             .sheet(item: $sessionExportShareItem) { item in
                 SessionExportShareSheet(fileURL: item.fileURL)
                     .presentationDetents([.medium, .large])
+                    .adaptiveFormPresentation()
                     .ignoresSafeArea()
                     // The temp file lives in its own UUID directory (see
                     // SessionListViewModel.export); remove the directory once
@@ -239,6 +240,7 @@ struct SessionListView: View {
                     }
                 )
             )
+            .focusedSceneValue(\.hermexSceneActions, sceneActions)
     }
 
     @ViewBuilder
@@ -849,6 +851,32 @@ struct SessionListView: View {
             searchChromeIsExpanded = true
         }
         searchFieldIsFocused = true
+    }
+
+    private var sceneActions: HermexSceneActions {
+        HermexSceneActions(
+            canCreateNewChat: !viewModel.isViewingCachedData && !navigationState.isCreatingNewChat,
+            createNewChat: openNewChatFromKeyboard,
+            searchSessions: openSearchFromKeyboard
+        )
+    }
+
+    private func openNewChatFromKeyboard() {
+        guard !viewModel.isViewingCachedData, !navigationState.isCreatingNewChat else { return }
+        openNewChat()
+    }
+
+    private func openSearchFromKeyboard() {
+        searchFieldIsFocused = false
+
+        if horizontalSizeClass != .regular {
+            navigationState.clearDestination()
+        }
+
+        Task { @MainActor in
+            await Task.yield()
+            openSearch()
+        }
     }
 
     private func handleSearchFieldFocusChange(_ isFocused: Bool) {

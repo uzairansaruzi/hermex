@@ -647,6 +647,7 @@ struct TranscriptMediaPreviewView: View {
                 viewModel.cleanupTemporaryFiles()
             }
         }
+        .adaptivePagePresentation()
     }
 
     private func imageContent(_ image: UIImage) -> some View {

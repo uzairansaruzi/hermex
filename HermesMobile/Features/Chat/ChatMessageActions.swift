@@ -163,5 +163,6 @@ struct EditMessageSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .adaptiveFormPresentation()
     }
 }

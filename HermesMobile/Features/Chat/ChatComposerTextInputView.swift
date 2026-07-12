@@ -9,7 +9,9 @@ struct ComposerTextInputView: View {
     @Binding var measuredHeight: CGFloat
 
     let isDisabled: Bool
+    let isKeyboardSendEnabled: Bool
     let verticalPadding: CGFloat
+    let onKeyboardSend: () -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
     let onPasteFileURLs: ([URL]) -> Void
     let onPasteImageProviders: ([NSItemProvider]) -> Void
@@ -21,6 +23,8 @@ struct ComposerTextInputView: View {
                 text: $text,
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
+                isKeyboardSendEnabled: isKeyboardSendEnabled,
+                onKeyboardSend: onKeyboardSend,
                 onHeightChange: updateMeasuredHeight,
                 onPasteFileProviders: onPasteFileProviders,
                 onPasteFileURLs: onPasteFileURLs,
@@ -57,6 +61,8 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
     let isDisabled: Bool
+    let isKeyboardSendEnabled: Bool
+    let onKeyboardSend: () -> Void
     let onHeightChange: (CGFloat) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
     let onPasteFileURLs: ([URL]) -> Void
@@ -77,6 +83,8 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.textContentType = .none
+        textView.isKeyboardSendEnabled = isKeyboardSendEnabled
+        textView.onKeyboardSend = onKeyboardSend
         textView.pasteConfiguration = UIPasteConfiguration(
             acceptableTypeIdentifiers: [
                 UTType.fileURL.identifier,
@@ -108,6 +116,8 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.isEditable = !isDisabled
         textView.isSelectable = !isDisabled
         textView.textColor = isDisabled ? .secondaryLabel : .label
+        textView.isKeyboardSendEnabled = isKeyboardSendEnabled
+        textView.onKeyboardSend = onKeyboardSend
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
@@ -194,6 +204,8 @@ private struct ComposerTextView: UIViewRepresentable {
     }
 
     final class PastingTextView: UITextView {
+        var isKeyboardSendEnabled = false
+        var onKeyboardSend: () -> Void = {}
         var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
         var onPasteFileURLs: ([URL]) -> Void = { _ in }
         var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
@@ -228,12 +240,31 @@ private struct ComposerTextView: UIViewRepresentable {
             onPasteFileProviders(fileProviders)
         }
 
+        override var keyCommands: [UIKeyCommand]? {
+            let sendCommand = UIKeyCommand(
+                title: ComposerKeyboardCommand.title,
+                action: #selector(sendMessageFromKeyboard),
+                input: ComposerKeyboardCommand.input,
+                modifierFlags: ComposerKeyboardCommand.modifierFlags
+            )
+            return (super.keyCommands ?? []) + [sendCommand]
+        }
+
         override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+            if action == #selector(sendMessageFromKeyboard) {
+                return isKeyboardSendEnabled
+            }
+
             if action == #selector(paste(_:)), hasPasteboardContent {
                 return true
             }
 
             return super.canPerformAction(action, withSender: sender)
+        }
+
+        @objc private func sendMessageFromKeyboard() {
+            guard isKeyboardSendEnabled else { return }
+            onKeyboardSend()
         }
 
         override func paste(_ sender: Any?) {
@@ -290,4 +321,10 @@ private struct ComposerTextView: UIViewRepresentable {
             }
         }
     }
+}
+
+enum ComposerKeyboardCommand {
+    static let title = String(localized: "Send Message")
+    static let input = "\r"
+    static let modifierFlags: UIKeyModifierFlags = .command
 }

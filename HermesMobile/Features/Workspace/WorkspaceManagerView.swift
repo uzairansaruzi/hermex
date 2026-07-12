@@ -155,6 +155,7 @@ struct WorkspaceManagerView: View {
                 }
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private func workspaceRow(_ workspace: WorkspaceRoot) -> some View {
@@ -290,6 +291,7 @@ private struct WorkspaceAddSheet: View {
                 suggestions = await viewModel.loadSuggestions(prefix: path)
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var trimmedPath: String {

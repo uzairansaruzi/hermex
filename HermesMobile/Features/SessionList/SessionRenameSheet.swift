@@ -57,6 +57,7 @@ struct SessionRenameSheet: View {
                 titleIsFocused = true
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var trimmedSessionTitle: String {

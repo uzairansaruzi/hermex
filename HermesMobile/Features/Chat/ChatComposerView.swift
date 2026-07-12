@@ -311,7 +311,9 @@ struct MessageComposerView: View {
                         inputHeight: $textInputHeight,
                         measuredHeight: $textFieldHeight,
                         isDisabled: isOfflineReadOnly,
+                        isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
                         verticalPadding: textFieldVerticalPadding,
+                        onKeyboardSend: actionButtonTapped,
                         onPasteFileProviders: onPasteFileProviders,
                         onPasteFileURLs: onPasteFileURLs,
                         onPasteImageProviders: onPasteImageProviders,
@@ -606,7 +608,7 @@ struct MessageComposerView: View {
                 onPhotoItemSelected(item)
             }
         }
-        .sheet(isPresented: $showCameraPicker) {
+        .fullScreenCover(isPresented: $showCameraPicker) {
             CameraPickerView { image in
                 deferFocusRestoreUntilUploadCompletes()
                 onPasteImages([image])

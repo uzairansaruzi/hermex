@@ -1,6 +1,45 @@
 import SwiftUI
 import SwiftData
 
+struct HermexSceneActions {
+    let canCreateNewChat: Bool
+    let createNewChat: () -> Void
+    let searchSessions: () -> Void
+}
+
+private struct HermexSceneActionsKey: FocusedValueKey {
+    typealias Value = HermexSceneActions
+}
+
+extension FocusedValues {
+    var hermexSceneActions: HermexSceneActions? {
+        get { self[HermexSceneActionsKey.self] }
+        set { self[HermexSceneActionsKey.self] = newValue }
+    }
+}
+
+struct HermexCommands: Commands {
+    @FocusedValue(\.hermexSceneActions) private var actions
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Chat") {
+                actions?.createNewChat()
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            .disabled(actions?.canCreateNewChat != true)
+        }
+
+        CommandGroup(after: .newItem) {
+            Button("Search Sessions") {
+                actions?.searchSessions()
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .disabled(actions == nil)
+        }
+    }
+}
+
 @main
 struct HermesMobileApp: App {
     @State private var authManager = AuthManager()
@@ -26,5 +65,9 @@ struct HermesMobileApp: App {
             #endif
         }
         .modelContainer(for: [CachedSession.self, CachedMessage.self])
+        .commands {
+            HermexCommands()
+            SidebarCommands()
+        }
     }
 }

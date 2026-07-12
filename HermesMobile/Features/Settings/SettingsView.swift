@@ -2207,6 +2207,7 @@ struct AddServerView: View {
                 }
             }
         }
+        .adaptiveFormPresentation()
     }
 
     @ViewBuilder

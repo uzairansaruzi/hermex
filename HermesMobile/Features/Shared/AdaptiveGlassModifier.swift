@@ -47,6 +47,14 @@ extension View {
         modifier(AdaptiveReadableScrollContentModifier(maxWidth: maxWidth))
     }
 
+    func adaptiveFormPresentation() -> some View {
+        presentationSizing(.form)
+    }
+
+    func adaptivePagePresentation() -> some View {
+        presentationSizing(.page)
+    }
+
     func adaptiveSecondaryNavigationTitle() -> some View {
         modifier(AdaptiveSecondaryNavigationTitleModifier())
     }
