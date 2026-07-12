@@ -307,16 +307,41 @@ struct SessionListView: View {
                 )
             }
 
-            SessionListRowsSection(
-                viewModel: viewModel,
-                sessions: visibleSessions,
-                emptyTitle: emptySessionsTitle,
-                emptyDescription: emptySessionsDescription,
-                isSearchActive: isSearchingSessions,
-                showsMessageCount: showsSessionMessageCount,
-                showsWorkspace: showsSessionWorkspace,
-                actions: sessionRowActions
-            )
+            let regularSessions = visibleSessions.filter { !$0.isCronSession }
+            let cronSessions = visibleSessions.filter { $0.isCronSession }
+
+            // Only render the regular-session section when it has content or
+            // when there are no cron sessions either (so the empty-state message
+            // still appears when the list is truly empty). If the regular list
+            // is empty but cron sessions are present, skip it — the Scheduled
+            // jobs section below handles the visible rows.
+            if !regularSessions.isEmpty || cronSessions.isEmpty {
+                SessionListRowsSection(
+                    viewModel: viewModel,
+                    sessions: regularSessions,
+                    emptyTitle: emptySessionsTitle,
+                    emptyDescription: emptySessionsDescription,
+                    isSearchActive: isSearchingSessions,
+                    showsMessageCount: showsSessionMessageCount,
+                    showsWorkspace: showsSessionWorkspace,
+                    actions: sessionRowActions
+                )
+            }
+
+            if !cronSessions.isEmpty {
+                SessionListRowsSection(
+                    viewModel: viewModel,
+                    sessions: cronSessions,
+                    emptyTitle: "",
+                    emptyDescription: nil,
+                    isSearchActive: isSearchingSessions,
+                    showsMessageCount: showsSessionMessageCount,
+                    showsWorkspace: showsSessionWorkspace,
+                    actions: sessionRowActions,
+                    title: String(localized: "Scheduled jobs"),
+                    showsRemoteSearchSpinner: false
+                )
+            }
 
             if showsArchivedEntry {
                 archivedEntryRow

@@ -319,11 +319,19 @@ struct SessionListRowsSection: View {
     let showsMessageCount: Bool
     let showsWorkspace: Bool
     let actions: SessionListRowActions
+    var title: String? = nil
+    var showsRemoteSearchSpinner = true
+
+    private var headerIsVisible: Bool {
+        (!isSearchActive || title != nil) || (showsRemoteSearchSpinner && viewModel.isSearchingRemoteSessions)
+    }
 
     var body: some View {
-        sessionsHeaderRow
-            .padding(.top, isSearchActive ? 16 : 28)
-            .sessionsScreenListRow()
+        if headerIsVisible {
+            sessionsHeaderRow
+                .padding(.top, isSearchActive ? 16 : 28)
+                .sessionsScreenListRow()
+        }
 
         if viewModel.isLoading && viewModel.sessions.isEmpty {
             sessionLoadingSkeletonRows
@@ -348,15 +356,15 @@ struct SessionListRowsSection: View {
     private var sessionsHeaderRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                if !isSearchActive {
-                    Text("Sessions")
+                if !isSearchActive || title != nil {
+                    Text(title ?? String(localized: "Sessions"))
                         .font(.title3.bold())
                         .foregroundStyle(.primary)
                 }
 
                 Spacer()
 
-                if viewModel.isSearchingRemoteSessions {
+                if showsRemoteSearchSpinner, viewModel.isSearchingRemoteSessions {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel("Searching sessions")
