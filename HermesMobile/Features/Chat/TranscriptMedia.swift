@@ -151,7 +151,11 @@ enum TranscriptMediaParser {
 
         while cursor < line.endIndex {
             if line[cursor...].hasPrefix("MEDIA:"),
-               let referenceRange = referenceRange(in: line, from: line.index(cursor, offsetBy: 6)) {
+               let referenceRange = referenceRange(
+                   in: line,
+                   markerStart: cursor,
+                   from: line.index(cursor, offsetBy: 6)
+               ) {
                 appendText(String(line[textStart..<cursor]), to: &segments)
 
                 let reference = TranscriptMediaReference(rawReference: String(line[referenceRange]))
@@ -178,7 +182,11 @@ enum TranscriptMediaParser {
         }
     }
 
-    private static func referenceRange(in line: String, from start: String.Index) -> Range<String.Index>? {
+    private static func referenceRange(
+        in line: String,
+        markerStart: String.Index,
+        from start: String.Index
+    ) -> Range<String.Index>? {
         guard start < line.endIndex else { return nil }
 
         var end = start
@@ -196,8 +204,34 @@ enum TranscriptMediaParser {
             }
         }
 
+        if let delimiter = emphasisDelimiter(in: line, immediatelyBefore: markerStart),
+           line[start..<trimmedEnd].hasSuffix(delimiter) {
+            trimmedEnd = line.index(trimmedEnd, offsetBy: -delimiter.count)
+        }
+
         guard trimmedEnd > start else { return nil }
         return start..<trimmedEnd
+    }
+
+    private static func emphasisDelimiter(
+        in line: String,
+        immediatelyBefore index: String.Index
+    ) -> String? {
+        for delimiter in ["***", "___", "**", "__", "*", "_"] {
+            guard let delimiterStart = line.index(
+                index,
+                offsetBy: -delimiter.count,
+                limitedBy: line.startIndex
+            ) else {
+                continue
+            }
+
+            if line[delimiterStart..<index] == delimiter {
+                return delimiter
+            }
+        }
+
+        return nil
     }
 
     private static func isReferenceTerminator(_ character: Character) -> Bool {

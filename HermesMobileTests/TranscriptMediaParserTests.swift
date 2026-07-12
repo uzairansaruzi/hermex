@@ -61,6 +61,23 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
     }
 
+    func testKeepsClosingMarkdownEmphasisOutsideToken() {
+        let segments = TranscriptMediaParser.segments(
+            in: "**MEDIA:/tmp/agyloop-plan.md** and _MEDIA:/tmp/trade_journal.csv_"
+        )
+
+        XCTAssertEqual(
+            segments,
+            [
+                .text("**"),
+                .media(.init(rawReference: "/tmp/agyloop-plan.md")),
+                .text("** and _"),
+                .media(.init(rawReference: "/tmp/trade_journal.csv")),
+                .text("_")
+            ]
+        )
+    }
+
     func testParsesMultipleTokens() {
         let segments = TranscriptMediaParser.segments(
             in: "A MEDIA:/tmp/a.png\nB MEDIA:/tmp/b.jpg"
