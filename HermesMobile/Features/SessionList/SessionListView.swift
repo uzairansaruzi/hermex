@@ -534,6 +534,7 @@ struct SessionListView: View {
         .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
         .accessibilityLabel("New Session")
         .keyboardShortcut("n", modifiers: .command)
+        .hoverEffect(.lift)
     }
 
     private var visibleSessions: [SessionSummary] {
