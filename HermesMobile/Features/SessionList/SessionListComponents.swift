@@ -846,6 +846,7 @@ struct SidebarNavButton: View {
             action()
         }
         .accessibilityLabel(title)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -882,6 +883,7 @@ struct SidebarDisclosureButton<Accessory: View>: View {
             action()
         }
         .accessibilityLabel(isExpanded ? "Collapse \(title)" : "Expand \(title)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
