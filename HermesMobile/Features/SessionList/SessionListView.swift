@@ -311,6 +311,7 @@ struct SessionListView: View {
                 onAPIError: authManager.handleAPIError,
                 onSessionCreated: rememberCreatedSession
             )
+            .id(route.id)
         case .utility(let destination):
             utilityDestination(destination)
         }
@@ -595,7 +596,7 @@ struct SessionListView: View {
             )
         }
         .buttonStyle(SessionListFloatingChatButtonStyle())
-        .disabled(viewModel.isViewingCachedData || isOpeningNewChat)
+        .disabled(viewModel.isViewingCachedData || navigationState.isCreatingNewChat)
         .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
         .accessibilityLabel("New Session")
     }
@@ -1068,11 +1069,6 @@ struct SessionListView: View {
         )
     }
 
-    private var isOpeningNewChat: Bool {
-        guard case .newChat = navigationState.destination else { return false }
-        return true
-    }
-
     private func openNewChat() {
         navigationState.select(PendingNewChatRoute())
     }
@@ -1093,7 +1089,10 @@ struct SessionListView: View {
     }
 
     private func restoreLastSelectedSessionIfNeeded() {
-        navigationState.restoreIfNeeded(from: viewModel.sessions)
+        navigationState.restoreIfNeeded(
+            from: viewModel.sessions,
+            clearsMissingSelection: viewModel.sessionLoadError == nil
+        )
         persistLastSelectedSession()
     }
 

@@ -26,6 +26,11 @@ struct SessionNavigationState: Equatable {
         destination?.selectedSessionID ?? newChatSessionID
     }
 
+    var isCreatingNewChat: Bool {
+        guard case .newChat = destination else { return false }
+        return newChatSessionID == nil
+    }
+
     mutating func select(_ session: SessionSummary) {
         newChatSessionID = nil
         destination = .session(session)
@@ -57,13 +62,18 @@ struct SessionNavigationState: Equatable {
 
     /// Restores only when no explicit route already won. Deep links, shared drafts,
     /// and App Intent requests therefore take precedence over the stored selection.
-    mutating func restoreIfNeeded(from sessions: [SessionSummary]) {
+    mutating func restoreIfNeeded(
+        from sessions: [SessionSummary],
+        clearsMissingSelection: Bool = true
+    ) {
         guard destination == nil, let lastSelectedSessionID else { return }
 
         guard let session = sessions.first(where: {
             Self.normalized($0.sessionId) == lastSelectedSessionID
         }) else {
-            self.lastSelectedSessionID = nil
+            if clearsMissingSelection {
+                self.lastSelectedSessionID = nil
+            }
             return
         }
 
