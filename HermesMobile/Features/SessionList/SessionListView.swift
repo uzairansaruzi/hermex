@@ -154,6 +154,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .frame(maxWidth: 500)
                 .presentationDetents([.height(180), .medium])
             }
             .sheet(item: $sessionPendingProjectCreation) { session in
@@ -177,6 +178,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .frame(maxWidth: 500)
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $isPresentingProjectCreation) {
@@ -199,6 +201,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .frame(maxWidth: 500)
                 .presentationDetents([.medium])
             }
             .sheet(item: $projectPendingRename) { project in
@@ -217,6 +220,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .frame(maxWidth: 500)
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $isPresentingAddServer) {

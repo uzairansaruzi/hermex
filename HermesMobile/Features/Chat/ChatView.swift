@@ -691,6 +691,7 @@ struct ChatView: View {
                     item: item,
                     onAPIError: onAPIError
                 )
+                .frame(maxWidth: 800)
             }
             .onChange(of: attachmentPreviewItem == nil) { _, isDismissed in
                 if isDismissed {
@@ -709,6 +710,7 @@ struct ChatView: View {
                         Task { await submitGoalDraft(submittedGoal) }
                     }
                 )
+                .frame(maxWidth: 500)
             }
             .sheet(isPresented: $showEditSheet) {
                 EditMessageSheet(
@@ -720,6 +722,7 @@ struct ChatView: View {
                         }
                     }
                 )
+                .frame(maxWidth: 600)
             }
             .alert(
                 "Discard Later Messages?",
