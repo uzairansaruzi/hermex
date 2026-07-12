@@ -344,18 +344,32 @@ struct MessageComposerView: View {
                             }
                         )
 
-                        Button(action: actionButtonTapped) {
-                            actionButtonLabel
-                                .frame(width: actionButtonSize, height: actionButtonSize)
-                                .background(actionButtonBackground)
-                                .foregroundStyle(actionButtonForeground)
-                                .clipShape(Circle())
-                                .chatMinimumHitTarget(in: Circle())
+                        if showsStopButton {
+                            Button(action: onCancel) {
+                                stopButtonLabel
+                                    .frame(width: actionButtonSize, height: actionButtonSize)
+                                    .background(actionButtonBackground)
+                                    .foregroundStyle(actionButtonForeground)
+                                    .clipShape(Circle())
+                                    .chatMinimumHitTarget(in: Circle())
+                            }
+                            .buttonStyle(.chatTactile(.icon))
+                            .disabled(isCancellingStream)
+                            .accessibilityLabel("Stop response")
+                        } else {
+                            Button(action: sendButtonTapped) {
+                                sendButtonLabel
+                                    .frame(width: actionButtonSize, height: actionButtonSize)
+                                    .background(actionButtonBackground)
+                                    .foregroundStyle(actionButtonForeground)
+                                    .clipShape(Circle())
+                                    .chatMinimumHitTarget(in: Circle())
+                            }
+                            .buttonStyle(.chatTactile(.icon))
+                            .disabled(isActionButtonDisabled)
+                            .accessibilityLabel("Send")
+                            .keyboardShortcut(.return, modifiers: .command)
                         }
-                        .buttonStyle(.chatTactile(.icon))
-                        .disabled(isActionButtonDisabled)
-                        .accessibilityLabel(showsStopButton ? "Stop response" : "Send")
-                        .keyboardShortcut(.return, modifiers: .command)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
@@ -545,17 +559,24 @@ struct MessageComposerView: View {
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
     }
 
-    @ViewBuilder
-    private var actionButtonLabel: some View {
-        if isSending || isCancellingStream || isCompressingSession {
+    @ViewBuilder private var sendButtonLabel: some View {
+        if isSending || isCompressingSession {
             ProgressView()
                 .tint(actionButtonForeground)
                 .scaleEffect(0.82)
-        } else if showsStopButton {
-            Image(systemName: "stop.fill")
-                .font(.system(size: actionIconSize, weight: .semibold))
         } else {
             Image(systemName: "arrow.up")
+                .font(.system(size: actionIconSize, weight: .semibold))
+        }
+    }
+
+    @ViewBuilder private var stopButtonLabel: some View {
+        if isCancellingStream {
+            ProgressView()
+                .tint(actionButtonForeground)
+                .scaleEffect(0.82)
+        } else {
+            Image(systemName: "stop.fill")
                 .font(.system(size: actionIconSize, weight: .semibold))
         }
     }
@@ -1030,15 +1051,11 @@ struct MessageComposerView: View {
             || isUpdatingConfiguration
     }
 
-    private func actionButtonTapped() {
-        if showsStopButton {
-            onCancel()
-        } else {
-            if voiceInput.isListening {
-                voiceInput.stopBeforeSubmittingDraft()
-            }
-            onSend()
+    private func sendButtonTapped() {
+        if voiceInput.isListening {
+            voiceInput.stopBeforeSubmittingDraft()
         }
+        onSend()
     }
 
     /// Starts dictation once for a composer opened by the "New Chat with Voice" intent (#338),
