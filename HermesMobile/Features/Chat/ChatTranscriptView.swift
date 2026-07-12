@@ -673,12 +673,12 @@ private struct ChatScrollToBottomButton: View {
             Image(systemName: "arrow.down")
                 .font(.system(size: 13, weight: .semibold))
                 .frame(width: 32, height: 32)
-                .background(backgroundColor)
-                .foregroundStyle(foregroundColor)
-                .clipShape(Circle())
-                .overlay(
-                    Circle()
-                        .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 0.5)
+                .foregroundStyle(.primary)
+                .adaptiveGlass(
+                    .regular,
+                    isInteractive: true,
+                    fallbackMaterial: .regularMaterial,
+                    in: Circle()
                 )
                 .chatMinimumHitTarget(in: Circle())
         }
@@ -696,14 +696,6 @@ private struct ChatScrollToBottomButton: View {
         ))
         .padding(.bottom, bottomPadding)
         .accessibilityLabel("Scroll to latest message")
-    }
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? .white : .black
-    }
-
-    private var foregroundColor: Color {
-        colorScheme == .dark ? .black : .white
     }
 }
 
