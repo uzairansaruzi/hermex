@@ -1,8 +1,15 @@
 import AVFoundation
+import UIKit
 import XCTest
 @testable import HermesMobile
 
 final class ComposerVoiceDraftComposerTests: XCTestCase {
+    func testComposerSendKeyboardCommandIsDiscoverableCommandReturn() {
+        XCTAssertEqual(ComposerKeyboardCommand.title, "Send Message")
+        XCTAssertEqual(ComposerKeyboardCommand.input, "\r")
+        XCTAssertEqual(ComposerKeyboardCommand.modifierFlags, .command)
+    }
+
     func testComposedDraftUsesTranscriptWhenDraftIsEmpty() {
         XCTAssertEqual(
             ComposerVoiceDraftComposer.composedDraft(baseDraft: "", transcript: "Open the workspace"),

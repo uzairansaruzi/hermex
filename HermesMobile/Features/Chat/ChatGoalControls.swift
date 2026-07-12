@@ -98,5 +98,6 @@ struct GoalSubmissionSheet: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .adaptiveFormPresentation()
     }
 }

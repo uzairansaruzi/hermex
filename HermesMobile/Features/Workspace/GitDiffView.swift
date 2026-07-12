@@ -36,6 +36,7 @@ struct GitDiffView: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .adaptivePagePresentation()
     }
 
     @ViewBuilder

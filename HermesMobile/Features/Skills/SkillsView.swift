@@ -320,6 +320,7 @@ struct SkillDetailView: View {
                         isLoading: isLoadingFile
                     )
                 }
+                .adaptivePagePresentation()
             }
     }
 

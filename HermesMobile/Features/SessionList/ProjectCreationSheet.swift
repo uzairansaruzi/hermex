@@ -149,6 +149,7 @@ private struct ProjectFormSheet: View {
                 nameIsFocused = true
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var trimmedProjectName: String {

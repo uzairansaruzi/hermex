@@ -71,6 +71,7 @@ struct DefaultProfilePickerView: View {
                 }
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var newProfileButton: some View {
@@ -410,6 +411,7 @@ private struct CreateProfileSheet: View {
                 await loadModels()
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var modelPicker: some View {

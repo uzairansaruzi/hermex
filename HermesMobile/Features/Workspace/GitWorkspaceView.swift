@@ -33,6 +33,7 @@ struct GitWorkspaceView: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .adaptivePagePresentation()
         .sheet(item: $selectedFile) { file in
             GitDiffView(session: session, server: server, file: file, onAPIError: onAPIError)
         }

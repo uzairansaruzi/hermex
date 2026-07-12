@@ -51,6 +51,7 @@ struct GitCommitView: View {
                 }
         }
         .presentationDetents([.large])
+        .adaptivePagePresentation()
         .alert("Discard local changes?", isPresented: $showsDiscardConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Discard Changes", role: .destructive) {

@@ -137,6 +137,7 @@ struct ChatAttachmentPreviewView: View {
                 await loadAttachment(force: true)
             }
         }
+        .adaptivePagePresentation()
     }
 
     @ViewBuilder

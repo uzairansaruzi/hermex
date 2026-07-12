@@ -61,6 +61,7 @@ struct ComposerModelPickerSheet: View {
                 }
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var customModelEntry: some View {
@@ -496,9 +497,11 @@ struct ComposerWorkspacePickerSheet: View {
                     WorkspaceManagerView(server: managementServer) {
                         await onRegistryChanged()
                     }
+                    .adaptiveFormPresentation()
                 }
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private func workspaceButton(path: String, name: String?) -> some View {

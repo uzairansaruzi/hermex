@@ -15,7 +15,6 @@ struct TasksView: View {
 
     var body: some View {
         content
-            .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             .navigationTitle("Tasks")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -377,6 +376,7 @@ struct CronJobEditorSheet: View {
                 }
             }
         }
+        .adaptiveFormPresentation()
     }
 
     private var formMessage: String? {
