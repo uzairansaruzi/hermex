@@ -53,6 +53,10 @@ enum TranscriptMediaExportSupport {
             )
         }
 
+        if resolvedKind == .data {
+            return TranscriptMediaExportDescriptor(kind: .data, contentType: .data, fileExtension: "bin")
+        }
+
         return TranscriptMediaExportDescriptor(kind: .video, contentType: .mpeg4Movie, fileExtension: "mp4")
     }
 

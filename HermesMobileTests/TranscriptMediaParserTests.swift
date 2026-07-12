@@ -147,6 +147,22 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertFalse(payload.isVideo)
     }
 
+    func testExtensionlessUnsupportedFileExportsAsDataNotVideo() {
+        let reference = TranscriptMediaReference(rawReference: "/tmp/results")
+        let data = "binary".data(using: .utf8)!
+
+        let payload = TranscriptMediaExportSupport.payload(
+            for: reference,
+            data: data,
+            resolvedKind: .data
+        )
+
+        XCTAssertEqual(payload.filename, "results.bin")
+        XCTAssertEqual(payload.contentType, .data)
+        XCTAssertFalse(payload.isImage)
+        XCTAssertFalse(payload.isVideo)
+    }
+
     func testExtensionlessRemoteReferenceRemainsImageCandidateButCanFallbackToMedia() throws {
         let remoteURL = try XCTUnwrap(URL(string: "https://cdn.example.test/media/abc123"))
         let reference = TranscriptMediaReference(rawReference: remoteURL.absoluteString)
