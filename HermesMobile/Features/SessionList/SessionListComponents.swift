@@ -837,6 +837,7 @@ struct SidebarNavButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .hoverEffect(.lift)
     }
 }
 
@@ -869,6 +870,7 @@ struct SidebarDisclosureButton<Accessory: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.lift)
     }
 }
 
