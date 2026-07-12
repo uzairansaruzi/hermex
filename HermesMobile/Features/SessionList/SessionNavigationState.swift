@@ -16,6 +16,7 @@ enum SessionNavigationDestination: Hashable, Identifiable {
 struct SessionNavigationState: Equatable {
     private(set) var destination: SessionNavigationDestination?
     private(set) var lastSelectedSessionID: String?
+    private(set) var rootRevision = 0
     private var newChatSessionID: String?
 
     init(lastSelectedSessionID: String? = nil) {
@@ -32,17 +33,20 @@ struct SessionNavigationState: Equatable {
     }
 
     mutating func select(_ session: SessionSummary) {
+        rootRevision += 1
         newChatSessionID = nil
         destination = .session(session)
         remember(session)
     }
 
     mutating func select(_ route: PendingNewChatRoute) {
+        rootRevision += 1
         newChatSessionID = nil
         destination = .newChat(route)
     }
 
     mutating func select(_ utility: SessionListUtilityDestination) {
+        rootRevision += 1
         newChatSessionID = nil
         destination = .utility(utility)
     }

@@ -1,5 +1,38 @@
 import SwiftUI
 
+enum AdaptiveReadableContentWidth {
+    static let secondaryDestination: CGFloat = 800
+    static let workspace: CGFloat = 1_000
+}
+
+private struct AdaptiveReadableContentModifier: ViewModifier {
+    let maxWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+extension View {
+    func adaptiveReadableContent(maxWidth: CGFloat) -> some View {
+        modifier(AdaptiveReadableContentModifier(maxWidth: maxWidth))
+    }
+
+    func adaptiveSecondaryNavigationTitle() -> some View {
+        modifier(AdaptiveSecondaryNavigationTitleModifier())
+    }
+}
+
+private struct AdaptiveSecondaryNavigationTitleModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        content.navigationBarTitleDisplayMode(horizontalSizeClass == .regular ? .inline : .automatic)
+    }
+}
+
 enum GlassPreference {
     static let isEnabledKey = "adaptiveGlass.isEnabled"
     static let defaultIsEnabled = true

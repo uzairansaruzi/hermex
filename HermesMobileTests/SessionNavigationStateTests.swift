@@ -115,6 +115,36 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertNil(state.lastSelectedSessionID)
     }
 
+    func testUtilityDestinationRemainsSelectedAcrossLayoutReevaluation() {
+        var state = SessionNavigationState()
+        state.select(SessionListUtilityDestination.settings(nil))
+
+        let reevaluatedState = state
+
+        XCTAssertEqual(reevaluatedState.destination, .utility(.settings(nil)))
+        XCTAssertNil(reevaluatedState.selectedSessionID)
+    }
+
+    func testReselectingRootDestinationAdvancesNavigationRevision() {
+        var state = SessionNavigationState()
+        state.select(SessionListUtilityDestination.skills)
+        let firstRevision = state.rootRevision
+
+        state.select(SessionListUtilityDestination.skills)
+
+        XCTAssertEqual(state.destination, .utility(.skills))
+        XCTAssertGreaterThan(state.rootRevision, firstRevision)
+    }
+
+    func testReadableContentWidthsKeepSecondaryAndWorkspaceSurfacesDistinct() {
+        XCTAssertEqual(AdaptiveReadableContentWidth.secondaryDestination, 800)
+        XCTAssertEqual(AdaptiveReadableContentWidth.workspace, 1_000)
+        XCTAssertLessThan(
+            AdaptiveReadableContentWidth.secondaryDestination,
+            AdaptiveReadableContentWidth.workspace
+        )
+    }
+
     func testPersistenceUsesIndependentKeysPerServer() throws {
         let suiteName = "SessionNavigationStateTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

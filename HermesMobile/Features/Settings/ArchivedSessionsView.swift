@@ -20,6 +20,7 @@ struct ArchivedSessionsView: View {
 
     var body: some View {
         content
+            .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             .navigationTitle("Archived Sessions")
             .navigationDestination(item: $openedSession) { session in
                 // Opening an archived session reuses the normal read path —

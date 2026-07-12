@@ -15,6 +15,7 @@ struct TasksView: View {
 
     var body: some View {
         content
+            .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             .navigationTitle("Tasks")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {

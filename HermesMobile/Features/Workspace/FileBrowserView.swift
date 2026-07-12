@@ -22,6 +22,7 @@ struct FileBrowserView: View {
 
             content
         }
+            .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.workspace)
             .navigationTitle("Files")
             .navigationBarTitleDisplayMode(.inline)
             .task {
