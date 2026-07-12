@@ -282,6 +282,7 @@ struct SessionListView: View {
     private var regularWidthDetail: some View {
         if let destination = navigationState.destination {
             navigationDestination(destination)
+                .frame(maxWidth: 800)
         } else {
             ContentUnavailableView {
                 Label("Select a Chat", systemImage: "bubble.left.and.bubble.right")
