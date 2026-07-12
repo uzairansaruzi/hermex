@@ -309,7 +309,6 @@ struct SessionSidebarUtilityRows: View {
 }
 
 struct SessionListRowsSection: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let viewModel: SessionListViewModel
 
     let sessions: [SessionSummary]
@@ -320,6 +319,7 @@ struct SessionListRowsSection: View {
     let showsWorkspace: Bool
     let selectedSessionID: String?
     let actions: SessionListRowActions
+    var suppressEmptyState = false
 
     var body: some View {
         sessionsHeaderRow
@@ -331,7 +331,7 @@ struct SessionListRowsSection: View {
         } else if let errorMessage = viewModel.errorMessage, viewModel.sessions.isEmpty {
             sessionsErrorRow(message: errorMessage)
                 .sessionsScreenListRow()
-        } else if sessions.isEmpty {
+        } else if sessions.isEmpty && !suppressEmptyState {
             SessionListStatusRow(
                 title: emptyTitle,
                 description: emptyDescription,
@@ -341,7 +341,14 @@ struct SessionListRowsSection: View {
                 .sessionsScreenListRow()
         } else {
             ForEach(sessions) { session in
-                sessionListRow(for: session)
+                SessionInteractiveRow(
+                    viewModel: viewModel,
+                    session: session,
+                    showsMessageCount: showsMessageCount,
+                    showsWorkspace: showsWorkspace,
+                    selectedSessionID: selectedSessionID,
+                    actions: actions
+                )
             }
         }
     }
@@ -418,7 +425,18 @@ struct SessionListRowsSection: View {
         return (String(localized: "Could not load sessions"), fallbackMessage)
     }
 
-    private func sessionListRow(for session: SessionSummary) -> some View {
+}
+
+struct SessionInteractiveRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let viewModel: SessionListViewModel
+    let session: SessionSummary
+    let showsMessageCount: Bool
+    let showsWorkspace: Bool
+    let selectedSessionID: String?
+    let actions: SessionListRowActions
+
+    var body: some View {
         Button {
             actions.open(session)
         } label: {
@@ -498,6 +516,130 @@ struct SessionListRowsSection: View {
         SessionRowActionPolicy.offersMutationActions(for: session)
             && !viewModel.isViewingCachedData
             && hasServerSessionID(session)
+    }
+}
+
+struct ScheduledSessionsDisclosure: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let viewModel: SessionListViewModel
+    let sessions: [SessionSummary]
+    let totalCount: Int
+    let isSearchActive: Bool
+    let showsMessageCount: Bool
+    let showsWorkspace: Bool
+    let selectedSessionID: String?
+    @Binding var userIsExpanded: Bool
+    let actions: SessionListRowActions
+    let viewAll: () -> Void
+
+    private var isExpanded: Bool { isSearchActive || userIsExpanded }
+    private var displayedSessions: [SessionSummary] {
+        isSearchActive ? sessions : Array(sessions.prefix(5))
+    }
+
+    var body: some View {
+        SidebarDisclosureButton(
+            title: String(localized: "Scheduled sessions"),
+            assetImage: "LucideCalendarClock",
+            isExpanded: isExpanded
+        ) {
+            guard !isSearchActive else { return }
+            userIsExpanded.toggle()
+        } accessory: {
+            Text("\(totalCount)")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, isSearchActive ? 16 : 12)
+        .sessionsScreenListRow()
+
+        if isExpanded {
+            ForEach(displayedSessions) { session in
+                SessionInteractiveRow(
+                    viewModel: viewModel,
+                    session: session,
+                    showsMessageCount: showsMessageCount,
+                    showsWorkspace: showsWorkspace,
+                    selectedSessionID: selectedSessionID,
+                    actions: actions
+                )
+                .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
+            }
+
+            if !isSearchActive && sessions.count > 5 {
+                HapticButton(action: viewAll) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .frame(width: 24)
+                        Text("View all")
+                            .font(.subheadline.weight(.medium))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.forward")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 24)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .sessionsScreenListRow()
+                .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
+            }
+        }
+    }
+}
+
+struct ScheduledSessionsView: View {
+    let viewModel: SessionListViewModel
+    let showsMessageCount: Bool
+    let showsWorkspace: Bool
+    let selectedSessionID: String?
+    let actions: SessionListRowActions
+
+    @State private var searchText = ""
+
+    var body: some View {
+        List {
+            if sessions.isEmpty {
+                SessionListStatusRow(
+                    title: searchText.isEmpty
+                        ? String(localized: "No sessions yet")
+                        : String(localized: "No matching sessions"),
+                    description: searchText.isEmpty
+                        ? nil
+                        : String(localized: "Try another search or project filter."),
+                    systemImage: "calendar.badge.clock"
+                )
+                .padding(.horizontal, 24)
+                .sessionsScreenListRow()
+            } else {
+                ForEach(sessions) { session in
+                    SessionInteractiveRow(
+                        viewModel: viewModel,
+                        session: session,
+                        showsMessageCount: showsMessageCount,
+                        showsWorkspace: showsWorkspace,
+                        selectedSessionID: selectedSessionID,
+                        actions: actions
+                    )
+                }
+            }
+        }
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
+        .scrollContentBackground(.hidden)
+        .navigationTitle("Scheduled sessions")
+        .searchable(text: $searchText, prompt: "Search sessions")
+    }
+
+    private var sessions: [SessionSummary] {
+        viewModel.visibleSessions(searchText: searchText, selectedProjectID: nil)
+            .filter { $0.isCronSession && $0.archived != true }
     }
 }
 

@@ -2363,6 +2363,78 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduledSessionGroupsSeparatesAndCapsNewestNonArchivedCronSessions() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {"session_id":"ordinary","title":"Ordinary","updated_at":50},
+                {"session_id":"cron_1","title":"Scheduled 1","updated_at":10},
+                {"session_id":"cron_2","title":"Scheduled 2","updated_at":20},
+                {"session_id":"cron_3","title":"Scheduled 3","updated_at":30},
+                {"session_id":"cron_4","title":"Scheduled 4","updated_at":40},
+                {"session_id":"cron_5","title":"Scheduled 5","updated_at":50},
+                {"session_id":"cron_6","title":"Scheduled 6","updated_at":60},
+                {"session_id":"cron_7","title":"Scheduled 7","updated_at":70},
+                {"session_id":"cron_archived","title":"Archived scheduled","updated_at":80,"archived":true}
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+        let groups = viewModel.scheduledSessionGroups(searchText: "", selectedProjectID: nil)
+
+        XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary"])
+        XCTAssertEqual(groups.totalScheduledCount, 7)
+        XCTAssertEqual(
+            groups.scheduled.compactMap(\.sessionId),
+            ["cron_7", "cron_6", "cron_5", "cron_4", "cron_3", "cron_2", "cron_1"]
+        )
+        XCTAssertEqual(
+            groups.scheduledPreview.compactMap(\.sessionId),
+            ["cron_7", "cron_6", "cron_5", "cron_4", "cron_3"]
+        )
+        XCTAssertTrue(groups.hasAdditionalScheduledSessions)
+    }
+
+    @MainActor
+    func testScheduledSessionGroupsRespectCronVisibilityAndSearchWithoutCappingMatches() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {"session_id":"ordinary","title":"Needle ordinary","updated_at":5},
+                {"session_id":"cron_1","title":"Needle scheduled 1","updated_at":10},
+                {"session_id":"cron_2","title":"Needle scheduled 2","updated_at":20},
+                {"session_id":"cron_3","title":"Needle scheduled 3","updated_at":30},
+                {"session_id":"cron_4","title":"Needle scheduled 4","updated_at":40},
+                {"session_id":"cron_5","title":"Needle scheduled 5","updated_at":50},
+                {"session_id":"cron_6","title":"Needle scheduled 6","updated_at":60}
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+        let matches = viewModel.scheduledSessionGroups(searchText: "needle", selectedProjectID: nil)
+        XCTAssertEqual(matches.ordinary.compactMap(\.sessionId), ["ordinary"])
+        XCTAssertEqual(matches.scheduled.count, 6)
+        XCTAssertEqual(matches.totalScheduledCount, 6)
+
+        let hidden = viewModel.scheduledSessionGroups(
+            searchText: "",
+            selectedProjectID: nil,
+            automatedVisibility: AutomatedSessionVisibility(showsCron: false, showsCli: true)
+        )
+        XCTAssertTrue(hidden.scheduled.isEmpty)
+        XCTAssertEqual(hidden.totalScheduledCount, 0)
+        XCTAssertEqual(hidden.ordinary.compactMap(\.sessionId), ["ordinary"])
+    }
+
+    @MainActor
     func testVisibleSessionsFiltersCronAndCliIndependently() async throws {
         let viewModel = try makeViewModel { request in
             XCTAssertEqual(request.url?.path, "/api/sessions")

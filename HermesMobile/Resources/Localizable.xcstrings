@@ -109705,6 +109705,48 @@
           }
         }
       }
+    },
+    "Scheduled sessions" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الجلسات المجدولة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Geplante Sitzungen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sesiones programadas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Sessions planifiées" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הפעלות מתוזמנות" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sessioni programmate" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スケジュール済みセッション" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "예약된 세션" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Geplande sessies" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zaplanowane sesje" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Sessões agendadas" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Запланированные сеансы" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Zamanlanmış oturumlar" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "شیڈول کردہ سیشنز" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "计划会话" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "排程的工作階段" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "已排程的工作階段" } }
+      }
+    },
+    "View all" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "عرض الكل" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Alle anzeigen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Ver todo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Tout afficher" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הצגת הכול" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Mostra tutto" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "すべて表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "모두 보기" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Alles bekijken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wyświetl wszystko" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ver tudo" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Показать все" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Tümünü görüntüle" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "سبھی دیکھیں" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看全部" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢視全部" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "查看全部" } }
+      }
     }
   },
   "version" : "1.0"
