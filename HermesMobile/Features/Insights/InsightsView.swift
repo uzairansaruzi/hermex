@@ -14,7 +14,7 @@ struct InsightsView: View {
 
     var body: some View {
         content
-            .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+            .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             .navigationTitle("Usage Analytics")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

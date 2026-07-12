@@ -23,7 +23,7 @@ struct GitDiffView: View {
     var body: some View {
         NavigationStack {
             content
-                .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+                .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
                 .navigationTitle(file.displayPath)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

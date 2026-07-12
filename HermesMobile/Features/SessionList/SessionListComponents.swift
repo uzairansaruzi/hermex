@@ -430,6 +430,7 @@ struct SessionListRowsSection: View {
             )
         }
         .buttonStyle(.plain)
+        .id(session.id)
         .background(
             session.sessionId == selectedSessionID
                 ? Color.accentColor.opacity(0.12)

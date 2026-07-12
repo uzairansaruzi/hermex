@@ -15,9 +15,28 @@ private struct AdaptiveReadableContentModifier: ViewModifier {
     }
 }
 
+private struct AdaptiveReadableScrollContentModifier: ViewModifier {
+    let maxWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        GeometryReader { proxy in
+            content.contentMargins(
+                .horizontal,
+                max((proxy.size.width - maxWidth) / 2, 0),
+                for: .scrollContent
+            )
+        }
+    }
+}
+
 extension View {
     func adaptiveReadableContent(maxWidth: CGFloat) -> some View {
         modifier(AdaptiveReadableContentModifier(maxWidth: maxWidth))
+    }
+
+
+    func adaptiveReadableScrollContent(maxWidth: CGFloat) -> some View {
+        modifier(AdaptiveReadableScrollContentModifier(maxWidth: maxWidth))
     }
 
     func adaptiveSecondaryNavigationTitle() -> some View {

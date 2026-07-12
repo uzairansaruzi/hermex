@@ -46,7 +46,7 @@ struct FilePreviewView: View {
                 }
             }
         }
-        .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+        .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
