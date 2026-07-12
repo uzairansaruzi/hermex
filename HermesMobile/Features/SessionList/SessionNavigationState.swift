@@ -50,6 +50,12 @@ struct SessionNavigationState: Equatable {
         }
     }
 
+    mutating func selectCreatedSession(_ session: SessionSummary) {
+        newChatSessionID = nil
+        destination = .session(session)
+        remember(session)
+    }
+
     mutating func clearDestination() {
         destination = nil
         newChatSessionID = nil
@@ -63,6 +69,7 @@ struct SessionNavigationState: Equatable {
         guard let session = sessions.first(where: {
             Self.normalized($0.sessionId) == lastSelectedSessionID
         }) else {
+            guard !sessions.isEmpty else { return }
             self.lastSelectedSessionID = nil
             return
         }

@@ -1083,7 +1083,7 @@ struct SessionListView: View {
     }
 
     private func rememberCreatedSession(_ session: SessionSummary) {
-        navigationState.remember(session)
+        navigationState.selectCreatedSession(session)
         persistLastSelectedSession()
     }
 

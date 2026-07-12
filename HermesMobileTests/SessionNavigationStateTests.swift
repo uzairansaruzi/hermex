@@ -33,6 +33,21 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertNil(state.lastSelectedSessionID)
     }
 
+    func testRestoreKeepsStoredSelectionWhenSessionsTemporarilyLoadEmpty() {
+        let session = SessionSummary(sessionId: "session-1", title: "One")
+        var state = SessionNavigationState(lastSelectedSessionID: "session-1")
+
+        state.restoreIfNeeded(from: [])
+
+        XCTAssertNil(state.destination)
+        XCTAssertEqual(state.lastSelectedSessionID, "session-1")
+
+        state.restoreIfNeeded(from: [session])
+
+        XCTAssertEqual(state.destination, .session(session))
+        XCTAssertEqual(state.lastSelectedSessionID, "session-1")
+    }
+
     func testExplicitNewChatRouteOverridesStoredSelection() {
         let route = PendingNewChatRoute(initialDraft: "Shared draft")
         var state = SessionNavigationState(lastSelectedSessionID: "session-1")
@@ -56,15 +71,15 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(state.lastSelectedSessionID, "deep-linked")
     }
 
-    func testCreatedSessionRemainsSelectedWhileNewChatRouteOwnsItsDraft() {
+    func testCreatedSessionReplacesNewChatDestinationAndPersistsSelection() {
         let route = PendingNewChatRoute(initialDraft: "Shared draft")
         let created = SessionSummary(sessionId: "created-session")
         var state = SessionNavigationState()
         state.select(route)
 
-        state.remember(created)
+        state.selectCreatedSession(created)
 
-        XCTAssertEqual(state.destination, .newChat(route))
+        XCTAssertEqual(state.destination, .session(created))
         XCTAssertEqual(state.selectedSessionID, "created-session")
         XCTAssertEqual(state.lastSelectedSessionID, "created-session")
     }
