@@ -318,6 +318,7 @@ struct SessionListRowsSection: View {
     let isSearchActive: Bool
     let showsMessageCount: Bool
     let showsWorkspace: Bool
+    let selectedSessionID: String?
     let actions: SessionListRowActions
 
     var body: some View {
@@ -429,6 +430,12 @@ struct SessionListRowsSection: View {
             )
         }
         .buttonStyle(.plain)
+        .background(
+            session.sessionId == selectedSessionID
+                ? Color.accentColor.opacity(0.12)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
         .transition(SessionListMotion.sessionRowTransition(reduceMotion: reduceMotion))
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             sessionLeadingSwipeActions(for: session)

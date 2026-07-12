@@ -20298,108 +20298,108 @@
         }
       }
     },
-    "Control your Hermes agent from iPhone." : {
+    "Control your Hermes agent from iPhone or iPad." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "تحكّم في عميل Hermes من iPhone."
+            "value" : "تحكّم في عميل Hermes من iPhone أو iPad."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Steuere deinen Hermes-Agenten vom iPhone aus."
+            "value" : "Steuere deinen Hermes-Agenten vom iPhone oder iPad aus."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Controla tu agente Hermes desde iPhone."
+            "value" : "Controla tu agente Hermes desde iPhone o iPad."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Contrôlez votre agent Hermes depuis iPhone."
+            "value" : "Contrôlez votre agent Hermes depuis iPhone ou iPad."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "שלוט בסוכן Hermes שלך מה-iPhone."
+            "value" : "שלוט בסוכן Hermes שלך מה-iPhone או מה-iPad."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Controlla il tuo agente Hermes da iPhone."
+            "value" : "Controlla il tuo agente Hermes da iPhone o iPad."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "iPhoneからHermesエージェントを操作できます。"
+            "value" : "iPhoneまたはiPadからHermesエージェントを操作できます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "iPhone에서 Hermes 에이전트를 제어하세요."
+            "value" : "iPhone 또는 iPad에서 Hermes 에이전트를 제어하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Bedien uw Hermes-agent vanaf de iPhone."
+            "value" : "Bedien uw Hermes-agent vanaf de iPhone of iPad."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Steruj agentem Hermes z iPhone'a."
+            "value" : "Steruj agentem Hermes z iPhone'a lub iPada."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Controle seu agente Hermes pelo iPhone."
+            "value" : "Controle seu agente Hermes pelo iPhone ou iPad."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Управляйте агентом Hermes с iPhone."
+            "value" : "Управляйте агентом Hermes с iPhone или iPad."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes ajanınızı iPhone'dan kontrol edin."
+            "value" : "Hermes ajanınızı iPhone veya iPad'den kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "اپنے iPhone سے اپنے Hermes ایجنٹ کو کنٹرول کریں۔"
+            "value" : "اپنے iPhone یا iPad سے اپنے Hermes ایجنٹ کو کنٹرول کریں۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "在 iPhone 上控制你的 Hermes 代理。"
+            "value" : "在 iPhone 或 iPad 上控制你的 Hermes 代理。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "在 iPhone 上控制你的 Hermes 智能体。"
+            "value" : "在 iPhone 或 iPad 上控制你的 Hermes 智能体。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "在 iPhone 上控制你的 Hermes 代理人。"
+            "value" : "在 iPhone 或 iPad 上控制你的 Hermes 代理人。"
           }
         }
       }

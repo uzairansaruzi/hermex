@@ -569,8 +569,9 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
-            .navigationTitle(displayTitle)
-            .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(displayTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .task {
             viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
             if loadsInitialMessages {
