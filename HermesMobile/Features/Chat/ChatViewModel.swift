@@ -4539,6 +4539,7 @@ final class ChatViewModel {
         let speechSynthesizer = speechSynthesizerForListening()
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.voice = ServerTTSPolicy.onDeviceVoice
         activeListeningUtteranceID = ObjectIdentifier(utterance)
         speechSynthesizer.speak(utterance)
     }
@@ -5507,10 +5508,69 @@ enum ServerTTSPolicy {
     /// Server-enforced request cap (`400 text too long` above it); longer text
     /// routes straight to the on-device synthesizer (chunking is a non-goal).
     static let maximumTextLength = 5000
-    /// The server's own default voice is `zh-CN-XiaoxiaoNeural`, so the client
-    /// must always send an explicit voice. A voice picker is a non-goal of #15;
-    /// this is the issue-specified default (verified live 2026-07-02).
-    static let defaultVoice = "en-US-AriaNeural"
+    /// Returns the best neural voice for the app's current language.
+    /// Falls back to en-US-AriaNeural when the language has no known voice.
+    static var defaultVoice: String {
+        let lang = Locale.current.language.languageCode?.identifier ?? "en"
+        let region = Locale.current.language.region?.identifier ?? ""
+        // Exact lang-region match first, then language-only fallback.
+        // This handles regional variants (de-AT, fr-CA, es-MX, etc.)
+        // by matching the language code when no exact region exists.
+        switch lang {
+        case "et": return "et-EE-AnuNeural"
+        case "de": return "de-DE-KatjaNeural"
+        case "fr": return "fr-FR-DeniseNeural"
+        case "es": return "es-ES-ElviraNeural"
+        case "it": return "it-IT-ElsaNeural"
+        case "pl": return "pl-PL-AgnieszkaNeural"
+        case "nl": return "nl-NL-FennaNeural"
+        case "tr": return "tr-TR-EmelNeural"
+        case "ru": return "ru-RU-SvetlanaNeural"
+        case "ja": return "ja-JP-NanamiNeural"
+        case "ko": return "ko-KR-SunHiNeural"
+        case "ar": return "ar-SA-ZariyahNeural"
+        case "he": return "he-IL-HilaNeural"
+        case "ur": return "ur-PK-UzmaNeural"
+        case "zh":
+            // Match script+region for Chinese variants
+            let script = Locale.current.language.script?.identifier ?? ""
+            switch script {
+            case "Hant":
+                if region == "TW" { return "zh-TW-HsiaoChenNeural" }
+                if region == "HK" { return "zh-HK-HiuGaaiNeural" }
+                return "zh-TW-HsiaoChenNeural"      // zh-Hant default
+            case "Hans":
+                return "zh-CN-XiaoxiaoNeural"       // zh-Hans default
+            default:
+                return "zh-CN-XiaoxiaoNeural"       // zh without script = Simplified
+            }
+        case "pt":
+            // Only pt-BR has a distinct voice
+            return "pt-BR-FranciscaNeural"
+        default: return "en-US-AriaNeural"
+        }
+    }
+
+    /// Returns a voice suitable for on-device `AVSpeechSynthesisVoice` given
+    /// the app's current language. Falls back to `nil` (system default).
+    static var onDeviceVoice: AVSpeechSynthesisVoice? {
+        let lang = Locale.current.language.languageCode?.identifier ?? "en"
+        let region = Locale.current.language.region?.identifier ?? ""
+        let script = Locale.current.language.script?.identifier
+        // Build a proper BCP 47 tag with hyphens, supporting
+        // script-based locales (zh-Hans, zh-Hant) correctly.
+        // Avoids trailing dash when region is absent.
+        var localeId = lang
+        if let script {
+            localeId += "-\(script)"
+        }
+        if !region.isEmpty {
+            localeId += "-\(region)"
+        }
+        // AVSpeechSynthesisVoice accepts hyphens, underscores, or nil locale.
+        // A bare lang code is valid — no trailing punctuation.
+        return AVSpeechSynthesisVoice(language: localeId)
+    }
 
     static func shouldUseServerTTS(for text: String) -> Bool {
         text.count <= maximumTextLength
