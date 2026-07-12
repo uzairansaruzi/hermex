@@ -826,24 +826,26 @@ struct SidebarNavButton: View {
     let assetImage: String
     let action: () -> Void
 
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
     var body: some View {
-        HapticButton(action: action) {
-            HStack(spacing: 18) {
-                SidebarUtilityIcon(assetImage: assetImage)
+        HStack(spacing: 18) {
+            SidebarUtilityIcon(assetImage: assetImage)
 
-                Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
 
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            HapticButtonHaptics.tap(style: .light, isEnabled: isHapticsEnabled)
+            action()
+        }
         .accessibilityLabel(title)
-        .onTapGesture(perform: action)
     }
 }
 
@@ -856,28 +858,30 @@ struct SidebarDisclosureButton<Accessory: View>: View {
     let action: () -> Void
     @ViewBuilder let accessory: () -> Accessory
 
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
     var body: some View {
-        HapticButton(action: action) {
-            HStack(alignment: .center, spacing: 18) {
-                SidebarUtilityIcon(assetImage: assetImage, tint: tint)
+        HStack(alignment: .center, spacing: 18) {
+            SidebarUtilityIcon(assetImage: assetImage, tint: tint)
 
-                Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
 
-                Spacer(minLength: 0)
+            Spacer(minLength: 0)
 
-                accessory()
+            accessory()
 
-                SidebarDisclosureChevron(isExpanded: isExpanded)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            SidebarDisclosureChevron(isExpanded: isExpanded)
         }
-        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            HapticButtonHaptics.tap(style: .light, isEnabled: isHapticsEnabled)
+            action()
+        }
         .accessibilityLabel(isExpanded ? "Collapse \(title)" : "Expand \(title)")
-        .onTapGesture(perform: action)
     }
 }
 
