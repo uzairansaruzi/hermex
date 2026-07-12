@@ -397,7 +397,7 @@ struct SessionListView: View {
                 )
             }
 
-            if scheduledSessionGroups.totalScheduledCount > 0 {
+            if scheduledSessionGroups.showsDisclosure(isSearchActive: isSearchingSessions) {
                 ScheduledSessionsDisclosure(
                     viewModel: viewModel,
                     sessions: scheduledSessionGroups.scheduled,

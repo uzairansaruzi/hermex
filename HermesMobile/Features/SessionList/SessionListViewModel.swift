@@ -30,6 +30,10 @@ struct ScheduledSessionGroups: Equatable {
     var hasAdditionalScheduledSessions: Bool {
         scheduled.count > scheduledPreview.count
     }
+
+    func showsDisclosure(isSearchActive: Bool) -> Bool {
+        totalScheduledCount > 0 && (!isSearchActive || !scheduled.isEmpty)
+    }
 }
 
 enum ActiveSessionStateRefreshResult: Equatable {
@@ -189,7 +193,7 @@ final class SessionListViewModel {
         )
         let scheduledCandidates = visibleSessions(
             searchText: searchText,
-            selectedProjectID: nil,
+            selectedProjectID: selectedProjectID,
             automatedVisibility: automatedVisibility
         )
 

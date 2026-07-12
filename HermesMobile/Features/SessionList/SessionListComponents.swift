@@ -556,6 +556,13 @@ struct ScheduledSessionsDisclosure: View {
         .padding(.horizontal, 24)
         .padding(.top, isSearchActive ? 16 : 12)
         .sessionsScreenListRow()
+        .accessibilityLabel(
+            isSearchActive
+                ? String(localized: "Scheduled sessions")
+                : isExpanded
+                    ? String(localized: "Collapse scheduled sessions")
+                    : String(localized: "Expand scheduled sessions")
+        )
 
         if isExpanded {
             ForEach(displayedSessions) { session in

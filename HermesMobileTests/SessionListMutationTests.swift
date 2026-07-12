@@ -2397,6 +2397,7 @@ final class SessionListMutationTests: XCTestCase {
             ["cron_7", "cron_6", "cron_5", "cron_4", "cron_3"]
         )
         XCTAssertTrue(groups.hasAdditionalScheduledSessions)
+        XCTAssertTrue(groups.showsDisclosure(isSearchActive: false))
     }
 
     @MainActor
@@ -2423,6 +2424,14 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(matches.ordinary.compactMap(\.sessionId), ["ordinary"])
         XCTAssertEqual(matches.scheduled.count, 6)
         XCTAssertEqual(matches.totalScheduledCount, 6)
+        XCTAssertTrue(matches.showsDisclosure(isSearchActive: true))
+
+        let noScheduledMatches = viewModel.scheduledSessionGroups(
+            searchText: "ordinary",
+            selectedProjectID: nil
+        )
+        XCTAssertFalse(noScheduledMatches.showsDisclosure(isSearchActive: true))
+        XCTAssertTrue(noScheduledMatches.showsDisclosure(isSearchActive: false))
 
         let hidden = viewModel.scheduledSessionGroups(
             searchText: "",
@@ -2432,6 +2441,34 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(hidden.scheduled.isEmpty)
         XCTAssertEqual(hidden.totalScheduledCount, 0)
         XCTAssertEqual(hidden.ordinary.compactMap(\.sessionId), ["ordinary"])
+        XCTAssertFalse(hidden.showsDisclosure(isSearchActive: false))
+    }
+
+    @MainActor
+    func testScheduledSessionGroupsApplyProjectFilterToScheduledAndOrdinaryRows() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {"session_id":"ordinary-1","title":"Ordinary one","project_id":"project-1"},
+                {"session_id":"ordinary-2","title":"Ordinary two","project_id":"project-2"},
+                {"session_id":"cron_1","title":"Scheduled one","project_id":"project-1"},
+                {"session_id":"cron_2","title":"Scheduled two","project_id":"project-2"}
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+        let groups = viewModel.scheduledSessionGroups(
+            searchText: "",
+            selectedProjectID: "project-1"
+        )
+
+        XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary-1"])
+        XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["cron_1"])
+        XCTAssertEqual(groups.totalScheduledCount, 2)
     }
 
     @MainActor
