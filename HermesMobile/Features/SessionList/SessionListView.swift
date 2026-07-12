@@ -281,7 +281,8 @@ struct SessionListView: View {
                     searchFieldIsFocused = true
                 }
                 .keyboardShortcut("f", modifiers: .command)
-                .hidden()
+                .opacity(0)
+                .frame(width: 0, height: 0)
             }
         }
     }
