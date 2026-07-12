@@ -843,6 +843,7 @@ struct SidebarNavButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .onTapGesture(perform: action)
     }
 }
 
@@ -871,10 +872,12 @@ struct SidebarDisclosureButton<Accessory: View>: View {
 
                 SidebarDisclosureChevron(isExpanded: isExpanded)
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isExpanded ? "Collapse \(title)" : "Expand \(title)")
+        .onTapGesture(perform: action)
     }
 }
 
