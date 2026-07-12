@@ -271,6 +271,14 @@ struct SessionListView: View {
                     }
                 )
             )
+            .background {
+                Button("") {
+                    searchChromeIsExpanded = true
+                    searchFieldIsFocused = true
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                .hidden()
+            }
         }
     }
 
@@ -525,6 +533,7 @@ struct SessionListView: View {
         .disabled(viewModel.isViewingCachedData || pendingNewChat != nil)
         .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
         .accessibilityLabel("New Session")
+        .keyboardShortcut("n", modifiers: .command)
     }
 
     private var visibleSessions: [SessionSummary] {

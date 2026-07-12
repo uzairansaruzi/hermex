@@ -355,6 +355,7 @@ struct MessageComposerView: View {
                         .buttonStyle(.chatTactile(.icon))
                         .disabled(isActionButtonDisabled)
                         .accessibilityLabel(showsStopButton ? "Stop response" : "Send")
+                        .keyboardShortcut(.return, modifiers: .command)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
