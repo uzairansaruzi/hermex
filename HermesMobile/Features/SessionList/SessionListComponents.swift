@@ -450,6 +450,7 @@ struct SessionListRowsSection: View {
             )
         }
         .sessionsScreenListRow(insets: EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
+        .hoverEffect(.automatic)
     }
 
     @ViewBuilder
