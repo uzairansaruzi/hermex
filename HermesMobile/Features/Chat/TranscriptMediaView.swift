@@ -408,48 +408,47 @@ private struct TranscriptMediaFileExportView: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(.secondaryLabel))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.label))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text(isExporting
-                     ? String(localized: "Loading…")
-                     : String(localized: "Tap to download"))
-                    .font(.caption2)
+        Button {
+            Task { await exportFile() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "doc")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color(.secondaryLabel))
-                    .lineLimit(1)
-            }
 
-            Spacer(minLength: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reference.displayName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(.label))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
 
-            Button {
-                Task { await exportFile() }
-            } label: {
+                    Text(isExporting
+                         ? String(localized: "Loading…")
+                         : String(localized: "Tap to download"))
+                        .font(.caption2)
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
                 Image(systemName: "square.and.arrow.down")
                     .font(.system(size: 15, weight: .semibold))
             }
-            .buttonStyle(.chatTactile(.icon))
-            .disabled(isExporting)
-            .accessibilityLabel(String(localized: "Download \(reference.displayName)"))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: 240, alignment: .leading)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+            )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 240, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-        )
-        .accessibilityElement(children: .contain)
+        .buttonStyle(.chatTactile(.thumbnail))
+        .disabled(isExporting)
+        .accessibilityLabel(String(localized: "Download \(reference.displayName)"))
         .fileExporter(
             isPresented: $isFileExporterPresented,
             document: exportDocument,
