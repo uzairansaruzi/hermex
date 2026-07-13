@@ -2108,6 +2108,13 @@ final class ChatViewModel {
             streamCoordinator.start(streamID: streamID)
             return true
         } catch {
+            if let streamID = (error as? APIError)?.activeStreamID {
+                rollbackOptimisticMessage(id: localMessageID)
+                cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
+                restorePendingAttachments(attachmentsToRestoreOnFailure)
+                streamCoordinator.start(streamID: streamID)
+                return true
+            }
             lastError = error
             sendErrorMessage = error.localizedDescription
             rollbackOptimisticMessage(id: localMessageID)
