@@ -56,8 +56,9 @@ struct ReasoningBlockView: View {
 
     private func header(summary: String) -> some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 14, weight: .semibold))
+            Image("LucideBrain")
+                .resizable()
+                .scaledToFit()
                 .foregroundStyle(.secondary)
                 .frame(width: 18, height: 18)
 
