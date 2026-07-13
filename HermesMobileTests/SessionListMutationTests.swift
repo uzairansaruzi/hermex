@@ -2286,6 +2286,40 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    func testCopyDeepLinkUsesExportAvailabilityRules() throws {
+        let session = SessionSummary(sessionId: "session & /?=✓", readOnly: true)
+
+        let url = try XCTUnwrap(
+            SessionRowActionPolicy.deepLinkURL(
+                for: session,
+                isViewingCachedData: false,
+                isMutating: false
+            )
+        )
+        XCTAssertEqual(HermesDeepLink.sessionID(from: url), session.sessionId)
+        XCTAssertNil(
+            SessionRowActionPolicy.deepLinkURL(
+                for: session,
+                isViewingCachedData: true,
+                isMutating: false
+            )
+        )
+        XCTAssertNil(
+            SessionRowActionPolicy.deepLinkURL(
+                for: session,
+                isViewingCachedData: false,
+                isMutating: true
+            )
+        )
+        XCTAssertNil(
+            SessionRowActionPolicy.deepLinkURL(
+                for: SessionSummary(sessionId: nil),
+                isViewingCachedData: false,
+                isMutating: false
+            )
+        )
+    }
+
     func testAutomatedVisibilityShowAllKeepsEveryKind() {
         let visibility = AutomatedSessionVisibility.showAll
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "cron_1")))

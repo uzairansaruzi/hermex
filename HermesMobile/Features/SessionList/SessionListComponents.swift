@@ -23,6 +23,21 @@ enum SessionRowActionPolicy {
     static func canExport(_ session: SessionSummary, isViewingCachedData: Bool) -> Bool {
         !isViewingCachedData && hasServerSessionID(session)
     }
+
+    static func deepLinkURL(
+        for session: SessionSummary,
+        isViewingCachedData: Bool,
+        isMutating: Bool
+    ) -> URL? {
+        guard !isMutating,
+              canExport(session, isViewingCachedData: isViewingCachedData),
+              let sessionID = session.sessionId
+        else {
+            return nil
+        }
+
+        return HermesDeepLink.sessionURL(sessionID: sessionID)
+    }
 }
 
 enum SessionListMotion {
@@ -727,6 +742,18 @@ struct SessionRowContextMenu: View {
                 actions.export(session, .json)
             } label: {
                 Label("Export as JSON", systemImage: "curlybraces")
+            }
+
+            if let deepLinkURL = SessionRowActionPolicy.deepLinkURL(
+                for: session,
+                isViewingCachedData: isViewingCachedData,
+                isMutating: isMutating
+            ) {
+                Button {
+                    UIPasteboard.general.string = deepLinkURL.absoluteString
+                } label: {
+                    Label("Copy Deeplink", systemImage: "doc.on.doc")
+                }
             }
         } label: {
             Label("Export", systemImage: "square.and.arrow.up")

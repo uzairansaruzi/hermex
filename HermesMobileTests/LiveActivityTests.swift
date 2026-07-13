@@ -204,6 +204,17 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertNil(HermesDeepLink.sessionID(from: HermesShareDraft.openURL))
     }
 
+    func testSessionDeepLinkURLPercentEncodesSessionID() throws {
+        let sessionID = "session & /?=✓"
+        let url = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: sessionID))
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+
+        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
+        XCTAssertEqual(url.host, "session")
+        XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "id", value: sessionID)])
+        XCTAssertFalse(url.absoluteString.contains(sessionID))
+    }
+
     func testChatViewModelLiveActivityLifecycleUsesInjectedManager() async throws {
         let baseURL = URL(string: "https://example.test")!
         let configuration = URLSessionConfiguration.ephemeral
