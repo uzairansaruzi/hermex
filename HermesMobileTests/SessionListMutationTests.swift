@@ -2468,6 +2468,8 @@ final class SessionListMutationTests: XCTestCase {
 
         XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary-1"])
         XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["cron_1"])
+        // The badge is intentionally global even when rows are project-filtered:
+        // issue #125 requires the total number of non-archived scheduled sessions.
         XCTAssertEqual(groups.totalScheduledCount, 2)
     }
 

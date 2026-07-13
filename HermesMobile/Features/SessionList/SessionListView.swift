@@ -342,6 +342,7 @@ struct SessionListView: View {
             case .scheduled:
                 ScheduledSessionsView(
                     viewModel: viewModel,
+                    showsCronSessions: showsCronSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
                     selectedSessionID: horizontalSizeClass == .regular

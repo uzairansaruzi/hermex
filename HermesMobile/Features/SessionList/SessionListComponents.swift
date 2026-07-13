@@ -603,6 +603,7 @@ struct ScheduledSessionsDisclosure: View {
 
 struct ScheduledSessionsView: View {
     let viewModel: SessionListViewModel
+    let showsCronSessions: Bool
     let showsMessageCount: Bool
     let showsWorkspace: Bool
     let selectedSessionID: String?
@@ -645,7 +646,9 @@ struct ScheduledSessionsView: View {
     }
 
     private var sessions: [SessionSummary] {
-        viewModel.visibleSessions(searchText: searchText, selectedProjectID: nil)
+        guard showsCronSessions else { return [] }
+
+        return viewModel.visibleSessions(searchText: searchText, selectedProjectID: nil)
             .filter { $0.isCronSession && $0.archived != true }
     }
 }
