@@ -284,6 +284,66 @@ final class StreamReconnectContractTests: APIClientTestCase {
         )
     }
 
+    @MainActor
+    func testDuplicateStartReconnectDoesNotReusePreviousTurnAssistantAnchor() async throws {
+        let streamClient = ScriptedSSEStreamingClient(connectionScripts: [[
+            .init(.token("new response"), lastEventID: "stream-existing:1")
+        ]])
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return self.jsonResponse(
+                    #"{"error":"session already has an active stream","active_stream_id":"stream-existing"}"#,
+                    statusCode: 409,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-existing",
+                    "messages": [
+                      {
+                        "role": "assistant",
+                        "content": "Previous response",
+                        "timestamp": 1770000099,
+                        "message_id": "assistant-previous"
+                      },
+                      {
+                        "role": "user",
+                        "content": "Already accepted",
+                        "timestamp": 1770000100,
+                        "message_id": "user-existing"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Duplicate request")
+
+        XCTAssertFalse(didStart)
+        XCTAssertEqual(
+            viewModel.messages.compactMap(\.content),
+            ["Previous response", "Already accepted"]
+        )
+        XCTAssertNil(viewModel.streamingAssistantMessageID)
+
+        streamClient.playArmedConnectionScript()
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(
+            assistantContents(of: viewModel),
+            ["Previous response", "new response"]
+        )
+    }
+
     func testOnlySpecificMissingStream404IsTerminal() {
         XCTAssertTrue(
             APIError.http(statusCode: 404, body: #"{"error":"stream not found"}"#).indicatesMissingStream

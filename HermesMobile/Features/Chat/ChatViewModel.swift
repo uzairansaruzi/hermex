@@ -2116,12 +2116,10 @@ final class ChatViewModel {
                 // the server transcript first so the SSE tokens attach to the persisted
                 // assistant turn instead of creating a second bubble with only the tail.
                 await loadMessages(modelContext: modelContext)
-                if streamingAssistantMessageID == nil {
-                    _ = restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
-                }
-                if streamingAssistantMessageID == nil {
-                    streamingAssistantMessageID = Self.latestAssistantMessageID(in: messages)
-                }
+                _ = restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
+                streamingAssistantMessageID = TranscriptTurnClassifier
+                    .currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
+                    .first
                 streamCoordinator.start(streamID: streamID)
                 // The server kept the earlier run, not this newly submitted text.
                 // Report an unaccepted send so ChatView restores the draft while
