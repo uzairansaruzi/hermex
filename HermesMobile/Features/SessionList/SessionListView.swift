@@ -40,6 +40,8 @@ struct SessionListView: View {
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
     @AppStorage(SessionSidebarDisclosureSettings.projectsAreExpandedKey)
     private var projectsAreExpanded = SessionSidebarDisclosureSettings.defaultProjectsAreExpanded
+    @AppStorage(SessionSidebarDisclosureSettings.scheduledSessionsAreExpandedKey)
+    private var scheduledSessionsAreExpanded = SessionSidebarDisclosureSettings.defaultScheduledSessionsAreExpanded
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
@@ -337,6 +339,17 @@ struct SessionListView: View {
                 InsightsView(server: server, onAPIError: authManager.handleAPIError)
             case .archived:
                 ArchivedSessionsView(server: server, onAPIError: authManager.handleAPIError)
+            case .scheduled:
+                ScheduledSessionsView(
+                    viewModel: viewModel,
+                    showsCronSessions: showsCronSessions,
+                    showsMessageCount: showsSessionMessageCount,
+                    showsWorkspace: showsSessionWorkspace,
+                    selectedSessionID: horizontalSizeClass == .regular
+                        ? navigationState.selectedSessionID
+                        : nil,
+                    actions: sessionRowActions
+                )
             }
         }
         .adaptiveSecondaryNavigationTitle()
@@ -385,9 +398,26 @@ struct SessionListView: View {
                 )
             }
 
+            if scheduledSessionGroups.showsDisclosure(isSearchActive: isSearchingSessions) {
+                ScheduledSessionsDisclosure(
+                    viewModel: viewModel,
+                    sessions: scheduledSessionGroups.scheduled,
+                    totalCount: scheduledSessionGroups.totalScheduledCount,
+                    isSearchActive: isSearchingSessions,
+                    showsMessageCount: showsSessionMessageCount,
+                    showsWorkspace: showsSessionWorkspace,
+                    selectedSessionID: horizontalSizeClass == .regular
+                        ? navigationState.selectedSessionID
+                        : nil,
+                    userIsExpanded: $scheduledSessionsAreExpanded,
+                    actions: sessionRowActions,
+                    viewAll: { navigationState.select(.scheduled) }
+                )
+            }
+
             SessionListRowsSection(
                 viewModel: viewModel,
-                sessions: visibleSessions,
+                sessions: scheduledSessionGroups.ordinary,
                 emptyTitle: emptySessionsTitle,
                 emptyDescription: emptySessionsDescription,
                 isSearchActive: isSearchingSessions,
@@ -396,7 +426,8 @@ struct SessionListView: View {
                 selectedSessionID: horizontalSizeClass == .regular
                     ? navigationState.selectedSessionID
                     : nil,
-                actions: sessionRowActions
+                actions: sessionRowActions,
+                suppressEmptyState: !scheduledSessionGroups.scheduled.isEmpty
             )
 
             if showsArchivedEntry {
@@ -422,6 +453,7 @@ struct SessionListView: View {
         // so insert/remove animates. Value-based so it works with @AppStorage.
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: profilesAreExpanded)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
+        .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: scheduledSessionsAreExpanded)
     }
 
     private var header: some View {
@@ -611,6 +643,14 @@ struct SessionListView: View {
 
     private var visibleSessions: [SessionSummary] {
         viewModel.visibleSessions(
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedSessionVisibility
+        )
+    }
+
+    private var scheduledSessionGroups: ScheduledSessionGroups {
+        viewModel.scheduledSessionGroups(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
             automatedVisibility: automatedSessionVisibility
@@ -1229,6 +1269,7 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     case insights
     /// Archived sessions screen (issue #17), also reachable from Settings.
     case archived
+    case scheduled
 
     var id: Self { self }
 }

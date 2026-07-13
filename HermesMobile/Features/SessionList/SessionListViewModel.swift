@@ -18,6 +18,24 @@ struct SessionListSection: Identifiable {
     var id: String { kind.rawValue }
 }
 
+struct ScheduledSessionGroups: Equatable {
+    let ordinary: [SessionSummary]
+    let scheduled: [SessionSummary]
+    let totalScheduledCount: Int
+
+    var scheduledPreview: [SessionSummary] {
+        Array(scheduled.prefix(5))
+    }
+
+    var hasAdditionalScheduledSessions: Bool {
+        scheduled.count > scheduledPreview.count
+    }
+
+    func showsDisclosure(isSearchActive: Bool) -> Bool {
+        totalScheduledCount > 0 && (!isSearchActive || !scheduled.isEmpty)
+    }
+}
+
 enum ActiveSessionStateRefreshResult: Equatable {
     case unchanged
     case reloaded
@@ -161,6 +179,31 @@ final class SessionListViewModel {
         }
 
         return sortedLocalMatches + Self.sortedSessions(remoteMatches)
+    }
+
+    func scheduledSessionGroups(
+        searchText: String,
+        selectedProjectID: String?,
+        automatedVisibility: AutomatedSessionVisibility = .showAll
+    ) -> ScheduledSessionGroups {
+        let ordinaryCandidates = visibleSessions(
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedVisibility
+        )
+        let scheduledCandidates = visibleSessions(
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedVisibility
+        )
+
+        return ScheduledSessionGroups(
+            ordinary: ordinaryCandidates.filter { !$0.isCronSession },
+            scheduled: scheduledCandidates.filter { $0.isCronSession && $0.archived != true },
+            totalScheduledCount: automatedVisibility.showsCron
+                ? sessions.filter { $0.isCronSession && $0.archived != true }.count
+                : 0
+        )
     }
 
     @discardableResult

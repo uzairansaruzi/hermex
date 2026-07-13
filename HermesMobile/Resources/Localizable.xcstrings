@@ -109705,6 +109705,90 @@
           }
         }
       }
+    },
+    "Collapse scheduled sessions" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "طي الجلسات المجدولة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Geplante Sitzungen einklappen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Contraer sesiones programadas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Réduire les sessions planifiées" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "כיווץ הפעלות מתוזמנות" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Comprimi sessioni programmate" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スケジュール済みセッションを折りたたむ" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "예약된 세션 접기" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Geplande sessies inklappen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zwiń zaplanowane sesje" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Recolher sessões agendadas" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Свернуть запланированные сеансы" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Zamanlanmış oturumları daralt" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "شیڈول کردہ سیشنز سمیٹیں" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "收起计划会话" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "收合排程的工作階段" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "收起已排程的工作階段" } }
+      }
+    },
+    "Expand scheduled sessions" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "توسيع الجلسات المجدولة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Geplante Sitzungen ausklappen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Expandir sesiones programadas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Développer les sessions planifiées" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הרחבת הפעלות מתוזמנות" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Espandi sessioni programmate" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スケジュール済みセッションを展開" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "예약된 세션 펼치기" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Geplande sessies uitklappen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Rozwiń zaplanowane sesje" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Expandir sessões agendadas" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Развернуть запланированные сеансы" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Zamanlanmış oturumları genişlet" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "شیڈول کردہ سیشنز پھیلائیں" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "展开计划会话" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "展開排程的工作階段" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "展開已排程的工作階段" } }
+      }
+    },
+    "Scheduled sessions" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الجلسات المجدولة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Geplante Sitzungen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sesiones programadas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Sessions planifiées" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הפעלות מתוזמנות" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sessioni programmate" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スケジュール済みセッション" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "예약된 세션" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Geplande sessies" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zaplanowane sesje" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Sessões agendadas" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Запланированные сеансы" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Zamanlanmış oturumlar" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "شیڈول کردہ سیشنز" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "计划会话" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "排程的工作階段" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "已排程的工作階段" } }
+      }
+    },
+    "View all" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "عرض الكل" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Alle anzeigen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Ver todo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Tout afficher" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הצגת הכול" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Mostra tutto" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "すべて表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "모두 보기" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Alles bekijken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wyświetl wszystko" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ver tudo" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Показать все" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Tümünü görüntüle" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "سبھی دیکھیں" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看全部" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢視全部" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "查看全部" } }
+      }
     }
   },
   "version" : "1.0"
