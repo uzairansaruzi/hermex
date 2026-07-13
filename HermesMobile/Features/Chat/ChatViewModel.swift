@@ -2113,7 +2113,10 @@ final class ChatViewModel {
                 cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
                 restorePendingAttachments(attachmentsToRestoreOnFailure)
                 streamCoordinator.start(streamID: streamID)
-                return true
+                // The server kept the earlier run, not this newly submitted text.
+                // Report an unaccepted send so ChatView restores the draft while
+                // the coordinator reconnects to the existing response.
+                return false
             }
             lastError = error
             sendErrorMessage = error.localizedDescription

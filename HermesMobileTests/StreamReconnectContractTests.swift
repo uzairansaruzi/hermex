@@ -235,11 +235,21 @@ final class StreamReconnectContractTests: APIClientTestCase {
 
         let didStart = await viewModel.sendMessage("Duplicate request")
 
-        XCTAssertTrue(didStart)
+        XCTAssertFalse(didStart)
         XCTAssertEqual(viewModel.activeStreamID, "stream-existing")
         XCTAssertEqual(viewModel.messages.compactMap(\.content), [])
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(queryDictionary(of: try XCTUnwrap(streamClient.startedURLs.first))["stream_id"], "stream-existing")
+    }
+
+    func testOnlySpecificMissingStream404IsTerminal() {
+        XCTAssertTrue(
+            APIError.http(statusCode: 404, body: #"{"error":"stream not found"}"#).indicatesMissingStream
+        )
+        XCTAssertFalse(
+            APIError.http(statusCode: 404, body: #"{"error":"endpoint not found"}"#).indicatesMissingStream
+        )
+        XCTAssertFalse(APIError.http(statusCode: 404, body: nil).indicatesMissingStream)
     }
 
     @MainActor

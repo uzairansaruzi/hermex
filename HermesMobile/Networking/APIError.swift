@@ -85,8 +85,8 @@ enum APIError: LocalizedError {
     }
 
     var indicatesMissingStream: Bool {
-        guard case .http(let statusCode, _) = self else { return false }
-        return statusCode == 404
+        guard case .http(let statusCode, let body) = self, statusCode == 404 else { return false }
+        return Self.serverErrorMessage(from: body)?.localizedCaseInsensitiveContains("stream not found") == true
     }
 
     /// True for the documented "prompt already expired" respond rejection:
