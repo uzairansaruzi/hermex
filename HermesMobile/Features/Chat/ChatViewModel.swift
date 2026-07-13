@@ -2112,6 +2112,16 @@ final class ChatViewModel {
                 rollbackOptimisticMessage(id: localMessageID)
                 cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
                 restorePendingAttachments(attachmentsToRestoreOnFailure)
+                // The existing run may have started outside this view model. Reconcile
+                // the server transcript first so the SSE tokens attach to the persisted
+                // assistant turn instead of creating a second bubble with only the tail.
+                await loadMessages(modelContext: modelContext)
+                if streamingAssistantMessageID == nil {
+                    _ = restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
+                }
+                if streamingAssistantMessageID == nil {
+                    streamingAssistantMessageID = Self.latestAssistantMessageID(in: messages)
+                }
                 streamCoordinator.start(streamID: streamID)
                 // The server kept the earlier run, not this newly submitted text.
                 // Report an unaccepted send so ChatView restores the draft while
