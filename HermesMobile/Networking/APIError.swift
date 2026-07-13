@@ -79,6 +79,16 @@ enum APIError: LocalizedError {
         return Self.serverErrorMessage(from: body)
     }
 
+    var activeStreamID: String? {
+        guard case .http(let statusCode, let body) = self, statusCode == 409 else { return nil }
+        return Self.serverErrorPayload(from: body)?.activeStreamId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    var indicatesMissingStream: Bool {
+        guard case .http(let statusCode, let body) = self, statusCode == 404 else { return false }
+        return Self.serverErrorMessage(from: body)?.localizedCaseInsensitiveContains("stream not found") == true
+    }
+
     /// True for the documented "prompt already expired" respond rejection:
     /// HTTP 409 with `{"stale": true, …}` in the body (issue #25). Used to show
     /// a friendly expired state instead of a generic failure.
@@ -111,6 +121,12 @@ private extension APIError {
         let detail: String?
         let code: String?
         let stale: Bool?
+        let activeStreamId: String?
+
+        enum CodingKeys: String, CodingKey {
+            case error, message, detail, code, stale
+            case activeStreamId = "active_stream_id"
+        }
     }
 
     static func networkMessage(for error: Error) -> String {

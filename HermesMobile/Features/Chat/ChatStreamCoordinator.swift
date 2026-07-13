@@ -275,6 +275,14 @@ final class ChatStreamCoordinator {
                 finalizeInactiveStream(streamID: activeStreamID)
             }
         } catch {
+            if (error as? APIError)?.indicatesMissingStream == true,
+               self.activeStreamID == activeStreamID,
+               isConnectionSuspended {
+                await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
+                guard canFinalizeRunAfterLoad(streamID: activeStreamID, capturedGeneration: generation) else { return }
+                finalizeInactiveStream(streamID: activeStreamID)
+                return
+            }
             delegate?.streamCoordinatorDidReceiveRecoveryError(error)
         }
     }
@@ -531,6 +539,16 @@ final class ChatStreamCoordinator {
             chatStreamCoordinatorLogger.warning(
                 "Stale stream recovery status check failed category=\(APIError.privacySafeLogCategory(for: error), privacy: .public)"
             )
+
+            if (error as? APIError)?.indicatesMissingStream == true,
+               activeStreamID == expectedStreamID,
+               !isConnectionSuspended {
+                await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
+                guard canFinalizeRunAfterLoad(streamID: expectedStreamID, capturedGeneration: generation),
+                      !isConnectionSuspended else { return }
+                finalizeInactiveStream(streamID: expectedStreamID)
+                return
+            }
 
             guard forceReconnect,
                   activeStreamID == expectedStreamID,

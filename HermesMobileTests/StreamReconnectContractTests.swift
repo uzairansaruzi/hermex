@@ -221,6 +221,184 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertEqual(streamClient.droppedEventCount, 0)
     }
 
+    @MainActor
+    func testDuplicateStartReconnectsExistingStreamWithoutKeepingOptimisticMessage() async throws {
+        let streamClient = ScriptedSSEStreamingClient(connectionScripts: [[
+            .init(.token(" continuation"), lastEventID: "stream-existing:1")
+        ]])
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return self.jsonResponse(
+                    #"{"error":"session already has an active stream","active_stream_id":"stream-existing"}"#,
+                    statusCode: 409,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-existing",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Already accepted",
+                        "timestamp": 1770000100,
+                        "message_id": "user-existing"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Partial answer",
+                        "timestamp": 1770000101,
+                        "message_id": "assistant-existing"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Duplicate request")
+
+        XCTAssertFalse(didStart)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-existing")
+        XCTAssertEqual(
+            viewModel.messages.compactMap(\.content),
+            ["Already accepted", "Partial answer"]
+        )
+        XCTAssertEqual(viewModel.streamingAssistantMessageID, "assistant-existing")
+        XCTAssertNil(viewModel.sendErrorMessage)
+        XCTAssertEqual(queryDictionary(of: try XCTUnwrap(streamClient.startedURLs.first))["stream_id"], "stream-existing")
+
+        streamClient.playArmedConnectionScript()
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(
+            assistantContents(of: viewModel),
+            ["Partial answer continuation"]
+        )
+    }
+
+    @MainActor
+    func testDuplicateStartReconnectDoesNotReusePreviousTurnAssistantAnchor() async throws {
+        let streamClient = ScriptedSSEStreamingClient(connectionScripts: [[
+            .init(.token("new response"), lastEventID: "stream-existing:1")
+        ]])
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return self.jsonResponse(
+                    #"{"error":"session already has an active stream","active_stream_id":"stream-existing"}"#,
+                    statusCode: 409,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-existing",
+                    "messages": [
+                      {
+                        "role": "assistant",
+                        "content": "Previous response",
+                        "timestamp": 1770000099,
+                        "message_id": "assistant-previous"
+                      },
+                      {
+                        "role": "user",
+                        "content": "Already accepted",
+                        "timestamp": 1770000100,
+                        "message_id": "user-existing"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Duplicate request")
+
+        XCTAssertFalse(didStart)
+        XCTAssertEqual(
+            viewModel.messages.compactMap(\.content),
+            ["Previous response", "Already accepted"]
+        )
+        XCTAssertNil(viewModel.streamingAssistantMessageID)
+
+        streamClient.playArmedConnectionScript()
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(
+            assistantContents(of: viewModel),
+            ["Previous response", "new response"]
+        )
+    }
+
+    func testOnlySpecificMissingStream404IsTerminal() {
+        XCTAssertTrue(
+            APIError.http(statusCode: 404, body: #"{"error":"stream not found"}"#).indicatesMissingStream
+        )
+        XCTAssertFalse(
+            APIError.http(statusCode: 404, body: #"{"error":"endpoint not found"}"#).indicatesMissingStream
+        )
+        XCTAssertFalse(APIError.http(statusCode: 404, body: nil).indicatesMissingStream)
+    }
+
+    @MainActor
+    func testMissingStatusAfterDisconnectFinalizesInsteadOfRetryingStaleStream() async throws {
+        let streamClient = ScriptedSSEStreamingClient(connectionScripts: [[
+            .init(.token("Partial"), lastEventID: "stream-123:1"),
+            .init(.transportError("Connection lost"))
+        ]])
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/chat/stream/status":
+                return self.jsonResponse(#"{"error":"stream not found"}"#, statusCode: 404, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","title":"Planning","messages":[]}}"#, for: request)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        streamClient.playArmedConnectionScript()
+        try await waitUntil { viewModel.activeStreamID == nil }
+
+        XCTAssertEqual(streamClient.startedURLs.count, 1)
+        XCTAssertFalse(viewModel.isActiveStreamConnectionSuspended)
+        XCTAssertNil(viewModel.sendErrorMessage)
+    }
+
+    private func jsonResponse(
+        _ json: String,
+        statusCode: Int,
+        for request: URLRequest
+    ) -> (HTTPURLResponse, Data) {
+        (
+            HTTPURLResponse(
+                url: request.url!,
+                statusCode: statusCode,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!,
+            Data(json.utf8)
+        )
+    }
+
     // MARK: - Helpers
 
     @MainActor

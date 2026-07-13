@@ -2108,6 +2108,24 @@ final class ChatViewModel {
             streamCoordinator.start(streamID: streamID)
             return true
         } catch {
+            if let streamID = (error as? APIError)?.activeStreamID {
+                rollbackOptimisticMessage(id: localMessageID)
+                cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
+                restorePendingAttachments(attachmentsToRestoreOnFailure)
+                // The existing run may have started outside this view model. Reconcile
+                // the server transcript first so the SSE tokens attach to the persisted
+                // assistant turn instead of creating a second bubble with only the tail.
+                await loadMessages(modelContext: modelContext)
+                _ = restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
+                streamingAssistantMessageID = TranscriptTurnClassifier
+                    .currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
+                    .first
+                streamCoordinator.start(streamID: streamID)
+                // The server kept the earlier run, not this newly submitted text.
+                // Report an unaccepted send so ChatView restores the draft while
+                // the coordinator reconnects to the existing response.
+                return false
+            }
             lastError = error
             sendErrorMessage = error.localizedDescription
             rollbackOptimisticMessage(id: localMessageID)
