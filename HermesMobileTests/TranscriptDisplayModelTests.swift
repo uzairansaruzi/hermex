@@ -504,3 +504,32 @@ final class AssistantTurnTimestampFormatterTests: XCTestCase {
         XCTAssertNotNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: fixedTimestamp))
     }
 }
+
+final class UserMessageLinkFormatterTests: XCTestCase {
+    func testSchemeLessWebsiteBecomesLink() {
+        let attributedText = UserMessageLinkFormatter.attributedText(for: "Visit Paypal.com")
+
+        XCTAssertEqual(linkURLs(in: attributedText), [URL(string: "http://Paypal.com")!])
+        XCTAssertEqual(String(attributedText.characters), "Visit Paypal.com")
+    }
+
+    func testHTTPSWebsitePreservesExplicitURL() {
+        let attributedText = UserMessageLinkFormatter.attributedText(
+            for: "Open https://example.com/docs"
+        )
+
+        XCTAssertEqual(linkURLs(in: attributedText), [URL(string: "https://example.com/docs")!])
+    }
+
+    func testEmailAndPlainTextDoNotBecomeWebLinks() {
+        let attributedText = UserMessageLinkFormatter.attributedText(
+            for: "Email hello@example.com about this sentence."
+        )
+
+        XCTAssertTrue(linkURLs(in: attributedText).isEmpty)
+    }
+
+    private func linkURLs(in attributedText: AttributedString) -> [URL] {
+        attributedText.runs.compactMap(\.link)
+    }
+}

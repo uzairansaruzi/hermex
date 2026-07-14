@@ -63,15 +63,10 @@ struct MessageBubbleView: View {
             // When the attachment-path line is hidden, an attachment-only
             // message has no bubble text left; skip the empty pill so only the
             // attachment grid shows.
-            if hasVisibleUserBubbleText || hasLinkPreview {
+            if hasVisibleUserBubbleText {
                 HStack(alignment: .bottom, spacing: 0) {
                     Spacer(minLength: userBubbleLeadingGutter)
-                    VStack(alignment: .trailing, spacing: 8) {
-                        if hasVisibleUserBubbleText {
-                            userBubble
-                        }
-                        linkPreview
-                    }
+                    userBubble
                 }
             }
         }
@@ -99,8 +94,6 @@ struct MessageBubbleView: View {
             } else {
                 MarkdownRenderer(content: messageText, isStreaming: isStreaming)
             }
-
-            linkPreview
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 2)
@@ -196,8 +189,9 @@ struct MessageBubbleView: View {
     }
 
     private var userBubble: some View {
-        Text(verbatim: userBubbleText)
+        Text(UserMessageLinkFormatter.attributedText(for: userBubbleText))
             .font(.body)
+            .tint(.accentColor)
             .textSelection(.enabled)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -207,18 +201,6 @@ struct MessageBubbleView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(userBubbleBorder, lineWidth: 0.5)
             )
-    }
-
-    @ViewBuilder
-    private var linkPreview: some View {
-        if let url = TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) {
-            TranscriptLinkPreviewView(url: url)
-                .frame(maxWidth: 300)
-        }
-    }
-
-    private var hasLinkPreview: Bool {
-        TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) != nil
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked
@@ -381,6 +363,41 @@ struct MessageBubbleView: View {
     private var hasVisibleUserBubbleText: Bool {
         !userBubbleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+}
+
+enum UserMessageLinkFormatter {
+    static func attributedText(for text: String) -> AttributedString {
+        var attributedText = AttributedString(text)
+        guard let detector else { return attributedText }
+
+        let matches = detector.matches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text)
+        )
+
+        for match in matches {
+            guard let url = match.url,
+                  isWebURL(url),
+                  let sourceRange = Range(match.range, in: text),
+                  let attributedRange = Range(sourceRange, in: attributedText)
+            else {
+                continue
+            }
+
+            attributedText[attributedRange].link = url
+        }
+
+        return attributedText
+    }
+
+    private static func isWebURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
+    private static let detector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
 }
 
 private extension [TranscriptMediaSegment] {
