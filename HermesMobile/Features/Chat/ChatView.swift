@@ -1313,8 +1313,9 @@ struct ChatView: View {
             return
         }
 
-        await performInitialAsyncWork()
-        await loadInitialGitAvailability()
+        async let chatStartup: Void = performInitialAsyncWork()
+        async let gitAvailability: Void = loadInitialGitAvailability()
+        _ = await (chatStartup, gitAvailability)
     }
 
     private func performInitialAsyncWork() async {
