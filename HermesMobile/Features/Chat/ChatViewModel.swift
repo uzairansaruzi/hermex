@@ -235,6 +235,7 @@ final class ChatViewModel {
     /// render, so the view re-pins to the bottom on this token *without* animation —
     /// otherwise the height growth produces a visible scroll jump.
     private(set) var cacheFirstReconcileScrollToken = 0
+    private var hasPrimedInitialCachedMessages = false
     @ObservationIgnored private var pendingStreamingScrollTriggerTask: Task<Void, Never>?
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
@@ -1165,12 +1166,16 @@ final class ChatViewModel {
         // render the cached messages immediately so the loading skeleton never shows.
         let previousMessages = messages
         let previousMessagesOffset = messagesOffset
+        let usesPrimedInitialCache = hasPrimedInitialCachedMessages && !previousMessages.isEmpty
+        hasPrimedInitialCachedMessages = false
         let cacheFirstPlaceholder: [ChatMessage]
         if previousMessages.isEmpty, let modelContext {
             cacheFirstPlaceholder = renderCachedMessagesBeforeReload(
                 sessionID: sessionID,
                 modelContext: modelContext
             )
+        } else if usesPrimedInitialCache {
+            cacheFirstPlaceholder = previousMessages
         } else {
             cacheFirstPlaceholder = []
         }
@@ -1330,6 +1335,23 @@ final class ChatViewModel {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Performs only the fast, local portion of an existing session's first
+    /// load. The network reconcile is intentionally started by `ChatView` after
+    /// its navigation appearance completes so rendering a richer transcript
+    /// cannot stall the system push animation.
+    func prepareInitialMessageLoad(modelContext: ModelContext) {
+        guard let sessionID else { return }
+
+        isLoading = true
+        guard messages.isEmpty else { return }
+
+        let cachedMessages = renderCachedMessagesBeforeReload(
+            sessionID: sessionID,
+            modelContext: modelContext
+        )
+        hasPrimedInitialCachedMessages = !cachedMessages.isEmpty
     }
 
     /// Cache-first render (#289): on a cold session open, paint the cached transcript

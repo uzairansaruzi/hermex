@@ -572,30 +572,8 @@ struct ChatView: View {
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
-        .task {
-            viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
-            if loadsInitialMessages {
-                await loadMessages(appliesInitialFocus: false)
-            }
-            if initialAttachments.isEmpty {
-                isInitialComposerFocusContentReady = true
-                applyInitialComposerFocusPolicyIfNeeded()
-            }
-            await viewModel.loadComposerConfiguration()
-            await viewModel.refreshApprovalBypassState()
-            await uploadInitialAttachmentsIfNeeded()
-            isInitialComposerFocusContentReady = true
-            applyInitialComposerFocusPolicyIfNeeded()
-            if let lastError = viewModel.lastError {
-                onAPIError(lastError)
-            }
-        }
-        .task(id: gitAvailabilityTaskID) {
-            let availabilityViewModel = GitWorkspaceAvailabilityViewModel(session: session, server: server)
-            await MainActor.run {
-                gitAvailabilityViewModel = availabilityViewModel
-            }
-            await availabilityViewModel.loadIfNeeded()
+        .task(id: didCompleteInitialAppearance) {
+            await handleInitialAppearanceTask()
         }
         .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)
@@ -813,10 +791,6 @@ struct ChatView: View {
             )
             .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
         }
-    }
-
-    private var gitAvailabilityTaskID: String {
-        "\(session.id)|\(server.absoluteString)"
     }
 
     private var gitWriteAvailability: GitWriteAvailability {
@@ -1322,6 +1296,49 @@ struct ChatView: View {
 
     private var latestTranscriptMessageRole: String? {
         transcriptMessages.last?.message.role
+    }
+
+    private func prepareInitialAppearance() {
+        viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
+        if loadsInitialMessages {
+            viewModel.prepareInitialMessageLoad(modelContext: modelContext)
+        }
+    }
+
+    private func handleInitialAppearanceTask() async {
+        guard ChatInitialAppearancePolicy.shouldBeginAsyncWork(
+            hasCompletedAppearance: didCompleteInitialAppearance
+        ) else {
+            prepareInitialAppearance()
+            return
+        }
+
+        await performInitialAsyncWork()
+        await loadInitialGitAvailability()
+    }
+
+    private func performInitialAsyncWork() async {
+        if loadsInitialMessages {
+            await loadMessages(appliesInitialFocus: false)
+        }
+        if initialAttachments.isEmpty {
+            isInitialComposerFocusContentReady = true
+            applyInitialComposerFocusPolicyIfNeeded()
+        }
+        await viewModel.loadComposerConfiguration()
+        await viewModel.refreshApprovalBypassState()
+        await uploadInitialAttachmentsIfNeeded()
+        isInitialComposerFocusContentReady = true
+        applyInitialComposerFocusPolicyIfNeeded()
+        if let lastError = viewModel.lastError {
+            onAPIError(lastError)
+        }
+    }
+
+    private func loadInitialGitAvailability() async {
+        let availabilityViewModel = GitWorkspaceAvailabilityViewModel(session: session, server: server)
+        gitAvailabilityViewModel = availabilityViewModel
+        await availabilityViewModel.loadIfNeeded()
     }
 
     private var goalControlMenu: some View {
