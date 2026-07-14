@@ -3208,6 +3208,32 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testPrepareInitialMessageLoadPrimesCacheWithoutStartingNetwork() throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        try CacheStore.cacheMessages(
+            [
+                ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user"),
+                ChatMessage(role: "assistant", content: "Cached answer", timestamp: 1_770_000_002, messageId: "cached-assistant")
+            ],
+            serverURL: serverURL,
+            sessionID: "session-abc",
+            in: context
+        )
+
+        let viewModel = try makeViewModel { request in
+            XCTFail("Cache preparation must not start a request: \(request.url?.absoluteString ?? "nil")")
+            throw URLError(.badURL)
+        }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question", "Cached answer"])
+        XCTAssertTrue(viewModel.isLoading)
+        XCTAssertFalse(viewModel.isViewingCachedData)
+    }
+
+    @MainActor
     func testLoadMessagesKeepsTranscriptEmptyDuringNetworkWhenCacheIsEmpty() async throws {
         let context = try makeContext()
 

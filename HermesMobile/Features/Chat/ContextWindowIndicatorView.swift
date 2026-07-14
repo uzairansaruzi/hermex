@@ -1,5 +1,22 @@
 import SwiftUI
 
+struct ContextWindowIndicatorPresentation: Equatable {
+    let percentage: Double?
+
+    init(snapshot: ContextWindowSnapshot?) {
+        percentage = snapshot?.percentage
+    }
+
+    var percentageLabel: String {
+        guard let percentage else { return "–" }
+        return "\(Int(percentage * 100))"
+    }
+
+    var isInteractive: Bool {
+        percentage != nil
+    }
+}
+
 struct ContextWindowIndicatorView: View {
     let snapshot: ContextWindowSnapshot?
 
@@ -9,13 +26,13 @@ struct ContextWindowIndicatorView: View {
     private let tapTargetSize: CGFloat = 44
 
     var body: some View {
-        if let snapshot, let percentage = snapshot.percentage {
-            Button(action: { showPopover = true }) {
-                ZStack {
-                    Circle()
-                        .stroke(trackColor, lineWidth: 3)
-                        .frame(width: ringSize, height: ringSize)
+        Button(action: showContextDetails) {
+            ZStack {
+                Circle()
+                    .stroke(trackColor, lineWidth: 3)
+                    .frame(width: ringSize, height: ringSize)
 
+                if let percentage = presentation.percentage {
                     Circle()
                         .trim(from: 0, to: CGFloat(min(percentage, 1.0)))
                         .stroke(
@@ -24,28 +41,42 @@ struct ContextWindowIndicatorView: View {
                         )
                         .frame(width: ringSize, height: ringSize)
                         .rotationEffect(.degrees(-90))
-
-                    Text("\(Int(percentage * 100))")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.primary)
                 }
-                .frame(width: ringSize, height: ringSize)
-                .adaptiveGlass(
-                    .regular,
-                    isInteractive: true,
-                    fallbackMaterial: .ultraThinMaterial,
-                    in: Circle()
-                )
-                .frame(width: tapTargetSize, height: tapTargetSize)
-                .contentShape(Circle())
+
+                Text(presentation.percentageLabel)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
             }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showPopover) {
+            .frame(width: ringSize, height: ringSize)
+            .adaptiveGlass(
+                .regular,
+                isInteractive: presentation.isInteractive,
+                fallbackMaterial: .ultraThinMaterial,
+                in: Circle()
+            )
+            .frame(width: tapTargetSize, height: tapTargetSize)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!presentation.isInteractive)
+        .accessibilityLabel(presentation.isInteractive ? "Context usage" : "Context usage loading")
+        .accessibilityValue(presentation.isInteractive ? "\(presentation.percentageLabel) percent" : "")
+        .popover(isPresented: $showPopover) {
+            if let snapshot {
                 ContextWindowPopover(snapshot: snapshot)
                     .presentationCompactAdaptation(.none)
                     .presentationBackground(.clear)
             }
         }
+    }
+
+    private var presentation: ContextWindowIndicatorPresentation {
+        ContextWindowIndicatorPresentation(snapshot: snapshot)
+    }
+
+    private func showContextDetails() {
+        guard presentation.isInteractive else { return }
+        showPopover = true
     }
 
     private var trackColor: Color {

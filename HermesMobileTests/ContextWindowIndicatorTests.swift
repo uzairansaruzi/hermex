@@ -2,6 +2,30 @@ import XCTest
 @testable import HermesMobile
 
 final class ContextWindowIndicatorTests: XCTestCase {
+    func testPresentationProvidesNonInteractivePlaceholderBeforeSnapshotLoads() {
+        let presentation = ContextWindowIndicatorPresentation(snapshot: nil)
+
+        XCTAssertEqual(presentation.percentageLabel, "–")
+        XCTAssertFalse(presentation.isInteractive)
+        XCTAssertNil(presentation.percentage)
+    }
+
+    func testPresentationBecomesInteractiveWhenPercentageLoads() {
+        let snapshot = ContextWindowSnapshot(
+            contextLength: 100_000,
+            thresholdTokens: nil,
+            lastPromptTokens: 25_000,
+            inputTokens: nil,
+            outputTokens: nil,
+            estimatedCost: nil
+        )
+        let presentation = ContextWindowIndicatorPresentation(snapshot: snapshot)
+
+        XCTAssertEqual(presentation.percentageLabel, "25")
+        XCTAssertTrue(presentation.isInteractive)
+        XCTAssertEqual(presentation.percentage, 0.25)
+    }
+
     func testCompactIndicatorWithValidData() {
         let snapshot = ContextWindowSnapshot(
             contextLength: 128_000,
