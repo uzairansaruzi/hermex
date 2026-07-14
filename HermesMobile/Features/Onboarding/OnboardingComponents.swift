@@ -270,6 +270,46 @@ struct OnboardingAgentPromptCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
+        .onChange(of: prompt) {
+            didCopyRecently = false
+        }
+    }
+}
+
+struct OnboardingNetworkProviderPicker: View {
+    @Binding var selection: PrivateNetworkProvider
+
+    private let accent = Color(red: 1.0, green: 0.74, blue: 0.10)
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(PrivateNetworkProvider.allCases) { provider in
+                Button {
+                    selection = provider
+                } label: {
+                    Text(provider.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(selection == provider ? Color.black : Color.white.opacity(0.72))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            selection == provider ? accent : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == provider ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Private network")
+        .accessibilityHint("Changes the setup prompt and iPhone installation instructions.")
     }
 }
 

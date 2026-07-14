@@ -5,6 +5,7 @@ struct OnboardingView: View {
     @State private var viewModel: OnboardingViewModel
     @State private var currentPage: Int
     @State private var hasCopiedAgentPrompt = false
+    @State private var privateNetworkProvider: PrivateNetworkProvider = .tailscale
     @State private var hasBypassedCopyReminder = false
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
@@ -47,10 +48,13 @@ struct OnboardingView: View {
                     OnboardingFeaturesPage()
                         .tag(1)
 
-                    OnboardingAgentPromptPage(hasCopiedAgentPrompt: $hasCopiedAgentPrompt)
+                    OnboardingAgentPromptPage(
+                        hasCopiedAgentPrompt: $hasCopiedAgentPrompt,
+                        privateNetworkProvider: $privateNetworkProvider
+                    )
                         .tag(2)
 
-                    OnboardingTailscalePage()
+                    OnboardingPrivateNetworkPage(privateNetworkProvider: $privateNetworkProvider)
                         .tag(3)
 
                     OnboardingConnectPage(
@@ -83,7 +87,7 @@ struct OnboardingView: View {
                 advanceToNextPage()
             }
         } message: {
-            Text("Copy the agent setup prompt on your desktop before continuing so Hermes Web UI and Tailscale are configured correctly.")
+            Text("Copy the agent setup prompt before continuing so Hermes Web UI and your private network are configured correctly.")
         }
     }
 

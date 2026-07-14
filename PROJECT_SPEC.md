@@ -20,7 +20,7 @@ If anything in this spec is ambiguous, **stop and ask the human owner before gue
 ## 1. Project summary
 
 ### 1.1 What we're building
-A native iOS app (SwiftUI, iOS 18+, iPhone only) that lets the user drive a self-hosted Hermes AI agent from their phone. The user runs the `hermes-webui` Python server on a machine they control and connects from the phone via Cloudflare Tunnel (or Tailscale).
+A native iOS app (SwiftUI, iOS 18+, iPhone only) that lets the user drive a self-hosted Hermes AI agent from their phone. The user runs the `hermes-webui` Python server on a machine they control and connects from the phone via HTTPS or a supported private mesh network (Tailscale or NetBird).
 
 ### 1.2 What it is NOT
 - ❌ Not a webview wrapper around the existing browser UI.
@@ -28,7 +28,7 @@ A native iOS app (SwiftUI, iOS 18+, iPhone only) that lets the user drive a self
 - ❌ Not a hosted service — every user brings their own server.
 
 ### 1.3 Why it exists
-The `hermes-webui` browser UI works on mobile via Cloudflare Tunnel/Tailscale, but a native client gives:
+The `hermes-webui` browser UI works on mobile via an HTTPS tunnel or private mesh network, but a native client gives:
 - A real iOS app icon, lifecycle, and Keychain-backed auth.
 - Native streaming chat with proper SwiftUI rendering (no PWA quirks).
 - Offline read-only cache of recent sessions.
@@ -59,7 +59,7 @@ The server owns execution. The app owns mobile interaction quality.
 | # | Decision | Value |
 |---|---|---|
 | 1 | v1 feature scope | **Expanded pre-polish scope** (login, sessions, chat with streaming, conversation actions, composer attachments/config, read-only tasks/skills/memory, limited usage analytics, workspace browser, file viewer with syntax highlighting, settings; **no push, no terminal, no file editing in v1**) |
-| 2 | Hosting models documented | **Cloudflare Tunnel (primary)** and **Tailscale (secondary)** |
+| 2 | Hosting models documented | **Cloudflare Tunnel (primary)** and **Tailscale or NetBird (private-network alternatives)** |
 | 3 | Upstream strategy | **Pin to upstream tags** for v1; revisit forking later if API churn becomes painful |
 | 4 | Auth method | **Password only** for v1 (no OAuth) |
 | 5 | Target | iOS 18+, iPhone only, portrait + landscape |
@@ -356,7 +356,7 @@ Each phase ends in a working, committable state. Run on the simulator after ever
 - [x] Add a `README.md` that points at this spec.
 - [x] Write a one-page `DEVELOPMENT.md` with:
   - **Primary test target:** the developer's own HTTPS-exposed `hermes-webui` instance (needs the password). Works from simulator AND a physical device.
-  - **Local-only fallback**: clone `nesquena/hermes-webui`, run via Docker OR `python3 server.py` from the repo. Note: physical-device testing against `http://localhost:8787` requires either a Tailscale IP or an ATS exception.
+  - **Local-only fallback**: clone `nesquena/hermes-webui`, run via Docker OR `python3 server.py` from the repo. Note: physical-device testing against `http://localhost:8787` requires a supported private-network IP or an ATS exception.
   - How to verify the server is up before debugging the app: `curl https://<your-server>/health`.
 
 ### Phase 1 — Onboarding + auth (1–2 days)
@@ -702,7 +702,7 @@ Document it as the recommended path.
 **Pros:** real HTTPS, accessible from anywhere, no VPN client on the phone.
 **Cons:** publicly reachable URL — if the password leaks, anyone can hit your agent. Recommended hardening: add a Cloudflare Access policy in front of the hostname.
 
-### 9.2 Tailscale (alternative — if you don't want a public hostname)
+### 9.2 Tailscale (private-network alternative)
 1. Install Tailscale on the server and the iPhone, sign both into the same account.
 2. On the server, start hermes-webui bound to all interfaces with auth:
    ```bash
@@ -715,6 +715,21 @@ Document it as the recommended path.
 
 **Pros:** zero config, encrypted via WireGuard, no public exposure.
 **Cons:** must install Tailscale on both ends; plain HTTP requires ATS exception.
+
+### 9.3 NetBird (private-network alternative)
+1. Install NetBird on the server and iPhone, then connect both peers to the same NetBird account or self-hosted management server.
+2. Start `hermes-webui` bound to all interfaces with password authentication:
+   ```bash
+   HERMES_WEBUI_HOST=0.0.0.0 HERMES_WEBUI_PASSWORD=your-secret ./start.sh
+   ```
+3. Confirm the server peer's NetBird address with `netbird status` or, on Linux, `ip addr show wt0`.
+4. Ensure the NetBird access policy and the server's host firewall allow the iPhone peer to reach TCP port 8787. Do not expose the port publicly.
+5. In Hermex, enter `http://<netbird-ip>:8787` and the password.
+
+**Caveat for the iOS app:** plain HTTP is supported only for private-network IPv4 addresses in the app's scoped `100.64.0.0/10` ATS exception. NetBird deployments using a custom IPv4 range or IPv6 should put Hermes Web UI behind HTTPS instead of broadening the exception.
+
+**Pros:** encrypted WireGuard mesh, no public exposure, supports NetBird-managed and self-hosted control planes.
+**Cons:** must install NetBird on both ends and configure an access policy; plain HTTP is limited by the scoped ATS exception.
 
 ---
 
@@ -771,7 +786,7 @@ The app is "v1 done" when:
 - [ ] An internal TestFlight tester can install it and, given their server URL and password, can: log in, see their sessions, open a session, use session/message action menus, send a message with configured composer options and attachments, watch the response stream, browse workspace files, view a file, open read-only tasks/skills/memory, and view limited session-based usage analytics.
 - [ ] All §8 pre-TestFlight phases 0–12 complete.
 - [ ] Zero crashes in 30 minutes of normal use on iPhone 13 or newer running iOS 18+.
-- [ ] README documents Cloudflare Tunnel (primary) and Tailscale (alternative) setup end-to-end.
+- [ ] README documents Cloudflare Tunnel (primary) and Tailscale/NetBird (private-network alternatives) setup end-to-end.
 - [ ] Contract tests pass against the upstream tag pinned in `UPSTREAM_TESTED_SHA`.
 - [x] No third-party dependencies beyond the locked list in §5.
 
@@ -816,6 +831,8 @@ Stop and ask before guessing:
 - Pinned local upstream copy: `.codex-tmp/hermes-webui/` (read-only; see `CONTRACT_TESTS.md`)
 - Cloudflare Tunnel docs: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 - Tailscale download: https://tailscale.com/download
+- NetBird install docs: https://docs.netbird.io/get-started/install
+- NetBird mobile apps: https://docs.netbird.io/get-started/install/mobile
 - LDSwiftEventSource: https://github.com/launchdarkly/swift-eventsource
 - swift-markdown-ui: https://github.com/gonzalezreal/swift-markdown-ui
 
