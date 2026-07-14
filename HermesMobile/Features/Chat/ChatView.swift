@@ -1306,10 +1306,11 @@ struct ChatView: View {
     }
 
     private func handleInitialAppearanceTask() async {
+        prepareInitialAppearance()
+
         guard ChatInitialAppearancePolicy.shouldBeginAsyncWork(
             hasCompletedAppearance: didCompleteInitialAppearance
         ) else {
-            prepareInitialAppearance()
             return
         }
 
@@ -1319,16 +1320,25 @@ struct ChatView: View {
     }
 
     private func performInitialAsyncWork() async {
+        guard !Task.isCancelled else { return }
+
         if loadsInitialMessages {
             await loadMessages(appliesInitialFocus: false)
+            guard !Task.isCancelled else { return }
         }
         if initialAttachments.isEmpty {
             isInitialComposerFocusContentReady = true
             applyInitialComposerFocusPolicyIfNeeded()
         }
         await viewModel.loadComposerConfiguration()
+        guard !Task.isCancelled else { return }
+
         await viewModel.refreshApprovalBypassState()
+        guard !Task.isCancelled else { return }
+
         await uploadInitialAttachmentsIfNeeded()
+        guard !Task.isCancelled else { return }
+
         isInitialComposerFocusContentReady = true
         applyInitialComposerFocusPolicyIfNeeded()
         if let lastError = viewModel.lastError {
