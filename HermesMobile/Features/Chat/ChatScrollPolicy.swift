@@ -13,6 +13,13 @@ enum ChatScrollPolicy {
     /// scroll view's first layout, before the destination becomes visible.
     static let initialTranscriptAnchor = UnitPoint.bottom
 
+    /// Rich Markdown can finish measuring after the scroll view's initial
+    /// layout. Keep those size changes bottom-pinned only while the app still
+    /// owns follow-latest intent; return nil as soon as the reader scrolls away.
+    static func sizeChangeAnchor(shouldFollowLatestMessage: Bool) -> UnitPoint? {
+        shouldFollowLatestMessage ? .bottom : nil
+    }
+
     /// Distance (pt) from the bottom within which we treat the transcript as
     /// pinned to the latest content while idle.
     static let bottomDetectionThreshold: CGFloat = 80

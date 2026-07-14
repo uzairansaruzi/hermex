@@ -6,6 +6,14 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertEqual(ChatScrollPolicy.initialTranscriptAnchor, .bottom)
     }
 
+    func testTranscriptSizeChangesStayBottomAnchoredOnlyWhileFollowingLatest() {
+        XCTAssertEqual(
+            ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true),
+            .bottom
+        )
+        XCTAssertNil(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false))
+    }
+
     func testInitialAsyncWorkWaitsForNavigationAppearanceCompletion() {
         XCTAssertFalse(ChatInitialAppearancePolicy.shouldBeginAsyncWork(hasCompletedAppearance: false))
         XCTAssertTrue(ChatInitialAppearancePolicy.shouldBeginAsyncWork(hasCompletedAppearance: true))

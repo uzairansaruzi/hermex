@@ -124,6 +124,12 @@ struct ChatTranscriptView: View {
                         ChatScrollPolicy.initialTranscriptAnchor,
                         for: .initialOffset
                     )
+                    .defaultScrollAnchor(
+                        ChatScrollPolicy.sizeChangeAnchor(
+                            shouldFollowLatestMessage: shouldFollowLatestMessage
+                        ),
+                        for: .sizeChanges
+                    )
                     .frame(width: viewportWidth)
                     .refreshable {
                         if hasOlderMessages {
