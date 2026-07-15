@@ -54,6 +54,8 @@ final class APIClientKanbanTests: APIClientTestCase {
         ])))
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = cookieStorage
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.httpShouldSetCookies = true
         configuration.protocolClasses = [MockURLProtocol.self]
         let client = APIClient(
             baseURL: URL(string: "https://example.test")!,
