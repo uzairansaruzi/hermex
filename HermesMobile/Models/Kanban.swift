@@ -328,10 +328,25 @@ enum KanbanCompatibilityValidator {
         boardsResponse: KanbanBoardsResponse,
         snapshot: KanbanBoardSnapshot
     ) throws -> KanbanCompatibilityReport {
-        let configuredStatuses = try nonEmptyValues(configuration.columns, missing: .missingConfigurationColumns)
         let currentBoardSlug = try nonEmpty(boardsResponse.current, missing: .missingCurrentBoard)
+        return try validate(
+            configuration: configuration,
+            boardsResponse: boardsResponse,
+            boardSlug: currentBoardSlug,
+            snapshot: snapshot
+        )
+    }
+
+    static func validate(
+        configuration: KanbanConfiguration,
+        boardsResponse: KanbanBoardsResponse,
+        boardSlug: String,
+        snapshot: KanbanBoardSnapshot
+    ) throws -> KanbanCompatibilityReport {
+        let configuredStatuses = try nonEmptyValues(configuration.columns, missing: .missingConfigurationColumns)
+        let selectedBoardSlug = try nonEmpty(boardSlug, missing: .missingBoardIdentity)
         let boards = boardsResponse.boards ?? []
-        guard let board = boards.first(where: { normalized($0.slug) == currentBoardSlug }) else {
+        guard let board = boards.first(where: { normalized($0.slug) == selectedBoardSlug }) else {
             throw KanbanContractViolation.missingBoardIdentity
         }
         guard snapshot.changed == true, let columns = snapshot.columns, !columns.isEmpty else {

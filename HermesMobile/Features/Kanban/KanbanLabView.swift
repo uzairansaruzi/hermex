@@ -151,7 +151,9 @@ struct KanbanStatusFocusView: View {
                 .listRowSeparator(.hidden)
             }
 
-            if model.visibleCards.isEmpty {
+            if model.isRefreshing, model.snapshot == nil {
+                EmptyView()
+            } else if model.visibleCards.isEmpty {
                 emptyContent
                     .listRowSeparator(.hidden)
             } else if model.groupByProfile {
@@ -370,31 +372,30 @@ struct KanbanCardSummaryView: View {
             }
 
             ViewThatFits(in: .horizontal) {
-                metadata
-                VStack(alignment: .leading, spacing: 5) { metadata }
+                HStack(spacing: 12) { metadataLabels }
+                VStack(alignment: .leading, spacing: 5) { metadataLabels }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(KanbanCardAccessibility.summary(card))
     }
 
-    private var metadata: some View {
-        HStack(spacing: 12) {
-            Label(card.assignee ?? String(localized: "Unassigned"), systemImage: "person")
-            if let tenant = card.tenant, !tenant.isEmpty {
-                Label(tenant, systemImage: "building.2")
-            }
-            if let comments = card.commentCount, comments > 0 {
-                Label("\(comments)", systemImage: "bubble.left")
-            }
-            let dependencies = (card.linkCounts?.parents ?? 0) + (card.linkCounts?.children ?? 0)
-            if dependencies > 0 {
-                Label("\(dependencies)", systemImage: "link")
-            }
+    @ViewBuilder
+    private var metadataLabels: some View {
+        Label(card.assignee ?? String(localized: "Unassigned"), systemImage: "person")
+        if let tenant = card.tenant, !tenant.isEmpty {
+            Label(tenant, systemImage: "building.2")
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        if let comments = card.commentCount, comments > 0 {
+            Label("\(comments)", systemImage: "bubble.left")
+        }
+        let dependencies = (card.linkCounts?.parents ?? 0) + (card.linkCounts?.children ?? 0)
+        if dependencies > 0 {
+            Label("\(dependencies)", systemImage: "link")
+        }
     }
 
     private var stalenessImage: String {
@@ -478,11 +479,33 @@ enum KanbanAgeFormatter {
     static func full(_ seconds: Double) -> String { format(seconds, style: .full) }
 
     private static func format(_ seconds: Double, style: DateComponentsFormatter.UnitsStyle) -> String {
+        let formatter = switch (style, seconds) {
+        case (.abbreviated, 86_400...): abbreviatedDays
+        case (.abbreviated, 3_600...): abbreviatedHours
+        case (.abbreviated, _): abbreviatedMinutes
+        case (.full, 86_400...): fullDays
+        case (.full, 3_600...): fullHours
+        default: fullMinutes
+        }
+        return formatter.string(from: max(0, seconds)) ?? String(localized: "Just now")
+    }
+
+    private static let abbreviatedMinutes = makeFormatter(unit: .minute, style: .abbreviated)
+    private static let abbreviatedHours = makeFormatter(unit: .hour, style: .abbreviated)
+    private static let abbreviatedDays = makeFormatter(unit: .day, style: .abbreviated)
+    private static let fullMinutes = makeFormatter(unit: .minute, style: .full)
+    private static let fullHours = makeFormatter(unit: .hour, style: .full)
+    private static let fullDays = makeFormatter(unit: .day, style: .full)
+
+    private static func makeFormatter(
+        unit: NSCalendar.Unit,
+        style: DateComponentsFormatter.UnitsStyle
+    ) -> DateComponentsFormatter {
         let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = seconds >= 86_400 ? [.day] : seconds >= 3_600 ? [.hour] : [.minute]
+        formatter.allowedUnits = unit
         formatter.maximumUnitCount = 1
         formatter.unitsStyle = style
-        return formatter.string(from: max(0, seconds)) ?? String(localized: "Just now")
+        return formatter
     }
 }
 

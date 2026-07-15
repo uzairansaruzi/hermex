@@ -150,6 +150,32 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.onlyMine)
     }
 
+    func testBoardSwitchClearsBoardScopedDataAndRevalidatesCompatibility() async {
+        let client = DeferredBoardSwitchClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        XCTAssertNotNil(state.snapshot)
+        XCTAssertNotNil(state.stats)
+        XCTAssertNotNil(state.assigneeHistory)
+
+        let switchBoard = Task { await state.selectBoard("release") }
+        await client.waitForReleaseRead()
+
+        XCTAssertEqual(state.selectedBoardSlug, "release")
+        XCTAssertNil(state.snapshot)
+        XCTAssertNil(state.stats)
+        XCTAssertNil(state.assigneeHistory)
+        XCTAssertTrue(state.isRefreshing)
+
+        await client.resumeReleaseRead()
+        await switchBoard.value
+
+        XCTAssertEqual(state.report?.board.slug, "release")
+        XCTAssertEqual(state.report?.warnings, [.unsupportedStatus("future")])
+        XCTAssertEqual(state.state, .partial)
+        XCTAssertEqual(state.allCards.map(\.cardID), ["FUTURE-1"])
+    }
+
     func testMinimalChangedFalseRefreshPreservesStableCards() async {
         let client = BrowsingClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
@@ -162,6 +188,18 @@ final class KanbanFeatureStateTests: XCTestCase {
         let lastRequest = await client.boardRequests().last
         XCTAssertEqual(lastRequest?.since, 11)
         XCTAssertFalse(state.refreshFailed)
+    }
+
+    func testRefreshRejectsMissingChangedAndPreservesStableCards() async {
+        let client = MissingChangedRefreshClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let before = state.allCards
+
+        await state.refresh()
+
+        XCTAssertEqual(state.allCards, before)
+        XCTAssertTrue(state.refreshFailed)
     }
 
     func testStaleFilteredReadCannotReplaceNewerFilterResult() async {
@@ -331,13 +369,53 @@ private actor DeferredBoardClient: KanbanDataClient {
     }
 }
 
+private actor DeferredBoardSwitchClient: KanbanDataClient {
+    private var boardCallCount = 0
+    private var releaseContinuation: CheckedContinuation<KanbanBoardSnapshot, Never>?
+
+    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+    func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.multiBoards }
+    func kanbanBoard(_ request: KanbanBoardRequest) async -> KanbanBoardSnapshot {
+        boardCallCount += 1
+        if boardCallCount == 1 { return KanbanFixtures.supportedSnapshot }
+        return await withCheckedContinuation { releaseContinuation = $0 }
+    }
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
+
+    func waitForReleaseRead() async {
+        while releaseContinuation == nil { await Task.yield() }
+    }
+
+    func resumeReleaseRead() {
+        releaseContinuation?.resume(returning: KanbanFixtures.futureSnapshot)
+        releaseContinuation = nil
+    }
+}
+
+private actor MissingChangedRefreshClient: KanbanDataClient {
+    private var boardCallCount = 0
+
+    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+    func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.boards }
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
+        boardCallCount += 1
+        return boardCallCount == 1 ? KanbanFixtures.richSnapshot : KanbanFixtures.missingChangedSnapshot
+    }
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
+}
+
 private enum KanbanFixtures {
     static let configuration = decode(KanbanConfiguration.self, #"{"columns":["triage","todo","ready","running","blocked","done"],"read_only":false}"#)
     static let boards = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#)
     static let multiBoards = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#)
     static let snapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"read_only":false,"columns":[{"name":"triage","tasks":[]}]}"#)
+    static let supportedSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"read_only":false,"columns":[{"name":"triage","tasks":[{"id":"OLD","status":"triage"}]}]}"#)
     static let richSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":11,"read_only":false,"tenants":["mobile"],"assignees":["builder"],"columns":[{"name":"triage","tasks":[]},{"name":"ready","tasks":[{"id":"CARD-1","title":"Status Focus","body":"markdown preview","status":"ready","assignee":"builder","tenant":"mobile"}]},{"name":"future","tasks":[{"id":"FUTURE-1","title":"Future","status":"future"}]}]}"#)
+    static let futureSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"read_only":false,"columns":[{"name":"future","tasks":[{"id":"FUTURE-1","status":"future"}]}]}"#)
     static let unchangedSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":false,"latest_event_id":11,"read_only":false}"#)
+    static let missingChangedSnapshot = decode(KanbanBoardSnapshot.self, #"{"latest_event_id":12,"read_only":false,"columns":[{"name":"triage","tasks":[]}]}"#)
     static let newSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":13,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"NEW","title":"Newest filter","status":"ready"}]}]}"#)
     static let staleSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":12,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"STALE","title":"Stale filter","status":"ready"}]}]}"#)
     static let stalenessSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"columns":[{"name":"running","tasks":[{"id":"r1","status":"running","age_seconds":599},{"id":"r2","status":"running","age_seconds":600},{"id":"r3","status":"running","age_seconds":3600}]},{"name":"ready","tasks":[{"id":"q1","status":"ready","age_seconds":3599},{"id":"q2","status":"ready","age_seconds":3600}]},{"name":"blocked","tasks":[{"id":"b1","status":"blocked","age_seconds":3599},{"id":"b2","status":"blocked","age_seconds":3600},{"id":"b3","status":"blocked","age_seconds":86400}]}]}"#)

@@ -38,7 +38,7 @@ final class KanbanFeatureState {
     private(set) var isRefreshing = false
     private(set) var refreshFailed = false
 
-    var selectedBoardSlug: String?
+    private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
     var searchText = ""
     var selectedProfile: String?
@@ -49,6 +49,7 @@ final class KanbanFeatureState {
 
     private var activeLoadID: UUID?
     private var activeBoardLoadID: UUID?
+    private var boardsResponse: KanbanBoardsResponse?
     private let client: any KanbanDataClient
     private let onAPIError: (Error) -> Void
 
@@ -134,6 +135,7 @@ final class KanbanFeatureState {
         report = nil
         configuration = nil
         boards = []
+        boardsResponse = nil
         snapshot = nil
         stats = nil
         assigneeHistory = nil
@@ -161,6 +163,7 @@ final class KanbanFeatureState {
             )
             guard isCurrent(loadID) else { return }
             self.configuration = configuration
+            self.boardsResponse = boardsResponse
             boards = boardsResponse.boards ?? []
             selectedBoardSlug = currentBoard
             self.snapshot = snapshot
@@ -195,6 +198,12 @@ final class KanbanFeatureState {
     func selectBoard(_ slug: String) async {
         guard boards.contains(where: { normalized($0.slug) == slug }), slug != selectedBoardSlug else { return }
         selectedBoardSlug = slug
+        snapshot = nil
+        stats = nil
+        assigneeHistory = nil
+        report = nil
+        capabilityWarnings = []
+        state = .compatible
         await refreshBoard(usingCursor: false, refreshSupplementary: true)
     }
 
@@ -271,9 +280,13 @@ final class KanbanFeatureState {
         do {
             let response = try await client.kanbanBoard(request)
             guard isCurrentBoardLoad(boardLoadID, board: board) else { return }
-            if response.changed != false {
-                try validateBrowsingSnapshot(response)
+            if usingCursor, response.changed == false {
+                // A cursor refresh may return the minimal unchanged envelope.
+            } else {
+                let report = try validateBrowsingSnapshot(response, board: board)
                 snapshot = response
+                self.report = report
+                state = report.isPartial ? .partial : .compatible
             }
             if refreshSupplementary {
                 await loadSupplementaryReads(board: board, boardLoadID: boardLoadID)
@@ -335,17 +348,19 @@ final class KanbanFeatureState {
         updatePartialState()
     }
 
-    private func validateBrowsingSnapshot(_ snapshot: KanbanBoardSnapshot) throws {
-        guard snapshot.changed == true, let columns = snapshot.columns else {
-            throw KanbanContractViolation.missingBoardSnapshot
+    private func validateBrowsingSnapshot(
+        _ snapshot: KanbanBoardSnapshot,
+        board: String
+    ) throws -> KanbanCompatibilityReport {
+        guard let configuration, let boardsResponse else {
+            throw KanbanContractViolation.missingConfigurationColumns
         }
-        for column in columns {
-            guard normalized(column.name) != nil else { throw KanbanContractViolation.missingColumnStatus }
-            for card in column.cards ?? [] {
-                guard normalized(card.cardID) != nil else { throw KanbanContractViolation.missingCardIdentity }
-                guard normalized(card.status?.rawValue) != nil else { throw KanbanContractViolation.missingCardStatus }
-            }
-        }
+        return try KanbanCompatibilityValidator.validate(
+            configuration: configuration,
+            boardsResponse: boardsResponse,
+            boardSlug: board,
+            snapshot: snapshot
+        )
     }
 
     private func updatePartialState() {
