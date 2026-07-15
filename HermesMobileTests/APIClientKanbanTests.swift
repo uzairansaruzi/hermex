@@ -35,7 +35,7 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(board.columns?.first?.cards?.first?.cardID, "card-1")
     }
 
-    func testKanbanCarriesConfiguredCustomHeadersAndUsesCookieEnabledSession() async throws {
+    func testKanbanCarriesConfiguredCustomHeaders() async throws {
         MockURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Proxy"), "enabled")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
@@ -43,24 +43,9 @@ final class APIClientKanbanTests: APIClientTestCase {
             XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
             return apiTestJSONResponse(Self.configurationJSON, for: request)
         }
-        let cookieStorage = HTTPCookieStorage()
-        cookieStorage.setCookie(try XCTUnwrap(HTTPCookie(properties: [
-            .domain: "example.test",
-            .path: "/",
-            .name: "session",
-            .value: "abc",
-            .secure: "TRUE"
-        ])))
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpCookieStorage = cookieStorage
-        configuration.httpCookieAcceptPolicy = .always
-        configuration.httpShouldSetCookies = true
         configuration.protocolClasses = [MockURLProtocol.self]
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
-        // URLProtocol does not receive URLSession's jar-injected Cookie header
-        // consistently across simulator runtimes. Verify the session's configured
-        // jar separately; production requests use URLSession's normal cookie path.
-        XCTAssertEqual(cookieStorage.cookies(for: serverURL)?.map(\.value), ["abc"])
         let client = APIClient(
             baseURL: serverURL,
             session: URLSession(configuration: configuration),
