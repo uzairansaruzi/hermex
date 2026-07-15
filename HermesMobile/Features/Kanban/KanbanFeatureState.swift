@@ -17,6 +17,20 @@ enum KanbanReadCapabilityWarning: Hashable, Sendable {
     case profileHistoryUnavailable
 }
 
+struct KanbanLiveUpdateTiming: Sendable {
+    let coalescingDelay: Duration
+    let reconnectDelays: [Duration]
+    let pollingInterval: Duration
+    let failuresBeforePolling: Int
+
+    static let production = KanbanLiveUpdateTiming(
+        coalescingDelay: .milliseconds(300),
+        reconnectDelays: [.seconds(1), .seconds(2), .seconds(4)],
+        pollingInterval: .seconds(30),
+        failuresBeforePolling: 3
+    )
+}
+
 /// Server-bound, transient Kanban browsing state. Each instance owns one
 /// server's Board choice, filters, selection, and snapshots; nothing is shared
 /// across servers or persisted by this slice.
@@ -37,6 +51,10 @@ final class KanbanFeatureState {
     private(set) var isLoading = false
     private(set) var isRefreshing = false
     private(set) var refreshFailed = false
+    private(set) var isOffline = false
+    private(set) var liveUpdatesDelayed = false
+    private(set) var loadedDetailIsStale = false
+    private(set) var liveCursor = 0
 
     private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
@@ -51,16 +69,41 @@ final class KanbanFeatureState {
     private var activeBoardLoadID: UUID?
     private var boardsResponse: KanbanBoardsResponse?
     private let client: any KanbanDataClient
+    private let streamClient: any KanbanEventStreamingClient
+    private let timing: KanbanLiveUpdateTiming
+    private let sleep: @MainActor @Sendable (Duration) async throws -> Void
     private let onAPIError: (Error) -> Void
+    private var isVisible = false
+    private var sceneIsActive = true
+    private var liveGeneration = 0
+    private var streamAttemptID = 0
+    private var streamFailureCount = 0
+    private var reconnectTask: Task<Void, Never>?
+    private var coalescingTask: Task<Void, Never>?
+    private var pollingTask: Task<Void, Never>?
 
     init(
         server: URL,
         client: (any KanbanDataClient)? = nil,
+        streamClient: (any KanbanEventStreamingClient)? = nil,
+        timing: KanbanLiveUpdateTiming = .production,
+        sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
+            try await Task.sleep(for: duration)
+        },
         onAPIError: @escaping (Error) -> Void = { _ in }
     ) {
         self.server = server
         self.client = client ?? APIClient(baseURL: server)
+        self.streamClient = streamClient ?? KanbanEventStreamClient()
+        self.timing = timing
+        self.sleep = sleep
         self.onAPIError = onAPIError
+    }
+
+    /// Future write slices must use this single seam before exposing any
+    /// mutation, Dispatcher, or shared-state action.
+    var canUseServerAuthoritativeActions: Bool {
+        snapshot != nil && !isOffline && !isRefreshing
     }
 
     var selectedBoard: KanbanBoard? {
@@ -126,6 +169,7 @@ final class KanbanFeatureState {
     }
 
     func load() async {
+        resetLiveUpdates(clearCursor: true)
         let loadID = UUID()
         activeLoadID = loadID
         activeBoardLoadID = nil
@@ -167,10 +211,12 @@ final class KanbanFeatureState {
             boards = boardsResponse.boards ?? []
             selectedBoardSlug = currentBoard
             self.snapshot = snapshot
+            liveCursor = max(0, snapshot.latestEventID ?? 0)
             self.report = report
             state = report.isPartial ? .partial : .compatible
 
             await loadSupplementaryReads(board: currentBoard, loadID: loadID)
+            startLiveUpdatesIfReady()
         } catch is CancellationError {
             guard activeLoadID == loadID else { return }
             report = nil
@@ -192,11 +238,19 @@ final class KanbanFeatureState {
     }
 
     func refresh() async {
-        await refreshBoard(usingCursor: true)
+        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        if succeeded {
+            isOffline = false
+            loadedDetailIsStale = false
+            retryLiveStream()
+        } else if isOffline {
+            startPollingIfNeeded()
+        }
     }
 
     func selectBoard(_ slug: String) async {
         guard boards.contains(where: { normalized($0.slug) == slug }), slug != selectedBoardSlug else { return }
+        resetLiveUpdates(clearCursor: true)
         selectedBoardSlug = slug
         snapshot = nil
         stats = nil
@@ -204,7 +258,36 @@ final class KanbanFeatureState {
         report = nil
         capabilityWarnings = []
         state = .compatible
-        await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        if succeeded { startLiveUpdatesIfReady() }
+    }
+
+    func setVisible(_ visible: Bool) {
+        guard isVisible != visible else { return }
+        isVisible = visible
+        if visible {
+            startLiveUpdatesIfReady()
+        } else {
+            suspendLiveUpdates()
+        }
+    }
+
+    func setSceneActive(_ active: Bool) async {
+        guard sceneIsActive != active else { return }
+        sceneIsActive = active
+        if !active {
+            suspendLiveUpdates()
+            return
+        }
+        guard isVisible, snapshot != nil else { return }
+        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        if succeeded {
+            isOffline = false
+            loadedDetailIsStale = false
+            retryLiveStream()
+        } else {
+            startPollingIfNeeded()
+        }
     }
 
     func setProfileFilter(_ profile: String?) async {
@@ -259,8 +342,9 @@ final class KanbanFeatureState {
         }
     }
 
-    private func refreshBoard(usingCursor: Bool, refreshSupplementary: Bool = false) async {
-        guard let board = selectedBoardSlug else { return }
+    @discardableResult
+    private func refreshBoard(usingCursor: Bool, refreshSupplementary: Bool = false) async -> Bool {
+        guard let board = selectedBoardSlug else { return false }
         let boardLoadID = UUID()
         activeBoardLoadID = boardLoadID
         isRefreshing = true
@@ -279,7 +363,7 @@ final class KanbanFeatureState {
         )
         do {
             let response = try await client.kanbanBoard(request)
-            guard isCurrentBoardLoad(boardLoadID, board: board) else { return }
+            guard isCurrentBoardLoad(boardLoadID, board: board) else { return false }
             if usingCursor, response.changed == false {
                 // A cursor refresh may return the minimal unchanged envelope.
             } else {
@@ -288,15 +372,223 @@ final class KanbanFeatureState {
                 self.report = report
                 state = report.isPartial ? .partial : .compatible
             }
+            liveCursor = max(liveCursor, response.latestEventID ?? 0)
+            isOffline = false
             if refreshSupplementary {
                 await loadSupplementaryReads(board: board, boardLoadID: boardLoadID)
+            }
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard isCurrentBoardLoad(boardLoadID, board: board) else { return false }
+            refreshFailed = true
+            markOfflineIfNeeded(error)
+            forwardAuthentication(error)
+            return false
+        }
+    }
+
+    private func startLiveUpdatesIfReady() {
+        guard isVisible, sceneIsActive, snapshot != nil, selectedBoardSlug != nil else { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        pollingTask?.cancel()
+        pollingTask = nil
+        startStream()
+    }
+
+    private func startStream() {
+        guard isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
+        streamAttemptID += 1
+        let attemptID = streamAttemptID
+        let generation = liveGeneration
+        let url = Endpoint.kanbanEventsStream(
+            KanbanEventsStreamRequest(board: board, since: liveCursor)
+        ).url(relativeTo: server)
+        streamClient.start(
+            url: url,
+            onFrame: { [weak self] frame in
+                self?.handleStreamFrame(
+                    frame,
+                    board: board,
+                    generation: generation,
+                    attemptID: attemptID
+                )
+            },
+            onFailure: { [weak self] in
+                self?.handleStreamFailure(
+                    board: board,
+                    generation: generation,
+                    attemptID: attemptID
+                )
+            }
+        )
+    }
+
+    private func handleStreamFrame(
+        _ frame: KanbanStreamFrame,
+        board: String,
+        generation: Int,
+        attemptID: Int
+    ) {
+        guard isCurrentLiveWork(board: board, generation: generation), streamAttemptID == attemptID else { return }
+        switch frame {
+        case let .hello(cursor, frameBoard):
+            guard frameBoard == board else {
+                handleStreamFailure(board: board, generation: generation, attemptID: attemptID)
+                return
+            }
+            liveCursor = max(liveCursor, cursor)
+            streamFailureCount = 0
+            liveUpdatesDelayed = false
+        case let .events(events, cursor, frameID):
+            guard (frameID == nil || frameID == cursor),
+                  events.allSatisfy({ event in
+                      guard let eventID = event.eventID else { return false }
+                      return eventID <= cursor
+                  }) else {
+                handleStreamFailure(board: board, generation: generation, attemptID: attemptID)
+                return
+            }
+            guard cursor > liveCursor else { return }
+            liveCursor = cursor
+            scheduleCoalescedReconciliation(board: board, generation: generation)
+        case .malformed:
+            handleStreamFailure(board: board, generation: generation, attemptID: attemptID)
+        case .ignored:
+            break
+        }
+    }
+
+    private func handleStreamFailure(board: String, generation: Int, attemptID: Int) {
+        guard isCurrentLiveWork(board: board, generation: generation), streamAttemptID == attemptID else { return }
+        streamAttemptID += 1 // Makes duplicate callbacks from this attempt inert.
+        streamClient.stop()
+        streamFailureCount += 1
+        if streamFailureCount >= timing.failuresBeforePolling {
+            liveUpdatesDelayed = true
+            startPollingIfNeeded()
+            return
+        }
+
+        let reconnectDelays = timing.reconnectDelays.isEmpty ? [.seconds(1)] : timing.reconnectDelays
+        let delayIndex = min(streamFailureCount - 1, reconnectDelays.count - 1)
+        let delay = reconnectDelays[delayIndex]
+        reconnectTask?.cancel()
+        reconnectTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do { try await sleep(delay) } catch { return }
+            guard isCurrentLiveWork(board: board, generation: generation) else { return }
+            startStream()
+        }
+    }
+
+    private func scheduleCoalescedReconciliation(board: String, generation: Int) {
+        coalescingTask?.cancel()
+        coalescingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do { try await sleep(timing.coalescingDelay) } catch { return }
+            guard isCurrentLiveWork(board: board, generation: generation) else { return }
+            let succeeded = await refreshBoard(usingCursor: false)
+            if !succeeded, isOffline { startPollingIfNeeded() }
+        }
+    }
+
+    private func startPollingIfNeeded() {
+        guard pollingTask == nil, isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
+        streamClient.stop()
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        let generation = liveGeneration
+        pollingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled, isCurrentLiveWork(board: board, generation: generation) {
+                do { try await sleep(timing.pollingInterval) } catch { return }
+                guard isCurrentLiveWork(board: board, generation: generation) else { return }
+                await pollEvents(board: board, generation: generation)
+            }
+        }
+    }
+
+    private func pollEvents(board: String, generation: Int) async {
+        do {
+            let envelope = try await client.kanbanEvents(
+                KanbanEventsRequest(board: board, since: liveCursor)
+            )
+            guard isCurrentLiveWork(board: board, generation: generation),
+                  let cursor = envelope.cursor,
+                  cursor >= liveCursor,
+                  let events = envelope.events,
+                  events.allSatisfy({ event in
+                      guard let eventID = event.eventID else { return false }
+                      return eventID <= cursor
+                  }) else { return }
+            let wasOffline = isOffline
+            if wasOffline {
+                liveCursor = max(liveCursor, cursor)
+                let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+                if succeeded {
+                    loadedDetailIsStale = false
+                    retryLiveStream()
+                }
+            } else if cursor > liveCursor {
+                liveCursor = cursor
+                scheduleCoalescedReconciliation(board: board, generation: generation)
             }
         } catch is CancellationError {
             return
         } catch {
-            guard isCurrentBoardLoad(boardLoadID, board: board) else { return }
-            refreshFailed = true
+            guard isCurrentLiveWork(board: board, generation: generation) else { return }
+            markOfflineIfNeeded(error)
             forwardAuthentication(error)
+        }
+    }
+
+    private func retryLiveStream() {
+        guard isVisible, sceneIsActive else { return }
+        pollingTask?.cancel()
+        pollingTask = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        streamFailureCount = 0
+        startStream()
+    }
+
+    private func suspendLiveUpdates() {
+        liveGeneration += 1
+        activeBoardLoadID = UUID()
+        streamClient.stop()
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        coalescingTask?.cancel()
+        coalescingTask = nil
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    private func resetLiveUpdates(clearCursor: Bool) {
+        suspendLiveUpdates()
+        streamFailureCount = 0
+        liveUpdatesDelayed = false
+        isOffline = false
+        loadedDetailIsStale = false
+        if clearCursor { liveCursor = 0 }
+    }
+
+    private func isCurrentLiveWork(board: String, generation: Int) -> Bool {
+        generation == liveGeneration
+            && selectedBoardSlug == board
+            && isVisible
+            && sceneIsActive
+            && !Task.isCancelled
+    }
+
+    private func markOfflineIfNeeded(_ error: Error) {
+        guard snapshot != nil else { return }
+        if let apiError = error as? APIError, case .network = apiError {
+            isOffline = true
+            loadedDetailIsStale = true
         }
     }
 

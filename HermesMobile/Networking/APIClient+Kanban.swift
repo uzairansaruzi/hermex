@@ -6,6 +6,7 @@ protocol KanbanDataClient: Sendable {
     func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot
     func kanbanStats(board: String) async throws -> KanbanStats
     func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory
+    func kanbanEvents(_ request: KanbanEventsRequest) async throws -> KanbanEventsEnvelope
 }
 
 extension APIClient: KanbanDataClient {
@@ -27,6 +28,14 @@ extension APIClient: KanbanDataClient {
 
     func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory {
         try await kanbanJSON(endpoint: .kanbanAssignees(board: board))
+    }
+
+    func kanbanEvents(_ request: KanbanEventsRequest) async throws -> KanbanEventsEnvelope {
+        try await kanbanJSON(endpoint: .kanbanEvents(request))
+    }
+
+    nonisolated func kanbanEventsStreamURL(_ request: KanbanEventsStreamRequest) -> URL {
+        Endpoint.kanbanEventsStream(request).url(relativeTo: baseURL)
     }
 
     private func kanbanJSON<Response: Decodable>(endpoint: Endpoint) async throws -> Response {

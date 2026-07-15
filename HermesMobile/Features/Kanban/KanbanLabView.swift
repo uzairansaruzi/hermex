@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct KanbanStatusFocusView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Bindable var model: KanbanFeatureState
     @State private var showsFilters = false
+    @State private var visibleModel: KanbanFeatureState?
 
     var body: some View {
         Group {
@@ -44,6 +46,28 @@ struct KanbanStatusFocusView: View {
         .sheet(isPresented: $showsFilters) {
             KanbanFiltersView(model: model)
         }
+        .onAppear { activateCurrentModel() }
+        .onDisappear {
+            visibleModel?.setVisible(false)
+            visibleModel = nil
+        }
+        .onChange(of: ObjectIdentifier(model)) { _, _ in
+            activateCurrentModel()
+            Task { await model.setSceneActive(scenePhase == .active) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            Task { await model.setSceneActive(phase == .active) }
+        }
+    }
+
+    private func activateCurrentModel() {
+        guard visibleModel !== model else {
+            model.setVisible(true)
+            return
+        }
+        visibleModel?.setVisible(false)
+        visibleModel = model
+        model.setVisible(true)
     }
 
     private var loadingContent: some View {
@@ -62,6 +86,11 @@ struct KanbanStatusFocusView: View {
             if model.state == .partial {
                 compatibilityBanner
             }
+            if model.isOffline {
+                offlineBanner
+            } else if model.liveUpdatesDelayed {
+                liveUpdatesDelayedBanner
+            }
             if model.refreshFailed {
                 refreshErrorBanner
             }
@@ -69,6 +98,27 @@ struct KanbanStatusFocusView: View {
             Divider()
             cardList
         }
+    }
+
+    private var offlineBanner: some View {
+        Label("Offline—showing previously loaded data", systemImage: "wifi.slash")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.12))
+            .accessibilityLabel(Text("Offline—showing previously loaded data"))
+    }
+
+    private var liveUpdatesDelayedBanner: some View {
+        Label("Live updates delayed", systemImage: "arrow.clockwise.circle")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.secondary.opacity(0.08))
     }
 
     private var compatibilityBanner: some View {
@@ -561,6 +611,8 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
     case network
     case serverUnavailable
     case incompatible
+    case liveDelayed
+    case offline
 
     var id: String { rawValue }
 
@@ -575,6 +627,8 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
         case .network: "Network"
         case .serverUnavailable: "Server unavailable"
         case .incompatible: "Incompatible"
+        case .liveDelayed: "Live updates delayed"
+        case .offline: "Offline snapshot"
         }
     }
 
@@ -582,7 +636,14 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
     func makeModel() -> KanbanFeatureState {
         KanbanFeatureState(
             server: URL(string: "https://kanban-lab.invalid")!,
-            client: KanbanLabClient(scenario: self)
+            client: KanbanLabClient(scenario: self),
+            streamClient: KanbanLabStreamClient(fails: self == .liveDelayed || self == .offline),
+            timing: KanbanLiveUpdateTiming(
+                coalescingDelay: .milliseconds(10),
+                reconnectDelays: [.milliseconds(10), .milliseconds(10)],
+                pollingInterval: self == .offline ? .milliseconds(10) : .seconds(30),
+                failuresBeforePolling: 3
+            )
         )
     }
 }
@@ -629,6 +690,13 @@ private actor KanbanLabClient: KanbanDataClient {
         decode(#"{"assignees":["builder","reviewer","release"]}"#)
     }
 
+    func kanbanEvents(_ request: KanbanEventsRequest) throws -> KanbanEventsEnvelope {
+        if scenario == .offline {
+            throw APIError.network(underlying: URLError(.notConnectedToInternet))
+        }
+        return decode(#"{"events":[],"cursor":9,"latest_event_id":9,"read_only":false}"#)
+    }
+
     private func snapshotJSON(for request: KanbanBoardRequest) -> String {
         let archived = request.includeArchived
             ? #",{"name":"archived","tasks":[{"id":"CARD-8","title":"Retired experiment","status":"archived","assignee":null,"priority":0,"age_seconds":172800}]}"#
@@ -657,6 +725,39 @@ private actor KanbanLabClient: KanbanDataClient {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try! decoder.decode(T.self, from: Data(json.utf8))
+    }
+}
+
+@MainActor
+private final class KanbanLabStreamClient: KanbanEventStreamingClient {
+    private let fails: Bool
+    private var callbackTask: Task<Void, Never>?
+
+    init(fails: Bool) { self.fails = fails }
+
+    func start(
+        url: URL,
+        onFrame: @escaping @MainActor (KanbanStreamFrame) -> Void,
+        onFailure: @escaping @MainActor () -> Void
+    ) {
+        stop()
+        callbackTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            if fails {
+                onFailure()
+            } else {
+                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                let board = components?.queryItems?.first(where: { $0.name == "board" })?.value ?? "main"
+                let cursor = Int(components?.queryItems?.first(where: { $0.name == "since" })?.value ?? "0") ?? 0
+                onFrame(.hello(cursor: cursor, board: board))
+            }
+        }
+    }
+
+    func stop() {
+        callbackTask?.cancel()
+        callbackTask = nil
     }
 }
 #endif

@@ -98,6 +98,8 @@ enum Endpoint {
     case kanbanBoard(KanbanBoardRequest)
     case kanbanStats(board: String)
     case kanbanAssignees(board: String)
+    case kanbanEvents(KanbanEventsRequest)
+    case kanbanEventsStream(KanbanEventsStreamRequest)
     case memory
     case memoryWrite
     case skills
@@ -303,6 +305,10 @@ enum Endpoint {
             return "/api/kanban/stats"
         case .kanbanAssignees:
             return "/api/kanban/assignees"
+        case .kanbanEvents:
+            return "/api/kanban/events"
+        case .kanbanEventsStream:
+            return "/api/kanban/events/stream"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -427,6 +433,10 @@ enum Endpoint {
             return request.queryItems
         case let .kanbanStats(board), let .kanbanAssignees(board):
             return [URLQueryItem(name: "board", value: board)]
+        case let .kanbanEvents(request):
+            return request.queryItems
+        case let .kanbanEventsStream(request):
+            return request.queryItems
         case let .reasoning(model, provider):
             var items: [URLQueryItem] = []
             if let model, !model.isEmpty {

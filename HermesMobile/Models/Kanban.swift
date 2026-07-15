@@ -1,5 +1,78 @@
 import Foundation
 
+struct KanbanEventsRequest: Equatable, Sendable {
+    let board: String
+    let since: Int
+    var limit: Int = 200
+
+    var queryItems: [URLQueryItem] {
+        [
+            URLQueryItem(name: "board", value: board),
+            URLQueryItem(name: "since", value: String(max(0, since))),
+            URLQueryItem(name: "limit", value: String(min(max(1, limit), 200)))
+        ]
+    }
+}
+
+struct KanbanEventsStreamRequest: Equatable, Sendable {
+    let board: String
+    let since: Int
+
+    var queryItems: [URLQueryItem] {
+        [
+            URLQueryItem(name: "board", value: board),
+            URLQueryItem(name: "since", value: String(max(0, since)))
+        ]
+    }
+}
+
+struct KanbanEventsEnvelope: Decodable, Equatable, Sendable {
+    let events: [KanbanEvent]?
+    let cursor: Int?
+    let latestEventID: Int?
+    let readOnly: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case events, cursor, readOnly
+        case latestEventID = "latestEventId"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        events = try? container.decodeIfPresent([KanbanEvent].self, forKey: .events)
+        cursor = container.decodeLossyIntIfPresent(forKey: .cursor)
+        latestEventID = container.decodeLossyIntIfPresent(forKey: .latestEventID)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+struct KanbanEvent: Decodable, Equatable, Sendable {
+    let eventID: Int?
+    let cardID: String?
+    let runID: String?
+    let kind: String?
+    let createdAt: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case eventID = "id"
+        case cardID = "taskId"
+        case runID = "runId"
+        case kind, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eventID = container.decodeLossyIntIfPresent(forKey: .eventID)
+        cardID = container.decodeLossyStringIfPresent(forKey: .cardID)
+        runID = container.decodeLossyStringIfPresent(forKey: .runID)
+        kind = container.decodeLossyStringIfPresent(forKey: .kind)
+        createdAt = container.decodeLossyIntIfPresent(forKey: .createdAt)
+        // Payload values are intentionally not retained: live browsing only needs
+        // identity + cursor to reconcile authoritative state, and payloads must
+        // never leak through diagnostics.
+    }
+}
+
 struct KanbanBoardRequest: Equatable, Sendable {
     let board: String
     var tenant: String?

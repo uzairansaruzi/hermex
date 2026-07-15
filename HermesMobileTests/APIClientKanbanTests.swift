@@ -75,6 +75,55 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(snapshot.latestEventID, 42)
     }
 
+    func testEventPollingUsesVerifiedCursorEnvelopeAndBounds() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            XCTAssertEqual(components?.path, "/api/kanban/events")
+            XCTAssertEqual(components?.queryItems, [
+                URLQueryItem(name: "board", value: "release board"),
+                URLQueryItem(name: "since", value: "0"),
+                URLQueryItem(name: "limit", value: "200")
+            ])
+            return apiTestJSONResponse("""
+            {
+              "events": [{
+                "id": "8", "task_id": "CARD-8", "run_id": null,
+                "kind": "future_event_kind", "payload": {"secret":"not retained"},
+                "created_at": "1700000000", "future_field": true
+              }],
+              "cursor": "8", "latest_event_id": 8, "read_only": false,
+              "future_envelope_field": {"nested": true}
+            }
+            """, for: request)
+        }
+
+        let envelope = try await client.kanbanEvents(
+            KanbanEventsRequest(board: "release board", since: -4, limit: 999)
+        )
+
+        XCTAssertEqual(envelope.cursor, 8)
+        XCTAssertEqual(envelope.latestEventID, 8)
+        XCTAssertEqual(envelope.events?.first?.eventID, 8)
+        XCTAssertEqual(envelope.events?.first?.cardID, "CARD-8")
+        XCTAssertEqual(envelope.events?.first?.kind, "future_event_kind")
+    }
+
+    func testEventStreamURLPinsBoardAndResumeCursor() throws {
+        let client = APIClient(baseURL: try XCTUnwrap(URL(string: "https://example.test/root")))
+        let url = client.kanbanEventsStreamURL(
+            KanbanEventsStreamRequest(board: "release board", since: 42)
+        )
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+
+        XCTAssertEqual(components?.path, "/root/api/kanban/events/stream")
+        XCTAssertEqual(components?.queryItems, [
+            URLQueryItem(name: "board", value: "release board"),
+            URLQueryItem(name: "since", value: "42")
+        ])
+    }
+
     func testKanbanCarriesConfiguredCustomHeaders() async throws {
         MockURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Proxy"), "enabled")

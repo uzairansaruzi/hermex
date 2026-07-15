@@ -176,7 +176,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.allCards.map(\.cardID), ["FUTURE-1"])
     }
 
-    func testMinimalChangedFalseRefreshPreservesStableCards() async {
+    func testPullToRefreshPerformsFullReconciliation() async {
         let client = BrowsingClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
         await state.load()
@@ -186,7 +186,7 @@ final class KanbanFeatureStateTests: XCTestCase {
 
         XCTAssertEqual(state.allCards, before)
         let lastRequest = await client.boardRequests().last
-        XCTAssertEqual(lastRequest?.since, 11)
+        XCTAssertNil(lastRequest?.since)
         XCTAssertFalse(state.refreshFailed)
     }
 
@@ -245,6 +245,14 @@ final class KanbanFeatureStateTests: XCTestCase {
             .none, .warning,
             .none, .warning, .critical
         ])
+    }
+}
+
+private enum KanbanEventsNotStubbed: Error { case unexpectedCall }
+
+private extension KanbanDataClient {
+    func kanbanEvents(_ request: KanbanEventsRequest) async throws -> KanbanEventsEnvelope {
+        throw KanbanEventsNotStubbed.unexpectedCall
     }
 }
 

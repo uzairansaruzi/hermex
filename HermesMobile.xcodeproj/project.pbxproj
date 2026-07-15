@@ -271,6 +271,9 @@
 		C14900000000000000000007 /* KanbanLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000008 /* KanbanLabView.swift */; };
 		C14900000000000000000009 /* APIClientKanbanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1490000000000000000000A /* APIClientKanbanTests.swift */; };
 		C1490000000000000000000B /* KanbanFeatureStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1490000000000000000000C /* KanbanFeatureStateTests.swift */; };
+		C15100000000000000000001 /* KanbanEventStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15100000000000000000002 /* KanbanEventStreamClient.swift */; };
+		C15100000000000000000003 /* KanbanEventStreamClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15100000000000000000004 /* KanbanEventStreamClientTests.swift */; };
+		C15100000000000000000005 /* KanbanLiveUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15100000000000000000006 /* KanbanLiveUpdateTests.swift */; };
 		C21300000000000000000007 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = C21300000000000000000008 /* MarkdownUI */; };
 		B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */; };
 		B5A100000000000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000014 /* PrivacyInfo.xcprivacy */; };
@@ -624,6 +627,9 @@
 		C14900000000000000000008 /* KanbanLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanLabView.swift; sourceTree = "<group>"; };
 		C1490000000000000000000A /* APIClientKanbanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientKanbanTests.swift; sourceTree = "<group>"; };
 		C1490000000000000000000C /* KanbanFeatureStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanFeatureStateTests.swift; sourceTree = "<group>"; };
+		C15100000000000000000002 /* KanbanEventStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanEventStreamClient.swift; sourceTree = "<group>"; };
+		C15100000000000000000004 /* KanbanEventStreamClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanEventStreamClientTests.swift; sourceTree = "<group>"; };
+		C15100000000000000000006 /* KanbanLiveUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanLiveUpdateTests.swift; sourceTree = "<group>"; };
 		B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkerMessageClassifierTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000017 /* HermesShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HermesShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A04500000000000000000010 /* AgentRunActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRunActivityAttributes.swift; sourceTree = "<group>"; };
@@ -791,6 +797,8 @@
 				C23400000000000000000006 /* StreamingLabReplayTests.swift */,
 				C1490000000000000000000A /* APIClientKanbanTests.swift */,
 				C1490000000000000000000C /* KanbanFeatureStateTests.swift */,
+				C15100000000000000000004 /* KanbanEventStreamClientTests.swift */,
+				C15100000000000000000006 /* KanbanLiveUpdateTests.swift */,
 				C1A042000000000000000006 /* ClarificationTests.swift */,
 				1A2B3C4D5E6F7000000000F4 /* CacheStoreTests.swift */,
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
@@ -854,6 +862,7 @@
 				C04000000000000000000018 /* APIClient+Skills.swift */,
 				C04000000000000000000019 /* APIClient+Upload.swift */,
 				C14900000000000000000004 /* APIClient+Kanban.swift */,
+				C15100000000000000000002 /* KanbanEventStreamClient.swift */,
 				1A2B3C4D5E6F7000000000B8 /* Endpoints.swift */,
 				C03250000000000000F102 /* APIClient+Transcribe.swift */,
 				C03260000000000000F101 /* APIClient+TTS.swift */,
@@ -1430,6 +1439,7 @@
 				C04000000000000000000009 /* APIClient+Upload.swift in Sources */,
 				C14900000000000000000001 /* Kanban.swift in Sources */,
 				C14900000000000000000003 /* APIClient+Kanban.swift in Sources */,
+				C15100000000000000000001 /* KanbanEventStreamClient.swift in Sources */,
 				C14900000000000000000005 /* KanbanFeatureState.swift in Sources */,
 				C14900000000000000000007 /* KanbanLabView.swift in Sources */,
 				1A2B3C4D5E6F7000000000A8 /* Endpoints.swift in Sources */,
@@ -1642,6 +1652,8 @@
 				C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */,
 				C14900000000000000000009 /* APIClientKanbanTests.swift in Sources */,
 				C1490000000000000000000B /* KanbanFeatureStateTests.swift in Sources */,
+				C15100000000000000000003 /* KanbanEventStreamClientTests.swift in Sources */,
+				C15100000000000000000005 /* KanbanLiveUpdateTests.swift in Sources */,
 				C1A042000000000000000005 /* ClarificationTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000F2 /* CacheStoreTests.swift in Sources */,
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,
