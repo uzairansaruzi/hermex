@@ -3234,6 +3234,39 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testPrepareInitialMessageLoadBoundsLargeCachedTranscriptToNewestPage() throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        let cachedMessages = (0..<75).map { index in
+            ChatMessage(
+                role: index.isMultiple(of: 2) ? "user" : "assistant",
+                content: "Cached message \(index)",
+                timestamp: Double(1_770_000_000 + index),
+                messageId: "cached-\(index)"
+            )
+        }
+        try CacheStore.cacheMessages(
+            cachedMessages,
+            serverURL: serverURL,
+            sessionID: "session-abc",
+            in: context
+        )
+
+        let viewModel = try makeViewModel { request in
+            XCTFail("Cache preparation must not start a request: \(request.url?.absoluteString ?? "nil")")
+            throw URLError(.badURL)
+        }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+
+        XCTAssertEqual(viewModel.messages.count, 50)
+        XCTAssertEqual(viewModel.messages.first?.content, "Cached message 25")
+        XCTAssertEqual(viewModel.messages.last?.content, "Cached message 74")
+        XCTAssertTrue(viewModel.isLoading)
+        XCTAssertFalse(viewModel.isViewingCachedData)
+    }
+
+    @MainActor
     func testLoadMessagesKeepsTranscriptEmptyDuringNetworkWhenCacheIsEmpty() async throws {
         let context = try makeContext()
 

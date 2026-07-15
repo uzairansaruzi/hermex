@@ -1199,7 +1199,8 @@ final class ChatViewModel {
                     let cachedMessages = try CacheStore.cachedMessages(
                         serverURL: server,
                         sessionID: sessionID,
-                        in: modelContext
+                        in: modelContext,
+                        limit: Self.messagePageLimit
                     )
                     reloadedMessages = Self.mergingLoadedMessages(
                         loadedMessages,
@@ -1272,7 +1273,8 @@ final class ChatViewModel {
                     let cachedMessages = try CacheStore.cachedMessages(
                         serverURL: server,
                         sessionID: sessionID,
-                        in: modelContext
+                        in: modelContext,
+                        limit: Self.messagePageLimit
                     )
                     if !cachedMessages.isEmpty {
                         clearCompressionAnchorMetadata()
@@ -1371,7 +1373,8 @@ final class ChatViewModel {
             cachedMessages = try CacheStore.cachedMessages(
                 serverURL: server,
                 sessionID: sessionID,
-                in: modelContext
+                in: modelContext,
+                limit: Self.messagePageLimit
             )
         } catch {
             // A cache read failure must not block the normal network load; fall back
