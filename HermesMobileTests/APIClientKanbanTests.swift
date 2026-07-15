@@ -22,6 +22,12 @@ final class APIClientKanbanTests: APIClientTestCase {
                 let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                 XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "main board")])
                 return apiTestJSONResponse(Self.boardJSON, for: request)
+            case "/api/kanban/stats":
+                XCTAssertEqual(request.url?.query, "board=main%20board")
+                return apiTestJSONResponse(Self.statsJSON, for: request)
+            case "/api/kanban/assignees":
+                XCTAssertEqual(request.url?.query, "board=main%20board")
+                return apiTestJSONResponse(#"{"assignees":["work","review"]}"#, for: request)
             default:
                 throw URLError(.badURL)
             }
@@ -29,10 +35,44 @@ final class APIClientKanbanTests: APIClientTestCase {
 
         _ = try await client.kanbanConfiguration()
         _ = try await client.kanbanBoards()
-        let board = try await client.kanbanBoard(board: "main board")
+        let board = try await client.kanbanBoard(KanbanBoardRequest(board: "main board"))
+        let stats = try await client.kanbanStats(board: "main board")
+        let history = try await client.kanbanAssignees(board: "main board")
 
         XCTAssertEqual(board.changed, true)
         XCTAssertEqual(board.columns?.first?.cards?.first?.cardID, "card-1")
+        XCTAssertEqual(stats.byStatus?["ready"], 2)
+        XCTAssertEqual(history.assignees, ["work", "review"])
+    }
+
+    func testBoardReadUsesOnlyVerifiedFiltersAndCursor() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(components?.path, "/api/kanban/board")
+            XCTAssertEqual(components?.queryItems, [
+                URLQueryItem(name: "board", value: "release"),
+                URLQueryItem(name: "tenant", value: "mobile"),
+                URLQueryItem(name: "assignee", value: "review profile"),
+                URLQueryItem(name: "include_archived", value: "true"),
+                URLQueryItem(name: "only_mine", value: "true"),
+                URLQueryItem(name: "since", value: "42")
+            ])
+            return apiTestJSONResponse(#"{"changed":false,"latest_event_id":42,"read_only":false}"#, for: request)
+        }
+
+        let snapshot = try await client.kanbanBoard(KanbanBoardRequest(
+            board: "release",
+            tenant: "mobile",
+            assignee: "review profile",
+            includeArchived: true,
+            onlyMine: true,
+            since: 42
+        ))
+
+        XCTAssertEqual(snapshot.changed, false)
+        XCTAssertNil(snapshot.columns)
+        XCTAssertEqual(snapshot.latestEventID, 42)
     }
 
     func testKanbanCarriesConfiguredCustomHeaders() async throws {
@@ -95,6 +135,39 @@ final class APIClientKanbanTests: APIClientTestCase {
 
         XCTAssertEqual(snapshot.columns?.first?.cards?.first?.status?.rawValue, "future-status")
         XCTAssertFalse(snapshot.columns?.first?.cards?.first?.status?.isSupported ?? true)
+    }
+
+    func testCardSummaryFieldsStatsEnvelopesAndStalenessDecodeTolerantly() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let snapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
+        {
+          "changed": true,
+          "columns": [{"name":"blocked","tasks":[{
+            "id":"CARD-9","title":"Blocked read","body":"**Markdown** body","status":"blocked",
+            "assignee":"review","tenant":"mobile","priority":"2","comment_count":"3",
+            "link_counts":{"parents":"1","children":2},"age_seconds":"90000"
+          }]}],
+          "tenants":["mobile"],"assignees":["review"],
+          "filters":{"tenant":"mobile","include_archived":true,"only_mine":false}
+        }
+        """.utf8))
+        let card = try XCTUnwrap(snapshot.columns?.first?.cards?.first)
+        XCTAssertEqual(card.body, "**Markdown** body")
+        XCTAssertEqual(card.priority, 2)
+        XCTAssertEqual(card.commentCount, 3)
+        XCTAssertEqual(card.linkCounts?.parents, 1)
+        XCTAssertEqual(card.linkCounts?.children, 2)
+        XCTAssertEqual(card.staleness, .critical)
+        XCTAssertEqual(snapshot.filters?.includeArchived, true)
+
+        let current = try decoder.decode(KanbanStats.self, from: Data(Self.statsJSON.utf8))
+        XCTAssertEqual(current.total, 3)
+        XCTAssertEqual(current.byStatus?["ready"], 2)
+        let older = try decoder.decode(KanbanStats.self, from: Data(#"{"by_status":{"ready":1}}"#.utf8))
+        XCTAssertNil(older.total)
+        XCTAssertEqual(older.byStatus?["ready"], 1)
+        XCTAssertNil(older.byAssignee)
     }
 
     func testSemanticValidationRejectsMissingSafetyCriticalDataAndMarksUnknownStatusPartial() throws {
@@ -166,6 +239,10 @@ final class APIClientKanbanTests: APIClientTestCase {
 
     private static let boardJSON = """
     {"changed":true,"latest_event_id":7,"read_only":false,"columns":[{"name":"triage","tasks":[{"id":"card-1","title":"Safe read","status":"triage"}]}]}
+    """
+
+    private static let statsJSON = """
+    {"total":3,"by_status":{"ready":2,"done":1},"by_assignee":{"work":3}}
     """
 }
 

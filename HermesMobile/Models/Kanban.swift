@@ -1,5 +1,50 @@
 import Foundation
 
+struct KanbanBoardRequest: Equatable, Sendable {
+    let board: String
+    var tenant: String?
+    var assignee: String?
+    var includeArchived: Bool
+    var onlyMine: Bool
+    var since: Int?
+
+    init(
+        board: String,
+        tenant: String? = nil,
+        assignee: String? = nil,
+        includeArchived: Bool = false,
+        onlyMine: Bool = false,
+        since: Int? = nil
+    ) {
+        self.board = board
+        self.tenant = tenant
+        self.assignee = assignee
+        self.includeArchived = includeArchived
+        self.onlyMine = onlyMine
+        self.since = since
+    }
+
+    var queryItems: [URLQueryItem] {
+        var items = [URLQueryItem(name: "board", value: board)]
+        if let tenant, !tenant.isEmpty {
+            items.append(URLQueryItem(name: "tenant", value: tenant))
+        }
+        if let assignee, !assignee.isEmpty {
+            items.append(URLQueryItem(name: "assignee", value: assignee))
+        }
+        if includeArchived {
+            items.append(URLQueryItem(name: "include_archived", value: "true"))
+        }
+        if onlyMine {
+            items.append(URLQueryItem(name: "only_mine", value: "true"))
+        }
+        if let since {
+            items.append(URLQueryItem(name: "since", value: String(since)))
+        }
+        return items
+    }
+}
+
 /// Tolerant read-only boundary for the independently-versioned Kanban bridge.
 /// Every upstream field stays optional so an added or renamed server field never
 /// prevents the rest of the shell from decoding.
@@ -53,10 +98,11 @@ struct KanbanBoard: Decodable, Equatable, Sendable {
     let color: String?
     let isCurrent: Bool?
     let total: Int?
+    let counts: [String: Int]?
     let readOnly: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case slug, name, description, icon, color, isCurrent, total, readOnly
+        case slug, name, description, icon, color, isCurrent, total, counts, readOnly
     }
 
     init(from decoder: Decoder) throws {
@@ -68,23 +114,31 @@ struct KanbanBoard: Decodable, Equatable, Sendable {
         color = container.decodeLossyStringIfPresent(forKey: .color)
         isCurrent = container.decodeLossyBoolIfPresent(forKey: .isCurrent)
         total = container.decodeLossyIntIfPresent(forKey: .total)
+        counts = try? container.decodeIfPresent([String: Int].self, forKey: .counts)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
     }
 }
 
 struct KanbanBoardSnapshot: Decodable, Equatable, Sendable {
     let columns: [KanbanColumn]?
+    let tenants: [String]?
+    let assignees: [String]?
+    let filters: KanbanAppliedFilters?
     let changed: Bool?
     let latestEventID: Int?
     let readOnly: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case columns, changed, latestEventID, readOnly
+        case columns, tenants, assignees, filters, changed, readOnly
+        case latestEventID = "latestEventId"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         columns = try? container.decodeIfPresent([KanbanColumn].self, forKey: .columns)
+        tenants = try? container.decodeIfPresent([String].self, forKey: .tenants)
+        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
+        filters = try? container.decodeIfPresent(KanbanAppliedFilters.self, forKey: .filters)
         changed = container.decodeLossyBoolIfPresent(forKey: .changed)
         latestEventID = container.decodeLossyIntIfPresent(forKey: .latestEventID)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
@@ -112,10 +166,16 @@ struct KanbanCard: Decodable, Equatable, Sendable {
     let title: String?
     let status: KanbanStatus?
     let assignee: String?
+    let body: String?
+    let tenant: String?
+    let priority: Int?
+    let commentCount: Int?
+    let linkCounts: KanbanLinkCounts?
+    let ageSeconds: Double?
 
     enum CodingKeys: String, CodingKey {
         case cardID = "id"
-        case title
+        case title, body, tenant, priority, commentCount, linkCounts, ageSeconds
         case status
         case assignee
     }
@@ -126,7 +186,91 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         title = container.decodeLossyStringIfPresent(forKey: .title)
         status = container.decodeLossyStringIfPresent(forKey: .status).map(KanbanStatus.init(rawValue:))
         assignee = container.decodeLossyStringIfPresent(forKey: .assignee)
+        body = container.decodeLossyStringIfPresent(forKey: .body)
+        tenant = container.decodeLossyStringIfPresent(forKey: .tenant)
+        priority = container.decodeLossyIntIfPresent(forKey: .priority)
+        commentCount = container.decodeLossyIntIfPresent(forKey: .commentCount)
+        linkCounts = try? container.decodeIfPresent(KanbanLinkCounts.self, forKey: .linkCounts)
+        ageSeconds = container.decodeLossyDoubleIfPresent(forKey: .ageSeconds)
     }
+
+    var staleness: KanbanStaleness {
+        guard let ageSeconds, let status else { return .none }
+        switch status.rawValue {
+        case "running":
+            return ageSeconds >= 3_600 ? .critical : ageSeconds >= 600 ? .warning : .none
+        case "ready":
+            return ageSeconds >= 3_600 ? .warning : .none
+        case "blocked":
+            return ageSeconds >= 86_400 ? .critical : ageSeconds >= 3_600 ? .warning : .none
+        default:
+            return .none
+        }
+    }
+}
+
+struct KanbanLinkCounts: Decodable, Equatable, Sendable {
+    let parents: Int?
+    let children: Int?
+
+    enum CodingKeys: String, CodingKey { case parents, children }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        parents = container.decodeLossyIntIfPresent(forKey: .parents)
+        children = container.decodeLossyIntIfPresent(forKey: .children)
+    }
+}
+
+struct KanbanAppliedFilters: Decodable, Equatable, Sendable {
+    let tenant: String?
+    let assignee: String?
+    let includeArchived: Bool?
+    let onlyMine: Bool?
+    let profile: String?
+
+    enum CodingKeys: String, CodingKey { case tenant, assignee, includeArchived, onlyMine, profile }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tenant = container.decodeLossyStringIfPresent(forKey: .tenant)
+        assignee = container.decodeLossyStringIfPresent(forKey: .assignee)
+        includeArchived = container.decodeLossyBoolIfPresent(forKey: .includeArchived)
+        onlyMine = container.decodeLossyBoolIfPresent(forKey: .onlyMine)
+        profile = container.decodeLossyStringIfPresent(forKey: .profile)
+    }
+}
+
+struct KanbanStats: Decodable, Equatable, Sendable {
+    let total: Int?
+    let byStatus: [String: Int]?
+    let byAssignee: [String: Int]?
+
+    enum CodingKeys: String, CodingKey { case total, byStatus, byAssignee }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        total = container.decodeLossyIntIfPresent(forKey: .total)
+        byStatus = try? container.decodeIfPresent([String: Int].self, forKey: .byStatus)
+        byAssignee = try? container.decodeIfPresent([String: Int].self, forKey: .byAssignee)
+    }
+}
+
+struct KanbanAssigneeHistory: Decodable, Equatable, Sendable {
+    let assignees: [String]?
+
+    enum CodingKeys: String, CodingKey { case assignees }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
+    }
+}
+
+enum KanbanStaleness: Equatable, Sendable {
+    case none
+    case warning
+    case critical
 }
 
 /// Retains an unknown server Status rather than turning it into a decoding

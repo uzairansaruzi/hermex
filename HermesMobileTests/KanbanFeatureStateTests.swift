@@ -17,7 +17,13 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(second.state, .idle)
         XCTAssertEqual(second.server, secondServer)
         let calls = await client.calls()
-        XCTAssertEqual(calls, [.configuration, .boards, .board("main")])
+        XCTAssertEqual(calls, [
+            .configuration,
+            .boards,
+            .board(KanbanBoardRequest(board: "main")),
+            .stats("main"),
+            .assignees("main")
+        ])
     }
 
     func testAuthenticationForwardsToExistingHandler() async {
@@ -88,10 +94,130 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.state, .compatible)
         XCTAssertFalse(state.isLoading)
     }
+
+    func testStatusSearchUnknownStatusAndClearFiltersUseLoadedBoardData() async {
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: KanbanClientStub(boardResult: .success(KanbanFixtures.richSnapshot))
+        )
+        await state.load()
+
+        XCTAssertEqual(Array(state.availableStatuses.prefix(6)), KanbanFeatureState.liveStatuses)
+        XCTAssertTrue(state.availableStatuses.contains("future"))
+        state.selectedStatus = "ready"
+        for query in ["CARD-1", "Status Focus", "markdown", "builder", "mobile"] {
+            state.searchText = query
+            XCTAssertEqual(state.visibleCards.map(\.cardID), ["CARD-1"], query)
+        }
+
+        state.searchText = "missing"
+        XCTAssertTrue(state.visibleCards.isEmpty)
+        await state.applyFilters(profile: "builder", tenant: "mobile", includeArchived: true, onlyMine: false)
+        XCTAssertTrue(state.hasActiveFilters)
+        await state.clearFilters()
+        XCTAssertFalse(state.hasActiveFilters)
+        XCTAssertEqual(state.selectedStatus, "ready")
+    }
+
+    func testFilterAndBoardTransitionsPreserveLocalPresentationState() async {
+        let client = BrowsingClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        state.selectedStatus = "running"
+        state.searchText = "worker"
+        state.groupByProfile = true
+
+        await state.applyFilters(profile: "review", tenant: "ops", includeArchived: true, onlyMine: true)
+        XCTAssertNil(state.selectedProfile)
+        XCTAssertEqual(state.selectedTenant, "ops")
+        XCTAssertTrue(state.onlyMine)
+        XCTAssertTrue(state.includeArchived)
+        let lastFilterRequest = await client.boardRequests().last
+        XCTAssertEqual(lastFilterRequest, KanbanBoardRequest(
+            board: "main",
+            tenant: "ops",
+            includeArchived: true,
+            onlyMine: true
+        ))
+
+        await state.selectBoard("release")
+        XCTAssertEqual(state.selectedBoardSlug, "release")
+        XCTAssertEqual(state.selectedStatus, "running")
+        XCTAssertEqual(state.searchText, "worker")
+        XCTAssertTrue(state.groupByProfile)
+        XCTAssertEqual(state.selectedTenant, "ops")
+        XCTAssertTrue(state.includeArchived)
+        XCTAssertTrue(state.onlyMine)
+    }
+
+    func testMinimalChangedFalseRefreshPreservesStableCards() async {
+        let client = BrowsingClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let before = state.allCards
+
+        await state.refresh()
+
+        XCTAssertEqual(state.allCards, before)
+        let lastRequest = await client.boardRequests().last
+        XCTAssertEqual(lastRequest?.since, 11)
+        XCTAssertFalse(state.refreshFailed)
+    }
+
+    func testStaleFilteredReadCannotReplaceNewerFilterResult() async {
+        let client = DeferredBoardClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        let stale = Task { await state.setTenantFilter("ops") }
+        await client.waitForDeferredRead()
+        await state.setProfileFilter("review")
+        XCTAssertEqual(state.allCards.first?.cardID, "NEW")
+
+        await client.resumeDeferredRead()
+        await stale.value
+        XCTAssertEqual(state.allCards.first?.cardID, "NEW")
+    }
+
+    func testCanonicalStatusAndCardAccessibilityCopy() throws {
+        XCTAssertEqual(KanbanStatusPresentation("triage").title, String(localized: "Triage"))
+        XCTAssertEqual(KanbanStatusPresentation("todo").title, String(localized: "To Do"))
+        XCTAssertEqual(KanbanStatusPresentation("ready").title, String(localized: "Ready"))
+        XCTAssertEqual(KanbanStatusPresentation("running").title, String(localized: "Running"))
+        XCTAssertEqual(KanbanStatusPresentation("blocked").title, String(localized: "Blocked"))
+        XCTAssertEqual(KanbanStatusPresentation("done").title, String(localized: "Done"))
+        XCTAssertEqual(KanbanStatusPresentation("archived").title, String(localized: "Archived"))
+        XCTAssertTrue(KanbanStatusPresentation("future").title.contains("future"))
+
+        let card = try XCTUnwrap(KanbanFixtures.richSnapshot.columns?[1].cards?.first)
+        let summary = KanbanCardAccessibility.summary(card)
+        XCTAssertTrue(summary.contains("CARD-1"))
+        XCTAssertTrue(summary.contains("Status Focus"))
+        XCTAssertTrue(summary.contains(String(localized: "Ready")))
+        XCTAssertTrue(summary.contains("builder"))
+        XCTAssertTrue(summary.contains("mobile"))
+        XCTAssertEqual(KanbanCountFormatter.cards(1), "1 Card")
+        XCTAssertEqual(KanbanCountFormatter.cards(2), "2 Cards")
+    }
+
+    func testStatusSpecificStalenessThresholds() {
+        let cards = KanbanFixtures.stalenessSnapshot.columns?.flatMap { $0.cards ?? [] } ?? []
+        XCTAssertEqual(cards.map(\.staleness), [
+            .none, .warning, .critical,
+            .none, .warning,
+            .none, .warning, .critical
+        ])
+    }
 }
 
 private actor KanbanClientStub: KanbanDataClient {
-    enum Call: Equatable { case configuration, boards, board(String) }
+    enum Call: Equatable {
+        case configuration
+        case boards
+        case board(KanbanBoardRequest)
+        case stats(String)
+        case assignees(String)
+    }
 
     private let configurationResult: Result<KanbanConfiguration, Error>
     private let boardsResult: Result<KanbanBoardsResponse, Error>
@@ -118,9 +244,19 @@ private actor KanbanClientStub: KanbanDataClient {
         return try boardsResult.get()
     }
 
-    func kanbanBoard(board: String) throws -> KanbanBoardSnapshot {
-        recordedCalls.append(.board(board))
+    func kanbanBoard(_ request: KanbanBoardRequest) throws -> KanbanBoardSnapshot {
+        recordedCalls.append(.board(request))
         return try boardResult.get()
+    }
+
+    func kanbanStats(board: String) -> KanbanStats {
+        recordedCalls.append(.stats(board))
+        return KanbanFixtures.stats
+    }
+
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
+        recordedCalls.append(.assignees(board))
+        return KanbanFixtures.history
     }
 
     func calls() -> [Call] { recordedCalls }
@@ -138,13 +274,13 @@ private actor DeferredFirstConfigurationClient: KanbanDataClient {
         return KanbanFixtures.configuration
     }
 
-    func kanbanBoards() throws -> KanbanBoardsResponse { KanbanFixtures.boards }
-    func kanbanBoard(board: String) throws -> KanbanBoardSnapshot { KanbanFixtures.snapshot }
+    func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.boards }
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot { KanbanFixtures.snapshot }
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
 
     func waitForFirstConfiguration() async {
-        while continuation == nil {
-            await Task.yield()
-        }
+        while continuation == nil { await Task.yield() }
     }
 
     func resumeFirstConfiguration() {
@@ -153,10 +289,60 @@ private actor DeferredFirstConfigurationClient: KanbanDataClient {
     }
 }
 
+private actor BrowsingClient: KanbanDataClient {
+    private var requests: [KanbanBoardRequest] = []
+
+    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+    func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.multiBoards }
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
+        requests.append(request)
+        if request.since != nil { return KanbanFixtures.unchangedSnapshot }
+        return KanbanFixtures.richSnapshot
+    }
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
+    func boardRequests() -> [KanbanBoardRequest] { requests }
+}
+
+private actor DeferredBoardClient: KanbanDataClient {
+    private var boardCallCount = 0
+    private var continuation: CheckedContinuation<KanbanBoardSnapshot, Never>?
+
+    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+    func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.boards }
+    func kanbanBoard(_ request: KanbanBoardRequest) async -> KanbanBoardSnapshot {
+        boardCallCount += 1
+        if boardCallCount == 1 { return KanbanFixtures.richSnapshot }
+        if boardCallCount == 2 {
+            return await withCheckedContinuation { continuation = $0 }
+        }
+        return KanbanFixtures.newSnapshot
+    }
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
+
+    func waitForDeferredRead() async {
+        while continuation == nil { await Task.yield() }
+    }
+
+    func resumeDeferredRead() {
+        continuation?.resume(returning: KanbanFixtures.staleSnapshot)
+        continuation = nil
+    }
+}
+
 private enum KanbanFixtures {
-    static let configuration = decode(KanbanConfiguration.self, #"{"columns":["triage"],"read_only":false}"#)
+    static let configuration = decode(KanbanConfiguration.self, #"{"columns":["triage","todo","ready","running","blocked","done"],"read_only":false}"#)
     static let boards = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#)
+    static let multiBoards = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#)
     static let snapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"read_only":false,"columns":[{"name":"triage","tasks":[]}]}"#)
+    static let richSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":11,"read_only":false,"tenants":["mobile"],"assignees":["builder"],"columns":[{"name":"triage","tasks":[]},{"name":"ready","tasks":[{"id":"CARD-1","title":"Status Focus","body":"markdown preview","status":"ready","assignee":"builder","tenant":"mobile"}]},{"name":"future","tasks":[{"id":"FUTURE-1","title":"Future","status":"future"}]}]}"#)
+    static let unchangedSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":false,"latest_event_id":11,"read_only":false}"#)
+    static let newSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":13,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"NEW","title":"Newest filter","status":"ready"}]}]}"#)
+    static let staleSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":12,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"STALE","title":"Stale filter","status":"ready"}]}]}"#)
+    static let stalenessSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"columns":[{"name":"running","tasks":[{"id":"r1","status":"running","age_seconds":599},{"id":"r2","status":"running","age_seconds":600},{"id":"r3","status":"running","age_seconds":3600}]},{"name":"ready","tasks":[{"id":"q1","status":"ready","age_seconds":3599},{"id":"q2","status":"ready","age_seconds":3600}]},{"name":"blocked","tasks":[{"id":"b1","status":"blocked","age_seconds":3599},{"id":"b2","status":"blocked","age_seconds":3600},{"id":"b3","status":"blocked","age_seconds":86400}]}]}"#)
+    static let stats = decode(KanbanStats.self, #"{"by_status":{"triage":0}}"#)
+    static let history = decode(KanbanAssigneeHistory.self, #"{"assignees":["builder"]}"#)
 
     private static func decode<T: Decodable>(_ type: T.Type, _ json: String) -> T {
         let decoder = JSONDecoder()

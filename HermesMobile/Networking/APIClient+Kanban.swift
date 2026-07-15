@@ -3,7 +3,9 @@ import Foundation
 protocol KanbanDataClient: Sendable {
     func kanbanConfiguration() async throws -> KanbanConfiguration
     func kanbanBoards() async throws -> KanbanBoardsResponse
-    func kanbanBoard(board: String) async throws -> KanbanBoardSnapshot
+    func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot
+    func kanbanStats(board: String) async throws -> KanbanStats
+    func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory
 }
 
 extension APIClient: KanbanDataClient {
@@ -15,8 +17,16 @@ extension APIClient: KanbanDataClient {
         try await kanbanJSON(endpoint: .kanbanBoards)
     }
 
-    func kanbanBoard(board: String) async throws -> KanbanBoardSnapshot {
-        try await kanbanJSON(endpoint: .kanbanBoard(board: board))
+    func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot {
+        try await kanbanJSON(endpoint: .kanbanBoard(request))
+    }
+
+    func kanbanStats(board: String) async throws -> KanbanStats {
+        try await kanbanJSON(endpoint: .kanbanStats(board: board))
+    }
+
+    func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory {
+        try await kanbanJSON(endpoint: .kanbanAssignees(board: board))
     }
 
     private func kanbanJSON<Response: Decodable>(endpoint: Endpoint) async throws -> Response {
