@@ -238,7 +238,10 @@ final class KanbanFeatureState {
     }
 
     func refresh() async {
+        guard let board = selectedBoardSlug else { return }
+        let generation = liveGeneration
         let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        guard isSameLiveGeneration(board: board, generation: generation) else { return }
         if succeeded {
             isOffline = false
             loadedDetailIsStale = false
@@ -279,8 +282,10 @@ final class KanbanFeatureState {
             suspendLiveUpdates()
             return
         }
-        guard isVisible, snapshot != nil else { return }
+        guard isVisible, snapshot != nil, let board = selectedBoardSlug else { return }
+        let generation = liveGeneration
         let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        guard isCurrentLiveWork(board: board, generation: generation) else { return }
         if succeeded {
             isOffline = false
             loadedDetailIsStale = false
@@ -475,23 +480,25 @@ final class KanbanFeatureState {
         let reconnectDelays = timing.reconnectDelays.isEmpty ? [.seconds(1)] : timing.reconnectDelays
         let delayIndex = min(streamFailureCount - 1, reconnectDelays.count - 1)
         let delay = reconnectDelays[delayIndex]
+        let sleep = self.sleep
         reconnectTask?.cancel()
         reconnectTask = Task { @MainActor [weak self] in
-            guard let self else { return }
             do { try await sleep(delay) } catch { return }
-            guard isCurrentLiveWork(board: board, generation: generation) else { return }
-            startStream()
+            guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
+            self.startStream()
         }
     }
 
     private func scheduleCoalescedReconciliation(board: String, generation: Int) {
+        let sleep = self.sleep
+        let delay = timing.coalescingDelay
         coalescingTask?.cancel()
         coalescingTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do { try await sleep(timing.coalescingDelay) } catch { return }
-            guard isCurrentLiveWork(board: board, generation: generation) else { return }
-            let succeeded = await refreshBoard(usingCursor: false)
-            if !succeeded, isOffline { startPollingIfNeeded() }
+            do { try await sleep(delay) } catch { return }
+            guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
+            let succeeded = await self.refreshBoard(usingCursor: false, refreshSupplementary: true)
+            guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
+            if !succeeded, self.isOffline { self.startPollingIfNeeded() }
         }
     }
 
@@ -501,12 +508,13 @@ final class KanbanFeatureState {
         reconnectTask?.cancel()
         reconnectTask = nil
         let generation = liveGeneration
+        let sleep = self.sleep
+        let interval = timing.pollingInterval
         pollingTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled, isCurrentLiveWork(board: board, generation: generation) {
-                do { try await sleep(timing.pollingInterval) } catch { return }
-                guard isCurrentLiveWork(board: board, generation: generation) else { return }
-                await pollEvents(board: board, generation: generation)
+            while !Task.isCancelled {
+                do { try await sleep(interval) } catch { return }
+                guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
+                await self.pollEvents(board: board, generation: generation)
             }
         }
     }
@@ -577,10 +585,14 @@ final class KanbanFeatureState {
     }
 
     private func isCurrentLiveWork(board: String, generation: Int) -> Bool {
-        generation == liveGeneration
-            && selectedBoardSlug == board
+        isSameLiveGeneration(board: board, generation: generation)
             && isVisible
             && sceneIsActive
+    }
+
+    private func isSameLiveGeneration(board: String, generation: Int) -> Bool {
+        generation == liveGeneration
+            && selectedBoardSlug == board
             && !Task.isCancelled
     }
 

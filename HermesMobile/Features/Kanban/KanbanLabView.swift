@@ -119,6 +119,7 @@ struct KanbanStatusFocusView: View {
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.secondary.opacity(0.08))
+            .accessibilityLabel(Text("Live updates delayed"))
     }
 
     private var compatibilityBanner: some View {

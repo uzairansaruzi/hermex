@@ -22,6 +22,10 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(state.snapshot?.latestEventID, 13)
         let lastRequest = await client.boardRequests.last
         XCTAssertNil(lastRequest?.since)
+        let statsCallCount = await client.statsCallCount
+        let assigneeCallCount = await client.assigneeCallCount
+        XCTAssertEqual(statsCallCount, 2)
+        XCTAssertEqual(assigneeCallCount, 2)
         state.setVisible(false)
     }
 
@@ -113,6 +117,39 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    func testForegroundRefreshCannotStopNewBoardStreamAfterBoardSwitch() async throws {
+        let client = ForegroundBoardSwitchClient()
+        let stream = KanbanStreamSpy()
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client,
+            streamClient: stream,
+            timing: KanbanLiveUpdateTiming(
+                coalescingDelay: .milliseconds(5),
+                reconnectDelays: [.milliseconds(5)],
+                pollingInterval: .seconds(60),
+                failuresBeforePolling: 3
+            )
+        )
+
+        await state.load()
+        state.setVisible(true)
+        await state.setSceneActive(false)
+
+        let foreground = Task { await state.setSceneActive(true) }
+        try await waitUntil { await client.foregroundRequestStarted }
+        await state.selectBoard("release")
+        let stopCountAfterSwitch = stream.stopCount
+
+        await client.finishForegroundRequest()
+        await foreground.value
+
+        XCTAssertEqual(state.selectedBoardSlug, "release")
+        XCTAssertEqual(stream.startURLs.last?.queryValue("board"), "release")
+        XCTAssertEqual(stream.stopCount, stopCountAfterSwitch)
+        state.setVisible(false)
+    }
+
     func testBoardSwitchTearsDownOldGenerationAndReconnectsPinnedToNewBoard() async throws {
         let client = LiveKanbanClient(
             boards: .multiple,
@@ -167,6 +204,34 @@ final class KanbanLiveUpdateTests: XCTestCase {
         stream.emit(.hello(cursor: 13, board: "main"))
         XCTAssertFalse(state.liveUpdatesDelayed)
         state.setVisible(false)
+    }
+
+    func testPollingDelayDoesNotRetainFeatureState() async throws {
+        let client = LiveKanbanClient(boardResults: [.success(.rich)])
+        let stream = KanbanStreamSpy()
+        var state: KanbanFeatureState? = makeState(
+            client: client,
+            stream: stream,
+            timing: KanbanLiveUpdateTiming(
+                coalescingDelay: .milliseconds(5),
+                reconnectDelays: [.zero, .zero],
+                pollingInterval: .seconds(60),
+                failuresBeforePolling: 3
+            )
+        )
+        weak let releasedState = state
+
+        await state?.load()
+        state?.setVisible(true)
+        for expectedStarts in 2...3 {
+            stream.failCurrent()
+            try await waitUntil { stream.startURLs.count == expectedStarts }
+        }
+        stream.failCurrent()
+        try await waitUntil { state?.liveUpdatesDelayed == true }
+
+        state = nil
+        try await waitUntil { releasedState == nil }
     }
 
     func testServerVisibilityHandoffMakesOutgoingCallbacksInert() async throws {
@@ -279,6 +344,8 @@ private actor LiveKanbanClient: KanbanDataClient {
     private let eventsResult: Result<KanbanEventsEnvelope, Error>
     private(set) var boardRequests: [KanbanBoardRequest] = []
     private(set) var eventCallCount = 0
+    private(set) var statsCallCount = 0
+    private(set) var assigneeCallCount = 0
 
     init(
         boards: KanbanBoardsResponse = .single,
@@ -301,13 +368,52 @@ private actor LiveKanbanClient: KanbanDataClient {
         return try boardResults.removeFirst().get()
     }
 
-    func kanbanStats(board: String) -> KanbanStats { .emptyStats }
-    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { .emptyHistory }
+    func kanbanStats(board: String) -> KanbanStats {
+        statsCallCount += 1
+        return .emptyStats
+    }
+
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
+        assigneeCallCount += 1
+        return .emptyHistory
+    }
 
     func kanbanEvents(_ request: KanbanEventsRequest) throws -> KanbanEventsEnvelope {
         eventCallCount += 1
         return try eventsResult.get()
     }
+}
+
+private actor ForegroundBoardSwitchClient: KanbanDataClient {
+    private var boardCallCount = 0
+    private var foregroundContinuation: CheckedContinuation<Void, Never>?
+
+    var foregroundRequestStarted: Bool { foregroundContinuation != nil }
+
+    func kanbanConfiguration() -> KanbanConfiguration { .liveConfiguration }
+    func kanbanBoards() -> KanbanBoardsResponse { .multiple }
+
+    func kanbanBoard(_ request: KanbanBoardRequest) async -> KanbanBoardSnapshot {
+        boardCallCount += 1
+        switch boardCallCount {
+        case 1:
+            return .rich
+        case 2:
+            await withCheckedContinuation { foregroundContinuation = $0 }
+            return .newer
+        default:
+            return request.board == "release" ? .release : .newer
+        }
+    }
+
+    func finishForegroundRequest() {
+        foregroundContinuation?.resume()
+        foregroundContinuation = nil
+    }
+
+    func kanbanStats(board: String) -> KanbanStats { .emptyStats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { .emptyHistory }
+    func kanbanEvents(_ request: KanbanEventsRequest) -> KanbanEventsEnvelope { .events(cursor: 11) }
 }
 
 private extension URL {
