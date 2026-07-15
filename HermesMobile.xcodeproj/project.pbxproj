@@ -265,6 +265,12 @@
 		C23400000000000000000001 /* StreamingLabReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000002 /* StreamingLabReplay.swift */; };
 		C23400000000000000000003 /* StreamingLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000004 /* StreamingLabView.swift */; };
 		C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000006 /* StreamingLabReplayTests.swift */; };
+		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
+		C14900000000000000000003 /* APIClient+Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000004 /* APIClient+Kanban.swift */; };
+		C14900000000000000000005 /* KanbanFeatureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000006 /* KanbanFeatureState.swift */; };
+		C14900000000000000000007 /* KanbanLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000008 /* KanbanLabView.swift */; };
+		C14900000000000000000009 /* APIClientKanbanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1490000000000000000000A /* APIClientKanbanTests.swift */; };
+		C1490000000000000000000B /* KanbanFeatureStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1490000000000000000000C /* KanbanFeatureStateTests.swift */; };
 		C21300000000000000000007 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = C21300000000000000000008 /* MarkdownUI */; };
 		B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */; };
 		B5A100000000000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000014 /* PrivacyInfo.xcprivacy */; };
@@ -612,6 +618,12 @@
 		C23400000000000000000002 /* StreamingLabReplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplay.swift; sourceTree = "<group>"; };
 		C23400000000000000000004 /* StreamingLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabView.swift; sourceTree = "<group>"; };
 		C23400000000000000000006 /* StreamingLabReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplayTests.swift; sourceTree = "<group>"; };
+		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
+		C14900000000000000000004 /* APIClient+Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Kanban.swift"; sourceTree = "<group>"; };
+		C14900000000000000000006 /* KanbanFeatureState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanFeatureState.swift; sourceTree = "<group>"; };
+		C14900000000000000000008 /* KanbanLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanLabView.swift; sourceTree = "<group>"; };
+		C1490000000000000000000A /* APIClientKanbanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientKanbanTests.swift; sourceTree = "<group>"; };
+		C1490000000000000000000C /* KanbanFeatureStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanFeatureStateTests.swift; sourceTree = "<group>"; };
 		B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkerMessageClassifierTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000017 /* HermesShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HermesShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A04500000000000000000010 /* AgentRunActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRunActivityAttributes.swift; sourceTree = "<group>"; };
@@ -777,6 +789,8 @@
 				C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */,
 				C21300000000000000000006 /* StreamingTextFadeTests.swift */,
 				C23400000000000000000006 /* StreamingLabReplayTests.swift */,
+				C1490000000000000000000A /* APIClientKanbanTests.swift */,
+				C1490000000000000000000C /* KanbanFeatureStateTests.swift */,
 				C1A042000000000000000006 /* ClarificationTests.swift */,
 				1A2B3C4D5E6F7000000000F4 /* CacheStoreTests.swift */,
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
@@ -839,6 +853,7 @@
 				C04000000000000000000017 /* APIClient+Memory.swift */,
 				C04000000000000000000018 /* APIClient+Skills.swift */,
 				C04000000000000000000019 /* APIClient+Upload.swift */,
+				C14900000000000000000004 /* APIClient+Kanban.swift */,
 				1A2B3C4D5E6F7000000000B8 /* Endpoints.swift */,
 				C03250000000000000F102 /* APIClient+Transcribe.swift */,
 				C03260000000000000F101 /* APIClient+TTS.swift */,
@@ -877,6 +892,7 @@
 				3F91D2A54B9A4F66A2C01011 /* Cron.swift */,
 				1A2B3C4D5E6F70000000201 /* Memory.swift */,
 				1A2B3C4D5E6F70000000211 /* Skills.swift */,
+				C14900000000000000000002 /* Kanban.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -895,6 +911,7 @@
 				1A2B3C4D5E6F70000000216 /* Skills */,
 				1A2B3C4D5E6F70000000206 /* Memory */,
 				B50E1CE3A8912B92B1924714 /* Insights */,
+				C1490000000000000000000D /* Kanban */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -913,6 +930,15 @@
 				1A2B3C4D5E6F7000000000B6 /* OnboardingViewModel.swift */,
 			);
 			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		C1490000000000000000000D /* Kanban */ = {
+			isa = PBXGroup;
+			children = (
+				C14900000000000000000006 /* KanbanFeatureState.swift */,
+				C14900000000000000000008 /* KanbanLabView.swift */,
+			);
+			path = Kanban;
 			sourceTree = "<group>";
 		};
 		C09300000000000000000010 /* Shared */ = {
@@ -1402,6 +1428,10 @@
 				C04000000000000000000007 /* APIClient+Memory.swift in Sources */,
 				C04000000000000000000008 /* APIClient+Skills.swift in Sources */,
 				C04000000000000000000009 /* APIClient+Upload.swift in Sources */,
+				C14900000000000000000001 /* Kanban.swift in Sources */,
+				C14900000000000000000003 /* APIClient+Kanban.swift in Sources */,
+				C14900000000000000000005 /* KanbanFeatureState.swift in Sources */,
+				C14900000000000000000007 /* KanbanLabView.swift in Sources */,
 				1A2B3C4D5E6F7000000000A8 /* Endpoints.swift in Sources */,
 				C03250000000000000B101 /* TranscribeResponse.swift in Sources */,
 				C03250000000000000B102 /* APIClient+Transcribe.swift in Sources */,
@@ -1610,6 +1640,8 @@
 				C21200000000000000000005 /* ChatViewModelStreamingPaceTests.swift in Sources */,
 				C21300000000000000000005 /* StreamingTextFadeTests.swift in Sources */,
 				C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */,
+				C14900000000000000000009 /* APIClientKanbanTests.swift in Sources */,
+				C1490000000000000000000B /* KanbanFeatureStateTests.swift in Sources */,
 				C1A042000000000000000005 /* ClarificationTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000F2 /* CacheStoreTests.swift in Sources */,
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,

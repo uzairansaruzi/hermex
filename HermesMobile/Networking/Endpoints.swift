@@ -93,6 +93,9 @@ enum Endpoint {
     case cronStatus(jobID: String?)
     case cronOutput(jobID: String, limit: Int?)
     case cronDeliveryOptions
+    case kanbanConfig
+    case kanbanBoards
+    case kanbanBoard(board: String)
     case memory
     case memoryWrite
     case skills
@@ -288,6 +291,12 @@ enum Endpoint {
             return "/api/crons/output"
         case .cronDeliveryOptions:
             return "/api/crons/delivery-options"
+        case .kanbanConfig:
+            return "/api/kanban/config"
+        case .kanbanBoards:
+            return "/api/kanban/boards"
+        case .kanbanBoard:
+            return "/api/kanban/board"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -408,6 +417,8 @@ enum Endpoint {
                 items.append(URLQueryItem(name: "limit", value: "\(limit)"))
             }
             return items
+        case let .kanbanBoard(board):
+            return [URLQueryItem(name: "board", value: board)]
         case let .reasoning(model, provider):
             var items: [URLQueryItem] = []
             if let model, !model.isEmpty {
