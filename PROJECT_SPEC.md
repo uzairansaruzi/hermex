@@ -928,6 +928,13 @@ the pinned upstream source, in the precedence required by `AGENTS.md`.
 | Edit/Archive Board | `PATCH /api/kanban/boards/{slug}`, `DELETE /api/kanban/boards/{slug}` | Slug is immutable. Archive uses DELETE without hard-delete query. Default Board cannot be archived. |
 | Make Active Board | `POST /api/kanban/boards/{slug}/switch` | Confirm because it changes shared server state visible to other Hermes clients. |
 
+Kanban Card assignment is scoped entirely to the Kanban contract. The assigned value
+is transported only in the Kanban `assignee` field, and assignment choices come from
+the Kanban config, Board snapshot, and assignee-history responses above. Creating,
+editing, filtering, or bulk-assigning Cards must never call `/api/profile/switch`,
+change the active chat Profile cookie, or source assignment state from that client-wide
+chat-profile selection.
+
 Hermex deliberately does not expose backend-only hard deletion, archived-Board
 enumeration/restoration, the global `PATCH /api/kanban/config` grouping mutation, the
 legacy Card patch alias, or unsupported task attachments. A single-title quick-create
