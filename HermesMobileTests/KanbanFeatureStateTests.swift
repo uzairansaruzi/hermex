@@ -59,6 +59,19 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(contract.state, .incompatibleContract)
     }
 
+    func testCancelledHandshakeReturnsToIdle() async {
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: KanbanClientStub(configurationResult: .failure(CancellationError()))
+        )
+
+        await state.load()
+
+        XCTAssertEqual(state.state, .idle)
+        XCTAssertFalse(state.isLoading)
+        XCTAssertNil(state.report)
+    }
+
     func testStaleHandshakeCompletionCannotReplaceNewerResult() async {
         let client = DeferredFirstConfigurationClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)

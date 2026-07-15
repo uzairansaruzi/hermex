@@ -72,6 +72,9 @@ final class KanbanFeatureState {
             self.report = report
             state = report.isPartial ? .partial : .compatible
         } catch is CancellationError {
+            guard activeLoadID == loadID else { return }
+            report = nil
+            state = .idle
             return
         } catch {
             guard isCurrent(loadID) else { return }
