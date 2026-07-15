@@ -18,8 +18,8 @@ struct KanbanConfiguration: Decodable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        columns = (try? container.decodeIfPresent([String].self, forKey: .columns)) ?? nil
-        assignees = (try? container.decodeIfPresent([String].self, forKey: .assignees)) ?? nil
+        columns = try? container.decodeIfPresent([String].self, forKey: .columns)
+        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
         defaultTenant = container.decodeLossyStringIfPresent(forKey: .defaultTenant)
         laneByProfile = container.decodeLossyBoolIfPresent(forKey: .laneByProfile)
         includeArchivedByDefault = container.decodeLossyBoolIfPresent(forKey: .includeArchivedByDefault)
@@ -39,7 +39,7 @@ struct KanbanBoardsResponse: Decodable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        boards = (try? container.decodeIfPresent([KanbanBoard].self, forKey: .boards)) ?? nil
+        boards = try? container.decodeIfPresent([KanbanBoard].self, forKey: .boards)
         current = container.decodeLossyStringIfPresent(forKey: .current)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
     }
@@ -84,7 +84,7 @@ struct KanbanBoardSnapshot: Decodable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        columns = (try? container.decodeIfPresent([KanbanColumn].self, forKey: .columns)) ?? nil
+        columns = try? container.decodeIfPresent([KanbanColumn].self, forKey: .columns)
         changed = container.decodeLossyBoolIfPresent(forKey: .changed)
         latestEventID = container.decodeLossyIntIfPresent(forKey: .latestEventID)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
@@ -103,7 +103,7 @@ struct KanbanColumn: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = container.decodeLossyStringIfPresent(forKey: .name)
-        cards = (try? container.decodeIfPresent([KanbanCard].self, forKey: .cards)) ?? nil
+        cards = try? container.decodeIfPresent([KanbanCard].self, forKey: .cards)
     }
 }
 

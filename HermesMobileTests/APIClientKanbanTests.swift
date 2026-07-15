@@ -132,7 +132,7 @@ final class APIClientKanbanTests: APIClientTestCase {
         }
 
         let futureSnapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
-        {"changed":true,"columns":[{"name":"future","tasks":[{"id":"card-1","status":"future"}]}]}
+        {"changed":true,"read_only":false,"columns":[{"name":"future","tasks":[{"id":"card-1","status":"future"}]}]}
         """.utf8))
         let partialReport = try KanbanCompatibilityValidator.validate(
             configuration: configuration,
@@ -140,6 +140,29 @@ final class APIClientKanbanTests: APIClientTestCase {
             snapshot: futureSnapshot
         )
         XCTAssertEqual(partialReport.warnings, [.unsupportedStatus("future")])
+
+        let incompleteSnapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
+        {"read_only":false,"columns":[{"name":"triage","tasks":[]}]}
+        """.utf8))
+        XCTAssertThrowsError(
+            try KanbanCompatibilityValidator.validate(
+                configuration: configuration,
+                boardsResponse: boards,
+                snapshot: incompleteSnapshot
+            )
+        ) { error in
+            XCTAssertEqual(error as? KanbanContractViolation, .missingBoardSnapshot)
+        }
+
+        let caseMismatchedSnapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
+        {"changed":true,"read_only":false,"columns":[{"name":"TRIAGE","tasks":[{"id":"card-1","status":"TRIAGE"}]}]}
+        """.utf8))
+        let exactStatusReport = try KanbanCompatibilityValidator.validate(
+            configuration: configuration,
+            boardsResponse: boards,
+            snapshot: caseMismatchedSnapshot
+        )
+        XCTAssertEqual(exactStatusReport.warnings, [.unsupportedStatus("TRIAGE")])
     }
 
     private static let configurationJSON = """
