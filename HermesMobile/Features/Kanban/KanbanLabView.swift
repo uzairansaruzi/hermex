@@ -629,7 +629,7 @@ struct KanbanLabView: View {
     }
 }
 
-private enum KanbanLabScenario: String, CaseIterable, Identifiable {
+enum KanbanLabScenario: String, CaseIterable, Identifiable {
     case firstLoad
     case dense
     case empty
@@ -682,9 +682,12 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
     }
 }
 
-private actor KanbanLabClient: KanbanDataClient {
+actor KanbanLabClient: KanbanDataClient {
     let scenario: KanbanLabScenario
     private var submittedComments: [String] = []
+    private var storedCards: [String: [String: StoredCard]] = [:]
+    private var cardIDsByIntent: [String: String] = [:]
+    private var nextCardSequence = 100
 
     init(scenario: KanbanLabScenario) { self.scenario = scenario }
 
@@ -713,7 +716,7 @@ private actor KanbanLabClient: KanbanDataClient {
         if request.since != nil {
             return decode(#"{"changed":false,"latest_event_id":9,"read_only":false}"#)
         }
-        return decode(snapshotJSON(for: request))
+        return decode(snapshotObject(for: request))
     }
 
     func kanbanStats(board: String) throws -> KanbanStats {
@@ -732,8 +735,21 @@ private actor KanbanLabClient: KanbanDataClient {
         return decode(#"{"events":[],"cursor":9,"latest_event_id":9,"read_only":false}"#)
     }
 
-    func kanbanCardDetail(_ request: KanbanCardDetailRequest) throws -> KanbanCardDetailEnvelope {
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
         if scenario == .detailError { throw APIError.http(statusCode: 503, body: nil) }
+        if let stored = storedCards[request.board]?[request.cardID] {
+            return decode([
+                "task": stored.object,
+                "comments": [],
+                "events": [],
+                "links": [
+                    "parents": stored.prerequisiteID.map { [$0] } ?? [],
+                    "children": []
+                ],
+                "runs": [],
+                "read_only": false
+            ])
+        }
         let isEmpty = scenario == .detailEmpty
         var comments: [[String: Any]] = isEmpty ? [] : [
             ["id": 1, "task_id": request.cardID, "author": "reviewer", "body": "Looks good from the review side.", "created_at": 1_700_000_000]
@@ -776,7 +792,7 @@ private actor KanbanLabClient: KanbanDataClient {
         return decode(payload)
     }
 
-    func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) throws -> KanbanWorkerLog {
+    func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) async throws -> KanbanWorkerLog {
         if scenario == .detailError { throw APIError.http(statusCode: 503, body: nil) }
         if scenario == .detailEmpty {
             return decode(["task_id": request.cardID, "exists": false, "size_bytes": 0, "content": "", "truncated": false])
@@ -791,9 +807,86 @@ private actor KanbanLabClient: KanbanDataClient {
         ])
     }
 
-    func addKanbanComment(_ request: KanbanAddCommentRequest) -> KanbanAddCommentResponse {
+    func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse {
         submittedComments.append(request.body)
         return decode(["ok": true, "comment_id": submittedComments.count + 1, "read_only": false])
+    }
+
+    func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope {
+        let intentKey = "\(request.board)\u{1F}\(request.idempotencyKey)"
+        if let cardID = cardIDsByIntent[intentKey],
+           let existing = storedCards[request.board]?[cardID] {
+            return mutationEnvelope(for: existing)
+        }
+
+        let cardID = "CARD-LAB-\(nextCardSequence)"
+        nextCardSequence += 1
+        let card = StoredCard(cardID: cardID, request: request)
+        storedCards[request.board, default: [:]][cardID] = card
+        cardIDsByIntent[intentKey] = cardID
+        return mutationEnvelope(for: card)
+    }
+
+    func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope {
+        let existing = storedCards[request.board]?[request.cardID]
+            ?? fixtureCard(cardID: request.cardID)
+        guard var card = existing else {
+            throw APIError.http(statusCode: 404, body: nil)
+        }
+        card.apply(request)
+        storedCards[request.board, default: [:]][request.cardID] = card
+        return mutationEnvelope(for: card)
+    }
+
+    private func mutationEnvelope(for card: StoredCard) -> KanbanCardMutationEnvelope {
+        decode(["task": card.object, "read_only": false])
+    }
+
+    private func snapshotObject(for request: KanbanBoardRequest) -> [String: Any] {
+        let data = Data(snapshotJSON(for: request).utf8)
+        var snapshot = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+        var columns = snapshot["columns"] as! [[String: Any]]
+        let cards = storedCards[request.board].map { Array($0.values) } ?? []
+        let replacedIDs = Set(cards.map(\.cardID))
+
+        for index in columns.indices {
+            let existing = columns[index]["tasks"] as? [[String: Any]] ?? []
+            columns[index]["tasks"] = existing.filter {
+                guard let cardID = $0["id"] as? String else { return true }
+                return !replacedIDs.contains(cardID)
+            }
+        }
+
+        for card in cards where card.matches(request) {
+            guard let index = columns.firstIndex(where: { $0["name"] as? String == card.status }) else {
+                continue
+            }
+            var values = columns[index]["tasks"] as? [[String: Any]] ?? []
+            values.append(card.object)
+            columns[index]["tasks"] = values
+        }
+        snapshot["columns"] = columns
+        return snapshot
+    }
+
+    private func fixtureCard(cardID: String) -> StoredCard? {
+        guard (1...8).contains(Int(cardID.replacingOccurrences(of: "CARD-", with: "")) ?? -1) else {
+            return nil
+        }
+        return StoredCard(
+            cardID: cardID,
+            title: "Implement Status Focus",
+            body: "This **Markdown** description stays selectable.",
+            status: "ready",
+            priority: 1,
+            assignee: "builder",
+            tenant: "app",
+            workspaceKind: "worktree",
+            workspacePath: "/private/fixture/explicit-history-only",
+            skills: ["swiftui-patterns"],
+            maxRuntimeSeconds: 3_600,
+            prerequisiteID: "CARD-1"
+        )
     }
 
     private func snapshotJSON(for request: KanbanBoardRequest) -> String {
@@ -831,6 +924,102 @@ private actor KanbanLabClient: KanbanDataClient {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try! decoder.decode(T.self, from: data)
+    }
+
+    private struct StoredCard: Sendable {
+        let cardID: String
+        var title: String
+        var body: String?
+        var status: String
+        var priority: Int
+        var assignee: String?
+        var tenant: String?
+        let workspaceKind: String
+        let workspacePath: String?
+        let skills: [String]?
+        let maxRuntimeSeconds: Int?
+        let prerequisiteID: String?
+
+        init(
+            cardID: String,
+            title: String,
+            body: String?,
+            status: String,
+            priority: Int,
+            assignee: String?,
+            tenant: String?,
+            workspaceKind: String,
+            workspacePath: String?,
+            skills: [String]?,
+            maxRuntimeSeconds: Int?,
+            prerequisiteID: String?
+        ) {
+            self.cardID = cardID
+            self.title = title
+            self.body = body
+            self.status = status
+            self.priority = priority
+            self.assignee = assignee
+            self.tenant = tenant
+            self.workspaceKind = workspaceKind
+            self.workspacePath = workspacePath
+            self.skills = skills
+            self.maxRuntimeSeconds = maxRuntimeSeconds
+            self.prerequisiteID = prerequisiteID
+        }
+
+        init(cardID: String, request: KanbanCreateCardRequest) {
+            self.init(
+                cardID: cardID,
+                title: request.title,
+                body: request.body,
+                status: request.status,
+                priority: request.priority ?? 0,
+                assignee: request.assignee,
+                tenant: request.tenant,
+                workspaceKind: request.workspaceKind,
+                workspacePath: request.workspacePath,
+                skills: request.skills,
+                maxRuntimeSeconds: request.maxRuntimeSeconds,
+                prerequisiteID: request.prerequisiteID
+            )
+        }
+
+        mutating func apply(_ request: KanbanEditCardRequest) {
+            title = request.title
+            body = request.body
+            tenant = request.tenant
+            priority = request.priority
+            assignee = request.assignee
+            if let status = request.status { self.status = status }
+        }
+
+        func matches(_ request: KanbanBoardRequest) -> Bool {
+            if status == "archived", !request.includeArchived { return false }
+            if let tenant = request.tenant, self.tenant != tenant { return false }
+            if let assignee = request.assignee, self.assignee != assignee { return false }
+            if request.onlyMine, assignee != "builder" { return false }
+            return true
+        }
+
+        var object: [String: Any] {
+            var result: [String: Any] = [
+                "id": cardID,
+                "title": title,
+                "status": status,
+                "priority": priority,
+                "workspace_kind": workspaceKind,
+                "comment_count": 0,
+                "age_seconds": 0
+            ]
+            if let body { result["body"] = body }
+            if let assignee { result["assignee"] = assignee }
+            if let tenant { result["tenant"] = tenant }
+            if let workspacePath { result["workspace_path"] = workspacePath }
+            if let skills { result["skills"] = skills }
+            if let maxRuntimeSeconds { result["max_runtime_seconds"] = maxRuntimeSeconds }
+            return result
+        }
     }
 }
 
