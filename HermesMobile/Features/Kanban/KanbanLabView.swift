@@ -211,7 +211,7 @@ struct KanbanStatusFocusView: View {
                 ForEach(Array(model.groupedVisibleCards.enumerated()), id: \.offset) { _, group in
                     Section {
                         ForEach(group.cards, id: \.cardID) { card in
-                            KanbanCardSummaryView(card: card)
+                            cardNavigationLink(card)
                         }
                     } header: {
                         Text(group.profile ?? String(localized: "Unassigned"))
@@ -219,12 +219,22 @@ struct KanbanStatusFocusView: View {
                 }
             } else {
                 ForEach(model.visibleCards, id: \.cardID) { card in
-                    KanbanCardSummaryView(card: card)
+                    cardNavigationLink(card)
                 }
             }
         }
         .listStyle(.plain)
         .refreshable { await model.refresh() }
+    }
+
+    private func cardNavigationLink(_ card: KanbanCard) -> some View {
+        NavigationLink {
+            if let cardID = card.cardID {
+                KanbanCardDetailView(featureModel: model, cardID: cardID)
+            }
+        } label: {
+            KanbanCardSummaryView(card: card)
+        }
     }
 
     private var emptyContent: some View {
@@ -614,6 +624,9 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
     case incompatible
     case liveDelayed
     case offline
+    case detailEmpty
+    case detailError
+    case detailTruncated
 
     var id: String { rawValue }
 
@@ -630,6 +643,9 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
         case .incompatible: "Incompatible"
         case .liveDelayed: "Live updates delayed"
         case .offline: "Offline snapshot"
+        case .detailEmpty: "Empty Card detail"
+        case .detailError: "Card detail error"
+        case .detailTruncated: "Truncated worker log"
         }
     }
 
@@ -651,6 +667,7 @@ private enum KanbanLabScenario: String, CaseIterable, Identifiable {
 
 private actor KanbanLabClient: KanbanDataClient {
     let scenario: KanbanLabScenario
+    private var submittedComments: [String] = []
 
     init(scenario: KanbanLabScenario) { self.scenario = scenario }
 
@@ -698,6 +715,70 @@ private actor KanbanLabClient: KanbanDataClient {
         return decode(#"{"events":[],"cursor":9,"latest_event_id":9,"read_only":false}"#)
     }
 
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) throws -> KanbanCardDetailEnvelope {
+        if scenario == .detailError { throw APIError.http(statusCode: 503, body: nil) }
+        let isEmpty = scenario == .detailEmpty
+        var comments: [[String: Any]] = isEmpty ? [] : [
+            ["id": 1, "task_id": request.cardID, "author": "reviewer", "body": "Looks good from the review side.", "created_at": 1_700_000_000]
+        ]
+        comments += submittedComments.enumerated().map { offset, body in
+            ["id": offset + 2, "task_id": request.cardID, "author": "webui", "body": body, "created_at": 1_700_000_100 + offset]
+        }
+        let payload: [String: Any] = [
+            "task": [
+                "id": request.cardID,
+                "title": isEmpty ? "Empty history fixture" : "Implement Status Focus",
+                "body": isEmpty ? "" : "This **Markdown** description stays selectable.",
+                "status": "ready",
+                "assignee": "builder",
+                "tenant": "app",
+                "priority": 1,
+                "created_at": 1_699_999_000,
+                "updated_at": 1_700_000_000,
+                "workspace_kind": "worktree",
+                "workspace_path": "/private/fixture/explicit-history-only",
+                "skills": ["swiftui-patterns"],
+                "max_runtime_seconds": 3600,
+                "current_run_id": "run-fixture",
+                "claim_lock": "claim-fixture",
+                "worker_pid": 4242
+            ],
+            "comments": comments,
+            "events": isEmpty ? [] : [[
+                "id": 9, "task_id": request.cardID, "kind": "status",
+                "payload": ["status": "ready", "secret": "discarded"], "created_at": 1_700_000_000
+            ]],
+            "links": isEmpty ? ["parents": [], "children": []] : ["parents": ["CARD-1"], "children": ["CARD-7"]],
+            "runs": isEmpty ? [] : [[
+                "id": "run-fixture", "status": "finished", "outcome": "success",
+                "summary": "Validated the focused suite.", "worker": "worker-fixture",
+                "started_at": 1_699_999_500, "finished_at": 1_700_000_000
+            ]],
+            "read_only": false
+        ]
+        return decode(payload)
+    }
+
+    func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) throws -> KanbanWorkerLog {
+        if scenario == .detailError { throw APIError.http(statusCode: 503, body: nil) }
+        if scenario == .detailEmpty {
+            return decode(["task_id": request.cardID, "exists": false, "size_bytes": 0, "content": "", "truncated": false])
+        }
+        return decode([
+            "task_id": request.cardID,
+            "path": "/private/fixture/not-retained",
+            "exists": true,
+            "size_bytes": 131_072,
+            "content": "Focused tests passed.\nFull suite queued.\n",
+            "truncated": scenario == .detailTruncated
+        ])
+    }
+
+    func addKanbanComment(_ request: KanbanAddCommentRequest) -> KanbanAddCommentResponse {
+        submittedComments.append(request.body)
+        return decode(["ok": true, "comment_id": submittedComments.count + 1, "read_only": false])
+    }
+
     private func snapshotJSON(for request: KanbanBoardRequest) -> String {
         let archived = request.includeArchived
             ? #",{"name":"archived","tasks":[{"id":"CARD-8","title":"Retired experiment","status":"archived","assignee":null,"priority":0,"age_seconds":172800}]}"#
@@ -726,6 +807,13 @@ private actor KanbanLabClient: KanbanDataClient {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try! decoder.decode(T.self, from: Data(json.utf8))
+    }
+
+    private func decode<T: Decodable>(_ object: Any) -> T {
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try! decoder.decode(T.self, from: data)
     }
 }
 

@@ -55,6 +55,7 @@ final class KanbanFeatureState {
     private(set) var liveUpdatesDelayed = false
     private(set) var loadedDetailIsStale = false
     private(set) var liveCursor = 0
+    private(set) var detailRefreshRevision = 0
 
     private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
@@ -104,6 +105,14 @@ final class KanbanFeatureState {
     /// mutation, Dispatcher, or shared-state action.
     var canUseServerAuthoritativeActions: Bool {
         snapshot != nil && !isOffline && !isRefreshing
+    }
+
+    var canAddComments: Bool {
+        canUseServerAuthoritativeActions
+            && configuration?.readOnly == false
+            && boardsResponse?.readOnly == false
+            && snapshot?.readOnly == false
+            && selectedBoard?.readOnly != true
     }
 
     var selectedBoard: KanbanBoard? {
@@ -211,6 +220,7 @@ final class KanbanFeatureState {
             boards = boardsResponse.boards ?? []
             selectedBoardSlug = currentBoard
             self.snapshot = snapshot
+            detailRefreshRevision &+= 1
             liveCursor = max(0, snapshot.latestEventID ?? 0)
             self.report = report
             state = report.isPartial ? .partial : .compatible
@@ -337,6 +347,16 @@ final class KanbanFeatureState {
         await refreshBoard(usingCursor: false)
     }
 
+    func makeCardDetailState(cardID: String) -> KanbanCardDetailState? {
+        guard let board = selectedBoardSlug else { return nil }
+        return KanbanCardDetailState(
+            cardID: cardID,
+            board: board,
+            client: client,
+            onAPIError: onAPIError
+        )
+    }
+
     private var searchMatchedCards: [KanbanCard] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return allCards }
@@ -374,6 +394,7 @@ final class KanbanFeatureState {
             } else {
                 let report = try validateBrowsingSnapshot(response, board: board)
                 snapshot = response
+                detailRefreshRevision &+= 1
                 self.report = report
                 state = report.isPartial ? .partial : .compatible
             }

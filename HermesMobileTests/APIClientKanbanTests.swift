@@ -124,6 +124,122 @@ final class APIClientKanbanTests: APIClientTestCase {
         ])
     }
 
+    func testCardDetailCommentAndWorkerLogUseVerifiedContracts() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            switch requestIndex {
+            case 0:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-1")
+                XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "release board")])
+                XCTAssertNil(request.httpBody)
+                return apiTestJSONResponse(Self.detailJSON, for: request)
+            case 1:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-1/log")
+                XCTAssertEqual(components?.queryItems, [
+                    URLQueryItem(name: "board", value: "release board"),
+                    URLQueryItem(name: "tail", value: "2000000")
+                ])
+                return apiTestJSONResponse(
+                    #"{"task_id":"CARD-1","path":"/private/not-retained","exists":true,"size_bytes":3000000,"content":"tail","truncated":true}"#,
+                    for: request
+                )
+            default:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-1/comments")
+                XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "release board")])
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+                let body = try XCTUnwrap(apiTestBodyData(from: request))
+                let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+                XCTAssertEqual(object, ["body": "Ready for review"])
+                return apiTestJSONResponse(#"{"ok":true,"comment_id":42,"read_only":false}"#, for: request)
+            }
+        }
+
+        let detail = try await client.kanbanCardDetail(
+            KanbanCardDetailRequest(cardID: "CARD-1", board: "release board")
+        )
+        let log = try await client.kanbanWorkerLog(
+            KanbanWorkerLogRequest(cardID: "CARD-1", board: "release board", tailBytes: 9_000_000)
+        )
+        let comment = try await client.addKanbanComment(
+            KanbanAddCommentRequest(cardID: "CARD-1", board: "release board", body: "Ready for review")
+        )
+
+        XCTAssertEqual(detail.card?.cardID, "CARD-1")
+        XCTAssertEqual(log.content, "tail")
+        XCTAssertEqual(log.truncated, true)
+        XCTAssertEqual(comment.commentID, "42")
+    }
+
+    func testCardDetailDecodesExpandedAndMinimalEnvelopesTolerantly() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let detail = try decoder.decode(KanbanCardDetailEnvelope.self, from: Data(Self.detailJSON.utf8))
+
+        XCTAssertNoThrow(try KanbanCardDetailValidator.validate(detail, requestedCardID: "CARD-1"))
+        XCTAssertEqual(detail.comments?.first?.commentID, "7")
+        XCTAssertEqual(detail.events?.first?.payload?.status, "ready")
+        XCTAssertNil(detail.events?.first?.payload?.summary)
+        XCTAssertEqual(detail.links?.prerequisites, ["CARD-0"])
+        XCTAssertEqual(detail.links?.dependents, ["CARD-2"])
+        XCTAssertEqual(detail.runs?.first?.runID, "run-1")
+        XCTAssertNil(detail.card?.workerID) // malformed metadata is ignored
+
+        let minimal = try decoder.decode(KanbanCardDetailEnvelope.self, from: Data(
+            #"{"task":{"id":"CARD-1","status":"future"},"future":{"nested":true}}"#.utf8
+        ))
+        XCTAssertNoThrow(try KanbanCardDetailValidator.validate(minimal, requestedCardID: "CARD-1"))
+        XCTAssertEqual(minimal.card?.status?.rawValue, "future")
+        XCTAssertNil(minimal.comments)
+
+        let missingIdentity = try decoder.decode(
+            KanbanCardDetailEnvelope.self,
+            from: Data(#"{"task":{"status":"ready"}}"#.utf8)
+        )
+        XCTAssertThrowsError(try KanbanCardDetailValidator.validate(missingIdentity, requestedCardID: "CARD-1"))
+    }
+
+    func testMissingCardAndNonJSONCommentResponseRemainTypedFailures() async throws {
+        let missingClient = makeClient { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 404,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"error":"task not found","path":"/private/must-not-surface"}"#.utf8))
+        }
+        await XCTAssertThrowsErrorAsync(
+            try await missingClient.kanbanCardDetail(KanbanCardDetailRequest(cardID: "gone", board: "main"))
+        ) { error in
+            guard case let APIError.http(statusCode, _) = error else {
+                return XCTFail("Expected HTTP error, got \(error)")
+            }
+            XCTAssertEqual(statusCode, 404)
+        }
+
+        let nonJSONClient = makeClient { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/html"]
+            )!
+            return (response, Data("<html>proxy</html>".utf8))
+        }
+        await XCTAssertThrowsErrorAsync(
+            try await nonJSONClient.addKanbanComment(
+                KanbanAddCommentRequest(cardID: "CARD-1", board: "main", body: "hello")
+            )
+        ) { error in
+            XCTAssertEqual(error as? KanbanResponseError, .nonJSONContentType)
+        }
+    }
+
     func testKanbanCarriesConfiguredCustomHeaders() async throws {
         MockURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Proxy"), "enabled")
@@ -292,6 +408,22 @@ final class APIClientKanbanTests: APIClientTestCase {
 
     private static let statsJSON = """
     {"total":3,"by_status":{"ready":2,"done":1},"by_assignee":{"work":3}}
+    """
+
+    private static let detailJSON = """
+    {
+      "task": {
+        "id":"CARD-1","title":"Detail","status":"ready","body":"**Markdown**",
+        "workspace_path":"/private/explicit-only","worker_pid":{"malformed":true},
+        "future_task_field":true
+      },
+      "comments":[{"id":7,"task_id":"CARD-1","author":"review","body":"Ship it","created_at":1700000000}],
+      "events":[{"id":8,"task_id":"CARD-1","kind":"status","payload":{"status":"ready","secret":"discarded"},"created_at":1700000001}],
+      "links":{"parents":["CARD-0"],"children":["CARD-2"]},
+      "runs":[{"run_id":"run-1","status":"finished","worker":"worker-private","future":true}],
+      "read_only":false,
+      "future_envelope_field":{"nested":true}
+    }
     """
 }
 

@@ -7,6 +7,29 @@ protocol KanbanDataClient: Sendable {
     func kanbanStats(board: String) async throws -> KanbanStats
     func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory
     func kanbanEvents(_ request: KanbanEventsRequest) async throws -> KanbanEventsEnvelope
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope
+    func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) async throws -> KanbanWorkerLog
+    func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse
+}
+
+extension KanbanDataClient {
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
+        throw KanbanUnsupportedClientMethod.cardDetail
+    }
+
+    func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) async throws -> KanbanWorkerLog {
+        throw KanbanUnsupportedClientMethod.workerLog
+    }
+
+    func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse {
+        throw KanbanUnsupportedClientMethod.addComment
+    }
+}
+
+private enum KanbanUnsupportedClientMethod: Error {
+    case cardDetail
+    case workerLog
+    case addComment
 }
 
 extension APIClient: KanbanDataClient {
@@ -34,6 +57,22 @@ extension APIClient: KanbanDataClient {
         try await kanbanJSON(endpoint: .kanbanEvents(request))
     }
 
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
+        try await kanbanJSON(endpoint: .kanbanCardDetail(request))
+    }
+
+    func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) async throws -> KanbanWorkerLog {
+        try await kanbanJSON(endpoint: .kanbanWorkerLog(request))
+    }
+
+    func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse {
+        try await kanbanJSON(
+            endpoint: .kanbanAddComment(request),
+            method: "POST",
+            body: KanbanCommentBody(body: request.body)
+        )
+    }
+
     nonisolated func kanbanEventsStreamURL(_ request: KanbanEventsStreamRequest) -> URL {
         Endpoint.kanbanEventsStream(request).url(relativeTo: baseURL)
     }
@@ -50,4 +89,28 @@ extension APIClient: KanbanDataClient {
         }
         return try decode(Response.self, from: data)
     }
+
+    private func kanbanJSON<Response: Decodable, Body: Encodable>(
+        endpoint: Endpoint,
+        method: String,
+        body: Body
+    ) async throws -> Response {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let encodedBody = try encoder.encode(body)
+        let (data, response) = try await sendDataReturningResponse(
+            endpoint: endpoint,
+            method: method,
+            encodedBody: encodedBody
+        )
+        let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        guard contentType.hasPrefix("application/json") else {
+            throw KanbanResponseError.nonJSONContentType
+        }
+        return try decode(Response.self, from: data)
+    }
+}
+
+private struct KanbanCommentBody: Encodable {
+    let body: String
 }

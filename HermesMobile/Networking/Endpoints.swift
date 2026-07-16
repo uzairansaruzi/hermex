@@ -100,6 +100,9 @@ enum Endpoint {
     case kanbanAssignees(board: String)
     case kanbanEvents(KanbanEventsRequest)
     case kanbanEventsStream(KanbanEventsStreamRequest)
+    case kanbanCardDetail(KanbanCardDetailRequest)
+    case kanbanWorkerLog(KanbanWorkerLogRequest)
+    case kanbanAddComment(KanbanAddCommentRequest)
     case memory
     case memoryWrite
     case skills
@@ -309,6 +312,12 @@ enum Endpoint {
             return "/api/kanban/events"
         case .kanbanEventsStream:
             return "/api/kanban/events/stream"
+        case let .kanbanCardDetail(request):
+            return "/api/kanban/tasks/\(request.cardID)"
+        case let .kanbanWorkerLog(request):
+            return "/api/kanban/tasks/\(request.cardID)/log"
+        case let .kanbanAddComment(request):
+            return "/api/kanban/tasks/\(request.cardID)/comments"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -436,6 +445,12 @@ enum Endpoint {
         case let .kanbanEvents(request):
             return request.queryItems
         case let .kanbanEventsStream(request):
+            return request.queryItems
+        case let .kanbanCardDetail(request):
+            return request.queryItems
+        case let .kanbanWorkerLog(request):
+            return request.queryItems
+        case let .kanbanAddComment(request):
             return request.queryItems
         case let .reasoning(model, provider):
             var items: [URLQueryItem] = []

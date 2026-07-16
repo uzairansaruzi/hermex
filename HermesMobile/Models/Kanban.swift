@@ -1,5 +1,37 @@
 import Foundation
 
+struct KanbanCardDetailRequest: Equatable, Sendable {
+    let cardID: String
+    let board: String
+
+    var queryItems: [URLQueryItem] {
+        [URLQueryItem(name: "board", value: board)]
+    }
+}
+
+struct KanbanWorkerLogRequest: Equatable, Sendable {
+    let cardID: String
+    let board: String
+    var tailBytes: Int = 65_536
+
+    var queryItems: [URLQueryItem] {
+        [
+            URLQueryItem(name: "board", value: board),
+            URLQueryItem(name: "tail", value: String(min(max(1, tailBytes), 2_000_000)))
+        ]
+    }
+}
+
+struct KanbanAddCommentRequest: Equatable, Sendable {
+    let cardID: String
+    let board: String
+    let body: String
+
+    var queryItems: [URLQueryItem] {
+        [URLQueryItem(name: "board", value: board)]
+    }
+}
+
 struct KanbanEventsRequest: Equatable, Sendable {
     let board: String
     let since: Int
@@ -245,12 +277,26 @@ struct KanbanCard: Decodable, Equatable, Sendable {
     let commentCount: Int?
     let linkCounts: KanbanLinkCounts?
     let ageSeconds: Double?
+    let createdAt: String?
+    let updatedAt: String?
+    let workspaceKind: String?
+    let workspacePath: String?
+    let skills: [String]?
+    let maxRuntimeSeconds: Int?
+    let currentRunID: String?
+    let claimLock: String?
+    let claimExpires: String?
+    let workerID: String?
 
     enum CodingKeys: String, CodingKey {
         case cardID = "id"
         case title, body, tenant, priority, commentCount, linkCounts, ageSeconds
         case status
         case assignee
+        case createdAt, updatedAt, workspaceKind, workspacePath, skills, maxRuntimeSeconds
+        case currentRunID = "currentRunId"
+        case claimLock, claimExpires
+        case workerID = "workerPid"
     }
 
     init(from decoder: Decoder) throws {
@@ -265,6 +311,16 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         commentCount = container.decodeLossyIntIfPresent(forKey: .commentCount)
         linkCounts = try? container.decodeIfPresent(KanbanLinkCounts.self, forKey: .linkCounts)
         ageSeconds = container.decodeLossyDoubleIfPresent(forKey: .ageSeconds)
+        createdAt = container.decodeLossyStringIfPresent(forKey: .createdAt)
+        updatedAt = container.decodeLossyStringIfPresent(forKey: .updatedAt)
+        workspaceKind = container.decodeLossyStringIfPresent(forKey: .workspaceKind)
+        workspacePath = container.decodeLossyStringIfPresent(forKey: .workspacePath)
+        skills = try? container.decodeIfPresent([String].self, forKey: .skills)
+        maxRuntimeSeconds = container.decodeLossyIntIfPresent(forKey: .maxRuntimeSeconds)
+        currentRunID = container.decodeLossyStringIfPresent(forKey: .currentRunID)
+        claimLock = container.decodeLossyStringIfPresent(forKey: .claimLock)
+        claimExpires = container.decodeLossyStringIfPresent(forKey: .claimExpires)
+        workerID = container.decodeLossyStringIfPresent(forKey: .workerID)
     }
 
     var staleness: KanbanStaleness {
@@ -279,6 +335,218 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         default:
             return .none
         }
+    }
+}
+
+struct KanbanCardDetailEnvelope: Decodable, Equatable, Sendable {
+    let card: KanbanCard?
+    let comments: [KanbanComment]?
+    let events: [KanbanDetailEvent]?
+    let links: KanbanDependencyLinks?
+    let runs: [KanbanDispatchRun]?
+    let readOnly: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case card = "task"
+        case comments, events, links, runs, readOnly
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        card = try? container.decodeIfPresent(KanbanCard.self, forKey: .card)
+        comments = try? container.decodeIfPresent([KanbanComment].self, forKey: .comments)
+        events = try? container.decodeIfPresent([KanbanDetailEvent].self, forKey: .events)
+        links = try? container.decodeIfPresent(KanbanDependencyLinks.self, forKey: .links)
+        runs = try? container.decodeIfPresent([KanbanDispatchRun].self, forKey: .runs)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+struct KanbanComment: Decodable, Equatable, Sendable {
+    let commentID: String?
+    let cardID: String?
+    let author: String?
+    let body: String?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case commentID = "id"
+        case cardID = "taskId"
+        case author, body, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        commentID = container.decodeLossyStringIfPresent(forKey: .commentID)
+        cardID = container.decodeLossyStringIfPresent(forKey: .cardID)
+        author = container.decodeLossyStringIfPresent(forKey: .author)
+        body = container.decodeLossyStringIfPresent(forKey: .body)
+        createdAt = container.decodeLossyStringIfPresent(forKey: .createdAt)
+    }
+
+    var presentationID: String {
+        commentID ?? [cardID, author, createdAt, body].compactMap { $0 }.joined(separator: "|")
+    }
+}
+
+/// Detail events retain only the fields Hermex intentionally presents. Unknown
+/// payload keys are discarded so raw server payloads cannot reach diagnostics or
+/// generic error UI.
+struct KanbanDetailEvent: Decodable, Equatable, Sendable {
+    let eventID: String?
+    let cardID: String?
+    let runID: String?
+    let kind: String?
+    let createdAt: String?
+    let payload: KanbanDetailEventPayload?
+
+    enum CodingKeys: String, CodingKey {
+        case eventID = "id"
+        case cardID = "taskId"
+        case runID, kind, createdAt, payload
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eventID = container.decodeLossyStringIfPresent(forKey: .eventID)
+        cardID = container.decodeLossyStringIfPresent(forKey: .cardID)
+        runID = container.decodeLossyStringIfPresent(forKey: .runID)
+        kind = container.decodeLossyStringIfPresent(forKey: .kind)
+        createdAt = container.decodeLossyStringIfPresent(forKey: .createdAt)
+        payload = try? container.decodeIfPresent(KanbanDetailEventPayload.self, forKey: .payload)
+    }
+
+    var presentationID: String {
+        eventID ?? [cardID, runID, kind, createdAt].compactMap { $0 }.joined(separator: "|")
+    }
+}
+
+struct KanbanDetailEventPayload: Decodable, Equatable, Sendable {
+    let status: String?
+    let reason: String?
+    let summary: String?
+    let fields: [String]?
+
+    enum CodingKeys: String, CodingKey { case status, reason, summary, fields }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = container.decodeLossyStringIfPresent(forKey: .status)
+        reason = container.decodeLossyStringIfPresent(forKey: .reason)
+        summary = container.decodeLossyStringIfPresent(forKey: .summary)
+        fields = try? container.decodeIfPresent([String].self, forKey: .fields)
+    }
+}
+
+struct KanbanDependencyLinks: Decodable, Equatable, Sendable {
+    let prerequisites: [String]?
+    let dependents: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case prerequisites = "parents"
+        case dependents = "children"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prerequisites = try? container.decodeIfPresent([String].self, forKey: .prerequisites)
+        dependents = try? container.decodeIfPresent([String].self, forKey: .dependents)
+    }
+}
+
+struct KanbanDispatchRun: Decodable, Equatable, Sendable {
+    let runID: String?
+    let status: String?
+    let outcome: String?
+    let summary: String?
+    let error: String?
+    let startedAt: String?
+    let finishedAt: String?
+    let workerID: String?
+    let logTail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case runID = "id"
+        case alternateRunID = "runId"
+        case status, outcome, summary, error, startedAt, finishedAt
+        case workerID = "worker"
+        case logTail
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        runID = container.decodeLossyStringIfPresent(forKey: .runID)
+            ?? container.decodeLossyStringIfPresent(forKey: .alternateRunID)
+        status = container.decodeLossyStringIfPresent(forKey: .status)
+        outcome = container.decodeLossyStringIfPresent(forKey: .outcome)
+        summary = container.decodeLossyStringIfPresent(forKey: .summary)
+        error = container.decodeLossyStringIfPresent(forKey: .error)
+        startedAt = container.decodeLossyStringIfPresent(forKey: .startedAt)
+        finishedAt = container.decodeLossyStringIfPresent(forKey: .finishedAt)
+        workerID = container.decodeLossyStringIfPresent(forKey: .workerID)
+        logTail = container.decodeLossyStringIfPresent(forKey: .logTail)
+    }
+
+    var presentationID: String {
+        runID ?? [status, outcome, startedAt, finishedAt].compactMap { $0 }.joined(separator: "|")
+    }
+
+}
+
+struct KanbanWorkerLog: Decodable, Equatable, Sendable {
+    let cardID: String?
+    let exists: Bool?
+    let sizeBytes: Int?
+    let content: String?
+    let truncated: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case cardID = "taskId"
+        case exists, sizeBytes, content, truncated
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cardID = container.decodeLossyStringIfPresent(forKey: .cardID)
+        exists = container.decodeLossyBoolIfPresent(forKey: .exists)
+        sizeBytes = container.decodeLossyIntIfPresent(forKey: .sizeBytes)
+        content = container.decodeLossyStringIfPresent(forKey: .content)
+        truncated = container.decodeLossyBoolIfPresent(forKey: .truncated)
+        // The upstream `path` field is deliberately not retained.
+    }
+}
+
+struct KanbanAddCommentResponse: Decodable, Equatable, Sendable {
+    let ok: Bool?
+    let commentID: String?
+    let readOnly: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, readOnly
+        case commentID = "commentId"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = container.decodeLossyBoolIfPresent(forKey: .ok)
+        commentID = container.decodeLossyStringIfPresent(forKey: .commentID)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+enum KanbanCardDetailValidator {
+    static func validate(_ envelope: KanbanCardDetailEnvelope, requestedCardID: String) throws {
+        guard let cardID = normalized(envelope.card?.cardID), cardID == normalized(requestedCardID) else {
+            throw KanbanContractViolation.missingCardIdentity
+        }
+        guard normalized(envelope.card?.status?.rawValue) != nil else {
+            throw KanbanContractViolation.missingCardStatus
+        }
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

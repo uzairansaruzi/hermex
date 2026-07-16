@@ -107,4 +107,30 @@ final class LocalizationCatalogTests: XCTestCase {
             }
         }
     }
+
+    func testKanbanCardDetailCopyIsLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let detailKeys = [
+            "Card ID", "Comment", "Comment cannot be blank.", "Created", "Dependencies",
+            "Description", "Dispatch Runs", "Events", "Maximum Runtime", "Metadata",
+            "Operational History", "Operational Metadata", "Outcome Uncertain", "Priority",
+            "Run ID", "Updated", "Worker ID", "Worker Log",
+            "This Board no longer exists. Return to Kanban to choose another Board.",
+            "This Card no longer exists on this Board. The Board has been refreshed."
+        ]
+
+        for key in detailKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+            }
+        }
+    }
 }
