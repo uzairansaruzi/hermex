@@ -457,8 +457,6 @@ struct SessionInteractiveRow: View {
         } label: {
             SessionRowView(
                 session: session,
-                showsMessageCount: showsMessageCount,
-                showsWorkspace: showsWorkspace,
                 isViewingCachedData: viewModel.isViewingCachedData
             )
         }

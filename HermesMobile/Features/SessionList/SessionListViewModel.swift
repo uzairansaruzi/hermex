@@ -47,6 +47,13 @@ enum ActiveSessionStateRefreshResult: Equatable {
 final class SessionListViewModel {
     private(set) var sessions: [SessionSummary] = []
     private(set) var isLoading = false
+
+    /// True when the session list has finished loading and is genuinely empty
+    /// (no sessions, no cached data, no search). Used to auto-redirect to a
+    /// new chat on first launch or after deleting the last session.
+    var isEmpty: Bool {
+        !isLoading && sessions.isEmpty && !isViewingCachedData
+    }
     private(set) var isCreatingSession = false
     private(set) var isCreatingProject = false
     private(set) var isLoadingProjects = false

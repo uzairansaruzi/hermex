@@ -1170,7 +1170,7 @@ private struct PlainMarkdownFallbackView: View {
 
     var body: some View {
         Text(verbatim: content)
-            .font(.body)
+            .font(AppFont.body())
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)

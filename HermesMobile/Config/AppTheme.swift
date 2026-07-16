@@ -5,6 +5,13 @@ import UserNotifications
 import UIKit
 #endif
 
+/// ChatGPT-style light-gray canvas. Maps to `systemGroupedBackground`
+/// which is a warm light gray in light mode and a dark gray in dark mode.
+extension Color {
+    static let appCanvas = Color(.systemGroupedBackground)
+    static let appChatBubble = Color(.secondarySystemGroupedBackground)
+}
+
 enum AppTheme: String, CaseIterable, Identifiable {
     case system
     case light

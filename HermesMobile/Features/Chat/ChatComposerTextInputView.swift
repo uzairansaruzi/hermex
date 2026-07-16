@@ -77,7 +77,7 @@ private struct ComposerTextView: UIViewRepresentable {
         let textView = PastingTextView()
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
-        textView.font = .preferredFont(forTextStyle: .body)
+        textView.font = .systemFont(ofSize: 18)
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.textContainerInset = .zero

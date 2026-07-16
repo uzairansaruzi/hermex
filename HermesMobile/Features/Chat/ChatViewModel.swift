@@ -5720,4 +5720,18 @@ private final class SpeechSynthesizerDelegate: NSObject, AVSpeechSynthesizerDele
             onFinished(utteranceID)
         }
     }
+
+    // MARK: - Session actions
+
+    /// Archive or unarchive this session.
+    func setArchived(_ archived: Bool) async throws {
+        guard let sessionID else { return }
+        _ = try await client.archiveSession(id: sessionID, archived: archived)
+    }
+
+    /// Permanently delete this session from the server.
+    func deleteSession() async throws {
+        guard let sessionID else { return }
+        _ = try await client.deleteSession(id: sessionID)
+    }
 }

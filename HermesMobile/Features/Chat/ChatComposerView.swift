@@ -62,8 +62,8 @@ struct MessageComposerView: View {
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @ScaledMetric(relativeTo: .footnote) private var actionIconSize: CGFloat = 13
     @ScaledMetric(relativeTo: .footnote) private var actionButtonSize: CGFloat = 30
-    @ScaledMetric(relativeTo: .title3) private var plusIconSize: CGFloat = 24
-    @ScaledMetric(relativeTo: .title3) private var plusButtonSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .footnote) private var plusIconSize: CGFloat = 18
+    @ScaledMetric(relativeTo: .footnote) private var plusButtonSize: CGFloat = 26
 
     @Binding var draftMessage: String
     @Binding var isFocused: Bool
@@ -728,7 +728,7 @@ struct MessageComposerView: View {
     }
 
     private var metaControlFont: Font {
-        AppFont.footnote()
+        AppFont.control()
     }
 
     private var metaChevronFont: Font {
@@ -957,33 +957,18 @@ struct MessageComposerView: View {
             || isUpdatingConfiguration
     }
 
+    /// ChatGPT-style: solid dark/light circle, no theme-color tinting.
     private var actionButtonBackground: Color {
-        if PrimaryActionTintSettings.usesThemeColor(
-            isEnabled: tintsPrimaryActions,
-            controlIsEnabled: !isActionButtonDisabled
-        ) {
-            return HeaderLogoColor.color(for: headerLogoColorHex)
-        }
-
         if isActionButtonDisabled {
             return colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)
         }
-
         return colorScheme == .dark ? .white : .black
     }
 
     private var actionButtonForeground: Color {
-        if PrimaryActionTintSettings.usesThemeColor(
-            isEnabled: tintsPrimaryActions,
-            controlIsEnabled: !isActionButtonDisabled
-        ) {
-            return HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
-        }
-
         if isActionButtonDisabled {
             return Color(.secondaryLabel)
         }
-
         return colorScheme == .dark ? .black : .white
     }
 

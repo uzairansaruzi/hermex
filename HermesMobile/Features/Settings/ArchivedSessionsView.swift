@@ -98,9 +98,7 @@ struct ArchivedSessionsView: View {
                 openedSession = session
             } label: {
                 SessionRowView(
-                    session: session,
-                    showsMessageCount: showsSessionMessageCount,
-                    showsWorkspace: showsSessionWorkspace
+                    session: session
                 )
             }
             .buttonStyle(.plain)

@@ -7,6 +7,8 @@ struct MessageBubbleView: View {
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
 
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
     let loadAttachmentData: ((String) async -> Data?)?
@@ -197,16 +199,26 @@ struct MessageBubbleView: View {
 
     private var userBubble: some View {
         Text(verbatim: userBubbleText)
-            .font(.body)
+            .font(AppFont.userBody())
             .textSelection(.enabled)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(userBubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(userBubbleBackground, in: userBubbleShape)
             .foregroundStyle(userBubbleForeground)
             .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                userBubbleShape
                     .stroke(userBubbleBorder, lineWidth: 0.5)
             )
+    }
+
+    /// ChatGPT-style irregular bubble: fully rounded on the leading edge,
+    /// slightly squared on the trailing edge (the "tail" side).
+    private var userBubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeading: 20, bottomLeading: 20,
+            topTrailing: 8, bottomTrailing: 8,
+            style: .continuous
+        )
     }
 
     @ViewBuilder
@@ -348,7 +360,8 @@ struct MessageBubbleView: View {
     }
 
     private var userBubbleBackground: Color {
-        colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
+        HeaderLogoColor.color(for: headerLogoColorHex)
+            .opacity(colorScheme == .dark ? 0.2 : 0.12)
     }
 
     private var userBubbleForeground: Color {

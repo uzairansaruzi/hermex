@@ -194,6 +194,12 @@ struct SessionListView: View {
                 await refreshSessionsAndActiveProfile()
                 didCompleteInitialLoad = true
                 restoreLastSelectedSessionIfNeeded()
+
+                // No sessions yet → auto-open the new-chat composer so the
+                // user lands on an empty canvas instead of an empty list.
+                if viewModel.isEmpty {
+                    openNewChat()
+                }
             }
             .task(id: remoteSearchTaskID) {
                 await viewModel.searchSessions(query: searchText, content: true, depth: 5)
@@ -270,7 +276,7 @@ struct SessionListView: View {
 
     private var sessionListSurface: some View {
         ZStack(alignment: .bottomTrailing) {
-            Color(.systemBackground)
+            Color.appCanvas
                 .ignoresSafeArea()
 
             content
@@ -447,7 +453,7 @@ struct SessionListView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollPosition(id: $sidebarScrollPosition)
-        .background(Color(.systemBackground))
+        .background(Color.appCanvas)
         .scrollDismissesKeyboard(.interactively)
         // Disclosure subrows are real List rows; drive their fold from the List
         // so insert/remove animates. Value-based so it works with @AppStorage.
@@ -609,36 +615,23 @@ struct SessionListView: View {
         HapticButton(feedbackStyle: .medium) {
             openNewChat()
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "square.and.pencil")
-                    .font(.title3.weight(.semibold))
+            ZStack {
+                Circle()
+                    .fill(newSessionButtonSolidThemeFill ?? Color(.systemGray4))
+                    .frame(width: 56, height: 56)
+                    // ponytail: solid circle, no glass — simpler and matches ChatGPT.
 
-                Text("Chat")
-                    .font(.headline.weight(.semibold))
+                Image(systemName: "plus")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.white)
             }
-            .foregroundStyle(newSessionButtonForegroundColor)
-            .padding(.horizontal, 22)
-            .frame(height: 58)
-            // Lock the hit region to the visible capsule so taps in the padding,
-            // rounded ends, and icon↔text gap start a new chat instead of falling
-            // through to the session row behind the FAB (issue #242).
-            .contentShape(Capsule())
-            .background {
-                if let fill = newSessionButtonSolidThemeFill {
-                    Capsule().fill(fill)
-                }
-            }
-            .sessionsChromeGlass(
-                isInteractive: true,
-                tint: newSessionButtonGlassTint,
-                fallbackMaterial: .regularMaterial,
-                in: Capsule()
-            )
+            .contentShape(Circle())
         }
-        .buttonStyle(SessionListFloatingChatButtonStyle())
+        .buttonStyle(.plain)
+        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 4)
         .disabled(viewModel.isViewingCachedData || navigationState.isCreatingNewChat)
         .opacity(viewModel.isViewingCachedData ? 0.45 : 1)
-        .accessibilityLabel("New Session")
+        .accessibilityLabel("New Chat")
     }
 
     private var visibleSessions: [SessionSummary] {
@@ -1352,7 +1345,7 @@ private struct PendingNewChatView: View {
 
     private var pendingContent: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground)
+            Color.appCanvas
                 .ignoresSafeArea()
 
             ContentUnavailableView {

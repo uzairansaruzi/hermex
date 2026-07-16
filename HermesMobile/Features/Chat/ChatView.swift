@@ -521,6 +521,8 @@ struct ChatView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            Color.appCanvas
+                .ignoresSafeArea()
             VStack(spacing: 0) {
                 if viewModel.isViewingCachedData {
                     ChatOfflineCacheBanner()
@@ -632,28 +634,53 @@ struct ChatView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    ChatToolbarActionCluster {
+                    Menu {
                         if viewModel.hasActivatedGoalCommand {
-                            ChatToolbarActionSlot {
+                            Section("Goal") {
                                 goalControlMenu
                             }
                         }
 
-                        ChatToolbarActionSlot {
+                        Section("Tools") {
                             NavigationLink {
                                 FileBrowserView(session: session, server: server, onAPIError: onAPIError)
                             } label: {
                                 Label("Files", systemImage: "folder")
                             }
                             .disabled(viewModel.isViewingCachedData)
-                            .accessibilityLabel("Files")
-                        }
 
-                        if gitAvailabilityViewModel.hasRepository {
-                            ChatToolbarActionSlot {
+                            if gitAvailabilityViewModel.hasRepository {
                                 gitActionsMenu
                             }
                         }
+
+                        Section("Session") {
+                            Button(role: .destructive) {
+                                Task {
+                                    do {
+                                        try await viewModel.setArchived(true)
+                                        dismiss()
+                                    } catch {}
+                                }
+                            } label: {
+                                Label("Archive", systemImage: "archivebox")
+                            }
+
+                            Button(role: .destructive) {
+                                Task {
+                                    do {
+                                        try await viewModel.deleteSession()
+                                        dismiss()
+                                    } catch {}
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

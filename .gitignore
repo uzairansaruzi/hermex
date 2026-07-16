@@ -19,43 +19,5 @@ Package.resolved
 .env.local
 .env.*.local
 
-# Per-machine signing overrides (see CONTRIBUTING.md)
-Config/Local.xcconfig
-
-# Local reference material
-UPDATES.md
-.obsidian/
-
-# Local agent tooling (per-machine caches, skills, session state)
-node_modules/
-.codex-tmp/
-.agents/
-.sc/
-.claude/
-.codex/
-.cursor/
-
-# App packaging
-*.ipa
-*.dSYM.zip
-*.dSYM
-
-# Fastlane
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output/
-
-# Pi tooling artifacts (review outputs, fix plans, etc.)
-.pi/
-
-# Editor swap/temp files
-*.swp
-*.swo
-*~
-
-# Retired per-session progress log (removed in #224; history lives in git log / merged PRs)
-/PROGRESS.md
-
-# Local session-handoff state (read at session start, overwritten at wrap-up; not tracked)
-/CURRENT.md
+# Local references (design assets, screenshots - not part of the build)
+.reference/
