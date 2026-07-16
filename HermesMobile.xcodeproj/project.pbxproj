@@ -276,6 +276,9 @@
 		C15100000000000000000005 /* KanbanLiveUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15100000000000000000006 /* KanbanLiveUpdateTests.swift */; };
 		C15400000000000000000001 /* KanbanCardDetailState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15400000000000000000002 /* KanbanCardDetailState.swift */; };
 		C15400000000000000000003 /* KanbanCardDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15400000000000000000004 /* KanbanCardDetailView.swift */; };
+		C15300000000000000000001 /* KanbanCardEditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15300000000000000000002 /* KanbanCardEditorState.swift */; };
+		C15300000000000000000003 /* KanbanCardEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15300000000000000000004 /* KanbanCardEditorView.swift */; };
+		C15300000000000000000005 /* KanbanCardEditorStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15300000000000000000006 /* KanbanCardEditorStateTests.swift */; };
 		C15400000000000000000005 /* KanbanCardDetailStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15400000000000000000006 /* KanbanCardDetailStateTests.swift */; };
 		C21300000000000000000007 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = C21300000000000000000008 /* MarkdownUI */; };
 		B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */; };
@@ -635,6 +638,9 @@
 		C15100000000000000000006 /* KanbanLiveUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanLiveUpdateTests.swift; sourceTree = "<group>"; };
 		C15400000000000000000002 /* KanbanCardDetailState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanCardDetailState.swift; sourceTree = "<group>"; };
 		C15400000000000000000004 /* KanbanCardDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanCardDetailView.swift; sourceTree = "<group>"; };
+		C15300000000000000000002 /* KanbanCardEditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanCardEditorState.swift; sourceTree = "<group>"; };
+		C15300000000000000000004 /* KanbanCardEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanCardEditorView.swift; sourceTree = "<group>"; };
+		C15300000000000000000006 /* KanbanCardEditorStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanCardEditorStateTests.swift; sourceTree = "<group>"; };
 		C15400000000000000000006 /* KanbanCardDetailStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanCardDetailStateTests.swift; sourceTree = "<group>"; };
 		B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkerMessageClassifierTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000017 /* HermesShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HermesShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -806,6 +812,7 @@
 				C15100000000000000000004 /* KanbanEventStreamClientTests.swift */,
 				C15100000000000000000006 /* KanbanLiveUpdateTests.swift */,
 				C15400000000000000000006 /* KanbanCardDetailStateTests.swift */,
+				C15300000000000000000006 /* KanbanCardEditorStateTests.swift */,
 				C1A042000000000000000006 /* ClarificationTests.swift */,
 				1A2B3C4D5E6F7000000000F4 /* CacheStoreTests.swift */,
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
@@ -955,6 +962,8 @@
 				C14900000000000000000008 /* KanbanLabView.swift */,
 				C15400000000000000000002 /* KanbanCardDetailState.swift */,
 				C15400000000000000000004 /* KanbanCardDetailView.swift */,
+				C15300000000000000000002 /* KanbanCardEditorState.swift */,
+				C15300000000000000000004 /* KanbanCardEditorView.swift */,
 			);
 			path = Kanban;
 			sourceTree = "<group>";
@@ -1453,6 +1462,8 @@
 				C14900000000000000000007 /* KanbanLabView.swift in Sources */,
 				C15400000000000000000001 /* KanbanCardDetailState.swift in Sources */,
 				C15400000000000000000003 /* KanbanCardDetailView.swift in Sources */,
+				C15300000000000000000001 /* KanbanCardEditorState.swift in Sources */,
+				C15300000000000000000003 /* KanbanCardEditorView.swift in Sources */,
 				1A2B3C4D5E6F7000000000A8 /* Endpoints.swift in Sources */,
 				C03250000000000000B101 /* TranscribeResponse.swift in Sources */,
 				C03250000000000000B102 /* APIClient+Transcribe.swift in Sources */,
@@ -1666,6 +1677,7 @@
 				C15100000000000000000003 /* KanbanEventStreamClientTests.swift in Sources */,
 				C15100000000000000000005 /* KanbanLiveUpdateTests.swift in Sources */,
 				C15400000000000000000005 /* KanbanCardDetailStateTests.swift in Sources */,
+				C15300000000000000000005 /* KanbanCardEditorStateTests.swift in Sources */,
 				C1A042000000000000000005 /* ClarificationTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000F2 /* CacheStoreTests.swift in Sources */,
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,

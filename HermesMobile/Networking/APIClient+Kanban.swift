@@ -10,6 +10,8 @@ protocol KanbanDataClient: Sendable {
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope
     func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) async throws -> KanbanWorkerLog
     func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse
+    func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope
+    func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope
 }
 
 extension KanbanDataClient {
@@ -24,12 +26,22 @@ extension KanbanDataClient {
     func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse {
         throw KanbanUnsupportedClientMethod.addComment
     }
+
+    func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.createCard
+    }
+
+    func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.editCard
+    }
 }
 
 private enum KanbanUnsupportedClientMethod: Error {
     case cardDetail
     case workerLog
     case addComment
+    case createCard
+    case editCard
 }
 
 extension APIClient: KanbanDataClient {
@@ -73,6 +85,22 @@ extension APIClient: KanbanDataClient {
         )
     }
 
+    func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanCreateCard(request),
+            method: "POST",
+            body: KanbanCreateCardBody(request: request)
+        )
+    }
+
+    func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanEditCard(request),
+            method: "PATCH",
+            body: KanbanEditCardBody(request: request)
+        )
+    }
+
     nonisolated func kanbanEventsStreamURL(_ request: KanbanEventsStreamRequest) -> URL {
         Endpoint.kanbanEventsStream(request).url(relativeTo: baseURL)
     }
@@ -113,4 +141,60 @@ extension APIClient: KanbanDataClient {
 
 private struct KanbanCommentBody: Encodable {
     let body: String
+}
+
+private struct KanbanCreateCardBody: Encodable {
+    let title: String
+    let body: String?
+    let status: String
+    let priority: Int?
+    let assignee: String?
+    let tenant: String?
+    let workspaceKind: String
+    let workspacePath: String?
+    let skills: [String]?
+    let maxRuntimeSeconds: Int?
+    let parents: [String]?
+    let idempotencyKey: String
+
+    init(request: KanbanCreateCardRequest) {
+        title = request.title
+        body = request.body
+        status = request.status
+        priority = request.priority
+        assignee = request.assignee
+        tenant = request.tenant
+        workspaceKind = request.workspaceKind
+        workspacePath = request.workspacePath
+        skills = request.skills
+        maxRuntimeSeconds = request.maxRuntimeSeconds
+        parents = request.prerequisiteID.map { [$0] }
+        idempotencyKey = request.idempotencyKey
+    }
+}
+
+private struct KanbanEditCardBody: Encodable {
+    let request: KanbanEditCardRequest
+
+    enum CodingKeys: String, CodingKey {
+        case title, body, tenant, priority, assignee, status
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(request.title, forKey: .title)
+        try container.encode(request.body, forKey: .body)
+        try container.encode(request.priority, forKey: .priority)
+        if let tenant = request.tenant {
+            try container.encode(tenant, forKey: .tenant)
+        } else {
+            try container.encodeNil(forKey: .tenant)
+        }
+        if let assignee = request.assignee {
+            try container.encode(assignee, forKey: .assignee)
+        } else {
+            try container.encodeNil(forKey: .assignee)
+        }
+        try container.encodeIfPresent(request.status, forKey: .status)
+    }
 }

@@ -103,6 +103,8 @@ enum Endpoint {
     case kanbanCardDetail(KanbanCardDetailRequest)
     case kanbanWorkerLog(KanbanWorkerLogRequest)
     case kanbanAddComment(KanbanAddCommentRequest)
+    case kanbanCreateCard(KanbanCreateCardRequest)
+    case kanbanEditCard(KanbanEditCardRequest)
     case memory
     case memoryWrite
     case skills
@@ -318,6 +320,10 @@ enum Endpoint {
             return "/api/kanban/tasks/\(request.cardID)/log"
         case let .kanbanAddComment(request):
             return "/api/kanban/tasks/\(request.cardID)/comments"
+        case .kanbanCreateCard:
+            return "/api/kanban/tasks"
+        case let .kanbanEditCard(request):
+            return "/api/kanban/tasks/\(request.cardID)"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -452,6 +458,10 @@ enum Endpoint {
             return request.queryItems
         case let .kanbanAddComment(request):
             return request.queryItems
+        case let .kanbanCreateCard(request):
+            return request.queryItems
+        case let .kanbanEditCard(request):
+            return request.queryItems
         case let .reasoning(model, provider):
             var items: [URLQueryItem] = []
             if let model, !model.isEmpty {
@@ -483,6 +493,8 @@ enum Endpoint {
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/log")
         case let .kanbanAddComment(request):
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/comments")
+        case let .kanbanEditCard(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID)
         default:
             url = baseURL.appending(path: path)
         }

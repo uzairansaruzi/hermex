@@ -133,4 +133,28 @@ final class LocalizationCatalogTests: XCTestCase {
             }
         }
     }
+
+    func testKanbanCardEditorCopyIsLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let editorKeys = [
+            "Edit Card", "New Card", "Title", "Title is required.", "Assignment", "Execution",
+            "Prerequisite", "Create Ready, Unassigned Card?", "Reload Server Version",
+            "Review and Overwrite", "This Card changed on the server after the editor opened. Your draft has been preserved.",
+            "Workspace, Skills, Maximum Runtime, and Prerequisite are set when the Card is created and cannot be edited here."
+        ]
+
+        for key in editorKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+            }
+        }
+    }
 }

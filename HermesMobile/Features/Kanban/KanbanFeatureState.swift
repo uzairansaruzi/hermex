@@ -115,6 +115,12 @@ final class KanbanFeatureState {
             && selectedBoard?.readOnly != true
     }
 
+    var canMutateCards: Bool {
+        canAddComments
+            && report?.warnings.isEmpty == true
+            && Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+    }
+
     var selectedBoard: KanbanBoard? {
         guard let selectedBoardSlug else { return nil }
         return boards.first { normalized($0.slug) == selectedBoardSlug }
@@ -355,6 +361,40 @@ final class KanbanFeatureState {
             client: client,
             onAPIError: onAPIError
         )
+    }
+
+    func makeCreateCardEditorState() -> KanbanCardEditorState? {
+        guard let board = selectedBoardSlug else { return nil }
+        return KanbanCardEditorState(
+            mode: .create,
+            board: board,
+            client: client,
+            profileOptions: profileOptions,
+            tenantOptions: tenantOptions,
+            prerequisiteOptions: allCards.filter { $0.cardID != nil },
+            baselineCards: allCards
+        )
+    }
+
+    func makeEditCardEditorState(detail: KanbanCardDetailEnvelope) -> KanbanCardEditorState? {
+        guard let board = selectedBoardSlug,
+              let card = detail.card,
+              let cardID = normalized(card.cardID) else { return nil }
+        return KanbanCardEditorState(
+            mode: .edit(cardID: cardID),
+            board: board,
+            client: client,
+            card: card,
+            prerequisiteID: detail.links?.prerequisites?.first,
+            profileOptions: profileOptions,
+            tenantOptions: tenantOptions,
+            prerequisiteOptions: allCards.filter { $0.cardID != nil && $0.cardID != cardID },
+            baselineCards: allCards
+        )
+    }
+
+    func reconcileAfterCardMutation() async {
+        _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
     }
 
     private var searchMatchedCards: [KanbanCard] {

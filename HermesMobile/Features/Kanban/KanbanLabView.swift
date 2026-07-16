@@ -5,6 +5,7 @@ struct KanbanStatusFocusView: View {
     @Bindable var model: KanbanFeatureState
     @State private var showsFilters = false
     @State private var visibleModel: KanbanFeatureState?
+    @State private var cardEditor: KanbanCardEditorState?
 
     var body: some View {
         Group {
@@ -45,6 +46,13 @@ struct KanbanStatusFocusView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $showsFilters) {
             KanbanFiltersView(model: model)
+        }
+        .sheet(item: $cardEditor) { editor in
+            KanbanCardEditorView(
+                state: editor,
+                allowsMutation: model.canMutateCards,
+                onSaved: { await model.reconcileAfterCardMutation() }
+            )
         }
         .onAppear { activateCurrentModel() }
         .onDisappear {
@@ -285,6 +293,15 @@ struct KanbanStatusFocusView: View {
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                cardEditor = model.makeCreateCardEditorState()
+            } label: {
+                Image(systemName: "plus")
+            }
+            .disabled(!model.canMutateCards)
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel(Text("New Card"))
+
             Button {
                 model.groupByProfile.toggle()
             } label: {

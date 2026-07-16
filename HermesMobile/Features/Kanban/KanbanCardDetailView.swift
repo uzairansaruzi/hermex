@@ -26,6 +26,7 @@ private struct KanbanCardDetailContent: View {
     let featureModel: KanbanFeatureState
     @Bindable var state: KanbanCardDetailState
     @State private var showsOperationalHistory = false
+    @State private var cardEditor: KanbanCardEditorState?
     @FocusState private var commentFieldIsFocused: Bool
 
     var body: some View {
@@ -64,6 +65,25 @@ private struct KanbanCardDetailContent: View {
             if submission == .validationFailed || submission == .failed {
                 commentFieldIsFocused = true
             }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") {
+                    guard let detail = state.detail else { return }
+                    cardEditor = featureModel.makeEditCardEditorState(detail: detail)
+                }
+                .disabled(!featureModel.canMutateCards || state.loadState != .loaded)
+            }
+        }
+        .sheet(item: $cardEditor) { editor in
+            KanbanCardEditorView(
+                state: editor,
+                allowsMutation: featureModel.canMutateCards,
+                onSaved: {
+                    await featureModel.reconcileAfterCardMutation()
+                    await state.refresh()
+                }
+            )
         }
     }
 

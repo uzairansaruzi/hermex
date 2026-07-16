@@ -1,5 +1,40 @@
 import Foundation
 
+struct KanbanCreateCardRequest: Equatable, Sendable {
+    let board: String
+    let title: String
+    let body: String?
+    let status: String
+    let priority: Int?
+    let assignee: String?
+    let tenant: String?
+    let workspaceKind: String
+    let workspacePath: String?
+    let skills: [String]?
+    let maxRuntimeSeconds: Int?
+    let prerequisiteID: String?
+    let idempotencyKey: String
+
+    var queryItems: [URLQueryItem] {
+        [URLQueryItem(name: "board", value: board)]
+    }
+}
+
+struct KanbanEditCardRequest: Equatable, Sendable {
+    let cardID: String
+    let board: String
+    let title: String
+    let body: String
+    let tenant: String?
+    let priority: Int
+    let assignee: String?
+    let status: String?
+
+    var queryItems: [URLQueryItem] {
+        [URLQueryItem(name: "board", value: board)]
+    }
+}
+
 struct KanbanCardDetailRequest: Equatable, Sendable {
     let cardID: String
     let board: String
@@ -359,6 +394,41 @@ struct KanbanCardDetailEnvelope: Decodable, Equatable, Sendable {
         links = try? container.decodeIfPresent(KanbanDependencyLinks.self, forKey: .links)
         runs = try? container.decodeIfPresent([KanbanDispatchRun].self, forKey: .runs)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+struct KanbanCardMutationEnvelope: Decodable, Equatable, Sendable {
+    let card: KanbanCard?
+    let readOnly: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case card = "task"
+        case readOnly
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        card = try? container.decodeIfPresent(KanbanCard.self, forKey: .card)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+enum KanbanCardMutationValidator {
+    static func validate(_ envelope: KanbanCardMutationEnvelope, expectedCardID: String? = nil) throws -> KanbanCard {
+        guard let card = envelope.card,
+              let cardID = normalized(card.cardID),
+              normalized(card.status?.rawValue) != nil else {
+            throw KanbanContractViolation.missingCardIdentity
+        }
+        if let expectedCardID, cardID != normalized(expectedCardID) {
+            throw KanbanContractViolation.missingCardIdentity
+        }
+        return card
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

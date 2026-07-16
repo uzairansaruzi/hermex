@@ -143,6 +143,14 @@ final class APIClientKanbanTests: APIClientTestCase {
                 .kanbanAddComment(KanbanAddCommentRequest(cardID: cardID, board: "main", body: "test")),
                 "/comments",
                 [URLQueryItem(name: "board", value: "main")]
+            ),
+            (
+                .kanbanEditCard(KanbanEditCardRequest(
+                    cardID: cardID, board: "main", title: "Edit", body: "", tenant: nil,
+                    priority: 0, assignee: nil, status: nil
+                )),
+                "",
+                [URLQueryItem(name: "board", value: "main")]
             )
         ]
 
@@ -203,6 +211,104 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(log.content, "tail")
         XCTAssertEqual(log.truncated, true)
         XCTAssertEqual(comment.commentID, "42")
+    }
+
+    func testCreateAndEditUseExactVerifiedAsymmetricBodies() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "release board")])
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Origin"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+            if requestIndex == 0 {
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks")
+                XCTAssertEqual(Set(body.keys), [
+                    "title", "body", "status", "priority", "assignee", "tenant",
+                    "workspace_kind", "workspace_path", "skills", "max_runtime_seconds",
+                    "parents", "idempotency_key"
+                ])
+                XCTAssertEqual(body["title"] as? String, "Native editor")
+                XCTAssertEqual(body["status"] as? String, "ready")
+                XCTAssertEqual(body["workspace_kind"] as? String, "worktree")
+                XCTAssertEqual(body["parents"] as? [String], ["CARD-0"])
+                XCTAssertEqual(body["idempotency_key"] as? String, "intent-153")
+                return apiTestJSONResponse(
+                    #"{"task":{"id":"CARD-153","title":"Native editor","body":"Complete","status":"ready","priority":4,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900},"read_only":false,"future":true}"#,
+                    for: request
+                )
+            }
+
+            XCTAssertEqual(request.httpMethod, "PATCH")
+            XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-153")
+            XCTAssertEqual(Set(body.keys), ["title", "body", "tenant", "priority", "assignee", "status"])
+            XCTAssertTrue(body["assignee"] is NSNull)
+            XCTAssertTrue(body["tenant"] is NSNull)
+            XCTAssertNil(body["workspace_kind"])
+            XCTAssertNil(body["idempotency_key"])
+            return apiTestJSONResponse(
+                #"{"task":{"id":"CARD-153","title":"Edited","body":"","status":"todo","priority":0},"read_only":false}"#,
+                for: request
+            )
+        }
+
+        let created = try await client.createKanbanCard(KanbanCreateCardRequest(
+            board: "release board",
+            title: "Native editor",
+            body: "Complete",
+            status: "ready",
+            priority: 4,
+            assignee: "builder",
+            tenant: "mobile",
+            workspaceKind: "worktree",
+            workspacePath: "/workspace",
+            skills: ["swift"],
+            maxRuntimeSeconds: 900,
+            prerequisiteID: "CARD-0",
+            idempotencyKey: "intent-153"
+        ))
+        let edited = try await client.editKanbanCard(KanbanEditCardRequest(
+            cardID: "CARD-153",
+            board: "release board",
+            title: "Edited",
+            body: "",
+            tenant: nil,
+            priority: 0,
+            assignee: nil,
+            status: "todo"
+        ))
+
+        XCTAssertEqual(created.card?.cardID, "CARD-153")
+        XCTAssertEqual(edited.card?.title, "Edited")
+    }
+
+    func testCreateOmitsUnsetOptionalFieldsAndMutationValidationRejectsMalformedIdentity() async throws {
+        let client = makeClient { request in
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(Set(body.keys), ["title", "status", "workspace_kind", "idempotency_key"])
+            return apiTestJSONResponse(#"{"task":{"id":"CARD-1","status":"triage"},"unknown":true}"#, for: request)
+        }
+        let envelope = try await client.createKanbanCard(KanbanCreateCardRequest(
+            board: "main", title: "Minimal", body: nil, status: "triage", priority: nil,
+            assignee: nil, tenant: nil, workspaceKind: "scratch", workspacePath: nil,
+            skills: nil, maxRuntimeSeconds: nil, prerequisiteID: nil, idempotencyKey: "same-key"
+        ))
+        XCTAssertEqual(try KanbanCardMutationValidator.validate(envelope).cardID, "CARD-1")
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let malformed = try decoder.decode(
+            KanbanCardMutationEnvelope.self,
+            from: Data(#"{"task":{"title":"missing identity","status":"ready"}}"#.utf8)
+        )
+        XCTAssertThrowsError(try KanbanCardMutationValidator.validate(malformed))
     }
 
     func testCardDetailDecodesExpandedAndMinimalEnvelopesTolerantly() throws {

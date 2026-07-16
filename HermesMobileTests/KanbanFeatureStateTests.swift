@@ -38,6 +38,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         // explicit writable envelope values.
         XCTAssertNil(writable.selectedBoard?.readOnly)
         XCTAssertTrue(writable.canAddComments)
+        XCTAssertTrue(writable.canMutateCards)
 
         let explicitReadOnly = KanbanFeatureState(
             server: URL(string: "https://example.test")!,
@@ -46,6 +47,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await explicitReadOnly.load()
         XCTAssertEqual(explicitReadOnly.selectedBoard?.readOnly, true)
         XCTAssertFalse(explicitReadOnly.canAddComments)
+        XCTAssertFalse(explicitReadOnly.canMutateCards)
     }
 
     func testAuthenticationForwardsToExistingHandler() async {
