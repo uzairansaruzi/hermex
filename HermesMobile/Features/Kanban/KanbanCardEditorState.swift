@@ -156,13 +156,9 @@ final class KanbanCardEditorState: Identifiable {
                 }
             } catch {
                 guard isCurrent(attemptID) else { return }
-                if isDefinitiveWriteFailure(error) {
-                    submission = .failed
-                    activeAttemptID = nil
-                    return
-                }
-                // A failed preflight cannot prove the draft is safe to write.
-                submission = .outcomeUncertain
+                // No mutation has been attempted, so this is a read failure,
+                // never an uncertain write outcome.
+                submission = .failed
                 activeAttemptID = nil
                 return
             }
@@ -340,12 +336,15 @@ final class KanbanCardEditorState: Identifiable {
     }
 
     private func intendedValuesAppear(in card: KanbanCard) -> Bool {
+        let statusMatches = isEditing && status == statusAtOpen
+            ? true
+            : card.status?.rawValue == status
         guard normalized(card.title) == normalized(title),
               normalized(card.body) == normalized(body),
               normalized(card.assignee) == normalized(assignee),
               normalized(card.tenant) == normalized(tenant),
               (card.priority ?? 0) == (Int(priorityText) ?? 0),
-              card.status?.rawValue == expectedStatus else {
+              statusMatches else {
             return false
         }
         guard !isEditing else { return true }
@@ -353,13 +352,6 @@ final class KanbanCardEditorState: Identifiable {
             && normalized(card.workspacePath) == normalized(workspacePath)
             && (card.skills ?? []) == (parsedSkills ?? [])
             && card.maxRuntimeSeconds == Int(maximumRuntimeText)
-    }
-
-    private var expectedStatus: String {
-        if isEditing, status == statusAtOpen {
-            return baselineCard?.status?.rawValue ?? status
-        }
-        return status
     }
 
     private func hasRemoteChange(_ card: KanbanCard) -> Bool {

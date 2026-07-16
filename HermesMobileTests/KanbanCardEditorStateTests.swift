@@ -140,6 +140,38 @@ final class KanbanCardEditorStateTests: XCTestCase {
         XCTAssertEqual(reload.title, "Changed remotely")
     }
 
+    func testPreflightReadFailureIsNotReportedAsUncertainWrite() async {
+        let client = CardEditorClient(detailResults: [
+            .failure(APIError.network(underlying: URLError(.notConnectedToInternet)))
+        ])
+        let state = makeEditState(client: client)
+        state.title = "Draft"
+
+        await state.save(allowsMutation: true)
+
+        XCTAssertEqual(state.submission, .failed)
+        let calls = await client.editCallCount
+        XCTAssertEqual(calls, 0)
+    }
+
+    func testConflictOverwriteAcceptsServerStatusWhenDraftDidNotChangeStatus() async {
+        let client = CardEditorClient(
+            editResults: [.success(.overwrittenRunning)],
+            detailResults: [.success(.remoteChangedRunning)]
+        )
+        let state = makeEditState(client: client)
+        state.title = "My local draft"
+
+        await state.save(allowsMutation: true)
+        XCTAssertEqual(state.submission, .conflict)
+        XCTAssertEqual(state.remoteCard?.status?.rawValue, "running")
+
+        await state.save(allowsMutation: true, overwriteConflict: true)
+        XCTAssertEqual(state.submission, .succeeded(cardID: "CARD-1"))
+        let request = await client.lastEditRequest
+        XCTAssertNil(request?.status)
+    }
+
     func testAmbiguousEditReconcilesCanonicalResultAndPreservesCreateOnlyFields() async {
         let lost = APIError.network(underlying: URLError(.cancelled))
         let client = CardEditorClient(
@@ -334,6 +366,7 @@ private extension KanbanCardDetailEnvelope {
     static let remoteChanged: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Changed remotely","body":"Body","status":"ready","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900}}"#)
     static let edited: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Edited","body":"Body","status":"ready","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900}}"#)
     static let runningBaseline: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Original","body":"Body","status":"running","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"scratch"}}"#)
+    static let remoteChangedRunning: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Changed remotely","body":"Body","status":"running","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900}}"#)
 }
 
 private extension KanbanCardMutationEnvelope {
@@ -341,6 +374,7 @@ private extension KanbanCardMutationEnvelope {
     static let createdReady: KanbanCardMutationEnvelope = decode(#"{"task":{"id":"CARD-153","title":"Ready work","status":"ready","priority":0,"workspace_kind":"scratch"},"read_only":false}"#)
     static let overwritten: KanbanCardMutationEnvelope = decode(#"{"task":{"id":"CARD-1","title":"My local draft","body":"Body","status":"ready","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900},"read_only":false}"#)
     static let runningEdited: KanbanCardMutationEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Edited while running","body":"Body","status":"running","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"scratch"},"read_only":false}"#)
+    static let overwrittenRunning: KanbanCardMutationEnvelope = decode(#"{"task":{"id":"CARD-1","title":"My local draft","body":"Body","status":"running","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900},"read_only":false}"#)
 }
 
 private extension KanbanBoardSnapshot {
