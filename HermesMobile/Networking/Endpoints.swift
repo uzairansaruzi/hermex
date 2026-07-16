@@ -475,7 +475,17 @@ enum Endpoint {
     }
 
     func url(relativeTo baseURL: URL) -> URL {
-        let url = baseURL.appending(path: path)
+        let url: URL
+        switch self {
+        case let .kanbanCardDetail(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID)
+        case let .kanbanWorkerLog(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/log")
+        case let .kanbanAddComment(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/comments")
+        default:
+            url = baseURL.appending(path: path)
+        }
         guard !queryItems.isEmpty else {
             return url
         }
@@ -484,4 +494,21 @@ enum Endpoint {
         components?.queryItems = queryItems
         return components?.url ?? url
     }
+
+    private func kanbanTaskURL(relativeTo baseURL: URL, cardID: String, suffix: String = "") -> URL {
+        let root = baseURL.appending(path: "/api/kanban/tasks")
+        guard var components = URLComponents(url: root, resolvingAgainstBaseURL: false),
+              let encodedCardID = cardID.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentAllowed)
+        else {
+            return root
+        }
+        components.percentEncodedPath += "/\(encodedCardID)\(suffix)"
+        return components.url ?? root
+    }
+
+    /// RFC 3986 unreserved characters minus `.`. Encoding dots as well keeps
+    /// the special `.` and `..` path segments inert while preserving the exact
+    /// Card identity after the server decodes the segment.
+    private static let pathSegmentAllowed = CharacterSet.alphanumerics
+        .union(CharacterSet(charactersIn: "-_~"))
 }

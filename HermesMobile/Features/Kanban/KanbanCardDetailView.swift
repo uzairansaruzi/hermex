@@ -14,11 +14,7 @@ struct KanbanCardDetailView: View {
             if let state {
                 KanbanCardDetailContent(featureModel: featureModel, state: state)
             } else {
-                ContentUnavailableView(
-                    "Unavailable",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text("Try Again")
-                )
+                ContentUnavailableView("Unavailable", systemImage: "exclamationmark.triangle")
             }
         }
         .navigationTitle(state?.detail?.card?.title ?? String(localized: "Loading"))
@@ -228,24 +224,20 @@ private struct KanbanCardDetailContent: View {
         Section("Dependencies") {
             dependencyGroup(
                 title: KanbanCountFormatter.prerequisites(state.detail?.links?.prerequisites?.count ?? 0),
-                emptyTitle: KanbanCountFormatter.prerequisites(0),
                 ids: state.detail?.links?.prerequisites ?? []
             )
             dependencyGroup(
                 title: KanbanCountFormatter.dependents(state.detail?.links?.dependents?.count ?? 0),
-                emptyTitle: KanbanCountFormatter.dependents(0),
                 ids: state.detail?.links?.dependents ?? []
             )
         }
     }
 
     @ViewBuilder
-    private func dependencyGroup(title: String, emptyTitle: String, ids: [String]) -> some View {
+    private func dependencyGroup(title: String, ids: [String]) -> some View {
         VStack(alignment: .leading) {
             Text(title).font(.headline)
-            if ids.isEmpty {
-                Text(emptyTitle).foregroundStyle(.secondary)
-            } else {
+            if !ids.isEmpty {
                 ForEach(ids, id: \.self) { id in
                     Text(verbatim: id)
                         .font(.body.monospaced())

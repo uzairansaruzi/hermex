@@ -26,6 +26,28 @@ final class KanbanFeatureStateTests: XCTestCase {
         ])
     }
 
+    func testCommentCapabilityUsesEnvelopePermissionAndHonorsExplicitBoardReadOnly() async {
+        let writable = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: KanbanClientStub()
+        )
+        await writable.load()
+
+        // The verified Boards contract carries read_only on the envelope, not
+        // each Board entry. A missing per-Board value must not override three
+        // explicit writable envelope values.
+        XCTAssertNil(writable.selectedBoard?.readOnly)
+        XCTAssertTrue(writable.canAddComments)
+
+        let explicitReadOnly = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: KanbanClientStub(boardsResult: .success(KanbanFixtures.readOnlyBoard))
+        )
+        await explicitReadOnly.load()
+        XCTAssertEqual(explicitReadOnly.selectedBoard?.readOnly, true)
+        XCTAssertFalse(explicitReadOnly.canAddComments)
+    }
+
     func testAuthenticationForwardsToExistingHandler() async {
         let client = KanbanClientStub(configurationResult: .failure(APIError.unauthorized))
         var forwardedErrors: [Error] = []
@@ -417,6 +439,7 @@ private actor MissingChangedRefreshClient: KanbanDataClient {
 private enum KanbanFixtures {
     static let configuration = decode(KanbanConfiguration.self, #"{"columns":["triage","todo","ready","running","blocked","done"],"read_only":false}"#)
     static let boards = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#)
+    static let readOnlyBoard = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main","read_only":true}],"current":"main","read_only":false}"#)
     static let multiBoards = decode(KanbanBoardsResponse.self, #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#)
     static let snapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"read_only":false,"columns":[{"name":"triage","tasks":[]}]}"#)
     static let supportedSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"read_only":false,"columns":[{"name":"triage","tasks":[{"id":"OLD","status":"triage"}]}]}"#)

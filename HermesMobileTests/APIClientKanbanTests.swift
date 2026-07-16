@@ -124,6 +124,36 @@ final class APIClientKanbanTests: APIClientTestCase {
         ])
     }
 
+    func testCardIdentifiersRemainOneEncodedPathSegment() throws {
+        let baseURL = try XCTUnwrap(URL(string: "https://example.test/root"))
+        let cardID = "../CARD/1?#"
+        let expectedPrefix = "/root/api/kanban/tasks/%2E%2E%2FCARD%2F1%3F%23"
+        let endpoints: [(Endpoint, String, [URLQueryItem])] = [
+            (
+                .kanbanCardDetail(KanbanCardDetailRequest(cardID: cardID, board: "main")),
+                "",
+                [URLQueryItem(name: "board", value: "main")]
+            ),
+            (
+                .kanbanWorkerLog(KanbanWorkerLogRequest(cardID: cardID, board: "main")),
+                "/log",
+                [URLQueryItem(name: "board", value: "main"), URLQueryItem(name: "tail", value: "65536")]
+            ),
+            (
+                .kanbanAddComment(KanbanAddCommentRequest(cardID: cardID, board: "main", body: "test")),
+                "/comments",
+                [URLQueryItem(name: "board", value: "main")]
+            )
+        ]
+
+        for (endpoint, suffix, queryItems) in endpoints {
+            let url = endpoint.url(relativeTo: baseURL)
+            let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+            XCTAssertEqual(components.percentEncodedPath, expectedPrefix + suffix)
+            XCTAssertEqual(components.queryItems, queryItems)
+        }
+    }
+
     func testCardDetailCommentAndWorkerLogUseVerifiedContracts() async throws {
         var requestIndex = 0
         let client = makeClient { request in
