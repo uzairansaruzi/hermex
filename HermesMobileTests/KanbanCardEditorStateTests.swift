@@ -214,7 +214,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         XCTAssertNil(request?.status)
     }
 
-    func testStalePreflightCompletionCannotReplaceNewerSuccessfulSave() async throws {
+    func testSaveIsSerializedWhilePreflightIsInFlight() async throws {
         let client = StaleEditorClient()
         let state = KanbanCardEditorState(
             mode: .edit(cardID: "CARD-1"),
@@ -227,12 +227,46 @@ final class KanbanCardEditorStateTests: XCTestCase {
         let staleSave = Task { await state.save(allowsMutation: true) }
         try await waitUntil { await client.firstReadStarted }
         await state.save(allowsMutation: true)
-        await client.finishFirstRead()
+        await client.finishFirstRead(with: .baseline)
         await staleSave.value
 
         XCTAssertEqual(state.submission, .succeeded(cardID: "CARD-1"))
         let calls = await client.editCallCount
         XCTAssertEqual(calls, 1)
+    }
+
+    func testDraftInvalidatedDuringPreflightFailsValidationWithoutWriting() async throws {
+        let client = StaleEditorClient()
+        let state = KanbanCardEditorState(
+            mode: .edit(cardID: "CARD-1"),
+            board: "main",
+            client: client,
+            card: .baseline
+        )
+        state.title = "Edited"
+
+        let save = Task { await state.save(allowsMutation: true) }
+        try await waitUntil { await client.firstReadStarted }
+        state.priorityText = "5.5"
+        await client.finishFirstRead(with: .baseline)
+        await save.value
+
+        XCTAssertEqual(state.submission, .validationFailed(.priority))
+        let calls = await client.editCallCount
+        XCTAssertEqual(calls, 0)
+    }
+
+    func testReloadServerVersionRefreshesDisplayedCreateOnlyPrerequisite() async {
+        let client = CardEditorClient(detailResults: [.success(.remoteChangedPrerequisite)])
+        let state = makeEditState(client: client)
+        state.title = "Local draft"
+
+        await state.save(allowsMutation: true)
+        XCTAssertEqual(state.submission, .conflict)
+        state.reloadServerVersion()
+
+        XCTAssertEqual(state.prerequisiteID, "CARD-2")
+        XCTAssertEqual(state.title, "Changed remotely")
     }
 
     private func makeCreateState(
@@ -329,8 +363,8 @@ private actor StaleEditorClient: KanbanDataClient {
 
     var firstReadStarted: Bool { firstContinuation != nil }
 
-    func finishFirstRead() {
-        firstContinuation?.resume(returning: .remoteChanged)
+    func finishFirstRead(with detail: KanbanCardDetailEnvelope) {
+        firstContinuation?.resume(returning: detail)
         firstContinuation = nil
     }
 
@@ -367,6 +401,7 @@ private extension KanbanCardDetailEnvelope {
     static let edited: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Edited","body":"Body","status":"ready","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900}}"#)
     static let runningBaseline: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Original","body":"Body","status":"running","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"scratch"}}"#)
     static let remoteChangedRunning: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Changed remotely","body":"Body","status":"running","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900}}"#)
+    static let remoteChangedPrerequisite: KanbanCardDetailEnvelope = decode(#"{"task":{"id":"CARD-1","title":"Changed remotely","body":"Body","status":"ready","priority":0,"assignee":"builder","tenant":"mobile","workspace_kind":"worktree","workspace_path":"/workspace","skills":["swift"],"max_runtime_seconds":900},"links":{"parents":["CARD-2"]}}"#)
 }
 
 private extension KanbanCardMutationEnvelope {

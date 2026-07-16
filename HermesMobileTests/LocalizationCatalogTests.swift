@@ -154,6 +154,8 @@ final class LocalizationCatalogTests: XCTestCase {
                     "[\(language)] \(key)"
                 )
                 XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+                let translatedValue = (localization["stringUnit"] as? [String: Any])?["value"] as? String
+                XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses the English source value")
             }
         }
     }

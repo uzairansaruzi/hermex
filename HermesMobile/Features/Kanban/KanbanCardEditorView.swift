@@ -27,6 +27,7 @@ struct KanbanCardEditorView: View {
                 }
                 submissionSection
             }
+            .disabled(state.submission.isInFlight)
             .navigationTitle(state.isEditing ? String(localized: "Edit Card") : String(localized: "New Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { editorToolbar }

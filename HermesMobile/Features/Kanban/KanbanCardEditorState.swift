@@ -65,6 +65,12 @@ final class KanbanCardEditorState: Identifiable {
     private let baselineMatchingCardIDs: Set<String>
     private var activeAttemptID: UUID?
     private var statusAtOpen = "triage"
+    private var remotePrerequisiteID: String?
+
+    private enum MutationIntent {
+        case create(KanbanCreateCardRequest)
+        case edit(KanbanEditCardRequest)
+    }
 
     init(
         mode: KanbanCardEditorMode,
@@ -140,6 +146,7 @@ final class KanbanCardEditorState: Identifiable {
 
         let attemptID = UUID()
         activeAttemptID = attemptID
+        submission = .saving
 
         if case let .edit(cardID) = mode, !overwriteConflict {
             do {
@@ -150,6 +157,7 @@ final class KanbanCardEditorState: Identifiable {
                 guard isCurrent(attemptID), let latest = detail.card else { return }
                 if hasRemoteChange(latest) {
                     remoteCard = latest
+                    remotePrerequisiteID = detail.links?.prerequisites?.first
                     submission = .conflict
                     activeAttemptID = nil
                     return
@@ -164,21 +172,39 @@ final class KanbanCardEditorState: Identifiable {
             }
         }
 
+        // The preflight suspends. Revalidate after it returns, then capture an
+        // immutable mutation intent used for both the write and reconciliation.
+        guard validate() else {
+            activeAttemptID = nil
+            return
+        }
+        if needsReadyUnassignedConfirmation && !readyUnassignedConfirmed {
+            submission = .idle
+            activeAttemptID = nil
+            return
+        }
+        let intent: MutationIntent
+        switch mode {
+        case .create:
+            intent = .create(createRequest())
+        case let .edit(cardID):
+            intent = .edit(editRequest(cardID: cardID))
+        }
         submission = .saving
         do {
             let envelope: KanbanCardMutationEnvelope
-            switch mode {
-            case .create:
-                envelope = try await client.createKanbanCard(createRequest())
-            case let .edit(cardID):
-                envelope = try await client.editKanbanCard(editRequest(cardID: cardID))
+            switch intent {
+            case let .create(request):
+                envelope = try await client.createKanbanCard(request)
+            case let .edit(request):
+                envelope = try await client.editKanbanCard(request)
             }
             guard isCurrent(attemptID) else { return }
             let card = try KanbanCardMutationValidator.validate(
                 envelope,
                 expectedCardID: editedCardID
             )
-            guard intendedValuesAppear(in: card) else {
+            guard intendedValuesAppear(in: card, intent: intent) else {
                 throw KanbanContractViolation.missingCardStatus
             }
             complete(with: card, attemptID: attemptID)
@@ -188,16 +214,17 @@ final class KanbanCardEditorState: Identifiable {
                 submission = .failed
                 activeAttemptID = nil
             } else {
-                await reconcileAmbiguousOutcome(attemptID: attemptID)
+                await reconcileAmbiguousOutcome(intent: intent, attemptID: attemptID)
             }
         }
     }
 
     func reloadServerVersion() {
         guard let remoteCard else { return }
-        populate(from: remoteCard, prerequisiteID: prerequisiteID)
+        populate(from: remoteCard, prerequisiteID: remotePrerequisiteID)
         baselineCard = remoteCard
         self.remoteCard = nil
+        remotePrerequisiteID = nil
         submission = .idle
     }
 
@@ -284,7 +311,7 @@ final class KanbanCardEditorState: Identifiable {
         return values.isEmpty ? nil : values
     }
 
-    private func reconcileAmbiguousOutcome(attemptID: UUID) async {
+    private func reconcileAmbiguousOutcome(intent: MutationIntent, attemptID: UUID) async {
         submission = .checkingResult
         do {
             switch mode {
@@ -295,7 +322,7 @@ final class KanbanCardEditorState: Identifiable {
                     .flatMap { $0.cards ?? [] }
                     .filter { card in
                         guard let id = card.cardID, !baselineMatchingCardIDs.contains(id) else { return false }
-                        return intendedValuesAppear(in: card)
+                        return intendedValuesAppear(in: card, intent: intent)
                     }
                 if matches.count == 1, let card = matches.first {
                     complete(with: card, attemptID: attemptID)
@@ -312,10 +339,11 @@ final class KanbanCardEditorState: Identifiable {
                 )
                 try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
                 guard isCurrent(attemptID), let card = detail.card else { return }
-                if intendedValuesAppear(in: card) {
+                if intendedValuesAppear(in: card, intent: intent) {
                     complete(with: card, attemptID: attemptID)
                 } else {
                     remoteCard = card
+                    remotePrerequisiteID = detail.links?.prerequisites?.first
                     submission = .failed
                     activeAttemptID = nil
                 }
@@ -331,27 +359,32 @@ final class KanbanCardEditorState: Identifiable {
         guard isCurrent(attemptID), let cardID = normalized(card.cardID) else { return }
         baselineCard = card
         remoteCard = nil
+        remotePrerequisiteID = nil
         submission = .succeeded(cardID: cardID)
         activeAttemptID = nil
     }
 
-    private func intendedValuesAppear(in card: KanbanCard) -> Bool {
-        let statusMatches = isEditing && status == statusAtOpen
-            ? true
-            : card.status?.rawValue == status
-        guard normalized(card.title) == normalized(title),
-              normalized(card.body) == normalized(body),
-              normalized(card.assignee) == normalized(assignee),
-              normalized(card.tenant) == normalized(tenant),
-              (card.priority ?? 0) == (Int(priorityText) ?? 0),
-              statusMatches else {
-            return false
+    private func intendedValuesAppear(in card: KanbanCard, intent: MutationIntent) -> Bool {
+        switch intent {
+        case let .create(request):
+            return normalized(card.title) == normalized(request.title)
+                && normalized(card.body) == normalized(request.body)
+                && normalized(card.assignee) == normalized(request.assignee)
+                && normalized(card.tenant) == normalized(request.tenant)
+                && (card.priority ?? 0) == (request.priority ?? 0)
+                && card.status?.rawValue == request.status
+                && normalized(card.workspaceKind) == normalized(request.workspaceKind)
+                && normalized(card.workspacePath) == normalized(request.workspacePath)
+                && (card.skills ?? []) == (request.skills ?? [])
+                && card.maxRuntimeSeconds == request.maxRuntimeSeconds
+        case let .edit(request):
+            return normalized(card.title) == normalized(request.title)
+                && normalized(card.body) == normalized(request.body)
+                && normalized(card.assignee) == normalized(request.assignee)
+                && normalized(card.tenant) == normalized(request.tenant)
+                && (card.priority ?? 0) == request.priority
+                && (request.status == nil || card.status?.rawValue == request.status)
         }
-        guard !isEditing else { return true }
-        return normalized(card.workspaceKind) == normalized(workspaceKind)
-            && normalized(card.workspacePath) == normalized(workspacePath)
-            && (card.skills ?? []) == (parsedSkills ?? [])
-            && card.maxRuntimeSeconds == Int(maximumRuntimeText)
     }
 
     private func hasRemoteChange(_ card: KanbanCard) -> Bool {
