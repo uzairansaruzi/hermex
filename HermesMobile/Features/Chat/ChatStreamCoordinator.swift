@@ -95,7 +95,8 @@ final class ChatStreamCoordinator {
     // Foreground activation and view appearance can both request recovery for the
     // same suspended stream. Share one recovery task so a late load cannot
     // re-suspend a live connection or let a caller continue before recovery ends.
-    private var reconnectTask: Task<Void, Never>?
+    // The identifier prevents a superseded task from clearing a newer recovery.
+    private var reconnectTask: (id: UUID, task: Task<Void, Never>)?
     // Bumped whenever the active run starts or finalizes. Captured before an async
     // transcript load so a concurrent cancel/completion during the load can't be
     // double-finalized (PR #266 review #2).
@@ -140,6 +141,10 @@ final class ChatStreamCoordinator {
     ) {
         hasCompletedCurrentResponse = false
         runGeneration &+= 1
+        // A newly started stream must not inherit a prior stream's in-flight
+        // recovery task. The old task can finish harmlessly, but its identity
+        // check prevents it from clearing a later recovery.
+        reconnectTask = nil
         activeStreamID = streamID
         isConnectionSuspended = false
         if replayAfterSeq == nil {
@@ -244,16 +249,18 @@ final class ChatStreamCoordinator {
     func reconnectIfNeeded(modelContext: ModelContext? = nil) async {
         guard activeStreamID != nil, isConnectionSuspended else { return }
         if let reconnectTask {
-            await reconnectTask.value
+            await reconnectTask.task.value
             return
         }
 
+        let reconnectTaskID = UUID()
         let reconnectTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.performReconnectIfNeeded(modelContext: modelContext)
+            guard self.reconnectTask?.id == reconnectTaskID else { return }
             self.reconnectTask = nil
         }
-        self.reconnectTask = reconnectTask
+        self.reconnectTask = (id: reconnectTaskID, task: reconnectTask)
         await reconnectTask.value
     }
 

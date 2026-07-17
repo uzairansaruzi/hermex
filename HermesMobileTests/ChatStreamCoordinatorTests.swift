@@ -124,6 +124,48 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testForegroundReconnectStartsNewRecoveryAfterStreamReplacement() async throws {
+        let firstStatusStarted = expectation(description: "first stream status request started")
+        let releaseFirstStatus = DispatchSemaphore(value: 0)
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            if statusRequestCount.increment() == 1 {
+                firstStatusStarted.fulfill()
+                _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            }
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-new"}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-old")
+        coordinator.suspendActiveStreamConnection()
+        let firstReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        await fulfillment(of: [firstStatusStarted], timeout: 1)
+
+        coordinator.start(streamID: "stream-new")
+        coordinator.suspendActiveStreamConnection()
+        let secondReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(statusRequestCount.value, 2)
+        XCTAssertEqual(coordinator.activeStreamID, "stream-new")
+        XCTAssertFalse(coordinator.isConnectionSuspended)
+
+        releaseFirstStatus.signal()
+        await firstReconnect.value
+        await secondReconnect.value
+
+        XCTAssertEqual(coordinator.activeStreamID, "stream-new")
+        XCTAssertEqual(streamClient.startedURLs.count, 3)
+    }
+
+    @MainActor
     func testForegroundReconnectActiveStreamDoesNotRestartAfterReplacementDuringLoad() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
