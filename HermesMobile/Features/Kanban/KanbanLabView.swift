@@ -155,14 +155,16 @@ struct KanbanStatusFocusView: View {
 
     private func archiveUndoBanner(_ undo: KanbanArchiveUndo) -> some View {
         let recoveryPhase = model.mutationState(for: undo.cardID)?.phase
+        let statusText = recoveryPhase == .outcomeUncertain
+            ? String(localized: "Outcome Uncertain")
+            : recoveryPhase == .failed
+                ? String(localized: "Update failed")
+                : String(localized: "Archived")
+        let hasRecoveryError = recoveryPhase == .outcomeUncertain || recoveryPhase == .failed
         return HStack {
             Label(
-                recoveryPhase == .outcomeUncertain
-                    ? String(localized: "Outcome Uncertain")
-                    : recoveryPhase == .failed
-                        ? String(localized: "Update failed")
-                        : String(localized: "Archived"),
-                systemImage: recoveryPhase == nil ? "archivebox" : "exclamationmark.circle"
+                statusText,
+                systemImage: hasRecoveryError ? "exclamationmark.circle" : "archivebox"
             )
                 .lineLimit(2)
             Spacer()
@@ -188,7 +190,7 @@ struct KanbanStatusFocusView: View {
                 String.localizedStringWithFormat(
                     String(localized: "%@, %@"),
                     undo.cardTitle,
-                    String(localized: "Archived")
+                    statusText
                 )
             )
         )

@@ -346,13 +346,21 @@ private struct KanbanCardDetailContent: View {
                 case .failed:
                     Label("The server refused or did not apply this update.", systemImage: "exclamationmark.circle")
                         .foregroundStyle(.red)
-                    Button("Try Again") { retryMutation(for: card) }
+                    if case .undoArchive = mutation.kind {
+                        EmptyView()
+                    } else {
+                        Button("Try Again") { retryMutation(for: card) }
+                    }
                 case .outcomeUncertain:
                     Label("Outcome Uncertain", systemImage: "questionmark.circle")
                         .foregroundStyle(.orange)
                     Text("Refresh the Card to check the server result before trying again.")
                         .font(.footnote)
-                    Button("Refresh") { Task { await featureModel.checkUncertainMutation(for: card) } }
+                    if case .undoArchive = mutation.kind {
+                        EmptyView()
+                    } else {
+                        Button("Refresh") { Task { await featureModel.checkUncertainMutation(for: card) } }
+                    }
                 }
                 if featureModel.hasAvailableArchiveUndo,
                    featureModel.archiveUndo?.cardID == card.cardID {

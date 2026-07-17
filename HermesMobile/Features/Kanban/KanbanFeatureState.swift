@@ -125,6 +125,7 @@ final class KanbanFeatureState {
     private var pollingTask: Task<Void, Never>?
     private var activeCardMutationIDs: [String: UUID] = [:]
     private var pendingOptimisticStatuses: [String: String] = [:]
+    private var settledDetailStatuses: [String: String] = [:]
     private var uncertainProtectedCards: [String: KanbanCard] = [:]
     private var pendingDependencyChanges: [String: KanbanPendingDependencyChange] = [:]
     private var archiveUndoTask: Task<Void, Never>?
@@ -268,8 +269,18 @@ final class KanbanFeatureState {
 
     func displayedCard(_ canonical: KanbanCard) -> KanbanCard {
         guard let cardID = normalizedOptional(canonical.cardID),
-              let status = pendingOptimisticStatuses[cardID] else { return canonical }
+              let status = pendingOptimisticStatuses[cardID] ?? settledDetailStatuses[cardID] else {
+            return canonical
+        }
         return canonical.replacingStatus(status)
+    }
+
+    func acknowledgeLoadedCardDetail(_ detail: KanbanCardDetailEnvelope) {
+        guard let cardID = normalizedOptional(detail.card?.cardID),
+              activeCardMutationIDs[cardID] == nil,
+              cardMutationStates[cardID]?.phase == .succeeded else { return }
+        settledDetailStatuses[cardID] = nil
+        pendingDependencyChanges[cardID] = nil
     }
 
     func moveCard(
@@ -378,6 +389,16 @@ final class KanbanFeatureState {
             }
         } catch {
             forwardAuthentication(error)
+            if isNotFound(error) {
+                archiveUndo = nil
+                uncertainProtectedCards[undo.cardID] = nil
+                removeCardFromSnapshot(undo.cardID)
+                cardMutationStates[undo.cardID] = KanbanCardMutationState(
+                    kind: .undoArchive(status: undo.previousStatus), phase: .failed
+                )
+                detailRefreshRevision &+= 1
+                return
+            }
             archiveUndo = recoveryUndo(from: undo, card: undo.card)
             cardMutationStates[undo.cardID] = KanbanCardMutationState(
                 kind: .undoArchive(status: undo.previousStatus), phase: .outcomeUncertain
@@ -448,7 +469,11 @@ final class KanbanFeatureState {
             detailRefreshRevision &+= 1
         } catch {
             forwardAuthentication(error)
-            if isNotFound(error) { uncertainProtectedCards[cardID] = nil }
+            if isNotFound(error) {
+                uncertainProtectedCards[cardID] = nil
+                removeCardFromSnapshot(cardID)
+                if case .undoArchive = mutation.kind { archiveUndo = nil }
+            }
             cardMutationStates[cardID] = KanbanCardMutationState(
                 kind: mutation.kind,
                 phase: isNotFound(error) ? .failed : .outcomeUncertain
@@ -459,6 +484,7 @@ final class KanbanFeatureState {
     func load() async {
         archiveUndoTask?.cancel()
         archiveUndo = nil
+        clearSettledMutationPresentation()
         resetLiveUpdates(clearCursor: true)
         let loadID = UUID()
         activeLoadID = loadID
@@ -548,6 +574,7 @@ final class KanbanFeatureState {
               slug != selectedBoardSlug else { return }
         archiveUndoTask?.cancel()
         archiveUndo = nil
+        clearSettledMutationPresentation()
         resetLiveUpdates(clearCursor: true)
         selectedBoardSlug = slug
         snapshot = nil
@@ -638,7 +665,10 @@ final class KanbanFeatureState {
             cardID: cardID,
             board: board,
             client: client,
-            onAPIError: onAPIError
+            onAPIError: onAPIError,
+            onDetailLoaded: { [weak self] detail in
+                self?.acknowledgeLoadedCardDetail(detail)
+            }
         )
     }
 
@@ -692,6 +722,7 @@ final class KanbanFeatureState {
 
         let baseline = cardInSnapshot(cardID) ?? card
         uncertainProtectedCards[cardID] = nil
+        settledDetailStatuses[cardID] = nil
         let mutationID = UUID()
         activeCardMutationIDs[cardID] = mutationID
         pendingOptimisticStatuses[cardID] = status
@@ -795,6 +826,7 @@ final class KanbanFeatureState {
         guard let cardID = normalizedOptional(authoritative.cardID),
               activeCardMutationIDs[cardID] == mutationID else { return }
         pendingOptimisticStatuses[cardID] = nil
+        settledDetailStatuses[cardID] = authoritative.status?.rawValue
         replaceCardInSnapshot(authoritative)
         finishMutation(cardID: cardID, kind: kind, phase: .succeeded)
         if case let .archive(previousStatus) = kind {
@@ -875,12 +907,9 @@ final class KanbanFeatureState {
             try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
             guard activeCardMutationIDs[cardID] == mutationID else { return }
             let exists = detail.links?.prerequisites?.contains(request.prerequisiteID) == true
-            pendingDependencyChanges[cardID] = nil
-            finishMutation(
-                cardID: cardID,
-                kind: kind,
-                phase: exists == shouldExist ? .succeeded : .failed
-            )
+            let succeeded = exists == shouldExist
+            if !succeeded { pendingDependencyChanges[cardID] = nil }
+            finishMutation(cardID: cardID, kind: kind, phase: succeeded ? .succeeded : .failed)
         } catch {
             guard activeCardMutationIDs[cardID] == mutationID else { return }
             forwardAuthentication(error)
@@ -929,6 +958,7 @@ final class KanbanFeatureState {
         phase: KanbanCardMutationPhase
     ) {
         pendingOptimisticStatuses[cardID] = nil
+        settledDetailStatuses[cardID] = nil
         uncertainProtectedCards[cardID] = phase == .outcomeUncertain ? baseline : nil
         replaceCardInSnapshot(baseline)
         finishMutation(cardID: cardID, kind: kind, phase: phase)
@@ -943,6 +973,15 @@ final class KanbanFeatureState {
         if phase != .outcomeUncertain { uncertainProtectedCards[cardID] = nil }
         cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: phase)
         detailRefreshRevision &+= 1
+    }
+
+    private func clearSettledMutationPresentation() {
+        let activeCardIDs = Set(activeCardMutationIDs.keys)
+        cardMutationStates = cardMutationStates.filter { activeCardIDs.contains($0.key) }
+        pendingOptimisticStatuses = pendingOptimisticStatuses.filter { activeCardIDs.contains($0.key) }
+        settledDetailStatuses = settledDetailStatuses.filter { activeCardIDs.contains($0.key) }
+        pendingDependencyChanges = pendingDependencyChanges.filter { activeCardIDs.contains($0.key) }
+        uncertainProtectedCards = uncertainProtectedCards.filter { activeCardIDs.contains($0.key) }
     }
 
     private func cardInSnapshot(_ cardID: String) -> KanbanCard? {
