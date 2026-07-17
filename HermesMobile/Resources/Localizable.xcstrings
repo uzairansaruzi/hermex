@@ -111234,6 +111234,300 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢視全部" } },
         "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "查看全部" } }
       }
+    },
+    "Add Prerequisite" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إضافة متطلب سابق" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Voraussetzung hinzufügen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Añadir requisito previo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ajouter un prérequis" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הוספת תנאי מוקדם" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiungi prerequisito" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "前提条件を追加" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "전제 조건 추가" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Vereiste toevoegen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Dodaj wymaganie wstępne" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Adicionar pré-requisito" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Добавить предварительное условие" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Önkoşul ekle" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "پیشگی شرط شامل کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "新增先決條件" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "添加先决条件" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "新增先決條件" } }
+      }
+    },
+    "Block" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "حظر" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Blockieren" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Bloquear" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Bloquer" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "חסימה" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Blocca" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ブロック" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "차단" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Blokkeren" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zablokuj" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Bloquear" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Заблокировать" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Engelle" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بلاک کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "封鎖" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "阻止" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "封鎖" } }
+      }
+    },
+    "Card Actions" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إجراءات البطاقة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kartenaktionen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Acciones de la tarjeta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Actions de la carte" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "פעולות כרטיס" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Azioni scheda" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "カードの操作" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "카드 작업" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Kaartacties" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Akcje karty" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ações do cartão" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Действия с картой" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Kart eylemleri" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "کارڈ کی کارروائیاں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "卡片操作" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "卡片操作" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "卡片操作" } }
+      }
+    },
+    "Choose Card" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "اختر بطاقة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Karte auswählen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Elegir tarjeta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Choisir une carte" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "בחירת כרטיס" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Scegli scheda" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "カードを選択" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "카드 선택" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Kaart kiezen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wybierz kartę" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Escolher cartão" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Выберите карту" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Kart seç" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "کارڈ منتخب کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "選擇卡片" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择卡片" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "選擇卡片" } }
+      }
+    },
+    "Leave Running?" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "هل تريد مغادرة قيد التشغيل؟" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Status „Wird ausgeführt“ verlassen?" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "¿Salir de En ejecución?" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Quitter En cours ?" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "לצאת ממצב פועל?" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Uscire da In esecuzione?" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "実行中を終了しますか？" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "실행 중 상태를 벗어나시겠습니까?" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Actief verlaten?" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Opuścić stan Uruchomione?" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Sair de Em execução?" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Выйти из состояния «Выполняется»?" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Çalışıyor durumundan çıkılsın mı?" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "جاری حالت سے نکلیں؟" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "離開「執行中」？" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "离开“运行中”？" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "離開「執行中」？" } }
+      }
+    },
+    "Leaving Running may clear the Card's claim and worker state." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "قد تؤدي مغادرة قيد التشغيل إلى مسح حالة مطالبة البطاقة والعامل." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Beim Verlassen von „Wird ausgeführt“ können Anspruch und Worker-Status der Karte gelöscht werden." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Salir de En ejecución puede borrar la asignación y el estado del proceso de la tarjeta." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Quitter En cours peut effacer la revendication et l’état du worker de la carte." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "יציאה ממצב פועל עלולה לנקות את התביעה ואת מצב העובד של הכרטיס." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Uscire da In esecuzione può cancellare la rivendicazione e lo stato del worker della scheda." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "実行中を終了すると、カードのクレームとワーカー状態が消去される場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "실행 중 상태를 벗어나면 카드의 클레임 및 작업자 상태가 지워질 수 있습니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Als u Actief verlaat, kunnen de claim en workerstatus van de kaart worden gewist." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Opuszczenie stanu Uruchomione może wyczyścić przejęcie i stan procesu karty." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Sair de Em execução pode limpar a reivindicação e o estado do worker do cartão." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "При выходе из состояния «Выполняется» данные захвата и состояние исполнителя карты могут быть очищены." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Çalışıyor durumundan çıkmak Kartın sahiplenme ve çalışan durumunu temizleyebilir." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "جاری حالت سے نکلنے پر کارڈ کا کلیم اور ورکر کی حالت صاف ہو سکتی ہے۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "離開「執行中」可能會清除卡片的認領及工作程序狀態。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "离开“运行中”可能会清除卡片的认领和工作进程状态。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "離開「執行中」可能會清除卡片的認領及工作程序狀態。" } }
+      }
+    },
+    "Move" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "نقل" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Verschieben" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Mover" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Déplacer" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "העברה" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sposta" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "移動" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이동" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Verplaatsen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przenieś" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Mover" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Переместить" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Taşı" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "منتقل کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "移動" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移动" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "移動" } }
+      }
+    },
+    "Refresh the Card to check the server result before trying again." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "حدّث البطاقة للتحقق من نتيجة الخادم قبل المحاولة مرة أخرى." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktualisiere die Karte, um das Serverergebnis zu prüfen, bevor du es erneut versuchst." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Actualiza la tarjeta para comprobar el resultado del servidor antes de volver a intentarlo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Actualisez la carte pour vérifier le résultat du serveur avant de réessayer." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "יש לרענן את הכרטיס כדי לבדוק את תוצאת השרת לפני ניסיון נוסף." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiorna la scheda per verificare il risultato del server prima di riprovare." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "再試行する前にカードを更新してサーバーの結果を確認してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다시 시도하기 전에 카드를 새로 고쳐 서버 결과를 확인하세요." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Vernieuw de kaart om het serverresultaat te controleren voordat u het opnieuw probeert." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Odśwież kartę, aby sprawdzić wynik serwera przed ponowną próbą." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Atualize o cartão para verificar o resultado do servidor antes de tentar novamente." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Обновите карту, чтобы проверить результат сервера перед повторной попыткой." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Tekrar denemeden önce sunucu sonucunu kontrol etmek için Kartı yenileyin." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "دوبارہ کوشش سے پہلے سرور کا نتیجہ جانچنے کے لیے کارڈ ریفریش کریں۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "再次嘗試前，請重新整理卡片以檢查伺服器結果。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试前，请刷新卡片以检查服务器结果。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "再次嘗試前，請重新整理卡片以檢查伺服器結果。" } }
+      }
+    },
+    "Remove %@ as Prerequisite" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إزالة %@ كمتطلب سابق" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "%@ als Voraussetzung entfernen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Quitar %@ como requisito previo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Retirer %@ des prérequis" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הסרת %@ כתנאי מוקדם" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Rimuovi %@ come prerequisito" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ を前提条件から削除" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@을(를) 전제 조건에서 제거" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "%@ als vereiste verwijderen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Usuń %@ jako wymaganie wstępne" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Remover %@ como pré-requisito" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Удалить %@ из предварительных условий" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "%@ öğesini önkoşul olmaktan çıkar" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "%@ کو پیشگی شرط سے ہٹائیں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "移除 %@ 作為先決條件" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移除 %@ 作为先决条件" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "移除 %@ 作為先決條件" } }
+      }
+    },
+    "The server refused or did not apply this update." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "رفض الخادم هذا التحديث أو لم يطبقه." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Server hat dieses Update abgelehnt oder nicht angewendet." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "El servidor rechazó o no aplicó esta actualización." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le serveur a refusé ou n’a pas appliqué cette mise à jour." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "השרת סירב לעדכון הזה או לא החיל אותו." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Il server ha rifiutato o non ha applicato questo aggiornamento." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバーがこの更新を拒否したか、適用しませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "서버가 이 업데이트를 거부했거나 적용하지 않았습니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "De server heeft deze update geweigerd of niet toegepast." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Serwer odrzucił lub nie zastosował tej aktualizacji." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "O servidor recusou ou não aplicou esta atualização." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Сервер отклонил или не применил это обновление." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Sunucu bu güncellemeyi reddetti veya uygulamadı." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "سرور نے یہ اپ ڈیٹ مسترد کر دی یا لاگو نہیں کی۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "伺服器拒絕或未套用此更新。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "服务器拒绝或未应用此更新。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "伺服器拒絕或未套用此更新。" } }
+      }
+    },
+    "Unblock" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إلغاء الحظر" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Blockierung aufheben" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Desbloquear" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Débloquer" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "ביטול חסימה" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sblocca" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ブロック解除" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "차단 해제" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Deblokkeren" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Odblokuj" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Desbloquear" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Разблокировать" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Engeli kaldır" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بلاک ختم کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "解除封鎖" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "解除阻止" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "解除封鎖" } }
+      }
+    },
+    "Undo" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "تراجع" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Rückgängig" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Deshacer" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Annuler" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "ביטול" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Annulla" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "元に戻す" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "실행 취소" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Ongedaan maken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Cofnij" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Desfazer" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отменить" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Geri al" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "واپس کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "還原" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "撤销" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "還原" } }
+      }
+    },
+    "Undo Archive" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "تراجع عن الأرشفة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Archivierung rückgängig machen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Deshacer archivado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Annuler l’archivage" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "ביטול העברה לארכיון" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Annulla archiviazione" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アーカイブを元に戻す" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보관 취소" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Archiveren ongedaan maken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Cofnij archiwizację" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Desfazer arquivamento" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отменить архивацию" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Arşivlemeyi geri al" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "آرکائیو واپس کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "還原封存" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "撤销归档" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "還原封存" } }
+      }
+    },
+    "Update failed" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "فشل التحديث" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Update fehlgeschlagen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Error al actualizar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Échec de la mise à jour" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "העדכון נכשל" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiornamento non riuscito" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "更新に失敗しました" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "업데이트 실패" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bijwerken mislukt" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Aktualizacja nie powiodła się" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Falha na atualização" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не удалось обновить" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Güncelleme başarısız" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "اپ ڈیٹ ناکام ہو گئی" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "更新失敗" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "更新失败" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "更新失敗" } }
+      }
     }
   },
   "version" : "1.0"

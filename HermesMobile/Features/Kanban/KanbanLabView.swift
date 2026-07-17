@@ -1,11 +1,32 @@
 import SwiftUI
 
+enum KanbanCardAction: Equatable {
+    case move(String)
+    case block
+    case unblock
+    case complete
+    case archive
+}
+
+struct KanbanPendingCardAction: Identifiable, Equatable {
+    let id = UUID()
+    let card: KanbanCard
+    let action: KanbanCardAction
+
+    static func == (lhs: KanbanPendingCardAction, rhs: KanbanPendingCardAction) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 struct KanbanStatusFocusView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var model: KanbanFeatureState
     @State private var showsFilters = false
     @State private var visibleModel: KanbanFeatureState?
     @State private var cardEditor: KanbanCardEditorState?
+    @State private var pendingRunningAction: KanbanPendingCardAction?
+    @AccessibilityFocusState private var focusedCardID: String?
+    @AccessibilityFocusState private var archiveUndoIsFocused: Bool
 
     var body: some View {
         Group {
@@ -61,10 +82,26 @@ struct KanbanStatusFocusView: View {
         }
         .onChange(of: ObjectIdentifier(model)) { _, _ in
             activateCurrentModel()
-            Task { await model.setSceneActive(scenePhase == .active) }
+            updateSceneActivity(scenePhase)
         }
         .onChange(of: scenePhase) { _, phase in
-            Task { await model.setSceneActive(phase == .active) }
+            updateSceneActivity(phase)
+        }
+        .alert(
+            "Leave Running?",
+            isPresented: Binding(
+                get: { pendingRunningAction != nil },
+                set: { if !$0 { pendingRunningAction = nil } }
+            ),
+            presenting: pendingRunningAction
+        ) { pending in
+            Button("Cancel", role: .cancel) { pendingRunningAction = nil }
+            Button("Continue", role: .destructive) {
+                pendingRunningAction = nil
+                perform(pending.action, for: pending.card, confirmingRunningExit: true)
+            }
+        } message: { _ in
+            Text("Leaving Running may clear the Card's claim and worker state.")
         }
     }
 
@@ -76,6 +113,11 @@ struct KanbanStatusFocusView: View {
         visibleModel?.setVisible(false)
         visibleModel = model
         model.setVisible(true)
+    }
+
+    private func updateSceneActivity(_ phase: ScenePhase) {
+        let isActive = phase == .active
+        Task { await model.setSceneActive(isActive) }
     }
 
     private var loadingContent: some View {
@@ -102,10 +144,55 @@ struct KanbanStatusFocusView: View {
             if model.refreshFailed {
                 refreshErrorBanner
             }
+            if model.hasAvailableArchiveUndo, let undo = model.archiveUndo {
+                archiveUndoBanner(undo)
+            }
             statusSelector
             Divider()
             cardList
         }
+    }
+
+    private func archiveUndoBanner(_ undo: KanbanArchiveUndo) -> some View {
+        let recoveryPhase = model.mutationState(for: undo.cardID)?.phase
+        return HStack {
+            Label(
+                recoveryPhase == .outcomeUncertain
+                    ? String(localized: "Outcome Uncertain")
+                    : recoveryPhase == .failed
+                        ? String(localized: "Update failed")
+                        : String(localized: "Archived"),
+                systemImage: recoveryPhase == nil ? "archivebox" : "exclamationmark.circle"
+            )
+                .lineLimit(2)
+            Spacer()
+            if recoveryPhase == .outcomeUncertain {
+                Button("Refresh") {
+                    Task { await model.checkUncertainMutation(for: undo.card) }
+                }
+                .fontWeight(.semibold)
+            } else {
+                Button(recoveryPhase == .failed ? "Try Again" : "Undo") {
+                    Task { await model.undoArchive() }
+                }
+                .fontWeight(.semibold)
+            }
+        }
+        .font(.footnote)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.secondary.opacity(0.1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            Text(
+                String.localizedStringWithFormat(
+                    String(localized: "%@, %@"),
+                    undo.cardTitle,
+                    String(localized: "Archived")
+                )
+            )
+        )
+        .accessibilityFocused($archiveUndoIsFocused)
     }
 
     private var offlineBanner: some View {
@@ -236,12 +323,147 @@ struct KanbanStatusFocusView: View {
     }
 
     private func cardNavigationLink(_ card: KanbanCard) -> some View {
-        NavigationLink {
-            if let cardID = card.cardID {
-                KanbanCardDetailView(featureModel: model, cardID: cardID)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                NavigationLink {
+                    if let cardID = card.cardID {
+                        KanbanCardDetailView(featureModel: model, cardID: cardID)
+                    }
+                } label: {
+                    KanbanCardSummaryView(card: card)
+                }
+                cardActionsMenu(card)
+            }
+            mutationStatus(for: card)
+        }
+        .accessibilityFocused($focusedCardID, equals: card.cardID)
+    }
+
+    private func cardActionsMenu(_ card: KanbanCard) -> some View {
+        Menu {
+            let destinations = model.moveDestinations(for: card)
+            if !destinations.isEmpty {
+                Menu("Move") {
+                    ForEach(destinations, id: \.self) { destination in
+                        Button(KanbanStatusPresentation(destination).title) {
+                            request(.move(destination), for: card)
+                        }
+                    }
+                }
+            }
+            if card.status?.rawValue == "blocked" {
+                Button("Unblock") { request(.unblock, for: card) }
+            } else if card.status?.rawValue != "archived" {
+                Button("Block") { request(.block, for: card) }
+            }
+            if card.status?.rawValue != "done", card.status?.rawValue != "archived" {
+                Button("Complete") { request(.complete, for: card) }
+            }
+            if card.status?.rawValue != "archived" {
+                Button("Archive", role: .destructive) { request(.archive, for: card) }
             }
         } label: {
-            KanbanCardSummaryView(card: card)
+            Image(systemName: "ellipsis.circle")
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .disabled(!model.canMutateCard(card) || model.isMutatingCard(card.cardID))
+        .accessibilityLabel(Text("Card Actions"))
+    }
+
+    @ViewBuilder
+    private func mutationStatus(for card: KanbanCard) -> some View {
+        if let mutation = model.mutationState(for: card.cardID) {
+            switch mutation.phase {
+            case .updating:
+                Label("Updating task...", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.footnote).foregroundStyle(.secondary)
+            case .checkingResult:
+                Label("Checking Result", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.footnote).foregroundStyle(.secondary)
+            case .succeeded:
+                Label("Updated", systemImage: "checkmark.circle.fill")
+                    .font(.footnote).foregroundStyle(.green)
+            case .failed:
+                HStack {
+                    Label("Update failed", systemImage: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Button("Try Again") { retryMutation(for: card) }
+                }
+                .font(.footnote)
+            case .outcomeUncertain:
+                HStack {
+                    Label("Outcome Uncertain", systemImage: "questionmark.circle")
+                        .foregroundStyle(.orange)
+                    Button("Refresh") { Task { await model.checkUncertainMutation(for: card) } }
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
+    private func request(_ action: KanbanCardAction, for card: KanbanCard) {
+        if card.status?.rawValue == "running" {
+            pendingRunningAction = KanbanPendingCardAction(card: card, action: action)
+        } else {
+            perform(action, for: card)
+        }
+    }
+
+    private func perform(
+        _ action: KanbanCardAction,
+        for card: KanbanCard,
+        confirmingRunningExit: Bool = false
+    ) {
+        Task {
+            switch action {
+            case let .move(status):
+                await model.moveCard(card, to: status, confirmingRunningExit: confirmingRunningExit)
+                if model.mutationState(for: card.cardID)?.phase == .succeeded {
+                    model.selectedStatus = status
+                    await Task.yield()
+                    focusedCardID = card.cardID
+                }
+            case .block:
+                await model.blockCard(card, reason: nil, confirmingRunningExit: confirmingRunningExit)
+                if model.mutationState(for: card.cardID)?.phase == .succeeded {
+                    model.selectedStatus = "blocked"
+                    await Task.yield()
+                    focusedCardID = card.cardID
+                }
+            case .unblock:
+                await model.unblockCard(card)
+                if model.mutationState(for: card.cardID)?.phase == .succeeded {
+                    model.selectedStatus = "ready"
+                    await Task.yield()
+                    focusedCardID = card.cardID
+                }
+            case .complete:
+                await model.completeCard(card, confirmingRunningExit: confirmingRunningExit)
+                if model.mutationState(for: card.cardID)?.phase == .succeeded {
+                    model.selectedStatus = "done"
+                    await Task.yield()
+                    focusedCardID = card.cardID
+                }
+            case .archive:
+                await model.archiveCard(card, confirmingRunningExit: confirmingRunningExit)
+                if model.hasAvailableArchiveUndo {
+                    archiveUndoIsFocused = true
+                }
+            }
+        }
+    }
+
+    private func retryMutation(for card: KanbanCard) {
+        guard card.status?.rawValue == "running",
+              let mutation = model.mutationState(for: card.cardID) else {
+            Task { await model.retryMutation(for: card) }
+            return
+        }
+        switch mutation.kind {
+        case let .status(status): request(status == "done" ? .complete : .move(status), for: card)
+        case .block: request(.block, for: card)
+        case .archive: request(.archive, for: card)
+        default: Task { await model.retryMutation(for: card) }
         }
     }
 

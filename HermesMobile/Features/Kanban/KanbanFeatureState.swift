@@ -17,6 +17,44 @@ enum KanbanReadCapabilityWarning: Hashable, Sendable {
     case profileHistoryUnavailable
 }
 
+enum KanbanCardMutationPhase: Equatable, Sendable {
+    case updating
+    case checkingResult
+    case succeeded
+    case failed
+    case outcomeUncertain
+
+    var isInFlight: Bool { self == .updating || self == .checkingResult }
+}
+
+enum KanbanCardMutationKind: Equatable, Sendable {
+    case status(String)
+    case block(String?)
+    case unblock
+    case addPrerequisite(String)
+    case removePrerequisite(String)
+    case archive(previousStatus: String)
+    case undoArchive(status: String)
+}
+
+struct KanbanCardMutationState: Equatable, Sendable {
+    let kind: KanbanCardMutationKind
+    let phase: KanbanCardMutationPhase
+}
+
+struct KanbanArchiveUndo: Equatable, Sendable {
+    let cardID: String
+    let cardTitle: String
+    let previousStatus: String
+    let expiresAt: Date
+    let card: KanbanCard
+}
+
+private struct KanbanPendingDependencyChange {
+    let prerequisiteID: String
+    let isAdding: Bool
+}
+
 struct KanbanLiveUpdateTiming: Sendable {
     let coalescingDelay: Duration
     let reconnectDelays: [Duration]
@@ -56,6 +94,8 @@ final class KanbanFeatureState {
     private(set) var loadedDetailIsStale = false
     private(set) var liveCursor = 0
     private(set) var detailRefreshRevision = 0
+    private(set) var cardMutationStates: [String: KanbanCardMutationState] = [:]
+    private(set) var archiveUndo: KanbanArchiveUndo?
 
     private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
@@ -72,6 +112,7 @@ final class KanbanFeatureState {
     private let client: any KanbanDataClient
     private let streamClient: any KanbanEventStreamingClient
     private let timing: KanbanLiveUpdateTiming
+    private let archiveUndoLifetime: TimeInterval
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
     private let onAPIError: (Error) -> Void
     private var isVisible = false
@@ -82,12 +123,18 @@ final class KanbanFeatureState {
     private var reconnectTask: Task<Void, Never>?
     private var coalescingTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
+    private var activeCardMutationIDs: [String: UUID] = [:]
+    private var pendingOptimisticStatuses: [String: String] = [:]
+    private var uncertainProtectedCards: [String: KanbanCard] = [:]
+    private var pendingDependencyChanges: [String: KanbanPendingDependencyChange] = [:]
+    private var archiveUndoTask: Task<Void, Never>?
 
     init(
         server: URL,
         client: (any KanbanDataClient)? = nil,
         streamClient: (any KanbanEventStreamingClient)? = nil,
         timing: KanbanLiveUpdateTiming = .production,
+        archiveUndoLifetime: TimeInterval = 8,
         sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
         },
@@ -97,6 +144,7 @@ final class KanbanFeatureState {
         self.client = client ?? APIClient(baseURL: server)
         self.streamClient = streamClient ?? KanbanEventStreamClient()
         self.timing = timing
+        self.archiveUndoLifetime = archiveUndoLifetime
         self.sleep = sleep
         self.onAPIError = onAPIError
     }
@@ -117,8 +165,12 @@ final class KanbanFeatureState {
 
     var canMutateCards: Bool {
         canAddComments
-            && report?.warnings.isEmpty == true
             && Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+    }
+
+    var hasAvailableArchiveUndo: Bool {
+        guard let archiveUndo else { return false }
+        return archiveUndo.expiresAt > Date()
     }
 
     var selectedBoard: KanbanBoard? {
@@ -183,7 +235,230 @@ final class KanbanFeatureState {
         searchMatchedCards.count { $0.status?.rawValue == status }
     }
 
+    func canMutateCard(_ card: KanbanCard) -> Bool {
+        guard canMutateCards,
+              normalizedOptional(card.cardID) != nil,
+              let status = card.status?.rawValue else { return false }
+        return Self.liveStatuses.contains(status) || status == "archived"
+    }
+
+    func isMutatingCard(_ cardID: String?) -> Bool {
+        guard let cardID = normalizedOptional(cardID) else { return false }
+        return activeCardMutationIDs[cardID] != nil
+    }
+
+    func mutationState(for cardID: String?) -> KanbanCardMutationState? {
+        guard let cardID = normalizedOptional(cardID) else { return nil }
+        return cardMutationStates[cardID]
+    }
+
+    func moveDestinations(for card: KanbanCard) -> [String] {
+        guard canMutateCard(card) else { return [] }
+        let ordinaryDestinations = Set(["triage", "todo", "ready"])
+        return (configuration?.columns ?? [])
+            .filter { ordinaryDestinations.contains($0) && $0 != card.status?.rawValue }
+    }
+
+    func displayedPrerequisites(for cardID: String, canonical: [String]) -> [String] {
+        guard let change = pendingDependencyChanges[cardID] else { return canonical }
+        var result = canonical.filter { $0 != change.prerequisiteID }
+        if change.isAdding { result.append(change.prerequisiteID) }
+        return Array(Set(result)).sorted()
+    }
+
+    func displayedCard(_ canonical: KanbanCard) -> KanbanCard {
+        guard let cardID = normalizedOptional(canonical.cardID),
+              let status = pendingOptimisticStatuses[cardID] else { return canonical }
+        return canonical.replacingStatus(status)
+    }
+
+    func moveCard(
+        _ card: KanbanCard,
+        to status: String,
+        confirmingRunningExit: Bool = false
+    ) async {
+        guard status != "running", moveDestinations(for: card).contains(status) else { return }
+        await performStatusMutation(
+            card,
+            status: status,
+            kind: .status(status),
+            confirmingRunningExit: confirmingRunningExit
+        )
+    }
+
+    func completeCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
+        guard card.status?.rawValue != "done", card.status?.rawValue != "archived" else { return }
+        await performStatusMutation(
+            card,
+            status: "done",
+            kind: .status("done"),
+            confirmingRunningExit: confirmingRunningExit
+        )
+    }
+
+    func archiveCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
+        guard let previousStatus = card.status?.rawValue, previousStatus != "archived" else { return }
+        await performStatusMutation(
+            card,
+            status: "archived",
+            kind: .archive(previousStatus: previousStatus),
+            confirmingRunningExit: confirmingRunningExit
+        )
+    }
+
+    func blockCard(
+        _ card: KanbanCard,
+        reason: String?,
+        confirmingRunningExit: Bool = false
+    ) async {
+        guard canMutateCard(card), card.status?.rawValue != "blocked", card.status?.rawValue != "archived" else { return }
+        let reason = normalizedOptional(reason)
+        await performStatusMutation(
+            card,
+            status: "blocked",
+            kind: .block(reason),
+            confirmingRunningExit: confirmingRunningExit
+        ) { [client, selectedBoardSlug] cardID in
+            guard let board = selectedBoardSlug else { throw CancellationError() }
+            return try await client.blockKanbanCard(
+                KanbanCardActionRequest(cardID: cardID, board: board, reason: reason)
+            )
+        }
+    }
+
+    func unblockCard(_ card: KanbanCard) async {
+        guard canMutateCard(card), card.status?.rawValue == "blocked" else { return }
+        await performStatusMutation(card, status: "ready", kind: .unblock) { [client, selectedBoardSlug] cardID in
+            guard let board = selectedBoardSlug else { throw CancellationError() }
+            return try await client.unblockKanbanCard(
+                KanbanCardActionRequest(cardID: cardID, board: board, reason: nil)
+            )
+        }
+    }
+
+    func addPrerequisite(_ prerequisiteID: String, to card: KanbanCard) async {
+        await mutatePrerequisite(prerequisiteID, card: card, isAdding: true)
+    }
+
+    func removePrerequisite(_ prerequisiteID: String, from card: KanbanCard) async {
+        await mutatePrerequisite(prerequisiteID, card: card, isAdding: false)
+    }
+
+    func undoArchive() async {
+        guard hasAvailableArchiveUndo,
+              let undo = archiveUndo,
+              let board = selectedBoardSlug else {
+            archiveUndo = nil
+            return
+        }
+        archiveUndoTask?.cancel()
+        do {
+            let detail = try await client.kanbanCardDetail(
+                KanbanCardDetailRequest(cardID: undo.cardID, board: board)
+            )
+            try KanbanCardDetailValidator.validate(detail, requestedCardID: undo.cardID)
+            guard let card = detail.card, card.status?.rawValue == "archived" else {
+                archiveUndo = nil
+                if let card = detail.card { replaceCardInSnapshot(card) }
+                cardMutationStates[undo.cardID] = KanbanCardMutationState(
+                    kind: .undoArchive(status: undo.previousStatus), phase: .failed
+                )
+                detailRefreshRevision &+= 1
+                return
+            }
+            archiveUndo = nil
+            await performStatusMutation(
+                card,
+                status: undo.previousStatus,
+                kind: .undoArchive(status: undo.previousStatus)
+            )
+            if let phase = cardMutationStates[undo.cardID]?.phase,
+               phase == .failed || phase == .outcomeUncertain {
+                archiveUndo = recoveryUndo(from: undo, card: card)
+            }
+        } catch {
+            forwardAuthentication(error)
+            archiveUndo = recoveryUndo(from: undo, card: undo.card)
+            cardMutationStates[undo.cardID] = KanbanCardMutationState(
+                kind: .undoArchive(status: undo.previousStatus), phase: .outcomeUncertain
+            )
+        }
+    }
+
+    func retryMutation(for card: KanbanCard) async {
+        guard let cardID = normalizedOptional(card.cardID),
+              let mutation = cardMutationStates[cardID],
+              mutation.phase == .failed else { return }
+        switch mutation.kind {
+        case let .status(status):
+            await performStatusMutation(card, status: status, kind: mutation.kind)
+        case let .block(reason):
+            await blockCard(card, reason: reason)
+        case .unblock:
+            await unblockCard(card)
+        case let .addPrerequisite(prerequisiteID):
+            await addPrerequisite(prerequisiteID, to: card)
+        case let .removePrerequisite(prerequisiteID):
+            await removePrerequisite(prerequisiteID, from: card)
+        case .archive:
+            await archiveCard(card)
+        case let .undoArchive(status):
+            await performStatusMutation(card, status: status, kind: mutation.kind)
+        }
+    }
+
+    func checkUncertainMutation(for card: KanbanCard) async {
+        guard let cardID = normalizedOptional(card.cardID),
+              let mutation = cardMutationStates[cardID],
+              mutation.phase == .outcomeUncertain,
+              activeCardMutationIDs[cardID] == nil,
+              let board = selectedBoardSlug else { return }
+        cardMutationStates[cardID] = KanbanCardMutationState(
+            kind: mutation.kind,
+            phase: .checkingResult
+        )
+        do {
+            let detail = try await client.kanbanCardDetail(
+                KanbanCardDetailRequest(cardID: cardID, board: board)
+            )
+            try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
+            guard let authoritative = detail.card else { throw KanbanMutationSettlementError.unexpectedStatus }
+            uncertainProtectedCards[cardID] = nil
+            replaceCardInSnapshot(authoritative)
+            let succeeded: Bool
+            switch mutation.kind {
+            case let .status(status), let .undoArchive(status):
+                succeeded = authoritative.status?.rawValue == status
+            case .block:
+                succeeded = authoritative.status?.rawValue == "blocked"
+            case .unblock:
+                succeeded = authoritative.status?.rawValue == "ready"
+            case .archive:
+                succeeded = authoritative.status?.rawValue == "archived"
+            case let .addPrerequisite(prerequisiteID):
+                succeeded = detail.links?.prerequisites?.contains(prerequisiteID) == true
+            case let .removePrerequisite(prerequisiteID):
+                succeeded = detail.links?.prerequisites?.contains(prerequisiteID) != true
+            }
+            cardMutationStates[cardID] = KanbanCardMutationState(
+                kind: mutation.kind,
+                phase: succeeded ? .succeeded : .failed
+            )
+            if case .undoArchive = mutation.kind, succeeded { archiveUndo = nil }
+            detailRefreshRevision &+= 1
+        } catch {
+            forwardAuthentication(error)
+            if isNotFound(error) { uncertainProtectedCards[cardID] = nil }
+            cardMutationStates[cardID] = KanbanCardMutationState(
+                kind: mutation.kind,
+                phase: isNotFound(error) ? .failed : .outcomeUncertain
+            )
+        }
+    }
+
     func load() async {
+        archiveUndoTask?.cancel()
+        archiveUndo = nil
         resetLiveUpdates(clearCursor: true)
         let loadID = UUID()
         activeLoadID = loadID
@@ -268,7 +543,11 @@ final class KanbanFeatureState {
     }
 
     func selectBoard(_ slug: String) async {
-        guard boards.contains(where: { normalized($0.slug) == slug }), slug != selectedBoardSlug else { return }
+        guard activeCardMutationIDs.isEmpty,
+              boards.contains(where: { normalized($0.slug) == slug }),
+              slug != selectedBoardSlug else { return }
+        archiveUndoTask?.cancel()
+        archiveUndo = nil
         resetLiveUpdates(clearCursor: true)
         selectedBoardSlug = slug
         snapshot = nil
@@ -397,6 +676,385 @@ final class KanbanFeatureState {
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
     }
 
+    private func performStatusMutation(
+        _ card: KanbanCard,
+        status: String,
+        kind: KanbanCardMutationKind,
+        confirmingRunningExit: Bool = false,
+        write: ((String) async throws -> KanbanCardMutationEnvelope)? = nil
+    ) async {
+        guard status != "running",
+              card.status?.rawValue != "running" || confirmingRunningExit,
+              canMutateCard(card),
+              let cardID = normalizedOptional(card.cardID),
+              activeCardMutationIDs[cardID] == nil,
+              let board = selectedBoardSlug else { return }
+
+        let baseline = cardInSnapshot(cardID) ?? card
+        uncertainProtectedCards[cardID] = nil
+        let mutationID = UUID()
+        activeCardMutationIDs[cardID] = mutationID
+        pendingOptimisticStatuses[cardID] = status
+        cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .updating)
+        replaceCardInSnapshot(baseline.replacingStatus(status))
+
+        do {
+            let response: KanbanCardMutationEnvelope
+            if let write {
+                response = try await write(cardID)
+            } else {
+                response = try await client.setKanbanCardStatus(
+                    KanbanCardStatusRequest(cardID: cardID, board: board, status: status)
+                )
+            }
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            let authoritative = try KanbanCardMutationValidator.validate(response, expectedCardID: cardID)
+            guard authoritative.status?.rawValue == status else {
+                throw KanbanMutationSettlementError.unexpectedStatus
+            }
+            settleSuccessfulStatusMutation(
+                authoritative,
+                baseline: baseline,
+                kind: kind,
+                mutationID: mutationID
+            )
+        } catch {
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            guard !isCancellation(error) else {
+                restoreFailedOptimisticMutation(cardID: cardID, baseline: baseline, kind: kind, phase: .failed)
+                return
+            }
+            forwardAuthentication(error)
+            if isDefinitiveWriteFailure(error) {
+                restoreFailedOptimisticMutation(cardID: cardID, baseline: baseline, kind: kind, phase: .failed)
+            } else {
+                cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .checkingResult)
+                await reconcileStatusMutation(
+                    cardID: cardID,
+                    expectedStatus: status,
+                    baseline: baseline,
+                    kind: kind,
+                    mutationID: mutationID
+                )
+            }
+        }
+    }
+
+    private func reconcileStatusMutation(
+        cardID: String,
+        expectedStatus: String,
+        baseline: KanbanCard,
+        kind: KanbanCardMutationKind,
+        mutationID: UUID
+    ) async {
+        guard let board = selectedBoardSlug else { return }
+        do {
+            let detail = try await client.kanbanCardDetail(
+                KanbanCardDetailRequest(cardID: cardID, board: board)
+            )
+            try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
+            guard activeCardMutationIDs[cardID] == mutationID, let authoritative = detail.card else { return }
+            if authoritative.status?.rawValue == expectedStatus {
+                settleSuccessfulStatusMutation(
+                    authoritative,
+                    baseline: baseline,
+                    kind: kind,
+                    mutationID: mutationID
+                )
+            } else {
+                restoreFailedOptimisticMutation(
+                    cardID: cardID,
+                    baseline: authoritative,
+                    kind: kind,
+                    phase: .failed
+                )
+            }
+        } catch {
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            forwardAuthentication(error)
+            if isNotFound(error) {
+                removeCardFromSnapshot(cardID)
+                finishMutation(cardID: cardID, kind: kind, phase: .failed)
+            } else {
+                restoreFailedOptimisticMutation(
+                    cardID: cardID,
+                    baseline: baseline,
+                    kind: kind,
+                    phase: .outcomeUncertain
+                )
+            }
+        }
+    }
+
+    private func settleSuccessfulStatusMutation(
+        _ authoritative: KanbanCard,
+        baseline: KanbanCard,
+        kind: KanbanCardMutationKind,
+        mutationID: UUID
+    ) {
+        guard let cardID = normalizedOptional(authoritative.cardID),
+              activeCardMutationIDs[cardID] == mutationID else { return }
+        pendingOptimisticStatuses[cardID] = nil
+        replaceCardInSnapshot(authoritative)
+        finishMutation(cardID: cardID, kind: kind, phase: .succeeded)
+        if case let .archive(previousStatus) = kind {
+            offerArchiveUndo(
+                card: authoritative,
+                title: baseline.title,
+                previousStatus: previousStatus
+            )
+        }
+    }
+
+    private func mutatePrerequisite(_ prerequisiteID: String, card: KanbanCard, isAdding: Bool) async {
+        guard canMutateCard(card),
+              let cardID = normalizedOptional(card.cardID),
+              let prerequisiteID = normalizedOptional(prerequisiteID),
+              prerequisiteID != cardID,
+              activeCardMutationIDs[cardID] == nil,
+              let board = selectedBoardSlug else { return }
+
+        let kind: KanbanCardMutationKind = isAdding
+            ? .addPrerequisite(prerequisiteID)
+            : .removePrerequisite(prerequisiteID)
+        let request = KanbanDependencyMutationRequest(
+            board: board,
+            prerequisiteID: prerequisiteID,
+            dependentID: cardID
+        )
+        let mutationID = UUID()
+        activeCardMutationIDs[cardID] = mutationID
+        pendingDependencyChanges[cardID] = KanbanPendingDependencyChange(
+            prerequisiteID: prerequisiteID,
+            isAdding: isAdding
+        )
+        cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .updating)
+
+        do {
+            let response = try await (isAdding
+                ? client.addKanbanDependency(request)
+                : client.removeKanbanDependency(request))
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            try KanbanDependencyMutationValidator.validate(response, request: request)
+            cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .checkingResult)
+            await reconcileDependencyMutation(
+                request: request,
+                shouldExist: isAdding,
+                kind: kind,
+                mutationID: mutationID
+            )
+        } catch {
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            forwardAuthentication(error)
+            if isDefinitiveWriteFailure(error) {
+                pendingDependencyChanges[cardID] = nil
+                finishMutation(cardID: cardID, kind: kind, phase: .failed)
+            } else {
+                cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .checkingResult)
+                await reconcileDependencyMutation(
+                    request: request,
+                    shouldExist: isAdding,
+                    kind: kind,
+                    mutationID: mutationID
+                )
+            }
+        }
+    }
+
+    private func reconcileDependencyMutation(
+        request: KanbanDependencyMutationRequest,
+        shouldExist: Bool,
+        kind: KanbanCardMutationKind,
+        mutationID: UUID
+    ) async {
+        let cardID = request.dependentID
+        do {
+            let detail = try await client.kanbanCardDetail(
+                KanbanCardDetailRequest(cardID: cardID, board: request.board)
+            )
+            try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            let exists = detail.links?.prerequisites?.contains(request.prerequisiteID) == true
+            pendingDependencyChanges[cardID] = nil
+            finishMutation(
+                cardID: cardID,
+                kind: kind,
+                phase: exists == shouldExist ? .succeeded : .failed
+            )
+        } catch {
+            guard activeCardMutationIDs[cardID] == mutationID else { return }
+            forwardAuthentication(error)
+            pendingDependencyChanges[cardID] = nil
+            finishMutation(
+                cardID: cardID,
+                kind: kind,
+                phase: isNotFound(error) ? .failed : .outcomeUncertain
+            )
+        }
+    }
+
+    private func offerArchiveUndo(card: KanbanCard, title: String?, previousStatus: String) {
+        guard let cardID = normalizedOptional(card.cardID) else { return }
+        archiveUndoTask?.cancel()
+        let undo = KanbanArchiveUndo(
+            cardID: cardID,
+            cardTitle: normalizedOptional(title) ?? cardID,
+            previousStatus: previousStatus,
+            expiresAt: Date().addingTimeInterval(archiveUndoLifetime),
+            card: card
+        )
+        archiveUndo = undo
+        archiveUndoTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(self.archiveUndoLifetime))
+            guard !Task.isCancelled, self.archiveUndo == undo else { return }
+            self.archiveUndo = nil
+        }
+    }
+
+    private func recoveryUndo(from undo: KanbanArchiveUndo, card: KanbanCard) -> KanbanArchiveUndo {
+        KanbanArchiveUndo(
+            cardID: undo.cardID,
+            cardTitle: undo.cardTitle,
+            previousStatus: undo.previousStatus,
+            expiresAt: .distantFuture,
+            card: card
+        )
+    }
+
+    private func restoreFailedOptimisticMutation(
+        cardID: String,
+        baseline: KanbanCard,
+        kind: KanbanCardMutationKind,
+        phase: KanbanCardMutationPhase
+    ) {
+        pendingOptimisticStatuses[cardID] = nil
+        uncertainProtectedCards[cardID] = phase == .outcomeUncertain ? baseline : nil
+        replaceCardInSnapshot(baseline)
+        finishMutation(cardID: cardID, kind: kind, phase: phase)
+    }
+
+    private func finishMutation(
+        cardID: String,
+        kind: KanbanCardMutationKind,
+        phase: KanbanCardMutationPhase
+    ) {
+        activeCardMutationIDs[cardID] = nil
+        if phase != .outcomeUncertain { uncertainProtectedCards[cardID] = nil }
+        cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: phase)
+        detailRefreshRevision &+= 1
+    }
+
+    private func cardInSnapshot(_ cardID: String) -> KanbanCard? {
+        allCards.first { normalizedOptional($0.cardID) == cardID }
+    }
+
+    private func replaceCardInSnapshot(_ card: KanbanCard) {
+        guard let snapshot, let cardID = normalizedOptional(card.cardID),
+              let destination = normalizedOptional(card.status?.rawValue) else { return }
+        var destinationFound = false
+        var columns = (snapshot.columns ?? []).map { column in
+            var cards = (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
+            if column.name == destination {
+                cards.append(card)
+                destinationFound = true
+            }
+            return KanbanColumn(name: column.name, cards: cards)
+        }
+        if !destinationFound, destination != "archived" || includeArchived {
+            columns.append(KanbanColumn(name: destination, cards: [card]))
+        }
+        self.snapshot = snapshotReplacingColumns(snapshot, columns: columns)
+    }
+
+    private func removeCardFromSnapshot(_ cardID: String) {
+        guard let snapshot else { return }
+        let columns = (snapshot.columns ?? []).map { column in
+            KanbanColumn(
+                name: column.name,
+                cards: (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
+            )
+        }
+        self.snapshot = snapshotReplacingColumns(snapshot, columns: columns)
+    }
+
+    private func applyingPendingOptimism(to response: KanbanBoardSnapshot) -> KanbanBoardSnapshot {
+        var result = response
+        for card in uncertainProtectedCards.values {
+            result = snapshotReplacing(card, in: result)
+        }
+        for (cardID, status) in pendingOptimisticStatuses {
+            guard let card = (result.columns ?? []).flatMap({ $0.cards ?? [] }).first(where: {
+                normalizedOptional($0.cardID) == cardID
+            }) ?? cardInSnapshot(cardID) else { continue }
+            result = snapshotReplacing(card.replacingStatus(status), in: result)
+        }
+        return result
+    }
+
+    private func snapshotReplacing(_ card: KanbanCard, in snapshot: KanbanBoardSnapshot) -> KanbanBoardSnapshot {
+        guard let cardID = normalizedOptional(card.cardID),
+              let destination = normalizedOptional(card.status?.rawValue) else { return snapshot }
+        var destinationFound = false
+        var columns = (snapshot.columns ?? []).map { column in
+            var cards = (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
+            if column.name == destination {
+                cards.append(card)
+                destinationFound = true
+            }
+            return KanbanColumn(name: column.name, cards: cards)
+        }
+        if !destinationFound, destination != "archived" || includeArchived {
+            columns.append(KanbanColumn(name: destination, cards: [card]))
+        }
+        return snapshotReplacingColumns(snapshot, columns: columns)
+    }
+
+    private func snapshotReplacingColumns(
+        _ snapshot: KanbanBoardSnapshot,
+        columns: [KanbanColumn]
+    ) -> KanbanBoardSnapshot {
+        KanbanBoardSnapshot(
+            columns: columns,
+            tenants: snapshot.tenants,
+            assignees: snapshot.assignees,
+            filters: snapshot.filters,
+            changed: snapshot.changed,
+            latestEventID: snapshot.latestEventID,
+            readOnly: snapshot.readOnly
+        )
+    }
+
+    private func isDefinitiveWriteFailure(_ error: Error) -> Bool {
+        guard let apiError = error as? APIError else { return error is KanbanRequestError }
+        switch apiError {
+        case .unauthorized, .invalidServerURL:
+            return true
+        case let .http(statusCode, _):
+            return (400..<500).contains(statusCode) && statusCode != 408
+        case .network, .decoding:
+            return false
+        }
+    }
+
+    private func isNotFound(_ error: Error) -> Bool {
+        guard case let APIError.http(statusCode, _) = error else { return false }
+        return statusCode == 404
+    }
+
+    private func isCancellation(_ error: Error) -> Bool {
+        if Task.isCancelled || error is CancellationError { return true }
+        if case let APIError.network(underlying) = error {
+            return (underlying as? URLError)?.code == .cancelled
+        }
+        return false
+    }
+
+    private func normalizedOptional(_ value: String?) -> String? {
+        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
+    }
+
     private var searchMatchedCards: [KanbanCard] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return allCards }
@@ -433,7 +1091,7 @@ final class KanbanFeatureState {
                 // A cursor refresh may return the minimal unchanged envelope.
             } else {
                 let report = try validateBrowsingSnapshot(response, board: board)
-                snapshot = response
+                snapshot = applyingPendingOptimism(to: response)
                 detailRefreshRevision &+= 1
                 self.report = report
                 state = report.isPartial ? .partial : .compatible
@@ -776,4 +1434,8 @@ final class KanbanFeatureState {
         Array(Set(values.compactMap { normalized($0) }))
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
+}
+
+private enum KanbanMutationSettlementError: Error {
+    case unexpectedStatus
 }

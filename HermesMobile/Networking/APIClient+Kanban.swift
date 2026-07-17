@@ -12,6 +12,11 @@ protocol KanbanDataClient: Sendable {
     func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse
     func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope
     func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope
+    func setKanbanCardStatus(_ request: KanbanCardStatusRequest) async throws -> KanbanCardMutationEnvelope
+    func blockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope
+    func unblockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope
+    func addKanbanDependency(_ request: KanbanDependencyMutationRequest) async throws -> KanbanDependencyMutationEnvelope
+    func removeKanbanDependency(_ request: KanbanDependencyMutationRequest) async throws -> KanbanDependencyMutationEnvelope
 }
 
 extension KanbanDataClient {
@@ -34,6 +39,26 @@ extension KanbanDataClient {
     func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope {
         throw KanbanUnsupportedClientMethod.editCard
     }
+
+    func setKanbanCardStatus(_ request: KanbanCardStatusRequest) async throws -> KanbanCardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.cardStatus
+    }
+
+    func blockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.blockCard
+    }
+
+    func unblockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.unblockCard
+    }
+
+    func addKanbanDependency(_ request: KanbanDependencyMutationRequest) async throws -> KanbanDependencyMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.addDependency
+    }
+
+    func removeKanbanDependency(_ request: KanbanDependencyMutationRequest) async throws -> KanbanDependencyMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.removeDependency
+    }
 }
 
 private enum KanbanUnsupportedClientMethod: Error {
@@ -42,6 +67,11 @@ private enum KanbanUnsupportedClientMethod: Error {
     case addComment
     case createCard
     case editCard
+    case cardStatus
+    case blockCard
+    case unblockCard
+    case addDependency
+    case removeDependency
 }
 
 extension APIClient: KanbanDataClient {
@@ -101,6 +131,49 @@ extension APIClient: KanbanDataClient {
         )
     }
 
+    func setKanbanCardStatus(_ request: KanbanCardStatusRequest) async throws -> KanbanCardMutationEnvelope {
+        guard request.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "running" else {
+            throw KanbanRequestError.runningStatusRequiresDispatcher
+        }
+        return try await kanbanJSON(
+            endpoint: .kanbanCardStatus(request),
+            method: "PATCH",
+            body: KanbanStatusBody(status: request.status)
+        )
+    }
+
+    func blockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanBlockCard(request),
+            method: "POST",
+            body: KanbanActionBody(reason: request.reason)
+        )
+    }
+
+    func unblockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanUnblockCard(request),
+            method: "POST",
+            body: KanbanActionBody(reason: nil)
+        )
+    }
+
+    func addKanbanDependency(_ request: KanbanDependencyMutationRequest) async throws -> KanbanDependencyMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanAddDependency(request),
+            method: "POST",
+            body: KanbanDependencyBody(request: request)
+        )
+    }
+
+    func removeKanbanDependency(_ request: KanbanDependencyMutationRequest) async throws -> KanbanDependencyMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanRemoveDependency(request),
+            method: "POST",
+            body: KanbanDependencyBody(request: request)
+        )
+    }
+
     nonisolated func kanbanEventsStreamURL(_ request: KanbanEventsStreamRequest) -> URL {
         Endpoint.kanbanEventsStream(request).url(relativeTo: baseURL)
     }
@@ -141,6 +214,35 @@ extension APIClient: KanbanDataClient {
 
 private struct KanbanCommentBody: Encodable {
     let body: String
+}
+
+enum KanbanRequestError: Error, Equatable {
+    case runningStatusRequiresDispatcher
+}
+
+private struct KanbanStatusBody: Encodable {
+    let status: String
+}
+
+private struct KanbanActionBody: Encodable {
+    let reason: String?
+
+    enum CodingKeys: CodingKey { case reason }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(reason, forKey: .reason)
+    }
+}
+
+private struct KanbanDependencyBody: Encodable {
+    let parentID: String
+    let childID: String
+
+    init(request: KanbanDependencyMutationRequest) {
+        parentID = request.prerequisiteID
+        childID = request.dependentID
+    }
 }
 
 private struct KanbanCreateCardBody: Encodable {

@@ -27,6 +27,8 @@ private struct KanbanCardDetailContent: View {
     @Bindable var state: KanbanCardDetailState
     @State private var showsOperationalHistory = false
     @State private var cardEditor: KanbanCardEditorState?
+    @State private var pendingRunningAction: KanbanPendingCardAction?
+    @State private var selectedPrerequisiteID: String?
     @FocusState private var commentFieldIsFocused: Bool
 
     var body: some View {
@@ -67,12 +69,15 @@ private struct KanbanCardDetailContent: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Edit") {
                     guard let detail = state.detail else { return }
                     cardEditor = featureModel.makeEditCardEditorState(detail: detail)
                 }
                 .disabled(!featureModel.canMutateCards || state.loadState != .loaded)
+                if let card = state.detail?.card {
+                    cardActionsMenu(card)
+                }
             }
         }
         .sheet(item: $cardEditor) { editor in
@@ -85,6 +90,22 @@ private struct KanbanCardDetailContent: View {
                 }
             )
         }
+        .alert(
+            "Leave Running?",
+            isPresented: Binding(
+                get: { pendingRunningAction != nil },
+                set: { if !$0 { pendingRunningAction = nil } }
+            ),
+            presenting: pendingRunningAction
+        ) { pending in
+            Button("Cancel", role: .cancel) { pendingRunningAction = nil }
+            Button("Continue", role: .destructive) {
+                pendingRunningAction = nil
+                perform(pending.action, for: pending.card, confirmingRunningExit: true)
+            }
+        } message: { _ in
+            Text("Leaving Running may clear the Card's claim and worker state.")
+        }
     }
 
     private var detailList: some View {
@@ -96,8 +117,10 @@ private struct KanbanCardDetailContent: View {
             }
 
             if let card = state.detail?.card {
-                descriptionSection(card)
-                metadataSection(card)
+                let displayedCard = featureModel.displayedCard(card)
+                descriptionSection(displayedCard)
+                metadataSection(displayedCard)
+                mutationSection(displayedCard)
             }
             commentsSection
             dependenciesSection
@@ -242,14 +265,182 @@ private struct KanbanCardDetailContent: View {
 
     private var dependenciesSection: some View {
         Section("Dependencies") {
-            dependencyGroup(
+            prerequisiteGroup(
                 title: KanbanCountFormatter.prerequisites(state.detail?.links?.prerequisites?.count ?? 0),
-                ids: state.detail?.links?.prerequisites ?? []
+                card: state.detail?.card,
+                canonicalIDs: state.detail?.links?.prerequisites ?? []
             )
             dependencyGroup(
                 title: KanbanCountFormatter.dependents(state.detail?.links?.dependents?.count ?? 0),
                 ids: state.detail?.links?.dependents ?? []
             )
+        }
+    }
+
+    @ViewBuilder
+    private func prerequisiteGroup(title: String, card: KanbanCard?, canonicalIDs: [String]) -> some View {
+        if let card, let cardID = card.cardID {
+            let ids = featureModel.displayedPrerequisites(for: cardID, canonical: canonicalIDs)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).font(.headline)
+                ForEach(ids, id: \.self) { prerequisiteID in
+                    HStack {
+                        Text(verbatim: prerequisiteID)
+                            .font(.body.monospaced())
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button("Remove", systemImage: "minus.circle", role: .destructive) {
+                            Task {
+                                await featureModel.removePrerequisite(prerequisiteID, from: card)
+                                await state.refresh()
+                            }
+                        }
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .disabled(!featureModel.canMutateCard(card) || featureModel.isMutatingCard(cardID))
+                        .accessibilityLabel(Text("Remove \(prerequisiteID) as Prerequisite"))
+                    }
+                }
+
+                Picker("Add Prerequisite", selection: $selectedPrerequisiteID) {
+                    Text("Choose Card").tag(String?.none)
+                    ForEach(featureModel.allCards.filter { option in
+                        guard let optionID = option.cardID else { return false }
+                        return optionID != cardID && !ids.contains(optionID)
+                    }, id: \.cardID) { option in
+                        Text(option.title ?? option.cardID ?? String(localized: "Card"))
+                            .tag(option.cardID)
+                    }
+                }
+                Button("Add Prerequisite") {
+                    guard let prerequisiteID = selectedPrerequisiteID else { return }
+                    selectedPrerequisiteID = nil
+                    Task {
+                        await featureModel.addPrerequisite(prerequisiteID, to: card)
+                        await state.refresh()
+                    }
+                }
+                .disabled(
+                    selectedPrerequisiteID == nil
+                        || !featureModel.canMutateCard(card)
+                        || featureModel.isMutatingCard(cardID)
+                )
+                .frame(minHeight: 44)
+            }
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    @ViewBuilder
+    private func mutationSection(_ card: KanbanCard) -> some View {
+        if let mutation = featureModel.mutationState(for: card.cardID) {
+            Section("Update") {
+                switch mutation.phase {
+                case .updating:
+                    Label("Updating task...", systemImage: "arrow.triangle.2.circlepath")
+                case .checkingResult:
+                    Label("Checking Result", systemImage: "arrow.triangle.2.circlepath")
+                case .succeeded:
+                    Label("Updated", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case .failed:
+                    Label("The server refused or did not apply this update.", systemImage: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Button("Try Again") { retryMutation(for: card) }
+                case .outcomeUncertain:
+                    Label("Outcome Uncertain", systemImage: "questionmark.circle")
+                        .foregroundStyle(.orange)
+                    Text("Refresh the Card to check the server result before trying again.")
+                        .font(.footnote)
+                    Button("Refresh") { Task { await featureModel.checkUncertainMutation(for: card) } }
+                }
+                if featureModel.hasAvailableArchiveUndo,
+                   featureModel.archiveUndo?.cardID == card.cardID {
+                    if mutation.phase == .outcomeUncertain,
+                       case .undoArchive = mutation.kind {
+                        Button("Refresh") {
+                            Task { await featureModel.checkUncertainMutation(for: card) }
+                        }
+                    } else {
+                        Button(mutation.phase == .failed ? "Try Again" : "Undo Archive") {
+                            Task { await featureModel.undoArchive() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func cardActionsMenu(_ card: KanbanCard) -> some View {
+        Menu {
+            let destinations = featureModel.moveDestinations(for: card)
+            if !destinations.isEmpty {
+                Menu("Move") {
+                    ForEach(destinations, id: \.self) { destination in
+                        Button(KanbanStatusPresentation(destination).title) {
+                            request(.move(destination), for: card)
+                        }
+                    }
+                }
+            }
+            if card.status?.rawValue == "blocked" {
+                Button("Unblock") { request(.unblock, for: card) }
+            } else if card.status?.rawValue != "archived" {
+                Button("Block") { request(.block, for: card) }
+            }
+            if card.status?.rawValue != "done", card.status?.rawValue != "archived" {
+                Button("Complete") { request(.complete, for: card) }
+            }
+            if card.status?.rawValue != "archived" {
+                Button("Archive", role: .destructive) { request(.archive, for: card) }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .disabled(!featureModel.canMutateCard(card) || featureModel.isMutatingCard(card.cardID))
+        .accessibilityLabel(Text("Card Actions"))
+    }
+
+    private func request(_ action: KanbanCardAction, for card: KanbanCard) {
+        if card.status?.rawValue == "running" {
+            pendingRunningAction = KanbanPendingCardAction(card: card, action: action)
+        } else {
+            perform(action, for: card)
+        }
+    }
+
+    private func perform(
+        _ action: KanbanCardAction,
+        for card: KanbanCard,
+        confirmingRunningExit: Bool = false
+    ) {
+        Task {
+            switch action {
+            case let .move(status):
+                await featureModel.moveCard(card, to: status, confirmingRunningExit: confirmingRunningExit)
+            case .block:
+                await featureModel.blockCard(card, reason: nil, confirmingRunningExit: confirmingRunningExit)
+            case .unblock: await featureModel.unblockCard(card)
+            case .complete:
+                await featureModel.completeCard(card, confirmingRunningExit: confirmingRunningExit)
+            case .archive:
+                await featureModel.archiveCard(card, confirmingRunningExit: confirmingRunningExit)
+            }
+            await state.refresh()
+        }
+    }
+
+    private func retryMutation(for card: KanbanCard) {
+        guard card.status?.rawValue == "running",
+              let mutation = featureModel.mutationState(for: card.cardID) else {
+            Task { await featureModel.retryMutation(for: card) }
+            return
+        }
+        switch mutation.kind {
+        case let .status(status): request(status == "done" ? .complete : .move(status), for: card)
+        case .block: request(.block, for: card)
+        case .archive: request(.archive, for: card)
+        default: Task { await featureModel.retryMutation(for: card) }
         }
     }
 

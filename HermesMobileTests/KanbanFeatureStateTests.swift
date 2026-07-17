@@ -270,6 +270,201 @@ final class KanbanFeatureStateTests: XCTestCase {
             .none, .warning, .critical
         ])
     }
+
+    func testCardMutationsAreOptimisticSerializedPerCardAndConcurrentAcrossCards() async throws {
+        let client = DeferredMutationClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let firstCard = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+        let secondCard = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-2" })
+
+        let firstWrite = Task { await state.moveCard(firstCard, to: "ready") }
+        try await waitUntil { await client.statusRequestCount == 1 }
+        XCTAssertEqual(state.allCards.first { $0.cardID == "CARD-1" }?.status?.rawValue, "ready")
+        XCTAssertEqual(state.mutationState(for: "CARD-1")?.phase, .updating)
+
+        // A canonical refresh that still carries the old status must not erase
+        // the pending optimistic status.
+        await state.refresh()
+        XCTAssertEqual(state.allCards.first { $0.cardID == "CARD-1" }?.status?.rawValue, "ready")
+
+        let duplicateWrite = Task { await state.completeCard(firstCard) }
+        let unrelatedWrite = Task { await state.moveCard(secondCard, to: "todo") }
+        try await waitUntil { await client.statusRequestCount == 2 }
+        let firstCardRequestCount = await client.requestCount(for: "CARD-1")
+        let maximumConcurrentWrites = await client.maximumConcurrentWrites
+        XCTAssertEqual(firstCardRequestCount, 1)
+        XCTAssertEqual(maximumConcurrentWrites, 2)
+
+        await client.finish(cardID: "CARD-1", status: "ready")
+        await client.finish(cardID: "CARD-2", status: "todo")
+        await firstWrite.value
+        await duplicateWrite.value
+        await unrelatedWrite.value
+
+        XCTAssertEqual(state.mutationState(for: "CARD-1")?.phase, .succeeded)
+        XCTAssertEqual(state.mutationState(for: "CARD-2")?.phase, .succeeded)
+    }
+
+    func testAmbiguousMutationRequiresReconciliationBeforeTryAgain() async throws {
+        let network = APIError.network(underlying: URLError(.networkConnectionLost))
+        let client = ImmediateMutationClient(
+            statusResults: [.failure(network)],
+            detailResults: [
+                .failure(network),
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"done"}}"#))
+            ]
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        await state.completeCard(card)
+
+        XCTAssertEqual(state.mutationState(for: card.cardID)?.phase, .outcomeUncertain)
+        var statusRequestCount = await client.statusRequestCount
+        XCTAssertEqual(statusRequestCount, 1)
+        await state.refresh()
+        XCTAssertEqual(
+            state.allCards.first { $0.cardID == card.cardID }?.status?.rawValue,
+            "todo",
+            "An ordinary refresh must preserve the recoverable Card until uncertainty is explicitly checked."
+        )
+        await state.checkUncertainMutation(for: card)
+        XCTAssertEqual(state.mutationState(for: card.cardID)?.phase, .succeeded)
+        statusRequestCount = await client.statusRequestCount
+        XCTAssertEqual(statusRequestCount, 1, "A result check must never repeat the write.")
+    }
+
+    func testArchiveUndoUsesFreshAuthoritativeStateAndDependencyRefusalsPersist() async throws {
+        let client = ImmediateMutationClient(
+            statusResults: [
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"archived"}}"#)),
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"todo"}}"#))
+            ],
+            detailResults: [
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"archived"}}"#))
+            ],
+            dependencyResult: .failure(APIError.http(statusCode: 409, body: #"{"error":"cycle"}"#))
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        await state.archiveCard(card)
+        XCTAssertTrue(state.hasAvailableArchiveUndo)
+        XCTAssertFalse(state.allCards.contains { $0.cardID == card.cardID })
+
+        await state.undoArchive()
+        XCTAssertEqual(state.allCards.first { $0.cardID == card.cardID }?.status?.rawValue, "todo")
+        let detailRequestCount = await client.detailRequestCount
+        XCTAssertEqual(detailRequestCount, 1, "Undo must read current authoritative state first.")
+
+        let restored = try XCTUnwrap(state.allCards.first { $0.cardID == card.cardID })
+        await state.addPrerequisite("CARD-2", to: restored)
+        XCTAssertEqual(state.mutationState(for: card.cardID)?.phase, .failed)
+        let dependencyRequestCount = await client.dependencyRequestCount
+        XCTAssertEqual(dependencyRequestCount, 1)
+    }
+
+    func testUnknownStatusAndRunningDestinationCannotConstructWrites() async throws {
+        let client = ImmediateMutationClient(snapshot: mutationSnapshot(status: "future"))
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        XCTAssertFalse(state.canMutateCard(card))
+        await state.moveCard(card, to: "running")
+        let statusRequestCount = await client.statusRequestCount
+        XCTAssertEqual(statusRequestCount, 0)
+    }
+
+    func testArchiveUndoExpiresWithoutIssuingAnotherWrite() async throws {
+        let client = ImmediateMutationClient(statusResults: [
+            .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"archived"}}"#))
+        ])
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client,
+            archiveUndoLifetime: 0.01
+        )
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        await state.archiveCard(card)
+        XCTAssertTrue(state.hasAvailableArchiveUndo)
+        try await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertFalse(state.hasAvailableArchiveUndo)
+        let statusRequestCount = await client.statusRequestCount
+        XCTAssertEqual(statusRequestCount, 1)
+    }
+
+    func testRunningExitRequiresExplicitConfirmationBeforeWriteConstruction() async throws {
+        let client = ImmediateMutationClient(
+            snapshot: mutationSnapshot(status: "running"),
+            statusResults: [
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"done"}}"#))
+            ]
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        await state.completeCard(card)
+        var requestCount = await client.statusRequestCount
+        XCTAssertEqual(requestCount, 0)
+
+        await state.completeCard(card, confirmingRunningExit: true)
+        requestCount = await client.statusRequestCount
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(state.mutationState(for: card.cardID)?.phase, .succeeded)
+    }
+
+    func testUncertainArchiveUndoStaysRecoverableAndChecksBeforeAnotherWrite() async throws {
+        let network = APIError.network(underlying: URLError(.networkConnectionLost))
+        let client = ImmediateMutationClient(
+            statusResults: [
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"archived"}}"#)),
+                .failure(network)
+            ],
+            detailResults: [
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"archived"}}"#)),
+                .failure(network),
+                .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"todo"}}"#))
+            ]
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        await state.archiveCard(card)
+        await state.undoArchive()
+        XCTAssertEqual(state.mutationState(for: card.cardID)?.phase, .outcomeUncertain)
+        XCTAssertTrue(state.hasAvailableArchiveUndo)
+        var requestCount = await client.statusRequestCount
+        XCTAssertEqual(requestCount, 2)
+
+        let recoveryCard = try XCTUnwrap(state.archiveUndo?.card)
+        await state.checkUncertainMutation(for: recoveryCard)
+        XCTAssertEqual(state.mutationState(for: card.cardID)?.phase, .succeeded)
+        XCTAssertFalse(state.hasAvailableArchiveUndo)
+        requestCount = await client.statusRequestCount
+        XCTAssertEqual(requestCount, 2, "Checking an uncertain Undo must not repeat the write.")
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(1),
+        condition: @escaping @Sendable () async -> Bool
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while clock.now < deadline {
+            if await condition() { return }
+            await Task.yield()
+        }
+        XCTFail("Condition was not met before timeout")
+    }
 }
 
 private enum KanbanEventsNotStubbed: Error { case unexpectedCall }
@@ -357,6 +552,117 @@ private actor DeferredFirstConfigurationClient: KanbanDataClient {
         continuation?.resume(returning: KanbanFixtures.configuration)
         continuation = nil
     }
+}
+
+private actor DeferredMutationClient: KanbanDataClient {
+    private var continuations: [String: CheckedContinuation<KanbanCardMutationEnvelope, Never>] = [:]
+    private var requests: [KanbanCardStatusRequest] = []
+    private var concurrentWrites = 0
+    private(set) var maximumConcurrentWrites = 0
+
+    var statusRequestCount: Int { requests.count }
+
+    func requestCount(for cardID: String) -> Int {
+        requests.count { $0.cardID == cardID }
+    }
+
+    func kanbanConfiguration() -> KanbanConfiguration {
+        mutationDecode(#"{"columns":["triage","todo","ready","running","blocked","done"],"read_only":false}"#)
+    }
+    func kanbanBoards() -> KanbanBoardsResponse {
+        mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#)
+    }
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot { mutationSnapshot() }
+    func kanbanStats(board: String) -> KanbanStats { mutationDecode("{}") }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { mutationDecode("{}") }
+
+    func setKanbanCardStatus(_ request: KanbanCardStatusRequest) async -> KanbanCardMutationEnvelope {
+        requests.append(request)
+        concurrentWrites += 1
+        maximumConcurrentWrites = max(maximumConcurrentWrites, concurrentWrites)
+        return await withCheckedContinuation { continuation in
+            continuations[request.cardID] = continuation
+        }
+    }
+
+    func finish(cardID: String, status: String) {
+        concurrentWrites -= 1
+        continuations.removeValue(forKey: cardID)?.resume(
+            returning: mutationDecode(#"{"task":{"id":"\#(cardID)","status":"\#(status)"}}"#)
+        )
+    }
+}
+
+private actor ImmediateMutationClient: KanbanDataClient {
+    private let snapshot: KanbanBoardSnapshot
+    private var statusResults: [Result<KanbanCardMutationEnvelope, Error>]
+    private var detailResults: [Result<KanbanCardDetailEnvelope, Error>]
+    private let dependencyResult: Result<KanbanDependencyMutationEnvelope, Error>
+    private(set) var statusRequestCount = 0
+    private(set) var detailRequestCount = 0
+    private(set) var dependencyRequestCount = 0
+
+    init(
+        snapshot: KanbanBoardSnapshot = mutationSnapshot(),
+        statusResults: [Result<KanbanCardMutationEnvelope, Error>] = [],
+        detailResults: [Result<KanbanCardDetailEnvelope, Error>] = [],
+        dependencyResult: Result<KanbanDependencyMutationEnvelope, Error> = .success(
+            mutationDecode(#"{"ok":true,"parent_id":"CARD-2","child_id":"CARD-1"}"#)
+        )
+    ) {
+        self.snapshot = snapshot
+        self.statusResults = statusResults
+        self.detailResults = detailResults
+        self.dependencyResult = dependencyResult
+    }
+
+    func kanbanConfiguration() -> KanbanConfiguration {
+        mutationDecode(#"{"columns":["triage","todo","ready","running","blocked","done"],"read_only":false}"#)
+    }
+    func kanbanBoards() -> KanbanBoardsResponse {
+        mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#)
+    }
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot { snapshot }
+    func kanbanStats(board: String) -> KanbanStats { mutationDecode("{}") }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { mutationDecode("{}") }
+
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) throws -> KanbanCardDetailEnvelope {
+        detailRequestCount += 1
+        return try detailResults.removeFirst().get()
+    }
+
+    func setKanbanCardStatus(_ request: KanbanCardStatusRequest) throws -> KanbanCardMutationEnvelope {
+        statusRequestCount += 1
+        return try statusResults.removeFirst().get()
+    }
+
+    func addKanbanDependency(
+        _ request: KanbanDependencyMutationRequest
+    ) throws -> KanbanDependencyMutationEnvelope {
+        dependencyRequestCount += 1
+        return try dependencyResult.get()
+    }
+}
+
+private func mutationSnapshot(status: String = "todo") -> KanbanBoardSnapshot {
+    mutationDecode("""
+    {
+      "changed":true,
+      "read_only":false,
+      "columns":[
+        {"name":"triage","tasks":[{"id":"CARD-2","title":"Second","status":"triage"}]},
+        {"name":"\(status)","tasks":[{"id":"CARD-1","title":"First","status":"\(status)"}]},
+        {"name":"ready","tasks":[]},
+        {"name":"done","tasks":[]}
+      ]
+    }
+    """)
+}
+
+private func mutationDecode<T: Decodable>(_ json: String) -> T {
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    return try! decoder.decode(T.self, from: Data(json.utf8))
 }
 
 private actor BrowsingClient: KanbanDataClient {

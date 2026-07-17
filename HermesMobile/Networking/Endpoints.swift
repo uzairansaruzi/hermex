@@ -105,6 +105,11 @@ enum Endpoint {
     case kanbanAddComment(KanbanAddCommentRequest)
     case kanbanCreateCard(KanbanCreateCardRequest)
     case kanbanEditCard(KanbanEditCardRequest)
+    case kanbanCardStatus(KanbanCardStatusRequest)
+    case kanbanBlockCard(KanbanCardActionRequest)
+    case kanbanUnblockCard(KanbanCardActionRequest)
+    case kanbanAddDependency(KanbanDependencyMutationRequest)
+    case kanbanRemoveDependency(KanbanDependencyMutationRequest)
     case memory
     case memoryWrite
     case skills
@@ -324,6 +329,16 @@ enum Endpoint {
             return "/api/kanban/tasks"
         case let .kanbanEditCard(request):
             return "/api/kanban/tasks/\(request.cardID)"
+        case let .kanbanCardStatus(request):
+            return "/api/kanban/tasks/\(request.cardID)"
+        case let .kanbanBlockCard(request):
+            return "/api/kanban/tasks/\(request.cardID)/block"
+        case let .kanbanUnblockCard(request):
+            return "/api/kanban/tasks/\(request.cardID)/unblock"
+        case .kanbanAddDependency:
+            return "/api/kanban/links"
+        case .kanbanRemoveDependency:
+            return "/api/kanban/links/delete"
         case .memory:
             return "/api/memory"
         case .memoryWrite:
@@ -462,6 +477,12 @@ enum Endpoint {
             return request.queryItems
         case let .kanbanEditCard(request):
             return request.queryItems
+        case let .kanbanCardStatus(request):
+            return request.queryItems
+        case let .kanbanBlockCard(request), let .kanbanUnblockCard(request):
+            return request.queryItems
+        case let .kanbanAddDependency(request), let .kanbanRemoveDependency(request):
+            return request.queryItems
         case let .reasoning(model, provider):
             var items: [URLQueryItem] = []
             if let model, !model.isEmpty {
@@ -495,6 +516,12 @@ enum Endpoint {
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/comments")
         case let .kanbanEditCard(request):
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID)
+        case let .kanbanCardStatus(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID)
+        case let .kanbanBlockCard(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/block")
+        case let .kanbanUnblockCard(request):
+            url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/unblock")
         default:
             url = baseURL.appending(path: path)
         }

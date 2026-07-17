@@ -311,6 +311,81 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertThrowsError(try KanbanCardMutationValidator.validate(malformed))
     }
 
+    func testWorkflowAndDependencyMutationsUseExactVerifiedContracts() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "release board")])
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+            switch requestIndex {
+            case 0:
+                XCTAssertEqual(request.httpMethod, "PATCH")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-1")
+                XCTAssertEqual(body as NSDictionary, ["status": "done"])
+                return apiTestJSONResponse(#"{"task":{"id":"CARD-1","status":"done"},"read_only":false}"#, for: request)
+            case 1:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-1/block")
+                XCTAssertEqual(body as NSDictionary, ["reason": "Waiting for review"])
+                return apiTestJSONResponse(#"{"task":{"id":"CARD-1","status":"blocked"},"read_only":false}"#, for: request)
+            case 2:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-1/unblock")
+                XCTAssertTrue(body.isEmpty)
+                return apiTestJSONResponse(#"{"task":{"id":"CARD-1","status":"ready"},"read_only":false}"#, for: request)
+            case 3:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/links")
+                XCTAssertEqual(body as NSDictionary, ["parent_id": "CARD-0", "child_id": "CARD-1"])
+                return apiTestJSONResponse(#"{"ok":true,"parent_id":"CARD-0","child_id":"CARD-1","read_only":false}"#, for: request)
+            default:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/links/delete")
+                XCTAssertEqual(body as NSDictionary, ["parent_id": "CARD-0", "child_id": "CARD-1"])
+                return apiTestJSONResponse(#"{"ok":true,"changed":true,"parent_id":"CARD-0","child_id":"CARD-1","read_only":false}"#, for: request)
+            }
+        }
+
+        let status = try await client.setKanbanCardStatus(
+            KanbanCardStatusRequest(cardID: "CARD-1", board: "release board", status: "done")
+        )
+        let blocked = try await client.blockKanbanCard(
+            KanbanCardActionRequest(cardID: "CARD-1", board: "release board", reason: "Waiting for review")
+        )
+        let unblocked = try await client.unblockKanbanCard(
+            KanbanCardActionRequest(cardID: "CARD-1", board: "release board", reason: nil)
+        )
+        let dependency = KanbanDependencyMutationRequest(
+            board: "release board", prerequisiteID: "CARD-0", dependentID: "CARD-1"
+        )
+        let linked = try await client.addKanbanDependency(dependency)
+        let unlinked = try await client.removeKanbanDependency(dependency)
+
+        XCTAssertEqual(status.card?.status?.rawValue, "done")
+        XCTAssertEqual(blocked.card?.status?.rawValue, "blocked")
+        XCTAssertEqual(unblocked.card?.status?.rawValue, "ready")
+        XCTAssertNoThrow(try KanbanDependencyMutationValidator.validate(linked, request: dependency))
+        XCTAssertNoThrow(try KanbanDependencyMutationValidator.validate(unlinked, request: dependency))
+    }
+
+    func testRunningEntryIsRejectedBeforeRequestConstruction() async {
+        let client = makeClient { _ in
+            XCTFail("Running must never reach URLSession")
+            throw URLError(.badURL)
+        }
+
+        await XCTAssertThrowsErrorAsync(
+            try await client.setKanbanCardStatus(
+                KanbanCardStatusRequest(cardID: "CARD-1", board: "main", status: " Running ")
+            )
+        ) { error in
+            XCTAssertEqual(error as? KanbanRequestError, .runningStatusRequiresDispatcher)
+        }
+    }
+
     func testCardDetailDecodesExpandedAndMinimalEnvelopesTolerantly() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
