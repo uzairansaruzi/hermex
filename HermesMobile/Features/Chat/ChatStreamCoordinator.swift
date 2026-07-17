@@ -92,6 +92,10 @@ final class ChatStreamCoordinator {
     private(set) var lastProgressDate: Date?
     private var lastRecoveryStatusCheckDate: Date?
     private(set) var isReplayConnection = false
+    // Foreground activation and view appearance can both request recovery for the
+    // same suspended stream. Share one recovery task so a late load cannot
+    // re-suspend a live connection or let a caller continue before recovery ends.
+    private var reconnectTask: Task<Void, Never>?
     // Bumped whenever the active run starts or finalizes. Captured before an async
     // transcript load so a concurrent cancel/completion during the load can't be
     // double-finalized (PR #266 review #2).
@@ -238,7 +242,24 @@ final class ChatStreamCoordinator {
     }
 
     func reconnectIfNeeded(modelContext: ModelContext? = nil) async {
+        guard activeStreamID != nil, isConnectionSuspended else { return }
+        if let reconnectTask {
+            await reconnectTask.value
+            return
+        }
+
+        let reconnectTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performReconnectIfNeeded(modelContext: modelContext)
+            self.reconnectTask = nil
+        }
+        self.reconnectTask = reconnectTask
+        await reconnectTask.value
+    }
+
+    private func performReconnectIfNeeded(modelContext: ModelContext?) async {
         guard let activeStreamID, isConnectionSuspended else { return }
+
         let generation = runGeneration
 
         do {

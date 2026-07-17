@@ -81,6 +81,49 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testConcurrentForegroundReconnectRequestsShareOneRecoveryAttempt() async throws {
+        let firstStatusStarted = expectation(description: "first stream status request started")
+        let releaseFirstStatus = DispatchSemaphore(value: 0)
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            if statusRequestCount.increment() == 1 {
+                firstStatusStarted.fulfill()
+                _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            }
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+
+        let firstReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        await fulfillment(of: [firstStatusStarted], timeout: 1)
+
+        let secondReconnectReturned = CoordinatorLockedCounter()
+        let secondReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+            _ = secondReconnectReturned.increment()
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(statusRequestCount.value, 1)
+        XCTAssertEqual(secondReconnectReturned.value, 0)
+
+        releaseFirstStatus.signal()
+        await firstReconnect.value
+        await secondReconnect.value
+
+        XCTAssertEqual(secondReconnectReturned.value, 1)
+        XCTAssertEqual(delegate.loadMessagesCount, 1)
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+    }
+
+    @MainActor
     func testForegroundReconnectActiveStreamDoesNotRestartAfterReplacementDuringLoad() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
@@ -745,6 +788,24 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         guard !trimmed.isEmpty else { return false }
         pendingSteerLeftovers.append(trimmed)
         return true
+    }
+}
+
+private final class CoordinatorLockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+        return count
     }
 }
 
