@@ -104,12 +104,14 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         }
         await fulfillment(of: [firstStatusStarted], timeout: 1)
 
+        let secondReconnectStarted = expectation(description: "second reconnect request started")
         let secondReconnectReturned = CoordinatorLockedCounter()
         let secondReconnect = Task { @MainActor in
+            secondReconnectStarted.fulfill()
             await coordinator.reconnectIfNeeded()
             _ = secondReconnectReturned.increment()
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [secondReconnectStarted], timeout: 1)
 
         XCTAssertEqual(statusRequestCount.value, 1)
         XCTAssertEqual(secondReconnectReturned.value, 0)
@@ -124,17 +126,56 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testJoiningReconnectUsesNonNilModelContextBeforeTranscriptReload() async throws {
+        let firstStatusStarted = expectation(description: "first stream status request started")
+        let releaseFirstStatus = DispatchSemaphore(value: 0)
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            firstStatusStarted.fulfill()
+            _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+        let modelContext = try makeModelContext()
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+        let firstReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        await fulfillment(of: [firstStatusStarted], timeout: 1)
+
+        let joiningReconnectStarted = expectation(description: "joining reconnect request started")
+        let secondReconnect = Task { @MainActor in
+            joiningReconnectStarted.fulfill()
+            await coordinator.reconnectIfNeeded(modelContext: modelContext)
+        }
+        await fulfillment(of: [joiningReconnectStarted], timeout: 1)
+
+        releaseFirstStatus.signal()
+        await firstReconnect.value
+        await secondReconnect.value
+
+        XCTAssertEqual(delegate.loadMessageReceivedModelContextValues, [true])
+    }
+
+    @MainActor
     func testForegroundReconnectStartsNewRecoveryAfterStreamReplacement() async throws {
         let firstStatusStarted = expectation(description: "first stream status request started")
+        let secondStatusStarted = expectation(description: "second stream status request started")
         let releaseFirstStatus = DispatchSemaphore(value: 0)
         let statusRequestCount = CoordinatorLockedCounter()
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
         let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
             XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
-            if statusRequestCount.increment() == 1 {
+            let requestNumber = statusRequestCount.increment()
+            if requestNumber == 1 {
                 firstStatusStarted.fulfill()
                 _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            } else if requestNumber == 2 {
+                secondStatusStarted.fulfill()
             }
             return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-new"}"#, for: request)
         }
@@ -151,7 +192,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let secondReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [secondStatusStarted], timeout: 1)
+        await secondReconnect.value
 
         XCTAssertEqual(statusRequestCount.value, 2)
         XCTAssertEqual(coordinator.activeStreamID, "stream-new")
@@ -159,7 +201,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         releaseFirstStatus.signal()
         await firstReconnect.value
-        await secondReconnect.value
 
         XCTAssertEqual(coordinator.activeStreamID, "stream-new")
         XCTAssertEqual(streamClient.startedURLs.count, 3)
@@ -168,15 +209,19 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     @MainActor
     func testForegroundReconnectStartsNewRecoveryAfterSessionLoadReplacesStream() async throws {
         let firstStatusStarted = expectation(description: "first stream status request started")
+        let secondStatusStarted = expectation(description: "second stream status request started")
         let releaseFirstStatus = DispatchSemaphore(value: 0)
         let statusRequestCount = CoordinatorLockedCounter()
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
         let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
             XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
-            if statusRequestCount.increment() == 1 {
+            let requestNumber = statusRequestCount.increment()
+            if requestNumber == 1 {
                 firstStatusStarted.fulfill()
                 _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            } else if requestNumber == 2 {
+                secondStatusStarted.fulfill()
             }
             return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-new"}"#, for: request)
         }
@@ -197,7 +242,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let secondReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [secondStatusStarted], timeout: 1)
+        await secondReconnect.value
 
         XCTAssertEqual(statusRequestCount.value, 2)
         XCTAssertEqual(coordinator.activeStreamID, "stream-new")
@@ -205,21 +251,24 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         releaseFirstStatus.signal()
         await firstReconnect.value
-        await secondReconnect.value
     }
 
     @MainActor
     func testForegroundReconnectStartsNewRecoveryAfterPriorStreamFinishesAndNewSessionLoads() async throws {
         let firstStatusStarted = expectation(description: "first stream status request started")
+        let secondStatusStarted = expectation(description: "second stream status request started")
         let releaseFirstStatus = DispatchSemaphore(value: 0)
         let statusRequestCount = CoordinatorLockedCounter()
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
         let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
             XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
-            if statusRequestCount.increment() == 1 {
+            let requestNumber = statusRequestCount.increment()
+            if requestNumber == 1 {
                 firstStatusStarted.fulfill()
                 _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            } else if requestNumber == 2 {
+                secondStatusStarted.fulfill()
             }
             return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-new"}"#, for: request)
         }
@@ -241,7 +290,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let secondReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [secondStatusStarted], timeout: 1)
+        await secondReconnect.value
 
         XCTAssertEqual(statusRequestCount.value, 2)
         XCTAssertEqual(coordinator.activeStreamID, "stream-new")
@@ -249,7 +299,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
 
         releaseFirstStatus.signal()
         await firstReconnect.value
-        await secondReconnect.value
     }
 
     @MainActor
@@ -739,6 +788,16 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(delegate.finishCount, 1)
     }
 
+    private func makeModelContext() throws -> ModelContext {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: CachedSession.self,
+            CachedMessage.self,
+            configurations: configuration
+        )
+        return ModelContext(container)
+    }
+
     @MainActor
     private func makeCoordinator(
         streamClient: CoordinatorSpySSEStreamingClient? = nil,
@@ -791,6 +850,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     var streamCoordinatorStreamingAssistantMessageID: String?
 
     private(set) var loadMessagesCount = 0
+    private(set) var loadMessageReceivedModelContextValues: [Bool] = []
     private(set) var startMonitoringCount = 0
     private(set) var stopMonitoringClearPromptValues: [Bool] = []
     private(set) var saveSnapshotCount = 0
@@ -815,6 +875,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorLoadMessages(modelContext: ModelContext?) async {
         loadMessagesCount += 1
+        loadMessageReceivedModelContextValues.append(modelContext != nil)
         await onLoadMessages?()
     }
 
