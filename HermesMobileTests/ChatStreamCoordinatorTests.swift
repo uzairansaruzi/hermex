@@ -207,6 +207,49 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testForegroundReconnectDoesNotResumeSupersededSameStreamGeneration() async throws {
+        let firstStatusStarted = expectation(description: "first stream status request started")
+        let secondStatusStarted = expectation(description: "second stream status request started")
+        let releaseFirstStatus = DispatchSemaphore(value: 0)
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            let requestNumber = statusRequestCount.increment()
+            if requestNumber == 1 {
+                firstStatusStarted.fulfill()
+                _ = releaseFirstStatus.wait(timeout: .now() + 2)
+            } else if requestNumber == 2 {
+                secondStatusStarted.fulfill()
+            }
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+        let firstReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        await fulfillment(of: [firstStatusStarted], timeout: 1)
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+        let secondReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        await fulfillment(of: [secondStatusStarted], timeout: 1)
+        await secondReconnect.value
+
+        releaseFirstStatus.signal()
+        await firstReconnect.value
+
+        XCTAssertEqual(statusRequestCount.value, 2)
+        XCTAssertEqual(streamClient.startedURLs.count, 3)
+        XCTAssertFalse(coordinator.isConnectionSuspended)
+    }
+
+    @MainActor
     func testForegroundReconnectStartsNewRecoveryAfterSessionLoadReplacesStream() async throws {
         let firstStatusStarted = expectation(description: "first stream status request started")
         let secondStatusStarted = expectation(description: "second stream status request started")
