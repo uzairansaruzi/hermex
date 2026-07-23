@@ -529,16 +529,122 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(liveActivityManager.ends.last?.status, .complete)
 
         coordinator.start(streamID: "stream-error")
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
         streamClient.emit(.error("server failed"))
         XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertNil(coordinator.liveTokensPerSecond)
         XCTAssertEqual(delegate.errorMessages, ["server failed"])
         XCTAssertEqual(liveActivityManager.ends.last?.status, .failed)
 
         coordinator.start(streamID: "stream-cancel")
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 24.5,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 24.5)
         let response = try await coordinator.cancelActiveStream()
         XCTAssertEqual(response?.ok, true)
         XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertNil(coordinator.liveTokensPerSecond)
         XCTAssertEqual(liveActivityManager.ends.last?.status, .cancelled)
+    }
+
+    @MainActor
+    func testLiveResponseSpeedAcceptsOnlyCurrentSessionExactReadingsAndClearsOnLifecycleChanges() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-one")
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
+
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 99,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "another-session"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
+
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: true,
+            sessionId: "session-abc"
+        )))
+        XCTAssertNil(coordinator.liveTokensPerSecond)
+
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 24.5,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        _ = coordinator.prepareForSessionLoad()
+        XCTAssertNil(coordinator.liveTokensPerSecond)
+
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 24.5,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        coordinator.start(streamID: "stream-two")
+        XCTAssertNil(coordinator.liveTokensPerSecond)
+
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 36.75,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        streamClient.emit(.done(DoneStreamEvent(usage: ContextWindowSnapshot(
+            contextLength: nil,
+            thresholdTokens: nil,
+            lastPromptTokens: nil,
+            inputTokens: nil,
+            outputTokens: nil,
+            estimatedCost: nil,
+            tokensPerSecond: 40.5
+        ))))
+
+        XCTAssertNil(coordinator.liveTokensPerSecond)
+        XCTAssertEqual(delegate.donePayloads.last?.usage?.tokensPerSecond, 40.5)
+    }
+
+    @MainActor
+    func testLiveResponseSpeedClearsImmediatelyWhenTransportFails() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-one")
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
+
+        streamClient.emit(.transportError("Connection lost"))
+
+        XCTAssertNil(coordinator.liveTokensPerSecond)
+        XCTAssertTrue(coordinator.isConnectionSuspended)
     }
 
     @MainActor
@@ -634,6 +740,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var startConnectionReplayValues: [Bool] = []
     private(set) var resetRecoveryCount = 0
     private(set) var tokens: [String] = []
+    private(set) var donePayloads: [DoneStreamEvent] = []
     private(set) var pendingSteerLeftovers: [String] = []
     var latestAssistantMessageID: String? = "assistant-latest"
     var restoredSnapshotEventID: String?
@@ -733,7 +840,8 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {
-        doneHasCompletedTranscript
+        donePayloads.append(payload)
+        return doneHasCompletedTranscript
     }
 
     func streamCoordinatorApplyApprovalUpdate(_ update: ApprovalPendingResponse) {}

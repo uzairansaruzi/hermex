@@ -7,6 +7,7 @@ struct ContextWindowSnapshot: Decodable, Equatable {
     let inputTokens: Int?
     let outputTokens: Int?
     let estimatedCost: Double?
+    let tokensPerSecond: Double?
 
     enum CodingKeys: String, CodingKey {
         case contextLength = "context_length"
@@ -15,6 +16,36 @@ struct ContextWindowSnapshot: Decodable, Equatable {
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
         case estimatedCost = "estimated_cost"
+        case tokensPerSecond = "tps"
+    }
+
+    init(
+        contextLength: Int?,
+        thresholdTokens: Int?,
+        lastPromptTokens: Int?,
+        inputTokens: Int?,
+        outputTokens: Int?,
+        estimatedCost: Double?,
+        tokensPerSecond: Double? = nil
+    ) {
+        self.contextLength = contextLength
+        self.thresholdTokens = thresholdTokens
+        self.lastPromptTokens = lastPromptTokens
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.estimatedCost = estimatedCost
+        self.tokensPerSecond = tokensPerSecond
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        contextLength = container.decodeLossyIntIfPresent(forKey: .contextLength)
+        thresholdTokens = container.decodeLossyIntIfPresent(forKey: .thresholdTokens)
+        lastPromptTokens = container.decodeLossyIntIfPresent(forKey: .lastPromptTokens)
+        inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
+        outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
+        estimatedCost = container.decodeLossyDoubleIfPresent(forKey: .estimatedCost)
+        tokensPerSecond = container.decodeLossyDoubleIfPresent(forKey: .tokensPerSecond)
     }
 
     var tokensUsed: Int? {
@@ -35,7 +66,8 @@ struct ContextWindowSnapshot: Decodable, Equatable {
             lastPromptTokens: tokens,
             inputTokens: inputTokens,
             outputTokens: outputTokens,
-            estimatedCost: estimatedCost
+            estimatedCost: estimatedCost,
+            tokensPerSecond: tokensPerSecond
         )
     }
 }

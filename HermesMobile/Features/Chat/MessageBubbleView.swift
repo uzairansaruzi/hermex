@@ -6,6 +6,7 @@ struct MessageBubbleView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
+    @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
@@ -17,6 +18,7 @@ struct MessageBubbleView: View {
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
+    let liveTokensPerSecond: Double?
 
     init(
         message: ChatMessage,
@@ -28,7 +30,8 @@ struct MessageBubbleView: View {
         localAttachmentPreviews: [String: Data]? = nil,
         onPreviewAttachment: ((MessageAttachment, Data?) -> Void)? = nil,
         onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        liveTokensPerSecond: Double? = nil
     ) {
         self.message = message
         self.loadAttachmentImage = loadAttachmentImage
@@ -40,6 +43,7 @@ struct MessageBubbleView: View {
         self.onPreviewAttachment = onPreviewAttachment
         self.onPreviewTranscriptMedia = onPreviewTranscriptMedia
         self.isStreaming = isStreaming
+        self.liveTokensPerSecond = liveTokensPerSecond
     }
 
     var body: some View {
@@ -129,6 +133,11 @@ struct MessageBubbleView: View {
                 Text(time)
                     .foregroundStyle(.secondary)
             }
+
+            if let speed = assistantResponseSpeedText {
+                Text(speed)
+                    .foregroundStyle(.secondary)
+            }
         }
         .font(AppFont.footnote())
         .accessibilityElement(children: .ignore)
@@ -139,7 +148,9 @@ struct MessageBubbleView: View {
         ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: message.role,
             hasTextContent: hasVisibleAssistantText,
-            isEnabled: showsAssistantTurnTimestamps
+            isEnabled: showsAssistantTurnTimestamps,
+            showsResponseSpeed: showsResponseSpeed,
+            hasResponseSpeed: assistantResponseSpeedText != nil
         )
     }
 
@@ -152,12 +163,27 @@ struct MessageBubbleView: View {
     }
 
     private var assistantTurnTimeText: String? {
-        AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: message.timestamp)
+        guard showsAssistantTurnTimestamps else { return nil }
+        return AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: message.timestamp)
+    }
+
+    private var assistantResponseSpeedText: String? {
+        guard showsResponseSpeed else { return nil }
+        return ResponseSpeedFormatter.compactText(isStreaming ? liveTokensPerSecond : message.turnTps)
     }
 
     private var assistantTurnHeaderAccessibilityLabel: String {
-        guard let time = assistantTurnTimeText else { return String(localized: "Assistant") }
-        return String(localized: "Assistant, \(time)")
+        let details = [
+            assistantTurnTimeText,
+            assistantResponseSpeedAccessibilityText
+        ].compactMap { $0 }
+        guard !details.isEmpty else { return String(localized: "Assistant") }
+        return String(localized: "Assistant, \(details.joined(separator: ", "))")
+    }
+
+    private var assistantResponseSpeedAccessibilityText: String? {
+        guard showsResponseSpeed else { return nil }
+        return ResponseSpeedFormatter.accessibilityText(isStreaming ? liveTokensPerSecond : message.turnTps)
     }
 
     private var localNoticeRow: some View {
@@ -715,5 +741,24 @@ enum AssistantTurnTimestampFormatter {
     private static func format(_ timestamp: Double?, with formatter: DateFormatter) -> String? {
         guard let timestamp, timestamp.isFinite else { return nil }
         return formatter.string(from: Date(timeIntervalSince1970: timestamp))
+    }
+}
+
+enum ResponseSpeedFormatter {
+    static func compactText(_ tokensPerSecond: Double?, locale: Locale = .autoupdatingCurrent) -> String? {
+        guard let tokensPerSecond, tokensPerSecond.isFinite, tokensPerSecond > 0 else { return nil }
+        let value = tokensPerSecond.formatted(
+            .number.locale(locale).precision(.fractionLength(1))
+        )
+        return "\(value) t/s"
+    }
+
+    static func accessibilityText(
+        _ tokensPerSecond: Double?,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let compact = compactText(tokensPerSecond, locale: locale) else { return nil }
+        let value = compact.dropLast(4)
+        return "\(value) \(String(localized: "tokens per second"))"
     }
 }
