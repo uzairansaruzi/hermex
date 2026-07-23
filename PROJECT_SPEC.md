@@ -702,19 +702,21 @@ Document it as the recommended path.
 **Pros:** real HTTPS, accessible from anywhere, no VPN client on the phone.
 **Cons:** publicly reachable URL — if the password leaks, anyone can hit your agent. Recommended hardening: add a Cloudflare Access policy in front of the hostname.
 
-### 9.2 Tailscale (alternative — if you don't want a public hostname)
-1. Install Tailscale on the server and the iPhone, sign both into the same account.
-2. On the server, start hermes-webui bound to all interfaces with auth:
-   ```bash
-   HERMES_WEBUI_HOST=0.0.0.0 HERMES_WEBUI_PASSWORD=your-secret ./start.sh
-   ```
-3. Find the server's tailnet IP with `tailscale ip -4`.
-4. In Hermex, enter `http://<tailnet-ip>:8787` and the password.
+### 9.2 Tailscale Serve (private HTTPS alternative)
+1. Before installing or changing anything, locate any existing `hermes-webui` checkout, launcher, service, and process. Identify the owner of port 8787 with `lsof -nP -iTCP:8787 -sTCP:LISTEN` (or the OS equivalent). Never kill an unknown process.
+2. Check `command -v tailscale`, `tailscale version`, and `tailscale status`. Reuse an installed, authenticated Tailscale client; otherwise install or authenticate it with the OS-appropriate flow.
+3. Inspect both `tailscale serve status` and `tailscale funnel status`. Do not reset, remove, or overwrite existing Serve/Funnel routes.
+4. Run Hermes Web UI with its supported Python launcher (`python3 bootstrap.py` or `./ctl.sh`) and keep it bound to `127.0.0.1:8787`.
+5. Preserve every existing line in `.env`; only add or update `HERMES_WEBUI_PASSWORD`, and never truncate or replace the file. Preserve an existing password; otherwise generate one. Use `umask 077` before creating a new `.env`. For both existing and new files, inspect permissions and run `chmod 600 .env`. Never print the full file.
+6. Verify localhost first: `curl --fail http://127.0.0.1:8787/health`.
+7. Only when HTTPS port 443 at the root path is unused, run `tailscale serve --bg 8787`. If Tailscale requires HTTPS consent, complete its consent flow only after reviewing the certificate-transparency disclosure. Never enable Funnel.
+8. Read the actual `https://…ts.net` URL from `tailscale serve status`, then verify `https://<actual-ts.net-hostname>/health`.
+9. Install Tailscale on the iPhone, join the same tailnet, and enter the exact HTTPS URL and password in Hermex.
 
-**Caveat for the iOS app:** Tailscale exposes the server over plain HTTP, which iOS App Transport Security blocks by default. The app supports this in development by adding an ATS exception for tailnet IPs in `Info.plist`. For App Store submission, document that **Cloudflare Tunnel is the recommended setup** because it provides real TLS — App Review will flag a blanket ATS exception.
+**Direct-bind fallback:** binding to `0.0.0.0` and connecting to a Tailscale IP over plain HTTP remains an explicit manual fallback only. Explain the wider listener and ATS implications first; onboarding automation must not choose it.
 
-**Pros:** zero config, encrypted via WireGuard, no public exposure.
-**Cons:** must install Tailscale on both ends; plain HTTP requires ATS exception.
+**Pros:** private tailnet access, real HTTPS, and the WebUI remains loopback-only.
+**Cons:** Tailscale must run on both ends; Serve may require tailnet HTTPS consent and its hostname may appear in public certificate-transparency logs.
 
 ---
 
