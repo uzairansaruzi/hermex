@@ -17,6 +17,7 @@ struct ChatTranscriptView: View {
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
+    let liveTokensPerSecond: Double?
     let activeStreamRecoveryState: ActiveStreamRecoveryState
     let clarificationPrompt: ClarificationPromptState?
     let isRespondingToClarification: Bool
@@ -232,6 +233,7 @@ struct ChatTranscriptView: View {
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
+                    liveTokensPerSecond: isStreamingRow ? liveTokensPerSecond : nil,
                     localAttachmentPreviews: localAttachmentPreviews[transcriptMessage.message.id],
                     listeningMessageID: listeningMessageID,
                     isViewingCachedData: isViewingCachedData,
@@ -453,6 +455,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
+    let liveTokensPerSecond: Double?
     let localAttachmentPreviews: [String: Data]?
     let listeningMessageID: String?
     let isViewingCachedData: Bool
@@ -492,6 +495,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.liveToolCalls == rhs.liveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
             lhs.streamingAssistantMessageID == rhs.streamingAssistantMessageID &&
+            lhs.liveTokensPerSecond == rhs.liveTokensPerSecond &&
             lhs.localAttachmentPreviews == rhs.localAttachmentPreviews &&
             lhs.listeningMessageID == rhs.listeningMessageID &&
             lhs.isViewingCachedData == rhs.isViewingCachedData &&
@@ -524,6 +528,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                         messageID: transcriptMessage.message.messageId,
                         streamingAssistantMessageID: streamingAssistantMessageID
                     ),
+                    liveTokensPerSecond: liveTokensPerSecond,
                     isRegeneratingMessage: isRegeneratingMessage,
                     isEditingMessage: isEditingMessage,
                     isForkingMessage: isForkingMessage,
@@ -606,6 +611,7 @@ private struct ChatTranscriptMessageRow: View {
     let isViewingCachedData: Bool
     let hasActiveStream: Bool
     let isStreaming: Bool
+    let liveTokensPerSecond: Double?
     let isRegeneratingMessage: Bool
     let isEditingMessage: Bool
     let isForkingMessage: Bool
@@ -664,7 +670,8 @@ private struct ChatTranscriptMessageRow: View {
             localAttachmentPreviews: localAttachmentPreviews,
             onPreviewAttachment: onPreviewAttachment,
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,
-            isStreaming: isStreaming
+            isStreaming: isStreaming,
+            liveTokensPerSecond: liveTokensPerSecond
         )
     }
 }

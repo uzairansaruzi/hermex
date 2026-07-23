@@ -1077,6 +1077,7 @@ struct ChatView: View {
             liveToolCalls: viewModel.liveToolCalls,
             toolCallAnchorMessageID: viewModel.toolCallAnchorMessageID,
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
+            liveTokensPerSecond: viewModel.liveTokensPerSecond,
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
             clarificationPrompt: viewModel.clarificationPrompt,
             isRespondingToClarification: viewModel.isRespondingToClarification,
@@ -1906,6 +1907,10 @@ struct ChatView: View {
     }
 
     private func handleResponseCompletionSideEffects() {
+        if !viewModel.responseCompletionNeedsTranscriptRefresh {
+            viewModel.cacheCompletedResponse(modelContext: modelContext)
+        }
+
         guard let completionContext = responseCompletionNotificationTracker.completionContext(
             completionTrigger: viewModel.responseCompletionHapticTrigger,
             sceneIsActive: scenePhase == .active

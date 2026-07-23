@@ -71,6 +71,7 @@ enum SSEEvent: Equatable {
     case toolStarted(ToolStreamEvent)
     case toolCompleted(ToolStreamEvent)
     case title(TitleStreamEvent)
+    case metering(MeteringStreamEvent)
     case done(DoneStreamEvent)
     case approvalPending(ApprovalPendingResponse)
     case clarificationPending(ClarificationPendingResponse)
@@ -172,6 +173,52 @@ struct InterimAssistantStreamEvent: Decodable, Equatable {
     }
 }
 
+struct MeteringStreamEvent: Decodable, Equatable {
+    let tokensPerSecond: Double?
+    let isTokensPerSecondAvailable: Bool?
+    let isEstimated: Bool?
+    let sessionId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tokensPerSecond = "tps"
+        case isTokensPerSecondAvailable = "tps_available"
+        case isEstimated = "estimated"
+        case sessionId = "session_id"
+    }
+
+    init(
+        tokensPerSecond: Double? = nil,
+        isTokensPerSecondAvailable: Bool? = nil,
+        isEstimated: Bool? = nil,
+        sessionId: String? = nil
+    ) {
+        self.tokensPerSecond = tokensPerSecond
+        self.isTokensPerSecondAvailable = isTokensPerSecondAvailable
+        self.isEstimated = isEstimated
+        self.sessionId = sessionId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tokensPerSecond = container.decodeLossyDoubleIfPresent(forKey: .tokensPerSecond)
+        isTokensPerSecondAvailable = container.decodeLossyBoolIfPresent(forKey: .isTokensPerSecondAvailable)
+        isEstimated = container.decodeLossyBoolIfPresent(forKey: .isEstimated)
+        sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
+    }
+
+    var displayableTokensPerSecond: Double? {
+        guard isTokensPerSecondAvailable == true,
+              isEstimated != true,
+              let tokensPerSecond,
+              tokensPerSecond.isFinite,
+              tokensPerSecond > 0
+        else {
+            return nil
+        }
+        return tokensPerSecond
+    }
+}
+
 struct SSEEventDecoder {
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile",
@@ -206,6 +253,14 @@ struct SSEEventDecoder {
         case "title":
             let payload = decodePayload(TitleStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .title(payload ?? TitleStreamEvent())
+        case "metering":
+            let payload = decodePayload(
+                MeteringStreamEvent.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            )
+            return .metering(payload ?? MeteringStreamEvent())
         case "done":
             guard let payload = decodePayload(DonePayload.self, eventType: eventType, from: eventData, decoder: decoder) else {
                 return .transportError("The stream returned a malformed completion event.")

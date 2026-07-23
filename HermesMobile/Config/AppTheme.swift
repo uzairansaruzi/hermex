@@ -208,6 +208,7 @@ enum ChatTranscriptDisplaySettings {
     static let toolCardsStartExpandedKey = "chatTranscript.toolCardsStartExpanded"
     static let hidesAttachmentPathsKey = "chatTranscript.hidesAttachmentPaths"
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"
+    static let showsResponseSpeedKey = "chatTranscript.showsResponseSpeed"
     static let wrapsCodeBlockLinesKey = "chatTranscript.wrapsCodeBlockLines"
 
     /// Backs the Settings → Chat "Right-to-Left Chat Layout" toggle (issue #259).
@@ -290,9 +291,13 @@ enum ChatTranscriptDisplaySettings {
     static func showsAssistantTurnHeader(
         role: String?,
         hasTextContent: Bool,
-        isEnabled: Bool
+        isEnabled: Bool,
+        showsResponseSpeed: Bool = false,
+        hasResponseSpeed: Bool = false
     ) -> Bool {
-        isEnabled && role == "assistant" && hasTextContent
+        (isEnabled || (showsResponseSpeed && hasResponseSpeed)) &&
+            role == "assistant" &&
+            hasTextContent
     }
 }
 

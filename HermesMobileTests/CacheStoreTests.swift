@@ -386,6 +386,37 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(cachedMessages.first?.reasoning, "Cached reasoning.")
     }
 
+    func testAssistantTurnTpsDecodesAndRoundTripsThroughCache() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let message = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: Data(#"{"role":"assistant","content":"Done","messageId":"m1","_turnTps":48.75}"#.utf8)
+        )
+
+        XCTAssertEqual(message.turnTps, 48.75)
+
+        try CacheStore.cacheMessages(
+            [message],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        XCTAssertEqual(try fetchCachedMessages(in: context).first?.turnTps, 48.75)
+        XCTAssertEqual(
+            try CacheStore.cachedMessages(
+                serverURL: serverURL,
+                sessionID: "abc123",
+                in: context,
+                now: cachedAt.addingTimeInterval(60)
+            ).first?.turnTps,
+            48.75
+        )
+    }
+
     func testCachedMessagesIgnoresExpiredMessages() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!

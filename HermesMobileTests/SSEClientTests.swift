@@ -299,6 +299,168 @@ final class SSEClientTests: XCTestCase {
         ))
     }
 
+    func testDecodesDisplayableLiveMeteringPayload() {
+        let event = SSEEventDecoder.decode(
+            eventType: "metering",
+            data: """
+            {
+              "session_id": "abc123",
+              "tps": 42.25,
+              "tps_available": true,
+              "estimated": false,
+              "unknown_future_field": "ignored"
+            }
+            """
+        )
+
+        guard case .metering(let payload) = event else {
+            XCTFail("Expected metering event.")
+            return
+        }
+
+        XCTAssertEqual(payload.sessionId, "abc123")
+        XCTAssertEqual(payload.displayableTokensPerSecond, 42.25)
+    }
+
+    func testDecodesMissingLiveMeteringFieldsAsNil() {
+        let event = SSEEventDecoder.decode(eventType: "metering", data: "{}")
+
+        guard case .metering(let payload) = event else {
+            XCTFail("Expected metering event.")
+            return
+        }
+
+        XCTAssertNil(payload.tokensPerSecond)
+        XCTAssertNil(payload.isTokensPerSecondAvailable)
+        XCTAssertNil(payload.isEstimated)
+        XCTAssertNil(payload.sessionId)
+    }
+
+    func testMalformedLiveMeteringFieldsDoNotDiscardValidFields() {
+        let event = SSEEventDecoder.decode(
+            eventType: "metering",
+            data: """
+            {
+              "tps": {"unexpected": true},
+              "tps_available": ["unexpected"],
+              "estimated": {"unexpected": true},
+              "session_id": "abc123"
+            }
+            """
+        )
+
+        guard case .metering(let payload) = event else {
+            XCTFail("Expected metering event.")
+            return
+        }
+
+        XCTAssertNil(payload.tokensPerSecond)
+        XCTAssertNil(payload.isTokensPerSecondAvailable)
+        XCTAssertNil(payload.isEstimated)
+        XCTAssertEqual(payload.sessionId, "abc123")
+
+        let malformedSessionEvent = SSEEventDecoder.decode(
+            eventType: "metering",
+            data: """
+            {
+              "tps": 42.5,
+              "tps_available": true,
+              "estimated": false,
+              "session_id": {"unexpected": true}
+            }
+            """
+        )
+
+        guard case .metering(let malformedSessionPayload) = malformedSessionEvent else {
+            XCTFail("Expected metering event.")
+            return
+        }
+
+        XCTAssertEqual(malformedSessionPayload.displayableTokensPerSecond, 42.5)
+        XCTAssertNil(malformedSessionPayload.sessionId)
+    }
+
+    func testLiveMeteringUsesLossyDecodingForOptionalFields() {
+        let event = SSEEventDecoder.decode(
+            eventType: "metering",
+            data: """
+            {
+              "tps": "42.5",
+              "tps_available": "true",
+              "estimated": 0,
+              "session_id": 123
+            }
+            """
+        )
+
+        guard case .metering(let payload) = event else {
+            XCTFail("Expected metering event.")
+            return
+        }
+
+        XCTAssertEqual(payload.tokensPerSecond, 42.5)
+        XCTAssertEqual(payload.isTokensPerSecondAvailable, true)
+        XCTAssertEqual(payload.isEstimated, false)
+        XCTAssertEqual(payload.sessionId, "123")
+    }
+
+    func testLiveMeteringRequiresAvailableExactPositiveFiniteTps() {
+        XCTAssertNil(MeteringStreamEvent(
+            tokensPerSecond: 10,
+            isTokensPerSecondAvailable: false,
+            isEstimated: false,
+            sessionId: nil
+        ).displayableTokensPerSecond)
+        XCTAssertNil(MeteringStreamEvent(
+            tokensPerSecond: 10,
+            isTokensPerSecondAvailable: true,
+            isEstimated: true,
+            sessionId: nil
+        ).displayableTokensPerSecond)
+        XCTAssertNil(MeteringStreamEvent(
+            tokensPerSecond: 0,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: nil
+        ).displayableTokensPerSecond)
+        XCTAssertNil(MeteringStreamEvent(
+            tokensPerSecond: .infinity,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: nil
+        ).displayableTokensPerSecond)
+    }
+
+    func testDoneUsageDecodesFinalTokensPerSecond() {
+        let event = SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"usage":{"tps":51.75}}"#
+        )
+
+        guard case .done(let payload) = event else {
+            XCTFail("Expected done event.")
+            return
+        }
+
+        XCTAssertEqual(payload.usage?.tokensPerSecond, 51.75)
+    }
+
+    func testMalformedDoneUsageTpsDoesNotDiscardOtherUsageFields() {
+        let event = SSEEventDecoder.decode(
+            eventType: "done",
+            data: #"{"usage":{"context_length":"32768","input_tokens":1200,"tps":{"unexpected":true}}}"#
+        )
+
+        guard case .done(let payload) = event else {
+            XCTFail("Expected done event.")
+            return
+        }
+
+        XCTAssertEqual(payload.usage?.contextLength, 32_768)
+        XCTAssertEqual(payload.usage?.inputTokens, 1_200)
+        XCTAssertNil(payload.usage?.tokensPerSecond)
+    }
+
     func testDecodesDoneEventSessionMessages() {
         let event = SSEEventDecoder.decode(
             eventType: "done",

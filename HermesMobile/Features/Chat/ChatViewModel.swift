@@ -221,6 +221,7 @@ final class ChatViewModel {
     private(set) var isViewingCachedData = false
     var activeStreamID: String? { streamCoordinator.activeStreamID }
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
+    var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
     private(set) var errorMessage: String?
     private(set) var sendErrorMessage: String?
     private(set) var messageActionErrorMessage: String?
@@ -1689,7 +1690,8 @@ final class ChatViewModel {
                 toolCalls: loadedAssistant.toolCalls ?? snapshotAssistant.toolCalls,
                 contentParts: loadedAssistant.contentParts ?? snapshotAssistant.contentParts,
                 reasoning: loadedAssistant.reasoning ?? snapshotAssistant.reasoning,
-                attachments: loadedAssistant.attachments ?? snapshotAssistant.attachments
+                attachments: loadedAssistant.attachments ?? snapshotAssistant.attachments,
+                turnTps: loadedAssistant.turnTps ?? snapshotAssistant.turnTps
             )
             return ActiveStreamMessageMerge(
                 messages: mergedMessages,
@@ -2271,6 +2273,11 @@ final class ChatViewModel {
         } catch {
             cacheErrorMessage = error.localizedDescription
         }
+    }
+
+    func cacheCompletedResponse(modelContext: ModelContext) {
+        guard let sessionID else { return }
+        cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
     }
 
     func clearTranscript() {
@@ -3221,7 +3228,8 @@ final class ChatViewModel {
             toolCalls: existing.toolCalls,
             contentParts: existing.contentParts,
             reasoning: existing.reasoning,
-            attachments: existing.attachments
+            attachments: existing.attachments,
+            turnTps: existing.turnTps
         )
         scheduleStreamingScrollTrigger()
     }
@@ -3826,7 +3834,7 @@ final class ChatViewModel {
             activeBtwAnswer = "Error: \(message)"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
-        case .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .pendingSteerLeftover:
+        case .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover:
             break
         }
     }
@@ -3947,7 +3955,8 @@ final class ChatViewModel {
                 toolCalls: existing.toolCalls,
                 contentParts: existing.contentParts,
                 reasoning: existing.reasoning,
-                attachments: existing.attachments
+                attachments: existing.attachments,
+                turnTps: existing.turnTps
             )
             scheduleStreamingScrollTrigger()
             return true
@@ -4324,7 +4333,8 @@ final class ChatViewModel {
                 toolCalls: existing.toolCalls,
                 contentParts: existing.contentParts,
                 reasoning: existing.reasoning,
-                attachments: existing.attachments
+                attachments: existing.attachments,
+                turnTps: existing.turnTps
             )
             return true
         }
@@ -5002,12 +5012,43 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     @discardableResult
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {
         flushPendingStreamingContent()
+        let currentStreamingAssistantID = streamingAssistantMessageID
         let hasCompletedTranscript = payload.session?.messages?.isEmpty == false
         if let completedSession = payload.session {
             applyCompletedStreamSession(completedSession)
         }
         if let usage = payload.usage {
             contextWindowSnapshot = usage
+        }
+        if let finalTokensPerSecond = payload.usage?.tokensPerSecond,
+           finalTokensPerSecond.isFinite,
+           finalTokensPerSecond > 0,
+           let currentStreamingAssistantID {
+            let currentAssistantID = messages.contains(where: { $0.messageId == currentStreamingAssistantID })
+                ? currentStreamingAssistantID
+                : TranscriptTurnClassifier
+                    .currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
+                    .first
+            guard let currentAssistantID,
+                  let index = messages.firstIndex(where: { $0.messageId == currentAssistantID })
+            else {
+                return hasCompletedTranscript
+            }
+            let message = messages[index]
+            messages[index] = ChatMessage(
+                role: message.role,
+                content: message.content,
+                timestamp: message.timestamp,
+                messageId: message.messageId,
+                name: message.name,
+                toolCallId: message.toolCallId,
+                toolUseId: message.toolUseId,
+                toolCalls: message.toolCalls,
+                contentParts: message.contentParts,
+                reasoning: message.reasoning,
+                attachments: message.attachments,
+                turnTps: finalTokensPerSecond
+            )
         }
         return hasCompletedTranscript
     }

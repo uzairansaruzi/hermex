@@ -5838,6 +5838,140 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testDoneUsageReplacesLiveResponseSpeedOnAssistantMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let didSend = await viewModel.sendMessage("Measure this")
+        XCTAssertTrue(didSend)
+        streamClient.emit(.token("Measured response."))
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 18.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(viewModel.liveTokensPerSecond, 18.25)
+
+        streamClient.emit(.done(DoneStreamEvent(usage: ContextWindowSnapshot(
+            contextLength: nil,
+            thresholdTokens: nil,
+            lastPromptTokens: nil,
+            inputTokens: nil,
+            outputTokens: nil,
+            estimatedCost: nil,
+            tokensPerSecond: 20.5
+        ))))
+
+        XCTAssertNil(viewModel.liveTokensPerSecond)
+        XCTAssertEqual(viewModel.messages.last(where: { $0.role == "assistant" })?.turnTps, 20.5)
+    }
+
+    @MainActor
+    func testDoneUsageDoesNotOverwritePreviousAssistantWithoutCurrentStreamingAnchor() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let didSend = await viewModel.sendMessage("Run a tool only")
+        XCTAssertTrue(didSend)
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {"role":"user","content":"Earlier question","messageId":"user-previous"},
+            {"role":"assistant","content":"Earlier answer","messageId":"assistant-previous"},
+            {"role":"user","content":"Run a tool only","messageId":"user-current"}
+          ]
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(
+            usage: ContextWindowSnapshot(
+                contextLength: nil,
+                thresholdTokens: nil,
+                lastPromptTokens: nil,
+                inputTokens: nil,
+                outputTokens: nil,
+                estimatedCost: nil,
+                tokensPerSecond: 20.5
+            ),
+            session: completedSession
+        )))
+
+        XCTAssertNil(viewModel.messages.first(where: { $0.messageId == "assistant-previous" })?.turnTps)
+        XCTAssertFalse(viewModel.messages.contains(where: { $0.turnTps != nil }))
+    }
+
+    @MainActor
+    func testCompletedResponseCachesFinalTurnTpsWithoutTranscriptReload() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let modelContext = try makeContext()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let didSend = await viewModel.sendMessage("Measure this", modelContext: modelContext)
+        XCTAssertTrue(didSend)
+        streamClient.emit(.token("Measured response."))
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {"role":"user","content":"Measure this","messageId":"user-current"},
+            {"role":"assistant","content":"Measured response.","messageId":"assistant-server"}
+          ]
+        }
+        """)
+        streamClient.emit(.done(DoneStreamEvent(
+            usage: ContextWindowSnapshot(
+                contextLength: nil,
+                thresholdTokens: nil,
+                lastPromptTokens: nil,
+                inputTokens: nil,
+                outputTokens: nil,
+                estimatedCost: nil,
+                tokensPerSecond: 20.5
+            ),
+            session: completedSession
+        )))
+
+        XCTAssertFalse(viewModel.responseCompletionNeedsTranscriptRefresh)
+        viewModel.cacheCompletedResponse(modelContext: modelContext)
+
+        let cachedMessages = try CacheStore.cachedMessages(
+            serverURL: URL(string: "https://example.test")!,
+            sessionID: "session-abc",
+            in: modelContext
+        )
+        XCTAssertEqual(
+            cachedMessages.first(where: { $0.messageId == "assistant-server" })?.turnTps,
+            20.5
+        )
+    }
+
+    @MainActor
     func testTransportErrorChecksStatusAndFinishesWhenStreamIsInactive() async throws {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false
