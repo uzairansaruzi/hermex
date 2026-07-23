@@ -30,7 +30,7 @@ struct OnboardingConnectPage: View {
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("Enter the Tailscale URL your agent returned, for example `http://<tailnet-ip>:8787`.")
+                    Text("Enter the exact HTTPS Tailscale Serve URL your agent returned, for example `https://server.tailnet-name.ts.net`.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.5))
                         .fixedSize(horizontal: false, vertical: true)
@@ -40,7 +40,7 @@ struct OnboardingConnectPage: View {
                     OnboardingField(systemImage: "link", title: String(localized: "Server URL")) {
                         ZStack(alignment: .leading) {
                             if viewModel.serverURLString.isEmpty {
-                                Text(verbatim: "http://100.64.0.1:8787")
+                                Text(verbatim: "https://server.tailnet-name.ts.net")
                                     .foregroundStyle(.white.opacity(0.38))
                                     .allowsHitTesting(false)
                             }

@@ -81,15 +81,56 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(OnboardingFlowPolicy.showsServerShortcut(for: OnboardingFlowPolicy.connectPageIndex))
     }
 
-    func testAgentSetupPromptIncludesTailscaleRequirements() {
+    func testAgentSetupPromptDefaultsToSafeStateAwareTailscaleServe() {
         let prompt = OnboardingFlowPolicy.agentSetupPrompt
 
-        XCTAssertTrue(prompt.contains("hermes-webui"))
-        XCTAssertTrue(prompt.contains("HERMES_WEBUI_PASSWORD"))
-        XCTAssertTrue(prompt.contains("tailscale serve --bg 8787"))
-        XCTAssertTrue(prompt.contains("curl http://$(tailscale ip -4):8787/health"))
-        XCTAssertTrue(prompt.contains("Do not use Cloudflare. Optimize for Tailscale + iPhone."))
-        XCTAssertTrue(prompt.contains("Hermex"))
+        let requiredInstructions = [
+            "Python standard library + vanilla JavaScript",
+            "Inventory before changing anything",
+            "command -v tailscale",
+            "tailscale version",
+            "tailscale status",
+            "Only if `command -v tailscale` reports that Tailscale is absent",
+            "correct method for this OS",
+            "rerun `tailscale version`, `tailscale status`, and the authentication check",
+            "tailscale serve status",
+            "tailscale funnel status",
+            "lsof -nP -iTCP:8787 -sTCP:LISTEN",
+            "Do not kill an unknown process",
+            "Do not run tailscale serve reset",
+            "127.0.0.1:8787",
+            "only if HTTPS port 443 at the root path is free",
+            "tailscale serve --bg 8787",
+            "HTTPS consent",
+            "certificate-transparency disclosure",
+            "umask 077",
+            "chmod 600",
+            "Preserve every existing line in `.env`",
+            "only add or update the `HERMES_WEBUI_PASSWORD` entry",
+            "never truncate or replace the file",
+            "Whether `.env` already existed or is new",
+            "Do not print the full .env",
+            "python3 bootstrap.py",
+            "./ctl.sh",
+            "Do not configure auto-start yourself",
+            "Propose the exact OS-appropriate commands and steps",
+            "wait for me to run them",
+            "Do not touch `~/Library/LaunchAgents/` or restart Mac services",
+            "curl --fail http://127.0.0.1:8787/health",
+            "actual ts.net HTTPS URL",
+            "exact HTTPS URL, password, launcher, and both health-check results",
+            "manual fallback",
+            "Do not automate it"
+        ]
+
+        for instruction in requiredInstructions {
+            XCTAssertTrue(prompt.contains(instruction), "Missing safe setup instruction: \(instruction)")
+        }
+
+        XCTAssertFalse(prompt.contains("Node.js"))
+        XCTAssertFalse(prompt.contains("curl http://$(tailscale ip -4):8787/health"))
+        XCTAssertFalse(prompt.contains("fall back: bind the server to 0.0.0.0"))
+        XCTAssertFalse(prompt.contains("Otherwise configure auto-start appropriate for this OS"))
     }
 
     func testTailscaleAppStoreURLUsesITMSDeepLink() {

@@ -31590,108 +31590,108 @@
         }
       }
     },
-    "Enter the Tailscale URL your agent returned, for example `http://<tailnet-ip>:8787`." : {
+    "Enter the exact HTTPS Tailscale Serve URL your agent returned, for example `https://server.tailnet-name.ts.net`." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "أدخل عنوان Tailscale URL الذي أعاده عميلك، على سبيل المثال `http://<tailnet-ip>:8787`."
+            "value" : "أدخل عنوان HTTPS الدقيق لـ Tailscale Serve الذي أعاده وكيلك، على سبيل المثال `https://server.tailnet-name.ts.net`."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Gib die Tailscale-URL ein, die dein Agent zurückgegeben hat, zum Beispiel `http://<tailnet-ip>:8787`."
+            "value" : "Gib die genaue HTTPS-URL von Tailscale Serve ein, die dein Agent zurückgegeben hat, zum Beispiel `https://server.tailnet-name.ts.net`."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Introduce la URL de Tailscale que devolvió tu agente, por ejemplo `http://<tailnet-ip>:8787`."
+            "value" : "Introduce la URL HTTPS exacta de Tailscale Serve que devolvió tu agente, por ejemplo `https://server.tailnet-name.ts.net`."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Saisissez l'URL Tailscale renvoyée par votre agent, par exemple `http://<ip-tailnet>:8787`."
+            "value" : "Saisissez l'URL HTTPS Tailscale Serve exacte renvoyée par votre agent, par exemple `https://server.tailnet-name.ts.net`."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "הזן את כתובת ה-URL של Tailscale שהסוכן שלך החזיר, לדוגמה `http://<tailnet-ip>:8787`."
+            "value" : "הזן את כתובת ה-HTTPS המדויקת של Tailscale Serve שהסוכן שלך החזיר, לדוגמה `https://server.tailnet-name.ts.net`."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Inserisci l'URL Tailscale restituito dal tuo agente, ad esempio `http://<tailnet-ip>:8787`."
+            "value" : "Inserisci l'URL HTTPS esatto di Tailscale Serve restituito dal tuo agente, ad esempio `https://server.tailnet-name.ts.net`."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "エージェントが返したTailscale URLを入力してください。例：`http://<tailnet-ip>:8787`。"
+            "value" : "エージェントが返した正確な Tailscale Serve の HTTPS URL を入力してください。例：`https://server.tailnet-name.ts.net`。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "에이전트가 반환한 Tailscale URL을 입력하세요. 예: `http://<tailnet-ip>:8787`."
+            "value" : "에이전트가 반환한 정확한 Tailscale Serve HTTPS URL을 입력하세요. 예: `https://server.tailnet-name.ts.net`."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Voer de Tailscale-URL in die uw agent heeft teruggegeven, bijvoorbeeld `http://<tailnet-ip>:8787`."
+            "value" : "Voer de exacte HTTPS-URL van Tailscale Serve in die uw agent heeft teruggegeven, bijvoorbeeld `https://server.tailnet-name.ts.net`."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Wprowadź URL Tailscale zwrócony przez agenta, na przykład `http://<tailnet-ip>:8787`."
+            "value" : "Wprowadź dokładny adres HTTPS Tailscale Serve zwrócony przez agenta, na przykład `https://server.tailnet-name.ts.net`."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Digite a URL do Tailscale que seu agente retornou, por exemplo `http://<tailnet-ip>:8787`."
+            "value" : "Digite a URL HTTPS exata do Tailscale Serve que seu agente retornou, por exemplo `https://server.tailnet-name.ts.net`."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Введите URL Tailscale, который вернул ваш агент, например `http://<tailnet-ip>:8787`."
+            "value" : "Введите точный HTTPS-адрес Tailscale Serve, который вернул ваш агент, например `https://server.tailnet-name.ts.net`."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Ajanınızın döndürdüğü Tailscale URL'sini girin, örneğin `http://<tailnet-ip>:8787`."
+            "value" : "Ajanınızın döndürdüğü tam Tailscale Serve HTTPS URL'sini girin, örneğin `https://server.tailnet-name.ts.net`."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "وہ Tailscale URL درج کریں جو آپ کے ایجنٹ نے واپس کیا، مثلاً `http://<tailnet-ip>:8787`۔"
+            "value" : "وہ درست Tailscale Serve HTTPS URL درج کریں جو آپ کے ایجنٹ نے واپس کیا، مثلاً `https://server.tailnet-name.ts.net`۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "請輸入你的代理返回的 Tailscale URL，例如 `http://<tailnet-ip>:8787`。"
+            "value" : "請輸入代理傳回的確切 Tailscale Serve HTTPS URL，例如 `https://server.tailnet-name.ts.net`。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "请输入你的智能体返回的 Tailscale URL，例如 `http://<tailnet-ip>:8787`。"
+            "value" : "请输入智能体返回的确切 Tailscale Serve HTTPS URL，例如 `https://server.tailnet-name.ts.net`。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "請輸入你的代理人傳回的 Tailscale URL，例如 `http://<tailnet-ip>:8787`。"
+            "value" : "請輸入代理人傳回的確切 Tailscale Serve HTTPS URL，例如 `https://server.tailnet-name.ts.net`。"
           }
         }
       }
@@ -69172,108 +69172,108 @@
         }
       }
     },
-    "Send this prompt to your Hermes Agent. It installs Hermes Web UI, enables password auth, and configures Tailscale access." : {
+    "Send this prompt to your Hermes Agent. It audits existing state, keeps Hermes Web UI on localhost, and configures private HTTPS with Tailscale Serve." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "أرسل هذا المُوجّه إلى وكيل Hermes الخاص بك. فهو يثبّت Hermes Web UI، ويفعّل مصادقة كلمة المرور، ويهيّئ الوصول عبر Tailscale."
+            "value" : "أرسل هذا المُوجّه إلى وكيل Hermes الخاص بك. فهو يراجع الحالة الحالية، ويبقي Hermes Web UI على المضيف المحلي، ويهيّئ HTTPS خاصًا باستخدام Tailscale Serve."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Sende diesen Prompt an deinen Hermes Agent. Er installiert Hermes Web UI, aktiviert die Passwort-Authentifizierung und konfiguriert den Tailscale-Zugriff."
+            "value" : "Sende diesen Prompt an deinen Hermes Agent. Er prüft den bestehenden Zustand, hält Hermes Web UI auf localhost und konfiguriert privates HTTPS mit Tailscale Serve."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Envía esta indicación a tu agente Hermes. Instala Hermes Web UI, activa la autenticación con contraseña y configura el acceso de Tailscale."
+            "value" : "Envía esta indicación a tu agente Hermes. Audita el estado existente, mantiene Hermes Web UI en localhost y configura HTTPS privado con Tailscale Serve."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Envoyez cette invite à votre agent Hermes. Elle installe Hermes Web UI, active l'authentification par mot de passe et configure l'accès Tailscale."
+            "value" : "Envoyez cette invite à votre agent Hermes. Elle vérifie l'état existant, conserve Hermes Web UI sur localhost et configure un HTTPS privé avec Tailscale Serve."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "שלח הנחיה זו לסוכן Hermes שלך. היא מתקינה את Hermes Web UI, מפעילה אימות בסיסמה ומגדירה גישה דרך Tailscale."
+            "value" : "שלח הנחיה זו לסוכן Hermes שלך. היא בודקת את המצב הקיים, משאירה את Hermes Web UI ב-localhost ומגדירה HTTPS פרטי עם Tailscale Serve."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Invia questo prompt al tuo agente Hermes. Installa Hermes Web UI, abilita l'autenticazione con password e configura l'accesso Tailscale."
+            "value" : "Invia questo prompt al tuo agente Hermes. Verifica lo stato esistente, mantiene Hermes Web UI su localhost e configura HTTPS privato con Tailscale Serve."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "このプロンプトを Hermes エージェントに送信してください。Hermes Web UI のインストール、パスワード認証の有効化、Tailscale アクセスの設定を行います。"
+            "value" : "このプロンプトを Hermes エージェントに送信してください。既存の状態を確認し、Hermes Web UI を localhost に保ち、Tailscale Serve でプライベート HTTPS を設定します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "이 프롬프트를 Hermes 에이전트에게 보내세요. Hermes Web UI를 설치하고 비밀번호 인증을 활성화하며 Tailscale 접근을 구성해요."
+            "value" : "이 프롬프트를 Hermes 에이전트에게 보내세요. 기존 상태를 점검하고 Hermes Web UI를 localhost에 유지하며 Tailscale Serve로 비공개 HTTPS를 구성해요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Verzend deze prompt naar uw Hermes-agent. Deze installeert Hermes Web UI, schakelt wachtwoordverificatie in en configureert Tailscale-toegang."
+            "value" : "Verzend deze prompt naar uw Hermes-agent. Deze controleert de bestaande staat, houdt Hermes Web UI op localhost en configureert privé-HTTPS met Tailscale Serve."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Wyślij ten monit do swojego agenta Hermes. Instaluje Hermes Web UI, włącza uwierzytelnianie hasłem i konfiguruje dostęp przez Tailscale."
+            "value" : "Wyślij ten monit do swojego agenta Hermes. Sprawdza istniejący stan, pozostawia Hermes Web UI na localhost i konfiguruje prywatny HTTPS przez Tailscale Serve."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Envie este prompt ao seu Hermes Agent. Ele instala a Hermes Web UI, ativa a autenticação por senha e configura o acesso ao Tailscale."
+            "value" : "Envie este prompt ao seu Hermes Agent. Ele audita o estado existente, mantém a Hermes Web UI no localhost e configura HTTPS privado com o Tailscale Serve."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Отправьте этот промпт вашему агенту Hermes. Он устанавливает Hermes Web UI, включает аутентификацию по паролю и настраивает доступ через Tailscale."
+            "value" : "Отправьте этот промпт вашему агенту Hermes. Он проверит текущее состояние, оставит Hermes Web UI на localhost и настроит приватный HTTPS через Tailscale Serve."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Bu istemi Hermes Aracınıza gönderin. Hermes Web UI'yi yükler, parola kimlik doğrulamasını etkinleştirir ve Tailscale erişimini yapılandırır."
+            "value" : "Bu istemi Hermes Aracınıza gönderin. Mevcut durumu denetler, Hermes Web UI'yi localhost'ta tutar ve Tailscale Serve ile özel HTTPS yapılandırır."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "یہ پرامپٹ اپنے Hermes ایجنٹ کو بھیجیں۔ یہ Hermes Web UI انسٹال کرتا ہے، پاس ورڈ کی توثیق فعال کرتا ہے، اور Tailscale رسائی ترتیب دیتا ہے۔"
+            "value" : "یہ پرامپٹ اپنے Hermes ایجنٹ کو بھیجیں۔ یہ موجودہ حالت کا جائزہ لیتا ہے، Hermes Web UI کو localhost پر رکھتا ہے، اور Tailscale Serve کے ساتھ نجی HTTPS ترتیب دیتا ہے۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "將此提示傳送給你的 Hermes 代理。它會安裝 Hermes Web UI、啟用密碼驗證並設定 Tailscale 存取權限。"
+            "value" : "將此提示傳送給你的 Hermes 代理。它會檢查現有狀態、讓 Hermes Web UI 保持在 localhost，並使用 Tailscale Serve 設定私人 HTTPS。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "将此提示发送给你的 Hermes 代理。它会安装 Hermes Web UI、启用密码验证并配置 Tailscale 访问。"
+            "value" : "将此提示发送给你的 Hermes 代理。它会检查现有状态、让 Hermes Web UI 保持在 localhost，并使用 Tailscale Serve 配置私有 HTTPS。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "將此提示傳送給你的 Hermes 代理。它會安裝 Hermes Web UI、啟用密碼驗證並設定 Tailscale 存取。"
+            "value" : "將此提示傳送給你的 Hermes 代理。它會檢查現有狀態、讓 Hermes Web UI 保持在 localhost，並使用 Tailscale Serve 設定私人 HTTPS。"
           }
         }
       }
