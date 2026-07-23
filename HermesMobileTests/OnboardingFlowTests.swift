@@ -101,6 +101,7 @@ final class OnboardingFlowTests: XCTestCase {
             "127.0.0.1:8787",
             "only if HTTPS port 443 at the root path is free",
             "tailscale serve --bg 8787",
+            "Never enable Funnel",
             "HTTPS consent",
             "certificate-transparency disclosure",
             "umask 077",
