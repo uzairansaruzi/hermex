@@ -31,7 +31,7 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
     }
 
     @MainActor
-    func testAuthManagerConnectsToNoPasswordTailscaleServerWithoutLogin() async throws {
+    func testAuthManagerConnectsToNoPasswordPrivateNetworkServerWithoutLogin() async throws {
         let keychain = InMemoryKeychainStore()
         let client = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false, loggedIn: false))
         var requestedURLs: [URL] = []
@@ -216,7 +216,7 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
 
         XCTAssertEqual(
             error.localizedDescription,
-            "iOS blocked this insecure HTTP connection. Use HTTPS, or use a Tailscale IP in the 100.64.0.0/10 range."
+            "iOS blocked this insecure HTTP connection. Use HTTPS, or use a private-network IP in the supported 100.64.0.0/10 range."
         )
     }
 }

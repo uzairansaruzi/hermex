@@ -81,7 +81,7 @@
 		C15210000000000000000002 /* OnboardingWelcomePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000002 /* OnboardingWelcomePage.swift */; };
 		C15210000000000000000003 /* OnboardingFeaturesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000003 /* OnboardingFeaturesPage.swift */; };
 		C15210000000000000000004 /* OnboardingAgentPromptPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000004 /* OnboardingAgentPromptPage.swift */; };
-		C15210000000000000000005 /* OnboardingTailscalePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000005 /* OnboardingTailscalePage.swift */; };
+		C15210000000000000000005 /* OnboardingPrivateNetworkPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000005 /* OnboardingPrivateNetworkPage.swift */; };
 		C15210000000000000000006 /* OnboardingConnectPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000006 /* OnboardingConnectPage.swift */; };
 		C15210000000000000000007 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000007 /* OnboardingFlowTests.swift */; };
 		C0391000000000000000000F /* SessionListMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0390000000000000000000F /* SessionListMutationTests.swift */; };
@@ -420,7 +420,7 @@
 		C15200000000000000000002 /* OnboardingWelcomePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomePage.swift; sourceTree = "<group>"; };
 		C15200000000000000000003 /* OnboardingFeaturesPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFeaturesPage.swift; sourceTree = "<group>"; };
 		C15200000000000000000004 /* OnboardingAgentPromptPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingAgentPromptPage.swift; sourceTree = "<group>"; };
-		C15200000000000000000005 /* OnboardingTailscalePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTailscalePage.swift; sourceTree = "<group>"; };
+		C15200000000000000000005 /* OnboardingPrivateNetworkPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPrivateNetworkPage.swift; sourceTree = "<group>"; };
 		C15200000000000000000006 /* OnboardingConnectPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConnectPage.swift; sourceTree = "<group>"; };
 		C15200000000000000000007 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
 		C0390000000000000000000F /* SessionListMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListMutationTests.swift; sourceTree = "<group>"; };
@@ -947,7 +947,7 @@
 				C15200000000000000000004 /* OnboardingAgentPromptPage.swift */,
 				C15200000000000000000003 /* OnboardingFeaturesPage.swift */,
 				C15200000000000000000001 /* OnboardingFlowPolicy.swift */,
-				C15200000000000000000005 /* OnboardingTailscalePage.swift */,
+				C15200000000000000000005 /* OnboardingPrivateNetworkPage.swift */,
 				C15200000000000000000002 /* OnboardingWelcomePage.swift */,
 				1A2B3C4D5E6F70000000411 /* OnboardingComponents.swift */,
 				1A2B3C4D5E6F7000000000B6 /* OnboardingViewModel.swift */,
@@ -1479,7 +1479,7 @@
 				C15210000000000000000004 /* OnboardingAgentPromptPage.swift in Sources */,
 				C15210000000000000000003 /* OnboardingFeaturesPage.swift in Sources */,
 				C15210000000000000000001 /* OnboardingFlowPolicy.swift in Sources */,
-				C15210000000000000000005 /* OnboardingTailscalePage.swift in Sources */,
+				C15210000000000000000005 /* OnboardingPrivateNetworkPage.swift in Sources */,
 				C15210000000000000000002 /* OnboardingWelcomePage.swift in Sources */,
 				1A2B3C4D5E6F70000000410 /* OnboardingComponents.swift in Sources */,
 				1A2B3C4D5E6F7000000000A6 /* OnboardingViewModel.swift in Sources */,

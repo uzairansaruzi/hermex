@@ -1,7 +1,8 @@
 import SwiftUI
 
-struct OnboardingTailscalePage: View {
+struct OnboardingPrivateNetworkPage: View {
     @Environment(\.openURL) private var openURL
+    @Binding var privateNetworkProvider: PrivateNetworkProvider
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -9,17 +10,19 @@ struct OnboardingTailscalePage: View {
                 OnboardingStepHeader(
                     stepNumber: 2,
                     icon: "iphone.and.arrow.forward",
-                    title: String(localized: "Install Tailscale on iPhone"),
-                    description: String(localized: "Install Tailscale on your iPhone and sign into the same tailnet as your server. Your agent will reply with the exact URL to use on the next screen.")
+                    title: String(localized: "Connect your iPhone"),
+                    description: String(localized: "Install your chosen private-network app on your iPhone. Your agent will reply with the exact URL to use on the next screen.")
                 )
 
-                VStack(alignment: .leading, spacing: 14) {
-                    tailscaleStep(number: "1", text: String(localized: "Install Tailscale from the App Store."))
-                    tailscaleStep(number: "2", text: String(localized: "Sign in with the same account you used on your server."))
-                    tailscaleStep(number: "3", text: String(localized: "Keep Tailscale connected while using Hermex."))
+                OnboardingNetworkProviderPicker(selection: $privateNetworkProvider)
 
-                    Button(action: openTailscaleInAppStore) {
-                        Label("Get Tailscale on the App Store", systemImage: "arrow.up.forward.square")
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(privateNetworkProvider.iphoneSetupSteps.enumerated()), id: \.offset) { index, step in
+                        networkStep(number: String(index + 1), text: step)
+                    }
+
+                    Button(action: openProviderInAppStore) {
+                        Label("Get \(privateNetworkProvider.rawValue) on the App Store", systemImage: "arrow.up.forward.square")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.10))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -32,7 +35,7 @@ struct OnboardingTailscalePage: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Opens the Tailscale page in the App Store.")
+                    .accessibilityHint("Opens the selected private-network app in the App Store.")
                 }
             }
             .padding(.horizontal, 28)
@@ -42,14 +45,14 @@ struct OnboardingTailscalePage: View {
         .scrollBounceBehavior(.basedOnSize)
     }
 
-    private func openTailscaleInAppStore() {
-        openURL(OnboardingFlowPolicy.tailscaleAppStoreURL, completion: { accepted in
+    private func openProviderInAppStore() {
+        openURL(privateNetworkProvider.appStoreURL, completion: { accepted in
             guard !accepted else { return }
-            openURL(OnboardingFlowPolicy.tailscaleAppStoreFallbackURL)
+            openURL(privateNetworkProvider.appStoreFallbackURL)
         })
     }
 
-    private func tailscaleStep(number: String, text: String) -> some View {
+    private func networkStep(number: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))

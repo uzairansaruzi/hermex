@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingAgentPromptPage: View {
     @Binding var hasCopiedAgentPrompt: Bool
+    @Binding var privateNetworkProvider: PrivateNetworkProvider
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -10,11 +11,13 @@ struct OnboardingAgentPromptPage: View {
                     stepNumber: 1,
                     icon: "terminal",
                     title: String(localized: "Set up Hermes Web UI"),
-                    description: String(localized: "Send this prompt to your Hermes Agent. It installs Hermes Web UI, enables password auth, and configures Tailscale access.")
+                    description: String(localized: "Choose your private network, then send the setup prompt to your Hermes Agent.")
                 )
 
+                OnboardingNetworkProviderPicker(selection: $privateNetworkProvider)
+
                 OnboardingAgentPromptCard(
-                    prompt: OnboardingFlowPolicy.agentSetupPrompt,
+                    prompt: privateNetworkProvider.setupPrompt,
                     hasCopied: $hasCopiedAgentPrompt
                 )
             }
@@ -23,5 +26,8 @@ struct OnboardingAgentPromptPage: View {
             .padding(.bottom, 16)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .onChange(of: privateNetworkProvider) {
+            hasCopiedAgentPrompt = false
+        }
     }
 }

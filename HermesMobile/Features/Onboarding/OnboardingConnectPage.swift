@@ -30,7 +30,7 @@ struct OnboardingConnectPage: View {
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("Enter the Tailscale URL your agent returned, for example `http://<tailnet-ip>:8787`.")
+                    Text("Enter the private-network URL your agent returned, for example `http://<server-ip>:8787`.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.5))
                         .fixedSize(horizontal: false, vertical: true)

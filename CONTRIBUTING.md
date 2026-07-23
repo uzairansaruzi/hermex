@@ -16,7 +16,7 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
 - To actually use the app you need your own
   [hermes-webui](https://github.com/nesquena/hermes-webui) server — the app is
   a client only. See the [README](README.md#you-need-your-own-server) for
-  reachable-server options (Cloudflare Tunnel, reverse proxy, Tailscale, or
+  reachable-server options (Cloudflare Tunnel, reverse proxy, Tailscale, NetBird, or
   `http://localhost:8787` for simulator-only testing).
 
 ## Running tests

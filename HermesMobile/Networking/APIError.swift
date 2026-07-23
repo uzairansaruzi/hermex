@@ -10,7 +10,7 @@ enum APIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidServerURL:
-            return String(localized: "Enter a valid server URL, for example https://hermes.yourdomain.com or http://<server-tailscale-ip>:8787.")
+            return String(localized: "Enter a valid server URL, for example https://hermes.yourdomain.com or http://<private-network-ip>:8787.")
         case .network(let underlying):
             return Self.networkMessage(for: underlying)
         case .http(let statusCode, let body):
@@ -157,7 +157,7 @@ private extension APIError {
              .serverCertificateNotYetValid:
             return String(localized: "The HTTPS connection failed. Check the server URL and certificate.")
         case .appTransportSecurityRequiresSecureConnection:
-            return String(localized: "iOS blocked this insecure HTTP connection. Use HTTPS, or use a Tailscale IP in the 100.64.0.0/10 range.")
+            return String(localized: "iOS blocked this insecure HTTP connection. Use HTTPS, or use a private-network IP in the supported 100.64.0.0/10 range.")
         case .cancelled:
             return String(localized: "The request was cancelled.")
         default:
