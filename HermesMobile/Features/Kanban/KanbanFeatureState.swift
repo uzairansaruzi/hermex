@@ -50,6 +50,52 @@ struct KanbanArchiveUndo: Equatable, Sendable {
     let card: KanbanCard
 }
 
+enum KanbanBulkActionPhase: Equatable, Sendable {
+    case submitting
+    case reconciling
+}
+
+enum KanbanBulkMemberOutcome: Equatable, Sendable {
+    case succeeded
+    case failed
+    case outcomeUncertain
+}
+
+struct KanbanBulkMemberResult: Equatable, Sendable, Identifiable {
+    let cardID: String
+    let cardTitle: String
+    let outcome: KanbanBulkMemberOutcome
+
+    var id: String { cardID }
+}
+
+struct KanbanBulkActionSummary: Equatable, Sendable {
+    let action: KanbanBulkAction
+    let members: [KanbanBulkMemberResult]
+
+    var succeededCount: Int { members.count { $0.outcome == .succeeded } }
+    var failedCount: Int { members.count { $0.outcome == .failed } }
+    var uncertainCount: Int { members.count { $0.outcome == .outcomeUncertain } }
+    var failedCardIDs: Set<String> {
+        Set(members.lazy.filter { $0.outcome == .failed }.map(\.cardID))
+    }
+    var needsAttention: [KanbanBulkMemberResult] {
+        members.filter { $0.outcome != .succeeded }
+    }
+}
+
+enum KanbanBulkActionsAvailability: Equatable, Sendable {
+    case available
+    case noSelection
+    case offline
+    case incompatible
+    case readOnly
+    case refreshing
+    case boardBusy
+    case invalidSelection
+    case unknownStatus
+}
+
 private struct KanbanPendingDependencyChange {
     let prerequisiteID: String
     let isAdding: Bool
@@ -96,6 +142,10 @@ final class KanbanFeatureState {
     private(set) var detailRefreshRevision = 0
     private(set) var cardMutationStates: [String: KanbanCardMutationState] = [:]
     private(set) var archiveUndo: KanbanArchiveUndo?
+    private(set) var isSelectingCards = false
+    private(set) var selectedCardIDs: Set<String> = []
+    private(set) var bulkActionPhase: KanbanBulkActionPhase?
+    private(set) var bulkActionSummary: KanbanBulkActionSummary?
 
     private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
@@ -129,6 +179,7 @@ final class KanbanFeatureState {
     private var uncertainProtectedCards: [String: KanbanCard] = [:]
     private var pendingDependencyChanges: [String: KanbanPendingDependencyChange] = [:]
     private var archiveUndoTask: Task<Void, Never>?
+    private var selectedCardsByID: [String: KanbanCard] = [:]
 
     init(
         server: URL,
@@ -166,7 +217,44 @@ final class KanbanFeatureState {
 
     var canMutateCards: Bool {
         canAddComments
+            && bulkActionPhase == nil
             && Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+    }
+
+    var selectedCardCount: Int { selectedCardIDs.count }
+
+    var bulkActionsAvailability: KanbanBulkActionsAvailability {
+        bulkActionsAvailability(for: selectedCardIDs)
+    }
+
+    private func bulkActionsAvailability(for cardIDs: Set<String>) -> KanbanBulkActionsAvailability {
+        if cardIDs.isEmpty { return .noSelection }
+        if bulkActionPhase != nil || !activeCardMutationIDs.isEmpty { return .boardBusy }
+        if isOffline { return .offline }
+        if isRefreshing { return .refreshing }
+        guard state == .compatible || state == .partial,
+              snapshot != nil,
+              Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+        else { return .incompatible }
+        guard configuration?.readOnly == false,
+              boardsResponse?.readOnly == false,
+              snapshot?.readOnly == false,
+              selectedBoard?.readOnly != true
+        else { return .readOnly }
+        let selectedCards = cardIDs.compactMap { selectedCardsByID[$0] ?? cardInSnapshot($0) }
+        guard selectedCards.count == cardIDs.count else { return .invalidSelection }
+        guard selectedCards.allSatisfy({ $0.status?.isSupported == true }) else { return .unknownStatus }
+        return .available
+    }
+
+    var canRetryFailedBulkAction: Bool {
+        guard let summary = bulkActionSummary, !summary.failedCardIDs.isEmpty else { return false }
+        return bulkActionsAvailability(for: summary.failedCardIDs) == .available
+            && validate(summary.action)
+    }
+
+    func canSubmitBulkAction(_ action: KanbanBulkAction) -> Bool {
+        bulkActionsAvailability == .available && validate(action)
     }
 
     var hasAvailableArchiveUndo: Bool {
@@ -522,6 +610,9 @@ final class KanbanFeatureState {
                 snapshot: snapshot
             )
             guard isCurrent(loadID) else { return }
+            if selectedBoardSlug != nil, selectedBoardSlug != currentBoard {
+                clearCardSelection()
+            }
             self.configuration = configuration
             self.boardsResponse = boardsResponse
             boards = boardsResponse.boards ?? []
@@ -570,8 +661,10 @@ final class KanbanFeatureState {
 
     func selectBoard(_ slug: String) async {
         guard activeCardMutationIDs.isEmpty,
+              bulkActionPhase == nil,
               boards.contains(where: { normalized($0.slug) == slug }),
               slug != selectedBoardSlug else { return }
+        clearCardSelection()
         archiveUndoTask?.cancel()
         archiveUndo = nil
         clearSettledMutationPresentation()
@@ -659,6 +752,49 @@ final class KanbanFeatureState {
         await refreshBoard(usingCursor: false)
     }
 
+    func beginSelectingCards() {
+        guard bulkActionPhase == nil else { return }
+        isSelectingCards = true
+        bulkActionSummary = nil
+    }
+
+    func toggleCardSelection(_ card: KanbanCard) {
+        guard isSelectingCards,
+              bulkActionPhase == nil,
+              let cardID = normalizedOptional(card.cardID) else { return }
+        if selectedCardIDs.remove(cardID) != nil {
+            selectedCardsByID[cardID] = nil
+        } else {
+            selectedCardIDs.insert(cardID)
+            selectedCardsByID[cardID] = card
+        }
+    }
+
+    func clearCardSelection() {
+        guard bulkActionPhase == nil else { return }
+        isSelectingCards = false
+        selectedCardIDs = []
+        selectedCardsByID = [:]
+        bulkActionSummary = nil
+    }
+
+    func dismissBulkActionSummary() {
+        bulkActionSummary = nil
+    }
+
+    func performBulkAction(_ action: KanbanBulkAction) async {
+        await performBulkAction(action, cardIDs: selectedCardIDs)
+    }
+
+    func retryFailedBulkAction() async {
+        guard canRetryFailedBulkAction,
+              let summary = bulkActionSummary else { return }
+        let failedIDs = summary.failedCardIDs
+        selectedCardIDs = failedIDs
+        selectedCardsByID = selectedCardsByID.filter { failedIDs.contains($0.key) }
+        await performBulkAction(summary.action, cardIDs: failedIDs)
+    }
+
     func makeCardDetailState(cardID: String) -> KanbanCardDetailState? {
         guard let board = selectedBoardSlug else { return nil }
         return KanbanCardDetailState(
@@ -704,6 +840,127 @@ final class KanbanFeatureState {
 
     func reconcileAfterCardMutation() async {
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+    }
+
+    private func performBulkAction(_ action: KanbanBulkAction, cardIDs: Set<String>) async {
+        guard bulkActionsAvailability == .available,
+              validate(action),
+              !cardIDs.isEmpty,
+              cardIDs == selectedCardIDs,
+              let board = selectedBoardSlug else { return }
+        let orderedIDs = cardIDs.sorted()
+        let originalCards = Dictionary(
+            uniqueKeysWithValues: orderedIDs.compactMap { cardID in
+                (selectedCardsByID[cardID] ?? cardInSnapshot(cardID)).map { (cardID, $0) }
+            }
+        )
+        guard originalCards.count == orderedIDs.count else { return }
+
+        bulkActionSummary = nil
+        bulkActionPhase = .submitting
+        do {
+            _ = try await client.performKanbanBulkAction(KanbanBulkActionRequest(
+                board: board,
+                cardIDs: orderedIDs,
+                action: action
+            ))
+        } catch {
+            forwardAuthentication(error)
+        }
+
+        guard selectedBoardSlug == board else {
+            bulkActionPhase = nil
+            return
+        }
+        bulkActionPhase = .reconciling
+        var members: [KanbanBulkMemberResult] = []
+
+        for cardID in orderedIDs {
+            let original = originalCards[cardID]
+            do {
+                let detail = try await client.kanbanCardDetail(
+                    KanbanCardDetailRequest(cardID: cardID, board: board)
+                )
+                guard selectedBoardSlug == board,
+                      let authoritative = detail.card,
+                      normalizedOptional(authoritative.cardID) == cardID else {
+                    members.append(bulkMember(
+                        cardID: cardID,
+                        card: original,
+                        outcome: .outcomeUncertain
+                    ))
+                    continue
+                }
+                replaceCardInSnapshot(authoritative)
+                selectedCardsByID[cardID] = authoritative
+                let intendedResultIsPresent = actionMatches(action, card: authoritative)
+                members.append(bulkMember(
+                    cardID: cardID,
+                    card: authoritative,
+                    outcome: intendedResultIsPresent ? .succeeded : .failed
+                ))
+            } catch {
+                members.append(bulkMember(
+                    cardID: cardID,
+                    card: original,
+                    outcome: .outcomeUncertain
+                ))
+                forwardAuthentication(error)
+            }
+        }
+
+        guard selectedBoardSlug == board else {
+            bulkActionPhase = nil
+            return
+        }
+        let summary = KanbanBulkActionSummary(action: action, members: members)
+        bulkActionSummary = summary
+        let retainedIDs = Set(summary.needsAttention.map(\.cardID))
+        selectedCardIDs = retainedIDs
+        selectedCardsByID = selectedCardsByID.filter { retainedIDs.contains($0.key) }
+        bulkActionPhase = nil
+        _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+    }
+
+    private func validate(_ action: KanbanBulkAction) -> Bool {
+        switch action {
+        case let .changeStatus(status):
+            guard let normalizedStatus = normalized(status) else { return false }
+            return normalizedStatus != "running"
+                && (configuration?.columns ?? []).contains(normalizedStatus)
+        case let .assignProfile(profile):
+            guard let profile = normalizedOptional(profile) else { return profile == nil }
+            return profileOptions.contains(profile)
+        case let .setPriority(priority):
+            return (-100...100).contains(priority)
+        case .archiveCards:
+            return true
+        }
+    }
+
+    private func actionMatches(_ action: KanbanBulkAction, card: KanbanCard) -> Bool {
+        switch action {
+        case let .changeStatus(status):
+            return card.status?.rawValue == normalized(status)
+        case let .assignProfile(profile):
+            return normalizedOptional(card.assignee) == normalizedOptional(profile)
+        case let .setPriority(priority):
+            return (card.priority ?? 0) == priority
+        case .archiveCards:
+            return card.status?.rawValue == "archived"
+        }
+    }
+
+    private func bulkMember(
+        cardID: String,
+        card: KanbanCard?,
+        outcome: KanbanBulkMemberOutcome
+    ) -> KanbanBulkMemberResult {
+        KanbanBulkMemberResult(
+            cardID: cardID,
+            cardTitle: normalizedOptional(card?.title) ?? cardID,
+            outcome: outcome
+        )
     }
 
     private func performStatusMutation(

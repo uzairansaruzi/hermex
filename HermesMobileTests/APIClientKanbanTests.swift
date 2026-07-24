@@ -311,6 +311,61 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertThrowsError(try KanbanCardMutationValidator.validate(malformed))
     }
 
+    func testBulkActionsUseExactVerifiedBodiesAndPerCardResults() async throws {
+        let actions: [(KanbanBulkAction, [String: Any])] = [
+            (.changeStatus("done"), ["ids": ["CARD-1", "CARD-2"], "status": "done"]),
+            (.assignProfile(nil), ["ids": ["CARD-1", "CARD-2"], "assignee": ""]),
+            (.setPriority(4), ["ids": ["CARD-1", "CARD-2"], "priority": 4]),
+            (.archiveCards, ["ids": ["CARD-1", "CARD-2"], "archive": true])
+        ]
+        var requestIndex = 0
+        let client = makeClient { request in
+            let expected = actions[requestIndex].1
+            requestIndex += 1
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.path, "/api/kanban/tasks/bulk")
+            XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "release board")])
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(body as NSDictionary, expected as NSDictionary)
+            return apiTestJSONResponse(
+                #"{"results":[{"id":"CARD-1","ok":true},{"id":"CARD-2","ok":false,"error":"refused"}],"read_only":false,"future":true}"#,
+                for: request
+            )
+        }
+
+        for (action, _) in actions {
+            let envelope = try await client.performKanbanBulkAction(KanbanBulkActionRequest(
+                board: "release board",
+                cardIDs: ["CARD-1", "CARD-2"],
+                action: action
+            ))
+            XCTAssertEqual(envelope.results?.map(\.cardID), ["CARD-1", "CARD-2"])
+            XCTAssertEqual(envelope.results?.map(\.ok), [true, false])
+        }
+    }
+
+    func testBulkResultsTolerateMalformedAndUnknownMembers() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let envelope = try decoder.decode(
+            KanbanBulkActionEnvelope.self,
+            from: Data(
+                #"{"results":[{"id":"CARD-1","ok":"true","future":1},42,{"id":{"bad":true},"ok":false}],"read_only":"false"}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(envelope.readOnly, false)
+        XCTAssertEqual(envelope.results?.count, 3)
+        XCTAssertEqual(envelope.results?.first?.cardID, "CARD-1")
+        XCTAssertEqual(envelope.results?.first?.ok, true)
+        XCTAssertNil(envelope.results?[1].cardID)
+        XCTAssertNil(envelope.results?[2].cardID)
+        XCTAssertEqual(envelope.results?[2].ok, false)
+    }
+
     func testWorkflowAndDependencyMutationsUseExactVerifiedContracts() async throws {
         var requestIndex = 0
         let client = makeClient { request in

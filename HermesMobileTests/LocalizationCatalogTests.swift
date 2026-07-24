@@ -159,4 +159,28 @@ final class LocalizationCatalogTests: XCTestCase {
             }
         }
     }
+
+    func testKanbanBulkActionNamesAreLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let bulkActionKeys = [
+            "Archive Cards", "Assign Profile", "Bulk Actions", "Change Status",
+            "Retry Failed", "Select Cards", "Set Priority", "Unknown Status"
+        ]
+
+        for key in bulkActionKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+                let translatedValue = (localization["stringUnit"] as? [String: Any])?["value"] as? String
+                XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses the English source value")
+            }
+        }
+    }
 }

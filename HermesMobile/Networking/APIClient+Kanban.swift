@@ -11,6 +11,7 @@ protocol KanbanDataClient: Sendable {
     func kanbanWorkerLog(_ request: KanbanWorkerLogRequest) async throws -> KanbanWorkerLog
     func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse
     func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope
+    func performKanbanBulkAction(_ request: KanbanBulkActionRequest) async throws -> KanbanBulkActionEnvelope
     func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope
     func setKanbanCardStatus(_ request: KanbanCardStatusRequest) async throws -> KanbanCardMutationEnvelope
     func blockKanbanCard(_ request: KanbanCardActionRequest) async throws -> KanbanCardMutationEnvelope
@@ -34,6 +35,10 @@ extension KanbanDataClient {
 
     func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope {
         throw KanbanUnsupportedClientMethod.createCard
+    }
+
+    func performKanbanBulkAction(_ request: KanbanBulkActionRequest) async throws -> KanbanBulkActionEnvelope {
+        throw KanbanUnsupportedClientMethod.bulkAction
     }
 
     func editKanbanCard(_ request: KanbanEditCardRequest) async throws -> KanbanCardMutationEnvelope {
@@ -66,6 +71,7 @@ private enum KanbanUnsupportedClientMethod: Error {
     case workerLog
     case addComment
     case createCard
+    case bulkAction
     case editCard
     case cardStatus
     case blockCard
@@ -120,6 +126,14 @@ extension APIClient: KanbanDataClient {
             endpoint: .kanbanCreateCard(request),
             method: "POST",
             body: KanbanCreateCardBody(request: request)
+        )
+    }
+
+    func performKanbanBulkAction(_ request: KanbanBulkActionRequest) async throws -> KanbanBulkActionEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanBulkAction(request),
+            method: "POST",
+            body: KanbanBulkActionBody(request: request)
         )
     }
 
@@ -214,6 +228,29 @@ extension APIClient: KanbanDataClient {
 
 private struct KanbanCommentBody: Encodable {
     let body: String
+}
+
+private struct KanbanBulkActionBody: Encodable {
+    let request: KanbanBulkActionRequest
+
+    enum CodingKeys: String, CodingKey {
+        case ids, archive, status, assignee, priority
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(request.cardIDs, forKey: .ids)
+        switch request.action {
+        case let .changeStatus(status):
+            try container.encode(status, forKey: .status)
+        case let .assignProfile(profile):
+            try container.encode(profile ?? "", forKey: .assignee)
+        case let .setPriority(priority):
+            try container.encode(priority, forKey: .priority)
+        case .archiveCards:
+            try container.encode(true, forKey: .archive)
+        }
+    }
 }
 
 enum KanbanRequestError: Error, Equatable {
