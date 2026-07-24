@@ -166,7 +166,10 @@ final class LocalizationCatalogTests: XCTestCase {
         let strings = try XCTUnwrap(root["strings"] as? [String: Any])
         let bulkActionKeys = [
             "Archive Cards", "Assign Profile", "Bulk Actions", "Change Status",
-            "Retry Failed", "Select Cards", "Set Priority", "Unknown Status"
+            "Retry Failed", "Select Cards", "Set Priority", "Unknown Status",
+            "The Board is refreshing.",
+            "The selection is no longer available. Refresh the Board and select the Cards again.",
+            "The selected Cards will be moved to the archive."
         ]
 
         for key in bulkActionKeys {

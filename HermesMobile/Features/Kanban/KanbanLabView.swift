@@ -138,7 +138,7 @@ struct KanbanStatusFocusView: View {
                 }
             }
         } message: {
-            Text("Archived")
+            Text("The selected Cards will be moved to the archive.")
         }
     }
 
@@ -325,9 +325,9 @@ struct KanbanStatusFocusView: View {
         case .offline: String(localized: "Offline—showing previously loaded data")
         case .incompatible: String(localized: "Unavailable")
         case .readOnly: String(localized: "Read-only")
-        case .refreshing: String(localized: "Refresh")
+        case .refreshing: String(localized: "The Board is refreshing.")
         case .boardBusy: String(localized: "Updating task...")
-        case .invalidSelection: String(localized: "Refresh")
+        case .invalidSelection: String(localized: "The selection is no longer available. Refresh the Board and select the Cards again.")
         case .unknownStatus: String(localized: "Unknown Status")
         }
     }

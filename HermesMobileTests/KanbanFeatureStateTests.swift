@@ -647,9 +647,13 @@ final class KanbanFeatureStateTests: XCTestCase {
                 mutationDecode(#"{"results":[{"id":"CARD-2","ok":true}],"read_only":false}"#)
             ],
             detailResults: [
-                .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#)),
-                .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"todo"}}"#)),
-                .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"done"}}"#))
+                "CARD-1": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
+                ],
+                "CARD-2": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"todo"}}"#)),
+                    .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"done"}}"#))
+                ]
             ]
         )
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
@@ -665,7 +669,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.selectedCardIDs, ["CARD-2"])
         XCTAssertTrue(state.canRetryFailedBulkAction)
         let firstDetailRequests = await client.detailRequests()
-        XCTAssertEqual(firstDetailRequests, ["CARD-1", "CARD-2"])
+        XCTAssertEqual(Set(firstDetailRequests), ["CARD-1", "CARD-2"])
 
         await state.retryFailedBulkAction()
 
@@ -687,8 +691,12 @@ final class KanbanFeatureStateTests: XCTestCase {
                 mutationDecode(#"{"results":[{"id":"CARD-1","ok":true},42],"read_only":false}"#)
             ],
             detailResults: [
-                .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#)),
-                .failure(KanbanResponseError.nonJSONContentType)
+                "CARD-1": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
+                ],
+                "CARD-2": [
+                    .failure(KanbanResponseError.nonJSONContentType)
+                ]
             ]
         )
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
@@ -703,7 +711,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.selectedCardIDs, ["CARD-2"])
         XCTAssertFalse(state.canRetryFailedBulkAction)
         let detailRequests = await client.detailRequests()
-        XCTAssertEqual(detailRequests, ["CARD-1", "CARD-2"])
+        XCTAssertEqual(Set(detailRequests), ["CARD-1", "CARD-2"])
     }
 
     func testBulkSubmissionLocksOtherBoardWritesThroughReconciliation() async throws {
@@ -716,7 +724,9 @@ final class KanbanFeatureStateTests: XCTestCase {
                 mutationDecode(#"{"results":[{"id":"CARD-1","ok":true}],"read_only":false}"#)
             ],
             detailResults: [
-                .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
+                "CARD-1": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
+                ]
             ],
             defersFirstBulkResponse: true
         )
@@ -738,6 +748,104 @@ final class KanbanFeatureStateTests: XCTestCase {
 
         XCTAssertNil(state.bulkActionPhase)
         XCTAssertEqual(state.bulkActionSummary?.succeededCount, 1)
+    }
+
+    func testBulkTransportFailureStillReconcilesEveryCard() async {
+        let client = BulkActionClient(
+            boardSnapshots: [
+                bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
+                bulkSnapshot(firstStatus: "done", secondStatus: "done")
+            ],
+            bulkResponses: [],
+            detailResults: [
+                "CARD-1": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
+                ],
+                "CARD-2": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"done"}}"#))
+                ]
+            ],
+            bulkError: KanbanResponseError.nonJSONContentType
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        state.beginSelectingCards()
+        state.allCards.forEach(state.toggleCardSelection)
+
+        await state.performBulkAction(.changeStatus("done"))
+
+        XCTAssertEqual(state.bulkActionSummary?.succeededCount, 2)
+        let detailRequests = await client.detailRequests()
+        XCTAssertEqual(Set(detailRequests), ["CARD-1", "CARD-2"])
+    }
+
+    func testBulkReconciliationFetchesCardDetailsConcurrently() async throws {
+        let client = BulkActionClient(
+            boardSnapshots: [
+                bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
+                bulkSnapshot(firstStatus: "done", secondStatus: "done")
+            ],
+            bulkResponses: [
+                mutationDecode(#"{"results":[{"id":"CARD-1","ok":true},{"id":"CARD-2","ok":true}]}"#)
+            ],
+            detailResults: [
+                "CARD-1": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
+                ],
+                "CARD-2": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"done"}}"#))
+                ]
+            ],
+            defersFirstDetailResponse: true
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        state.beginSelectingCards()
+        state.allCards.forEach(state.toggleCardSelection)
+
+        let submission = Task { await state.performBulkAction(.changeStatus("done")) }
+        await client.waitForDeferredDetailResponse()
+        try await waitUntil { await client.detailRequests().count == 2 }
+        await client.resumeDeferredDetailResponse()
+        await submission.value
+
+        XCTAssertEqual(state.bulkActionSummary?.succeededCount, 2)
+    }
+
+    func testReloadToAnotherBoardClearsSelectionDuringBulkSubmission() async throws {
+        let client = BulkActionClient(
+            boardSnapshots: [
+                bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
+                bulkSnapshot(firstStatus: "done", secondStatus: "done")
+            ],
+            boardsResponses: [
+                mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#),
+                mutationDecode(#"{"boards":[{"slug":"release"}],"current":"release","read_only":false}"#)
+            ],
+            bulkResponses: [
+                mutationDecode(#"{"results":[{"id":"CARD-1","ok":true}]}"#)
+            ],
+            detailResults: [:],
+            defersFirstBulkResponse: true
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let first = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+        state.beginSelectingCards()
+        state.toggleCardSelection(first)
+
+        let submission = Task { await state.performBulkAction(.changeStatus("done")) }
+        await client.waitForDeferredBulkResponse()
+        await state.load()
+
+        XCTAssertEqual(state.selectedBoardSlug, "release")
+        XCTAssertFalse(state.isSelectingCards)
+        XCTAssertTrue(state.selectedCardIDs.isEmpty)
+
+        await client.resumeDeferredBulkResponse()
+        await submission.value
+        XCTAssertNil(state.bulkActionPhase)
+        XCTAssertNil(state.bulkActionSummary)
     }
 
     func testKanbanLabPartialScenarioProvidesSafePerCardFailureRecovery() async throws {
@@ -954,23 +1062,35 @@ private actor ImmediateMutationClient: KanbanDataClient {
 
 private actor BulkActionClient: KanbanDataClient {
     private var boardSnapshots: [KanbanBoardSnapshot]
+    private var boardsResponses: [KanbanBoardsResponse]
     private var bulkResponses: [KanbanBulkActionEnvelope]
-    private var detailResults: [Result<KanbanCardDetailEnvelope, Error>]
+    private var detailResults: [String: [Result<KanbanCardDetailEnvelope, Error>]]
     private var recordedBulkRequests: [KanbanBulkActionRequest] = []
     private var recordedDetailRequests: [String] = []
     private var shouldDeferBulkResponse: Bool
     private var bulkContinuation: CheckedContinuation<Void, Never>?
+    private var shouldDeferDetailResponse: Bool
+    private var detailContinuation: CheckedContinuation<Void, Never>?
+    private var bulkError: Error?
 
     init(
         boardSnapshots: [KanbanBoardSnapshot],
+        boardsResponses: [KanbanBoardsResponse] = [
+            mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#)
+        ],
         bulkResponses: [KanbanBulkActionEnvelope],
-        detailResults: [Result<KanbanCardDetailEnvelope, Error>],
-        defersFirstBulkResponse: Bool = false
+        detailResults: [String: [Result<KanbanCardDetailEnvelope, Error>]],
+        defersFirstBulkResponse: Bool = false,
+        defersFirstDetailResponse: Bool = false,
+        bulkError: Error? = nil
     ) {
         self.boardSnapshots = boardSnapshots
+        self.boardsResponses = boardsResponses
         self.bulkResponses = bulkResponses
         self.detailResults = detailResults
         shouldDeferBulkResponse = defersFirstBulkResponse
+        shouldDeferDetailResponse = defersFirstDetailResponse
+        self.bulkError = bulkError
     }
 
     func kanbanConfiguration() -> KanbanConfiguration {
@@ -980,7 +1100,8 @@ private actor BulkActionClient: KanbanDataClient {
     }
 
     func kanbanBoards() -> KanbanBoardsResponse {
-        mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#)
+        if boardsResponses.count > 1 { return boardsResponses.removeFirst() }
+        return boardsResponses[0]
     }
 
     func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
@@ -993,18 +1114,31 @@ private actor BulkActionClient: KanbanDataClient {
 
     func performKanbanBulkAction(
         _ request: KanbanBulkActionRequest
-    ) async -> KanbanBulkActionEnvelope {
+    ) async throws -> KanbanBulkActionEnvelope {
         recordedBulkRequests.append(request)
         if shouldDeferBulkResponse {
             shouldDeferBulkResponse = false
             await withCheckedContinuation { bulkContinuation = $0 }
         }
+        if let error = bulkError {
+            bulkError = nil
+            throw error
+        }
         return bulkResponses.removeFirst()
     }
 
-    func kanbanCardDetail(_ request: KanbanCardDetailRequest) throws -> KanbanCardDetailEnvelope {
+    func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
         recordedDetailRequests.append(request.cardID)
-        return try detailResults.removeFirst().get()
+        if shouldDeferDetailResponse {
+            shouldDeferDetailResponse = false
+            await withCheckedContinuation { detailContinuation = $0 }
+        }
+        guard var results = detailResults[request.cardID], !results.isEmpty else {
+            throw KanbanResponseError.nonJSONContentType
+        }
+        let result = results.removeFirst()
+        detailResults[request.cardID] = results
+        return try result.get()
     }
 
     func bulkRequests() -> [KanbanBulkActionRequest] { recordedBulkRequests }
@@ -1017,6 +1151,15 @@ private actor BulkActionClient: KanbanDataClient {
     func resumeDeferredBulkResponse() {
         bulkContinuation?.resume()
         bulkContinuation = nil
+    }
+
+    func waitForDeferredDetailResponse() async {
+        while detailContinuation == nil { await Task.yield() }
+    }
+
+    func resumeDeferredDetailResponse() {
+        detailContinuation?.resume()
+        detailContinuation = nil
     }
 }
 

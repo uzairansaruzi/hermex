@@ -122,6 +122,7 @@ struct KanbanLiveUpdateTiming: Sendable {
 @Observable
 final class KanbanFeatureState {
     static let liveStatuses = ["triage", "todo", "ready", "running", "blocked", "done"]
+    private static let bulkReconciliationConcurrency = 4
 
     let server: URL
     private(set) var state: KanbanCompatibilityState = .idle
@@ -611,7 +612,7 @@ final class KanbanFeatureState {
             )
             guard isCurrent(loadID) else { return }
             if selectedBoardSlug != nil, selectedBoardSlug != currentBoard {
-                clearCardSelection()
+                resetCardSelection()
             }
             self.configuration = configuration
             self.boardsResponse = boardsResponse
@@ -772,6 +773,10 @@ final class KanbanFeatureState {
 
     func clearCardSelection() {
         guard bulkActionPhase == nil else { return }
+        resetCardSelection()
+    }
+
+    private func resetCardSelection() {
         isSelectingCards = false
         selectedCardIDs = []
         selectedCardsByID = [:]
@@ -870,17 +875,17 @@ final class KanbanFeatureState {
 
         guard selectedBoardSlug == board else {
             bulkActionPhase = nil
+            resetCardSelection()
             return
         }
         bulkActionPhase = .reconciling
         var members: [KanbanBulkMemberResult] = []
+        let detailResults = await fetchBulkCardDetails(cardIDs: orderedIDs, board: board)
 
         for cardID in orderedIDs {
             let original = originalCards[cardID]
-            do {
-                let detail = try await client.kanbanCardDetail(
-                    KanbanCardDetailRequest(cardID: cardID, board: board)
-                )
+            switch detailResults[cardID] {
+            case let .success(detail):
                 guard selectedBoardSlug == board,
                       let authoritative = detail.card,
                       normalizedOptional(authoritative.cardID) == cardID else {
@@ -899,18 +904,25 @@ final class KanbanFeatureState {
                     card: authoritative,
                     outcome: intendedResultIsPresent ? .succeeded : .failed
                 ))
-            } catch {
+            case let .failure(error):
                 members.append(bulkMember(
                     cardID: cardID,
                     card: original,
                     outcome: .outcomeUncertain
                 ))
                 forwardAuthentication(error)
+            case nil:
+                members.append(bulkMember(
+                    cardID: cardID,
+                    card: original,
+                    outcome: .outcomeUncertain
+                ))
             }
         }
 
         guard selectedBoardSlug == board else {
             bulkActionPhase = nil
+            resetCardSelection()
             return
         }
         let summary = KanbanBulkActionSummary(action: action, members: members)
@@ -920,6 +932,48 @@ final class KanbanFeatureState {
         selectedCardsByID = selectedCardsByID.filter { retainedIDs.contains($0.key) }
         bulkActionPhase = nil
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+    }
+
+    private func fetchBulkCardDetails(
+        cardIDs: [String],
+        board: String
+    ) async -> [String: Result<KanbanCardDetailEnvelope, Error>] {
+        await withTaskGroup(
+            of: (String, Result<KanbanCardDetailEnvelope, Error>).self,
+            returning: [String: Result<KanbanCardDetailEnvelope, Error>].self
+        ) { group in
+            var remainingIDs = cardIDs.makeIterator()
+            for _ in 0..<min(Self.bulkReconciliationConcurrency, cardIDs.count) {
+                guard let cardID = remainingIDs.next() else { break }
+                addBulkDetailTask(cardID: cardID, board: board, to: &group)
+            }
+
+            var results: [String: Result<KanbanCardDetailEnvelope, Error>] = [:]
+            while let (cardID, result) = await group.next() {
+                results[cardID] = result
+                if let nextCardID = remainingIDs.next() {
+                    addBulkDetailTask(cardID: nextCardID, board: board, to: &group)
+                }
+            }
+            return results
+        }
+    }
+
+    private func addBulkDetailTask(
+        cardID: String,
+        board: String,
+        to group: inout TaskGroup<(String, Result<KanbanCardDetailEnvelope, Error>)>
+    ) {
+        group.addTask { [client] in
+            do {
+                let detail = try await client.kanbanCardDetail(
+                    KanbanCardDetailRequest(cardID: cardID, board: board)
+                )
+                return (cardID, .success(detail))
+            } catch {
+                return (cardID, .failure(error))
+            }
+        }
     }
 
     private func validate(_ action: KanbanBulkAction) -> Bool {
