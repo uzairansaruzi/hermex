@@ -157,6 +157,7 @@ struct MessageComposerView: View {
     @State private var voiceNoteCancelArmed = false
     @State private var didAutoStartVoiceInput = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
+    @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
     private enum DeferredUploadFocusPhase: Equatable {
         case none
@@ -705,7 +706,9 @@ struct MessageComposerView: View {
 
     @ViewBuilder
     private var gitBranchPicker: some View {
-        if gitViewModel.hasRepository {
+        // One "Git Actions" toggle covers every git control in chat (#189), so the
+        // branch chip goes with the toolbar menu rather than lingering alone.
+        if showsGitControls, gitViewModel.hasRepository {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,

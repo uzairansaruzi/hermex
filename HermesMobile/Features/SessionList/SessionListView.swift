@@ -47,6 +47,12 @@ struct SessionListView: View {
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
     private var showsSubagentSessions = SessionRowDisplaySettings.defaultShowsSubagentSessions
+    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasksSection = true
+    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
+    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
+    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
+    @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
+    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
     // Per-server key (#19): the CLI toggle mirrors the active server's
     // `show_cli_sessions`, so its cached value must not leak across servers.
     // Configured in `init`, where the server URL is known.
@@ -216,6 +222,13 @@ struct SessionListView: View {
             .onChange(of: requestedNewChat) {
                 openRequestedNewChatIfNeeded()
             }
+            .onChange(of: showsProjectsSection) {
+                // The "All" button that clears a project filter lives in the
+                // Projects header, so hiding the section mid-filter would strand
+                // the list on one project with no way back (#189).
+                guard !showsProjectsSection else { return }
+                selectedProjectID = nil
+            }
             .onChange(of: navigationState.destination) { oldValue, newValue in
                 if case .newChat = oldValue,
                    case .newChat = newValue {
@@ -381,6 +394,7 @@ struct SessionListView: View {
                     viewModel: viewModel,
                     topPadding: 10,
                     automatedVisibility: automatedSessionVisibility,
+                    sectionVisibility: sidebarSectionVisibility,
                     profilesAreExpanded: $profilesAreExpanded,
                     projectsAreExpanded: $projectsAreExpanded,
                     selectedProjectID: $selectedProjectID,
@@ -663,6 +677,17 @@ struct SessionListView: View {
             showsCli: showsCliSessions,
             showsClaudeCode: showsClaudeCodeSessions,
             showsSubagents: showsSubagentSessions
+        )
+    }
+
+    private var sidebarSectionVisibility: SidebarSectionVisibility {
+        SidebarSectionVisibility(
+            tasks: showsTasksSection,
+            skills: showsSkillsSection,
+            memory: showsMemorySection,
+            insights: showsInsightsSection,
+            activeProfile: showsActiveProfileSection,
+            projects: showsProjectsSection
         )
     }
 

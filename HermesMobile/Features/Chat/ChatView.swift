@@ -271,6 +271,8 @@ struct ChatView: View {
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
+    @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
+    @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
     let session: SessionSummary
     let server: URL
@@ -639,17 +641,19 @@ struct ChatView: View {
                             }
                         }
 
-                        ChatToolbarActionSlot {
-                            NavigationLink {
-                                FileBrowserView(session: session, server: server, onAPIError: onAPIError)
-                            } label: {
-                                Label("Files", systemImage: "folder")
+                        if showsFilesButton {
+                            ChatToolbarActionSlot {
+                                NavigationLink {
+                                    FileBrowserView(session: session, server: server, onAPIError: onAPIError)
+                                } label: {
+                                    Label("Files", systemImage: "folder")
+                                }
+                                .disabled(viewModel.isViewingCachedData)
+                                .accessibilityLabel("Files")
                             }
-                            .disabled(viewModel.isViewingCachedData)
-                            .accessibilityLabel("Files")
                         }
 
-                        if gitAvailabilityViewModel.hasRepository {
+                        if showsGitControls, gitAvailabilityViewModel.hasRepository {
                             ChatToolbarActionSlot {
                                 gitActionsMenu
                             }

@@ -82,6 +82,14 @@ struct SettingsView: View {
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
+    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasksSection = true
+    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
+    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
+    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
+    @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
+    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
+    @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
+    @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -271,6 +279,74 @@ struct SettingsView: View {
                     )
 
                     SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Files Button"),
+                        systemImage: "folder",
+                        isOn: $showsChatFilesButton
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Git Actions"),
+                        systemImage: "arrow.triangle.branch",
+                        isOn: $showsChatGitControls
+                    )
+
+                    SettingsFootnote(String(localized: "Covers both the git menu in the chat toolbar and the branch picker in the composer."))
+                }
+
+                SettingsCard(title: String(localized: "Main Page")) {
+                    SettingsToggleRow(
+                        title: String(localized: "Tasks"),
+                        systemImage: "calendar.badge.clock",
+                        isOn: $showsTasksSection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Skills"),
+                        systemImage: "hammer",
+                        isOn: $showsSkillsSection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Memory"),
+                        systemImage: "brain",
+                        isOn: $showsMemorySection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Insights"),
+                        systemImage: "chart.bar",
+                        isOn: $showsInsightsSection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Active Profile"),
+                        systemImage: "person.crop.circle",
+                        isOn: $showsActiveProfileSection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Projects"),
+                        systemImage: "folder.badge.gearshape",
+                        isOn: $showsProjectsSection
+                    )
+
+                    SettingsFootnote(String(localized: "Turn off the entries you never use to shorten the top of the session list. Each one is the only way into its screen, so turn it back on here when you need it again."))
                 }
 
                 SettingsCard(title: String(localized: "Sessions")) {

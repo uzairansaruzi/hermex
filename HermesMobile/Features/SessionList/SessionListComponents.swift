@@ -70,6 +70,33 @@ enum SessionListMotion {
     }
 }
 
+/// Which of the session list's optional navigation rows are shown, so a user can
+/// hide the parts of the app they never use (issue #189).
+struct SidebarSectionVisibility: Equatable {
+    var tasks: Bool
+    var skills: Bool
+    var memory: Bool
+    var insights: Bool
+    var activeProfile: Bool
+    var projects: Bool
+
+    /// Show every row, primarily for previews and tests.
+    static let showAll = SidebarSectionVisibility(
+        tasks: true,
+        skills: true,
+        memory: true,
+        insights: true,
+        activeProfile: true,
+        projects: true
+    )
+
+    /// The four plain links share one List row, so that row is dropped entirely
+    /// once all of them are hidden rather than leaving an empty padded gap.
+    var showsAnyUtilityLink: Bool {
+        tasks || skills || memory || insights
+    }
+}
+
 struct SessionSidebarUtilityRows: View {
     // Vertical gap between every utility row, matching the navigation rows so the
     // headers and subrows share one consistent rhythm now that each is its own row.
@@ -79,6 +106,7 @@ struct SessionSidebarUtilityRows: View {
     let viewModel: SessionListViewModel
     let topPadding: CGFloat
     let automatedVisibility: AutomatedSessionVisibility
+    let sectionVisibility: SidebarSectionVisibility
     @Binding var profilesAreExpanded: Bool
     @Binding var projectsAreExpanded: Bool
     @Binding var selectedProjectID: String?
@@ -96,15 +124,17 @@ struct SessionSidebarUtilityRows: View {
     // driven by a value-based .animation on the List in SessionListView, which
     // works even though the disclosure booleans are @AppStorage-backed.
     var body: some View {
-        utilityLinks
-            .padding(.top, topPadding)
-            .sessionsScreenListRow()
+        if sectionVisibility.showsAnyUtilityLink {
+            utilityLinks
+                .padding(.top, topPadding)
+                .sessionsScreenListRow()
+        }
 
         // In single-profile mode the server rejects switching, so the whole
         // "Active Profile" disclosure would only no-op or error — hide it (#24).
-        if !viewModel.isSingleProfileMode {
+        if showsActiveProfile {
             activeProfileHeader
-                .padding(.top, Self.rowSpacing)
+                .padding(.top, activeProfileTopPadding)
                 .sessionsScreenListRow()
 
             if profilesAreExpanded {
@@ -112,13 +142,29 @@ struct SessionSidebarUtilityRows: View {
             }
         }
 
-        projectsHeader
-            .padding(.top, Self.rowSpacing)
-            .sessionsScreenListRow()
+        if sectionVisibility.projects {
+            projectsHeader
+                .padding(.top, projectsTopPadding)
+                .sessionsScreenListRow()
 
-        if projectsAreExpanded {
-            projectOptionRows
+            if projectsAreExpanded {
+                projectOptionRows
+            }
         }
+    }
+
+    private var showsActiveProfile: Bool {
+        sectionVisibility.activeProfile && !viewModel.isSingleProfileMode
+    }
+
+    // Whichever row lands first carries the section's top padding, since #189 can
+    // hide the rows above it; the rest keep the tight inter-row spacing.
+    private var activeProfileTopPadding: CGFloat {
+        sectionVisibility.showsAnyUtilityLink ? Self.rowSpacing : topPadding
+    }
+
+    private var projectsTopPadding: CGFloat {
+        sectionVisibility.showsAnyUtilityLink || showsActiveProfile ? Self.rowSpacing : topPadding
     }
 
     private func disclosureSubrow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -131,20 +177,28 @@ struct SessionSidebarUtilityRows: View {
 
     private var utilityLinks: some View {
         VStack(alignment: .leading, spacing: Self.rowSpacing) {
-            SidebarNavButton(title: String(localized: "Tasks"), assetImage: "LucideCalendarClock") {
-                openDestination(.tasks)
+            if sectionVisibility.tasks {
+                SidebarNavButton(title: String(localized: "Tasks"), assetImage: "LucideCalendarClock") {
+                    openDestination(.tasks)
+                }
             }
 
-            SidebarNavButton(title: String(localized: "Skills"), assetImage: "LucideHammer") {
-                openDestination(.skills)
+            if sectionVisibility.skills {
+                SidebarNavButton(title: String(localized: "Skills"), assetImage: "LucideHammer") {
+                    openDestination(.skills)
+                }
             }
 
-            SidebarNavButton(title: String(localized: "Memory"), assetImage: "LucideBrain") {
-                openDestination(.memory)
+            if sectionVisibility.memory {
+                SidebarNavButton(title: String(localized: "Memory"), assetImage: "LucideBrain") {
+                    openDestination(.memory)
+                }
             }
 
-            SidebarNavButton(title: String(localized: "Insights"), assetImage: "LucideChartColumnIncreasing") {
-                openDestination(.insights)
+            if sectionVisibility.insights {
+                SidebarNavButton(title: String(localized: "Insights"), assetImage: "LucideChartColumnIncreasing") {
+                    openDestination(.insights)
+                }
             }
         }
         .padding(.horizontal, 24)
