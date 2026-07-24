@@ -4,6 +4,7 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var transcriptScrollPositionID: String?
 
     let isLoading: Bool
     let errorMessage: String?
@@ -131,6 +132,7 @@ struct ChatTranscriptView: View {
                         for: .sizeChanges
                     )
                     .frame(width: viewportWidth)
+                    .scrollPosition(id: $transcriptScrollPositionID, anchor: .top)
                     .refreshable {
                         if hasOlderMessages {
                             await loadOlderMessagesPreservingPosition(proxy: proxy)
@@ -203,7 +205,7 @@ struct ChatTranscriptView: View {
         viewportWidth: CGFloat,
         contentWidth: CGFloat
     ) -> some View {
-        VStack(spacing: transcriptMessageSpacing) {
+        LazyVStack(spacing: transcriptMessageSpacing) {
             olderMessagesButton(proxy: proxy)
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
@@ -276,6 +278,9 @@ struct ChatTranscriptView: View {
                 .id(bottomAnchorID)
                 .allowsHitTesting(false)
         }
+        // Keep lazy transcript rows registered as scroll targets so older-message
+        // prepends can restore the captured row ID without falling back to eager layout.
+        .scrollTargetLayout()
         .padding(.top, 16)
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
@@ -316,9 +321,14 @@ struct ChatTranscriptView: View {
 
     private func loadOlderMessagesPreservingPosition(proxy: ScrollViewProxy) async {
         let renderID = displayedTranscriptMessages.first?.renderID
+        if let renderID {
+            transcriptScrollPositionID = renderID
+        }
+
         let didLoad = await onLoadOlderMessages()
         guard didLoad, let renderID else { return }
 
+        transcriptScrollPositionID = renderID
         await Task.yield()
         if reduceMotion {
             proxy.scrollTo(renderID, anchor: .top)

@@ -504,3 +504,53 @@ final class AssistantTurnTimestampFormatterTests: XCTestCase {
         XCTAssertNotNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: fixedTimestamp))
     }
 }
+
+final class ChatTranscriptViewPerformanceGuardTests: XCTestCase {
+    func testTranscriptUsesLazyStackForLongConversationScrollPerformance() throws {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let sourceURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("HermesMobile/Features/Chat/ChatTranscriptView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let sourceWithoutComments = source
+            .replacingOccurrences(of: #"(?s)/\*.*?\*/"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?m)//.*$"#, with: "", options: .regularExpression)
+
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"\bLazyVStack\s*\(\s*spacing:\s*transcriptMessageSpacing\s*\)"#,
+                options: .regularExpression
+            ) != nil,
+            "The chat transcript should lazily realize message rows so long conversations do not lay out every bubble while scrolling."
+        )
+        XCTAssertFalse(
+            sourceWithoutComments.range(
+                of: #"\bVStack\s*\(\s*spacing:\s*transcriptMessageSpacing\s*\)"#,
+                options: .regularExpression
+            ) != nil,
+            "A plain VStack eagerly builds every transcript row and regresses long-chat scroll performance."
+        )
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"\.scrollTargetLayout\s*\(\s*\)"#,
+                options: .regularExpression
+            ) != nil,
+            "The lazy transcript stack should opt into scroll target layout so prepending older messages can restore the captured row ID."
+        )
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"@State\s+private\s+var\s+transcriptScrollPositionID\s*:\s*String\?"#,
+                options: .regularExpression
+            ) != nil,
+            "The transcript scroll position ID should be state-backed so older-message pagination can preserve a row anchor across prepends."
+        )
+        XCTAssertTrue(
+            sourceWithoutComments.range(
+                of: #"\.scrollPosition\s*\(\s*id:\s*\$transcriptScrollPositionID\s*,\s*anchor:\s*\.top\s*\)"#,
+                options: .regularExpression
+            ) != nil,
+            "The scroll view should bind its scroll position to the captured transcript row anchor."
+        )
+    }
+}
