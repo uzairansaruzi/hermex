@@ -104,6 +104,7 @@ enum Endpoint {
     case kanbanWorkerLog(KanbanWorkerLogRequest)
     case kanbanAddComment(KanbanAddCommentRequest)
     case kanbanCreateCard(KanbanCreateCardRequest)
+    case kanbanBulkAction(KanbanBulkActionRequest)
     case kanbanEditCard(KanbanEditCardRequest)
     case kanbanCardStatus(KanbanCardStatusRequest)
     case kanbanBlockCard(KanbanCardActionRequest)
@@ -327,6 +328,8 @@ enum Endpoint {
             return "/api/kanban/tasks/\(request.cardID)/comments"
         case .kanbanCreateCard:
             return "/api/kanban/tasks"
+        case .kanbanBulkAction:
+            return "/api/kanban/tasks/bulk"
         case let .kanbanEditCard(request):
             return "/api/kanban/tasks/\(request.cardID)"
         case let .kanbanCardStatus(request):
@@ -474,6 +477,8 @@ enum Endpoint {
         case let .kanbanAddComment(request):
             return request.queryItems
         case let .kanbanCreateCard(request):
+            return request.queryItems
+        case let .kanbanBulkAction(request):
             return request.queryItems
         case let .kanbanEditCard(request):
             return request.queryItems

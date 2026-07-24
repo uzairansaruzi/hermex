@@ -1,5 +1,58 @@
 import Foundation
 
+enum KanbanBulkAction: Equatable, Sendable {
+    case changeStatus(String)
+    case assignProfile(String?)
+    case setPriority(Int)
+    case archiveCards
+}
+
+struct KanbanBulkActionRequest: Equatable, Sendable {
+    let board: String
+    let cardIDs: [String]
+    let action: KanbanBulkAction
+
+    var queryItems: [URLQueryItem] {
+        [URLQueryItem(name: "board", value: board)]
+    }
+}
+
+struct KanbanBulkActionEnvelope: Decodable, Equatable, Sendable {
+    let results: [KanbanBulkActionResult]?
+    let readOnly: Bool?
+
+    enum CodingKeys: String, CodingKey { case results, readOnly }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        results = try? container.decodeIfPresent([KanbanBulkActionResult].self, forKey: .results)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+struct KanbanBulkActionResult: Decodable, Equatable, Sendable {
+    let cardID: String?
+    let ok: Bool?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case cardID = "id"
+        case ok, error
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+            cardID = nil
+            ok = nil
+            error = nil
+            return
+        }
+        cardID = container.decodeLossyStringIfPresent(forKey: .cardID)
+        ok = container.decodeLossyBoolIfPresent(forKey: .ok)
+        error = container.decodeLossyStringIfPresent(forKey: .error)
+    }
+}
+
 struct KanbanCreateCardRequest: Equatable, Sendable {
     let board: String
     let title: String
