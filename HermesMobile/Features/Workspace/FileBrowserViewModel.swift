@@ -11,6 +11,8 @@ final class FileBrowserViewModel {
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
     private var hasLoadedInitialPath = false
+    private var lastRequestedPath = "."
+    private var loadRevision = 0
 
     var isAtRoot: Bool {
         currentPath == "."
@@ -46,9 +48,9 @@ final class FileBrowserViewModel {
         return breadcrumbs
     }
 
-    init(session: SessionSummary, server: URL) {
+    init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
         self.session = session
-        apiClient = APIClient(baseURL: server)
+        self.apiClient = apiClient ?? APIClient(baseURL: server)
     }
 
     @MainActor
@@ -69,26 +71,54 @@ final class FileBrowserViewModel {
     }
 
     @MainActor
+    func retryLastLoad() async {
+        await load(path: lastRequestedPath)
+    }
+
+    @MainActor
     func load(path: String) async {
         guard let sessionID = session.sessionId else {
             errorMessage = String(localized: "Session ID is missing.")
             return
         }
 
+        lastRequestedPath = path
+        loadRevision += 1
+        let revision = loadRevision
         isLoading = true
         errorMessage = nil
         lastError = nil
 
         do {
             let response = try await apiClient.directoryList(sessionID: sessionID, path: path)
+            guard revision == loadRevision else { return }
             currentPath = response.path ?? path
             entries = response.entries ?? []
         } catch {
-            lastError = error
-            errorMessage = error.localizedDescription
+            guard revision == loadRevision else { return }
+            if !Self.isCancellationError(error) {
+                lastError = error
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false
+    }
+
+    private static func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let underlying: Error
+        if case APIError.network(let wrapped) = error {
+            underlying = wrapped
+        } else {
+            underlying = error
+        }
+
+        guard let urlError = underlying as? URLError else { return false }
+        return urlError.code == .cancelled
     }
 }
 

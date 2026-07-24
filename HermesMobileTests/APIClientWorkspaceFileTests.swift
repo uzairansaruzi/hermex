@@ -443,6 +443,106 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertEqual(response.path, "Sources/App")
     }
 
+    @MainActor
+    func testFileBrowserLatestDirectoryRequestWins() async throws {
+        let firstRequestStarted = expectation(description: "First directory request started")
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let path = components?.queryItems?.first(where: { $0.name == "path" })?.value
+
+            if path == "cat" {
+                firstRequestStarted.fulfill()
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+
+            return apiTestJSONResponse("""
+            {
+              "entries": [],
+              "path": "\(path ?? ".")"
+            }
+            """, for: request)
+        }
+        let viewModel = try FileBrowserViewModel(
+            session: makeFilePreviewSession(),
+            server: XCTUnwrap(URL(string: "https://example.test")),
+            apiClient: client
+        )
+
+        let firstLoad = Task { await viewModel.load(path: "cat") }
+        await fulfillment(of: [firstRequestStarted], timeout: 1)
+        let latestLoad = Task { await viewModel.load(path: "leetcode-editor") }
+
+        await latestLoad.value
+        await firstLoad.value
+
+        XCTAssertEqual(viewModel.currentPath, "leetcode-editor")
+    }
+
+    @MainActor
+    func testFileBrowserRetriesFailedDirectoryWithoutDiscardingCurrentEntries() async throws {
+        var catAttempts = 0
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let path = components?.queryItems?.first(where: { $0.name == "path" })?.value
+
+            if path == "cat" {
+                catAttempts += 1
+                if catAttempts == 1 {
+                    let response = HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 503,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                    return (try XCTUnwrap(response), Data(#"{"error":"temporarily unavailable"}"#.utf8))
+                }
+            }
+
+            return apiTestJSONResponse("""
+            {
+              "entries": [{"name": "cat", "path": "cat", "type": "dir"}],
+              "path": "\(path ?? ".")"
+            }
+            """, for: request)
+        }
+        let viewModel = try FileBrowserViewModel(
+            session: makeFilePreviewSession(),
+            server: XCTUnwrap(URL(string: "https://example.test")),
+            apiClient: client
+        )
+
+        await viewModel.loadRoot()
+        await viewModel.load(path: "cat")
+
+        XCTAssertEqual(viewModel.currentPath, ".")
+        XCTAssertEqual(viewModel.entries.first?.name, "cat")
+        XCTAssertNotNil(viewModel.errorMessage)
+
+        await viewModel.retryLastLoad()
+
+        XCTAssertEqual(viewModel.currentPath, "cat")
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(catAttempts, 2)
+    }
+
+    @MainActor
+    func testFileBrowserCancellationDoesNotSurfaceError() async throws {
+        let client = makeClient { _ in
+            throw URLError(.cancelled)
+        }
+        let viewModel = try FileBrowserViewModel(
+            session: makeFilePreviewSession(),
+            server: XCTUnwrap(URL(string: "https://example.test")),
+            apiClient: client
+        )
+
+        await viewModel.loadRoot()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+    }
+
     func testFileReadBuildsExpectedQueryAndDecodesTextResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/file")
