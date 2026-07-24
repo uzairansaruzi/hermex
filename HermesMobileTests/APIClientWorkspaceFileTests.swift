@@ -525,6 +525,24 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertEqual(catAttempts, 2)
     }
 
+    @MainActor
+    func testFileBrowserCancellationDoesNotSurfaceError() async throws {
+        let client = makeClient { _ in
+            throw URLError(.cancelled)
+        }
+        let viewModel = try FileBrowserViewModel(
+            session: makeFilePreviewSession(),
+            server: XCTUnwrap(URL(string: "https://example.test")),
+            apiClient: client
+        )
+
+        await viewModel.loadRoot()
+
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.lastError)
+    }
+
     func testFileReadBuildsExpectedQueryAndDecodesTextResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/file")

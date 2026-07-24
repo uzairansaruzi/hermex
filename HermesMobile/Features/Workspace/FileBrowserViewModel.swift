@@ -96,11 +96,29 @@ final class FileBrowserViewModel {
             entries = response.entries ?? []
         } catch {
             guard revision == loadRevision else { return }
-            lastError = error
-            errorMessage = error.localizedDescription
+            if !Self.isCancellationError(error) {
+                lastError = error
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false
+    }
+
+    private static func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let underlying: Error
+        if case APIError.network(let wrapped) = error {
+            underlying = wrapped
+        } else {
+            underlying = error
+        }
+
+        guard let urlError = underlying as? URLError else { return false }
+        return urlError.code == .cancelled
     }
 }
 
