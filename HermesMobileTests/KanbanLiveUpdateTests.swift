@@ -117,6 +117,29 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    func testForegroundBoardCollectionFailureStillRefreshesAndRestartsStream() async {
+        let client = LiveKanbanClient(
+            boardResults: [.success(.rich), .success(.newer)],
+            boardsResults: [.success(.single), .success(.incomplete)]
+        )
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        await state.load()
+        state.setVisible(true)
+        await state.setSceneActive(false)
+
+        await state.setSceneActive(true)
+
+        let boardCallCount = await client.boardCallCount
+        XCTAssertEqual(boardCallCount, 2)
+        XCTAssertEqual(state.snapshot?.latestEventID, 13)
+        XCTAssertEqual(stream.startURLs.count, 2)
+        XCTAssertTrue(state.refreshFailed)
+        XCTAssertFalse(state.canUseServerAuthoritativeActions)
+        state.setVisible(false)
+    }
+
     func testForegroundRefreshCannotStopNewBoardStreamAfterBoardSwitch() async throws {
         let client = ForegroundBoardSwitchClient()
         let stream = KanbanStreamSpy()
@@ -339,7 +362,7 @@ private final class KanbanStreamSpy: KanbanEventStreamingClient {
 }
 
 private actor LiveKanbanClient: KanbanDataClient {
-    private let boards: KanbanBoardsResponse
+    private var boardsResults: [Result<KanbanBoardsResponse, Error>]
     private var boardResults: [Result<KanbanBoardSnapshot, Error>]
     private let eventsResult: Result<KanbanEventsEnvelope, Error>
     private(set) var boardRequests: [KanbanBoardRequest] = []
@@ -350,9 +373,10 @@ private actor LiveKanbanClient: KanbanDataClient {
     init(
         boards: KanbanBoardsResponse = .single,
         boardResults: [Result<KanbanBoardSnapshot, Error>],
-        eventsResult: Result<KanbanEventsEnvelope, Error> = .success(.events(cursor: 11))
+        eventsResult: Result<KanbanEventsEnvelope, Error> = .success(.events(cursor: 11)),
+        boardsResults: [Result<KanbanBoardsResponse, Error>]? = nil
     ) {
-        self.boards = boards
+        self.boardsResults = boardsResults ?? [.success(boards)]
         self.boardResults = boardResults
         self.eventsResult = eventsResult
     }
@@ -360,7 +384,13 @@ private actor LiveKanbanClient: KanbanDataClient {
     var boardCallCount: Int { boardRequests.count }
 
     func kanbanConfiguration() -> KanbanConfiguration { .liveConfiguration }
-    func kanbanBoards() -> KanbanBoardsResponse { boards }
+    func kanbanBoards() throws -> KanbanBoardsResponse {
+        guard !boardsResults.isEmpty else { return .single }
+        if boardsResults.count > 1 {
+            return try boardsResults.removeFirst().get()
+        }
+        return try boardsResults[0].get()
+    }
 
     func kanbanBoard(_ request: KanbanBoardRequest) throws -> KanbanBoardSnapshot {
         boardRequests.append(request)
@@ -430,6 +460,7 @@ private extension KanbanConfiguration {
 private extension KanbanBoardsResponse {
     static let single: Self = decode(#"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#)
     static let multiple: Self = decode(#"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#)
+    static let incomplete: Self = decode(#"{"current":"main","read_only":false}"#)
 }
 
 private extension KanbanBoardSnapshot {

@@ -998,7 +998,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(createRequestCount, 0)
     }
 
-    func testOfflineBoardCollectionRefreshDisablesBoardManagementAndPreservesSnapshot() async {
+    func testNetworkBoardCollectionFailureRefreshesSelectedBoardAndKeepsWritesDisabled() async {
         let client = BoardManagementClient(boardsResponses: [
             .success(mutationDecode(
                 #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
@@ -1011,14 +1011,14 @@ final class KanbanFeatureStateTests: XCTestCase {
 
         await state.refresh()
 
-        XCTAssertTrue(state.isOffline)
-        XCTAssertTrue(state.loadedDetailIsStale)
+        XCTAssertFalse(state.isOffline)
+        XCTAssertFalse(state.loadedDetailIsStale)
         XCTAssertEqual(state.allCards, loadedCards)
         XCTAssertFalse(state.canManageBoards)
-        XCTAssertFalse(state.refreshFailed)
+        XCTAssertTrue(state.refreshFailed)
     }
 
-    func testIncompleteBoardCollectionRefreshReportsFailureAndPreservesSnapshot() async {
+    func testIncompleteBoardCollectionRefreshesSelectedBoardButKeepsWritesDisabled() async {
         let client = BoardManagementClient(boardsResponses: [
             .success(mutationDecode(
                 #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
@@ -1026,16 +1026,18 @@ final class KanbanFeatureStateTests: XCTestCase {
             .success(mutationDecode(
                 #"{"current":"main","read_only":false}"#
             ))
-        ])
+        ], refreshBoardSnapshot: mutationDecode(
+            #"{"changed":true,"latest_event_id":12,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"REFRESHED","status":"ready"}]}]}"#
+        ))
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
         await state.load()
-        let loadedCards = state.allCards
 
         await state.refresh()
 
         XCTAssertFalse(state.isOffline)
         XCTAssertTrue(state.refreshFailed)
-        XCTAssertEqual(state.allCards, loadedCards)
+        XCTAssertEqual(state.allCards.map(\.cardID), ["REFRESHED"])
+        XCTAssertFalse(state.canUseServerAuthoritativeActions)
         XCTAssertFalse(state.canManageBoards)
     }
 
@@ -1310,7 +1312,7 @@ private actor BoardManagementClient: KanbanDataClient {
     private var boardsResponses: [Result<KanbanBoardsResponse, Error>]
     private let createResult: Result<KanbanBoardMutationEnvelope, Error>
     private let configuration: KanbanConfiguration
-    private let boardSnapshot: KanbanBoardSnapshot
+    private var boardSnapshots: [KanbanBoardSnapshot]
     private var createContinuation: CheckedContinuation<Void, Never>?
     private let defersCreate: Bool
     private var shouldDeferCreate: Bool
@@ -1330,12 +1332,16 @@ private actor BoardManagementClient: KanbanDataClient {
         ),
         configuration: KanbanConfiguration = KanbanFixtures.configuration,
         boardSnapshot: KanbanBoardSnapshot = KanbanFixtures.richSnapshot,
+        refreshBoardSnapshot: KanbanBoardSnapshot? = nil,
         defersCreate: Bool = false
     ) {
         self.boardsResponses = boardsResponses
         self.createResult = createResult
         self.configuration = configuration
-        self.boardSnapshot = boardSnapshot
+        boardSnapshots = [boardSnapshot]
+        if let refreshBoardSnapshot {
+            boardSnapshots.append(refreshBoardSnapshot)
+        }
         self.defersCreate = defersCreate
         shouldDeferCreate = defersCreate
     }
@@ -1352,7 +1358,10 @@ private actor BoardManagementClient: KanbanDataClient {
 
     func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
         recordedBoardRequests.append(request)
-        return boardSnapshot
+        if boardSnapshots.count > 1 {
+            return boardSnapshots.removeFirst()
+        }
+        return boardSnapshots[0]
     }
 
     func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }

@@ -725,13 +725,17 @@ final class KanbanFeatureState {
 
     func refresh() async {
         refreshFailed = false
-        guard await reconcileBoardCollection() else {
+        let boardCollectionSucceeded = await reconcileBoardCollection()
+        if !boardCollectionSucceeded {
             reportBoardCollectionRefreshFailure()
-            return
         }
         guard let board = selectedBoardSlug else { return }
         let generation = liveGeneration
-        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        let succeeded = await refreshBoard(
+            usingCursor: false,
+            refreshSupplementary: true,
+            preserveRefreshFailure: !boardCollectionSucceeded
+        )
         guard isSameLiveGeneration(board: board, generation: generation) else { return }
         if succeeded {
             isOffline = false
@@ -739,6 +743,9 @@ final class KanbanFeatureState {
             retryLiveStream()
         } else if isOffline {
             startPollingIfNeeded()
+        }
+        if !boardCollectionSucceeded {
+            reportBoardCollectionRefreshFailure()
         }
     }
 
@@ -883,13 +890,17 @@ final class KanbanFeatureState {
             return
         }
         guard isVisible, snapshot != nil else { return }
-        guard await reconcileBoardCollection() else {
+        let boardCollectionSucceeded = await reconcileBoardCollection()
+        if !boardCollectionSucceeded {
             reportBoardCollectionRefreshFailure()
-            return
         }
         guard let board = selectedBoardSlug else { return }
         let generation = liveGeneration
-        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        let succeeded = await refreshBoard(
+            usingCursor: false,
+            refreshSupplementary: true,
+            preserveRefreshFailure: !boardCollectionSucceeded
+        )
         guard isCurrentLiveWork(board: board, generation: generation) else { return }
         if succeeded {
             isOffline = false
@@ -897,6 +908,9 @@ final class KanbanFeatureState {
             retryLiveStream()
         } else {
             startPollingIfNeeded()
+        }
+        if !boardCollectionSucceeded {
+            reportBoardCollectionRefreshFailure()
         }
     }
 
@@ -1708,7 +1722,7 @@ final class KanbanFeatureState {
     }
 
     private func reportBoardCollectionRefreshFailure() {
-        if !isOffline { refreshFailed = true }
+        refreshFailed = !isOffline
     }
 
     private func handleRemovedBoard(_ boardDisplayName: String) {
@@ -1750,12 +1764,18 @@ final class KanbanFeatureState {
     }
 
     @discardableResult
-    private func refreshBoard(usingCursor: Bool, refreshSupplementary: Bool = false) async -> Bool {
+    private func refreshBoard(
+        usingCursor: Bool,
+        refreshSupplementary: Bool = false,
+        preserveRefreshFailure: Bool = false
+    ) async -> Bool {
         guard let board = selectedBoardSlug else { return false }
         let boardLoadID = UUID()
         activeBoardLoadID = boardLoadID
         isRefreshing = true
-        refreshFailed = false
+        if !preserveRefreshFailure {
+            refreshFailed = false
+        }
         defer {
             if activeBoardLoadID == boardLoadID { isRefreshing = false }
         }
@@ -1782,6 +1802,9 @@ final class KanbanFeatureState {
             }
             liveCursor = max(liveCursor, response.latestEventID ?? 0)
             isOffline = false
+            if preserveRefreshFailure {
+                refreshFailed = true
+            }
             if refreshSupplementary {
                 await loadSupplementaryReads(board: board, boardLoadID: boardLoadID)
             }
