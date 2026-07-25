@@ -192,8 +192,12 @@ final class LocalizationCatalogTests: XCTestCase {
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let strings = try XCTUnwrap(root["strings"] as? [String: Any])
         let boardKeys = [
+            "Browse Board",
+            "Browse Board: %@",
             "Browsing",
             "Browsing a Board stays local to Hermex. Making a Board active changes shared server state.",
+            "Check Result",
+            "Choose Board",
             "Creating a Board does not make it active.",
             "Hermex cannot restore an archived Board in-app.",
             "Icon",
@@ -201,6 +205,7 @@ final class LocalizationCatalogTests: XCTestCase {
             "Making this Board active changes shared server state for other Hermes clients.",
             "Slug",
             "The slug cannot be changed after the Board is created.",
+            "This Board no longer exists. Choose another Board.",
             "Updating Board..."
         ]
 

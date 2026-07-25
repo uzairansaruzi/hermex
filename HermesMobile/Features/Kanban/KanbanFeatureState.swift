@@ -623,6 +623,7 @@ final class KanbanFeatureState {
 
     func load() async {
         let previouslySelectedBoard = normalizedOptional(selectedBoardSlug)
+        let previouslySelectedBoardName = selectedBoard?.name
         archiveUndoTask?.cancel()
         archiveUndo = nil
         clearSettledMutationPresentation()
@@ -657,11 +658,23 @@ final class KanbanFeatureState {
             let availableBoards = boardsResponse.boards ?? []
             if let previouslySelectedBoard,
                !availableBoards.contains(where: { normalized($0.slug) == previouslySelectedBoard }) {
+                let validationSnapshot = try await client.kanbanBoard(
+                    KanbanBoardRequest(board: currentBoard)
+                )
+                guard isCurrent(loadID) else { return }
+                let report = try KanbanCompatibilityValidator.validate(
+                    configuration: configuration,
+                    boardsResponse: boardsResponse,
+                    boardSlug: currentBoard,
+                    snapshot: validationSnapshot
+                )
+                guard isCurrent(loadID) else { return }
                 self.configuration = configuration
                 self.boardsResponse = boardsResponse
                 boards = availableBoards
-                handleRemovedBoard(previouslySelectedBoard)
-                state = .compatible
+                handleRemovedBoard(previouslySelectedBoardName ?? previouslySelectedBoard)
+                self.report = report
+                state = report.isPartial ? .partial : .compatible
                 return
             }
             let boardToLoad = previouslySelectedBoard ?? currentBoard
@@ -1625,7 +1638,7 @@ final class KanbanFeatureState {
         }
     }
 
-    private func handleRemovedBoard(_ boardName: String) {
+    private func handleRemovedBoard(_ boardDisplayName: String) {
         activeBoardLoadID = nil
         resetLiveUpdates(clearCursor: true)
         resetCardSelection()
@@ -1645,7 +1658,7 @@ final class KanbanFeatureState {
         report = nil
         capabilityWarnings = []
         refreshFailed = false
-        boardSelectionNotice = KanbanBoardSelectionNotice(boardName: boardName)
+        boardSelectionNotice = KanbanBoardSelectionNotice(boardName: boardDisplayName)
     }
 
     private func normalizedOptional(_ value: String?) -> String? {

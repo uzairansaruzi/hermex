@@ -274,6 +274,10 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(bulkLabel.contains("1 \(String(localized: "Outcome Uncertain"))"))
         XCTAssertEqual(KanbanCountFormatter.cards(1), "1 Card")
         XCTAssertEqual(KanbanCountFormatter.cards(2), "2 Cards")
+        let board: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release"}"#
+        )
+        XCTAssertEqual(KanbanBoardAccessibility.browseLabel(board), "Browse Board: Release")
     }
 
     func testStatusSpecificStalenessThresholds() {
@@ -951,6 +955,109 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.requiresBoardSelection)
     }
 
+    func testRemovedBoardReloadPreservesPartialCompatibilityAndDisplayName() async {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        await state.selectBoard("release")
+
+        await state.load()
+
+        XCTAssertEqual(state.state, .partial)
+        XCTAssertEqual(state.report?.warnings, [.unsupportedStatus("future")])
+        XCTAssertNil(state.selectedBoardSlug)
+        XCTAssertEqual(state.boardSelectionNotice?.boardName, "Release")
+    }
+
+    func testPartialBoardContractDisablesBoardManagement() async {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main"}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        XCTAssertEqual(state.state, .partial)
+        XCTAssertFalse(state.canManageBoards)
+        await state.createBoard(KanbanCreateBoardRequest(
+            slug: "release",
+            name: "Release",
+            description: "",
+            icon: "",
+            color: ""
+        ))
+        let createRequestCount = await client.createRequestCount
+        XCTAssertEqual(createRequestCount, 0)
+    }
+
+    func testOfflineBoardCollectionRefreshDisablesBoardManagementAndPreservesSnapshot() async {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+            )),
+            .failure(APIError.network(underlying: URLError(.notConnectedToInternet)))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let loadedCards = state.allCards
+
+        await state.refresh()
+
+        XCTAssertTrue(state.isOffline)
+        XCTAssertTrue(state.loadedDetailIsStale)
+        XCTAssertEqual(state.allCards, loadedCards)
+        XCTAssertFalse(state.canManageBoards)
+        XCTAssertFalse(state.refreshFailed)
+    }
+
+    func testBoardManagementStateRemainsIsolatedPerServer() async {
+        let firstClient = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
+            ))
+        ])
+        let secondClient = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"personal","name":"Personal"}],"current":"personal","read_only":false}"#
+            ))
+        ])
+        let first = KanbanFeatureState(
+            server: URL(string: "https://first.example.test")!,
+            client: firstClient
+        )
+        let second = KanbanFeatureState(
+            server: URL(string: "https://second.example.test")!,
+            client: secondClient
+        )
+        await first.load()
+        await second.load()
+
+        await first.createBoard(KanbanCreateBoardRequest(
+            slug: "release",
+            name: "Release",
+            description: "",
+            icon: "",
+            color: ""
+        ))
+
+        XCTAssertTrue(first.boards.contains { $0.slug == "release" })
+        XCTAssertEqual(second.boards.map(\.slug), ["personal"])
+        XCTAssertEqual(second.selectedBoardSlug, "personal")
+        let secondCreateRequestCount = await secondClient.createRequestCount
+        XCTAssertEqual(secondCreateRequestCount, 0)
+    }
+
     func testAmbiguousBoardWriteChecksAuthoritativeListAndDefaultArchiveIsBlocked() async {
         let client = BoardManagementClient(
             boardsResponses: [
@@ -1133,6 +1240,8 @@ private actor KanbanClientStub: KanbanDataClient {
 private actor BoardManagementClient: KanbanDataClient {
     private var boardsResponses: [Result<KanbanBoardsResponse, Error>]
     private let createResult: Result<KanbanBoardMutationEnvelope, Error>
+    private let configuration: KanbanConfiguration
+    private let boardSnapshot: KanbanBoardSnapshot
     private var createContinuation: CheckedContinuation<Void, Never>?
     private let defersCreate: Bool
     private var shouldDeferCreate: Bool
@@ -1149,15 +1258,19 @@ private actor BoardManagementClient: KanbanDataClient {
         createResult: Result<KanbanBoardMutationEnvelope, Error> = .success(
             mutationDecode(#"{"board":{"slug":"release"},"current":"main","read_only":false}"#)
         ),
+        configuration: KanbanConfiguration = KanbanFixtures.configuration,
+        boardSnapshot: KanbanBoardSnapshot = KanbanFixtures.richSnapshot,
         defersCreate: Bool = false
     ) {
         self.boardsResponses = boardsResponses
         self.createResult = createResult
+        self.configuration = configuration
+        self.boardSnapshot = boardSnapshot
         self.defersCreate = defersCreate
         shouldDeferCreate = defersCreate
     }
 
-    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+    func kanbanConfiguration() -> KanbanConfiguration { configuration }
 
     func kanbanBoards() throws -> KanbanBoardsResponse {
         if boardsResponses.count > 1 {
@@ -1168,7 +1281,7 @@ private actor BoardManagementClient: KanbanDataClient {
 
     func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
         recordedBoardRequests.append(request)
-        return KanbanFixtures.richSnapshot
+        return boardSnapshot
     }
 
     func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }

@@ -176,9 +176,6 @@ struct KanbanStatusFocusView: View {
 
     private var boardContent: some View {
         VStack(spacing: 0) {
-            if let notice = model.boardSelectionNotice {
-                boardSelectionNotice(notice)
-            }
             if model.requiresBoardSelection {
                 boardSelectionContent
             } else {
@@ -211,27 +208,16 @@ struct KanbanStatusFocusView: View {
         }
     }
 
-    private func boardSelectionNotice(_ notice: KanbanBoardSelectionNotice) -> some View {
-        Label {
-            Text("This Board no longer exists. Return to Kanban to choose another Board.")
-        } icon: {
-            Image(systemName: "rectangle.stack.badge.minus")
-        }
-        .font(.footnote)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.orange.opacity(0.12))
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(Text(notice.boardName))
-    }
-
     private var boardSelectionContent: some View {
         ContentUnavailableView {
-            Label("Board", systemImage: "rectangle.stack")
+            Label(
+                model.boardSelectionNotice?.boardName ?? String(localized: "Board"),
+                systemImage: "rectangle.stack.badge.minus"
+            )
         } description: {
-            Text("This Board no longer exists. Return to Kanban to choose another Board.")
+            Text("This Board no longer exists. Choose another Board.")
         } actions: {
-            Menu("Board") {
+            Menu("Choose Board") {
                 ForEach(model.boards, id: \.slug) { board in
                     if let slug = board.slug {
                         Button(board.name ?? slug) {
@@ -959,11 +945,11 @@ private struct KanbanBoardManagementView: View {
 
             HStack {
                 if board.slug != model.selectedBoardSlug {
-                    Button("Board") {
+                    Button("Browse Board") {
                         guard let slug = board.slug else { return }
                         Task { await model.selectBoard(slug) }
                     }
-                    .accessibilityLabel(Text("Board"))
+                    .accessibilityLabel(Text(KanbanBoardAccessibility.browseLabel(board)))
                 }
                 Button("Edit") {
                     model.dismissBoardMutationResult()
@@ -998,7 +984,7 @@ private struct KanbanBoardManagementView: View {
             }
             Spacer()
             if mutation.phase == .outcomeUncertain {
-                Button("Checking Result") {
+                Button("Check Result") {
                     Task { await model.checkBoardMutationResult() }
                 }
             } else if !mutation.phase.isInFlight {
@@ -1112,7 +1098,7 @@ private struct KanbanBoardEditorView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { submit() }
-                    .disabled(model.boardMutationState?.phase.isInFlight == true)
+                    .disabled(!model.canManageBoards)
             }
         }
     }
@@ -1426,6 +1412,13 @@ enum KanbanCardAccessibility {
         if dependents > 0 { parts.append(KanbanCountFormatter.dependents(dependents)) }
         if let age = card.ageSeconds { parts.append(String(localized: "Age \(KanbanAgeFormatter.full(age))")) }
         return parts.joined(separator: ", ")
+    }
+}
+
+enum KanbanBoardAccessibility {
+    static func browseLabel(_ board: KanbanBoard) -> String {
+        let boardName = board.name ?? board.slug ?? String(localized: "Board")
+        return String.localizedStringWithFormat(String(localized: "Browse Board: %@"), boardName)
     }
 }
 

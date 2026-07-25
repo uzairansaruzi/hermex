@@ -109944,6 +109944,27 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Checking Result" } }
       }
     },
+    "Check Result" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "تحقق من النتيجة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Ergebnis prüfen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Comprobar resultado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Vérifier le résultat" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "בדיקת התוצאה" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Verifica risultato" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "結果を確認" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "결과 확인" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Resultaat controleren" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Sprawdź wynik" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar resultado" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Проверить результат" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Sonucu Kontrol Et" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "نتیجہ چیک کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "檢查結果" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "检查结果" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢查結果" } }
+      }
+    },
     "Claim Expires" : {
       "localizations" : {
         "ar" : { "stringUnit" : { "state" : "translated", "value" : "Claim Expires" } },
@@ -110446,6 +110467,90 @@
         "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "This Board no longer exists. Return to Kanban to choose another Board." } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "This Board no longer exists. Return to Kanban to choose another Board." } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "This Board no longer exists. Return to Kanban to choose another Board." } }
+      }
+    },
+    "Browse Board" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "تصفح اللوحة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Board anzeigen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Explorar tablero" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Parcourir le tableau" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "עיון בלוח" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sfoglia bacheca" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードを表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드 탐색" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bord bekijken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przeglądaj tablicę" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Explorar quadro" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Открыть доску" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Panoya Göz At" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ دیکھیں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "瀏覽看板" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "浏览看板" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "瀏覽看板" } }
+      }
+    },
+    "Browse Board: %@" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "تصفح اللوحة: %@" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Board anzeigen: %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Explorar tablero: %@" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Parcourir le tableau : %@" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "עיון בלוח: %@" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sfoglia bacheca: %@" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードを表示：%@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드 탐색: %@" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bord bekijken: %@" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przeglądaj tablicę: %@" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Explorar quadro: %@" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Открыть доску: %@" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Panoya Göz At: %@" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ دیکھیں: %@" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "瀏覽看板：%@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "浏览看板：%@" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "瀏覽看板：%@" } }
+      }
+    },
+    "Choose Board" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "اختر لوحة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Board auswählen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Elegir tablero" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Choisir un tableau" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "בחירת לוח" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Scegli bacheca" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードを選択" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드 선택" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bord kiezen" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wybierz tablicę" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Escolher quadro" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Выбрать доску" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Pano Seç" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ منتخب کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "選擇看板" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择看板" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "選擇看板" } }
+      }
+    },
+    "This Board no longer exists. Choose another Board." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "لم تعد هذه اللوحة موجودة. اختر لوحة أخرى." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieses Board existiert nicht mehr. Wähle ein anderes Board." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Este tablero ya no existe. Elige otro tablero." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ce tableau n’existe plus. Choisissez-en un autre." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הלוח הזה כבר לא קיים. יש לבחור לוח אחר." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Questa bacheca non esiste più. Scegli un’altra bacheca." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このボードは存在しません。別のボードを選択してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 보드는 더 이상 존재하지 않습니다. 다른 보드를 선택하세요." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Dit bord bestaat niet meer. Kies een ander bord." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Ta tablica już nie istnieje. Wybierz inną tablicę." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Este quadro não existe mais. Escolha outro quadro." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Эта доска больше не существует. Выберите другую доску." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Bu pano artık mevcut değil. Başka bir pano seçin." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "یہ بورڈ اب موجود نہیں ہے۔ دوسرا بورڈ منتخب کریں۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "此看板已不存在。請選擇另一個看板。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此看板已不存在。请选择另一个看板。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "此看板已不存在。請選擇另一個看板。" } }
       }
     },
     "This Card no longer exists on this Board. The Board has been refreshed." : {
