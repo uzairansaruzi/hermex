@@ -1018,6 +1018,27 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(state.refreshFailed)
     }
 
+    func testIncompleteBoardCollectionRefreshReportsFailureAndPreservesSnapshot() async {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                #"{"current":"main","read_only":false}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let loadedCards = state.allCards
+
+        await state.refresh()
+
+        XCTAssertFalse(state.isOffline)
+        XCTAssertTrue(state.refreshFailed)
+        XCTAssertEqual(state.allCards, loadedCards)
+        XCTAssertFalse(state.canManageBoards)
+    }
+
     func testBoardManagementStateRemainsIsolatedPerServer() async {
         let firstClient = BoardManagementClient(boardsResponses: [
             .success(mutationDecode(
@@ -1093,21 +1114,23 @@ final class KanbanFeatureStateTests: XCTestCase {
         let client = BoardManagementClient(
             boardsResponses: [
                 .success(mutationDecode(
-                    #"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#
+                    #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"main","read_only":false}"#
                 )),
                 .failure(APIError.network(underlying: URLError(.networkConnectionLost))),
                 .success(mutationDecode(
-                    #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"main","read_only":false}"#
+                    #"{"boards":[{"slug":"main"},{"slug":"release"},{"slug":"planned"}],"current":"main","read_only":false}"#
                 ))
             ],
             createResult: .failure(APIError.network(underlying: URLError(.timedOut)))
         )
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
         await state.load()
+        state.beginSelectingCards()
+        if let card = state.allCards.first { state.toggleCardSelection(card) }
 
         await state.createBoard(KanbanCreateBoardRequest(
-            slug: "release",
-            name: "Release",
+            slug: "planned",
+            name: "Planned",
             description: "",
             icon: "",
             color: ""
@@ -1115,9 +1138,55 @@ final class KanbanFeatureStateTests: XCTestCase {
 
         XCTAssertEqual(state.boardMutationState?.phase, .outcomeUncertain)
         XCTAssertFalse(state.canManageBoards)
+        XCTAssertFalse(state.canAddComments)
+        XCTAssertFalse(state.canMutateCards)
+        XCTAssertEqual(state.bulkActionsAvailability, .boardBusy)
+        await state.selectBoard("release")
+        XCTAssertEqual(state.selectedBoardSlug, "main")
         await state.checkBoardMutationResult()
         XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
         XCTAssertTrue(state.canManageBoards)
+        XCTAssertTrue(state.canMutateCards)
+    }
+
+    func testReloadInvalidatesInFlightBoardMutationBeforeItCanApplyStaleState() async {
+        let client = BoardManagementClient(
+            boardsResponses: [
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"main","name":"Original"}],"current":"main","read_only":false}"#
+                )),
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"main","name":"Reloaded"}],"current":"main","read_only":false}"#
+                ))
+            ],
+            defersCreate: true
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        let creation = Task {
+            await state.createBoard(KanbanCreateBoardRequest(
+                slug: "release",
+                name: "Release",
+                description: "",
+                icon: "",
+                color: ""
+            ))
+        }
+        await client.waitForDeferredCreate()
+        XCTAssertEqual(state.boardMutationState?.phase, .updating)
+
+        await state.load()
+        XCTAssertEqual(state.boards.first?.name, "Reloaded")
+        XCTAssertNil(state.boardMutationState)
+
+        await client.resumeDeferredCreate()
+        await creation.value
+
+        XCTAssertEqual(state.boards.first?.name, "Reloaded")
+        XCTAssertNil(state.boardMutationState)
+        let boardsRequestCount = await client.boardsRequestCount
+        XCTAssertEqual(boardsRequestCount, 2)
     }
 
     func testEditActivateAndArchiveReconcileTheBoardCollection() async {
@@ -1252,6 +1321,7 @@ private actor BoardManagementClient: KanbanDataClient {
     private(set) var createRequestCount = 0
     private(set) var archiveRequestCount = 0
     private(set) var makeActiveRequestCount = 0
+    private(set) var boardsRequestCount = 0
 
     init(
         boardsResponses: [Result<KanbanBoardsResponse, Error>],
@@ -1273,6 +1343,7 @@ private actor BoardManagementClient: KanbanDataClient {
     func kanbanConfiguration() -> KanbanConfiguration { configuration }
 
     func kanbanBoards() throws -> KanbanBoardsResponse {
+        boardsRequestCount += 1
         if boardsResponses.count > 1 {
             return try boardsResponses.removeFirst().get()
         }
