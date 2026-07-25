@@ -1041,6 +1041,23 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(state.canManageBoards)
     }
 
+    func testCancelledBoardCollectionRefreshDoesNotReportFailureOrBlockWrites() async {
+        let client = DeferredBoardCollectionClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        let refresh = Task { await state.refresh() }
+        await client.waitForDeferredCollection()
+        refresh.cancel()
+        await client.resumeDeferredCollection()
+        await refresh.value
+
+        XCTAssertFalse(state.refreshFailed)
+        XCTAssertTrue(state.canUseServerAuthoritativeActions)
+        let boardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(boardRequestCount, 1)
+    }
+
     func testBoardManagementStateRemainsIsolatedPerServer() async {
         let firstClient = BoardManagementClient(boardsResponses: [
             .success(mutationDecode(
@@ -1412,6 +1429,39 @@ private actor BoardManagementClient: KanbanDataClient {
     func resumeDeferredCreate() {
         createContinuation?.resume()
         createContinuation = nil
+    }
+}
+
+private actor DeferredBoardCollectionClient: KanbanDataClient {
+    private var collectionRequestCount = 0
+    private var collectionContinuation: CheckedContinuation<KanbanBoardsResponse, Never>?
+    private(set) var boardRequestCount = 0
+
+    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+
+    func kanbanBoards() async -> KanbanBoardsResponse {
+        collectionRequestCount += 1
+        if collectionRequestCount == 1 {
+            return KanbanFixtures.boards
+        }
+        return await withCheckedContinuation { collectionContinuation = $0 }
+    }
+
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
+        boardRequestCount += 1
+        return KanbanFixtures.richSnapshot
+    }
+
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
+
+    func waitForDeferredCollection() async {
+        while collectionContinuation == nil { await Task.yield() }
+    }
+
+    func resumeDeferredCollection() {
+        collectionContinuation?.resume(returning: KanbanFixtures.boards)
+        collectionContinuation = nil
     }
 }
 

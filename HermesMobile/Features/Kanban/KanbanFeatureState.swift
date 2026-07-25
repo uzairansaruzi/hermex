@@ -724,8 +724,13 @@ final class KanbanFeatureState {
     }
 
     func refresh() async {
+        let previousRefreshFailed = refreshFailed
         refreshFailed = false
         let boardCollectionSucceeded = await reconcileBoardCollection()
+        guard !Task.isCancelled else {
+            refreshFailed = previousRefreshFailed
+            return
+        }
         if !boardCollectionSucceeded {
             reportBoardCollectionRefreshFailure()
         }
@@ -736,6 +741,14 @@ final class KanbanFeatureState {
             refreshSupplementary: true,
             preserveRefreshFailure: !boardCollectionSucceeded
         )
+        guard !Task.isCancelled else {
+            if boardCollectionSucceeded {
+                refreshFailed = previousRefreshFailed
+            } else {
+                reportBoardCollectionRefreshFailure()
+            }
+            return
+        }
         guard isSameLiveGeneration(board: board, generation: generation) else { return }
         if succeeded {
             isOffline = false
@@ -890,7 +903,12 @@ final class KanbanFeatureState {
             return
         }
         guard isVisible, snapshot != nil else { return }
+        let previousRefreshFailed = refreshFailed
         let boardCollectionSucceeded = await reconcileBoardCollection()
+        guard !Task.isCancelled else {
+            refreshFailed = previousRefreshFailed
+            return
+        }
         if !boardCollectionSucceeded {
             reportBoardCollectionRefreshFailure()
         }
@@ -901,6 +919,14 @@ final class KanbanFeatureState {
             refreshSupplementary: true,
             preserveRefreshFailure: !boardCollectionSucceeded
         )
+        guard !Task.isCancelled else {
+            if boardCollectionSucceeded {
+                refreshFailed = previousRefreshFailed
+            } else {
+                reportBoardCollectionRefreshFailure()
+            }
+            return
+        }
         guard isCurrentLiveWork(board: board, generation: generation) else { return }
         if succeeded {
             isOffline = false
