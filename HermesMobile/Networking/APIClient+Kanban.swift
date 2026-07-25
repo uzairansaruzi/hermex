@@ -7,6 +7,7 @@ protocol KanbanDataClient: Sendable {
     func editKanbanBoard(_ request: KanbanEditBoardRequest) async throws -> KanbanBoardMutationEnvelope
     func archiveKanbanBoard(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope
     func makeKanbanBoardActive(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope
+    func dispatchKanban(_ request: KanbanDispatchRequest) async throws -> KanbanDispatchResult
     func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot
     func kanbanStats(board: String) async throws -> KanbanStats
     func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory
@@ -39,6 +40,10 @@ extension KanbanDataClient {
 
     func makeKanbanBoardActive(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope {
         throw KanbanUnsupportedClientMethod.makeBoardActive
+    }
+
+    func dispatchKanban(_ request: KanbanDispatchRequest) async throws -> KanbanDispatchResult {
+        throw KanbanUnsupportedClientMethod.dispatch
     }
 
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
@@ -91,6 +96,7 @@ private enum KanbanUnsupportedClientMethod: Error {
     case editBoard
     case archiveBoard
     case makeBoardActive
+    case dispatch
     case cardDetail
     case workerLog
     case addComment
@@ -141,6 +147,17 @@ extension APIClient: KanbanDataClient {
             endpoint: .kanbanMakeBoardActive(request),
             method: "POST"
         )
+    }
+
+    func dispatchKanban(_ request: KanbanDispatchRequest) async throws -> KanbanDispatchResult {
+        let result: KanbanDispatchResult = try await kanbanJSON(
+            endpoint: .kanbanDispatch(request),
+            method: "POST"
+        )
+        guard result.hasKnownCategory else {
+            throw KanbanDispatchResponseError.missingResultCategories
+        }
+        return result
     }
 
     func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot {

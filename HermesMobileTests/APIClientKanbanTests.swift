@@ -175,6 +175,88 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(result.readOnly, false)
     }
 
+    func testDispatcherUsesExactQueryOnlyPreviewAndRunRequestsWithMaximumEight() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.path, "/api/kanban/dispatch")
+            XCTAssertEqual(components?.queryItems, [
+                URLQueryItem(name: "board", value: "release board"),
+                URLQueryItem(name: "dry_run", value: requestIndex == 0 ? "true" : "false"),
+                URLQueryItem(name: "max", value: "8")
+            ])
+            XCTAssertNil(request.httpBody, "Board and Dispatcher options belong only in the query.")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Origin"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
+            return apiTestJSONResponse(
+                #"{"spawned":[],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#,
+                for: request
+            )
+        }
+
+        _ = try await client.dispatchKanban(
+            KanbanDispatchRequest(board: "release board", dryRun: true)
+        )
+        _ = try await client.dispatchKanban(
+            KanbanDispatchRequest(board: "release board", dryRun: false)
+        )
+
+        XCTAssertEqual(requestIndex, 2)
+        XCTAssertEqual(KanbanDispatchRequest.maximum, 8)
+    }
+
+    func testDispatcherResultCountsUnknownMemberShapesAndLossyNumericCategories() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(
+                """
+                {
+                  "spawned": ["CARD-1", {"id":"CARD-2"}, 3, null],
+                  "promoted": "2",
+                  "reclaimed": 1.9,
+                  "skipped_unassigned": [{"future":true}],
+                  "skipped_nonspawnable": [false, ["nested"]],
+                  "auto_blocked": [],
+                  "timed_out": [{"worker_id":"secret"}],
+                  "crashed": 3,
+                  "future_category": [{"raw":"discarded"}]
+                }
+                """,
+                for: request
+            )
+        }
+
+        let result = try await client.dispatchKanban(
+            KanbanDispatchRequest(board: "main", dryRun: true)
+        )
+
+        XCTAssertEqual(result.spawned, 4)
+        XCTAssertEqual(result.promoted, 2)
+        XCTAssertEqual(result.reclaimed, 1)
+        XCTAssertEqual(result.skippedUnassigned, 1)
+        XCTAssertEqual(result.skippedNonspawnable, 2)
+        XCTAssertEqual(result.autoBlocked, 0)
+        XCTAssertEqual(result.timedOut, 1)
+        XCTAssertEqual(result.crashed, 3)
+    }
+
+    func testDispatcherRejectsEnvelopeWithoutAnyVerifiedResultCategory() async {
+        let client = makeClient { request in
+            apiTestJSONResponse(#"{"future_category":[]}"#, for: request)
+        }
+
+        do {
+            _ = try await client.dispatchKanban(
+                KanbanDispatchRequest(board: "main", dryRun: false)
+            )
+            XCTFail("Expected a malformed Dispatcher result to be rejected.")
+        } catch {
+            XCTAssertEqual(error as? KanbanDispatchResponseError, .missingResultCategories)
+        }
+    }
+
     func testEventPollingUsesVerifiedCursorEnvelopeAndBounds() async throws {
         let client = makeClient { request in
             let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)

@@ -278,6 +278,26 @@ final class KanbanFeatureStateTests: XCTestCase {
             #"{"slug":"release","name":"Release"}"#
         )
         XCTAssertEqual(KanbanBoardAccessibility.browseLabel(board), "Browse Board: Release")
+
+        let dispatchResult: KanbanDispatchResult = mutationDecode(
+            #"{"spawned":[{"id":"secret"}],"promoted":2,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
+        )
+        let dispatchLabel = KanbanDispatchAccessibility.summary(
+            KanbanDispatchState(
+                mode: .preview,
+                boardSlug: "main",
+                phase: .succeeded,
+                result: dispatchResult,
+                completedAt: nil,
+                boardActivityGeneration: 1
+            ),
+            isStale: true
+        )
+        XCTAssertTrue(dispatchLabel.contains(String(localized: "Preview Dispatch")))
+        XCTAssertTrue(dispatchLabel.contains("\(String(localized: "Spawned")): 1"))
+        XCTAssertTrue(dispatchLabel.contains("\(String(localized: "Promoted")): 2"))
+        XCTAssertTrue(dispatchLabel.contains(String(localized: "This Preview is stale. Run Preview Dispatch again before relying on it.")))
+        XCTAssertFalse(dispatchLabel.contains("secret"))
     }
 
     func testStatusSpecificStalenessThresholds() {
@@ -287,6 +307,225 @@ final class KanbanFeatureStateTests: XCTestCase {
             .none, .warning,
             .none, .warning, .critical
         ])
+    }
+
+    func testPreviewDispatchIsOptionalSingleFlightTimestampedAndBecomesStaleAfterRefresh() async {
+        let completedAt = Date(timeIntervalSince1970: 1_750_000_000)
+        let client = DispatcherClient(defersFirstDispatch: true)
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client,
+            now: { completedAt }
+        )
+        await state.load()
+
+        let preview = Task { await state.previewDispatch() }
+        await client.waitForDeferredDispatch()
+        await state.previewDispatch()
+
+        let inFlightRequestCount = await client.dispatchRequestCount
+        XCTAssertEqual(inFlightRequestCount, 1)
+        XCTAssertEqual(state.dispatcherAvailability, .busy)
+        await client.resumeDeferredDispatch()
+        await preview.value
+
+        XCTAssertEqual(state.dispatchState?.mode, .preview)
+        XCTAssertEqual(state.dispatchState?.phase, .succeeded)
+        XCTAssertEqual(state.dispatchState?.completedAt, completedAt)
+        let previewRequest = await client.dispatchRequests.first
+        XCTAssertEqual(previewRequest?.dryRun, true)
+        XCTAssertFalse(state.isPreviewStale)
+
+        await state.refresh()
+
+        XCTAssertTrue(state.isPreviewStale)
+        let finalRequestCount = await client.dispatchRequestCount
+        XCTAssertEqual(finalRequestCount, 1)
+    }
+
+    func testRunDispatcherJoinsBoardWideLockAndAlwaysReconcilesWithoutRequiringPreview() async {
+        let multipleBoards: KanbanBoardsResponse = mutationDecode(
+            #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"main","read_only":false}"#
+        )
+        let client = DispatcherClient(
+            boardsResponses: [multipleBoards],
+            defersFirstDispatch: true
+        )
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+        await state.load()
+
+        let run = Task { await state.runDispatcher() }
+        await client.waitForDeferredDispatch()
+
+        XCTAssertFalse(state.canMutateCards)
+        XCTAssertFalse(state.canManageBoards)
+        XCTAssertEqual(state.dispatcherAvailability, .busy)
+        await state.previewDispatch()
+        await state.selectBoard("release")
+        let lockedRequestCount = await client.dispatchRequestCount
+        XCTAssertEqual(lockedRequestCount, 1)
+        XCTAssertEqual(state.selectedBoardSlug, "main")
+
+        await client.resumeDeferredDispatch()
+        await run.value
+
+        XCTAssertEqual(state.dispatchState?.mode, .run)
+        XCTAssertEqual(state.dispatchState?.phase, .succeeded)
+        XCTAssertEqual(state.dispatchState?.result?.spawned, 1)
+        let runRequest = await client.dispatchRequests.first
+        let reconciledBoardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(runRequest?.dryRun, false)
+        XCTAssertEqual(reconciledBoardRequestCount, 2, "Run must refetch the canonical Board.")
+        XCTAssertTrue(state.canMutateCards)
+    }
+
+    func testAmbiguousRunNeverRetriesAndRemainsUncertainAfterCanonicalRefresh() async {
+        let client = DispatcherClient(
+            dispatchResults: [
+                .failure(APIError.network(underlying: URLError(.timedOut)))
+            ]
+        )
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+        await state.load()
+
+        await state.runDispatcher()
+
+        XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
+        XCTAssertEqual(state.dispatcherAvailability, .outcomeUncertain)
+        XCTAssertNil(state.dispatchState?.result)
+        let initialDispatchRequestCount = await client.dispatchRequestCount
+        let initialBoardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(initialDispatchRequestCount, 1)
+        XCTAssertEqual(initialBoardRequestCount, 2)
+
+        await state.refreshUncertainDispatchOutcome()
+
+        XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
+        let finalDispatchRequestCount = await client.dispatchRequestCount
+        let finalBoardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(finalDispatchRequestCount, 1, "A refresh must never retry Run Dispatcher.")
+        XCTAssertEqual(finalBoardRequestCount, 3)
+    }
+
+    func testMalformedRunResultIsUncertainWhilePreviewFailureIsSafeAndRetryable() async {
+        let malformed = KanbanDispatchResponseError.missingResultCategories
+        let runClient = DispatcherClient(dispatchResults: [.failure(malformed)])
+        let runState = KanbanFeatureState(
+            server: URL(string: "https://run.example.test")!,
+            client: runClient
+        )
+        await runState.load()
+        await runState.runDispatcher()
+        XCTAssertEqual(runState.dispatchState?.phase, .outcomeUncertain)
+        let malformedRunRequestCount = await runClient.dispatchRequestCount
+        XCTAssertEqual(malformedRunRequestCount, 1)
+
+        let previewClient = DispatcherClient(dispatchResults: [.failure(malformed)])
+        let previewState = KanbanFeatureState(
+            server: URL(string: "https://preview.example.test")!,
+            client: previewClient
+        )
+        await previewState.load()
+        await previewState.previewDispatch()
+        XCTAssertEqual(previewState.dispatchState?.phase, .failed)
+        XCTAssertEqual(previewState.dispatcherAvailability, .available)
+    }
+
+    func testDispatcherRefusalIncompatibilityPartialCapabilityAndOfflineStayDistinct() async {
+        let refusalClient = DispatcherClient(
+            dispatchResults: [.failure(APIError.http(statusCode: 409, body: nil))]
+        )
+        let refusal = KanbanFeatureState(
+            server: URL(string: "https://refusal.example.test")!,
+            client: refusalClient
+        )
+        await refusal.load()
+        await refusal.runDispatcher()
+        XCTAssertEqual(refusal.dispatchState?.phase, .refused)
+        XCTAssertFalse(refusal.dispatcherCapabilityIsIncompatible)
+
+        let incompatibleClient = DispatcherClient(
+            dispatchResults: [.failure(APIError.http(statusCode: 404, body: nil))]
+        )
+        let incompatible = KanbanFeatureState(
+            server: URL(string: "https://old.example.test")!,
+            client: incompatibleClient
+        )
+        await incompatible.load()
+        await incompatible.previewDispatch()
+        XCTAssertEqual(incompatible.dispatchState?.phase, .refused)
+        XCTAssertEqual(incompatible.dispatcherAvailability, .incompatible)
+
+        let partialClient = DispatcherClient(statsError: KanbanResponseError.nonJSONContentType)
+        let partial = KanbanFeatureState(
+            server: URL(string: "https://partial.example.test")!,
+            client: partialClient
+        )
+        await partial.load()
+        XCTAssertEqual(partial.state, .partial)
+        XCTAssertEqual(partial.dispatcherAvailability, .available)
+
+        let missingWriteCapability = DispatcherClient(
+            configuration: mutationDecode(
+                #"{"columns":["triage","todo","ready","running","blocked","done"]}"#
+            )
+        )
+        let unavailable = KanbanFeatureState(
+            server: URL(string: "https://unknown.example.test")!,
+            client: missingWriteCapability
+        )
+        await unavailable.load()
+        XCTAssertEqual(unavailable.state, .partial)
+        XCTAssertEqual(unavailable.dispatcherAvailability, .incompatible)
+
+        let offlineClient = DispatcherClient(
+            dispatchResults: [
+                .failure(APIError.network(underlying: URLError(.notConnectedToInternet)))
+            ]
+        )
+        let offline = KanbanFeatureState(
+            server: URL(string: "https://offline.example.test")!,
+            client: offlineClient
+        )
+        await offline.load()
+        await offline.previewDispatch()
+        XCTAssertEqual(offline.dispatcherAvailability, .offline)
+    }
+
+    func testRunReportsRemovedBoardAndDispatcherStateNeverCrossesServers() async {
+        let removedBoards: KanbanBoardsResponse = mutationDecode(
+            #"{"boards":[{"slug":"release"}],"current":"release","read_only":false}"#
+        )
+        let firstClient = DispatcherClient(boardsResponses: [
+            mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#),
+            removedBoards
+        ])
+        let secondClient = DispatcherClient()
+        let first = KanbanFeatureState(
+            server: URL(string: "https://first.example.test")!,
+            client: firstClient
+        )
+        let second = KanbanFeatureState(
+            server: URL(string: "https://second.example.test")!,
+            client: secondClient
+        )
+        await first.load()
+        await second.load()
+
+        await first.runDispatcher()
+
+        XCTAssertEqual(first.dispatchState?.phase, .boardUnavailable)
+        XCTAssertNil(first.selectedBoardSlug)
+        XCTAssertNotNil(first.boardSelectionNotice)
+        XCTAssertNil(second.dispatchState)
+        let secondDispatchRequestCount = await secondClient.dispatchRequestCount
+        XCTAssertEqual(secondDispatchRequestCount, 0)
     }
 
     func testCardMutationsAreOptimisticSerializedPerCardAndConcurrentAcrossCards() async throws {
@@ -1489,6 +1728,86 @@ private actor DeferredFirstConfigurationClient: KanbanDataClient {
     func resumeFirstConfiguration() {
         continuation?.resume(returning: KanbanFixtures.configuration)
         continuation = nil
+    }
+}
+
+private actor DispatcherClient: KanbanDataClient {
+    private let configuration: KanbanConfiguration
+    private var boardsResponses: [KanbanBoardsResponse]
+    private var boardSnapshots: [KanbanBoardSnapshot]
+    private var dispatchResults: [Result<KanbanDispatchResult, Error>]
+    private let statsError: Error?
+    private var shouldDeferDispatch: Bool
+    private var dispatchContinuation: CheckedContinuation<Void, Never>?
+    private(set) var dispatchRequests: [KanbanDispatchRequest] = []
+    private(set) var boardRequestCount = 0
+
+    var dispatchRequestCount: Int { dispatchRequests.count }
+
+    init(
+        configuration: KanbanConfiguration = mutationDecode(
+            #"{"columns":["triage","todo","ready","running","blocked","done"],"read_only":false}"#
+        ),
+        boardsResponses: [KanbanBoardsResponse] = [
+            mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#)
+        ],
+        boardSnapshots: [KanbanBoardSnapshot] = [mutationSnapshot()],
+        dispatchResults: [Result<KanbanDispatchResult, Error>] = [
+            .success(mutationDecode(
+                #"{"spawned":[{"future":"shape"}],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
+            ))
+        ],
+        statsError: Error? = nil,
+        defersFirstDispatch: Bool = false
+    ) {
+        self.configuration = configuration
+        self.boardsResponses = boardsResponses
+        self.boardSnapshots = boardSnapshots
+        self.dispatchResults = dispatchResults
+        self.statsError = statsError
+        shouldDeferDispatch = defersFirstDispatch
+    }
+
+    func kanbanConfiguration() -> KanbanConfiguration {
+        configuration
+    }
+
+    func kanbanBoards() -> KanbanBoardsResponse {
+        if boardsResponses.count > 1 { return boardsResponses.removeFirst() }
+        return boardsResponses[0]
+    }
+
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
+        boardRequestCount += 1
+        if boardSnapshots.count > 1 { return boardSnapshots.removeFirst() }
+        return boardSnapshots[0]
+    }
+
+    func kanbanStats(board: String) throws -> KanbanStats {
+        if let statsError { throw statsError }
+        return mutationDecode("{}")
+    }
+
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
+        mutationDecode("{}")
+    }
+
+    func dispatchKanban(_ request: KanbanDispatchRequest) async throws -> KanbanDispatchResult {
+        dispatchRequests.append(request)
+        if shouldDeferDispatch {
+            shouldDeferDispatch = false
+            await withCheckedContinuation { dispatchContinuation = $0 }
+        }
+        return try dispatchResults.removeFirst().get()
+    }
+
+    func waitForDeferredDispatch() async {
+        while dispatchContinuation == nil { await Task.yield() }
+    }
+
+    func resumeDeferredDispatch() {
+        dispatchContinuation?.resume()
+        dispatchContinuation = nil
     }
 }
 

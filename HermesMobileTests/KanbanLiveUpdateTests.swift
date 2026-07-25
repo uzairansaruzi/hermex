@@ -29,6 +29,25 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    func testLiveEventReconciliationMarksAdvisoryDispatchPreviewStale() async throws {
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        await state.load()
+        await state.previewDispatch()
+        XCTAssertEqual(state.dispatchState?.phase, .succeeded)
+        XCTAssertFalse(state.isPreviewStale)
+
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+
+        try await waitUntil { await client.boardCallCount == 2 }
+        XCTAssertTrue(state.isPreviewStale)
+        state.setVisible(false)
+    }
+
     func testRepeatedFailuresFallBackToPollingWithoutRequestStorm() async throws {
         let client = LiveKanbanClient(
             boardResults: [.success(.rich), .success(.newer)],
@@ -406,6 +425,12 @@ private actor LiveKanbanClient: KanbanDataClient {
     func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
         assigneeCallCount += 1
         return .emptyHistory
+    }
+
+    func dispatchKanban(_ request: KanbanDispatchRequest) -> KanbanDispatchResult {
+        decode(
+            #"{"spawned":[],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
+        )
     }
 
     func kanbanEvents(_ request: KanbanEventsRequest) throws -> KanbanEventsEnvelope {

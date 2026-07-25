@@ -99,6 +99,7 @@ enum Endpoint {
     case kanbanEditBoard(KanbanEditBoardRequest)
     case kanbanArchiveBoard(KanbanBoardMutationRequest)
     case kanbanMakeBoardActive(KanbanBoardMutationRequest)
+    case kanbanDispatch(KanbanDispatchRequest)
     case kanbanBoard(KanbanBoardRequest)
     case kanbanStats(board: String)
     case kanbanAssignees(board: String)
@@ -320,6 +321,8 @@ enum Endpoint {
             return "/api/kanban/boards/\(request.slug)"
         case let .kanbanMakeBoardActive(request):
             return "/api/kanban/boards/\(request.slug)/switch"
+        case .kanbanDispatch:
+            return "/api/kanban/dispatch"
         case .kanbanBoard:
             return "/api/kanban/board"
         case .kanbanStats:
@@ -473,6 +476,8 @@ enum Endpoint {
             }
             return items
         case let .kanbanBoard(request):
+            return request.queryItems
+        case let .kanbanDispatch(request):
             return request.queryItems
         case let .kanbanStats(board), let .kanbanAssignees(board):
             return [URLQueryItem(name: "board", value: board)]

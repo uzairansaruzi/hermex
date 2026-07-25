@@ -28,10 +28,12 @@ struct KanbanStatusFocusView: View {
     @State private var pendingRunningAction: KanbanPendingCardAction?
     @State private var showsBulkActions = false
     @State private var confirmsBulkArchive = false
+    @State private var confirmsRunDispatcher = false
     @AccessibilityFocusState private var focusedCardID: String?
     @AccessibilityFocusState private var archiveUndoIsFocused: Bool
     @AccessibilityFocusState private var selectionControlsAreFocused: Bool
     @AccessibilityFocusState private var bulkSummaryIsFocused: Bool
+    @AccessibilityFocusState private var dispatchSummaryIsFocused: Bool
 
     var body: some View {
         Group {
@@ -117,6 +119,11 @@ struct KanbanStatusFocusView: View {
                 selectionControlsAreFocused = true
             }
         }
+        .onChange(of: model.dispatchState?.phase) { oldPhase, newPhase in
+            if oldPhase?.isInFlight == true, newPhase?.isInFlight == false {
+                dispatchSummaryIsFocused = true
+            }
+        }
         .alert(
             "Leave Running?",
             isPresented: Binding(
@@ -145,6 +152,14 @@ struct KanbanStatusFocusView: View {
             }
         } message: {
             Text("The selected Cards will be moved to the archive.")
+        }
+        .alert("Run Dispatcher", isPresented: $confirmsRunDispatcher) {
+            Button("Cancel", role: .cancel) {}
+            Button("Run Dispatcher", role: .destructive) {
+                Task { await model.runDispatcher() }
+            }
+        } message: {
+            Text("This may start up to 8 workers and consume API budget.")
         }
     }
 
@@ -176,9 +191,6 @@ struct KanbanStatusFocusView: View {
 
     private var boardContent: some View {
         VStack(spacing: 0) {
-            if model.requiresBoardSelection {
-                boardSelectionContent
-            } else {
             if model.state == .partial {
                 compatibilityBanner
             }
@@ -198,13 +210,223 @@ struct KanbanStatusFocusView: View {
             } else if let summary = model.bulkActionSummary {
                 bulkSummaryBanner(summary)
             }
-            if model.isSelectingCards {
-                selectionControls
+            if model.selectedBoardSlug != nil || model.dispatchState != nil {
+                dispatcherPanel
             }
-            statusSelector
-            Divider()
-            cardList
+            if model.requiresBoardSelection {
+                boardSelectionContent
+            } else {
+                if model.isSelectingCards {
+                    selectionControls
+                }
+                statusSelector
+                Divider()
+                cardList
             }
+        }
+    }
+
+    private var dispatcherPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Dispatcher", systemImage: "bolt.horizontal.circle")
+                    .font(.headline)
+                Spacer()
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    previewDispatchButton
+                    runDispatcherButton
+                }
+                VStack(spacing: 8) {
+                    previewDispatchButton
+                        .frame(maxWidth: .infinity)
+                    runDispatcherButton
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            Text("Preview is advisory and may become stale. It never starts workers.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if model.dispatcherAvailability != .available,
+               model.dispatchState?.phase.isInFlight != true {
+                Text(dispatcherUnavailableReason)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let dispatch = model.dispatchState {
+                Divider()
+                dispatchSummary(dispatch)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.secondary.opacity(0.06))
+    }
+
+    private var previewDispatchButton: some View {
+        Button("Preview Dispatch") {
+            Task { await model.previewDispatch() }
+        }
+        .buttonStyle(.bordered)
+        .disabled(model.dispatcherAvailability != .available)
+        .frame(minHeight: 44)
+    }
+
+    private var runDispatcherButton: some View {
+        Button("Run Dispatcher") {
+            confirmsRunDispatcher = true
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(model.dispatcherAvailability != .available)
+        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder
+    private func dispatchSummary(_ dispatch: KanbanDispatchState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(dispatchModeTitle(dispatch.mode))
+                    .font(.subheadline.weight(.semibold))
+                if let completedAt = dispatch.completedAt {
+                    Text(completedAt, style: .time)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !dispatch.phase.isInFlight {
+                    Button("Dismiss") { model.dismissDispatchResult() }
+                        .font(.footnote)
+                }
+            }
+
+            if dispatch.phase.isInFlight {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(dispatchStatusText(dispatch))
+                }
+                .font(.footnote)
+            } else {
+                Label(dispatchStatusText(dispatch), systemImage: dispatchStatusIcon(dispatch))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(dispatchStatusColor(dispatch))
+            }
+
+            if model.isPreviewStale {
+                Label("This Preview is stale. Run Preview Dispatch again before relying on it.", systemImage: "clock.badge.exclamationmark")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+
+            if let result = dispatch.result {
+                dispatchMetrics(result)
+            }
+
+            if dispatch.phase == .outcomeUncertain {
+                Text("Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Refresh") {
+                    Task { await model.refreshUncertainDispatchOutcome() }
+                }
+                .font(.footnote.weight(.semibold))
+                .frame(minHeight: 44)
+            } else if dispatch.phase == .refused {
+                Text("The server refused this Dispatcher request. Hermex did not retry it.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if dispatch.phase == .boardUnavailable {
+                Text("This Board no longer exists. Choose another Board.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            Text(KanbanDispatchAccessibility.summary(dispatch, isStale: model.isPreviewStale))
+        )
+        .accessibilityFocused($dispatchSummaryIsFocused)
+    }
+
+    private func dispatchMetrics(_ result: KanbanDispatchResult) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 5) {
+            dispatchMetricRow("Spawned", result.spawned, "Promoted", result.promoted)
+            dispatchMetricRow("Reclaimed", result.reclaimed, "Skipped—No Assignee", result.skippedUnassigned)
+            dispatchMetricRow("Skipped—Unknown Profile", result.skippedNonspawnable, "Auto-blocked", result.autoBlocked)
+            dispatchMetricRow("Timed Out", result.timedOut, "Crashed", result.crashed)
+        }
+        .font(.caption)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func dispatchMetricRow(
+        _ firstLabel: LocalizedStringKey,
+        _ firstCount: Int?,
+        _ secondLabel: LocalizedStringKey,
+        _ secondCount: Int?
+    ) -> some View {
+        GridRow {
+            dispatchMetric(firstLabel, firstCount)
+            dispatchMetric(secondLabel, secondCount)
+        }
+    }
+
+    private func dispatchMetric(_ label: LocalizedStringKey, _ count: Int?) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+            Text(count.map(String.init) ?? String(localized: "Unknown"))
+                .fontWeight(.semibold)
+        }
+    }
+
+    private var dispatcherUnavailableReason: LocalizedStringKey {
+        switch model.dispatcherAvailability {
+        case .available: ""
+        case .busy: "Updating task..."
+        case .outcomeUncertain: "Outcome Uncertain"
+        case .offline: "Offline—showing previously loaded data"
+        case .incompatible: "Unavailable"
+        case .readOnly: "Read-only"
+        case .refreshing: "The Board is refreshing."
+        }
+    }
+
+    private func dispatchModeTitle(_ mode: KanbanDispatchMode) -> LocalizedStringKey {
+        switch mode {
+        case .preview: "Preview Dispatch"
+        case .run: "Run Dispatcher"
+        }
+    }
+
+    private func dispatchStatusText(_ dispatch: KanbanDispatchState) -> LocalizedStringKey {
+        switch dispatch.phase {
+        case .submitting: "Updating task..."
+        case .reconciling: "Checking Result"
+        case .succeeded: "Done"
+        case .refused, .failed: "Failed"
+        case .outcomeUncertain: "Outcome Uncertain"
+        case .boardUnavailable: "Unavailable"
+        }
+    }
+
+    private func dispatchStatusIcon(_ dispatch: KanbanDispatchState) -> String {
+        switch dispatch.phase {
+        case .succeeded: model.isPreviewStale ? "clock.badge.exclamationmark" : "checkmark.circle.fill"
+        case .submitting, .reconciling: "arrow.triangle.2.circlepath"
+        case .refused, .failed: "xmark.circle.fill"
+        case .outcomeUncertain, .boardUnavailable: "questionmark.circle.fill"
+        }
+    }
+
+    private func dispatchStatusColor(_ dispatch: KanbanDispatchState) -> Color {
+        switch dispatch.phase {
+        case .succeeded: model.isPreviewStale ? .orange : .green
+        case .submitting, .reconciling: .secondary
+        case .refused, .failed: .red
+        case .outcomeUncertain, .boardUnavailable: .orange
         }
     }
 
@@ -1722,6 +1944,34 @@ actor KanbanLabClient: KanbanDataClient {
             throw APIError.network(underlying: URLError(.notConnectedToInternet))
         }
         return decode(#"{"events":[],"cursor":9,"latest_event_id":9,"read_only":false}"#)
+    }
+
+    func dispatchKanban(_ request: KanbanDispatchRequest) async throws -> KanbanDispatchResult {
+        try await Task.sleep(for: .milliseconds(650))
+        if scenario == .partial {
+            throw APIError.http(statusCode: 404, body: nil)
+        }
+        if scenario == .offline {
+            throw APIError.network(underlying: URLError(.notConnectedToInternet))
+        }
+
+        if !request.dryRun, var spawnedCard = fixtureCard(cardID: "CARD-3") {
+            spawnedCard.status = "running"
+            storedCards[request.board, default: [:]][spawnedCard.cardID] = spawnedCard
+        }
+
+        return decode([
+            "spawned": request.dryRun
+                ? [["task_id": "CARD-3", "profile": "builder"]]
+                : [["task_id": "CARD-3", "worker_pid": 42_424]],
+            "promoted": [],
+            "reclaimed": [],
+            "skipped_unassigned": [["task_id": "CARD-1"]],
+            "skipped_nonspawnable": [],
+            "auto_blocked": [],
+            "timed_out": [],
+            "crashed": []
+        ])
     }
 
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {

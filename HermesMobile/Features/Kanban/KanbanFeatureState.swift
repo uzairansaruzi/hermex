@@ -17,6 +17,106 @@ enum KanbanReadCapabilityWarning: Hashable, Sendable {
     case profileHistoryUnavailable
 }
 
+enum KanbanDispatchMode: Equatable, Sendable {
+    case preview
+    case run
+}
+
+enum KanbanDispatchPhase: Equatable, Sendable {
+    case submitting
+    case reconciling
+    case succeeded
+    case refused
+    case failed
+    case outcomeUncertain
+    case boardUnavailable
+
+    var isInFlight: Bool { self == .submitting || self == .reconciling }
+}
+
+struct KanbanDispatchState: Equatable, Sendable {
+    let mode: KanbanDispatchMode
+    let boardSlug: String
+    let phase: KanbanDispatchPhase
+    let result: KanbanDispatchResult?
+    let completedAt: Date?
+    let boardActivityGeneration: Int
+}
+
+enum KanbanDispatchAccessibility {
+    static func summary(_ state: KanbanDispatchState, isStale: Bool) -> String {
+        var parts = [
+            state.mode == .preview
+                ? String(localized: "Preview Dispatch")
+                : String(localized: "Run Dispatcher"),
+            phaseTitle(state.phase)
+        ]
+        if isStale {
+            parts.append(
+                String(localized: "This Preview is stale. Run Preview Dispatch again before relying on it.")
+            )
+        }
+        if let result = state.result {
+            parts.append(contentsOf: [
+                metric("Spawned", result.spawned),
+                metric("Promoted", result.promoted),
+                metric("Reclaimed", result.reclaimed),
+                metric("Skipped—No Assignee", result.skippedUnassigned),
+                metric("Skipped—Unknown Profile", result.skippedNonspawnable),
+                metric("Auto-blocked", result.autoBlocked),
+                metric("Timed Out", result.timedOut),
+                metric("Crashed", result.crashed)
+            ])
+        }
+        switch state.phase {
+        case .refused:
+            parts.append(
+                String(localized: "The server refused this Dispatcher request. Hermex did not retry it.")
+            )
+        case .outcomeUncertain:
+            parts.append(
+                String(localized: "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.")
+            )
+        case .boardUnavailable:
+            parts.append(String(localized: "This Board no longer exists. Choose another Board."))
+        case .submitting, .reconciling, .succeeded, .failed:
+            break
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func metric(_ label: String.LocalizationValue, _ count: Int?) -> String {
+        "\(String(localized: label)): \(count.map(String.init) ?? String(localized: "Unknown"))"
+    }
+
+    private static func phaseTitle(_ phase: KanbanDispatchPhase) -> String {
+        switch phase {
+        case .submitting:
+            String(localized: "Updating task...")
+        case .reconciling:
+            String(localized: "Checking Result")
+        case .succeeded:
+            String(localized: "Done")
+        case .refused, .failed:
+            String(localized: "Failed")
+        case .outcomeUncertain:
+            String(localized: "Outcome Uncertain")
+        case .boardUnavailable:
+            String(localized: "Unavailable")
+        }
+    }
+}
+
+enum KanbanDispatcherAvailability: Equatable, Sendable {
+    case available
+    case busy
+    case outcomeUncertain
+    case offline
+    case incompatible
+    case readOnly
+    case refreshing
+}
+
 enum KanbanCardMutationPhase: Equatable, Sendable {
     case updating
     case checkingResult
@@ -172,6 +272,8 @@ final class KanbanFeatureState {
     private(set) var bulkActionSummary: KanbanBulkActionSummary?
     private(set) var boardMutationState: KanbanBoardMutationState?
     private(set) var boardSelectionNotice: KanbanBoardSelectionNotice?
+    private(set) var dispatchState: KanbanDispatchState?
+    private(set) var dispatcherCapabilityIsIncompatible = false
 
     private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
@@ -190,6 +292,7 @@ final class KanbanFeatureState {
     private let timing: KanbanLiveUpdateTiming
     private let archiveUndoLifetime: TimeInterval
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
+    private let now: @MainActor @Sendable () -> Date
     private let onAPIError: (Error) -> Void
     private var isVisible = false
     private var sceneIsActive = true
@@ -208,6 +311,8 @@ final class KanbanFeatureState {
     private var selectedCardsByID: [String: KanbanCard] = [:]
     private var boardMutationIntendedResult: ((KanbanBoardsResponse) -> Bool)?
     private var boardMutationGeneration = 0
+    private var dispatchGeneration = 0
+    private var boardActivityGeneration = 0
 
     init(
         server: URL,
@@ -218,6 +323,7 @@ final class KanbanFeatureState {
         sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
         },
+        now: @escaping @MainActor @Sendable () -> Date = { Date() },
         onAPIError: @escaping (Error) -> Void = { _ in }
     ) {
         self.server = server
@@ -226,6 +332,7 @@ final class KanbanFeatureState {
         self.timing = timing
         self.archiveUndoLifetime = archiveUndoLifetime
         self.sleep = sleep
+        self.now = now
         self.onAPIError = onAPIError
     }
 
@@ -254,6 +361,46 @@ final class KanbanFeatureState {
         canAddComments
             && bulkActionPhase == nil
             && activeCardMutationIDs.isEmpty
+            && dispatchState?.phase.isInFlight != true
+    }
+
+    var dispatcherAvailability: KanbanDispatcherAvailability {
+        if dispatchState?.phase.isInFlight == true
+            || boardMutationBlocksWrites
+            || bulkActionPhase != nil
+            || !activeCardMutationIDs.isEmpty {
+            return .busy
+        }
+        if isOffline { return .offline }
+        if isRefreshing || refreshFailed { return .refreshing }
+        if dispatchState?.mode == .run, dispatchState?.phase == .outcomeUncertain {
+            return .outcomeUncertain
+        }
+        guard !dispatcherCapabilityIsIncompatible,
+              state == .compatible || state == .partial,
+              snapshot != nil,
+              selectedBoardSlug != nil else {
+            return .incompatible
+        }
+        if configuration?.readOnly == true
+            || boardsResponse?.readOnly == true
+            || snapshot?.readOnly == true
+            || selectedBoard?.readOnly == true {
+            return .readOnly
+        }
+        guard configuration?.readOnly == false,
+              boardsResponse?.readOnly == false,
+              snapshot?.readOnly == false else {
+            return .incompatible
+        }
+        return .available
+    }
+
+    var isPreviewStale: Bool {
+        guard let dispatchState, dispatchState.mode == .preview,
+              dispatchState.phase == .succeeded else { return false }
+        return dispatchState.boardSlug != selectedBoardSlug
+            || dispatchState.boardActivityGeneration != boardActivityGeneration
     }
 
     var sharedActiveBoardSlug: String? {
@@ -278,6 +425,7 @@ final class KanbanFeatureState {
         if cardIDs.isEmpty { return .noSelection }
         if bulkActionPhase != nil
             || !activeCardMutationIDs.isEmpty
+            || dispatchState?.phase.isInFlight == true
             || boardMutationBlocksWrites {
             return .boardBusy
         }
@@ -624,6 +772,8 @@ final class KanbanFeatureState {
         let previouslySelectedBoard = normalizedOptional(selectedBoardSlug)
         let previouslySelectedBoardName = selectedBoard?.name
         invalidateBoardMutation()
+        invalidateDispatch()
+        dispatcherCapabilityIsIncompatible = false
         archiveUndoTask?.cancel()
         archiveUndo = nil
         clearSettledMutationPresentation()
@@ -696,6 +846,7 @@ final class KanbanFeatureState {
             selectedBoardSlug = boardToLoad
             boardSelectionNotice = nil
             self.snapshot = snapshot
+            boardActivityGeneration &+= 1
             detailRefreshRevision &+= 1
             liveCursor = max(0, snapshot.latestEventID ?? 0)
             self.report = report
@@ -766,8 +917,10 @@ final class KanbanFeatureState {
         guard activeCardMutationIDs.isEmpty,
               bulkActionPhase == nil,
               !boardMutationBlocksWrites,
+              dispatchState?.phase.isInFlight != true,
               boards.contains(where: { normalized($0.slug) == slug }),
               slug != selectedBoardSlug else { return }
+        dispatchState = nil
         clearCardSelection()
         archiveUndoTask?.cancel()
         archiveUndo = nil
@@ -783,6 +936,49 @@ final class KanbanFeatureState {
         state = .compatible
         let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
         if succeeded { startLiveUpdatesIfReady() }
+    }
+
+    func previewDispatch() async {
+        await performDispatch(mode: .preview)
+    }
+
+    func runDispatcher() async {
+        await performDispatch(mode: .run)
+    }
+
+    func dismissDispatchResult() {
+        guard dispatchState?.phase.isInFlight != true else { return }
+        dispatchState = nil
+    }
+
+    func refreshUncertainDispatchOutcome() async {
+        guard let dispatch = dispatchState,
+              dispatch.mode == .run,
+              dispatch.phase == .outcomeUncertain,
+              selectedBoardSlug == dispatch.boardSlug,
+              !isOffline,
+              !isRefreshing,
+              !refreshFailed,
+              bulkActionPhase == nil,
+              activeCardMutationIDs.isEmpty,
+              !boardMutationBlocksWrites else { return }
+        dispatchGeneration &+= 1
+        let generation = dispatchGeneration
+        dispatchState = KanbanDispatchState(
+            mode: .run,
+            boardSlug: dispatch.boardSlug,
+            phase: .reconciling,
+            result: dispatch.result,
+            completedAt: dispatch.completedAt,
+            boardActivityGeneration: boardActivityGeneration
+        )
+        await reconcileRun(
+            board: dispatch.boardSlug,
+            generation: generation,
+            result: dispatch.result,
+            completedAt: dispatch.completedAt ?? now(),
+            requestOutcomeIsUncertain: true
+        )
     }
 
     func dismissBoardMutationResult() {
@@ -883,6 +1079,140 @@ final class KanbanFeatureState {
         } intendedResult: { response in
             self.normalized(response.current) == slug
         }
+    }
+
+    private func performDispatch(mode: KanbanDispatchMode) async {
+        guard dispatcherAvailability == .available,
+              let board = selectedBoardSlug else { return }
+        if mode == .run {
+            boardActivityGeneration &+= 1
+        }
+        dispatchGeneration &+= 1
+        let generation = dispatchGeneration
+        let startingBoardActivityGeneration = boardActivityGeneration
+        dispatchState = KanbanDispatchState(
+            mode: mode,
+            boardSlug: board,
+            phase: .submitting,
+            result: nil,
+            completedAt: nil,
+            boardActivityGeneration: startingBoardActivityGeneration
+        )
+
+        do {
+            let result = try await client.dispatchKanban(
+                KanbanDispatchRequest(board: board, dryRun: mode == .preview)
+            )
+            guard continueDispatch(generation, board: board, mode: mode) else { return }
+            let completedAt = now()
+            if mode == .preview {
+                dispatchState = KanbanDispatchState(
+                    mode: .preview,
+                    boardSlug: board,
+                    phase: .succeeded,
+                    result: result,
+                    completedAt: completedAt,
+                    boardActivityGeneration: startingBoardActivityGeneration
+                )
+                return
+            }
+            dispatchState = KanbanDispatchState(
+                mode: .run,
+                boardSlug: board,
+                phase: .reconciling,
+                result: result,
+                completedAt: completedAt,
+                boardActivityGeneration: boardActivityGeneration
+            )
+            await reconcileRun(
+                board: board,
+                generation: generation,
+                result: result,
+                completedAt: completedAt,
+                requestOutcomeIsUncertain: false
+            )
+        } catch {
+            guard continueDispatch(generation, board: board, mode: mode) else { return }
+            if isCancellation(error) {
+                clearDispatchIfCurrent(generation)
+                return
+            }
+            forwardAuthentication(error)
+            markOfflineIfNeeded(error)
+            if isDispatcherIncompatible(error) {
+                dispatcherCapabilityIsIncompatible = true
+            }
+            let completedAt = now()
+            if isDefinitiveWriteFailure(error) {
+                dispatchState = KanbanDispatchState(
+                    mode: mode,
+                    boardSlug: board,
+                    phase: .refused,
+                    result: nil,
+                    completedAt: completedAt,
+                    boardActivityGeneration: boardActivityGeneration
+                )
+            } else if mode == .preview {
+                dispatchState = KanbanDispatchState(
+                    mode: .preview,
+                    boardSlug: board,
+                    phase: .failed,
+                    result: nil,
+                    completedAt: completedAt,
+                    boardActivityGeneration: startingBoardActivityGeneration
+                )
+            } else {
+                dispatchState = KanbanDispatchState(
+                    mode: .run,
+                    boardSlug: board,
+                    phase: .reconciling,
+                    result: nil,
+                    completedAt: completedAt,
+                    boardActivityGeneration: boardActivityGeneration
+                )
+                await reconcileRun(
+                    board: board,
+                    generation: generation,
+                    result: nil,
+                    completedAt: completedAt,
+                    requestOutcomeIsUncertain: true
+                )
+            }
+        }
+    }
+
+    private func reconcileRun(
+        board: String,
+        generation: Int,
+        result: KanbanDispatchResult?,
+        completedAt: Date,
+        requestOutcomeIsUncertain: Bool
+    ) async {
+        let collectionSucceeded = await reconcileBoardCollection()
+        guard continueDispatch(generation, board: board, mode: .run) else { return }
+        guard selectedBoardSlug == board else {
+            dispatchState = KanbanDispatchState(
+                mode: .run,
+                boardSlug: board,
+                phase: .boardUnavailable,
+                result: result,
+                completedAt: completedAt,
+                boardActivityGeneration: boardActivityGeneration
+            )
+            return
+        }
+        let boardSucceeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        guard continueDispatch(generation, board: board, mode: .run) else { return }
+        dispatchState = KanbanDispatchState(
+            mode: .run,
+            boardSlug: board,
+            phase: requestOutcomeIsUncertain || !collectionSucceeded || !boardSucceeded
+                ? .outcomeUncertain
+                : .succeeded,
+            result: result,
+            completedAt: completedAt,
+            boardActivityGeneration: boardActivityGeneration
+        )
     }
 
     func setVisible(_ visible: Bool) {
@@ -1090,6 +1420,7 @@ final class KanbanFeatureState {
         )
         guard originalCards.count == orderedIDs.count else { return }
 
+        boardActivityGeneration &+= 1
         bulkActionSummary = nil
         bulkActionPhase = .submitting
         do {
@@ -1261,6 +1592,7 @@ final class KanbanFeatureState {
               let board = selectedBoardSlug else { return }
 
         let baseline = cardInSnapshot(cardID) ?? card
+        boardActivityGeneration &+= 1
         uncertainProtectedCards[cardID] = nil
         settledDetailStatuses[cardID] = nil
         let mutationID = UUID()
@@ -1395,6 +1727,7 @@ final class KanbanFeatureState {
             dependentID: cardID
         )
         let mutationID = UUID()
+        boardActivityGeneration &+= 1
         activeCardMutationIDs[cardID] = mutationID
         pendingDependencyChanges[cardID] = KanbanPendingDependencyChange(
             prerequisiteID: prerequisiteID,
@@ -1531,6 +1864,7 @@ final class KanbanFeatureState {
     private func replaceCardInSnapshot(_ card: KanbanCard) {
         guard let snapshot, let cardID = normalizedOptional(card.cardID),
               let destination = normalizedOptional(card.status?.rawValue) else { return }
+        boardActivityGeneration &+= 1
         var destinationFound = false
         var columns = (snapshot.columns ?? []).map { column in
             var cards = (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
@@ -1548,6 +1882,7 @@ final class KanbanFeatureState {
 
     private func removeCardFromSnapshot(_ cardID: String) {
         guard let snapshot else { return }
+        boardActivityGeneration &+= 1
         let columns = (snapshot.columns ?? []).map { column in
             KanbanColumn(
                 name: column.name,
@@ -1635,6 +1970,7 @@ final class KanbanFeatureState {
         intendedResult: @escaping (KanbanBoardsResponse) -> Bool
     ) async {
         guard canManageBoards else { return }
+        boardActivityGeneration &+= 1
         boardMutationGeneration &+= 1
         let mutationGeneration = boardMutationGeneration
         boardMutationIntendedResult = intendedResult
@@ -1722,8 +2058,37 @@ final class KanbanFeatureState {
     }
 
     private var boardMutationBlocksWrites: Bool {
+        if dispatchState?.mode == .run, dispatchState?.phase.isInFlight == true {
+            return true
+        }
         guard let phase = boardMutationState?.phase else { return false }
         return phase.isInFlight || phase == .outcomeUncertain
+    }
+
+    private func continueDispatch(
+        _ generation: Int,
+        board: String,
+        mode: KanbanDispatchMode
+    ) -> Bool {
+        generation == dispatchGeneration
+            && dispatchState?.boardSlug == board
+            && dispatchState?.mode == mode
+            && !Task.isCancelled
+    }
+
+    private func clearDispatchIfCurrent(_ generation: Int) {
+        guard generation == dispatchGeneration else { return }
+        dispatchState = nil
+    }
+
+    private func invalidateDispatch() {
+        dispatchGeneration &+= 1
+        dispatchState = nil
+    }
+
+    private func isDispatcherIncompatible(_ error: Error) -> Bool {
+        guard case let APIError.http(statusCode, _) = error else { return false }
+        return statusCode == 404 || statusCode == 405
     }
 
     private func continueBoardMutation(
@@ -1752,6 +2117,7 @@ final class KanbanFeatureState {
     }
 
     private func handleRemovedBoard(_ boardDisplayName: String) {
+        boardActivityGeneration &+= 1
         activeBoardLoadID = nil
         resetLiveUpdates(clearCursor: true)
         resetCardSelection()
@@ -1822,6 +2188,7 @@ final class KanbanFeatureState {
             } else {
                 let report = try validateBrowsingSnapshot(response, board: board)
                 snapshot = applyingPendingOptimism(to: response)
+                boardActivityGeneration &+= 1
                 detailRefreshRevision &+= 1
                 self.report = report
                 state = report.isPartial ? .partial : .compatible
