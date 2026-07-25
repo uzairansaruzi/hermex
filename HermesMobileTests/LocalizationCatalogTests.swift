@@ -186,4 +186,36 @@ final class LocalizationCatalogTests: XCTestCase {
             }
         }
     }
+
+    func testKanbanBoardManagementCopyIsLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let boardKeys = [
+            "Browsing",
+            "Browsing a Board stays local to Hermex. Making a Board active changes shared server state.",
+            "Creating a Board does not make it active.",
+            "Hermex cannot restore an archived Board in-app.",
+            "Icon",
+            "Make Active Board",
+            "Making this Board active changes shared server state for other Hermes clients.",
+            "Slug",
+            "The slug cannot be changed after the Board is created.",
+            "Updating Board..."
+        ]
+
+        for key in boardKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+                let translatedValue = (localization["stringUnit"] as? [String: Any])?["value"] as? String
+                XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses English")
+            }
+        }
+    }
 }

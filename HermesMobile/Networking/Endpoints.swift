@@ -95,6 +95,10 @@ enum Endpoint {
     case cronDeliveryOptions
     case kanbanConfig
     case kanbanBoards
+    case kanbanCreateBoard
+    case kanbanEditBoard(KanbanEditBoardRequest)
+    case kanbanArchiveBoard(KanbanBoardMutationRequest)
+    case kanbanMakeBoardActive(KanbanBoardMutationRequest)
     case kanbanBoard(KanbanBoardRequest)
     case kanbanStats(board: String)
     case kanbanAssignees(board: String)
@@ -308,8 +312,14 @@ enum Endpoint {
             return "/api/crons/delivery-options"
         case .kanbanConfig:
             return "/api/kanban/config"
-        case .kanbanBoards:
+        case .kanbanBoards, .kanbanCreateBoard:
             return "/api/kanban/boards"
+        case let .kanbanEditBoard(request):
+            return "/api/kanban/boards/\(request.slug)"
+        case let .kanbanArchiveBoard(request):
+            return "/api/kanban/boards/\(request.slug)"
+        case let .kanbanMakeBoardActive(request):
+            return "/api/kanban/boards/\(request.slug)/switch"
         case .kanbanBoard:
             return "/api/kanban/board"
         case .kanbanStats:
@@ -515,6 +525,12 @@ enum Endpoint {
         switch self {
         case let .kanbanCardDetail(request):
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID)
+        case let .kanbanEditBoard(request):
+            url = kanbanBoardURL(relativeTo: baseURL, slug: request.slug)
+        case let .kanbanArchiveBoard(request):
+            url = kanbanBoardURL(relativeTo: baseURL, slug: request.slug)
+        case let .kanbanMakeBoardActive(request):
+            url = kanbanBoardURL(relativeTo: baseURL, slug: request.slug, suffix: "/switch")
         case let .kanbanWorkerLog(request):
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID, suffix: "/log")
         case let .kanbanAddComment(request):
@@ -547,6 +563,17 @@ enum Endpoint {
             return root
         }
         components.percentEncodedPath += "/\(encodedCardID)\(suffix)"
+        return components.url ?? root
+    }
+
+    private func kanbanBoardURL(relativeTo baseURL: URL, slug: String, suffix: String = "") -> URL {
+        let root = baseURL.appending(path: "/api/kanban/boards")
+        guard var components = URLComponents(url: root, resolvingAgainstBaseURL: false),
+              let encodedSlug = slug.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentAllowed)
+        else {
+            return root
+        }
+        components.percentEncodedPath += "/\(encodedSlug)\(suffix)"
         return components.url ?? root
     }
 

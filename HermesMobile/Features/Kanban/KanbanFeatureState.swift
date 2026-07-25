@@ -55,6 +55,29 @@ enum KanbanBulkActionPhase: Equatable, Sendable {
     case reconciling
 }
 
+enum KanbanBoardMutationKind: Equatable, Sendable {
+    case create(slug: String)
+    case edit(slug: String)
+    case archive(slug: String)
+    case makeActive(slug: String)
+
+    var slug: String {
+        switch self {
+        case let .create(slug), let .edit(slug), let .archive(slug), let .makeActive(slug):
+            slug
+        }
+    }
+}
+
+struct KanbanBoardMutationState: Equatable, Sendable {
+    let kind: KanbanBoardMutationKind
+    let phase: KanbanCardMutationPhase
+}
+
+struct KanbanBoardSelectionNotice: Equatable, Sendable {
+    let boardName: String
+}
+
 enum KanbanBulkMemberOutcome: Equatable, Sendable {
     case succeeded
     case failed
@@ -147,6 +170,8 @@ final class KanbanFeatureState {
     private(set) var selectedCardIDs: Set<String> = []
     private(set) var bulkActionPhase: KanbanBulkActionPhase?
     private(set) var bulkActionSummary: KanbanBulkActionSummary?
+    private(set) var boardMutationState: KanbanBoardMutationState?
+    private(set) var boardSelectionNotice: KanbanBoardSelectionNotice?
 
     private(set) var selectedBoardSlug: String?
     var selectedStatus = "triage"
@@ -181,6 +206,7 @@ final class KanbanFeatureState {
     private var pendingDependencyChanges: [String: KanbanPendingDependencyChange] = [:]
     private var archiveUndoTask: Task<Void, Never>?
     private var selectedCardsByID: [String: KanbanCard] = [:]
+    private var boardMutationIntendedResult: ((KanbanBoardsResponse) -> Bool)?
 
     init(
         server: URL,
@@ -219,7 +245,28 @@ final class KanbanFeatureState {
     var canMutateCards: Bool {
         canAddComments
             && bulkActionPhase == nil
+            && boardMutationState?.phase.isInFlight != true
             && Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+    }
+
+    var canManageBoards: Bool {
+        canAddComments
+            && bulkActionPhase == nil
+            && activeCardMutationIDs.isEmpty
+            && boardMutationState?.phase.isInFlight != true
+            && boardMutationState?.phase != .outcomeUncertain
+    }
+
+    var sharedActiveBoardSlug: String? {
+        normalizedOptional(boardsResponse?.current)
+    }
+
+    var requiresBoardSelection: Bool {
+        selectedBoardSlug == nil && !boards.isEmpty
+    }
+
+    func canArchiveBoard(_ board: KanbanBoard) -> Bool {
+        canManageBoards && normalizedOptional(board.slug) != "default"
     }
 
     var selectedCardCount: Int { selectedCardIDs.count }
@@ -230,7 +277,11 @@ final class KanbanFeatureState {
 
     private func bulkActionsAvailability(for cardIDs: Set<String>) -> KanbanBulkActionsAvailability {
         if cardIDs.isEmpty { return .noSelection }
-        if bulkActionPhase != nil || !activeCardMutationIDs.isEmpty { return .boardBusy }
+        if bulkActionPhase != nil
+            || !activeCardMutationIDs.isEmpty
+            || boardMutationState?.phase.isInFlight == true {
+            return .boardBusy
+        }
         if isOffline { return .offline }
         if isRefreshing { return .refreshing }
         guard state == .compatible || state == .partial,
@@ -571,6 +622,7 @@ final class KanbanFeatureState {
     }
 
     func load() async {
+        let previouslySelectedBoard = normalizedOptional(selectedBoardSlug)
         archiveUndoTask?.cancel()
         archiveUndo = nil
         clearSettledMutationPresentation()
@@ -602,7 +654,18 @@ final class KanbanFeatureState {
             guard let currentBoard = normalized(boardsResponse.current) else {
                 throw KanbanContractViolation.missingCurrentBoard
             }
-            let snapshot = try await client.kanbanBoard(KanbanBoardRequest(board: currentBoard))
+            let availableBoards = boardsResponse.boards ?? []
+            if let previouslySelectedBoard,
+               !availableBoards.contains(where: { normalized($0.slug) == previouslySelectedBoard }) {
+                self.configuration = configuration
+                self.boardsResponse = boardsResponse
+                boards = availableBoards
+                handleRemovedBoard(previouslySelectedBoard)
+                state = .compatible
+                return
+            }
+            let boardToLoad = previouslySelectedBoard ?? currentBoard
+            let snapshot = try await client.kanbanBoard(KanbanBoardRequest(board: boardToLoad))
             guard isCurrent(loadID) else { return }
 
             let report = try KanbanCompatibilityValidator.validate(
@@ -611,20 +674,21 @@ final class KanbanFeatureState {
                 snapshot: snapshot
             )
             guard isCurrent(loadID) else { return }
-            if selectedBoardSlug != nil, selectedBoardSlug != currentBoard {
+            if selectedBoardSlug != nil, selectedBoardSlug != boardToLoad {
                 resetCardSelection()
             }
             self.configuration = configuration
             self.boardsResponse = boardsResponse
-            boards = boardsResponse.boards ?? []
-            selectedBoardSlug = currentBoard
+            boards = availableBoards
+            selectedBoardSlug = boardToLoad
+            boardSelectionNotice = nil
             self.snapshot = snapshot
             detailRefreshRevision &+= 1
             liveCursor = max(0, snapshot.latestEventID ?? 0)
             self.report = report
             state = report.isPartial ? .partial : .compatible
 
-            await loadSupplementaryReads(board: currentBoard, loadID: loadID)
+            await loadSupplementaryReads(board: boardToLoad, loadID: loadID)
             startLiveUpdatesIfReady()
         } catch is CancellationError {
             guard activeLoadID == loadID else { return }
@@ -647,7 +711,7 @@ final class KanbanFeatureState {
     }
 
     func refresh() async {
-        guard let board = selectedBoardSlug else { return }
+        guard await reconcileBoardCollection(), let board = selectedBoardSlug else { return }
         let generation = liveGeneration
         let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
         guard isSameLiveGeneration(board: board, generation: generation) else { return }
@@ -663,6 +727,7 @@ final class KanbanFeatureState {
     func selectBoard(_ slug: String) async {
         guard activeCardMutationIDs.isEmpty,
               bulkActionPhase == nil,
+              boardMutationState?.phase.isInFlight != true,
               boards.contains(where: { normalized($0.slug) == slug }),
               slug != selectedBoardSlug else { return }
         clearCardSelection()
@@ -671,6 +736,7 @@ final class KanbanFeatureState {
         clearSettledMutationPresentation()
         resetLiveUpdates(clearCursor: true)
         selectedBoardSlug = slug
+        boardSelectionNotice = nil
         snapshot = nil
         stats = nil
         assigneeHistory = nil
@@ -679,6 +745,99 @@ final class KanbanFeatureState {
         state = .compatible
         let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
         if succeeded { startLiveUpdatesIfReady() }
+    }
+
+    func dismissBoardMutationResult() {
+        guard boardMutationState?.phase.isInFlight != true,
+              boardMutationState?.phase != .outcomeUncertain else { return }
+        boardMutationState = nil
+        boardMutationIntendedResult = nil
+    }
+
+    func checkBoardMutationResult() async {
+        guard let mutation = boardMutationState,
+              mutation.phase == .outcomeUncertain,
+              let intendedResult = boardMutationIntendedResult else { return }
+        boardMutationState = KanbanBoardMutationState(kind: mutation.kind, phase: .checkingResult)
+        let response = await fetchBoardCollection()
+        guard boardMutationState?.kind == mutation.kind else { return }
+        if let response {
+            boardMutationState = KanbanBoardMutationState(
+                kind: mutation.kind,
+                phase: intendedResult(response) ? .succeeded : .failed
+            )
+        } else {
+            boardMutationState = KanbanBoardMutationState(
+                kind: mutation.kind,
+                phase: .outcomeUncertain
+            )
+        }
+    }
+
+    func createBoard(_ request: KanbanCreateBoardRequest) async {
+        guard let slug = normalizedOptional(request.slug),
+              let name = normalizedOptional(request.name),
+              canManageBoards else { return }
+        let normalizedRequest = KanbanCreateBoardRequest(
+            slug: slug,
+            name: name,
+            description: request.description.trimmingCharacters(in: .whitespacesAndNewlines),
+            icon: request.icon.trimmingCharacters(in: .whitespacesAndNewlines),
+            color: request.color.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        await performBoardMutation(kind: .create(slug: slug)) {
+            try await self.client.createKanbanBoard(normalizedRequest)
+        } intendedResult: { response in
+            response.boards?.contains(where: { self.normalized($0.slug) == slug }) == true
+        }
+    }
+
+    func editBoard(_ request: KanbanEditBoardRequest) async {
+        guard let slug = normalizedOptional(request.slug),
+              let name = normalizedOptional(request.name),
+              boards.contains(where: { normalized($0.slug) == slug }),
+              canManageBoards else { return }
+        let normalizedRequest = KanbanEditBoardRequest(
+            slug: slug,
+            name: name,
+            description: request.description.trimmingCharacters(in: .whitespacesAndNewlines),
+            icon: request.icon.trimmingCharacters(in: .whitespacesAndNewlines),
+            color: request.color.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        await performBoardMutation(kind: .edit(slug: slug)) {
+            try await self.client.editKanbanBoard(normalizedRequest)
+        } intendedResult: { response in
+            guard let board = response.boards?.first(where: { self.normalized($0.slug) == slug }) else {
+                return false
+            }
+            return self.normalizedOptional(board.name) == normalizedRequest.name
+                && self.normalizedOptional(board.description) == self.normalizedOptional(normalizedRequest.description)
+                && self.normalizedOptional(board.icon) == self.normalizedOptional(normalizedRequest.icon)
+                && self.normalizedOptional(board.color) == self.normalizedOptional(normalizedRequest.color)
+        }
+    }
+
+    func archiveBoard(slug: String) async {
+        guard let slug = normalizedOptional(slug),
+              slug != "default",
+              boards.contains(where: { normalized($0.slug) == slug }),
+              canManageBoards else { return }
+        await performBoardMutation(kind: .archive(slug: slug)) {
+            try await self.client.archiveKanbanBoard(KanbanBoardMutationRequest(slug: slug))
+        } intendedResult: { response in
+            response.boards?.contains(where: { self.normalized($0.slug) == slug }) != true
+        }
+    }
+
+    func makeBoardActive(slug: String) async {
+        guard let slug = normalizedOptional(slug),
+              boards.contains(where: { normalized($0.slug) == slug }),
+              canManageBoards else { return }
+        await performBoardMutation(kind: .makeActive(slug: slug)) {
+            try await self.client.makeKanbanBoardActive(KanbanBoardMutationRequest(slug: slug))
+        } intendedResult: { response in
+            self.normalized(response.current) == slug
+        }
     }
 
     func setVisible(_ visible: Bool) {
@@ -698,7 +857,9 @@ final class KanbanFeatureState {
             suspendLiveUpdates()
             return
         }
-        guard isVisible, snapshot != nil, let board = selectedBoardSlug else { return }
+        guard isVisible, snapshot != nil,
+              await reconcileBoardCollection(),
+              let board = selectedBoardSlug else { return }
         let generation = liveGeneration
         let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
         guard isCurrentLiveWork(board: board, generation: generation) else { return }
@@ -1400,6 +1561,93 @@ final class KanbanFeatureState {
         return false
     }
 
+    private func performBoardMutation(
+        kind: KanbanBoardMutationKind,
+        write: () async throws -> KanbanBoardMutationEnvelope,
+        intendedResult: @escaping (KanbanBoardsResponse) -> Bool
+    ) async {
+        guard canManageBoards else { return }
+        boardMutationIntendedResult = intendedResult
+        boardMutationState = KanbanBoardMutationState(kind: kind, phase: .updating)
+        var definitiveFailure = false
+        do {
+            _ = try await write()
+        } catch {
+            forwardAuthentication(error)
+            definitiveFailure = isDefinitiveWriteFailure(error)
+        }
+
+        if !definitiveFailure {
+            boardMutationState = KanbanBoardMutationState(kind: kind, phase: .checkingResult)
+        }
+        let response = await fetchBoardCollection()
+        guard boardMutationState?.kind == kind else { return }
+        if definitiveFailure {
+            boardMutationState = KanbanBoardMutationState(kind: kind, phase: .failed)
+        } else if let response {
+            boardMutationState = KanbanBoardMutationState(
+                kind: kind,
+                phase: intendedResult(response) ? .succeeded : .failed
+            )
+        } else {
+            boardMutationState = KanbanBoardMutationState(kind: kind, phase: .outcomeUncertain)
+        }
+    }
+
+    @discardableResult
+    private func reconcileBoardCollection() async -> Bool {
+        await fetchBoardCollection() != nil
+    }
+
+    private func fetchBoardCollection() async -> KanbanBoardsResponse? {
+        do {
+            let response = try await client.kanbanBoards()
+            guard let availableBoards = response.boards,
+                  normalizedOptional(response.current) != nil else {
+                return nil
+            }
+            let previousBoards = boards
+            boardsResponse = response
+            boards = availableBoards
+            if let selectedBoardSlug,
+               !availableBoards.contains(where: { normalized($0.slug) == selectedBoardSlug }) {
+                let previousName = previousBoards
+                    .first(where: { normalized($0.slug) == selectedBoardSlug })?
+                    .name
+                handleRemovedBoard(previousName ?? selectedBoardSlug)
+            }
+            isOffline = false
+            return response
+        } catch {
+            markOfflineIfNeeded(error)
+            forwardAuthentication(error)
+            return nil
+        }
+    }
+
+    private func handleRemovedBoard(_ boardName: String) {
+        activeBoardLoadID = nil
+        resetLiveUpdates(clearCursor: true)
+        resetCardSelection()
+        archiveUndoTask?.cancel()
+        archiveUndo = nil
+        clearSettledMutationPresentation()
+        activeCardMutationIDs.removeAll()
+        pendingOptimisticStatuses.removeAll()
+        pendingDependencyChanges.removeAll()
+        uncertainProtectedCards.removeAll()
+        bulkActionPhase = nil
+        bulkActionSummary = nil
+        selectedBoardSlug = nil
+        snapshot = nil
+        stats = nil
+        assigneeHistory = nil
+        report = nil
+        capabilityWarnings = []
+        refreshFailed = false
+        boardSelectionNotice = KanbanBoardSelectionNotice(boardName: boardName)
+    }
+
     private func normalizedOptional(_ value: String?) -> String? {
         let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return value?.isEmpty == false ? value : nil
@@ -1456,6 +1704,10 @@ final class KanbanFeatureState {
             return false
         } catch {
             guard isCurrentBoardLoad(boardLoadID, board: board) else { return false }
+            if isNotFound(error) {
+                _ = await reconcileBoardCollection()
+                if selectedBoardSlug == nil { return false }
+            }
             refreshFailed = true
             markOfflineIfNeeded(error)
             forwardAuthentication(error)

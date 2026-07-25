@@ -111519,6 +111519,216 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "還原封存" } }
       }
     },
+    "Browsing" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "قيد التصفح" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Geöffnet" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Explorando" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Parcouru" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "בגלישה" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "In consultazione" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "閲覧中" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "탐색 중" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bekeken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przeglądana" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Em navegação" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Открыта" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Görüntüleniyor" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "زیرِ مطالعہ" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "正在瀏覽" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在浏览" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在瀏覽" } }
+      }
+    },
+    "Browsing a Board stays local to Hermex. Making a Board active changes shared server state." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "يبقى تصفح اللوحة محليًا في Hermex. جعل اللوحة نشطة يغيّر حالة الخادم المشتركة." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Öffnen eines Boards bleibt lokal in Hermex. Das Aktivieren eines Boards ändert den gemeinsamen Serverstatus." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Explorar un tablero es local en Hermex. Activarlo cambia el estado compartido del servidor." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Parcourir un tableau reste local à Hermex. L’activer modifie l’état partagé du serveur." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "גלישה בלוח נשארת מקומית ב-Hermex. הפיכת לוח לפעיל משנה את מצב השרת המשותף." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Consultare una bacheca resta locale in Hermex. Attivarla cambia lo stato condiviso del server." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードの閲覧はHermex内だけの操作です。ボードをアクティブにすると共有サーバーの状態が変わります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드 탐색은 Hermex에만 적용됩니다. 보드를 활성화하면 공유 서버 상태가 변경됩니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Een bord bekijken blijft lokaal in Hermex. Een bord actief maken wijzigt de gedeelde serverstatus." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przeglądanie tablicy pozostaje lokalne w Hermex. Ustawienie jej jako aktywnej zmienia współdzielony stan serwera." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Navegar por um quadro permanece local no Hermex. Ativá-lo altera o estado compartilhado do servidor." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Просмотр доски остаётся локальным в Hermex. Активация доски меняет общее состояние сервера." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Bir panoya göz atmak Hermex’te yerel kalır. Panoyu etkinleştirmek paylaşılan sunucu durumunu değiştirir." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ دیکھنا Hermex تک مقامی رہتا ہے۔ بورڈ فعال کرنے سے مشترکہ سرور کی حالت بدلتی ہے۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "瀏覽看板只會影響 Hermex。將看板設為作用中會更改共享伺服器狀態。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "浏览看板只会影响 Hermex。将看板设为当前会更改共享服务器状态。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "瀏覽看板只會影響 Hermex。將看板設為作用中會更改共享伺服器狀態。" } }
+      }
+    },
+    "Creating a Board does not make it active." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إنشاء لوحة لا يجعلها نشطة." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Beim Erstellen wird das Board nicht aktiviert." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Crear un tablero no lo activa." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Créer un tableau ne l’active pas." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "יצירת לוח אינה הופכת אותו לפעיל." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "La creazione di una bacheca non la rende attiva." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードを作成してもアクティブにはなりません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드를 만들어도 활성 보드로 변경되지 않습니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Een bord maken maakt het niet actief." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Utworzenie tablicy nie ustawia jej jako aktywnej." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Criar um quadro não o torna ativo." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Создание доски не делает её активной." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Pano oluşturmak onu etkinleştirmez." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ بنانے سے وہ فعال نہیں ہوتا۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "建立看板不會將它設為作用中。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "创建看板不会将其设为当前看板。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建立看板不會將它設為作用中。" } }
+      }
+    },
+    "Hermex cannot restore an archived Board in-app." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "لا يستطيع Hermex استعادة لوحة مؤرشفة من داخل التطبيق." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Hermex kann ein archiviertes Board nicht in der App wiederherstellen." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Hermex no puede restaurar un tablero archivado desde la app." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Hermex ne peut pas restaurer un tableau archivé dans l’app." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "Hermex לא יכול לשחזר לוח שהועבר לארכיון מתוך היישום." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Hermex non può ripristinare nell’app una bacheca archiviata." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Hermexアプリ内ではアーカイブ済みボードを復元できません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "Hermex 앱에서는 보관된 보드를 복원할 수 없습니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Hermex kan een gearchiveerd bord niet in de app herstellen." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Hermex nie może przywrócić zarchiwizowanej tablicy w aplikacji." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "O Hermex não pode restaurar um quadro arquivado pelo app." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Hermex не может восстановить архивную доску в приложении." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Hermex arşivlenmiş bir panoyu uygulama içinden geri yükleyemez." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "Hermex ایپ میں محفوظ شدہ بورڈ بحال نہیں کر سکتا۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "Hermex 無法在 App 內還原已封存的看板。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Hermex 无法在 App 内恢复已归档的看板。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Hermex 無法在 App 內還原已封存的看板。" } }
+      }
+    },
+    "Icon" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الأيقونة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Symbol" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Icono" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Icône" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "סמל" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Icona" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アイコン" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "아이콘" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Pictogram" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Ikona" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ícone" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Значок" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Simge" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "آئیکن" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "圖示" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图标" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "圖示" } }
+      }
+    },
+    "Make Active Board" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "جعل اللوحة نشطة" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Board aktivieren" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Activar tablero" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Activer le tableau" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הפיכת הלוח לפעיל" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Attiva bacheca" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードをアクティブにする" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드를 활성화" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bord actief maken" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Ustaw tablicę jako aktywną" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ativar quadro" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Сделать доску активной" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Panoyu etkinleştir" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ فعال کریں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "將看板設為作用中" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "将看板设为当前" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "將看板設為作用中" } }
+      }
+    },
+    "Making this Board active changes shared server state for other Hermes clients." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "جعل هذه اللوحة نشطة يغيّر حالة الخادم المشتركة لعملاء Hermes الآخرين." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Aktivieren dieses Boards ändert den gemeinsamen Serverstatus für andere Hermes-Clients." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Activar este tablero cambia el estado compartido del servidor para otros clientes de Hermes." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Activer ce tableau modifie l’état partagé du serveur pour les autres clients Hermes." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הפיכת לוח זה לפעיל משנה את מצב השרת המשותף עבור לקוחות Hermes אחרים." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Attivare questa bacheca cambia lo stato condiviso del server per gli altri client Hermes." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このボードをアクティブにすると、他のHermesクライアントにも見える共有サーバー状態が変わります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 보드를 활성화하면 다른 Hermes 클라이언트가 공유하는 서버 상태가 변경됩니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Dit bord actief maken wijzigt de gedeelde serverstatus voor andere Hermes-clients." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Ustawienie tej tablicy jako aktywnej zmienia współdzielony stan serwera dla innych klientów Hermes." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ativar este quadro altera o estado compartilhado do servidor para outros clientes Hermes." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Активация этой доски меняет общее состояние сервера для других клиентов Hermes." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Bu panoyu etkinleştirmek diğer Hermes istemcileri için paylaşılan sunucu durumunu değiştirir." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "اس بورڈ کو فعال کرنے سے دیگر Hermes کلائنٹس کے لیے مشترکہ سرور کی حالت بدلتی ہے۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "將此看板設為作用中會更改其他 Hermes 用戶端共用的伺服器狀態。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "将此看板设为当前会更改其他 Hermes 客户端共享的服务器状态。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "將此看板設為作用中會更改其他 Hermes 用戶端共用的伺服器狀態。" } }
+      }
+    },
+    "Slug" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "المعرّف" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kurzname" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Identificador" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Identifiant" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "מזהה" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Identificatore" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スラッグ" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "슬러그" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Korte naam" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Identyfikator" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Identificador" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Идентификатор" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Kısa ad" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "شناختی نام" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "識別碼" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "标识符" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "識別碼" } }
+      }
+    },
+    "The slug cannot be changed after the Board is created." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "لا يمكن تغيير المعرّف بعد إنشاء اللوحة." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Kurzname kann nach dem Erstellen des Boards nicht geändert werden." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "El identificador no se puede cambiar después de crear el tablero." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "L’identifiant ne peut plus être modifié après la création du tableau." } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "לא ניתן לשנות את המזהה לאחר יצירת הלוח." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "L’identificatore non può essere modificato dopo la creazione della bacheca." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボード作成後はスラッグを変更できません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드를 만든 후에는 슬러그를 변경할 수 없습니다." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "De korte naam kan na het maken van het bord niet worden gewijzigd." } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Identyfikatora nie można zmienić po utworzeniu tablicy." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "O identificador não pode ser alterado após a criação do quadro." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Идентификатор нельзя изменить после создания доски." } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Pano oluşturulduktan sonra kısa ad değiştirilemez." } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ بننے کے بعد شناختی نام تبدیل نہیں کیا جا سکتا۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "建立看板後便無法更改識別碼。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "创建看板后无法更改标识符。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建立看板後便無法更改識別碼。" } }
+      }
+    },
+    "Updating Board..." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "جارٍ تحديث اللوحة..." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Board wird aktualisiert …" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Actualizando tablero…" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mise à jour du tableau…" } },
+        "he" : { "stringUnit" : { "state" : "translated", "value" : "הלוח מתעדכן..." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiornamento bacheca…" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードを更新中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드 업데이트 중…" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bord bijwerken…" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Aktualizowanie tablicy…" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Atualizando quadro…" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Обновление доски…" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Pano güncelleniyor…" } },
+        "ur" : { "stringUnit" : { "state" : "translated", "value" : "بورڈ اپ ڈیٹ ہو رہا ہے..." } },
+        "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "正在更新看板⋯" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在更新看板…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在更新看板⋯" } }
+      }
+    },
     "Update failed" : {
       "localizations" : {
         "ar" : { "stringUnit" : { "state" : "translated", "value" : "فشل التحديث" } },

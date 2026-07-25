@@ -3,6 +3,10 @@ import Foundation
 protocol KanbanDataClient: Sendable {
     func kanbanConfiguration() async throws -> KanbanConfiguration
     func kanbanBoards() async throws -> KanbanBoardsResponse
+    func createKanbanBoard(_ request: KanbanCreateBoardRequest) async throws -> KanbanBoardMutationEnvelope
+    func editKanbanBoard(_ request: KanbanEditBoardRequest) async throws -> KanbanBoardMutationEnvelope
+    func archiveKanbanBoard(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope
+    func makeKanbanBoardActive(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope
     func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot
     func kanbanStats(board: String) async throws -> KanbanStats
     func kanbanAssignees(board: String) async throws -> KanbanAssigneeHistory
@@ -21,6 +25,22 @@ protocol KanbanDataClient: Sendable {
 }
 
 extension KanbanDataClient {
+    func createKanbanBoard(_ request: KanbanCreateBoardRequest) async throws -> KanbanBoardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.createBoard
+    }
+
+    func editKanbanBoard(_ request: KanbanEditBoardRequest) async throws -> KanbanBoardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.editBoard
+    }
+
+    func archiveKanbanBoard(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.archiveBoard
+    }
+
+    func makeKanbanBoardActive(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope {
+        throw KanbanUnsupportedClientMethod.makeBoardActive
+    }
+
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
         throw KanbanUnsupportedClientMethod.cardDetail
     }
@@ -67,6 +87,10 @@ extension KanbanDataClient {
 }
 
 private enum KanbanUnsupportedClientMethod: Error {
+    case createBoard
+    case editBoard
+    case archiveBoard
+    case makeBoardActive
     case cardDetail
     case workerLog
     case addComment
@@ -87,6 +111,36 @@ extension APIClient: KanbanDataClient {
 
     func kanbanBoards() async throws -> KanbanBoardsResponse {
         try await kanbanJSON(endpoint: .kanbanBoards)
+    }
+
+    func createKanbanBoard(_ request: KanbanCreateBoardRequest) async throws -> KanbanBoardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanCreateBoard,
+            method: "POST",
+            body: KanbanCreateBoardBody(request: request)
+        )
+    }
+
+    func editKanbanBoard(_ request: KanbanEditBoardRequest) async throws -> KanbanBoardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanEditBoard(request),
+            method: "PATCH",
+            body: KanbanEditBoardBody(request: request)
+        )
+    }
+
+    func archiveKanbanBoard(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanArchiveBoard(request),
+            method: "DELETE"
+        )
+    }
+
+    func makeKanbanBoardActive(_ request: KanbanBoardMutationRequest) async throws -> KanbanBoardMutationEnvelope {
+        try await kanbanJSON(
+            endpoint: .kanbanMakeBoardActive(request),
+            method: "POST"
+        )
     }
 
     func kanbanBoard(_ request: KanbanBoardRequest) async throws -> KanbanBoardSnapshot {
@@ -193,9 +247,16 @@ extension APIClient: KanbanDataClient {
     }
 
     private func kanbanJSON<Response: Decodable>(endpoint: Endpoint) async throws -> Response {
+        try await kanbanJSON(endpoint: endpoint, method: "GET")
+    }
+
+    private func kanbanJSON<Response: Decodable>(
+        endpoint: Endpoint,
+        method: String
+    ) async throws -> Response {
         let (data, response) = try await sendDataReturningResponse(
             endpoint: endpoint,
-            method: "GET",
+            method: method,
             encodedBody: nil
         )
         let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
@@ -223,6 +284,38 @@ extension APIClient: KanbanDataClient {
             throw KanbanResponseError.nonJSONContentType
         }
         return try decode(Response.self, from: data)
+    }
+}
+
+private struct KanbanCreateBoardBody: Encodable {
+    let slug: String
+    let name: String
+    let description: String
+    let icon: String
+    let color: String
+
+    init(request: KanbanCreateBoardRequest) {
+        slug = request.slug
+        name = request.name
+        description = request.description
+        icon = request.icon
+        color = request.color
+    }
+}
+
+private struct KanbanEditBoardBody: Encodable {
+    let request: KanbanEditBoardRequest
+
+    enum CodingKeys: CodingKey {
+        case name, description, icon, color
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(request.name, forKey: .name)
+        try container.encode(request.description, forKey: .description)
+        try container.encode(request.icon, forKey: .icon)
+        try container.encode(request.color, forKey: .color)
     }
 }
 

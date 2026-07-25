@@ -812,7 +812,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.bulkActionSummary?.succeededCount, 2)
     }
 
-    func testReloadToAnotherBoardClearsSelectionDuringBulkSubmission() async throws {
+    func testReloadAfterBrowsedBoardRemovalClearsSelectionDuringBulkSubmission() async throws {
         let client = BulkActionClient(
             boardSnapshots: [
                 bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
@@ -838,7 +838,8 @@ final class KanbanFeatureStateTests: XCTestCase {
         await client.waitForDeferredBulkResponse()
         await state.load()
 
-        XCTAssertEqual(state.selectedBoardSlug, "release")
+        XCTAssertNil(state.selectedBoardSlug)
+        XCTAssertEqual(state.boardSelectionNotice?.boardName, "main")
         XCTAssertFalse(state.isSelectingCards)
         XCTAssertTrue(state.selectedCardIDs.isEmpty)
 
@@ -862,6 +863,197 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.bulkActionSummary?.failedCount, 1)
         XCTAssertEqual(state.selectedCardIDs, ["CARD-4"])
         XCTAssertTrue(state.canRetryFailedBulkAction)
+    }
+
+    func testBoardWritesSerializeAndCreationNeverChangesLocalOrSharedSelection() async throws {
+        let client = BoardManagementClient(
+            boardsResponses: [
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+                )),
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
+                ))
+            ],
+            defersCreate: true
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        let creation = Task {
+            await state.createBoard(KanbanCreateBoardRequest(
+                slug: "release",
+                name: "Release",
+                description: "",
+                icon: "",
+                color: ""
+            ))
+        }
+        await client.waitForDeferredCreate()
+        XCTAssertEqual(state.boardMutationState?.phase, .updating)
+
+        await state.makeBoardActive(slug: "main")
+        let makeActiveRequestCount = await client.makeActiveRequestCount
+        XCTAssertEqual(makeActiveRequestCount, 0)
+
+        await client.resumeDeferredCreate()
+        await creation.value
+
+        let createRequestCount = await client.createRequestCount
+        XCTAssertEqual(createRequestCount, 1)
+        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
+        XCTAssertEqual(state.selectedBoardSlug, "main")
+        XCTAssertEqual(state.sharedActiveBoardSlug, "main")
+        XCTAssertTrue(state.boards.contains { $0.slug == "release" })
+    }
+
+    func testRemoteSharedActiveChangeNeverNavigatesLocallyBrowsedBoard() async {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"main","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"release","read_only":false}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        await state.refresh()
+
+        XCTAssertEqual(state.sharedActiveBoardSlug, "release")
+        XCTAssertEqual(state.selectedBoardSlug, "main")
+        let lastBoardRequest = await client.boardRequests().last
+        XCTAssertEqual(lastBoardRequest?.board, "main")
+    }
+
+    func testRemoteArchiveReturnsToBoardSelectionAndTearsDownBoardState() async throws {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        await state.selectBoard("release")
+        state.beginSelectingCards()
+        if let card = state.allCards.first { state.toggleCardSelection(card) }
+
+        await state.refresh()
+
+        XCTAssertNil(state.selectedBoardSlug)
+        XCTAssertNil(state.snapshot)
+        XCTAssertTrue(state.selectedCardIDs.isEmpty)
+        XCTAssertEqual(state.boardSelectionNotice?.boardName, "Release")
+        XCTAssertTrue(state.requiresBoardSelection)
+    }
+
+    func testAmbiguousBoardWriteChecksAuthoritativeListAndDefaultArchiveIsBlocked() async {
+        let client = BoardManagementClient(
+            boardsResponses: [
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"default"}],"current":"default","read_only":false}"#
+                )),
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"default"},{"slug":"release"}],"current":"default","read_only":false}"#
+                ))
+            ],
+            createResult: .failure(APIError.network(underlying: URLError(.timedOut)))
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        await state.archiveBoard(slug: "default")
+        let archiveRequestCount = await client.archiveRequestCount
+        XCTAssertEqual(archiveRequestCount, 0)
+
+        await state.createBoard(KanbanCreateBoardRequest(
+            slug: "release",
+            name: "Release",
+            description: "",
+            icon: "",
+            color: ""
+        ))
+
+        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
+        XCTAssertEqual(state.selectedBoardSlug, "default")
+    }
+
+    func testUncertainBoardWriteBlocksRetryUntilAnotherAuthoritativeCheck() async {
+        let client = BoardManagementClient(
+            boardsResponses: [
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#
+                )),
+                .failure(APIError.network(underlying: URLError(.networkConnectionLost))),
+                .success(mutationDecode(
+                    #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"main","read_only":false}"#
+                ))
+            ],
+            createResult: .failure(APIError.network(underlying: URLError(.timedOut)))
+        )
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        await state.createBoard(KanbanCreateBoardRequest(
+            slug: "release",
+            name: "Release",
+            description: "",
+            icon: "",
+            color: ""
+        ))
+
+        XCTAssertEqual(state.boardMutationState?.phase, .outcomeUncertain)
+        XCTAssertFalse(state.canManageBoards)
+        await state.checkBoardMutationResult()
+        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
+        XCTAssertTrue(state.canManageBoards)
+    }
+
+    func testEditActivateAndArchiveReconcileTheBoardCollection() async {
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"default","name":"Default"},{"slug":"release","name":"Old"}],"current":"default","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                ##"{"boards":[{"slug":"default","name":"Default"},{"slug":"release","name":"Release","description":"","icon":"🚀","color":"#00AAFF"}],"current":"default","read_only":false}"##
+            )),
+            .success(mutationDecode(
+                ##"{"boards":[{"slug":"default","name":"Default"},{"slug":"release","name":"Release","description":"","icon":"🚀","color":"#00AAFF"}],"current":"release","read_only":false}"##
+            )),
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"default","name":"Default"}],"current":"default","read_only":false}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        await state.editBoard(KanbanEditBoardRequest(
+            slug: "release",
+            name: "Release",
+            description: "",
+            icon: "🚀",
+            color: "#00AAFF"
+        ))
+        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
+
+        await state.makeBoardActive(slug: "release")
+        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
+        XCTAssertEqual(state.sharedActiveBoardSlug, "release")
+        XCTAssertEqual(state.selectedBoardSlug, "default")
+
+        await state.archiveBoard(slug: "release")
+        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
+        XCTAssertFalse(state.boards.contains { $0.slug == "release" })
+        let editRequest = await client.editRequests().first
+        let activeRequest = await client.activeRequests().first
+        let archiveRequest = await client.archiveRequests().first
+        XCTAssertEqual(editRequest?.slug, "release")
+        XCTAssertEqual(activeRequest?.slug, "release")
+        XCTAssertEqual(archiveRequest?.slug, "release")
     }
 
     private func waitUntil(
@@ -936,6 +1128,98 @@ private actor KanbanClientStub: KanbanDataClient {
     }
 
     func calls() -> [Call] { recordedCalls }
+}
+
+private actor BoardManagementClient: KanbanDataClient {
+    private var boardsResponses: [Result<KanbanBoardsResponse, Error>]
+    private let createResult: Result<KanbanBoardMutationEnvelope, Error>
+    private var createContinuation: CheckedContinuation<Void, Never>?
+    private let defersCreate: Bool
+    private var shouldDeferCreate: Bool
+    private var recordedBoardRequests: [KanbanBoardRequest] = []
+    private var recordedEditRequests: [KanbanEditBoardRequest] = []
+    private var recordedArchiveRequests: [KanbanBoardMutationRequest] = []
+    private var recordedActiveRequests: [KanbanBoardMutationRequest] = []
+    private(set) var createRequestCount = 0
+    private(set) var archiveRequestCount = 0
+    private(set) var makeActiveRequestCount = 0
+
+    init(
+        boardsResponses: [Result<KanbanBoardsResponse, Error>],
+        createResult: Result<KanbanBoardMutationEnvelope, Error> = .success(
+            mutationDecode(#"{"board":{"slug":"release"},"current":"main","read_only":false}"#)
+        ),
+        defersCreate: Bool = false
+    ) {
+        self.boardsResponses = boardsResponses
+        self.createResult = createResult
+        self.defersCreate = defersCreate
+        shouldDeferCreate = defersCreate
+    }
+
+    func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
+
+    func kanbanBoards() throws -> KanbanBoardsResponse {
+        if boardsResponses.count > 1 {
+            return try boardsResponses.removeFirst().get()
+        }
+        return try boardsResponses[0].get()
+    }
+
+    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
+        recordedBoardRequests.append(request)
+        return KanbanFixtures.richSnapshot
+    }
+
+    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
+
+    func createKanbanBoard(_ request: KanbanCreateBoardRequest) async throws -> KanbanBoardMutationEnvelope {
+        createRequestCount += 1
+        if shouldDeferCreate {
+            shouldDeferCreate = false
+            await withCheckedContinuation { createContinuation = $0 }
+        }
+        return try createResult.get()
+    }
+
+    func archiveKanbanBoard(
+        _ request: KanbanBoardMutationRequest
+    ) -> KanbanBoardMutationEnvelope {
+        archiveRequestCount += 1
+        recordedArchiveRequests.append(request)
+        return mutationDecode(#"{"current":"main","read_only":false}"#)
+    }
+
+    func editKanbanBoard(
+        _ request: KanbanEditBoardRequest
+    ) -> KanbanBoardMutationEnvelope {
+        recordedEditRequests.append(request)
+        return mutationDecode(#"{"board":{"slug":"\#(request.slug)"},"read_only":false}"#)
+    }
+
+    func makeKanbanBoardActive(
+        _ request: KanbanBoardMutationRequest
+    ) -> KanbanBoardMutationEnvelope {
+        makeActiveRequestCount += 1
+        recordedActiveRequests.append(request)
+        return mutationDecode(#"{"current":"\#(request.slug)","read_only":false}"#)
+    }
+
+    func boardRequests() -> [KanbanBoardRequest] { recordedBoardRequests }
+    func editRequests() -> [KanbanEditBoardRequest] { recordedEditRequests }
+    func archiveRequests() -> [KanbanBoardMutationRequest] { recordedArchiveRequests }
+    func activeRequests() -> [KanbanBoardMutationRequest] { recordedActiveRequests }
+
+    func waitForDeferredCreate() async {
+        guard defersCreate else { return }
+        while createContinuation == nil { await Task.yield() }
+    }
+
+    func resumeDeferredCreate() {
+        createContinuation?.resume()
+        createContinuation = nil
+    }
 }
 
 private actor DeferredFirstConfigurationClient: KanbanDataClient {

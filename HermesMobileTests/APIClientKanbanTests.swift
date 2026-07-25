@@ -75,6 +75,106 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(snapshot.latestEventID, 42)
     }
 
+    func testBoardManagementUsesExactVerifiedRequestsWithoutImplicitSwitchOrHardDelete() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertNil(components?.query)
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Origin"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
+
+            switch requestIndex {
+            case 0:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/boards")
+                let data = try XCTUnwrap(apiTestBodyData(from: request))
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+                XCTAssertEqual(Set(body.keys), ["slug", "name", "description", "icon", "color"])
+                XCTAssertEqual(body["slug"] as? String, "release board")
+                XCTAssertNil(body["switch"], "Creation must never implicitly change shared active-Board state.")
+                return apiTestJSONResponse(
+                    #"{"board":{"slug":"release board","name":"Release"},"current":"main","read_only":false}"#,
+                    for: request
+                )
+            case 1:
+                XCTAssertEqual(request.httpMethod, "PATCH")
+                XCTAssertEqual(components?.path, "/api/kanban/boards/release board")
+                let data = try XCTUnwrap(apiTestBodyData(from: request))
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+                XCTAssertEqual(Set(body.keys), ["name", "description", "icon", "color"])
+                XCTAssertNil(body["slug"])
+                XCTAssertEqual(body["description"] as? String, "")
+                return apiTestJSONResponse(
+                    #"{"board":{"slug":"release board","name":"Release 2"},"read_only":false}"#,
+                    for: request
+                )
+            case 2:
+                XCTAssertEqual(request.httpMethod, "DELETE")
+                XCTAssertEqual(components?.path, "/api/kanban/boards/release board")
+                XCTAssertNil(request.httpBody)
+                XCTAssertFalse(request.url?.absoluteString.contains("delete=") == true)
+                return apiTestJSONResponse(
+                    #"{"result":{"action":"archived"},"current":"main","read_only":false}"#,
+                    for: request
+                )
+            default:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/boards/release board/switch")
+                XCTAssertNil(request.httpBody)
+                return apiTestJSONResponse(
+                    #"{"current":"release board","read_only":false,"future":true}"#,
+                    for: request
+                )
+            }
+        }
+
+        let created = try await client.createKanbanBoard(KanbanCreateBoardRequest(
+            slug: "release board",
+            name: "Release",
+            description: "Ship work",
+            icon: "🚀",
+            color: "#7AA2FF"
+        ))
+        let edited = try await client.editKanbanBoard(KanbanEditBoardRequest(
+            slug: "release board",
+            name: "Release 2",
+            description: "",
+            icon: "📦",
+            color: "#00AAFF"
+        ))
+        let archived = try await client.archiveKanbanBoard(
+            KanbanBoardMutationRequest(slug: "release board")
+        )
+        let activated = try await client.makeKanbanBoardActive(
+            KanbanBoardMutationRequest(slug: "release board")
+        )
+
+        XCTAssertEqual(created.current, "main")
+        XCTAssertEqual(edited.board?.name, "Release 2")
+        XCTAssertEqual(archived.current, "main")
+        XCTAssertEqual(activated.current, "release board")
+    }
+
+    func testBoardManagementPathKeepsSlugInOneEncodedSegmentAndResponsesDecodeTolerantly() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/kanban/boards/../release/switch")
+            XCTAssertTrue(request.url?.absoluteString.contains("%2E%2E%2Frelease") == true)
+            return apiTestJSONResponse(
+                #"{"current":42,"read_only":"false","unknown":{"db_path":"/secret"}}"#,
+                for: request
+            )
+        }
+
+        let result = try await client.makeKanbanBoardActive(
+            KanbanBoardMutationRequest(slug: "../release")
+        )
+
+        XCTAssertEqual(result.current, "42")
+        XCTAssertEqual(result.readOnly, false)
+    }
+
     func testEventPollingUsesVerifiedCursorEnvelopeAndBounds() async throws {
         let client = makeClient { request in
             let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)

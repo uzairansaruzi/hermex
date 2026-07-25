@@ -22,6 +22,7 @@ struct KanbanStatusFocusView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var model: KanbanFeatureState
     @State private var showsFilters = false
+    @State private var showsBoardManagement = false
     @State private var visibleModel: KanbanFeatureState?
     @State private var cardEditor: KanbanCardEditorState?
     @State private var pendingRunningAction: KanbanPendingCardAction?
@@ -71,6 +72,11 @@ struct KanbanStatusFocusView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $showsFilters) {
             KanbanFiltersView(model: model)
+        }
+        .sheet(isPresented: $showsBoardManagement) {
+            NavigationStack {
+                KanbanBoardManagementView(model: model)
+            }
         }
         .sheet(item: $cardEditor) { editor in
             KanbanCardEditorView(
@@ -170,6 +176,12 @@ struct KanbanStatusFocusView: View {
 
     private var boardContent: some View {
         VStack(spacing: 0) {
+            if let notice = model.boardSelectionNotice {
+                boardSelectionNotice(notice)
+            }
+            if model.requiresBoardSelection {
+                boardSelectionContent
+            } else {
             if model.state == .partial {
                 compatibilityBanner
             }
@@ -195,6 +207,40 @@ struct KanbanStatusFocusView: View {
             statusSelector
             Divider()
             cardList
+            }
+        }
+    }
+
+    private func boardSelectionNotice(_ notice: KanbanBoardSelectionNotice) -> some View {
+        Label {
+            Text("This Board no longer exists. Return to Kanban to choose another Board.")
+        } icon: {
+            Image(systemName: "rectangle.stack.badge.minus")
+        }
+        .font(.footnote)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.orange.opacity(0.12))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Text(notice.boardName))
+    }
+
+    private var boardSelectionContent: some View {
+        ContentUnavailableView {
+            Label("Board", systemImage: "rectangle.stack")
+        } description: {
+            Text("This Board no longer exists. Return to Kanban to choose another Board.")
+        } actions: {
+            Menu("Board") {
+                ForEach(model.boards, id: \.slug) { board in
+                    if let slug = board.slug {
+                        Button(board.name ?? slug) {
+                            Task { await model.selectBoard(slug) }
+                        }
+                    }
+                }
+            }
+            .frame(minHeight: 44)
         }
     }
 
@@ -713,6 +759,12 @@ struct KanbanStatusFocusView: View {
                         }
                     }
                 }
+                Divider()
+                Button {
+                    showsBoardManagement = true
+                } label: {
+                    Label("Manage", systemImage: "slider.horizontal.3")
+                }
             } label: {
                 HStack(spacing: 4) {
                     Text(model.selectedBoard?.name ?? model.selectedBoardSlug ?? String(localized: "Board"))
@@ -775,6 +827,327 @@ struct KanbanStatusFocusView: View {
         } actions: {
             Button("Try Again") { Task { await model.retry() } }
                 .frame(minHeight: 44)
+        }
+    }
+}
+
+private enum KanbanBoardEditorMode: Identifiable {
+    case create
+    case edit(KanbanBoard)
+
+    var id: String {
+        switch self {
+        case .create: "create"
+        case let .edit(board): "edit-\(board.slug ?? "")"
+        }
+    }
+}
+
+private struct KanbanBoardManagementView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var model: KanbanFeatureState
+    @State private var editorMode: KanbanBoardEditorMode?
+    @State private var pendingArchive: KanbanBoard?
+    @State private var pendingActivation: KanbanBoard?
+
+    var body: some View {
+        List {
+            if let mutation = model.boardMutationState {
+                Section {
+                    boardMutationStatus(mutation)
+                }
+            }
+
+            Section {
+                ForEach(model.boards, id: \.slug) { board in
+                    boardRow(board)
+                }
+            } footer: {
+                Text("Browsing a Board stays local to Hermex. Making a Board active changes shared server state.")
+            }
+        }
+        .navigationTitle("Manage")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.dismissBoardMutationResult()
+                    editorMode = .create
+                } label: {
+                    Label("Create", systemImage: "plus")
+                }
+                .disabled(!model.canManageBoards)
+                .accessibilityHint(Text("Creating a Board does not make it active."))
+            }
+        }
+        .sheet(item: $editorMode) { mode in
+            NavigationStack {
+                KanbanBoardEditorView(model: model, mode: mode)
+            }
+        }
+        .alert(
+            "Archive",
+            isPresented: Binding(
+                get: { pendingArchive != nil },
+                set: { if !$0 { pendingArchive = nil } }
+            ),
+            presenting: pendingArchive
+        ) { board in
+            Button("Cancel", role: .cancel) { pendingArchive = nil }
+            Button("Archive", role: .destructive) {
+                pendingArchive = nil
+                Task { await model.archiveBoard(slug: board.slug ?? "") }
+            }
+        } message: { _ in
+            Text("Hermex cannot restore an archived Board in-app.")
+        }
+        .alert(
+            "Make Active Board",
+            isPresented: Binding(
+                get: { pendingActivation != nil },
+                set: { if !$0 { pendingActivation = nil } }
+            ),
+            presenting: pendingActivation
+        ) { board in
+            Button("Cancel", role: .cancel) { pendingActivation = nil }
+            Button("Make Active Board") {
+                pendingActivation = nil
+                Task { await model.makeBoardActive(slug: board.slug ?? "") }
+            }
+        } message: { _ in
+            Text("Making this Board active changes shared server state for other Hermes clients.")
+        }
+    }
+
+    private func boardRow(_ board: KanbanBoard) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(board.icon ?? "▣")
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(board.name ?? board.slug ?? String(localized: "Board"))
+                        .font(.headline)
+                    if let slug = board.slug {
+                        Text(slug)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if board.slug == model.selectedBoardSlug {
+                    Text("Browsing")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if board.slug == model.sharedActiveBoardSlug {
+                    Text("Active")
+                        .font(.caption.bold())
+                }
+            }
+
+            if let description = board.description, !description.isEmpty {
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Text(KanbanCountFormatter.cards(board.total ?? 0))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                if board.slug != model.selectedBoardSlug {
+                    Button("Board") {
+                        guard let slug = board.slug else { return }
+                        Task { await model.selectBoard(slug) }
+                    }
+                    .accessibilityLabel(Text("Board"))
+                }
+                Button("Edit") {
+                    model.dismissBoardMutationResult()
+                    editorMode = .edit(board)
+                }
+                .disabled(!model.canManageBoards)
+                Button("Make Active Board") {
+                    pendingActivation = board
+                }
+                .disabled(board.slug == model.sharedActiveBoardSlug || !model.canManageBoards)
+                Button("Archive", role: .destructive) {
+                    pendingArchive = board
+                }
+                .disabled(!model.canArchiveBoard(board))
+            }
+            .buttonStyle(.borderless)
+            .frame(minHeight: 44)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func boardMutationStatus(_ mutation: KanbanBoardMutationState) -> some View {
+        HStack(spacing: 10) {
+            if mutation.phase.isInFlight {
+                ProgressView()
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(boardMutationAction(mutation.kind))
+                    .font(.headline)
+                Text(boardMutationPhase(mutation.phase))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if mutation.phase == .outcomeUncertain {
+                Button("Checking Result") {
+                    Task { await model.checkBoardMutationResult() }
+                }
+            } else if !mutation.phase.isInFlight {
+                Button {
+                    model.dismissBoardMutationResult()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .accessibilityLabel(Text("Dismiss"))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func boardMutationAction(_ kind: KanbanBoardMutationKind) -> LocalizedStringKey {
+        switch kind {
+        case .create: "Create"
+        case .edit: "Edit"
+        case .archive: "Archive"
+        case .makeActive: "Make Active Board"
+        }
+    }
+
+    private func boardMutationPhase(_ phase: KanbanCardMutationPhase) -> LocalizedStringKey {
+        switch phase {
+        case .updating: "Updating Board..."
+        case .checkingResult: "Checking Result"
+        case .succeeded: "Done"
+        case .failed: "Failed"
+        case .outcomeUncertain: "Outcome Uncertain"
+        }
+    }
+}
+
+private struct KanbanBoardEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var model: KanbanFeatureState
+    let mode: KanbanBoardEditorMode
+    @State private var slug: String
+    @State private var name: String
+    @State private var description: String
+    @State private var icon: String
+    @State private var color: String
+    @State private var showsSlugError = false
+    @State private var showsNameError = false
+
+    init(model: KanbanFeatureState, mode: KanbanBoardEditorMode) {
+        self.model = model
+        self.mode = mode
+        switch mode {
+        case .create:
+            _slug = State(initialValue: "")
+            _name = State(initialValue: "")
+            _description = State(initialValue: "")
+            _icon = State(initialValue: "")
+            _color = State(initialValue: "")
+        case let .edit(board):
+            _slug = State(initialValue: board.slug ?? "")
+            _name = State(initialValue: board.name ?? "")
+            _description = State(initialValue: board.description ?? "")
+            _icon = State(initialValue: board.icon ?? "")
+            _color = State(initialValue: board.color ?? "")
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Slug", text: $slug)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .disabled(isEditing)
+                    .accessibilityHint(Text("The slug cannot be changed after the Board is created."))
+                if showsSlugError {
+                    Text("Required")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                TextField("Name", text: $name)
+                if showsNameError {
+                    Text("Required")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                TextField("Description", text: $description, axis: .vertical)
+                    .lineLimit(2...5)
+                TextField("Icon", text: $icon)
+                TextField("Color", text: $color)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            } footer: {
+                Text("Creating a Board does not make it active.")
+            }
+
+            if let mutation = model.boardMutationState,
+               mutation.kind.slug == slug,
+               mutation.phase == .failed || mutation.phase == .outcomeUncertain {
+                Section {
+                    Text(mutation.phase == .failed ? "Failed" : "Outcome Uncertain")
+                        .foregroundStyle(.red)
+                    Text("Refresh the Board before trying again.")
+                        .font(.footnote)
+                }
+            }
+        }
+        .navigationTitle(isEditing ? "Edit" : "Create")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { submit() }
+                    .disabled(model.boardMutationState?.phase.isInFlight == true)
+            }
+        }
+    }
+
+    private var isEditing: Bool {
+        if case .edit = mode { true } else { false }
+    }
+
+    private func submit() {
+        let trimmedSlug = slug.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        showsSlugError = trimmedSlug.isEmpty
+        showsNameError = trimmedName.isEmpty
+        guard !showsSlugError, !showsNameError else { return }
+        Task {
+            if isEditing {
+                await model.editBoard(KanbanEditBoardRequest(
+                    slug: trimmedSlug,
+                    name: trimmedName,
+                    description: description,
+                    icon: icon,
+                    color: color
+                ))
+            } else {
+                await model.createBoard(KanbanCreateBoardRequest(
+                    slug: trimmedSlug,
+                    name: trimmedName,
+                    description: description,
+                    icon: icon,
+                    color: color
+                ))
+            }
+            if model.boardMutationState?.phase == .succeeded {
+                dismiss()
+            }
         }
     }
 }
@@ -1159,7 +1532,7 @@ struct KanbanLabView: View {
     var body: some View {
         KanbanStatusFocusView(model: model)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .bottomBar) {
                     Menu {
                         Picker("Scenario", selection: $scenario) {
                             ForEach(KanbanLabScenario.allCases) { scenario in
@@ -1241,6 +1614,17 @@ actor KanbanLabClient: KanbanDataClient {
     private var storedCards: [String: [String: StoredCard]] = [:]
     private var cardIDsByIntent: [String: String] = [:]
     private var nextCardSequence = 100
+    private var activeBoardSlug = "default"
+    private var storedBoards: [String: StoredBoard] = [
+        "default": StoredBoard(
+            slug: "default", name: "Default Board", description: "Primary fixture Board",
+            icon: "📋", color: "#5B8DEF", total: 8
+        ),
+        "release": StoredBoard(
+            slug: "release", name: "Release Board", description: "Shipping fixture",
+            icon: "🚀", color: "#34C759", total: 2
+        )
+    ]
 
     init(scenario: KanbanLabScenario) { self.scenario = scenario }
 
@@ -1256,7 +1640,66 @@ actor KanbanLabClient: KanbanDataClient {
     }
 
     func kanbanBoards() throws -> KanbanBoardsResponse {
-        decode(#"{"boards":[{"slug":"main","name":"Main Board","total":8},{"slug":"release","name":"Release Board","total":2}],"current":"main","read_only":false}"#)
+        decode([
+            "boards": storedBoards.values.sorted { $0.slug < $1.slug }.map(\.object),
+            "current": activeBoardSlug,
+            "read_only": false
+        ])
+    }
+
+    func createKanbanBoard(
+        _ request: KanbanCreateBoardRequest
+    ) throws -> KanbanBoardMutationEnvelope {
+        let board = storedBoards[request.slug] ?? StoredBoard(
+            slug: request.slug,
+            name: request.name,
+            description: request.description,
+            icon: request.icon,
+            color: request.color,
+            total: 0
+        )
+        storedBoards[request.slug] = board
+        return decode([
+            "board": board.object,
+            "current": activeBoardSlug,
+            "read_only": false
+        ])
+    }
+
+    func editKanbanBoard(
+        _ request: KanbanEditBoardRequest
+    ) throws -> KanbanBoardMutationEnvelope {
+        guard var board = storedBoards[request.slug] else {
+            throw APIError.http(statusCode: 404, body: nil)
+        }
+        board.name = request.name
+        board.description = request.description
+        board.icon = request.icon
+        board.color = request.color
+        storedBoards[request.slug] = board
+        return decode(["board": board.object, "read_only": false])
+    }
+
+    func archiveKanbanBoard(
+        _ request: KanbanBoardMutationRequest
+    ) throws -> KanbanBoardMutationEnvelope {
+        guard request.slug != "default", storedBoards.removeValue(forKey: request.slug) != nil else {
+            throw APIError.http(statusCode: 400, body: nil)
+        }
+        if activeBoardSlug == request.slug {
+            activeBoardSlug = storedBoards["default"] != nil ? "default" : storedBoards.keys.sorted().first ?? "default"
+        }
+        return decode(["current": activeBoardSlug, "read_only": false])
+    }
+
+    func makeKanbanBoardActive(
+        _ request: KanbanBoardMutationRequest
+    ) throws -> KanbanBoardMutationEnvelope {
+        guard storedBoards[request.slug] != nil else {
+            throw APIError.http(statusCode: 404, body: nil)
+        }
+        activeBoardSlug = request.slug
+        return decode(["current": activeBoardSlug, "read_only": false])
     }
 
     func kanbanBoard(_ request: KanbanBoardRequest) throws -> KanbanBoardSnapshot {
@@ -1600,6 +2043,29 @@ actor KanbanLabClient: KanbanDataClient {
             if let workspacePath { result["workspace_path"] = workspacePath }
             if let skills { result["skills"] = skills }
             if let maxRuntimeSeconds { result["max_runtime_seconds"] = maxRuntimeSeconds }
+            return result
+        }
+    }
+
+    private struct StoredBoard: Sendable {
+        let slug: String
+        var name: String?
+        var description: String?
+        var icon: String?
+        var color: String?
+        let total: Int
+
+        var object: [String: Any] {
+            var result: [String: Any] = [
+                "slug": slug,
+                "total": total,
+                "counts": total == 0 ? [:] : ["ready": total],
+                "read_only": false
+            ]
+            result["name"] = name
+            result["description"] = description
+            result["icon"] = icon
+            result["color"] = color
             return result
         }
     }

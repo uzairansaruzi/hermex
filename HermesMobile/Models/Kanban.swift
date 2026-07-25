@@ -268,6 +268,26 @@ struct KanbanBoardRequest: Equatable, Sendable {
     }
 }
 
+struct KanbanCreateBoardRequest: Equatable, Sendable {
+    let slug: String
+    let name: String
+    let description: String
+    let icon: String
+    let color: String
+}
+
+struct KanbanEditBoardRequest: Equatable, Sendable {
+    let slug: String
+    let name: String
+    let description: String
+    let icon: String
+    let color: String
+}
+
+struct KanbanBoardMutationRequest: Equatable, Sendable {
+    let slug: String
+}
+
 /// Tolerant read-only boundary for the independently-versioned Kanban bridge.
 /// Every upstream field stays optional so an added or renamed server field never
 /// prevents the rest of the shell from decoding.
@@ -338,6 +358,23 @@ struct KanbanBoard: Decodable, Equatable, Sendable {
         isCurrent = container.decodeLossyBoolIfPresent(forKey: .isCurrent)
         total = container.decodeLossyIntIfPresent(forKey: .total)
         counts = try? container.decodeIfPresent([String: Int].self, forKey: .counts)
+        readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+struct KanbanBoardMutationEnvelope: Decodable, Equatable, Sendable {
+    let board: KanbanBoard?
+    let current: String?
+    let readOnly: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case board, current, readOnly
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        board = try? container.decodeIfPresent(KanbanBoard.self, forKey: .board)
+        current = container.decodeLossyStringIfPresent(forKey: .current)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
     }
 }
