@@ -191,8 +191,17 @@ struct SessionListView: View {
                 AddServerView(authManager: authManager)
             }
             .task {
+                // Resolved first, not merely before the restore: the link needs only
+                // the cache or a single session fetch, so gating it behind the
+                // session/project/profile chain would delay the very navigation the
+                // notification asked for.
+                await openPendingDeepLinkedSessionIfNeeded()
+                guard !Task.isCancelled else { return }
                 await refreshSessionsAndActiveProfile()
+                guard !Task.isCancelled else { return }
                 didCompleteInitialLoad = true
+                // Ordered after the deep link so restoreIfNeeded() sees the explicit
+                // destination and leaves the stored selection alone.
                 restoreLastSelectedSessionIfNeeded()
             }
             .task(id: remoteSearchTaskID) {
@@ -203,7 +212,6 @@ struct SessionListView: View {
             }
             .onAppear {
                 openPendingSharedImportIfNeeded()
-                openPendingDeepLinkedSessionIfNeeded()
                 openRequestedNewChatIfNeeded()
                 refreshAfterReturningIfNeeded()
             }
@@ -211,7 +219,7 @@ struct SessionListView: View {
                 openPendingSharedImportIfNeeded()
             }
             .onChange(of: pendingDeepLinkedSessionID) {
-                openPendingDeepLinkedSessionIfNeeded()
+                Task { await openPendingDeepLinkedSessionIfNeeded() }
             }
             .onChange(of: requestedNewChat) {
                 openRequestedNewChatIfNeeded()
@@ -1107,8 +1115,12 @@ struct SessionListView: View {
         )
     }
 
-    private func openPendingDeepLinkedSessionIfNeeded() {
-        guard let sessionID = pendingDeepLinkedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+    /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before
+    /// `restoreLastSelectedSessionIfNeeded()` — otherwise the restore races the deep
+    /// link's network load and wins with the previous session.
+    private func openPendingDeepLinkedSessionIfNeeded() async {
+        guard !Task.isCancelled,
+              let sessionID = pendingDeepLinkedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
               !sessionID.isEmpty
         else {
             return
@@ -1120,12 +1132,16 @@ struct SessionListView: View {
             return
         }
 
-        Task {
-            if let session = await viewModel.loadSessionForDeepLink(id: sessionID, modelContext: modelContext) {
-                selectSession(session)
-            }
-            handleLastError()
+        let session = await viewModel.loadSessionForDeepLink(id: sessionID, modelContext: modelContext)
+        // Re-checked post-await: the view (and this task) may have been torn down —
+        // e.g. dismissed, or the active server changed under `.id(server)` — while
+        // the network load was in flight. Selecting or persisting for a session
+        // whose owning view no longer exists is stale work, not a real navigation.
+        guard !Task.isCancelled else { return }
+        if let session {
+            selectSession(session)
         }
+        handleLastError()
     }
 
     /// Opens the New Chat composer in response to the "New Chat" App Intents (#337/#338),
@@ -1165,7 +1181,8 @@ struct SessionListView: View {
     private func restoreLastSelectedSessionIfNeeded() {
         navigationState.restoreIfNeeded(
             from: viewModel.sessions,
-            clearsMissingSelection: viewModel.sessionLoadError == nil
+            clearsMissingSelection: viewModel.sessionLoadError == nil,
+            pendingDeepLinkedSessionID: pendingDeepLinkedSessionID
         )
         persistLastSelectedSession()
     }

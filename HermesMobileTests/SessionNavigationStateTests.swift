@@ -42,6 +42,25 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(state.lastSelectedSessionID, "session-1")
     }
 
+    func testRestoreSkipsWhileDeepLinkIsPendingAndKeepsStoredSelection() {
+        let stored = SessionSummary(sessionId: "stored")
+        var state = SessionNavigationState(lastSelectedSessionID: "stored")
+
+        state.restoreIfNeeded(from: [stored], pendingDeepLinkedSessionID: "deep-linked")
+
+        XCTAssertNil(state.destination)
+        XCTAssertEqual(state.lastSelectedSessionID, "stored")
+    }
+
+    func testRestoreProceedsWhenPendingDeepLinkIDIsBlank() {
+        let stored = SessionSummary(sessionId: "stored")
+        var state = SessionNavigationState(lastSelectedSessionID: "stored")
+
+        state.restoreIfNeeded(from: [stored], pendingDeepLinkedSessionID: "   ")
+
+        XCTAssertEqual(state.destination, .session(stored))
+    }
+
     func testExplicitNewChatRouteOverridesStoredSelection() {
         let route = PendingNewChatRoute(initialDraft: "Shared draft")
         var state = SessionNavigationState(lastSelectedSessionID: "session-1")

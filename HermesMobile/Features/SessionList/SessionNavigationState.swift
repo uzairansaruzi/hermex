@@ -66,11 +66,18 @@ struct SessionNavigationState: Equatable {
 
     /// Restores only when no explicit route already won. Deep links, shared drafts,
     /// and App Intent requests therefore take precedence over the stored selection.
+    /// A still-pending deep link (not yet resolved into a destination) also blocks
+    /// the restore, so an in-flight deep-link load is never pre-empted by the
+    /// stored selection; the stored ID is kept for a later restore.
     mutating func restoreIfNeeded(
         from sessions: [SessionSummary],
-        clearsMissingSelection: Bool = true
+        clearsMissingSelection: Bool = true,
+        pendingDeepLinkedSessionID: String? = nil
     ) {
-        guard destination == nil, let lastSelectedSessionID else { return }
+        guard destination == nil,
+              Self.normalized(pendingDeepLinkedSessionID) == nil,
+              let lastSelectedSessionID
+        else { return }
 
         guard let session = sessions.first(where: {
             Self.normalized($0.sessionId) == lastSelectedSessionID
