@@ -278,6 +278,11 @@ final class KanbanFeatureStateTests: XCTestCase {
             #"{"slug":"release","name":"Release"}"#
         )
         XCTAssertEqual(KanbanBoardAccessibility.browseLabel(board), "Browse Board: Release")
+        XCTAssertEqual(KanbanBoardAccessibility.actionsLabel(board), "Board actions for Release")
+        XCTAssertEqual(
+            KanbanBoardAccessibility.statusValue(isBrowsing: true, isActive: true),
+            "\(String(localized: "Browsing")), \(String(localized: "Active"))"
+        )
 
         let dispatchResult: KanbanDispatchResult = mutationDecode(
             #"{"spawned":[{"id":"secret"}],"promoted":2,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
@@ -315,6 +320,75 @@ final class KanbanFeatureStateTests: XCTestCase {
             KanbanDispatchCopy.runConfirmation,
             "This may start up to \(KanbanDispatchRequest.maximum) workers and consume API budget."
         )
+    }
+
+    func testBoardRowPresentationSeparatesLocalBrowsingFromApplicableMenuActions() {
+        let ordinary: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release"}"#
+        )
+        let ordinaryPresentation = KanbanBoardRowPresentation(
+            board: ordinary,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: true
+        )
+        XCTAssertEqual(ordinaryPresentation.browseSlug, "release")
+        XCTAssertEqual(ordinaryPresentation.actions, [.edit, .makeActive, .archive])
+        XCTAssertTrue(ordinaryPresentation.mutationsAreEnabled)
+        XCTAssertFalse(ordinaryPresentation.isBrowsing)
+        XCTAssertFalse(ordinaryPresentation.isActive)
+
+        let browsedPresentation = KanbanBoardRowPresentation(
+            board: ordinary,
+            selectedBoardSlug: "release",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: true
+        )
+        XCTAssertNil(browsedPresentation.browseSlug)
+        XCTAssertEqual(browsedPresentation.actions, [.edit, .makeActive, .archive])
+        XCTAssertTrue(browsedPresentation.isBrowsing)
+
+        let activePresentation = KanbanBoardRowPresentation(
+            board: ordinary,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "release",
+            canManageBoards: true
+        )
+        XCTAssertEqual(activePresentation.browseSlug, "release")
+        XCTAssertEqual(activePresentation.actions, [.edit, .archive])
+        XCTAssertTrue(activePresentation.isActive)
+
+        let defaultBoard: KanbanBoard = mutationDecode(
+            #"{"slug":"default","name":"Default"}"#
+        )
+        let defaultPresentation = KanbanBoardRowPresentation(
+            board: defaultBoard,
+            selectedBoardSlug: "release",
+            sharedActiveBoardSlug: "release",
+            canManageBoards: true
+        )
+        XCTAssertEqual(defaultPresentation.browseSlug, "default")
+        XCTAssertEqual(defaultPresentation.actions, [.edit, .makeActive])
+        XCTAssertFalse(defaultPresentation.actions.contains(.archive))
+    }
+
+    func testBoardRowPresentationDisablesAllMutationsWhenManagementIsUnavailable() {
+        let board: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release"}"#
+        )
+        let presentation = KanbanBoardRowPresentation(
+            board: board,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: false
+        )
+
+        XCTAssertEqual(presentation.browseSlug, "release")
+        XCTAssertEqual(presentation.actions, [.edit, .makeActive, .archive])
+        XCTAssertFalse(presentation.mutationsAreEnabled)
+        XCTAssertEqual(KanbanBoardRowAction.edit.systemImage, "pencil")
+        XCTAssertEqual(KanbanBoardRowAction.makeActive.systemImage, "checkmark.circle")
+        XCTAssertEqual(KanbanBoardRowAction.archive.systemImage, "archivebox")
     }
 
     func testStatusSpecificStalenessThresholds() {

@@ -1132,7 +1132,60 @@ private struct KanbanBoardManagementView: View {
     }
 
     private func boardRow(_ board: KanbanBoard) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let presentation = KanbanBoardRowPresentation(
+            board: board,
+            selectedBoardSlug: model.selectedBoardSlug,
+            sharedActiveBoardSlug: model.sharedActiveBoardSlug,
+            canManageBoards: model.canManageBoards
+        )
+
+        return HStack(alignment: .top, spacing: 8) {
+            boardBrowseControl(board, presentation: presentation)
+            boardActionsMenu(board, presentation: presentation)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func boardBrowseControl(
+        _ board: KanbanBoard,
+        presentation: KanbanBoardRowPresentation
+    ) -> some View {
+        if let slug = presentation.browseSlug {
+            Button {
+                Task { await model.selectBoard(slug) }
+            } label: {
+                boardRowContent(board, presentation: presentation)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(KanbanBoardAccessibility.browseLabel(board)))
+            .accessibilityValue(
+                Text(
+                    KanbanBoardAccessibility.statusValue(
+                        isBrowsing: false,
+                        isActive: presentation.isActive
+                    )
+                )
+            )
+            .accessibilityHint(
+                Text("Browsing a Board stays local to Hermex. Making a Board active changes shared server state.")
+            )
+        } else {
+            boardRowContent(board, presentation: presentation)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isSelected)
+        }
+    }
+
+    private func boardRowContent(
+        _ board: KanbanBoard,
+        presentation: KanbanBoardRowPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(board.icon ?? "▣")
                     .accessibilityHidden(true)
@@ -1145,16 +1198,19 @@ private struct KanbanBoardManagementView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Spacer()
-                if board.slug == model.selectedBoardSlug {
-                    Text("Browsing")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            }
+
+            if presentation.isBrowsing || presentation.isActive {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        boardStatusIndicators(presentation)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        boardStatusIndicators(presentation)
+                    }
                 }
-                if board.slug == model.sharedActiveBoardSlug {
-                    Text("Active")
-                        .font(.caption.bold())
-                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if let description = board.description, !description.isEmpty {
@@ -1165,33 +1221,63 @@ private struct KanbanBoardManagementView: View {
             Text(KanbanCountFormatter.cards(board.total ?? 0))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
 
-            HStack {
-                if board.slug != model.selectedBoardSlug {
-                    Button("Browse Board") {
-                        guard let slug = board.slug else { return }
-                        Task { await model.selectBoard(slug) }
-                    }
-                    .accessibilityLabel(Text(KanbanBoardAccessibility.browseLabel(board)))
-                }
-                Button("Edit") {
+    @ViewBuilder
+    private func boardStatusIndicators(_ presentation: KanbanBoardRowPresentation) -> some View {
+        if presentation.isBrowsing {
+            Label("Browsing", systemImage: "eye.fill")
+        }
+        if presentation.isActive {
+            Label("Active", systemImage: "checkmark.circle.fill")
+        }
+    }
+
+    private func boardActionsMenu(
+        _ board: KanbanBoard,
+        presentation: KanbanBoardRowPresentation
+    ) -> some View {
+        Menu {
+            if presentation.actions.contains(.edit) {
+                Button {
                     model.dismissBoardMutationResult()
                     editorMode = .edit(board)
+                } label: {
+                    Label("Edit", systemImage: KanbanBoardRowAction.edit.systemImage)
                 }
-                .disabled(!model.canManageBoards)
-                Button("Make Active Board") {
-                    pendingActivation = board
-                }
-                .disabled(board.slug == model.sharedActiveBoardSlug || !model.canManageBoards)
-                Button("Archive", role: .destructive) {
-                    pendingArchive = board
-                }
-                .disabled(!model.canArchiveBoard(board))
             }
-            .buttonStyle(.borderless)
-            .frame(minHeight: 44)
+            if presentation.actions.contains(.makeActive) {
+                Button {
+                    pendingActivation = board
+                } label: {
+                    Label(
+                        "Make Active Board",
+                        systemImage: KanbanBoardRowAction.makeActive.systemImage
+                    )
+                }
+            }
+            if presentation.actions.contains(.archive) {
+                Button(role: .destructive) {
+                    pendingArchive = board
+                } label: {
+                    Label("Archive", systemImage: KanbanBoardRowAction.archive.systemImage)
+                }
+            }
+        } label: {
+            Label(
+                KanbanBoardAccessibility.actionsLabel(board),
+                systemImage: "ellipsis.circle"
+            )
+            .labelStyle(.iconOnly)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .contain)
+        .buttonStyle(.plain)
+        .disabled(!presentation.mutationsAreEnabled || presentation.actions.isEmpty)
+        .accessibilityLabel(Text(KanbanBoardAccessibility.actionsLabel(board)))
+        .accessibilityHint(Text("Shows available Board management actions."))
     }
 
     private func boardMutationStatus(_ mutation: KanbanBoardMutationState) -> some View {
@@ -1642,6 +1728,67 @@ enum KanbanBoardAccessibility {
     static func browseLabel(_ board: KanbanBoard) -> String {
         let boardName = board.name ?? board.slug ?? String(localized: "Board")
         return String.localizedStringWithFormat(String(localized: "Browse Board: %@"), boardName)
+    }
+
+    static func actionsLabel(_ board: KanbanBoard) -> String {
+        let boardName = board.name ?? board.slug ?? String(localized: "Board")
+        return String.localizedStringWithFormat(String(localized: "Board actions for %@"), boardName)
+    }
+
+    static func statusValue(isBrowsing: Bool, isActive: Bool) -> String {
+        var statuses: [String] = []
+        if isBrowsing { statuses.append(String(localized: "Browsing")) }
+        if isActive { statuses.append(String(localized: "Active")) }
+        return statuses.joined(separator: ", ")
+    }
+}
+
+enum KanbanBoardRowAction: Equatable {
+    case edit
+    case makeActive
+    case archive
+
+    var systemImage: String {
+        switch self {
+        case .edit: "pencil"
+        case .makeActive: "checkmark.circle"
+        case .archive: "archivebox"
+        }
+    }
+}
+
+struct KanbanBoardRowPresentation: Equatable {
+    let browseSlug: String?
+    let actions: [KanbanBoardRowAction]
+    let mutationsAreEnabled: Bool
+    let isBrowsing: Bool
+    let isActive: Bool
+
+    init(
+        board: KanbanBoard,
+        selectedBoardSlug: String?,
+        sharedActiveBoardSlug: String?,
+        canManageBoards: Bool
+    ) {
+        let trimmedSlug = board.slug?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let slug = trimmedSlug?.isEmpty == false ? trimmedSlug : nil
+        isBrowsing = slug != nil && slug == selectedBoardSlug
+        isActive = slug != nil && slug == sharedActiveBoardSlug
+        browseSlug = isBrowsing ? nil : slug
+        mutationsAreEnabled = canManageBoards && slug != nil
+
+        guard let slug else {
+            actions = []
+            return
+        }
+        var applicableActions: [KanbanBoardRowAction] = [.edit]
+        if slug != sharedActiveBoardSlug {
+            applicableActions.append(.makeActive)
+        }
+        if slug != "default" {
+            applicableActions.append(.archive)
+        }
+        actions = applicableActions
     }
 }
 
