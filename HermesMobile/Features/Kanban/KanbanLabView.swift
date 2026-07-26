@@ -8,6 +8,16 @@ enum KanbanCardAction: Equatable {
     case archive
 }
 
+enum KanbanCardRowPrimaryAction: Equatable {
+    case openDetail(String)
+    case toggleSelection(String)
+
+    static func resolve(for card: KanbanCard, isSelecting: Bool) -> Self? {
+        guard let cardID = card.cardID else { return nil }
+        return isSelecting ? .toggleSelection(cardID) : .openDetail(cardID)
+    }
+}
+
 struct KanbanPendingCardAction: Identifiable, Equatable {
     let id = UUID()
     let card: KanbanCard
@@ -29,6 +39,7 @@ struct KanbanStatusFocusView: View {
     @State private var showsBulkActions = false
     @State private var confirmsBulkArchive = false
     @State private var confirmsRunDispatcher = false
+    @State private var presentedCardID: String?
     @AccessibilityFocusState private var focusedCardID: String?
     @AccessibilityFocusState private var archiveUndoIsFocused: Bool
     @AccessibilityFocusState private var selectionControlsAreFocused: Bool
@@ -67,6 +78,9 @@ struct KanbanStatusFocusView: View {
                     systemImage: "exclamationmark.triangle"
                 )
             }
+        }
+        .navigationDestination(item: $presentedCardID) { cardID in
+            KanbanCardDetailView(featureModel: model, cardID: cardID)
         }
         .navigationTitle(String(localized: "Kanban"))
         .navigationBarTitleDisplayMode(.inline)
@@ -122,6 +136,13 @@ struct KanbanStatusFocusView: View {
         .onChange(of: model.dispatchState?.phase) { oldPhase, newPhase in
             if oldPhase?.isInFlight == true, newPhase?.isInFlight == false {
                 dispatchSummaryIsFocused = true
+            }
+        }
+        .onChange(of: presentedCardID) { previousCardID, currentCardID in
+            guard currentCardID == nil, let previousCardID else { return }
+            Task { @MainActor in
+                await Task.yield()
+                focusedCardID = previousCardID
             }
         }
         .alert(
@@ -762,8 +783,7 @@ struct KanbanStatusFocusView: View {
     private func cardNavigationLink(_ card: KanbanCard) -> some View {
         if model.isSelectingCards {
             Button {
-                model.toggleCardSelection(card)
-                selectionControlsAreFocused = true
+                activateCard(card)
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: model.selectedCardIDs.contains(card.cardID ?? "")
@@ -788,20 +808,38 @@ struct KanbanStatusFocusView: View {
                     : AccessibilityTraits()
             )
         } else {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                NavigationLink {
-                    if let cardID = card.cardID {
-                        KanbanCardDetailView(featureModel: model, cardID: cardID)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 4) {
+                    Button {
+                        activateCard(card)
+                    } label: {
+                        KanbanCardSummaryView(card: card)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
-                } label: {
-                    KanbanCardSummaryView(card: card)
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .disabled(card.cardID == nil)
+                    .accessibilityLabel(KanbanCardAccessibility.summary(card))
+                    .accessibilityFocused($focusedCardID, equals: card.cardID)
+
+                    cardActionsMenu(card)
                 }
-                cardActionsMenu(card)
+                mutationStatus(for: card)
             }
-            mutationStatus(for: card)
         }
-        .accessibilityFocused($focusedCardID, equals: card.cardID)
+    }
+
+    private func activateCard(_ card: KanbanCard) {
+        switch KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: model.isSelectingCards) {
+        case let .openDetail(cardID):
+            focusedCardID = cardID
+            presentedCardID = cardID
+        case .toggleSelection:
+            model.toggleCardSelection(card)
+            selectionControlsAreFocused = true
+        case nil:
+            break
         }
     }
 
@@ -1535,6 +1573,7 @@ private struct KanbanFiltersView: View {
 
 struct KanbanCardSummaryView: View {
     let card: KanbanCard
+    @ScaledMetric(relativeTo: .caption) private var stalenessIconSlot = 16
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1551,9 +1590,15 @@ struct KanbanCardSummaryView: View {
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
                 if let age = card.ageSeconds {
-                    Label(KanbanAgeFormatter.abbreviated(age), systemImage: stalenessImage)
+                    HStack(spacing: 3) {
+                        Image(systemName: stalenessImage)
+                            .frame(width: stalenessIconSlot)
+                        Text(KanbanAgeFormatter.abbreviated(age))
+                            .monospaced()
+                    }
                         .font(.caption)
                         .foregroundStyle(stalenessColor)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
 
@@ -1569,8 +1614,13 @@ struct KanbanCardSummaryView: View {
             }
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) { metadataLabels }
-                VStack(alignment: .leading, spacing: 5) { metadataLabels }
+                HStack(spacing: 12) {
+                    metadataLabels(locksHorizontalSize: true)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    metadataLabels(locksHorizontalSize: false)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -1581,18 +1631,46 @@ struct KanbanCardSummaryView: View {
     }
 
     @ViewBuilder
-    private var metadataLabels: some View {
-        Label(card.assignee ?? String(localized: "Unassigned"), systemImage: "person")
+    private func metadataLabels(locksHorizontalSize: Bool) -> some View {
+        metadataLabel(
+            card.assignee ?? String(localized: "Unassigned"),
+            systemImage: "person",
+            locksHorizontalSize: locksHorizontalSize
+        )
         if let tenant = card.tenant, !tenant.isEmpty {
-            Label(tenant, systemImage: "building.2")
+            metadataLabel(
+                tenant,
+                systemImage: "building.2",
+                locksHorizontalSize: locksHorizontalSize
+            )
         }
         if let comments = card.commentCount, comments > 0 {
-            Label("\(comments)", systemImage: "bubble.left")
+            metadataLabel(
+                "\(comments)",
+                systemImage: "bubble.left",
+                locksHorizontalSize: locksHorizontalSize
+            )
         }
         let dependencies = (card.linkCounts?.parents ?? 0) + (card.linkCounts?.children ?? 0)
         if dependencies > 0 {
-            Label("\(dependencies)", systemImage: "link")
+            metadataLabel(
+                "\(dependencies)",
+                systemImage: "link",
+                locksHorizontalSize: locksHorizontalSize
+            )
         }
+    }
+
+    private func metadataLabel(
+        _ title: String,
+        systemImage: String,
+        locksHorizontalSize: Bool
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Image(systemName: systemImage)
+            Text(title)
+        }
+        .fixedSize(horizontal: locksHorizontalSize, vertical: false)
     }
 
     private var stalenessImage: String {

@@ -317,6 +317,28 @@ final class KanbanFeatureStateTests: XCTestCase {
         )
     }
 
+    func testCardRowPrimaryActionKeepsNavigationAndSelectionDistinct() throws {
+        let card = try XCTUnwrap(KanbanFixtures.richSnapshot.columns?[1].cards?.first)
+        let cardID = try XCTUnwrap(card.cardID)
+
+        XCTAssertEqual(
+            KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: false),
+            .openDetail(cardID)
+        )
+        XCTAssertEqual(
+            KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: true),
+            .toggleSelection(cardID)
+        )
+
+        let missingIdentity: KanbanCard = mutationDecode(#"{"title":"Missing identity"}"#)
+        XCTAssertNil(
+            KanbanCardRowPrimaryAction.resolve(for: missingIdentity, isSelecting: false)
+        )
+        XCTAssertNil(
+            KanbanCardRowPrimaryAction.resolve(for: missingIdentity, isSelecting: true)
+        )
+    }
+
     func testStatusSpecificStalenessThresholds() {
         let cards = KanbanFixtures.stalenessSnapshot.columns?.flatMap { $0.cards ?? [] } ?? []
         XCTAssertEqual(cards.map(\.staleness), [
