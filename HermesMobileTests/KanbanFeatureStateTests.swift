@@ -283,6 +283,13 @@ final class KanbanFeatureStateTests: XCTestCase {
             KanbanBoardAccessibility.statusValue(isBrowsing: true, isActive: true),
             "\(String(localized: "Browsing")), \(String(localized: "Active"))"
         )
+        let describedBoard: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release","description":"Release planning","total":3}"#
+        )
+        XCTAssertEqual(
+            KanbanBoardAccessibility.browseSummary(describedBoard, isActive: true),
+            "Browse Board: Release, Release planning, 3 Cards, Active"
+        )
 
         let dispatchResult: KanbanDispatchResult = mutationDecode(
             #"{"spawned":[{"id":"secret"}],"promoted":2,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
@@ -389,6 +396,20 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(KanbanBoardRowAction.edit.systemImage, "pencil")
         XCTAssertEqual(KanbanBoardRowAction.makeActive.systemImage, "checkmark.circle")
         XCTAssertEqual(KanbanBoardRowAction.archive.systemImage, "archivebox")
+
+        let invalidBoard: KanbanBoard = mutationDecode(
+            #"{"name":"Missing slug"}"#
+        )
+        let invalidPresentation = KanbanBoardRowPresentation(
+            board: invalidBoard,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: true
+        )
+        XCTAssertNil(invalidPresentation.browseSlug)
+        XCTAssertFalse(invalidPresentation.isBrowsing)
+        XCTAssertFalse(invalidPresentation.mutationsAreEnabled)
+        XCTAssertTrue(invalidPresentation.actions.isEmpty)
     }
 
     func testStatusSpecificStalenessThresholds() {

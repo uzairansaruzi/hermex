@@ -1161,11 +1161,10 @@ private struct KanbanBoardManagementView: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(KanbanBoardAccessibility.browseLabel(board)))
-            .accessibilityValue(
+            .accessibilityLabel(
                 Text(
-                    KanbanBoardAccessibility.statusValue(
-                        isBrowsing: false,
+                    KanbanBoardAccessibility.browseSummary(
+                        board,
                         isActive: presentation.isActive
                     )
                 )
@@ -1177,7 +1176,9 @@ private struct KanbanBoardManagementView: View {
             boardRowContent(board, presentation: presentation)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isSelected)
+                .accessibilityAddTraits(
+                    presentation.isBrowsing ? .isSelected : AccessibilityTraits()
+                )
         }
     }
 
@@ -1733,6 +1734,19 @@ enum KanbanBoardAccessibility {
     static func actionsLabel(_ board: KanbanBoard) -> String {
         let boardName = board.name ?? board.slug ?? String(localized: "Board")
         return String.localizedStringWithFormat(String(localized: "Board actions for %@"), boardName)
+    }
+
+    static func browseSummary(_ board: KanbanBoard, isActive: Bool) -> String {
+        var parts = [browseLabel(board)]
+        if let description = board.description?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !description.isEmpty {
+            parts.append(description)
+        }
+        parts.append(KanbanCountFormatter.cards(board.total ?? 0))
+        let status = statusValue(isBrowsing: false, isActive: isActive)
+        if !status.isEmpty { parts.append(status) }
+        return parts.joined(separator: ", ")
     }
 
     static func statusValue(isBrowsing: Bool, isActive: Bool) -> String {
