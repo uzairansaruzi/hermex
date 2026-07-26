@@ -298,6 +298,23 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(dispatchLabel.contains("\(String(localized: "Promoted")): 2"))
         XCTAssertTrue(dispatchLabel.contains(String(localized: "This Preview is stale. Run Preview Dispatch again before relying on it.")))
         XCTAssertFalse(dispatchLabel.contains("secret"))
+        let submittingLabel = KanbanDispatchAccessibility.summary(
+            KanbanDispatchState(
+                mode: .run,
+                boardSlug: "main",
+                phase: .submitting,
+                result: nil,
+                completedAt: nil,
+                boardActivityGeneration: 1
+            ),
+            isStale: false
+        )
+        XCTAssertTrue(submittingLabel.contains(String(localized: "Running Dispatcher...")))
+        XCTAssertFalse(submittingLabel.contains(String(localized: "Updating task...")))
+        XCTAssertEqual(
+            KanbanDispatchCopy.runConfirmation,
+            "This may start up to \(KanbanDispatchRequest.maximum) workers and consume API budget."
+        )
     }
 
     func testStatusSpecificStalenessThresholds() {
@@ -385,6 +402,7 @@ final class KanbanFeatureStateTests: XCTestCase {
     func testAmbiguousRunNeverRetriesAndRemainsUncertainAfterCanonicalRefresh() async {
         let client = DispatcherClient(
             dispatchResults: [
+                .failure(APIError.network(underlying: URLError(.timedOut))),
                 .failure(APIError.network(underlying: URLError(.timedOut)))
             ]
         )
@@ -404,6 +422,12 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(initialDispatchRequestCount, 1)
         XCTAssertEqual(initialBoardRequestCount, 2)
 
+        state.dismissDispatchResult()
+        XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
+        await state.runDispatcher()
+        let requestCountAfterBlockedRetry = await client.dispatchRequestCount
+        XCTAssertEqual(requestCountAfterBlockedRetry, 1)
+
         await state.refreshUncertainDispatchOutcome()
 
         XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
@@ -411,6 +435,35 @@ final class KanbanFeatureStateTests: XCTestCase {
         let finalBoardRequestCount = await client.boardRequestCount
         XCTAssertEqual(finalDispatchRequestCount, 1, "A refresh must never retry Run Dispatcher.")
         XCTAssertEqual(finalBoardRequestCount, 3)
+    }
+
+    func testKnownDispatchResultResolvesAfterFailedReconciliationThenSuccessfulRefresh() async {
+        let client = DispatcherClient(boardResults: [
+            .success(mutationSnapshot()),
+            .failure(APIError.http(statusCode: 503, body: nil)),
+            .success(mutationSnapshot(status: "running"))
+        ])
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+        await state.load()
+
+        await state.runDispatcher()
+
+        XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
+        XCTAssertNotNil(state.dispatchState?.result)
+        XCTAssertTrue(state.refreshFailed)
+        XCTAssertEqual(state.dispatcherAvailability, .refreshFailed)
+
+        await state.refreshUncertainDispatchOutcome()
+
+        XCTAssertEqual(state.dispatchState?.phase, .succeeded)
+        XCTAssertFalse(state.refreshFailed)
+        let dispatchRequestCount = await client.dispatchRequestCount
+        let boardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(dispatchRequestCount, 1)
+        XCTAssertEqual(boardRequestCount, 3)
     }
 
     func testMalformedRunResultIsUncertainWhilePreviewFailureIsSafeAndRetryable() async {
@@ -1734,7 +1787,7 @@ private actor DeferredFirstConfigurationClient: KanbanDataClient {
 private actor DispatcherClient: KanbanDataClient {
     private let configuration: KanbanConfiguration
     private var boardsResponses: [KanbanBoardsResponse]
-    private var boardSnapshots: [KanbanBoardSnapshot]
+    private var boardResults: [Result<KanbanBoardSnapshot, Error>]
     private var dispatchResults: [Result<KanbanDispatchResult, Error>]
     private let statsError: Error?
     private var shouldDeferDispatch: Bool
@@ -1752,6 +1805,7 @@ private actor DispatcherClient: KanbanDataClient {
             mutationDecode(#"{"boards":[{"slug":"main"}],"current":"main","read_only":false}"#)
         ],
         boardSnapshots: [KanbanBoardSnapshot] = [mutationSnapshot()],
+        boardResults: [Result<KanbanBoardSnapshot, Error>]? = nil,
         dispatchResults: [Result<KanbanDispatchResult, Error>] = [
             .success(mutationDecode(
                 #"{"spawned":[{"future":"shape"}],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
@@ -1762,7 +1816,7 @@ private actor DispatcherClient: KanbanDataClient {
     ) {
         self.configuration = configuration
         self.boardsResponses = boardsResponses
-        self.boardSnapshots = boardSnapshots
+        self.boardResults = boardResults ?? boardSnapshots.map(Result.success)
         self.dispatchResults = dispatchResults
         self.statsError = statsError
         shouldDeferDispatch = defersFirstDispatch
@@ -1777,10 +1831,10 @@ private actor DispatcherClient: KanbanDataClient {
         return boardsResponses[0]
     }
 
-    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
+    func kanbanBoard(_ request: KanbanBoardRequest) throws -> KanbanBoardSnapshot {
         boardRequestCount += 1
-        if boardSnapshots.count > 1 { return boardSnapshots.removeFirst() }
-        return boardSnapshots[0]
+        if boardResults.count > 1 { return try boardResults.removeFirst().get() }
+        return try boardResults[0].get()
     }
 
     func kanbanStats(board: String) throws -> KanbanStats {

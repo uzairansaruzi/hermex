@@ -159,7 +159,7 @@ struct KanbanStatusFocusView: View {
                 Task { await model.runDispatcher() }
             }
         } message: {
-            Text("This may start up to 8 workers and consume API budget.")
+            Text(KanbanDispatchCopy.runConfirmation)
         }
     }
 
@@ -250,7 +250,7 @@ struct KanbanStatusFocusView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            if model.dispatcherAvailability != .available,
+            if let dispatcherUnavailableReason,
                model.dispatchState?.phase.isInFlight != true {
                 Text(dispatcherUnavailableReason)
                     .font(.footnote)
@@ -297,7 +297,7 @@ struct KanbanStatusFocusView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if !dispatch.phase.isInFlight {
+                if !dispatch.phase.isInFlight, dispatch.phase != .outcomeUncertain {
                     Button("Dismiss") { model.dismissDispatchResult() }
                         .font(.footnote)
                 }
@@ -306,11 +306,15 @@ struct KanbanStatusFocusView: View {
             if dispatch.phase.isInFlight {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text(dispatchStatusText(dispatch))
+                    Text(String(localized: dispatch.phase.statusTitle))
                 }
                 .font(.footnote)
             } else {
-                Label(dispatchStatusText(dispatch), systemImage: dispatchStatusIcon(dispatch))
+                Label {
+                    Text(String(localized: dispatch.phase.statusTitle))
+                } icon: {
+                    Image(systemName: dispatchStatusIcon(dispatch))
+                }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(dispatchStatusColor(dispatch))
             }
@@ -382,15 +386,16 @@ struct KanbanStatusFocusView: View {
         }
     }
 
-    private var dispatcherUnavailableReason: LocalizedStringKey {
+    private var dispatcherUnavailableReason: LocalizedStringKey? {
         switch model.dispatcherAvailability {
-        case .available: ""
-        case .busy: "Updating task..."
+        case .available: nil
+        case .busy: "Another Board action is in progress."
         case .outcomeUncertain: "Outcome Uncertain"
         case .offline: "Offline—showing previously loaded data"
-        case .incompatible: "Unavailable"
+        case .incompatible: "Dispatcher is unavailable on this server."
         case .readOnly: "Read-only"
         case .refreshing: "The Board is refreshing."
+        case .refreshFailed: "Refresh failed. Try again before using Dispatcher."
         }
     }
 
@@ -398,17 +403,6 @@ struct KanbanStatusFocusView: View {
         switch mode {
         case .preview: "Preview Dispatch"
         case .run: "Run Dispatcher"
-        }
-    }
-
-    private func dispatchStatusText(_ dispatch: KanbanDispatchState) -> LocalizedStringKey {
-        switch dispatch.phase {
-        case .submitting: "Updating task..."
-        case .reconciling: "Checking Result"
-        case .succeeded: "Done"
-        case .refused, .failed: "Failed"
-        case .outcomeUncertain: "Outcome Uncertain"
-        case .boardUnavailable: "Unavailable"
         }
     }
 
