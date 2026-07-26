@@ -815,12 +815,12 @@ struct KanbanStatusFocusView: View {
                     : AccessibilityTraits()
             )
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 4) {
+            ZStack(alignment: .trailing) {
+                VStack(alignment: .leading, spacing: 6) {
                     Button {
                         activateCard(card)
                     } label: {
-                        KanbanCardSummaryView(card: card)
+                        KanbanCardSummaryView(card: card, reservesTrailingActionSpace: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                     }
@@ -830,9 +830,10 @@ struct KanbanStatusFocusView: View {
                     .accessibilityLabel(KanbanCardAccessibility.summary(card))
                     .accessibilityFocused($focusedCardID, equals: card.cardID)
 
-                    cardActionsMenu(card)
+                    mutationStatus(for: card)
                 }
-                mutationStatus(for: card)
+
+                cardActionsMenu(card)
             }
         }
     }
@@ -875,8 +876,10 @@ struct KanbanStatusFocusView: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+                .foregroundStyle(.primary)
                 .frame(minWidth: 44, minHeight: 44)
         }
+        .tint(.primary)
         .disabled(!model.canMutateCard(card) || model.isMutatingCard(card.cardID))
         .accessibilityLabel(Text("Card Actions"))
     }
@@ -1580,6 +1583,7 @@ private struct KanbanFiltersView: View {
 
 struct KanbanCardSummaryView: View {
     let card: KanbanCard
+    var reservesTrailingActionSpace = false
     @ScaledMetric(relativeTo: .caption) private var stalenessIconSlot = 16
 
     var body: some View {
@@ -1612,12 +1616,14 @@ struct KanbanCardSummaryView: View {
             Text(card.title ?? String(localized: "Untitled Card"))
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, trailingActionInset)
 
             if let body = card.body, !body.isEmpty {
                 Text(markdownPreview(body))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
+                    .padding(.trailing, trailingActionInset)
             }
 
             ViewThatFits(in: .horizontal) {
@@ -1631,10 +1637,15 @@ struct KanbanCardSummaryView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            .padding(.trailing, trailingActionInset)
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(KanbanCardAccessibility.summary(card))
+    }
+
+    private var trailingActionInset: CGFloat {
+        reservesTrailingActionSpace ? 44 : 0
     }
 
     @ViewBuilder
