@@ -16,6 +16,10 @@ enum KanbanCardRowPrimaryAction: Equatable {
         guard let cardID = card.cardID else { return nil }
         return isSelecting ? .toggleSelection(cardID) : .openDetail(cardID)
     }
+
+    static func focusTarget(afterDismissing cardID: String, visibleCards: [KanbanCard]) -> String? {
+        visibleCards.contains { $0.cardID == cardID } ? cardID : nil
+    }
 }
 
 struct KanbanPendingCardAction: Identifiable, Equatable {
@@ -142,7 +146,10 @@ struct KanbanStatusFocusView: View {
             guard currentCardID == nil, let previousCardID else { return }
             Task { @MainActor in
                 await Task.yield()
-                focusedCardID = previousCardID
+                focusedCardID = KanbanCardRowPrimaryAction.focusTarget(
+                    afterDismissing: previousCardID,
+                    visibleCards: model.visibleCards
+                )
             }
         }
         .alert(

@@ -329,6 +329,19 @@ final class KanbanFeatureStateTests: XCTestCase {
             KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: true),
             .toggleSelection(cardID)
         )
+        XCTAssertEqual(
+            KanbanCardRowPrimaryAction.focusTarget(
+                afterDismissing: cardID,
+                visibleCards: [card]
+            ),
+            cardID
+        )
+        XCTAssertNil(
+            KanbanCardRowPrimaryAction.focusTarget(
+                afterDismissing: cardID,
+                visibleCards: []
+            )
+        )
 
         let missingIdentity: KanbanCard = mutationDecode(#"{"title":"Missing identity"}"#)
         XCTAssertNil(
