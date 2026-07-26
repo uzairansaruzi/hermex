@@ -21,13 +21,50 @@ struct KanbanPendingCardAction: Identifiable, Equatable {
 enum KanbanDispatcherPresentation {
     static func hasResult(_ state: KanbanDispatchState?) -> Bool {
         guard let state else { return false }
-        return !state.phase.isInFlight
+        switch state.phase {
+        case .succeeded, .outcomeUncertain:
+            return true
+        case .submitting, .reconciling, .refused, .failed, .boardUnavailable:
+            return false
+        }
     }
 
     static func toolbarAccessibilityLabel(for state: KanbanDispatchState?) -> String {
         hasResult(state)
             ? String(localized: "Dispatcher, result available")
             : String(localized: "Dispatcher")
+    }
+}
+
+@MainActor
+struct KanbanFiltersDraft {
+    var profile: String?
+    var tenant: String?
+    var includesArchived: Bool
+    var onlyMine: Bool
+    var groupsByProfile: Bool
+
+    init(model: KanbanFeatureState) {
+        profile = model.selectedProfile
+        tenant = model.selectedTenant
+        includesArchived = model.includeArchived
+        onlyMine = model.onlyMine
+        groupsByProfile = model.groupByProfile
+    }
+
+    func apply(to model: KanbanFeatureState) async {
+        let serverFiltersChanged = profile != model.selectedProfile
+            || tenant != model.selectedTenant
+            || includesArchived != model.includeArchived
+            || onlyMine != model.onlyMine
+        model.groupByProfile = groupsByProfile
+        guard serverFiltersChanged else { return }
+        await model.applyFilters(
+            profile: profile,
+            tenant: tenant,
+            includeArchived: includesArchived,
+            onlyMine: onlyMine
+        )
     }
 }
 
@@ -1494,38 +1531,32 @@ private struct KanbanBulkActionsView: View {
 private struct KanbanFiltersView: View {
     @Environment(\.dismiss) private var dismiss
     let model: KanbanFeatureState
-    @State private var profile: String?
-    @State private var tenant: String?
-    @State private var includesArchived: Bool
-    @State private var onlyMine: Bool
+    @State private var draft: KanbanFiltersDraft
 
     init(model: KanbanFeatureState) {
         self.model = model
-        _profile = State(initialValue: model.selectedProfile)
-        _tenant = State(initialValue: model.selectedTenant)
-        _includesArchived = State(initialValue: model.includeArchived)
-        _onlyMine = State(initialValue: model.onlyMine)
+        _draft = State(initialValue: KanbanFiltersDraft(model: model))
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Profile") {
-                    Picker("Assigned Profile", selection: $profile) {
+                    Picker("Assigned Profile", selection: $draft.profile) {
                         Text("All Profiles").tag(String?.none)
                         ForEach(model.profileOptions, id: \.self) { value in
                             Text(value).tag(Optional(value))
                         }
                     }
-                    .disabled(onlyMine)
-                    Toggle("Only Mine", isOn: $onlyMine)
-                        .onChange(of: onlyMine) { _, enabled in
-                            if enabled { profile = nil }
+                    .disabled(draft.onlyMine)
+                    Toggle("Only Mine", isOn: $draft.onlyMine)
+                        .onChange(of: draft.onlyMine) { _, enabled in
+                            if enabled { draft.profile = nil }
                         }
                 }
 
                 Section("Tenant") {
-                    Picker("Tenant", selection: $tenant) {
+                    Picker("Tenant", selection: $draft.tenant) {
                         Text("All Tenants").tag(String?.none)
                         ForEach(model.tenantOptions, id: \.self) { value in
                             Text(value).tag(Optional(value))
@@ -1534,17 +1565,11 @@ private struct KanbanFiltersView: View {
                 }
 
                 Section("Archived Cards") {
-                    Toggle("Include Archived Cards", isOn: $includesArchived)
+                    Toggle("Include Archived Cards", isOn: $draft.includesArchived)
                 }
 
                 Section("Display") {
-                    Toggle(
-                        "Group by Profile",
-                        isOn: Binding(
-                            get: { model.groupByProfile },
-                            set: { model.groupByProfile = $0 }
-                        )
-                    )
+                    Toggle("Group by Profile", isOn: $draft.groupsByProfile)
                 }
 
                 if model.hasActiveFilters {
@@ -1568,12 +1593,7 @@ private struct KanbanFiltersView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
                         Task {
-                            await model.applyFilters(
-                                profile: profile,
-                                tenant: tenant,
-                                includeArchived: includesArchived,
-                                onlyMine: onlyMine
-                            )
+                            await draft.apply(to: model)
                             dismiss()
                         }
                     }

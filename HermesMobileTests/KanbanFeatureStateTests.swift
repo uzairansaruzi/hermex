@@ -174,17 +174,24 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.onlyMine)
     }
 
-    func testGroupByProfileRemainsLocalAndDoesNotRefetchBoard() async {
+    func testGroupByProfileDraftCancelsOrAppliesLocallyWithoutRefetchingBoard() async {
         let client = BrowsingClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
         await state.load()
         let requestsBeforeToggle = await client.boardRequests()
+        var draft = KanbanFiltersDraft(model: state)
 
-        state.groupByProfile = true
+        draft.groupsByProfile = true
+
+        XCTAssertFalse(state.groupByProfile, "A cancelled draft must not mutate presentation state.")
+        var requestsAfterDraftChange = await client.boardRequests()
+        XCTAssertEqual(requestsAfterDraftChange, requestsBeforeToggle)
+
+        await draft.apply(to: state)
 
         XCTAssertTrue(state.groupByProfile)
-        let requestsAfterToggle = await client.boardRequests()
-        XCTAssertEqual(requestsAfterToggle, requestsBeforeToggle)
+        requestsAfterDraftChange = await client.boardRequests()
+        XCTAssertEqual(requestsAfterDraftChange, requestsBeforeToggle)
     }
 
     func testBoardSwitchClearsBoardScopedDataAndRevalidatesCompatibility() async {
@@ -393,6 +400,37 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(
             KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: state.dispatchState),
             String(localized: "Dispatcher, result available")
+        )
+
+        let failed = KanbanDispatchState(
+            mode: .preview,
+            boardSlug: "main",
+            phase: .failed,
+            result: nil,
+            completedAt: nil,
+            boardActivityGeneration: 0
+        )
+        let refused = KanbanDispatchState(
+            mode: .run,
+            boardSlug: "main",
+            phase: .refused,
+            result: nil,
+            completedAt: nil,
+            boardActivityGeneration: 0
+        )
+        let uncertain = KanbanDispatchState(
+            mode: .run,
+            boardSlug: "main",
+            phase: .outcomeUncertain,
+            result: nil,
+            completedAt: nil,
+            boardActivityGeneration: 0
+        )
+        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(failed))
+        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(refused))
+        XCTAssertTrue(
+            KanbanDispatcherPresentation.hasResult(uncertain),
+            "Ambiguous-outcome recovery must remain indicated and reopenable."
         )
 
         state.dismissDispatchResult()
