@@ -235,6 +235,7 @@ final class LocalizationCatalogTests: XCTestCase {
             "Dispatcher",
             "Dispatcher is unavailable on this server.",
             "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.",
+            "I Reviewed the Board",
             "Preview Dispatch",
             "Preview is advisory and may become stale. It never starts workers.",
             "Promoted",

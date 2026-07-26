@@ -333,6 +333,13 @@ struct KanbanStatusFocusView: View {
                 Text("Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if dispatch.canAcknowledgeUncertainOutcome {
+                    Button("I Reviewed the Board") {
+                        model.dismissDispatchResult()
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .frame(minHeight: 44)
+                }
                 Button("Refresh") {
                     Task { await model.refreshUncertainDispatchOutcome() }
                 }

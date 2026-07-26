@@ -115,6 +115,25 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Hermex 已重新整理看板，但無法確認工作程序是否已啟動。再次執行調度器前，請檢查看板目前狀態。" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "Hermex 已重新整理看板，但無法確認工作程序是否已啟動。再次執行調度器前，請檢查看板目前狀態。" } }
     } },
+    "I Reviewed the Board" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Ich habe das Board überprüft" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "He revisado el tablero" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "J’ai vérifié le tableau" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Ho controllato la bacheca" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Tablica została sprawdzona" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Revisei o quadro" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Ik heb het bord gecontroleerd" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Panoyu inceledim" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Доска проверена" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "ボードを確認しました" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "我已检查看板" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "보드를 검토했습니다" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "راجعت اللوحة" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "בדקתי את הלוח" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "میں نے بورڈ کا جائزہ لے لیا ہے" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "我已檢查看板" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "我已檢查看板" } }
+    } },
     "Preview Dispatch" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatch-Vorschau" } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Vista previa del despacho" } },

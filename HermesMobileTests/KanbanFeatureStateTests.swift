@@ -399,7 +399,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.canMutateCards)
     }
 
-    func testAmbiguousRunNeverRetriesAndRemainsUncertainAfterCanonicalRefresh() async {
+    func testAmbiguousRunRequiresSuccessfulRefreshAndAcknowledgementBeforeManualRetry() async {
         let client = DispatcherClient(
             dispatchResults: [
                 .failure(APIError.network(underlying: URLError(.timedOut))),
@@ -415,6 +415,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.runDispatcher()
 
         XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
+        XCTAssertFalse(state.dispatchState?.canAcknowledgeUncertainOutcome == true)
         XCTAssertEqual(state.dispatcherAvailability, .outcomeUncertain)
         XCTAssertNil(state.dispatchState?.result)
         let initialDispatchRequestCount = await client.dispatchRequestCount
@@ -431,10 +432,21 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.refreshUncertainDispatchOutcome()
 
         XCTAssertEqual(state.dispatchState?.phase, .outcomeUncertain)
-        let finalDispatchRequestCount = await client.dispatchRequestCount
-        let finalBoardRequestCount = await client.boardRequestCount
-        XCTAssertEqual(finalDispatchRequestCount, 1, "A refresh must never retry Run Dispatcher.")
-        XCTAssertEqual(finalBoardRequestCount, 3)
+        XCTAssertTrue(state.dispatchState?.canAcknowledgeUncertainOutcome == true)
+        var dispatchRequestCount = await client.dispatchRequestCount
+        var boardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(dispatchRequestCount, 1, "A refresh must never retry Run Dispatcher.")
+        XCTAssertEqual(boardRequestCount, 3)
+
+        state.dismissDispatchResult()
+        XCTAssertNil(state.dispatchState)
+
+        await state.runDispatcher()
+
+        dispatchRequestCount = await client.dispatchRequestCount
+        boardRequestCount = await client.boardRequestCount
+        XCTAssertEqual(dispatchRequestCount, 2, "Only an acknowledged manual retry may submit again.")
+        XCTAssertEqual(boardRequestCount, 4)
     }
 
     func testKnownDispatchResultResolvesAfterFailedReconciliationThenSuccessfulRefresh() async {
@@ -579,6 +591,31 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertNil(second.dispatchState)
         let secondDispatchRequestCount = await secondClient.dispatchRequestCount
         XCTAssertEqual(secondDispatchRequestCount, 0)
+    }
+
+    func testObsoleteDispatchCollectionCannotOverwriteReloadedState() async {
+        let client = DeferredBoardCollectionClient()
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+        await state.load()
+
+        let run = Task { await state.runDispatcher() }
+        await client.waitForDeferredCollection()
+
+        await state.load()
+        await client.resumeDeferredCollection(
+            mutationDecode(
+                #"{"boards":[{"slug":"release"}],"current":"release","read_only":false}"#
+            )
+        )
+        await run.value
+
+        XCTAssertEqual(state.selectedBoardSlug, "main")
+        XCTAssertEqual(state.boards.compactMap(\.slug), ["main"])
+        XCTAssertNil(state.boardSelectionNotice)
+        XCTAssertNil(state.dispatchState)
     }
 
     func testCardMutationsAreOptimisticSerializedPerCardAndConcurrentAcrossCards() async throws {
@@ -1733,7 +1770,7 @@ private actor DeferredBoardCollectionClient: KanbanDataClient {
 
     func kanbanBoards() async -> KanbanBoardsResponse {
         collectionRequestCount += 1
-        if collectionRequestCount == 1 {
+        if collectionRequestCount != 2 {
             return KanbanFixtures.boards
         }
         return await withCheckedContinuation { collectionContinuation = $0 }
@@ -1747,12 +1784,20 @@ private actor DeferredBoardCollectionClient: KanbanDataClient {
     func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
     func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
 
+    func dispatchKanban(_ request: KanbanDispatchRequest) -> KanbanDispatchResult {
+        mutationDecode(
+            #"{"spawned":[],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
+        )
+    }
+
     func waitForDeferredCollection() async {
         while collectionContinuation == nil { await Task.yield() }
     }
 
-    func resumeDeferredCollection() {
-        collectionContinuation?.resume(returning: KanbanFixtures.boards)
+    func resumeDeferredCollection(
+        _ response: KanbanBoardsResponse = KanbanFixtures.boards
+    ) {
+        collectionContinuation?.resume(returning: response)
         collectionContinuation = nil
     }
 }

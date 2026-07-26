@@ -52,6 +52,25 @@ struct KanbanDispatchState: Equatable, Sendable {
     let result: KanbanDispatchResult?
     let completedAt: Date?
     let boardActivityGeneration: Int
+    let canAcknowledgeUncertainOutcome: Bool
+
+    init(
+        mode: KanbanDispatchMode,
+        boardSlug: String,
+        phase: KanbanDispatchPhase,
+        result: KanbanDispatchResult?,
+        completedAt: Date?,
+        boardActivityGeneration: Int,
+        canAcknowledgeUncertainOutcome: Bool = false
+    ) {
+        self.mode = mode
+        self.boardSlug = boardSlug
+        self.phase = phase
+        self.result = result
+        self.completedAt = completedAt
+        self.boardActivityGeneration = boardActivityGeneration
+        self.canAcknowledgeUncertainOutcome = canAcknowledgeUncertainOutcome
+    }
 }
 
 enum KanbanDispatchAccessibility {
@@ -120,6 +139,11 @@ enum KanbanDispatcherAvailability: Equatable, Sendable {
     case readOnly
     case refreshing
     case refreshFailed
+}
+
+private enum KanbanBoardCollectionExpectation {
+    case boardMutation(generation: Int)
+    case dispatch(generation: Int, board: String, mode: KanbanDispatchMode)
 }
 
 enum KanbanCardMutationPhase: Equatable, Sendable {
@@ -953,8 +977,10 @@ final class KanbanFeatureState {
     }
 
     func dismissDispatchResult() {
-        guard dispatchState?.phase.isInFlight != true,
-              dispatchState?.phase != .outcomeUncertain else { return }
+        guard let dispatch = dispatchState,
+              !dispatch.phase.isInFlight,
+              dispatch.phase != .outcomeUncertain
+                || dispatch.canAcknowledgeUncertainOutcome else { return }
         dispatchState = nil
     }
 
@@ -983,7 +1009,8 @@ final class KanbanFeatureState {
             generation: generation,
             result: dispatch.result,
             completedAt: dispatch.completedAt ?? now(),
-            requestOutcomeIsUncertain: dispatch.result == nil
+            requestOutcomeIsUncertain: dispatch.result == nil,
+            allowsAcknowledgementAfterSuccessfulRefresh: true
         )
     }
 
@@ -1002,7 +1029,7 @@ final class KanbanFeatureState {
         let mutationGeneration = boardMutationGeneration
         boardMutationState = KanbanBoardMutationState(kind: mutation.kind, phase: .checkingResult)
         let response = await fetchBoardCollection(
-            expectedBoardMutationGeneration: mutationGeneration
+            expectation: .boardMutation(generation: mutationGeneration)
         )
         guard continueBoardMutation(mutationGeneration, kind: mutation.kind) else {
             clearBoardMutationIfCurrent(mutationGeneration)
@@ -1192,9 +1219,13 @@ final class KanbanFeatureState {
         generation: Int,
         result: KanbanDispatchResult?,
         completedAt: Date,
-        requestOutcomeIsUncertain: Bool
+        requestOutcomeIsUncertain: Bool,
+        allowsAcknowledgementAfterSuccessfulRefresh: Bool = false
     ) async {
-        let collectionSucceeded = await reconcileBoardCollection()
+        guard continueDispatch(generation, board: board, mode: .run) else { return }
+        let collectionSucceeded = await reconcileBoardCollection(
+            expectation: .dispatch(generation: generation, board: board, mode: .run)
+        )
         guard continueDispatch(generation, board: board, mode: .run) else { return }
         guard selectedBoardSlug == board else {
             dispatchState = KanbanDispatchState(
@@ -1217,7 +1248,11 @@ final class KanbanFeatureState {
                 : .succeeded,
             result: result,
             completedAt: completedAt,
-            boardActivityGeneration: boardActivityGeneration
+            boardActivityGeneration: boardActivityGeneration,
+            canAcknowledgeUncertainOutcome: requestOutcomeIsUncertain
+                && collectionSucceeded
+                && boardSucceeded
+                && allowsAcknowledgementAfterSuccessfulRefresh
         )
     }
 
@@ -2001,7 +2036,7 @@ final class KanbanFeatureState {
             boardMutationState = KanbanBoardMutationState(kind: kind, phase: .checkingResult)
         }
         let response = await fetchBoardCollection(
-            expectedBoardMutationGeneration: mutationGeneration
+            expectation: .boardMutation(generation: mutationGeneration)
         )
         guard continueBoardMutation(mutationGeneration, kind: kind) else {
             clearBoardMutationIfCurrent(mutationGeneration)
@@ -2020,20 +2055,19 @@ final class KanbanFeatureState {
     }
 
     @discardableResult
-    private func reconcileBoardCollection() async -> Bool {
-        await fetchBoardCollection() != nil
+    private func reconcileBoardCollection(
+        expectation: KanbanBoardCollectionExpectation? = nil
+    ) async -> Bool {
+        await fetchBoardCollection(expectation: expectation) != nil
     }
 
     private func fetchBoardCollection(
-        expectedBoardMutationGeneration: Int? = nil
+        expectation: KanbanBoardCollectionExpectation? = nil
     ) async -> KanbanBoardsResponse? {
+        guard boardCollectionExpectationIsCurrent(expectation) else { return nil }
         do {
             let response = try await client.kanbanBoards()
-            guard expectedBoardMutationGeneration == nil
-                    || expectedBoardMutationGeneration == boardMutationGeneration,
-                  !Task.isCancelled else {
-                return nil
-            }
+            guard boardCollectionExpectationIsCurrent(expectation) else { return nil }
             guard let availableBoards = response.boards,
                   normalizedOptional(response.current) != nil else {
                 return nil
@@ -2051,14 +2085,24 @@ final class KanbanFeatureState {
             isOffline = false
             return response
         } catch {
-            guard expectedBoardMutationGeneration == nil
-                    || expectedBoardMutationGeneration == boardMutationGeneration,
-                  !Task.isCancelled else {
-                return nil
-            }
+            guard boardCollectionExpectationIsCurrent(expectation) else { return nil }
             markOfflineIfNeeded(error)
             forwardAuthentication(error)
             return nil
+        }
+    }
+
+    private func boardCollectionExpectationIsCurrent(
+        _ expectation: KanbanBoardCollectionExpectation?
+    ) -> Bool {
+        guard !Task.isCancelled else { return false }
+        switch expectation {
+        case nil:
+            return true
+        case let .boardMutation(generation):
+            return generation == boardMutationGeneration
+        case let .dispatch(generation, board, mode):
+            return continueDispatch(generation, board: board, mode: mode)
         }
     }
 
