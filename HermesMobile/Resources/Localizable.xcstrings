@@ -58,6 +58,25 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "當機" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "當機" } }
     } },
+    "Display" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Anzeige" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Visualización" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Affichage" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Visualizzazione" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wyświetlanie" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Exibição" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Weergave" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Görünüm" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отображение" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "表示" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "显示" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "표시" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "العرض" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "תצוגה" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "ڈسپلے" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "顯示" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "顯示" } }
+    } },
     "Dispatcher" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher" } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Despachador" } },
@@ -77,6 +96,25 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "調度器" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "調度器" } }
     } },
+    "Dispatcher, result available" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, Ergebnis verfügbar" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Despachador, resultado disponible" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Répartiteur, résultat disponible" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, risultato disponibile" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Dyspozytor, wynik jest dostępny" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Despachador, resultado disponível" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, resultaat beschikbaar" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Dağıtıcı, sonuç mevcut" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Диспетчер, результат доступен" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "ディスパッチャー、結果あり" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "调度器，有可用结果" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "디스패처, 결과 있음" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "الموزّع، النتيجة متاحة" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "המפיץ, תוצאה זמינה" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "ڈسپیچر، نتیجہ دستیاب ہے" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "調度器，有可用結果" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "調度器，有可用結果" } }
+    } },
     "Dispatcher is unavailable on this server." : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Dispatcher ist auf diesem Server nicht verfügbar." } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "El despachador no está disponible en este servidor." } },
@@ -95,6 +133,25 @@
       "ur" : { "stringUnit" : { "state" : "translated", "value" : "اس سرور پر ڈسپیچر دستیاب نہیں ہے۔" } },
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "此伺服器無法使用調度器。" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "此伺服器無法使用調度器。" } }
+    } },
+    "Group by Profile" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Nach Profil gruppieren" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Agrupar por perfil" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Grouper par profil" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Raggruppa per profilo" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Grupuj według profilu" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Agrupar por perfil" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Groeperen op profiel" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Profile göre grupla" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Группировать по профилю" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロファイルでグループ化" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "按配置文件分组" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "프로필별 그룹화" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "تجميع حسب ملف التعريف" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "קיבוץ לפי פרופיל" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "پروفائل کے لحاظ سے گروپ کریں" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "依設定檔分組" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "按設定檔分組" } }
     } },
     "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again." : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Hermex hat das Board aktualisiert, kann aber nicht bestätigen, ob Worker gestartet wurden. Prüfe das aktuelle Board, bevor du den Dispatcher erneut ausführst." } },

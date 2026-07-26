@@ -174,6 +174,19 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.onlyMine)
     }
 
+    func testGroupByProfileRemainsLocalAndDoesNotRefetchBoard() async {
+        let client = BrowsingClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+        let requestsBeforeToggle = await client.boardRequests()
+
+        state.groupByProfile = true
+
+        XCTAssertTrue(state.groupByProfile)
+        let requestsAfterToggle = await client.boardRequests()
+        XCTAssertEqual(requestsAfterToggle, requestsBeforeToggle)
+    }
+
     func testBoardSwitchClearsBoardScopedDataAndRevalidatesCompatibility() async {
         let client = DeferredBoardSwitchClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
@@ -358,6 +371,34 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.isPreviewStale)
         let finalRequestCount = await client.dispatchRequestCount
         XCTAssertEqual(finalRequestCount, 1)
+    }
+
+    func testDispatcherToolbarResultPersistsUntilExplicitDismissal() async {
+        let client = DispatcherClient()
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: client
+        )
+        await state.load()
+
+        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(state.dispatchState))
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: state.dispatchState),
+            String(localized: "Dispatcher")
+        )
+
+        await state.previewDispatch()
+
+        XCTAssertTrue(KanbanDispatcherPresentation.hasResult(state.dispatchState))
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: state.dispatchState),
+            String(localized: "Dispatcher, result available")
+        )
+
+        state.dismissDispatchResult()
+
+        XCTAssertNil(state.dispatchState)
+        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(state.dispatchState))
     }
 
     func testRunDispatcherJoinsBoardWideLockAndAlwaysReconcilesWithoutRequiringPreview() async {

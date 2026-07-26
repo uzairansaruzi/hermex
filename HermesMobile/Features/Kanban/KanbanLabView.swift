@@ -18,6 +18,19 @@ struct KanbanPendingCardAction: Identifiable, Equatable {
     }
 }
 
+enum KanbanDispatcherPresentation {
+    static func hasResult(_ state: KanbanDispatchState?) -> Bool {
+        guard let state else { return false }
+        return !state.phase.isInFlight
+    }
+
+    static func toolbarAccessibilityLabel(for state: KanbanDispatchState?) -> String {
+        hasResult(state)
+            ? String(localized: "Dispatcher, result available")
+            : String(localized: "Dispatcher")
+    }
+}
+
 struct KanbanStatusFocusView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var model: KanbanFeatureState
@@ -29,11 +42,13 @@ struct KanbanStatusFocusView: View {
     @State private var showsBulkActions = false
     @State private var confirmsBulkArchive = false
     @State private var confirmsRunDispatcher = false
+    @State private var showsDispatcher = false
     @AccessibilityFocusState private var focusedCardID: String?
     @AccessibilityFocusState private var archiveUndoIsFocused: Bool
     @AccessibilityFocusState private var selectionControlsAreFocused: Bool
     @AccessibilityFocusState private var bulkSummaryIsFocused: Bool
     @AccessibilityFocusState private var dispatchSummaryIsFocused: Bool
+    @AccessibilityFocusState private var dispatcherButtonIsFocused: Bool
 
     var body: some View {
         Group {
@@ -74,6 +89,11 @@ struct KanbanStatusFocusView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $showsFilters) {
             KanbanFiltersView(model: model)
+        }
+        .sheet(isPresented: $showsDispatcher, onDismiss: {
+            dispatcherButtonIsFocused = true
+        }) {
+            dispatcherSheet
         }
         .sheet(isPresented: $showsBoardManagement) {
             NavigationStack {
@@ -121,7 +141,11 @@ struct KanbanStatusFocusView: View {
         }
         .onChange(of: model.dispatchState?.phase) { oldPhase, newPhase in
             if oldPhase?.isInFlight == true, newPhase?.isInFlight == false {
-                dispatchSummaryIsFocused = true
+                if showsDispatcher {
+                    dispatchSummaryIsFocused = true
+                } else {
+                    dispatcherButtonIsFocused = true
+                }
             }
         }
         .alert(
@@ -152,14 +176,6 @@ struct KanbanStatusFocusView: View {
             }
         } message: {
             Text("The selected Cards will be moved to the archive.")
-        }
-        .alert("Run Dispatcher", isPresented: $confirmsRunDispatcher) {
-            Button("Cancel", role: .cancel) {}
-            Button("Run Dispatcher", role: .destructive) {
-                Task { await model.runDispatcher() }
-            }
-        } message: {
-            Text(KanbanDispatchCopy.runConfirmation)
         }
     }
 
@@ -210,9 +226,6 @@ struct KanbanStatusFocusView: View {
             } else if let summary = model.bulkActionSummary {
                 bulkSummaryBanner(summary)
             }
-            if model.selectedBoardSlug != nil || model.dispatchState != nil {
-                dispatcherPanel
-            }
             if model.requiresBoardSelection {
                 boardSelectionContent
             } else {
@@ -226,13 +239,34 @@ struct KanbanStatusFocusView: View {
         }
     }
 
+    private var dispatcherSheet: some View {
+        NavigationStack {
+            ScrollView {
+                dispatcherPanel
+                    .padding()
+            }
+            .navigationTitle("Dispatcher")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showsDispatcher = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .alert("Run Dispatcher", isPresented: $confirmsRunDispatcher) {
+            Button("Cancel", role: .cancel) {}
+            Button("Run Dispatcher", role: .destructive) {
+                Task { await model.runDispatcher() }
+            }
+        } message: {
+            Text(KanbanDispatchCopy.runConfirmation)
+        }
+    }
+
     private var dispatcherPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Dispatcher", systemImage: "bolt.horizontal.circle")
-                    .font(.headline)
-                Spacer()
-            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     previewDispatchButton
@@ -262,9 +296,7 @@ struct KanbanStatusFocusView: View {
                 dispatchSummary(dispatch)
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.secondary.opacity(0.06))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var previewDispatchButton: some View {
@@ -1011,12 +1043,20 @@ struct KanbanStatusFocusView: View {
             .accessibilityLabel(Text("New Card"))
 
             Button {
-                model.groupByProfile.toggle()
+                showsDispatcher = true
             } label: {
-                Image(systemName: model.groupByProfile ? "person.2.fill" : "person.2")
+                Label(
+                    "Dispatcher",
+                    systemImage: KanbanDispatcherPresentation.hasResult(model.dispatchState)
+                        ? "bolt.horizontal.circle.fill"
+                        : "bolt.horizontal.circle"
+                )
             }
             .frame(minWidth: 44, minHeight: 44)
-            .accessibilityLabel(model.groupByProfile ? Text("Stop grouping by Profile") : Text("Group by Profile"))
+            .accessibilityLabel(
+                Text(KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: model.dispatchState))
+            )
+            .accessibilityFocused($dispatcherButtonIsFocused)
 
             Button {
                 showsFilters = true
@@ -1495,6 +1535,16 @@ private struct KanbanFiltersView: View {
 
                 Section("Archived Cards") {
                     Toggle("Include Archived Cards", isOn: $includesArchived)
+                }
+
+                Section("Display") {
+                    Toggle(
+                        "Group by Profile",
+                        isOn: Binding(
+                            get: { model.groupByProfile },
+                            set: { model.groupByProfile = $0 }
+                        )
+                    )
                 }
 
                 if model.hasActiveFilters {
