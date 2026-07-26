@@ -96,6 +96,25 @@
       "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "調度器" } },
       "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "調度器" } }
     } },
+    "Dispatcher, attention required" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, Eingreifen erforderlich" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Despachador, requiere atención" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Répartiteur, intervention requise" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, attenzione richiesta" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Dyspozytor, wymaga uwagi" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Despachador, requer atenção" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, aandacht vereist" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Dağıtıcı, ilgilenmeniz gerekiyor" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Диспетчер, требуется внимание" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "ディスパッチャー、確認が必要" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "调度器，需要注意" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "디스패처, 확인 필요" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "الموزّع، يتطلب الانتباه" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "המפיץ, נדרשת תשומת לב" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "ڈسپیچر، توجہ درکار ہے" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "調度器，需要注意" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "調度器，需要注意" } }
+    } },
     "Dispatcher, result available" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher, Ergebnis verfügbar" } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Despachador, resultado disponible" } },

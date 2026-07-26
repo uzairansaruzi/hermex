@@ -234,6 +234,7 @@ final class LocalizationCatalogTests: XCTestCase {
             "Crashed",
             "Display",
             "Dispatcher",
+            "Dispatcher, attention required",
             "Dispatcher, result available",
             "Dispatcher is unavailable on this server.",
             "Group by Profile",

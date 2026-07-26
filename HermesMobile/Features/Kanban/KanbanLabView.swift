@@ -20,7 +20,7 @@ struct KanbanPendingCardAction: Identifiable, Equatable {
 
 enum KanbanDispatcherPresentation {
     static func hasResult(_ state: KanbanDispatchState?) -> Bool {
-        guard let state else { return false }
+        guard let state, state.result != nil else { return false }
         switch state.phase {
         case .succeeded, .outcomeUncertain:
             return true
@@ -29,10 +29,28 @@ enum KanbanDispatcherPresentation {
         }
     }
 
+    static func requiresAttention(_ state: KanbanDispatchState?) -> Bool {
+        state?.phase == .outcomeUncertain && state?.result == nil
+    }
+
+    static func toolbarSystemImage(for state: KanbanDispatchState?) -> String {
+        if requiresAttention(state) {
+            return "exclamationmark.circle.fill"
+        }
+        if hasResult(state) {
+            return "bolt.horizontal.circle.fill"
+        }
+        return "bolt.horizontal.circle"
+    }
+
     static func toolbarAccessibilityLabel(for state: KanbanDispatchState?) -> String {
-        hasResult(state)
-            ? String(localized: "Dispatcher, result available")
-            : String(localized: "Dispatcher")
+        if requiresAttention(state) {
+            return String(localized: "Dispatcher, attention required")
+        }
+        if hasResult(state) {
+            return String(localized: "Dispatcher, result available")
+        }
+        return String(localized: "Dispatcher")
     }
 }
 
@@ -1084,9 +1102,9 @@ struct KanbanStatusFocusView: View {
             } label: {
                 Label(
                     "Dispatcher",
-                    systemImage: KanbanDispatcherPresentation.hasResult(model.dispatchState)
-                        ? "bolt.horizontal.circle.fill"
-                        : "bolt.horizontal.circle"
+                    systemImage: KanbanDispatcherPresentation.toolbarSystemImage(
+                        for: model.dispatchState
+                    )
                 )
             }
             .frame(minWidth: 44, minHeight: 44)

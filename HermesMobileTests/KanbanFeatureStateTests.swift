@@ -426,11 +426,46 @@ final class KanbanFeatureStateTests: XCTestCase {
             completedAt: nil,
             boardActivityGeneration: 0
         )
+        let uncertainWithResult = KanbanDispatchState(
+            mode: .run,
+            boardSlug: "main",
+            phase: .outcomeUncertain,
+            result: state.dispatchState?.result,
+            completedAt: nil,
+            boardActivityGeneration: 0
+        )
         XCTAssertFalse(KanbanDispatcherPresentation.hasResult(failed))
         XCTAssertFalse(KanbanDispatcherPresentation.hasResult(refused))
-        XCTAssertTrue(
-            KanbanDispatcherPresentation.hasResult(uncertain),
-            "Ambiguous-outcome recovery must remain indicated and reopenable."
+        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(uncertain))
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarSystemImage(for: failed),
+            "bolt.horizontal.circle"
+        )
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarSystemImage(for: refused),
+            "bolt.horizontal.circle"
+        )
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarSystemImage(for: uncertain),
+            "exclamationmark.circle.fill",
+            "Ambiguous-outcome recovery must use a distinct, visibly reopenable indicator."
+        )
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: uncertain),
+            String(localized: "Dispatcher, attention required")
+        )
+        XCTAssertTrue(KanbanDispatcherPresentation.hasResult(uncertainWithResult))
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarSystemImage(for: state.dispatchState),
+            "bolt.horizontal.circle.fill"
+        )
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarSystemImage(for: uncertainWithResult),
+            "bolt.horizontal.circle.fill"
+        )
+        XCTAssertEqual(
+            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: uncertainWithResult),
+            String(localized: "Dispatcher, result available")
         )
 
         state.dismissDispatchResult()
