@@ -1100,6 +1100,16 @@ private enum KanbanBoardEditorMode: Identifiable {
     }
 }
 
+private struct KanbanBoardStatusLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.icon
+            configuration.title
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct KanbanBoardManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var model: KanbanFeatureState
@@ -1260,6 +1270,7 @@ private struct KanbanBoardManagementView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .labelStyle(KanbanBoardStatusLabelStyle())
             }
 
             if let description = board.description, !description.isEmpty {
