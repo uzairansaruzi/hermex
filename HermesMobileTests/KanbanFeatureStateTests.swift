@@ -298,6 +298,18 @@ final class KanbanFeatureStateTests: XCTestCase {
             #"{"slug":"release","name":"Release"}"#
         )
         XCTAssertEqual(KanbanBoardAccessibility.browseLabel(board), "Browse Board: Release")
+        XCTAssertEqual(KanbanBoardAccessibility.actionsLabel(board), "Board actions for Release")
+        XCTAssertEqual(
+            KanbanBoardAccessibility.statusValue(isBrowsing: true, isActive: true),
+            "\(String(localized: "Browsing")), \(String(localized: "Active"))"
+        )
+        let describedBoard: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release","description":"Release planning","total":3}"#
+        )
+        XCTAssertEqual(
+            KanbanBoardAccessibility.browseSummary(describedBoard, isActive: true),
+            "Browse Board: Release, Release planning, 3 Cards, Active"
+        )
 
         let dispatchResult: KanbanDispatchResult = mutationDecode(
             #"{"spawned":[{"id":"secret"}],"promoted":2,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
@@ -334,6 +346,124 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(
             KanbanDispatchCopy.runConfirmation,
             "This may start up to \(KanbanDispatchRequest.maximum) workers and consume API budget."
+        )
+    }
+
+    func testBoardRowPresentationSeparatesLocalBrowsingFromApplicableMenuActions() {
+        let ordinary: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release"}"#
+        )
+        let ordinaryPresentation = KanbanBoardRowPresentation(
+            board: ordinary,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: true
+        )
+        XCTAssertEqual(ordinaryPresentation.browseSlug, "release")
+        XCTAssertEqual(ordinaryPresentation.actions, [.edit, .makeActive, .archive])
+        XCTAssertTrue(ordinaryPresentation.mutationsAreEnabled)
+        XCTAssertFalse(ordinaryPresentation.isBrowsing)
+        XCTAssertFalse(ordinaryPresentation.isActive)
+
+        let browsedPresentation = KanbanBoardRowPresentation(
+            board: ordinary,
+            selectedBoardSlug: "release",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: true
+        )
+        XCTAssertNil(browsedPresentation.browseSlug)
+        XCTAssertEqual(browsedPresentation.actions, [.edit, .makeActive, .archive])
+        XCTAssertTrue(browsedPresentation.isBrowsing)
+
+        let activePresentation = KanbanBoardRowPresentation(
+            board: ordinary,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "release",
+            canManageBoards: true
+        )
+        XCTAssertEqual(activePresentation.browseSlug, "release")
+        XCTAssertEqual(activePresentation.actions, [.edit, .archive])
+        XCTAssertTrue(activePresentation.isActive)
+
+        let defaultBoard: KanbanBoard = mutationDecode(
+            #"{"slug":"default","name":"Default"}"#
+        )
+        let defaultPresentation = KanbanBoardRowPresentation(
+            board: defaultBoard,
+            selectedBoardSlug: "release",
+            sharedActiveBoardSlug: "release",
+            canManageBoards: true
+        )
+        XCTAssertEqual(defaultPresentation.browseSlug, "default")
+        XCTAssertEqual(defaultPresentation.actions, [.edit, .makeActive])
+        XCTAssertFalse(defaultPresentation.actions.contains(.archive))
+    }
+
+    func testBoardRowPresentationDisablesAllMutationsWhenManagementIsUnavailable() {
+        let board: KanbanBoard = mutationDecode(
+            #"{"slug":"release","name":"Release"}"#
+        )
+        let presentation = KanbanBoardRowPresentation(
+            board: board,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: false
+        )
+
+        XCTAssertEqual(presentation.browseSlug, "release")
+        XCTAssertEqual(presentation.actions, [.edit, .makeActive, .archive])
+        XCTAssertFalse(presentation.mutationsAreEnabled)
+        XCTAssertEqual(KanbanBoardRowAction.edit.systemImage, "pencil")
+        XCTAssertEqual(KanbanBoardRowAction.makeActive.systemImage, "checkmark.circle")
+        XCTAssertEqual(KanbanBoardRowAction.archive.systemImage, "archivebox")
+
+        let invalidBoard: KanbanBoard = mutationDecode(
+            #"{"name":"Missing slug"}"#
+        )
+        let invalidPresentation = KanbanBoardRowPresentation(
+            board: invalidBoard,
+            selectedBoardSlug: "main",
+            sharedActiveBoardSlug: "main",
+            canManageBoards: true
+        )
+        XCTAssertNil(invalidPresentation.browseSlug)
+        XCTAssertFalse(invalidPresentation.isBrowsing)
+        XCTAssertFalse(invalidPresentation.mutationsAreEnabled)
+        XCTAssertTrue(invalidPresentation.actions.isEmpty)
+    }
+
+    func testCardRowPrimaryActionKeepsNavigationAndSelectionDistinct() throws {
+        let card = try XCTUnwrap(KanbanFixtures.richSnapshot.columns?[1].cards?.first)
+        let cardID = try XCTUnwrap(card.cardID)
+
+        XCTAssertEqual(
+            KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: false),
+            .openDetail(cardID)
+        )
+        XCTAssertEqual(
+            KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: true),
+            .toggleSelection(cardID)
+        )
+        XCTAssertEqual(
+            KanbanCardRowPrimaryAction.focusTarget(
+                afterDismissing: cardID,
+                visibleCards: [card]
+            ),
+            cardID
+        )
+        XCTAssertNil(
+            KanbanCardRowPrimaryAction.focusTarget(
+                afterDismissing: cardID,
+                visibleCards: []
+            )
+        )
+
+        let missingIdentity: KanbanCard = mutationDecode(#"{"title":"Missing identity"}"#)
+        XCTAssertNil(
+            KanbanCardRowPrimaryAction.resolve(for: missingIdentity, isSelecting: false)
+        )
+        XCTAssertNil(
+            KanbanCardRowPrimaryAction.resolve(for: missingIdentity, isSelecting: true)
         )
     }
 

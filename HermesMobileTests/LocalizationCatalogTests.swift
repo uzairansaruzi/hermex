@@ -192,6 +192,7 @@ final class LocalizationCatalogTests: XCTestCase {
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let strings = try XCTUnwrap(root["strings"] as? [String: Any])
         let boardKeys = [
+            "Board actions for %@",
             "Browse Board",
             "Browse Board: %@",
             "Browsing",
@@ -203,6 +204,7 @@ final class LocalizationCatalogTests: XCTestCase {
             "Icon",
             "Make Active Board",
             "Making this Board active changes shared server state for other Hermes clients.",
+            "Shows available Board management actions.",
             "Slug",
             "The slug cannot be changed after the Board is created.",
             "This Board no longer exists. Choose another Board.",
