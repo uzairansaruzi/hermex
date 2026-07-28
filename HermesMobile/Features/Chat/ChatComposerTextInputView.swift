@@ -102,7 +102,17 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: PastingTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
-        if textView.text != text, textView.markedTextRange == nil {
+        var shouldUpdateText = textView.text != text
+        if let markedRange = textView.markedTextRange, !text.isEmpty {
+            let start = textView.offset(from: textView.beginningOfDocument, to: markedRange.start)
+            let end = textView.offset(from: textView.beginningOfDocument, to: markedRange.end)
+            let nsText = textView.text as NSString
+            if start >= 0, end <= nsText.length, start <= end {
+                let committedText = nsText.replacingCharacters(in: NSRange(location: start, length: end - start), with: "")
+                shouldUpdateText = committedText != text
+            }
+        }
+        if shouldUpdateText {
             textView.text = text
         }
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
