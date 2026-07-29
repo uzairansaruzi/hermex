@@ -80,6 +80,7 @@ enum SSEEvent: Equatable {
     case cancelled
     case error(String)
     case transportError(String)
+    case heartbeat
     case ignored
 }
 
@@ -393,7 +394,11 @@ private final class SSEEventHandler: EventHandler {
         }
     }
 
-    func onComment(comment: String) {}
+    func onComment(comment _: String) {
+        Task { @MainActor in
+            onEvent(.heartbeat)
+        }
+    }
 
     func onError(error: Error) {
         Task { @MainActor in

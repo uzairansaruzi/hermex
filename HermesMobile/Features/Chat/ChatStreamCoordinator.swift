@@ -90,6 +90,7 @@ final class ChatStreamCoordinator {
     private(set) var hasCompletedCurrentResponse = false
     private(set) var lastEventID: String?
     private(set) var lastProgressDate: Date?
+    private(set) var lastTransportActivityDate: Date?
     private(set) var liveTokensPerSecond: Double?
     private var lastRecoveryStatusCheckDate: Date?
     private(set) var isReplayConnection = false
@@ -361,7 +362,8 @@ final class ChatStreamCoordinator {
         let reconnectInterval = delegate?.streamCoordinatorHasRunningLiveToolCall == true
             ? timing.runningToolReconnectInterval
             : timing.reconnectInterval
-        let shouldForceReconnect = elapsed >= reconnectInterval
+        let transportElapsed = now.timeIntervalSince(lastTransportActivityDate ?? lastProgressDate)
+        let shouldForceReconnect = transportElapsed >= reconnectInterval
         guard shouldForceReconnect || shouldPollStatus(now: now) else { return }
 
         lastRecoveryStatusCheckDate = now
@@ -374,6 +376,7 @@ final class ChatStreamCoordinator {
 
     func markProgress(now: Date = Date()) {
         lastProgressDate = now
+        lastTransportActivityDate = now
         lastRecoveryStatusCheckDate = nil
         recoveryState = .idle
     }
@@ -405,6 +408,7 @@ final class ChatStreamCoordinator {
 
     private func handle(_ event: SSEEvent) {
         lastEventID = streamClient.lastEventID ?? lastEventID
+        lastTransportActivityDate = Date()
 
         switch event {
         case .token(let text):
@@ -478,6 +482,8 @@ final class ChatStreamCoordinator {
             finishStream()
         case .transportError(let message):
             handleTransportError(message)
+        case .heartbeat:
+            break
         case .ignored:
             break
         }
@@ -668,6 +674,7 @@ final class ChatStreamCoordinator {
         recoveryState: ActiveStreamRecoveryState
     ) {
         lastProgressDate = isReplay ? Date() : nil
+        lastTransportActivityDate = lastProgressDate
         lastRecoveryStatusCheckDate = nil
         self.recoveryState = recoveryState
         isReplayConnection = isReplay
@@ -677,6 +684,7 @@ final class ChatStreamCoordinator {
     private func resetRecoveryState() {
         recoveryState = .idle
         lastProgressDate = nil
+        lastTransportActivityDate = nil
         lastRecoveryStatusCheckDate = nil
         isReplayConnection = false
         delegate?.streamCoordinatorDidResetRecoveryState()

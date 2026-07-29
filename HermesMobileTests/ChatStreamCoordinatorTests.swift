@@ -331,6 +331,51 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testHeartbeatKeepsSemanticallyQuietStreamOnOriginalConnection() async throws {
+        var statusRequests = 0
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient) { request in
+            statusRequests += 1
+            return apiTestJSONResponse(
+                #"{"active": true, "stream_id": "stream-123", "replay_available": true}"#,
+                for: request
+            )
+        }
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.markProgress(now: Date().addingTimeInterval(-60))
+        streamClient.emit(.heartbeat)
+
+        await coordinator.recoverStaleStreamIfNeeded(now: Date().addingTimeInterval(1))
+
+        XCTAssertEqual(statusRequests, 1)
+        XCTAssertEqual(streamClient.startedURLs.count, 1)
+        XCTAssertEqual(streamClient.stopCount, 0)
+        XCTAssertEqual(coordinator.recoveryState, .checking)
+    }
+
+    @MainActor
+    func testMissingTransportActivityReconnectsStaleActiveStream() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient) { request in
+            apiTestJSONResponse(
+                #"{"active": true, "stream_id": "stream-123", "replay_available": true}"#,
+                for: request
+            )
+        }
+        let start = Date(timeIntervalSince1970: 1_770_000_000)
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.markProgress(now: start)
+
+        await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(18.1))
+
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+        XCTAssertEqual(streamClient.stopCount, 1)
+        XCTAssertEqual(coordinator.recoveryState, .reconnecting)
+    }
+
+    @MainActor
     func testStaleRecoveryDoesNotFinishReplacementStreamAfterTranscriptLoad() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()

@@ -94,6 +94,25 @@ final class SSEClientTests: XCTestCase {
         )
     }
 
+    func testSSEClientForwardsHeartbeatComments() async {
+        DelayedSSEURLProtocol.configure(chunks: [
+            DelayedSSEChunk(text: ": heartbeat\n\n", delayNanoseconds: 0)
+        ])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedSSEURLProtocol.self]
+        let client = SSEClient(urlSessionConfiguration: configuration)
+        let heartbeat = expectation(description: "received heartbeat comment")
+
+        client.start(url: URL(string: "https://example.test/api/chat/stream?stream_id=stream-123")!) { event in
+            if case .heartbeat = event {
+                heartbeat.fulfill()
+            }
+        }
+
+        await fulfillment(of: [heartbeat], timeout: 5)
+        client.stop()
+    }
+
     func testDecodesToolStartedEventFromUpstreamPayload() {
         let event = SSEEventDecoder.decode(
             eventType: "tool",
