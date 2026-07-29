@@ -27,7 +27,10 @@ final class APIClientKanbanTests: APIClientTestCase {
                 return apiTestJSONResponse(Self.statsJSON, for: request)
             case "/api/kanban/assignees":
                 XCTAssertEqual(request.url?.query, "board=main%20board")
-                return apiTestJSONResponse(#"{"assignees":["work","review"]}"#, for: request)
+                return apiTestJSONResponse(
+                    #"{"assignees":[{"name":"work","on_disk":true,"counts":{"ready":2}},"review",{"future":true}]}"#,
+                    for: request
+                )
             default:
                 throw URLError(.badURL)
             }
@@ -635,6 +638,8 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(detail.links?.prerequisites, ["CARD-0"])
         XCTAssertEqual(detail.links?.dependents, ["CARD-2"])
         XCTAssertEqual(detail.runs?.first?.runID, "run-1")
+        XCTAssertEqual(detail.runs?.first?.finishedAt, "1700000002")
+        XCTAssertEqual(detail.runs?.first?.workerID, "31415")
         XCTAssertNil(detail.card?.workerID) // malformed metadata is ignored
 
         let minimal = try decoder.decode(KanbanCardDetailEnvelope.self, from: Data(
@@ -753,6 +758,20 @@ final class APIClientKanbanTests: APIClientTestCase {
     func testCardSummaryFieldsStatsEnvelopesAndStalenessDecodeTolerantly() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let configuration = try decoder.decode(
+            KanbanConfiguration.self,
+            from: Data("""
+            {
+              "columns":["triage","todo","ready"],
+              "assignees":[
+                {"name":"builder","on_disk":true,"counts":{"ready":2}},
+                "reviewer",
+                {"future":true}
+              ],
+              "read_only":false
+            }
+            """.utf8)
+        )
         let snapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
         {
           "changed": true,
@@ -773,6 +792,7 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(card.linkCounts?.children, 2)
         XCTAssertEqual(card.staleness, .critical)
         XCTAssertEqual(snapshot.filters?.includeArchived, true)
+        XCTAssertEqual(configuration.assignees, ["builder", "reviewer"])
 
         let current = try decoder.decode(KanbanStats.self, from: Data(Self.statsJSON.utf8))
         XCTAssertEqual(current.total, 3)
@@ -868,7 +888,10 @@ final class APIClientKanbanTests: APIClientTestCase {
       "comments":[{"id":7,"task_id":"CARD-1","author":"review","body":"Ship it","created_at":1700000000}],
       "events":[{"id":8,"task_id":"CARD-1","kind":"status","payload":{"status":"ready","secret":"discarded"},"created_at":1700000001}],
       "links":{"parents":["CARD-0"],"children":["CARD-2"]},
-      "runs":[{"run_id":"run-1","status":"finished","worker":"worker-private","future":true}],
+      "runs":[{
+        "id":"run-1","status":"finished","worker_pid":31415,
+        "started_at":1700000001,"ended_at":1700000002,"future":true
+      }],
       "read_only":false,
       "future_envelope_field":{"nested":true}
     }

@@ -97,7 +97,6 @@ sub-paths of a group. Do not reorder casually.
 | `/api/workspace/` | roadmap | P3 | write | Workspace Management |
 | `/api/file/` | roadmap | P4 | write | File Editing / Management — owner-deferred |
 | `/api/folder/` | roadmap | P4 | write | File Editing / Management — owner-deferred |
-| `/api/kanban` | roadmap | P4 | write | Kanban Board — owner-deferred |
 | `/api/terminal/` | roadmap | P4 | exec | Terminal — owner-deferred; App Store/safety-sensitive |
 | `/api/commands/exec` | roadmap | P4 | exec | Plugin command exec — owner-deferred |
 | `/api/gateway/` | roadmap | P5 | read | Gateway / Messaging Bridge |
@@ -118,9 +117,10 @@ sub-paths of a group. Do not reorder casually.
 list is a human convenience only and is intentionally **not** machine-read.
 Shipping parity features include: Clarification System, Goal Submission, Session
 Search, Memory Editing, Cron mutations, Project Rename, Server-Side Insights,
-Transcript `MEDIA:` inline image rendering, and the core session/chat/streaming
-surface. For each feature's regression-check notes and last-validated shapes, see
-the archived catalog in `git log` history (removed during open-source prep, #347).
+Transcript `MEDIA:` inline image rendering, Kanban Board, and the core
+session/chat/streaming surface. For each feature's regression-check notes and
+last-validated shapes, see the archived catalog in `git log` history (removed
+during open-source prep, #347).
 
 ### Not in this index → `new`
 

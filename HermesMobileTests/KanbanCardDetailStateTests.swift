@@ -42,6 +42,33 @@ final class KanbanCardDetailStateTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
+    func testMissingCommentEndpointDisablesCommentsWithoutTreatingCardAsMissing() async {
+        let client = CardDetailClient(
+            details: [.success(.baseline)],
+            commentResult: .failure(APIError.http(
+                statusCode: 404,
+                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+            ))
+        )
+        var unavailable: [KanbanWriteCapability] = []
+        let state = KanbanCardDetailState(
+            cardID: "CARD-1",
+            board: "main",
+            client: client,
+            onCapabilityUnavailable: { unavailable.append($0) }
+        )
+
+        await state.load()
+        state.commentDraft = "Hello"
+        await state.submitComment(allowsMutation: true)
+
+        XCTAssertEqual(state.loadState, .loaded)
+        XCTAssertEqual(state.commentSubmission, .failed)
+        XCTAssertEqual(unavailable, [.comments])
+        let boardCalls = await client.boardCallCount
+        XCTAssertEqual(boardCalls, 0)
+    }
+
     func testAmbiguousCommentOutcomeReconcilesPresentAbsentAndUncertain() async {
         let network = APIError.network(underlying: URLError(.networkConnectionLost))
 

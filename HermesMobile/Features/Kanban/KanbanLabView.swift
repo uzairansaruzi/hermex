@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum KanbanCardAction: Equatable {
     case move(String)
@@ -176,7 +177,7 @@ struct KanbanStatusFocusView: View {
         .sheet(item: $cardEditor) { editor in
             KanbanCardEditorView(
                 state: editor,
-                allowsMutation: model.canMutateCards,
+                allowsMutation: editor.isEditing ? model.canEditCards : model.canCreateCards,
                 onSaved: { await model.reconcileAfterCardMutation() }
             )
         }
@@ -770,8 +771,15 @@ struct KanbanStatusFocusView: View {
 
     private var compatibilityBanner: some View {
         Label {
-            Text("Kanban is available with limited capabilities.")
-                .font(.footnote)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Kanban is available with limited capabilities.")
+                if !model.unavailableWriteCapabilities.isEmpty {
+                    Text("Unavailable")
+                        + Text(verbatim: ": ")
+                        + Text(verbatim: unavailableWriteCapabilityNames)
+                }
+            }
+            .font(.footnote)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
         }
@@ -780,6 +788,13 @@ struct KanbanStatusFocusView: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.orange.opacity(0.12))
+    }
+
+    private var unavailableWriteCapabilityNames: String {
+        KanbanWriteCapability.allCases
+            .filter(model.unavailableWriteCapabilities.contains)
+            .map(\.title)
+            .joined(separator: ", ")
     }
 
     private var refreshErrorBanner: some View {
@@ -796,45 +811,234 @@ struct KanbanStatusFocusView: View {
     }
 
     private var statusSelector: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(model.availableStatuses, id: \.self) { status in
+        KanbanStatusSelector(model: model)
+    }
+
+    private struct KanbanStatusSelector: UIViewRepresentable {
+        @Bindable var model: KanbanFeatureState
+        @ScaledMetric(relativeTo: .subheadline) private var height: CGFloat = 56
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator(parent: self)
+        }
+
+        func makeUIView(context: Context) -> UIScrollView {
+            let scrollView = KanbanStatusScrollView()
+            scrollView.alwaysBounceHorizontal = false
+            scrollView.alwaysBounceVertical = false
+            scrollView.delaysContentTouches = false
+            scrollView.isDirectionalLockEnabled = true
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.refreshControl = nil
+            scrollView.accessibilityIdentifier = "KanbanStatusSelector"
+            context.coordinator.install(in: scrollView)
+            return scrollView
+        }
+
+        func updateUIView(_ scrollView: UIScrollView, context: Context) {
+            context.coordinator.parent = self
+            context.coordinator.update(height: height)
+        }
+
+        @MainActor
+        final class KanbanStatusScrollView: UIScrollView {
+            override func touchesShouldCancel(in view: UIView) -> Bool {
+                true
+            }
+        }
+
+        func sizeThatFits(
+            _ proposal: ProposedViewSize,
+            uiView: UIScrollView,
+            context: Context
+        ) -> CGSize? {
+            CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width, height: height)
+        }
+
+        @MainActor
+        final class Coordinator: NSObject {
+            var parent: KanbanStatusSelector
+            private let stackView = UIStackView()
+            private var controls: [String: KanbanStatusControl] = [:]
+            private var orderedStatuses: [String] = []
+
+            init(parent: KanbanStatusSelector) {
+                self.parent = parent
+            }
+
+            func install(in scrollView: UIScrollView) {
+                stackView.axis = .horizontal
+                stackView.alignment = .center
+                stackView.spacing = 8
+                stackView.translatesAutoresizingMaskIntoConstraints = false
+                scrollView.addSubview(stackView)
+                let tapRecognizer = UITapGestureRecognizer(
+                    target: self,
+                    action: #selector(selectStatus(at:))
+                )
+                tapRecognizer.cancelsTouchesInView = false
+                scrollView.addGestureRecognizer(tapRecognizer)
+
+                NSLayoutConstraint.activate([
+                    stackView.leadingAnchor.constraint(
+                        equalTo: scrollView.contentLayoutGuide.leadingAnchor,
+                        constant: 16
+                    ),
+                    stackView.trailingAnchor.constraint(
+                        equalTo: scrollView.contentLayoutGuide.trailingAnchor,
+                        constant: -16
+                    ),
+                    stackView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+                    stackView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+                    stackView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor)
+                ])
+            }
+
+            func update(height: CGFloat) {
+                let statuses = parent.model.availableStatuses
+                if statuses != orderedStatuses {
+                    rebuild(statuses)
+                }
+
+                let controlHeight = max(44, height - 12)
+                for status in statuses {
                     let presentation = KanbanStatusPresentation(status)
-                    Button {
-                        model.selectedStatus = status
-                    } label: {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(presentation.color)
-                                .frame(width: 8, height: 8)
-                            Text(presentation.title)
-                            Text(verbatim: "\(model.statusCount(status))")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.subheadline.weight(model.selectedStatus == status ? .semibold : .regular))
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
-                        .background(
-                            model.selectedStatus == status ? Color.secondary.opacity(0.16) : Color.clear,
-                            in: Capsule()
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        String.localizedStringWithFormat(
-                            String(localized: "%@, %@"),
-                            presentation.title,
-                            KanbanCountFormatter.cards(model.statusCount(status))
-                        )
+                    controls[status]?.update(
+                        title: presentation.title,
+                        count: parent.model.statusCount(status),
+                        color: UIColor(presentation.color),
+                        isSelected: parent.model.selectedStatus == status,
+                        height: controlHeight
                     )
-                    .accessibilityAddTraits(model.selectedStatus == status ? .isSelected : [])
                 }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 6)
+
+            private func rebuild(_ statuses: [String]) {
+                orderedStatuses = statuses
+                for view in stackView.arrangedSubviews {
+                    stackView.removeArrangedSubview(view)
+                    view.removeFromSuperview()
+                }
+                controls.removeAll()
+
+                for status in statuses {
+                    let control = KanbanStatusControl()
+                    control.status = status
+                    control.addTarget(
+                        self,
+                        action: #selector(selectStatus(_:)),
+                        for: [.touchUpInside, .primaryActionTriggered]
+                    )
+                    stackView.addArrangedSubview(control)
+                    controls[status] = control
+                }
+            }
+
+            @objc
+            private func selectStatus(_ sender: KanbanStatusControl) {
+                parent.model.selectedStatus = sender.status
+            }
+
+            @objc
+            private func selectStatus(at recognizer: UITapGestureRecognizer) {
+                guard recognizer.state == .ended else { return }
+                let location = recognizer.location(in: stackView)
+                guard let control = stackView.arrangedSubviews
+                    .compactMap({ $0 as? KanbanStatusControl })
+                    .first(where: { $0.frame.contains(location) })
+                else { return }
+                parent.model.selectedStatus = control.status
+            }
         }
-        .scrollIndicators(.hidden)
+
+        @MainActor
+        final class KanbanStatusControl: UIControl {
+            var status = ""
+            private let dotView = UIView()
+            private let titleLabel = UILabel()
+            private let countLabel = UILabel()
+            private let stackView = UIStackView()
+            private var heightConstraint: NSLayoutConstraint?
+
+            override init(frame: CGRect) {
+                super.init(frame: frame)
+                isAccessibilityElement = true
+                layer.cornerCurve = .continuous
+
+                dotView.translatesAutoresizingMaskIntoConstraints = false
+                dotView.layer.cornerRadius = 4
+                NSLayoutConstraint.activate([
+                    dotView.widthAnchor.constraint(equalToConstant: 8),
+                    dotView.heightAnchor.constraint(equalToConstant: 8)
+                ])
+
+                titleLabel.adjustsFontForContentSizeCategory = true
+                titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                countLabel.adjustsFontForContentSizeCategory = true
+                countLabel.font = .monospacedDigitSystemFont(
+                    ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize,
+                    weight: .regular
+                )
+                countLabel.textColor = .secondaryLabel
+
+                stackView.axis = .horizontal
+                stackView.alignment = .center
+                stackView.spacing = 6
+                stackView.translatesAutoresizingMaskIntoConstraints = false
+                stackView.addArrangedSubview(dotView)
+                stackView.addArrangedSubview(titleLabel)
+                stackView.addArrangedSubview(countLabel)
+                addSubview(stackView)
+
+                NSLayoutConstraint.activate([
+                    stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                    stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                    stackView.centerYAnchor.constraint(equalTo: centerYAnchor)
+                ])
+            }
+
+            @available(*, unavailable)
+            required init?(coder: NSCoder) {
+                fatalError("init(coder:) has not been implemented")
+            }
+
+            func update(
+                title: String,
+                count: Int,
+                color: UIColor,
+                isSelected: Bool,
+                height: CGFloat
+            ) {
+                titleLabel.text = title
+                let preferredTitleFont = UIFont.preferredFont(forTextStyle: .subheadline)
+                titleLabel.font = .systemFont(
+                    ofSize: preferredTitleFont.pointSize,
+                    weight: isSelected ? .semibold : .regular
+                )
+                countLabel.font = .monospacedDigitSystemFont(
+                    ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize,
+                    weight: .regular
+                )
+                countLabel.text = "\(count)"
+                dotView.backgroundColor = color
+                self.isSelected = isSelected
+                backgroundColor = isSelected ? .secondarySystemFill : .clear
+                layer.cornerRadius = height / 2
+                accessibilityLabel = String.localizedStringWithFormat(
+                    String(localized: "%@, %@"),
+                    title,
+                    KanbanCountFormatter.cards(count)
+                )
+                accessibilityTraits = isSelected ? [.button, .selected] : .button
+
+                if heightConstraint?.constant != height {
+                    heightConstraint?.isActive = false
+                    heightConstraint = heightAnchor.constraint(equalToConstant: height)
+                    heightConstraint?.isActive = true
+                }
+            }
+        }
     }
 
     private var cardList: some View {
@@ -1132,7 +1336,7 @@ struct KanbanStatusFocusView: View {
             } label: {
                 Image(systemName: model.isSelectingCards ? "xmark" : "checkmark.circle")
             }
-            .disabled(model.bulkActionPhase != nil)
+            .disabled(model.bulkActionPhase != nil || !model.canUseBulkActions)
             .frame(minWidth: 44, minHeight: 44)
             .accessibilityLabel(model.isSelectingCards ? Text("Cancel") : Text("Select Cards"))
 
@@ -1141,7 +1345,7 @@ struct KanbanStatusFocusView: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .disabled(!model.canMutateCards)
+            .disabled(!model.canCreateCards)
             .frame(minWidth: 44, minHeight: 44)
             .accessibilityLabel(Text("New Card"))
 
@@ -2050,6 +2254,26 @@ struct KanbanStatusPresentation {
     }
 }
 
+struct KanbanView: View {
+    @State private var model: KanbanFeatureState
+
+    init(server: URL, onAPIError: @escaping (Error) -> Void) {
+        _model = State(
+            initialValue: KanbanFeatureState(
+                server: server,
+                onAPIError: onAPIError
+            )
+        )
+    }
+
+    var body: some View {
+        KanbanStatusFocusView(model: model)
+            .task {
+                await model.load()
+            }
+    }
+}
+
 enum KanbanAgeFormatter {
     static func abbreviated(_ seconds: Double) -> String { format(seconds, style: .abbreviated) }
     static func full(_ seconds: Double) -> String { format(seconds, style: .full) }
@@ -2182,7 +2406,7 @@ enum KanbanLabScenario: String, CaseIterable, Identifiable {
 
 actor KanbanLabClient: KanbanDataClient {
     let scenario: KanbanLabScenario
-    private var submittedComments: [String] = []
+    private var submittedComments: [String: [String: [String]]] = [:]
     private var storedCards: [String: [String: StoredCard]] = [:]
     private var cardIDsByIntent: [String: String] = [:]
     private var nextCardSequence = 100
@@ -2333,56 +2557,60 @@ actor KanbanLabClient: KanbanDataClient {
 
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
         if scenario == .detailError { throw APIError.http(statusCode: 503, body: nil) }
-        if let stored = storedCards[request.board]?[request.cardID] {
-            return decode([
-                "task": stored.object,
-                "comments": [],
-                "events": [],
-                "links": [
-                    "parents": stored.prerequisiteID.map { [$0] } ?? [],
-                    "children": []
-                ],
-                "runs": [],
-                "read_only": false
-            ])
-        }
+        let stored = storedCards[request.board]?[request.cardID]
+        let isFixture = fixtureCard(cardID: request.cardID) != nil
         let isEmpty = scenario == .detailEmpty
-        var comments: [[String: Any]] = isEmpty ? [] : [
+        var comments: [[String: Any]] = isEmpty || !isFixture ? [] : [
             ["id": 1, "task_id": request.cardID, "author": "reviewer", "body": "Looks good from the review side.", "created_at": 1_700_000_000]
         ]
-        comments += submittedComments.enumerated().map { offset, body in
+        let cardComments = submittedComments[request.board]?[request.cardID] ?? []
+        comments += cardComments.enumerated().map { offset, body in
             ["id": offset + 2, "task_id": request.cardID, "author": "webui", "body": body, "created_at": 1_700_000_100 + offset]
         }
+        let task: [String: Any] = stored?.object ?? [
+            "id": request.cardID,
+            "title": isEmpty ? "Empty history fixture" : "Implement Status Focus",
+            "body": isEmpty ? "" : "This **Markdown** description stays selectable.",
+            "status": "ready",
+            "assignee": "builder",
+            "tenant": "app",
+            "priority": 1,
+            "created_at": 1_699_999_000,
+            "updated_at": 1_700_000_000,
+            "workspace_kind": "worktree",
+            "workspace_path": "/private/fixture/explicit-history-only",
+            "skills": ["swiftui-patterns"],
+            "max_runtime_seconds": 3600,
+            "current_run_id": "run-fixture",
+            "claim_lock": "claim-fixture",
+            "worker_pid": 4242
+        ]
+        let links: [String: [String]]
+        if let stored {
+            links = [
+                "parents": stored.prerequisiteID.map { [$0] } ?? [],
+                "children": []
+            ]
+        } else {
+            links = isEmpty ? ["parents": [], "children": []] : [
+                "parents": ["CARD-1"],
+                "children": ["CARD-7"]
+            ]
+        }
+        let hasFixtureHistory = !isEmpty && isFixture
         let payload: [String: Any] = [
-            "task": [
-                "id": request.cardID,
-                "title": isEmpty ? "Empty history fixture" : "Implement Status Focus",
-                "body": isEmpty ? "" : "This **Markdown** description stays selectable.",
-                "status": "ready",
-                "assignee": "builder",
-                "tenant": "app",
-                "priority": 1,
-                "created_at": 1_699_999_000,
-                "updated_at": 1_700_000_000,
-                "workspace_kind": "worktree",
-                "workspace_path": "/private/fixture/explicit-history-only",
-                "skills": ["swiftui-patterns"],
-                "max_runtime_seconds": 3600,
-                "current_run_id": "run-fixture",
-                "claim_lock": "claim-fixture",
-                "worker_pid": 4242
-            ],
+            "task": task,
             "comments": comments,
-            "events": isEmpty ? [] : [[
+            "events": hasFixtureHistory ? [[
                 "id": 9, "task_id": request.cardID, "kind": "status",
                 "payload": ["status": "ready", "secret": "discarded"], "created_at": 1_700_000_000
-            ]],
-            "links": isEmpty ? ["parents": [], "children": []] : ["parents": ["CARD-1"], "children": ["CARD-7"]],
-            "runs": isEmpty ? [] : [[
+            ]] : [],
+            "links": links,
+            "runs": hasFixtureHistory ? [[
                 "id": "run-fixture", "status": "finished", "outcome": "success",
                 "summary": "Validated the focused suite.", "worker": "worker-fixture",
                 "started_at": 1_699_999_500, "finished_at": 1_700_000_000
-            ]],
+            ]] : [],
             "read_only": false
         ]
         return decode(payload)
@@ -2404,8 +2632,9 @@ actor KanbanLabClient: KanbanDataClient {
     }
 
     func addKanbanComment(_ request: KanbanAddCommentRequest) async throws -> KanbanAddCommentResponse {
-        submittedComments.append(request.body)
-        return decode(["ok": true, "comment_id": submittedComments.count + 1, "read_only": false])
+        submittedComments[request.board, default: [:]][request.cardID, default: []].append(request.body)
+        let count = submittedComments[request.board]?[request.cardID]?.count ?? 0
+        return decode(["ok": true, "comment_id": count + 1, "read_only": false])
     }
 
     func createKanbanCard(_ request: KanbanCreateCardRequest) async throws -> KanbanCardMutationEnvelope {

@@ -135,6 +135,10 @@ struct SessionSidebarUtilityRows: View {
                 openDestination(.tasks)
             }
 
+            SidebarNavButton(title: String(localized: "Kanban"), assetImage: "LucideColumns3") {
+                openDestination(.kanban)
+            }
+
             SidebarNavButton(title: String(localized: "Skills"), assetImage: "LucideHammer") {
                 openDestination(.skills)
             }

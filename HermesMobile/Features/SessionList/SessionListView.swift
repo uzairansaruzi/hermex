@@ -331,6 +331,8 @@ struct SessionListView: View {
                 SettingsView(authManager: authManager, server: server, initialScrollTarget: scrollTo)
             case .tasks:
                 TasksView(server: server, onAPIError: authManager.handleAPIError)
+            case .kanban:
+                KanbanView(server: server, onAPIError: authManager.handleAPIError)
             case .skills:
                 SkillsView(server: server, onAPIError: authManager.handleAPIError)
             case .memory:
@@ -1264,6 +1266,7 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     /// passes `.servers`, a plain avatar tap passes `nil` (#283).
     case settings(SettingsScrollAnchor?)
     case tasks
+    case kanban
     case skills
     case memory
     case insights

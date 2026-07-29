@@ -897,6 +897,30 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.mutationState(for: "CARD-2")?.phase, .succeeded)
     }
 
+    func testMissingWorkflowEndpointDisablesOnlyCardWorkflow() async throws {
+        let client = ImmediateMutationClient(statusResults: [
+            .failure(APIError.http(
+                statusCode: 404,
+                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+            ))
+        ])
+        let state = KanbanFeatureState(
+            server: URL(string: "https://workflow-capability.example.test")!,
+            client: client
+        )
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+
+        await state.completeCard(card)
+
+        XCTAssertEqual(state.state, .partial)
+        XCTAssertEqual(state.unavailableWriteCapabilities, [.cardWorkflow])
+        XCTAssertFalse(state.canUseCardWorkflow)
+        XCTAssertTrue(state.canUseBulkActions)
+        XCTAssertTrue(state.canCreateCards)
+        XCTAssertTrue(state.canManageBoards)
+    }
+
     func testAmbiguousMutationRequiresReconciliationBeforeTryAgain() async throws {
         let network = APIError.network(underlying: URLError(.networkConnectionLost))
         let client = ImmediateMutationClient(
@@ -1354,6 +1378,41 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.bulkActionSummary?.succeededCount, 2)
         let detailRequests = await client.detailRequests()
         XCTAssertEqual(Set(detailRequests), ["CARD-1", "CARD-2"])
+    }
+
+    func testMissingBulkEndpointDisablesOnlyBulkActionsAfterReconciliation() async throws {
+        let client = BulkActionClient(
+            boardSnapshots: [
+                bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
+                bulkSnapshot(firstStatus: "todo", secondStatus: "todo")
+            ],
+            bulkResponses: [],
+            detailResults: [
+                "CARD-1": [
+                    .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"todo"}}"#))
+                ]
+            ],
+            bulkError: APIError.http(
+                statusCode: 404,
+                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+            )
+        )
+        let state = KanbanFeatureState(
+            server: URL(string: "https://bulk-capability.example.test")!,
+            client: client
+        )
+        await state.load()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+        state.beginSelectingCards()
+        state.toggleCardSelection(card)
+
+        await state.performBulkAction(.changeStatus("done"))
+
+        XCTAssertEqual(state.state, .partial)
+        XCTAssertEqual(state.unavailableWriteCapabilities, [.bulkActions])
+        XCTAssertFalse(state.canUseBulkActions)
+        XCTAssertTrue(state.canUseCardWorkflow)
+        XCTAssertTrue(state.canCreateCards)
     }
 
     func testBulkReconciliationFetchesCardDetailsConcurrently() async throws {
@@ -1822,6 +1881,64 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(editRequest?.slug, "release")
         XCTAssertEqual(activeRequest?.slug, "release")
         XCTAssertEqual(archiveRequest?.slug, "release")
+    }
+
+    func testMissingBoardManagementEndpointDisablesOnlyThatCapabilityUntilReload() async {
+        let missingEndpoint = APIError.http(
+            statusCode: 404,
+            body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+        )
+        let client = BoardManagementClient(
+            boardsResponses: [
+                .success(KanbanFixtures.boards),
+                .success(KanbanFixtures.boards)
+            ],
+            createResult: .failure(missingEndpoint),
+            boardSnapshot: KanbanFixtures.snapshot
+        )
+        let state = KanbanFeatureState(
+            server: URL(string: "https://capability.example.test")!,
+            client: client
+        )
+
+        await state.load()
+        await state.createBoard(KanbanCreateBoardRequest(
+            slug: "release",
+            name: "Release",
+            description: "",
+            icon: "",
+            color: ""
+        ))
+
+        XCTAssertEqual(state.state, .partial)
+        XCTAssertEqual(state.unavailableWriteCapabilities, [.boardManagement])
+        XCTAssertFalse(state.canManageBoards)
+        XCTAssertTrue(state.canCreateCards)
+        XCTAssertTrue(state.canUseCardWorkflow)
+
+        await state.load()
+
+        XCTAssertEqual(state.state, .compatible)
+        XCTAssertTrue(state.unavailableWriteCapabilities.isEmpty)
+        XCTAssertTrue(state.canManageBoards)
+    }
+
+    func testCapabilityDetectionDoesNotConfuseMissingEntitiesWithMissingEndpoints() {
+        XCTAssertTrue(KanbanEndpointCompatibility.isMissingCapability(
+            APIError.http(statusCode: 405, body: nil)
+        ))
+        XCTAssertTrue(KanbanEndpointCompatibility.isMissingCapability(
+            APIError.http(
+                statusCode: 404,
+                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+            )
+        ))
+        XCTAssertFalse(KanbanEndpointCompatibility.isMissingCapability(
+            APIError.http(statusCode: 404, body: #"{"error":"task not found"}"#)
+        ))
+        XCTAssertFalse(KanbanEndpointCompatibility.isMissingCapability(
+            APIError.http(statusCode: 404, body: nil)
+        ))
     }
 
     private func waitUntil(

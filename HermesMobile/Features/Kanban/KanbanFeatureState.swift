@@ -17,6 +17,39 @@ enum KanbanReadCapabilityWarning: Hashable, Sendable {
     case profileHistoryUnavailable
 }
 
+enum KanbanWriteCapability: String, CaseIterable, Hashable, Sendable {
+    case createCard
+    case editCard
+    case comments
+    case cardWorkflow
+    case bulkActions
+    case boardManagement
+
+    var title: String {
+        switch self {
+        case .createCard: String(localized: "New Card")
+        case .editCard: String(localized: "Edit Card")
+        case .comments: String(localized: "Comment")
+        case .cardWorkflow: String(localized: "Card Actions")
+        case .bulkActions: String(localized: "Bulk Actions")
+        case .boardManagement: String(localized: "Board")
+        }
+    }
+}
+
+enum KanbanEndpointCompatibility {
+    static func isMissingCapability(_ error: Error) -> Bool {
+        guard let apiError = error as? APIError,
+              case let .http(statusCode, _) = apiError else { return false }
+        if statusCode == 405 { return true }
+        guard statusCode == 404,
+              let message = apiError.serverMessage?.lowercased() else { return false }
+        return message.contains("unknown kanban endpoint")
+            || message.contains("kanban endpoint not found")
+            || message.contains("unsupported kanban endpoint")
+    }
+}
+
 enum KanbanDispatchMode: Equatable, Sendable {
     case preview
     case run
@@ -285,6 +318,7 @@ final class KanbanFeatureState {
     private(set) var stats: KanbanStats?
     private(set) var assigneeHistory: KanbanAssigneeHistory?
     private(set) var capabilityWarnings: Set<KanbanReadCapabilityWarning> = []
+    private(set) var unavailableWriteCapabilities: Set<KanbanWriteCapability> = []
     private(set) var isLoading = false
     private(set) var isRefreshing = false
     private(set) var refreshFailed = false
@@ -371,7 +405,7 @@ final class KanbanFeatureState {
         snapshot != nil && !isOffline && !isRefreshing && !refreshFailed
     }
 
-    var canAddComments: Bool {
+    private var canUseWrites: Bool {
         canUseServerAuthoritativeActions
             && configuration?.readOnly == false
             && boardsResponse?.readOnly == false
@@ -380,17 +414,38 @@ final class KanbanFeatureState {
             && !boardMutationBlocksWrites
     }
 
+    var canAddComments: Bool {
+        canUseWrites && !unavailableWriteCapabilities.contains(.comments)
+    }
+
     var canMutateCards: Bool {
-        canAddComments
+        canUseWrites
             && bulkActionPhase == nil
             && Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
     }
 
+    var canCreateCards: Bool {
+        canMutateCards && !unavailableWriteCapabilities.contains(.createCard)
+    }
+
+    var canEditCards: Bool {
+        canMutateCards && !unavailableWriteCapabilities.contains(.editCard)
+    }
+
+    var canUseCardWorkflow: Bool {
+        canMutateCards && !unavailableWriteCapabilities.contains(.cardWorkflow)
+    }
+
+    var canUseBulkActions: Bool {
+        canMutateCards && !unavailableWriteCapabilities.contains(.bulkActions)
+    }
+
     var canManageBoards: Bool {
-        canAddComments
+        canUseWrites
             && bulkActionPhase == nil
             && activeCardMutationIDs.isEmpty
             && dispatchState?.phase.isInFlight != true
+            && !unavailableWriteCapabilities.contains(.boardManagement)
     }
 
     var dispatcherAvailability: KanbanDispatcherAvailability {
@@ -463,7 +518,8 @@ final class KanbanFeatureState {
         if isRefreshing { return .refreshing }
         guard state == .compatible || state == .partial,
               snapshot != nil,
-              Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+              Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? [])),
+              !unavailableWriteCapabilities.contains(.bulkActions)
         else { return .incompatible }
         guard configuration?.readOnly == false,
               boardsResponse?.readOnly == false,
@@ -554,7 +610,7 @@ final class KanbanFeatureState {
     }
 
     func canMutateCard(_ card: KanbanCard) -> Bool {
-        guard canMutateCards,
+        guard canUseCardWorkflow,
               normalizedOptional(card.cardID) != nil,
               let status = card.status?.rawValue else { return false }
         return Self.liveStatuses.contains(status) || status == "archived"
@@ -804,6 +860,7 @@ final class KanbanFeatureState {
         invalidateBoardMutation()
         invalidateDispatch()
         dispatcherCapabilityIsIncompatible = false
+        unavailableWriteCapabilities = []
         archiveUndoTask?.cancel()
         archiveUndo = nil
         clearSettledMutationPresentation()
@@ -1174,6 +1231,7 @@ final class KanbanFeatureState {
             markOfflineIfNeeded(error)
             if isDispatcherIncompatible(error) {
                 dispatcherCapabilityIsIncompatible = true
+                updatePartialState()
             }
             let completedAt = now()
             if isDefinitiveWriteFailure(error) {
@@ -1409,12 +1467,15 @@ final class KanbanFeatureState {
             onAPIError: onAPIError,
             onDetailLoaded: { [weak self] detail in
                 self?.acknowledgeLoadedCardDetail(detail)
+            },
+            onCapabilityUnavailable: { [weak self] capability in
+                self?.markCapabilityUnavailable(capability)
             }
         )
     }
 
     func makeCreateCardEditorState() -> KanbanCardEditorState? {
-        guard let board = selectedBoardSlug else { return nil }
+        guard canCreateCards, let board = selectedBoardSlug else { return nil }
         return KanbanCardEditorState(
             mode: .create,
             board: board,
@@ -1422,12 +1483,16 @@ final class KanbanFeatureState {
             profileOptions: profileOptions,
             tenantOptions: tenantOptions,
             prerequisiteOptions: allCards.filter { $0.cardID != nil },
-            baselineCards: allCards
+            baselineCards: allCards,
+            onCapabilityUnavailable: { [weak self] capability in
+                self?.markCapabilityUnavailable(capability)
+            }
         )
     }
 
     func makeEditCardEditorState(detail: KanbanCardDetailEnvelope) -> KanbanCardEditorState? {
-        guard let board = selectedBoardSlug,
+        guard canEditCards,
+              let board = selectedBoardSlug,
               let card = detail.card,
               let cardID = normalized(card.cardID) else { return nil }
         return KanbanCardEditorState(
@@ -1439,7 +1504,10 @@ final class KanbanFeatureState {
             profileOptions: profileOptions,
             tenantOptions: tenantOptions,
             prerequisiteOptions: allCards.filter { $0.cardID != nil && $0.cardID != cardID },
-            baselineCards: allCards
+            baselineCards: allCards,
+            onCapabilityUnavailable: { [weak self] capability in
+                self?.markCapabilityUnavailable(capability)
+            }
         )
     }
 
@@ -1472,6 +1540,7 @@ final class KanbanFeatureState {
             ))
         } catch {
             forwardAuthentication(error)
+            markCapabilityUnavailableIfNeeded(.bulkActions, error: error)
         }
 
         guard selectedBoardSlug == board else {
@@ -1668,6 +1737,7 @@ final class KanbanFeatureState {
                 return
             }
             forwardAuthentication(error)
+            markCapabilityUnavailableIfNeeded(.cardWorkflow, error: error)
             if isDefinitiveWriteFailure(error) {
                 restoreFailedOptimisticMutation(cardID: cardID, baseline: baseline, kind: kind, phase: .failed)
             } else {
@@ -1791,6 +1861,7 @@ final class KanbanFeatureState {
         } catch {
             guard activeCardMutationIDs[cardID] == mutationID else { return }
             forwardAuthentication(error)
+            markCapabilityUnavailableIfNeeded(.cardWorkflow, error: error)
             if isDefinitiveWriteFailure(error) {
                 pendingDependencyChanges[cardID] = nil
                 finishMutation(cardID: cardID, kind: kind, phase: .failed)
@@ -2025,6 +2096,7 @@ final class KanbanFeatureState {
             }
             guard continueBoardMutation(mutationGeneration, kind: kind) else { return }
             forwardAuthentication(error)
+            markCapabilityUnavailableIfNeeded(.boardManagement, error: error)
             definitiveFailure = isDefinitiveWriteFailure(error)
         }
         guard continueBoardMutation(mutationGeneration, kind: kind) else {
@@ -2545,7 +2617,25 @@ final class KanbanFeatureState {
 
     private func updatePartialState() {
         guard snapshot != nil else { return }
-        state = report?.isPartial == true || !capabilityWarnings.isEmpty ? .partial : .compatible
+        state = report?.isPartial == true
+            || !capabilityWarnings.isEmpty
+            || !unavailableWriteCapabilities.isEmpty
+            || dispatcherCapabilityIsIncompatible
+            ? .partial
+            : .compatible
+    }
+
+    private func markCapabilityUnavailableIfNeeded(
+        _ capability: KanbanWriteCapability,
+        error: Error
+    ) {
+        guard KanbanEndpointCompatibility.isMissingCapability(error) else { return }
+        markCapabilityUnavailable(capability)
+    }
+
+    private func markCapabilityUnavailable(_ capability: KanbanWriteCapability) {
+        unavailableWriteCapabilities.insert(capability)
+        updatePartialState()
     }
 
     private func isCurrent(_ loadID: UUID) -> Bool {

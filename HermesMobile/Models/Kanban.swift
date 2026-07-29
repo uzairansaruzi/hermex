@@ -384,12 +384,32 @@ struct KanbanConfiguration: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         columns = try? container.decodeIfPresent([String].self, forKey: .columns)
-        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
+        assignees = (try? container.decodeIfPresent(
+            [KanbanAssigneeValue].self,
+            forKey: .assignees
+        ))?.compactMap(\.name)
         defaultTenant = container.decodeLossyStringIfPresent(forKey: .defaultTenant)
         laneByProfile = container.decodeLossyBoolIfPresent(forKey: .laneByProfile)
         includeArchivedByDefault = container.decodeLossyBoolIfPresent(forKey: .includeArchivedByDefault)
         renderMarkdown = container.decodeLossyBoolIfPresent(forKey: .renderMarkdown)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+    }
+}
+
+private struct KanbanAssigneeValue: Decodable {
+    let name: String?
+
+    enum CodingKeys: CodingKey { case name }
+
+    init(from decoder: Decoder) throws {
+        if let container = try? decoder.singleValueContainer(),
+           let value = try? container.decode(String.self) {
+            name = value
+            return
+        }
+
+        let container = try? decoder.container(keyedBy: CodingKeys.self)
+        name = container?.decodeLossyStringIfPresent(forKey: .name)
     }
 }
 
@@ -868,8 +888,9 @@ struct KanbanDispatchRun: Decodable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case runID = "id"
         case alternateRunID = "runId"
-        case status, outcome, summary, error, startedAt, finishedAt
+        case status, outcome, summary, error, startedAt, finishedAt, endedAt
         case workerID = "worker"
+        case workerPID = "workerPid"
         case logTail
     }
 
@@ -882,8 +903,10 @@ struct KanbanDispatchRun: Decodable, Equatable, Sendable {
         summary = container.decodeLossyStringIfPresent(forKey: .summary)
         error = container.decodeLossyStringIfPresent(forKey: .error)
         startedAt = container.decodeLossyStringIfPresent(forKey: .startedAt)
-        finishedAt = container.decodeLossyStringIfPresent(forKey: .finishedAt)
-        workerID = container.decodeLossyStringIfPresent(forKey: .workerID)
+        finishedAt = container.decodeLossyStringIfPresent(forKey: .endedAt)
+            ?? container.decodeLossyStringIfPresent(forKey: .finishedAt)
+        workerID = container.decodeLossyStringIfPresent(forKey: .workerPID)
+            ?? container.decodeLossyStringIfPresent(forKey: .workerID)
         logTail = container.decodeLossyStringIfPresent(forKey: .logTail)
     }
 
@@ -1004,7 +1027,10 @@ struct KanbanAssigneeHistory: Decodable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        assignees = try? container.decodeIfPresent([String].self, forKey: .assignees)
+        assignees = (try? container.decodeIfPresent(
+            [KanbanAssigneeValue].self,
+            forKey: .assignees
+        ))?.compactMap(\.name)
     }
 }
 

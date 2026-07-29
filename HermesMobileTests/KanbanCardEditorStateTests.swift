@@ -74,6 +74,54 @@ final class KanbanCardEditorStateTests: XCTestCase {
         XCTAssertEqual(keys, ["fixed-intent", "fixed-intent"])
     }
 
+    func testMissingCreateEndpointReportsOnlyCreateCapabilityUnavailable() async {
+        let client = CardEditorClient(createResults: [
+            .failure(APIError.http(
+                statusCode: 404,
+                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+            ))
+        ])
+        var unavailable: [KanbanWriteCapability] = []
+        let state = KanbanCardEditorState(
+            mode: .create,
+            board: "main",
+            client: client,
+            onCapabilityUnavailable: { unavailable.append($0) }
+        )
+        state.title = "Release evidence"
+
+        await state.save(allowsMutation: true)
+
+        XCTAssertEqual(state.submission, .failed)
+        XCTAssertEqual(unavailable, [.createCard])
+    }
+
+    func testMissingEditEndpointReportsOnlyEditCapabilityUnavailable() async {
+        let client = CardEditorClient(
+            editResults: [
+                .failure(APIError.http(
+                    statusCode: 404,
+                    body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
+                ))
+            ],
+            detailResults: [.success(.baseline)]
+        )
+        var unavailable: [KanbanWriteCapability] = []
+        let state = KanbanCardEditorState(
+            mode: .edit(cardID: "CARD-1"),
+            board: "main",
+            client: client,
+            card: .baseline,
+            onCapabilityUnavailable: { unavailable.append($0) }
+        )
+        state.title = "Release evidence"
+
+        await state.save(allowsMutation: true)
+
+        XCTAssertEqual(state.submission, .failed)
+        XCTAssertEqual(unavailable, [.editCard])
+    }
+
     func testAmbiguousCreateReconcilesPresentAbsentAndUncertainWithoutBlindRetry() async {
         let lost = APIError.network(underlying: URLError(.networkConnectionLost))
 
@@ -422,6 +470,42 @@ final class KanbanLabClientMutationTests: XCTestCase {
         XCTAssertEqual(detail.card?.skills, ["swiftui-patterns"])
         XCTAssertEqual(detail.card?.maxRuntimeSeconds, 900)
         XCTAssertEqual(detail.links?.prerequisites, ["CARD-1"])
+    }
+
+    func testEditingFixtureCardPreservesHistoryAndCommentsStayScopedToCard() async throws {
+        let client = KanbanLabClient(scenario: .dense)
+
+        _ = try await client.editKanbanCard(KanbanEditCardRequest(
+            cardID: "CARD-3",
+            board: "default",
+            title: "Edited fixture",
+            body: "Edited body",
+            tenant: "app",
+            priority: 1,
+            assignee: "builder",
+            status: "ready"
+        ))
+        _ = try await client.addKanbanComment(KanbanAddCommentRequest(
+            cardID: "CARD-3",
+            board: "default",
+            body: "Scoped comment"
+        ))
+
+        let edited = try await client.kanbanCardDetail(
+            KanbanCardDetailRequest(cardID: "CARD-3", board: "default")
+        )
+        let other = try await client.kanbanCardDetail(
+            KanbanCardDetailRequest(cardID: "CARD-4", board: "default")
+        )
+
+        XCTAssertEqual(edited.card?.title, "Edited fixture")
+        XCTAssertEqual(edited.comments?.map(\.body), [
+            "Looks good from the review side.",
+            "Scoped comment"
+        ])
+        XCTAssertEqual(edited.events?.count, 1)
+        XCTAssertEqual(edited.runs?.count, 1)
+        XCTAssertEqual(other.comments?.map(\.body), ["Looks good from the review side."])
     }
 }
 
