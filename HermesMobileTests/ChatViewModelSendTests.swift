@@ -6281,8 +6281,10 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didLoadOlder)
         XCTAssertEqual(requestQueries.count, 2)
         XCTAssertNil(requestQueries[0]["msg_before"])
+        XCTAssertEqual(requestQueries[0]["msg_limit"], "20")
+        XCTAssertEqual(requestQueries[0]["expand_renderable"], "1")
         XCTAssertEqual(requestQueries[1]["msg_before"], "2")
-        XCTAssertEqual(requestQueries[1]["msg_limit"], "50")
+        XCTAssertEqual(requestQueries[1]["msg_limit"], "20")
         XCTAssertEqual(viewModel.messages.compactMap(\.content), [
             "Older question",
             "Older answer",

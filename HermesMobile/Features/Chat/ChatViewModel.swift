@@ -198,7 +198,7 @@ enum ActiveStreamRecoveryState: Equatable {
 @MainActor
 @Observable
 final class ChatViewModel {
-    private static let messagePageLimit = 50
+    private static let messagePageLimit = 20
 
     private(set) var messages: [ChatMessage] = [] {
         didSet { recomputeDisplayedTranscriptMessages() }
