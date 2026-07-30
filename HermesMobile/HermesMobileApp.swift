@@ -55,10 +55,6 @@ struct HermesMobileApp: App {
                 NavigationStack {
                     StreamingLabView()
                 }
-            } else if ProcessInfo.processInfo.arguments.contains("--kanban-lab") {
-                NavigationStack {
-                    KanbanLabView()
-                }
             } else {
                 ContentView(authManager: authManager)
                     .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)

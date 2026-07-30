@@ -83,6 +83,7 @@ struct SettingsView: View {
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
     @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasksSection = true
+    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanbanSection = true
     @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
     @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
     @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
@@ -304,6 +305,14 @@ struct SettingsView: View {
                         title: String(localized: "Tasks"),
                         systemImage: "calendar.badge.clock",
                         isOn: $showsTasksSection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Kanban"),
+                        systemImage: "rectangle.split.3x1",
+                        isOn: $showsKanbanSection
                     )
 
                     SettingsDivider()

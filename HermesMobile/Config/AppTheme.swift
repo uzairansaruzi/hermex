@@ -303,6 +303,7 @@ enum ChatTranscriptDisplaySettings {
 /// Purely a display preference — nothing stops loading or syncing.
 enum SectionVisibilitySettings {
     static let tasksKey = "sectionVisibility.tasks"
+    static let kanbanKey = "sectionVisibility.kanban"
     static let skillsKey = "sectionVisibility.skills"
     static let memoryKey = "sectionVisibility.memory"
     static let insightsKey = "sectionVisibility.insights"

@@ -61,6 +61,7 @@ final class KanbanCardEditorState: Identifiable {
     private(set) var remoteCard: KanbanCard?
 
     private let client: any KanbanDataClient
+    private let onCapabilityUnavailable: (KanbanWriteCapability) -> Void
     private var baselineCard: KanbanCard?
     private let baselineMatchingCardIDs: Set<String>
     private var activeAttemptID: UUID?
@@ -82,7 +83,8 @@ final class KanbanCardEditorState: Identifiable {
         tenantOptions: [String] = [],
         prerequisiteOptions: [KanbanCard] = [],
         baselineCards: [KanbanCard] = [],
-        idempotencyKey: String = UUID().uuidString
+        idempotencyKey: String = UUID().uuidString,
+        onCapabilityUnavailable: @escaping (KanbanWriteCapability) -> Void = { _ in }
     ) {
         self.mode = mode
         self.board = board
@@ -91,6 +93,7 @@ final class KanbanCardEditorState: Identifiable {
         self.tenantOptions = tenantOptions
         self.prerequisiteOptions = prerequisiteOptions
         self.idempotencyKey = idempotencyKey
+        self.onCapabilityUnavailable = onCapabilityUnavailable
         baselineCard = card
         baselineMatchingCardIDs = Set(baselineCards.compactMap(\.cardID))
         if let card {
@@ -210,6 +213,9 @@ final class KanbanCardEditorState: Identifiable {
             complete(with: card, attemptID: attemptID)
         } catch {
             guard isCurrent(attemptID) else { return }
+            if KanbanEndpointCompatibility.isMissingCapability(error) {
+                onCapabilityUnavailable(isEditing ? .editCard : .createCard)
+            }
             if isDefinitiveWriteFailure(error) {
                 submission = .failed
                 activeAttemptID = nil

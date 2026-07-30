@@ -159,4 +159,115 @@ final class LocalizationCatalogTests: XCTestCase {
             }
         }
     }
+
+    func testKanbanBulkActionNamesAreLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let bulkActionKeys = [
+            "Archive Cards", "Assign Profile", "Bulk Actions", "Change Status",
+            "Retry Failed", "Select Cards", "Set Priority", "Unknown Status",
+            "The Board is refreshing.",
+            "The selection is no longer available. Refresh the Board and select the Cards again.",
+            "The selected Cards will be moved to the archive."
+        ]
+
+        for key in bulkActionKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+                let translatedValue = (localization["stringUnit"] as? [String: Any])?["value"] as? String
+                XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses the English source value")
+            }
+        }
+    }
+
+    func testKanbanBoardManagementCopyIsLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let boardKeys = [
+            "Board actions for %@",
+            "Browse Board",
+            "Browse Board: %@",
+            "Browsing",
+            "Browsing a Board stays local to Hermex. Making a Board active changes shared server state.",
+            "Check Result",
+            "Choose Board",
+            "Creating a Board does not make it active.",
+            "Hermex cannot restore an archived Board in-app.",
+            "Icon",
+            "Make Active Board",
+            "Making this Board active changes shared server state for other Hermes clients.",
+            "Shows available Board management actions.",
+            "Slug",
+            "The slug cannot be changed after the Board is created.",
+            "This Board no longer exists. Choose another Board.",
+            "Updating Board..."
+        ]
+
+        for key in boardKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+                let translatedValue = (localization["stringUnit"] as? [String: Any])?["value"] as? String
+                XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses English")
+            }
+        }
+    }
+
+    func testKanbanDispatcherCopyIsLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let dispatcherKeys = [
+            "Another Board action is in progress.",
+            "Auto-blocked",
+            "Crashed",
+            "Display",
+            "Dispatcher",
+            "Dispatcher, attention required",
+            "Dispatcher, result available",
+            "Dispatcher is unavailable on this server.",
+            "Group by Profile",
+            "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.",
+            "I Reviewed the Board",
+            "Preview Dispatch",
+            "Preview is advisory and may become stale. It never starts workers.",
+            "Promoted",
+            "Reclaimed",
+            "Refresh failed. Try again before using Dispatcher.",
+            "Run Dispatcher",
+            "Running Dispatcher...",
+            "Skipped—No Assignee",
+            "Skipped—Unknown Profile",
+            "Spawned",
+            "The server refused this Dispatcher request. Hermex did not retry it.",
+            "This Preview is stale. Run Preview Dispatch again before relying on it.",
+            "This may start up to %lld workers and consume API budget.",
+            "Timed Out"
+        ]
+
+        for key in dispatcherKeys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+            }
+        }
+    }
 }

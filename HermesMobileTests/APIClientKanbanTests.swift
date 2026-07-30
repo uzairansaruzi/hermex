@@ -27,7 +27,10 @@ final class APIClientKanbanTests: APIClientTestCase {
                 return apiTestJSONResponse(Self.statsJSON, for: request)
             case "/api/kanban/assignees":
                 XCTAssertEqual(request.url?.query, "board=main%20board")
-                return apiTestJSONResponse(#"{"assignees":["work","review"]}"#, for: request)
+                return apiTestJSONResponse(
+                    #"{"assignees":[{"name":"work","on_disk":true,"counts":{"ready":2}},"review",{"future":true}]}"#,
+                    for: request
+                )
             default:
                 throw URLError(.badURL)
             }
@@ -73,6 +76,188 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(snapshot.changed, false)
         XCTAssertNil(snapshot.columns)
         XCTAssertEqual(snapshot.latestEventID, 42)
+    }
+
+    func testBoardManagementUsesExactVerifiedRequestsWithoutImplicitSwitchOrHardDelete() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertNil(components?.query)
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Origin"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
+
+            switch requestIndex {
+            case 0:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/boards")
+                let data = try XCTUnwrap(apiTestBodyData(from: request))
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+                XCTAssertEqual(Set(body.keys), ["slug", "name", "description", "icon", "color"])
+                XCTAssertEqual(body["slug"] as? String, "release board")
+                XCTAssertNil(body["switch"], "Creation must never implicitly change shared active-Board state.")
+                return apiTestJSONResponse(
+                    #"{"board":{"slug":"release board","name":"Release"},"current":"main","read_only":false}"#,
+                    for: request
+                )
+            case 1:
+                XCTAssertEqual(request.httpMethod, "PATCH")
+                XCTAssertEqual(components?.path, "/api/kanban/boards/release board")
+                let data = try XCTUnwrap(apiTestBodyData(from: request))
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+                XCTAssertEqual(Set(body.keys), ["name", "description", "icon", "color"])
+                XCTAssertNil(body["slug"])
+                XCTAssertEqual(body["description"] as? String, "")
+                return apiTestJSONResponse(
+                    #"{"board":{"slug":"release board","name":"Release 2"},"read_only":false}"#,
+                    for: request
+                )
+            case 2:
+                XCTAssertEqual(request.httpMethod, "DELETE")
+                XCTAssertEqual(components?.path, "/api/kanban/boards/release board")
+                XCTAssertNil(request.httpBody)
+                XCTAssertFalse(request.url?.absoluteString.contains("delete=") == true)
+                return apiTestJSONResponse(
+                    #"{"result":{"action":"archived"},"current":"main","read_only":false}"#,
+                    for: request
+                )
+            default:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(components?.path, "/api/kanban/boards/release board/switch")
+                XCTAssertNil(request.httpBody)
+                return apiTestJSONResponse(
+                    #"{"current":"release board","read_only":false,"future":true}"#,
+                    for: request
+                )
+            }
+        }
+
+        let created = try await client.createKanbanBoard(KanbanCreateBoardRequest(
+            slug: "release board",
+            name: "Release",
+            description: "Ship work",
+            icon: "🚀",
+            color: "#7AA2FF"
+        ))
+        let edited = try await client.editKanbanBoard(KanbanEditBoardRequest(
+            slug: "release board",
+            name: "Release 2",
+            description: "",
+            icon: "📦",
+            color: "#00AAFF"
+        ))
+        let archived = try await client.archiveKanbanBoard(
+            KanbanBoardMutationRequest(slug: "release board")
+        )
+        let activated = try await client.makeKanbanBoardActive(
+            KanbanBoardMutationRequest(slug: "release board")
+        )
+
+        XCTAssertEqual(created.current, "main")
+        XCTAssertEqual(edited.board?.name, "Release 2")
+        XCTAssertEqual(archived.current, "main")
+        XCTAssertEqual(activated.current, "release board")
+    }
+
+    func testBoardManagementPathKeepsSlugInOneEncodedSegmentAndResponsesDecodeTolerantly() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/kanban/boards/../release/switch")
+            XCTAssertTrue(request.url?.absoluteString.contains("%2E%2E%2Frelease") == true)
+            return apiTestJSONResponse(
+                #"{"current":42,"read_only":"false","unknown":{"db_path":"/secret"}}"#,
+                for: request
+            )
+        }
+
+        let result = try await client.makeKanbanBoardActive(
+            KanbanBoardMutationRequest(slug: "../release")
+        )
+
+        XCTAssertEqual(result.current, "42")
+        XCTAssertEqual(result.readOnly, false)
+    }
+
+    func testDispatcherUsesExactQueryOnlyPreviewAndRunRequestsWithMaximumEight() async throws {
+        var requestIndex = 0
+        let client = makeClient { request in
+            defer { requestIndex += 1 }
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.path, "/api/kanban/dispatch")
+            XCTAssertEqual(components?.queryItems, [
+                URLQueryItem(name: "board", value: "release board"),
+                URLQueryItem(name: "dry_run", value: requestIndex == 0 ? "true" : "false"),
+                URLQueryItem(name: "max", value: "8")
+            ])
+            XCTAssertNil(request.httpBody, "Board and Dispatcher options belong only in the query.")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Origin"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
+            return apiTestJSONResponse(
+                #"{"spawned":[],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#,
+                for: request
+            )
+        }
+
+        _ = try await client.dispatchKanban(
+            KanbanDispatchRequest(board: "release board", dryRun: true)
+        )
+        _ = try await client.dispatchKanban(
+            KanbanDispatchRequest(board: "release board", dryRun: false)
+        )
+
+        XCTAssertEqual(requestIndex, 2)
+        XCTAssertEqual(KanbanDispatchRequest.maximum, 8)
+    }
+
+    func testDispatcherResultCountsUnknownMemberShapesAndLossyNumericCategories() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(
+                """
+                {
+                  "spawned": ["CARD-1", {"id":"CARD-2"}, 3, null],
+                  "promoted": "2",
+                  "reclaimed": 1.9,
+                  "skipped_unassigned": [{"future":true}],
+                  "skipped_nonspawnable": [false, ["nested"]],
+                  "auto_blocked": [],
+                  "timed_out": [{"worker_id":"secret"}],
+                  "crashed": 3,
+                  "future_category": [{"raw":"discarded"}]
+                }
+                """,
+                for: request
+            )
+        }
+
+        let result = try await client.dispatchKanban(
+            KanbanDispatchRequest(board: "main", dryRun: true)
+        )
+
+        XCTAssertEqual(result.spawned, 4)
+        XCTAssertEqual(result.promoted, 2)
+        XCTAssertEqual(result.reclaimed, 1)
+        XCTAssertEqual(result.skippedUnassigned, 1)
+        XCTAssertEqual(result.skippedNonspawnable, 2)
+        XCTAssertEqual(result.autoBlocked, 0)
+        XCTAssertEqual(result.timedOut, 1)
+        XCTAssertEqual(result.crashed, 3)
+    }
+
+    func testDispatcherRejectsEnvelopeWithoutAnyVerifiedResultCategory() async {
+        let client = makeClient { request in
+            apiTestJSONResponse(#"{"future_category":[]}"#, for: request)
+        }
+
+        do {
+            _ = try await client.dispatchKanban(
+                KanbanDispatchRequest(board: "main", dryRun: false)
+            )
+            XCTFail("Expected a malformed Dispatcher result to be rejected.")
+        } catch {
+            XCTAssertEqual(error as? KanbanDispatchResponseError, .missingResultCategories)
+        }
     }
 
     func testEventPollingUsesVerifiedCursorEnvelopeAndBounds() async throws {
@@ -311,6 +496,61 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertThrowsError(try KanbanCardMutationValidator.validate(malformed))
     }
 
+    func testBulkActionsUseExactVerifiedBodiesAndPerCardResults() async throws {
+        let actions: [(KanbanBulkAction, [String: Any])] = [
+            (.changeStatus("done"), ["ids": ["CARD-1", "CARD-2"], "status": "done"]),
+            (.assignProfile(nil), ["ids": ["CARD-1", "CARD-2"], "assignee": ""]),
+            (.setPriority(4), ["ids": ["CARD-1", "CARD-2"], "priority": 4]),
+            (.archiveCards, ["ids": ["CARD-1", "CARD-2"], "archive": true])
+        ]
+        var requestIndex = 0
+        let client = makeClient { request in
+            let expected = actions[requestIndex].1
+            requestIndex += 1
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.path, "/api/kanban/tasks/bulk")
+            XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "board", value: "release board")])
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(body as NSDictionary, expected as NSDictionary)
+            return apiTestJSONResponse(
+                #"{"results":[{"id":"CARD-1","ok":true},{"id":"CARD-2","ok":false,"error":"refused"}],"read_only":false,"future":true}"#,
+                for: request
+            )
+        }
+
+        for (action, _) in actions {
+            let envelope = try await client.performKanbanBulkAction(KanbanBulkActionRequest(
+                board: "release board",
+                cardIDs: ["CARD-1", "CARD-2"],
+                action: action
+            ))
+            XCTAssertEqual(envelope.results?.map(\.cardID), ["CARD-1", "CARD-2"])
+            XCTAssertEqual(envelope.results?.map(\.ok), [true, false])
+        }
+    }
+
+    func testBulkResultsTolerateMalformedAndUnknownMembers() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let envelope = try decoder.decode(
+            KanbanBulkActionEnvelope.self,
+            from: Data(
+                #"{"results":[{"id":"CARD-1","ok":"true","future":1},42,{"id":{"bad":true},"ok":false}],"read_only":"false"}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(envelope.readOnly, false)
+        XCTAssertEqual(envelope.results?.count, 3)
+        XCTAssertEqual(envelope.results?.first?.cardID, "CARD-1")
+        XCTAssertEqual(envelope.results?.first?.ok, true)
+        XCTAssertNil(envelope.results?[1].cardID)
+        XCTAssertNil(envelope.results?[2].cardID)
+        XCTAssertEqual(envelope.results?[2].ok, false)
+    }
+
     func testWorkflowAndDependencyMutationsUseExactVerifiedContracts() async throws {
         var requestIndex = 0
         let client = makeClient { request in
@@ -398,6 +638,8 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(detail.links?.prerequisites, ["CARD-0"])
         XCTAssertEqual(detail.links?.dependents, ["CARD-2"])
         XCTAssertEqual(detail.runs?.first?.runID, "run-1")
+        XCTAssertEqual(detail.runs?.first?.finishedAt, "1700000002")
+        XCTAssertEqual(detail.runs?.first?.workerID, "31415")
         XCTAssertNil(detail.card?.workerID) // malformed metadata is ignored
 
         let minimal = try decoder.decode(KanbanCardDetailEnvelope.self, from: Data(
@@ -516,6 +758,20 @@ final class APIClientKanbanTests: APIClientTestCase {
     func testCardSummaryFieldsStatsEnvelopesAndStalenessDecodeTolerantly() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let configuration = try decoder.decode(
+            KanbanConfiguration.self,
+            from: Data("""
+            {
+              "columns":["triage","todo","ready"],
+              "assignees":[
+                {"name":"builder","on_disk":true,"counts":{"ready":2}},
+                "reviewer",
+                {"future":true}
+              ],
+              "read_only":false
+            }
+            """.utf8)
+        )
         let snapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
         {
           "changed": true,
@@ -536,6 +792,7 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(card.linkCounts?.children, 2)
         XCTAssertEqual(card.staleness, .critical)
         XCTAssertEqual(snapshot.filters?.includeArchived, true)
+        XCTAssertEqual(configuration.assignees, ["builder", "reviewer"])
 
         let current = try decoder.decode(KanbanStats.self, from: Data(Self.statsJSON.utf8))
         XCTAssertEqual(current.total, 3)
@@ -631,7 +888,10 @@ final class APIClientKanbanTests: APIClientTestCase {
       "comments":[{"id":7,"task_id":"CARD-1","author":"review","body":"Ship it","created_at":1700000000}],
       "events":[{"id":8,"task_id":"CARD-1","kind":"status","payload":{"status":"ready","secret":"discarded"},"created_at":1700000001}],
       "links":{"parents":["CARD-0"],"children":["CARD-2"]},
-      "runs":[{"run_id":"run-1","status":"finished","worker":"worker-private","future":true}],
+      "runs":[{
+        "id":"run-1","status":"finished","worker_pid":31415,
+        "started_at":1700000001,"ended_at":1700000002,"future":true
+      }],
       "read_only":false,
       "future_envelope_field":{"nested":true}
     }

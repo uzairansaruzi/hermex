@@ -74,7 +74,7 @@ private struct KanbanCardDetailContent: View {
                     guard let detail = state.detail else { return }
                     cardEditor = featureModel.makeEditCardEditorState(detail: detail)
                 }
-                .disabled(!featureModel.canMutateCards || state.loadState != .loaded)
+                .disabled(!featureModel.canEditCards || state.loadState != .loaded)
                 if let card = state.detail?.card {
                     cardActionsMenu(card)
                 }
@@ -83,7 +83,7 @@ private struct KanbanCardDetailContent: View {
         .sheet(item: $cardEditor) { editor in
             KanbanCardEditorView(
                 state: editor,
-                allowsMutation: featureModel.canMutateCards,
+                allowsMutation: featureModel.canEditCards,
                 onSaved: {
                     await featureModel.reconcileAfterCardMutation()
                     await state.refresh()
@@ -228,6 +228,8 @@ private struct KanbanCardDetailContent: View {
         } footer: {
             if !featureModel.canAddComments, featureModel.isOffline {
                 Text("Offline Data")
+            } else if featureModel.unavailableWriteCapabilities.contains(.comments) {
+                Text("Unavailable")
             } else if !featureModel.canAddComments {
                 Text("Read-only")
             }
