@@ -52,6 +52,23 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(state.lastSelectedSessionID, "stored")
     }
 
+    func testRestoreSkipsAfterPendingDeepLinkIsConsumedWhileLoadIsInFlight() {
+        let stored = SessionSummary(sessionId: "stored")
+        var state = SessionNavigationState(lastSelectedSessionID: "stored")
+
+        let deepLinkedSessionID = state.beginDeepLinkedSessionLoad(id: "deep-linked")
+        state.restoreIfNeeded(from: [stored], pendingDeepLinkedSessionID: nil)
+
+        XCTAssertEqual(deepLinkedSessionID, "deep-linked")
+        XCTAssertNil(state.destination)
+        XCTAssertEqual(state.lastSelectedSessionID, "stored")
+
+        state.finishDeepLinkedSessionLoad(id: deepLinkedSessionID)
+        state.restoreIfNeeded(from: [stored], pendingDeepLinkedSessionID: nil)
+
+        XCTAssertEqual(state.destination, .session(stored))
+    }
+
     func testRestoreProceedsWhenPendingDeepLinkIDIsBlank() {
         let stored = SessionSummary(sessionId: "stored")
         var state = SessionNavigationState(lastSelectedSessionID: "stored")

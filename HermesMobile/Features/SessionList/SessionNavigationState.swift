@@ -18,6 +18,7 @@ struct SessionNavigationState: Equatable {
     private(set) var lastSelectedSessionID: String?
     private(set) var rootRevision = 0
     private var newChatSessionID: String?
+    private var deepLinkedSessionLoadID: String?
 
     init(lastSelectedSessionID: String? = nil) {
         self.lastSelectedSessionID = Self.normalized(lastSelectedSessionID)
@@ -64,17 +65,32 @@ struct SessionNavigationState: Equatable {
         newChatSessionID = nil
     }
 
+    mutating func beginDeepLinkedSessionLoad(id: String?) -> String? {
+        guard deepLinkedSessionLoadID == nil,
+              let sessionID = Self.normalized(id)
+        else { return nil }
+
+        deepLinkedSessionLoadID = sessionID
+        return sessionID
+    }
+
+    mutating func finishDeepLinkedSessionLoad(id: String?) {
+        guard Self.normalized(id) == deepLinkedSessionLoadID else { return }
+        deepLinkedSessionLoadID = nil
+    }
+
     /// Restores only when no explicit route already won. Deep links, shared drafts,
     /// and App Intent requests therefore take precedence over the stored selection.
-    /// A still-pending deep link (not yet resolved into a destination) also blocks
-    /// the restore, so an in-flight deep-link load is never pre-empted by the
-    /// stored selection; the stored ID is kept for a later restore.
+    /// A pending or in-flight deep link (not yet resolved into a destination) also
+    /// blocks the restore, so its network load is never pre-empted by the stored
+    /// selection; the stored ID is kept for a later restore.
     mutating func restoreIfNeeded(
         from sessions: [SessionSummary],
         clearsMissingSelection: Bool = true,
         pendingDeepLinkedSessionID: String? = nil
     ) {
         guard destination == nil,
+              deepLinkedSessionLoadID == nil,
               Self.normalized(pendingDeepLinkedSessionID) == nil,
               let lastSelectedSessionID
         else { return }

@@ -1119,14 +1119,19 @@ struct SessionListView: View {
     /// `restoreLastSelectedSessionIfNeeded()` — otherwise the restore races the deep
     /// link's network load and wins with the previous session.
     private func openPendingDeepLinkedSessionIfNeeded() async {
-        guard !Task.isCancelled,
-              let sessionID = pendingDeepLinkedSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sessionID.isEmpty
-        else {
-            return
-        }
+        guard !Task.isCancelled else { return }
 
-        pendingDeepLinkedSessionID = nil
+        while let sessionID = navigationState.beginDeepLinkedSessionLoad(
+            id: pendingDeepLinkedSessionID
+        ) {
+            pendingDeepLinkedSessionID = nil
+            await openDeepLinkedSession(id: sessionID)
+            navigationState.finishDeepLinkedSessionLoad(id: sessionID)
+            guard !Task.isCancelled else { return }
+        }
+    }
+
+    private func openDeepLinkedSession(id sessionID: String) async {
         if let loadedSession = viewModel.sessions.first(where: { $0.sessionId == sessionID }) {
             selectSession(loadedSession)
             return
