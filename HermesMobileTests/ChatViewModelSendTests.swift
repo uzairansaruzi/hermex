@@ -3259,8 +3259,8 @@ final class ChatViewModelSendTests: XCTestCase {
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
 
-        XCTAssertEqual(viewModel.messages.count, 50)
-        XCTAssertEqual(viewModel.messages.first?.content, "Cached message 25")
+        XCTAssertEqual(viewModel.messages.count, 20)
+        XCTAssertEqual(viewModel.messages.first?.content, "Cached message 55")
         XCTAssertEqual(viewModel.messages.last?.content, "Cached message 74")
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
