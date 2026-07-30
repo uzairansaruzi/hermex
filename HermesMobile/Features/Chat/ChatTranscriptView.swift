@@ -125,12 +125,6 @@ struct ChatTranscriptView: View {
                         ChatScrollPolicy.initialTranscriptAnchor,
                         for: .initialOffset
                     )
-                    .defaultScrollAnchor(
-                        ChatScrollPolicy.sizeChangeAnchor(
-                            shouldFollowLatestMessage: shouldFollowLatestMessage
-                        ),
-                        for: .sizeChanges
-                    )
                     .frame(width: viewportWidth)
                     .refreshable {
                         if hasOlderMessages {
@@ -165,6 +159,9 @@ struct ChatTranscriptView: View {
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
                 .background(Color(.systemBackground))
+                .onAppear {
+                    onScrollToLatestContent(proxy, false)
+                }
                 .onChange(of: messages.count) {
                     guard shouldFollowLatestMessage else { return }
 
