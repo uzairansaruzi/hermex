@@ -191,13 +191,18 @@ struct SessionListView: View {
                 AddServerView(authManager: authManager)
             }
             .task {
-                // Resolved first, not merely before the restore: the link needs only
-                // the cache or a single session fetch, so gating it behind the
-                // session/project/profile chain would delay the very navigation the
-                // notification asked for.
-                await openPendingDeepLinkedSessionIfNeeded()
-                guard !Task.isCancelled else { return }
-                await refreshSessionsAndActiveProfile()
+                // Start the normal refresh immediately so a slow direct session
+                // request cannot leave the sidebar empty. Deep-link resolution still
+                // owns navigation precedence and is awaited before stored selection
+                // restoration.
+                await SessionListInitialLoad.run(
+                    resolvePendingDeepLink: {
+                        await openPendingDeepLinkedSessionIfNeeded()
+                    },
+                    refreshSessionsAndActiveProfile: {
+                        await refreshSessionsAndActiveProfile()
+                    }
+                )
                 guard !Task.isCancelled else { return }
                 didCompleteInitialLoad = true
                 // Ordered after the deep link so restoreIfNeeded() sees the explicit
@@ -1196,6 +1201,18 @@ struct SessionListView: View {
         SessionNavigationPersistence.save(navigationState.lastSelectedSessionID, for: server)
     }
 
+}
+
+enum SessionListInitialLoad {
+    @MainActor
+    static func run(
+        resolvePendingDeepLink: @escaping @MainActor () async -> Void,
+        refreshSessionsAndActiveProfile: @escaping @MainActor () async -> Void
+    ) async {
+        async let initialRefresh: Void = refreshSessionsAndActiveProfile()
+        await resolvePendingDeepLink()
+        await initialRefresh
+    }
 }
 
 struct HermesHeaderLogo: View {

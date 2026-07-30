@@ -78,6 +78,30 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(state.destination, .session(stored))
     }
 
+    func testInitialRefreshStartsBeforeDelayedDeepLinkFinishes() async {
+        let recorder = SessionInitialLoadEventRecorder()
+
+        await SessionListInitialLoad.run(
+            resolvePendingDeepLink: {
+                await recorder.record(.deepLinkStarted)
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                await recorder.record(.deepLinkFinished)
+            },
+            refreshSessionsAndActiveProfile: {
+                await recorder.record(.refreshStarted)
+            }
+        )
+
+        let events = await recorder.snapshot()
+        guard let refreshIndex = events.firstIndex(of: .refreshStarted),
+              let deepLinkFinishIndex = events.firstIndex(of: .deepLinkFinished)
+        else {
+            return XCTFail("Expected both refresh and deep-link completion events")
+        }
+
+        XCTAssertLessThan(refreshIndex, deepLinkFinishIndex)
+    }
+
     func testExplicitNewChatRouteOverridesStoredSelection() {
         let route = PendingNewChatRoute(initialDraft: "Shared draft")
         var state = SessionNavigationState(lastSelectedSessionID: "session-1")
@@ -199,5 +223,23 @@ final class SessionNavigationStateTests: XCTestCase {
             SessionNavigationPersistence.load(for: secondServer, defaults: defaults),
             "second-session"
         )
+    }
+}
+
+private actor SessionInitialLoadEventRecorder {
+    enum Event: Equatable {
+        case deepLinkStarted
+        case refreshStarted
+        case deepLinkFinished
+    }
+
+    private var events: [Event] = []
+
+    func record(_ event: Event) {
+        events.append(event)
+    }
+
+    func snapshot() -> [Event] {
+        events
     }
 }
