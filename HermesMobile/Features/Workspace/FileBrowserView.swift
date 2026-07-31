@@ -42,7 +42,7 @@ struct FileBrowserView: View {
                 Text(errorMessage)
             } actions: {
                 Button("Try Again") {
-                    Task { await loadRoot() }
+                    Task { await retryLastLoad() }
                 }
             }
         } else if visibleEntries.isEmpty {
