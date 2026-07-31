@@ -5024,14 +5024,20 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
            finalTokensPerSecond.isFinite,
            finalTokensPerSecond > 0,
            let currentStreamingAssistantID {
-            let currentAssistantID = messages.contains(where: { $0.messageId == currentStreamingAssistantID })
-                ? currentStreamingAssistantID
-                : TranscriptTurnClassifier
+            let currentAssistantIndex = messages.firstIndex(where: { $0.messageId == currentStreamingAssistantID })
+                ?? TranscriptTurnClassifier
                     .currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
-                    .first
-            guard let currentAssistantID,
-                  let index = messages.firstIndex(where: { $0.messageId == currentAssistantID })
-            else {
+                    .last
+                    .flatMap { currentAssistantAnchorID in
+                        messages.indices.first { index in
+                            TranscriptTurnClassifier.anchorID(
+                                for: messages[index],
+                                at: index,
+                                messageOffset: messagesOffset
+                            ) == currentAssistantAnchorID
+                        }
+                    }
+            guard let index = currentAssistantIndex else {
                 return hasCompletedTranscript
             }
             let message = messages[index]

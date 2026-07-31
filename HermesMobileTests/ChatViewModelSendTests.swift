@@ -5876,6 +5876,54 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testDoneUsageAppliesResponseSpeedToLastAssistantInCompletedToolTurn() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let didSend = await viewModel.sendMessage("Run a tool")
+        XCTAssertTrue(didSend)
+        streamClient.emit(.token("I'll inspect that."))
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {"role":"user","content":"Run a tool"},
+            {"role":"assistant","content":"I'll inspect that."},
+            {"role":"tool","content":"Tool output"},
+            {"role":"assistant","content":"Finished."}
+          ]
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(
+            usage: ContextWindowSnapshot(
+                contextLength: nil,
+                thresholdTokens: nil,
+                lastPromptTokens: nil,
+                inputTokens: nil,
+                outputTokens: nil,
+                estimatedCost: nil,
+                tokensPerSecond: 20.5
+            ),
+            session: completedSession
+        )))
+
+        let assistantMessages = viewModel.messages.filter { $0.role == "assistant" }
+        XCTAssertEqual(assistantMessages.count, 2)
+        XCTAssertNil(assistantMessages.first?.turnTps)
+        XCTAssertEqual(assistantMessages.last?.turnTps, 20.5)
+        XCTAssertFalse(viewModel.responseCompletionNeedsTranscriptRefresh)
+    }
+
+    @MainActor
     func testDoneUsageDoesNotOverwritePreviousAssistantWithoutCurrentStreamingAnchor() async throws {
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(streamClient: streamClient) { request in
