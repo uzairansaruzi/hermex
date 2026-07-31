@@ -297,6 +297,7 @@ private struct FileBrowserRow: View {
             }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
