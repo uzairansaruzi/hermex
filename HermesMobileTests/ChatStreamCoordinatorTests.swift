@@ -376,6 +376,28 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testSilentInitialConnectionReconnectsWhenStale() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient) { request in
+            apiTestJSONResponse(
+                #"{"active": true, "stream_id": "stream-123", "replay_available": true}"#,
+                for: request
+            )
+        }
+
+        coordinator.start(streamID: "stream-123")
+        let connectionStartedAt = try XCTUnwrap(coordinator.lastProgressDate)
+
+        await coordinator.recoverStaleStreamIfNeeded(
+            now: connectionStartedAt.addingTimeInterval(18.1)
+        )
+
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+        XCTAssertEqual(streamClient.stopCount, 1)
+        XCTAssertEqual(coordinator.recoveryState, .reconnecting)
+    }
+
+    @MainActor
     func testStaleRecoveryDoesNotFinishReplacementStreamAfterTranscriptLoad() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()

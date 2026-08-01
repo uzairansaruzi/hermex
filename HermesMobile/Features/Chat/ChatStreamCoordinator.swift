@@ -673,7 +673,7 @@ final class ChatStreamCoordinator {
         isReplay: Bool,
         recoveryState: ActiveStreamRecoveryState
     ) {
-        lastProgressDate = isReplay ? Date() : nil
+        lastProgressDate = Date()
         lastTransportActivityDate = lastProgressDate
         lastRecoveryStatusCheckDate = nil
         self.recoveryState = recoveryState
