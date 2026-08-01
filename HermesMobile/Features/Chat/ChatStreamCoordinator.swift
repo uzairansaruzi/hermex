@@ -347,8 +347,24 @@ final class ChatStreamCoordinator {
             return
         }
 
+        let reconnectInterval = delegate?.streamCoordinatorHasRunningLiveToolCall == true
+            ? timing.runningToolReconnectInterval
+            : timing.reconnectInterval
         guard let lastProgressDate else {
-            recoveryState = .idle
+            guard let lastTransportActivityDate,
+                  now.timeIntervalSince(lastTransportActivityDate) >= reconnectInterval
+            else {
+                recoveryState = .idle
+                return
+            }
+
+            recoveryState = .checking
+            lastRecoveryStatusCheckDate = now
+            await recoverStaleStream(
+                streamID: activeStreamID,
+                forceReconnect: true,
+                modelContext: modelContext
+            )
             return
         }
 
@@ -359,9 +375,6 @@ final class ChatStreamCoordinator {
         }
 
         recoveryState = .checking
-        let reconnectInterval = delegate?.streamCoordinatorHasRunningLiveToolCall == true
-            ? timing.runningToolReconnectInterval
-            : timing.reconnectInterval
         let transportElapsed = now.timeIntervalSince(lastTransportActivityDate ?? lastProgressDate)
         let shouldForceReconnect = transportElapsed >= reconnectInterval
         guard shouldForceReconnect || shouldPollStatus(now: now) else { return }
@@ -673,8 +686,9 @@ final class ChatStreamCoordinator {
         isReplay: Bool,
         recoveryState: ActiveStreamRecoveryState
     ) {
-        lastProgressDate = Date()
-        lastTransportActivityDate = lastProgressDate
+        let startedAt = Date()
+        lastProgressDate = isReplay ? startedAt : nil
+        lastTransportActivityDate = startedAt
         lastRecoveryStatusCheckDate = nil
         self.recoveryState = recoveryState
         isReplayConnection = isReplay

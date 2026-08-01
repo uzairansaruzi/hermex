@@ -386,7 +386,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         }
 
         coordinator.start(streamID: "stream-123")
-        let connectionStartedAt = try XCTUnwrap(coordinator.lastProgressDate)
+        XCTAssertNil(coordinator.lastProgressDate)
+        let connectionStartedAt = try XCTUnwrap(coordinator.lastTransportActivityDate)
 
         await coordinator.recoverStaleStreamIfNeeded(
             now: connectionStartedAt.addingTimeInterval(18.1)
