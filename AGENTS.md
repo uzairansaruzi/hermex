@@ -76,3 +76,31 @@ unless explicitly asked.
 If something here surprises you or contradicts the project, tell the developer and
 **propose** an AGENTS.md edit — don't silently edit it. This file is a Band-Aid for what
 can't be fixed in code/tests/tooling; your proposed edits are also a signal of what to fix structurally.
+
+## Cursor Cloud specific instructions
+
+Cursor Cloud agents run on **Linux x86_64**, but Hermex is a native iOS/SwiftUI app that
+requires **macOS + Xcode 26 (iOS 18 SDK)**. This is an Apple platform constraint, not a
+missing dependency: Xcode, `xcodebuild`, `xcrun`, the iOS SDK, iOS Simulators, and the
+SwiftUI/UIKit/WidgetKit/ActivityKit frameworks the app is built on are not available on
+Linux and cannot be installed there. So on a cloud Linux VM you **cannot build, run, or
+run the XCTest suite**. The real build/test/run flows live on the `macos-26` CI runner
+(`.github/workflows/pr-ci.yml`) and in `DEVELOPMENT.md` (XcodeBuildMCP / raw `xcodebuild`,
+scheme `HermesMobile`, sim `iPhone 17`); use a Mac for anything touching Swift.
+
+What *does* run on the Linux cloud VM:
+- `scripts/check-swift-file-sizes` — the Swift file-size lint (warning-only, exit 0 even
+  with warnings; override the threshold with `HERMES_SWIFT_FILE_SIZE_LIMIT`). This is the
+  only app-related check that is meaningful here.
+
+Not usable on the cloud VM without extra setup you must not assume: `scripts/webui-json`
+needs a running `hermes-webui` server + credentials; `scripts/verify_kanban_reference_server.py`
+needs the two pinned upstream repos cloned at exact revisions; `ci/*.rb` need Ruby
+installed (maintainer-only TestFlight build-number helpers, not core dev). Treat these as
+out of scope for routine cloud work.
+
+Practical guidance for cloud agents: scope work to things verifiable without Xcode
+(docs, config, shell/Python tooling, and Swift *source review* against `PROJECT_SPEC.md`
+and the pinned upstream), run `scripts/check-swift-file-sizes` when touching Swift, and
+clearly flag that final build/test/simulator validation must happen on macOS (CI or a
+maintainer Mac) since it cannot be done in this environment.
