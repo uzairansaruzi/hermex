@@ -8,16 +8,14 @@ Goal: invite external testers only after a clean release-candidate build has bee
 
 ## Current Readiness Snapshot
 
-As of 2026-05-30:
+As of 2026-08-04:
 
 - This file remains the external TestFlight mechanics runbook (the separate full App Store release checklist doc was retired during open-source prep).
-- The GitHub Actions `External TestFlight` workflow is available and has uploaded an external-capable production build.
-- Current external-capable upload: version `1.0.1`, build `1`.
-- Verified workflow evidence: run `26833031469` / `External TestFlight from master` completed successfully from `master` at `9e8078215586643eb11c519bf9c73dfa103070ea`.
-- Run `26833031469` selected build number `1`, used `ci/ExternalTestFlightExportOptions.plist`, archived successfully, and uploaded to App Store Connect successfully.
-- Owner still needs to wait for App Store Connect processing, confirm build `1.0.1 (1)` appears and is not internal-only, and resolve any compliance prompts before using it for external testing or App Review replacement.
-- Earlier external-capable build `1.0 (32)` remains the repo-recorded App Review submission unless the owner manually replaces it in App Store Connect.
-- The local release branch cleanup is complete; the feature-gap and crash-investigation notes were committed, and the whitespace-only `AGENTS.md` change was removed.
+- Version `1.4` is the approved App Store release; App Store Connect has closed the `1.4` pre-release train, so external-capable uploads now require a higher marketing version (this forced the bump to `1.5` in #223).
+- Current external-capable upload: version `1.5`, build `1`.
+- Verified workflow evidence: run `30888612331` / `External TestFlight from master` completed successfully from `master` at `a4adf347b00a925b168245287e80a0f2b889cc55`.
+- Run `30888612331` selected build number `1`, used `ci/ExternalTestFlightExportOptions.plist`, archived successfully, and uploaded to App Store Connect successfully.
+- Owner still needs to wait for App Store Connect processing, confirm build `1.5 (1)` appears and is not internal-only, and resolve any compliance prompts before using it for external testing or App Review replacement.
 - The share extension's automatic app-launch workaround remains the highest Beta/App Store Review code risk until removed or explicitly accepted.
 - Full local XCTest passed on iPhone 17 Simulator for the latest code validation recorded in `CURRENT.md`, but every RC should be validated again before submission.
 
