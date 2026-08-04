@@ -10,7 +10,7 @@ struct OnboardingAgentPromptPage: View {
                     stepNumber: 1,
                     icon: "terminal",
                     title: String(localized: "Set up Hermes Web UI"),
-                    description: String(localized: "Send this prompt to your Hermes Agent. It installs Hermes Web UI, enables password auth, and configures Tailscale access.")
+                    description: String(localized: "Send this prompt to your Hermes Agent. It audits existing state, keeps Hermes Web UI on localhost, and configures private HTTPS with Tailscale Serve.")
                 )
 
                 OnboardingAgentPromptCard(

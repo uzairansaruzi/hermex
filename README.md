@@ -67,7 +67,7 @@ Self-hosting the server, securing it, and keeping it reachable are your responsi
 ### Making the server reachable
 
 - **HTTPS via a tunnel or reverse proxy (recommended).** Expose the server through Cloudflare Tunnel or any reverse proxy that terminates real TLS at a hostname you own. Real HTTPS keeps iOS App Transport Security happy with no exceptions. On a publicly reachable hostname the password is your only app-level defense — set a strong one.
-- **Tailscale.** Run the server bound to all interfaces with a password, install Tailscale on both the server and the iPhone, and connect to `http://<tailnet-ip>:8787`. The app allows plain HTTP only for Tailscale's `100.64.0.0/10` device range.
+- **Private HTTPS with Tailscale Serve.** Keep the server password-protected and bound to `127.0.0.1:8787`, inspect existing Serve/Funnel routes, then add `tailscale serve --bg 8787` only when HTTPS port 443 at the root path is free. Install Tailscale on the iPhone and connect with the exact `https://…ts.net` URL reported by `tailscale serve status`. Direct binding to `0.0.0.0` over plain HTTP remains a manual fallback, not the default.
 - **Simulator-only local testing** can use `http://localhost:8787` when the server runs on the same Mac.
 
 ### Troubleshooting the connection
