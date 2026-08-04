@@ -81,8 +81,8 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(OnboardingFlowPolicy.showsServerShortcut(for: OnboardingFlowPolicy.connectPageIndex))
     }
 
-    func testAgentSetupPromptIncludesTailscaleRequirements() {
-        let prompt = OnboardingFlowPolicy.agentSetupPrompt
+    func testTailscaleSetupPromptIncludesProviderRequirements() {
+        let prompt = PrivateNetworkProvider.tailscale.setupPrompt
 
         XCTAssertTrue(prompt.contains("hermes-webui"))
         XCTAssertTrue(prompt.contains("HERMES_WEBUI_PASSWORD"))
@@ -92,15 +92,43 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Hermex"))
     }
 
-    func testTailscaleAppStoreURLUsesITMSDeepLink() {
+    func testNetBirdSetupPromptIncludesProviderRequirements() {
+        let prompt = PrivateNetworkProvider.netBird.setupPrompt
+
+        XCTAssertTrue(prompt.contains("hermes-webui"))
+        XCTAssertTrue(prompt.contains("HERMES_WEBUI_PASSWORD"))
+        XCTAssertTrue(prompt.contains("netbird up"))
+        XCTAssertTrue(prompt.contains("ip addr show wt0"))
+        XCTAssertTrue(prompt.contains("curl http://<netbird-ip>:8787/health"))
+        XCTAssertTrue(prompt.contains("NetBird access policy"))
+        XCTAssertTrue(prompt.contains("Do not use Cloudflare. Optimize for NetBird + iPhone."))
+        XCTAssertTrue(prompt.contains("Hermex"))
+    }
+
+    func testProviderAppStoreURLsUseITMSDeepLinks() {
         XCTAssertEqual(
-            OnboardingFlowPolicy.tailscaleAppStoreURL.absoluteString,
+            PrivateNetworkProvider.tailscale.appStoreURL.absoluteString,
             "itms-apps://apps.apple.com/us/app/tailscale/id1470499037"
         )
         XCTAssertEqual(
-            OnboardingFlowPolicy.tailscaleAppStoreFallbackURL.absoluteString,
+            PrivateNetworkProvider.tailscale.appStoreFallbackURL.absoluteString,
             "https://apps.apple.com/us/app/tailscale/id1470499037"
         )
+        XCTAssertEqual(
+            PrivateNetworkProvider.netBird.appStoreURL.absoluteString,
+            "itms-apps://apps.apple.com/us/app/netbird-p2p-vpn/id6469329339"
+        )
+        XCTAssertEqual(
+            PrivateNetworkProvider.netBird.appStoreFallbackURL.absoluteString,
+            "https://apps.apple.com/us/app/netbird-p2p-vpn/id6469329339"
+        )
+    }
+
+    func testProviderSetupStepsUseSelectedProvider() {
+        XCTAssertTrue(PrivateNetworkProvider.tailscale.iphoneSetupSteps.joined().contains("Tailscale"))
+        XCTAssertFalse(PrivateNetworkProvider.tailscale.iphoneSetupSteps.joined().contains("NetBird"))
+        XCTAssertTrue(PrivateNetworkProvider.netBird.iphoneSetupSteps.joined().contains("NetBird"))
+        XCTAssertFalse(PrivateNetworkProvider.netBird.iphoneSetupSteps.joined().contains("Tailscale"))
     }
 
     func testConnectPageIndexIsFinalPagerPage() {

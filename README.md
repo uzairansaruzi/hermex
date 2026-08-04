@@ -67,7 +67,7 @@ Self-hosting the server, securing it, and keeping it reachable are your responsi
 ### Making the server reachable
 
 - **HTTPS via a tunnel or reverse proxy (recommended).** Expose the server through Cloudflare Tunnel or any reverse proxy that terminates real TLS at a hostname you own. Real HTTPS keeps iOS App Transport Security happy with no exceptions. On a publicly reachable hostname the password is your only app-level defense — set a strong one.
-- **Tailscale.** Run the server bound to all interfaces with a password, install Tailscale on both the server and the iPhone, and connect to `http://<tailnet-ip>:8787`. The app allows plain HTTP only for Tailscale's `100.64.0.0/10` device range.
+- **Private mesh network.** Run the server bound to all interfaces with a password, install either Tailscale or NetBird on both the server and iPhone, and connect to `http://<private-network-ip>:8787`. Confirm the mesh access policy and host firewall allow the iPhone to reach TCP port 8787. Plain HTTP is supported only for addresses in the app's scoped `100.64.0.0/10` range; use HTTPS for custom ranges or IPv6.
 - **Simulator-only local testing** can use `http://localhost:8787` when the server runs on the same Mac.
 
 ### Troubleshooting the connection
@@ -76,7 +76,7 @@ If connection testing fails, check these first:
 
 1. The machine hosting `hermes-webui` is awake.
 2. `hermes-webui` is running and serving `/health` (`curl https://<your-server>/health`).
-3. The tunnel, reverse proxy, or Tailscale route is connected.
+3. The tunnel, reverse proxy, or private mesh network is connected.
 4. The server URL and password are correct.
 
 ## Building from source
