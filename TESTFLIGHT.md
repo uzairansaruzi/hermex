@@ -517,6 +517,11 @@ Purpose: create the build that can be submitted to Beta App Review.
 
 Use the new external-capable workflow or manual Xcode upload. The build must not be marked internal-only.
 
+Version-train rule (bitten 2026-06-02 with `1.0` → `1.0.1` and 2026-08-04 with `1.4` → `1.5`): once a version is approved for the App Store, Apple closes its pre-release train and rejects any upload with that `CFBundleShortVersionString` (ASC errors 90186/90062). Two defenses:
+
+- Bump `MARKETING_VERSION` (in `HermesMobile.xcodeproj/project.pbxproj`, all entries) on `master` right after each App Store release goes live, so the next upload always targets an open train.
+- The workflow preflights the train against App Store Connect before archiving (`ENFORCE_OPEN_TRAIN` in `ci/select_testflight_build_number.rb`) and fails in seconds with a bump instruction if the train is closed.
+
 Workflow path, if implemented:
 
 1. Run `External TestFlight` from GitHub Actions.

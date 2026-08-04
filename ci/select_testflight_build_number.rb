@@ -12,6 +12,18 @@ class TestFlightBuildNumberSelector
   API_BASE = "https://api.appstoreconnect.apple.com"
   BUILD_NUMBER_PATTERN = /\A\d+(?:\.\d+)*\z/
 
+  # App Store version states in which Apple has approved the version and closed
+  # its pre-release train: any later upload must carry a higher
+  # CFBundleShortVersionString (ASC upload errors 90186/90062, hit on
+  # 2026-06-02 with 1.0 and again on 2026-08-04 with 1.4).
+  APPROVED_APP_STORE_STATES = %w[
+    READY_FOR_SALE
+    READY_FOR_DISTRIBUTION
+    PENDING_DEVELOPER_RELEASE
+    PENDING_APPLE_RELEASE
+    PROCESSING_FOR_APP_STORE
+  ].freeze
+
   class SelectionError < StandardError; end
 
   def self.valid_build_number?(value)
@@ -61,6 +73,17 @@ class TestFlightBuildNumberSelector
     latest_build_number ? increment_build_number(latest_build_number) : "1"
   end
 
+  # Returns the approved App Store version that closes the train for
+  # marketing_version, or nil when the train is open. Approved version strings
+  # that are not plain dotted numerics cannot be compared and are ignored.
+  def self.closed_train_version(marketing_version:, approved_versions:)
+    validate_build_number!(marketing_version, "marketing version")
+
+    approved_versions
+      .select { |value| valid_build_number?(value) }
+      .find { |value| compare_build_numbers(marketing_version, value) <= 0 }
+  end
+
   def self.validate_build_number!(value, label)
     return if valid_build_number?(value)
 
@@ -77,6 +100,8 @@ class TestFlightBuildNumberSelector
     bundle_id = required_env("BUNDLE_ID")
     marketing_version = required_env("MARKETING_VERSION")
     requested_build_number = @env.fetch("REQUESTED_BUILD_NUMBER", "")
+
+    enforce_open_train!(bundle_id: bundle_id, marketing_version: marketing_version) if @env["ENFORCE_OPEN_TRAIN"] == "1"
 
     latest = latest_uploaded_build_number(bundle_id: bundle_id, marketing_version: marketing_version)
     selected = self.class.select_build_number(
@@ -96,6 +121,39 @@ class TestFlightBuildNumberSelector
   end
 
   private
+
+  # Fails fast — before the ~15-minute archive step — when App Store Connect
+  # would reject the upload anyway because marketing_version's pre-release
+  # train is closed by an approved App Store version.
+  def enforce_open_train!(bundle_id:, marketing_version:)
+    blocking = self.class.closed_train_version(
+      marketing_version: marketing_version,
+      approved_versions: approved_app_store_versions(bundle_id: bundle_id)
+    )
+
+    if blocking
+      raise SelectionError,
+            "The #{marketing_version} pre-release train is closed: App Store version #{blocking} is already approved. " \
+            "Bump MARKETING_VERSION in HermesMobile.xcodeproj/project.pbxproj above #{blocking}, land it on master, " \
+            "and re-run this workflow (see TESTFLIGHT.md, Upload External-Capable Build)."
+    end
+
+    warn "Pre-release train #{marketing_version} is open: no approved App Store version at or above it."
+  end
+
+  def approved_app_store_versions(bundle_id:)
+    app_id = app_id_for_bundle_id(bundle_id)
+    versions = fetch_paginated_json(
+      "/v1/apps/#{app_id}/appStoreVersions",
+      "fields[appStoreVersions]" => "versionString,appStoreState",
+      "limit" => "200"
+    )
+
+    versions
+      .select { |item| APPROVED_APP_STORE_STATES.include?(item.dig("attributes", "appStoreState")) }
+      .map { |item| item.dig("attributes", "versionString") }
+      .compact
+  end
 
   def latest_uploaded_build_number(bundle_id:, marketing_version:)
     app_id = app_id_for_bundle_id(bundle_id)
@@ -117,7 +175,16 @@ class TestFlightBuildNumberSelector
     build_numbers.max { |left, right| self.class.compare_build_numbers(left, right) }
   end
 
+  # Memoized: the train preflight and build-number selection both need it.
   def app_id_for_bundle_id(bundle_id)
+    @app_ids ||= {}
+    cached = @app_ids[bundle_id]
+    return cached if cached
+
+    @app_ids[bundle_id] = uncached_app_id_for_bundle_id(bundle_id)
+  end
+
+  def uncached_app_id_for_bundle_id(bundle_id)
     apps = fetch_paginated_json(
       "/v1/apps",
       "filter[bundleId]" => bundle_id,

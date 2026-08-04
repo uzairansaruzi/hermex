@@ -120,10 +120,15 @@ jobs:
           chmod 600 "${key_path}"
           echo "APP_STORE_CONNECT_KEY_PATH=${key_path}" >> "${GITHUB_ENV}"
 
-      - name: Select build number
+      # ENFORCE_OPEN_TRAIN fails this step in seconds — instead of the upload
+      # step after a ~15-minute archive — when the marketing version's
+      # pre-release train is already closed by an approved App Store version
+      # (bitten 2026-06-02 with 1.0 and 2026-08-04 with 1.4).
+      - name: Check release train and select build number
         env:
           BUNDLE_ID: com.uzairansar.hermesmobile
           REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
+          ENFORCE_OPEN_TRAIN: "1"
         run: |
           set -euo pipefail
 
