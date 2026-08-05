@@ -3259,8 +3259,8 @@ final class ChatViewModelSendTests: XCTestCase {
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
 
-        XCTAssertEqual(viewModel.messages.count, 50)
-        XCTAssertEqual(viewModel.messages.first?.content, "Cached message 25")
+        XCTAssertEqual(viewModel.messages.count, 20)
+        XCTAssertEqual(viewModel.messages.first?.content, "Cached message 55")
         XCTAssertEqual(viewModel.messages.last?.content, "Cached message 74")
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
@@ -6288,8 +6288,10 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didLoadOlder)
         XCTAssertEqual(requestQueries.count, 2)
         XCTAssertNil(requestQueries[0]["msg_before"])
+        XCTAssertEqual(requestQueries[0]["msg_limit"], "20")
+        XCTAssertEqual(requestQueries[0]["expand_renderable"], "1")
         XCTAssertEqual(requestQueries[1]["msg_before"], "2")
-        XCTAssertEqual(requestQueries[1]["msg_limit"], "50")
+        XCTAssertEqual(requestQueries[1]["msg_limit"], "20")
         XCTAssertEqual(viewModel.messages.compactMap(\.content), [
             "Older question",
             "Older answer",

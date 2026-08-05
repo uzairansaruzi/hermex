@@ -125,12 +125,6 @@ struct ChatTranscriptView: View {
                         ChatScrollPolicy.initialTranscriptAnchor,
                         for: .initialOffset
                     )
-                    .defaultScrollAnchor(
-                        ChatScrollPolicy.sizeChangeAnchor(
-                            shouldFollowLatestMessage: shouldFollowLatestMessage
-                        ),
-                        for: .sizeChanges
-                    )
                     .frame(width: viewportWidth)
                     .refreshable {
                         if hasOlderMessages {
@@ -204,7 +198,7 @@ struct ChatTranscriptView: View {
         viewportWidth: CGFloat,
         contentWidth: CGFloat
     ) -> some View {
-        VStack(spacing: transcriptMessageSpacing) {
+        LazyVStack(spacing: transcriptMessageSpacing) {
             olderMessagesButton(proxy: proxy)
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
