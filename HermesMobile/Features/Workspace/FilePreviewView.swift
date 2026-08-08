@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import MarkdownUI
 
 struct FilePreviewView: View {
     let onAPIError: (Error) -> Void
@@ -155,18 +156,44 @@ struct FilePreviewView: View {
     }
 
     private func fileContent(_ content: String) -> some View {
-        ScrollView([.vertical, .horizontal]) {
+        ScrollView(isMarkdownFile ? .vertical : [.vertical, .horizontal]) {
             VStack(alignment: .leading, spacing: 12) {
                 fileHeader
 
-                Text(content)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if isMarkdownFile {
+                    markdownContent(content)
+                } else {
+                    Text(content)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .padding()
         }
         .background(Color(.systemBackground))
+    }
+
+    @ViewBuilder
+    private func markdownContent(_ content: String) -> some View {
+        Markdown(content)
+            .markdownTextStyle {
+                ForegroundColor(.primary)
+                BackgroundColor(nil)
+            }
+            .markdownTextStyle(\.code) {
+                FontFamilyVariant(.monospaced)
+                FontSize(.em(0.88))
+                BackgroundColor(Color(.tertiarySystemGroupedBackground))
+            }
+            .markdownCodeSyntaxHighlighter(.plainText)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var isMarkdownFile: Bool {
+        guard let path = entry.path else { return false }
+        return ["md", "markdown", "mdown", "mkd"].contains((path as NSString).pathExtension.lowercased())
     }
 
     @ViewBuilder
