@@ -1,13 +1,17 @@
 import SwiftUI
 import UIKit
 
-struct SelectableResponseText: Identifiable, Equatable {
+struct SelectableTextPresentation: Identifiable, Equatable {
     let id: String
     let text: String
 
+    init(id: String, text: String) {
+        self.id = id
+        self.text = text
+    }
+
     init(context: MessageActionContext) {
-        id = context.messageID
-        text = context.copyText
+        self.init(id: context.messageID, text: context.copyText)
     }
 }
 
@@ -79,8 +83,8 @@ struct ChatMessageActionMenu: View {
     }
 }
 
-struct SelectableResponseTextView: View {
-    let selection: SelectableResponseText
+struct SelectableTextPresentationView: View {
+    let selection: SelectableTextPresentation
 
     @Environment(\.dismiss) private var dismiss
 

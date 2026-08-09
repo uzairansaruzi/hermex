@@ -7,6 +7,7 @@ struct FilePreviewView: View {
 
     private let entry: WorkspaceEntry
     @State private var viewModel: FilePreviewViewModel
+    @State private var selectableText: SelectableTextPresentation?
     @State private var exportDocument = ExportedFileDocument(data: Data())
     @State private var exportContentType = UTType.data
     @State private var exportFilename = String(localized: "Hermes File")
@@ -87,6 +88,9 @@ struct FilePreviewView: View {
             if case let .failure(error) = result {
                 exportErrorMessage = error.localizedDescription
             }
+        }
+        .fullScreenCover(item: $selectableText) { selection in
+            SelectableTextPresentationView(selection: selection)
         }
         .alert(
             "Export Failed",
@@ -170,6 +174,23 @@ struct FilePreviewView: View {
                 }
             }
             .padding()
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                selectableText = SelectableTextPresentation(
+                    id: "file-preview:\(displayPath)",
+                    text: content
+                )
+            } label: {
+                Label("Select Text", systemImage: "text.cursor")
+            }
+
+            Button {
+                UIPasteboard.general.string = content
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
         }
         .background(Color(.systemBackground))
     }
