@@ -148,13 +148,15 @@ enum TranscriptMediaParser {
     private static func appendMediaSegments(in line: String, to segments: inout [TranscriptMediaSegment]) {
         var cursor = line.startIndex
         var textStart = cursor
+        let inlineCodeRanges = inlineCodeRanges(in: line)
 
         while cursor < line.endIndex {
             if line[cursor...].hasPrefix("MEDIA:"),
                let referenceRange = referenceRange(
                    in: line,
                    markerStart: cursor,
-                   from: line.index(cursor, offsetBy: 6)
+                   from: line.index(cursor, offsetBy: 6),
+                   syntax: .mediaToken
                ) {
                 appendText(String(line[textStart..<cursor]), to: &segments)
 
@@ -162,6 +164,28 @@ enum TranscriptMediaParser {
                 segments.append(.media(reference))
 
                 cursor = referenceRange.upperBound
+                textStart = cursor
+                continue
+            }
+
+            if line[cursor...].hasPrefix(fileURLMarker),
+               isBareFileURLStart(cursor, in: line),
+               !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
+               let pathRange = referenceRange(
+                   in: line,
+                   markerStart: cursor,
+                   from: line.index(cursor, offsetBy: fileURLMarker.count),
+                   syntax: .fileURL
+               ) {
+                appendText(String(line[textStart..<cursor]), to: &segments)
+
+                let rawURL = String(line[cursor..<pathRange.upperBound])
+                let reference = TranscriptMediaReference(
+                    rawReference: normalizedLocalPath(fromFileURL: rawURL)
+                )
+                segments.append(.media(reference))
+
+                cursor = pathRange.upperBound
                 textStart = cursor
                 continue
             }
@@ -185,12 +209,13 @@ enum TranscriptMediaParser {
     private static func referenceRange(
         in line: String,
         markerStart: String.Index,
-        from start: String.Index
+        from start: String.Index,
+        syntax: ReferenceSyntax
     ) -> Range<String.Index>? {
         guard start < line.endIndex else { return nil }
 
         var end = start
-        while end < line.endIndex, !isReferenceTerminator(line[end]) {
+        while end < line.endIndex, !isReferenceTerminator(line[end], syntax: syntax) {
             end = line.index(after: end)
         }
 
@@ -204,7 +229,8 @@ enum TranscriptMediaParser {
             }
         }
 
-        if let delimiter = emphasisDelimiter(in: line, immediatelyBefore: markerStart),
+        if syntax == .mediaToken,
+           let delimiter = emphasisDelimiter(in: line, immediatelyBefore: markerStart),
            line[start..<trimmedEnd].hasSuffix(delimiter) {
             trimmedEnd = line.index(trimmedEnd, offsetBy: -delimiter.count)
         }
@@ -234,8 +260,77 @@ enum TranscriptMediaParser {
         return nil
     }
 
-    private static func isReferenceTerminator(_ character: Character) -> Bool {
-        character.isWhitespace || character == ")" || character == "]"
+    private static func isReferenceTerminator(
+        _ character: Character,
+        syntax: ReferenceSyntax
+    ) -> Bool {
+        if character.isWhitespace || character == ")" || character == "]" {
+            return true
+        }
+
+        return syntax == .fileURL && fileURLTerminators.contains(character)
+    }
+
+    private static func isBareFileURLStart(_ index: String.Index, in line: String) -> Bool {
+        index == line.startIndex || line[line.index(before: index)].isWhitespace
+    }
+
+    private static func normalizedLocalPath(fromFileURL rawURL: String) -> String {
+        if let components = URLComponents(string: rawURL) {
+            let encodedPath = components.percentEncodedPath
+            if !encodedPath.isEmpty {
+                return encodedPath.removingPercentEncoding ?? encodedPath
+            }
+        }
+
+        let schemeStripped = String(rawURL.dropFirst(fileURLMarker.count))
+        return schemeStripped.removingPercentEncoding ?? schemeStripped
+    }
+
+    private static func inlineCodeRanges(in line: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var cursor = line.startIndex
+
+        while cursor < line.endIndex {
+            guard line[cursor] == "`" else {
+                cursor = line.index(after: cursor)
+                continue
+            }
+
+            let openingStart = cursor
+            let openingEnd = backtickRunEnd(in: line, from: cursor)
+            let delimiterLength = line.distance(from: openingStart, to: openingEnd)
+            var search = openingEnd
+            var closingEnd: String.Index?
+
+            while search < line.endIndex {
+                guard line[search] == "`" else {
+                    search = line.index(after: search)
+                    continue
+                }
+
+                let candidateEnd = backtickRunEnd(in: line, from: search)
+                if line.distance(from: search, to: candidateEnd) == delimiterLength {
+                    closingEnd = candidateEnd
+                    break
+                }
+                search = candidateEnd
+            }
+
+            guard let closingEnd else { break }
+            ranges.append(openingStart..<closingEnd)
+            cursor = closingEnd
+        }
+
+        return ranges
+    }
+
+    private static func backtickRunEnd(in line: String, from start: String.Index) -> String.Index {
+        var end = start
+        while end < line.endIndex, line[end] == "`" {
+            end = line.index(after: end)
+        }
+        return end
     }
 
     private static func fenceMarker(in line: String) -> Character? {
@@ -258,4 +353,11 @@ enum TranscriptMediaParser {
     }
 
     private static let trailingPunctuation: Set<Character> = [".", ",", ";", ":", "!", "?"]
+    private static let fileURLTerminators: Set<Character> = ["<", ">", "\"", "'"]
+    private static let fileURLMarker = "file://"
+
+    private enum ReferenceSyntax {
+        case mediaToken
+        case fileURL
+    }
 }

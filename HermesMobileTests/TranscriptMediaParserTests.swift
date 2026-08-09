@@ -104,6 +104,101 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertTrue(textSegments(in: segments).joined().contains("MEDIA:/tmp/inside.png"))
     }
 
+    func testParsesBareFileURLsAtLineStartOrAfterWhitespace() {
+        let segments = TranscriptMediaParser.segments(
+            in: "file:///tmp/report.csv ready\nImage file:///tmp/chart.png."
+        )
+
+        XCTAssertEqual(
+            segments,
+            [
+                .media(.init(rawReference: "/tmp/report.csv")),
+                .text(" ready\nImage "),
+                .media(.init(rawReference: "/tmp/chart.png")),
+                .text(".")
+            ]
+        )
+    }
+
+    func testBareFileURLDecodesPercentEscapedPathComponents() {
+        let segments = TranscriptMediaParser.segments(
+            in: "Created file:///Users/hermes/workspace/Q3%20report%20%28final%29.csv"
+        )
+
+        XCTAssertEqual(
+            mediaReferences(in: segments).map(\.rawReference),
+            ["/Users/hermes/workspace/Q3 report (final).csv"]
+        )
+    }
+
+    func testBareFileURLKeepsSurroundingProseAndPunctuation() {
+        let segments = TranscriptMediaParser.segments(
+            in: "Created file:///tmp/report.csv, then shared file:///tmp/chart.webp!"
+        )
+
+        XCTAssertEqual(
+            segments,
+            [
+                .text("Created "),
+                .media(.init(rawReference: "/tmp/report.csv")),
+                .text(", then shared "),
+                .media(.init(rawReference: "/tmp/chart.webp")),
+                .text("!")
+            ]
+        )
+    }
+
+    func testBareFileURLRequiresWhitespaceOrLineStart() {
+        let markdown = "prefixfile:///tmp/hidden.txt and [report](file:///tmp/report.csv)"
+        let segments = TranscriptMediaParser.segments(in: markdown)
+
+        XCTAssertEqual(segments, [.text(markdown)])
+    }
+
+    func testBareFileURLInsideInlineOrFencedCodeStaysLiteral() {
+        let markdown = """
+        Before `open file:///tmp/inline.csv` after file:///tmp/outside.csv
+        ```text
+        file:///tmp/fenced.png
+        ```
+        """
+
+        let segments = TranscriptMediaParser.segments(in: markdown)
+
+        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/outside.csv"])
+        let text = textSegments(in: segments).joined()
+        XCTAssertTrue(text.contains("file:///tmp/inline.csv"))
+        XCTAssertTrue(text.contains("file:///tmp/fenced.png"))
+    }
+
+    func testBareFileURLUsesExistingMediaKindClassification() {
+        let segments = TranscriptMediaParser.segments(
+            in: "file:///tmp/image.png file:///tmp/audio.m4a file:///tmp/video.mp4 file:///tmp/data.zip"
+        )
+
+        XCTAssertEqual(
+            mediaReferences(in: segments).map(\.mediaKind),
+            [.image, .audio, .video, .unsupported]
+        )
+    }
+
+    func testBareFileURLSupportDoesNotChangeExistingMediaOrHTTPSBehavior() throws {
+        let segments = TranscriptMediaParser.segments(
+            in: "MEDIA:/tmp/local.png MEDIA:https://cdn.example.test/image.png"
+        )
+        let references = mediaReferences(in: segments)
+
+        XCTAssertEqual(references.map(\.rawReference), [
+            "/tmp/local.png",
+            "https://cdn.example.test/image.png"
+        ])
+        XCTAssertEqual(references[0].source, .localPath("/tmp/local.png"))
+        XCTAssertEqual(
+            references[1].source,
+            .remoteURL(try XCTUnwrap(URL(string: "https://cdn.example.test/image.png")))
+        )
+    }
+
     func testUnsupportedSVGIsNotRasterImageCandidate() {
         let segments = TranscriptMediaParser.segments(in: "MEDIA:/tmp/vector.svg")
         let media = mediaReferences(in: segments).first
@@ -162,6 +257,24 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(payload.data, data)
         XCTAssertFalse(payload.isImage)
         XCTAssertFalse(payload.isVideo)
+    }
+
+    func testParsedGenericFileURLExportKeepsDecodedOriginalNameAndExtension() throws {
+        let segments = TranscriptMediaParser.segments(
+            in: "file:///tmp/final%20report.csv"
+        )
+        let reference = try XCTUnwrap(mediaReferences(in: segments).first)
+        let data = Data("heading,value".utf8)
+
+        let payload = TranscriptMediaExportSupport.payload(
+            for: reference,
+            data: data,
+            resolvedKind: .data
+        )
+
+        XCTAssertEqual(reference.rawReference, "/tmp/final report.csv")
+        XCTAssertEqual(payload.filename, "final report.csv")
+        XCTAssertEqual(payload.data, data)
     }
 
     func testExtensionlessUnsupportedFileExportsAsDataNotVideo() {

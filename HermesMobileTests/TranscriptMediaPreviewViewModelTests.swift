@@ -54,6 +54,43 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
+    func testParsedFileURLUsesSessionMediaEndpointAndDecodedExportFilename() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let imageData = try XCTUnwrap(Self.imageData())
+        let sessionID = "session-file-url"
+        let segments = TranscriptMediaParser.segments(
+            in: "Created file:///tmp/final%20chart.png"
+        )
+        let reference = try XCTUnwrap(segments.compactMap { segment in
+            if case let .media(reference) = segment {
+                return reference
+            }
+            return nil
+        }.first)
+        let client = makeClient { request in
+            recorder.record(request)
+            return self.response(statusCode: 200, data: imageData, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            sessionID: sessionID,
+            reference: reference,
+            apiClient: client
+        )
+
+        await viewModel.load()
+
+        XCTAssertNil(viewModel.errorMessage)
+        let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
+        XCTAssertEqual(queryItems["session_id"], sessionID)
+        XCTAssertEqual(queryItems["path"], "/tmp/final chart.png")
+
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.filename, "final chart.png")
+        XCTAssertEqual(payload.data, imageData)
+        XCTAssertEqual(recorder.requestCount, 1)
+    }
+
     func testLoadSameServerRemoteImageUsesAuthenticatedSession() async throws {
         let recorder = TranscriptMediaPreviewRequestRecorder()
         let imageData = try XCTUnwrap(Self.imageData())
