@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
-import MarkdownUI
 
 struct FilePreviewView: View {
     let onAPIError: (Error) -> Void
@@ -161,7 +160,8 @@ struct FilePreviewView: View {
                 fileHeader
 
                 if isMarkdownFile {
-                    markdownContent(content)
+                    MarkdownRenderer(content: content, isStreaming: false)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(content)
                         .font(.system(.body, design: .monospaced))
@@ -172,23 +172,6 @@ struct FilePreviewView: View {
             .padding()
         }
         .background(Color(.systemBackground))
-    }
-
-    @ViewBuilder
-    private func markdownContent(_ content: String) -> some View {
-        Markdown(content)
-            .markdownTextStyle {
-                ForegroundColor(.primary)
-                BackgroundColor(nil)
-            }
-            .markdownTextStyle(\.code) {
-                FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
-                BackgroundColor(Color(.tertiarySystemGroupedBackground))
-            }
-            .markdownCodeSyntaxHighlighter(.plainText)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var isMarkdownFile: Bool {
