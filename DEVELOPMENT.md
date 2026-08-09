@@ -59,7 +59,7 @@ cd hermes-webui
 
 2. Run it with Docker or directly with Python, following the upstream README.
 
-For simulator-only testing, `http://localhost:8787` can work when the server is running on the same Mac. For physical-device testing, use HTTPS or a Tailscale `100.64.0.0/10` IP; TestFlight builds include a scoped ATS exception for that Tailscale range.
+For simulator-only testing, `http://localhost:8787` can work when the server is running on the same Mac. For physical-device testing, use HTTPS or a supported Tailscale/NetBird IP in `100.64.0.0/10`; TestFlight builds include a scoped ATS exception for that private-network range.
 
 ## Example Server Setup (macOS + launchd)
 
