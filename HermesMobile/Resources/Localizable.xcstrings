@@ -87904,6 +87904,324 @@
         }
       }
     },
+    "This server signs in with single sign-on, which Hermex doesn't support yet." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم هذا الخادم تسجيل الدخول الموحّد، الذي لا يدعمه Hermex حتى الآن."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server nutzt Single Sign-on, das Hermex noch nicht unterstützt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor usa inicio de sesión único, que Hermex aún no admite."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur utilise l’authentification unique, que Hermex ne prend pas encore en charge."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "השרת הזה משתמש בכניסה יחידה, שבה Hermex עדיין לא תומך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server usa il single sign-on, che Hermex non supporta ancora."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーはシングルサインオンを使用しますが、Hermex はまだ対応していません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버는 싱글 사인온을 사용하지만 Hermex는 아직 지원하지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze server gebruikt eenmalige aanmelding, wat Hermex nog niet ondersteunt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten serwer używa logowania jednokrotnego, którego Hermex jeszcze nie obsługuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor usa logon único, que o Hermex ainda não oferece suporte."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот сервер использует единый вход, который Hermex пока не поддерживает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucu tek oturum açma kullanıyor, ancak Hermex bunu henüz desteklemiyor."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ سرور سنگل سائن آن استعمال کرتا ہے، جسے Hermex ابھی سپورٹ نہیں کرتا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呢部伺服器使用單一登入，但 Hermex 暫時未支援。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器使用单点登录，但 Hermex 尚不支持。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台伺服器使用單一登入，但 Hermex 尚未支援。"
+          }
+        }
+      }
+    },
+    "This server signs in through an identity proxy, which didn't authorize this request. Open the server in a browser, or check the custom headers." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يسجّل هذا الخادم الدخول عبر وكيل هوية لم يصرّح بهذا الطلب. افتح الخادم في المتصفح أو تحقّق من الترويسات المخصّصة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server meldet über einen Identitäts-Proxy an, der diese Anfrage nicht autorisiert hat. Öffne den Server im Browser oder prüfe die eigenen Header."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor inicia sesión a través de un proxy de identidad que no autorizó esta solicitud. Abre el servidor en un navegador o revisa las cabeceras personalizadas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur s’authentifie via un proxy d’identité qui n’a pas autorisé cette requête. Ouvrez le serveur dans un navigateur ou vérifiez les en-têtes personnalisés."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "השרת הזה מתחבר דרך פרוקסי זהות שלא אישר את הבקשה הזו. פתח את השרת בדפדפן, או בדוק את הכותרות המותאמות."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server accede tramite un proxy di identità che non ha autorizzato questa richiesta. Apri il server in un browser o controlla le intestazioni personalizzate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーは ID プロキシ経由でサインインしますが、そのプロキシがこのリクエストを承認しませんでした。ブラウザでサーバーを開くか、カスタムヘッダーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버는 ID 프록시를 통해 로그인하지만 이 요청은 승인되지 않았습니다. 브라우저에서 서버를 열거나 사용자 지정 헤더를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze server meldt aan via een identiteitsproxy die dit verzoek niet heeft geautoriseerd. Open de server in een browser of controleer de aangepaste headers."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten serwer loguje przez proxy tożsamości, które nie autoryzowało tego żądania. Otwórz serwer w przeglądarce lub sprawdź własne nagłówki."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor autentica por um proxy de identidade que não autorizou esta requisição. Abra o servidor em um navegador ou verifique os cabeçalhos personalizados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот сервер выполняет вход через прокси идентификации, который не авторизовал этот запрос. Откройте сервер в браузере или проверьте пользовательские заголовки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucu, bu isteği yetkilendirmeyen bir kimlik proxy’si üzerinden oturum açıyor. Sunucuyu tarayıcıda açın veya özel başlıkları kontrol edin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ سرور شناختی پراکسی کے ذریعے سائن اِن کرتا ہے، جس نے اس درخواست کی اجازت نہیں دی۔ سرور کو براؤزر میں کھولیں یا کسٹم ہیڈرز چیک کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呢部伺服器透過身分代理登入，但該代理未授權今次請求。請喺瀏覽器開啟伺服器，或檢查自訂標頭。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器通过身份代理登录，但该代理未授权此请求。请在浏览器中打开服务器，或检查自定义标头。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台伺服器透過身分代理登入，但該代理未授權這次請求。請在瀏覽器中開啟伺服器，或檢查自訂標頭。"
+          }
+        }
+      }
+    },
+    "Connection ok. Already signed in by this server." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تم الاتصال. هذا الخادم سجّل دخولك بالفعل."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbindung ok. Dieser Server hat dich bereits angemeldet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conexión correcta. Este servidor ya te ha iniciado sesión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion établie. Ce serveur vous a déjà authentifié."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "החיבור תקין. השרת הזה כבר חיבר אותך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione riuscita. Questo server ti ha già autenticato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続できました。このサーバーではすでにサインイン済みです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결되었습니다. 이 서버에 이미 로그인되어 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinding oké. Deze server heeft je al aangemeld."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie działa. Ten serwer już Cię zalogował."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conexão ok. Este servidor já fez seu login."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Соединение установлено. Этот сервер уже выполнил вход."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı başarılı. Bu sunucu sizi zaten oturum açtırmış."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کنیکشن ٹھیک ہے۔ یہ سرور آپ کو پہلے ہی سائن اِن کر چکا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線正常。呢部伺服器已經幫你登入咗。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接正常。此服务器已为你登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線正常。這台伺服器已為你登入。"
+          }
+        }
+      }
+    },
     "This server signs in with passkeys, which Hermex doesn't support yet." : {
       "localizations" : {
         "ar" : {

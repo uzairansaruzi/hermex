@@ -401,6 +401,87 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertNil(keychain.savedValues[.serverURL])
     }
 
+    /// Trusted-header deployments — the reverse-proxy setups the custom-header
+    /// feature exists for — authenticate at the proxy and answer
+    /// `logged_in: true` with no password auth. Reading that as "passkeys" shut
+    /// them out of a server they were already signed in to (#3).
+    func testTrustedHeaderServerThatAlreadySignedUsInIsSavedWithoutLogin() async throws {
+        let keychain = InMemoryKeychainStore()
+        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
+            authEnabled: true,
+            loggedIn: true,
+            passwordAuthEnabled: false,
+            trustedAuthEnabled: true
+        ))
+        let manager = makeManager(keychain: keychain, store: CustomHeaderStore(), client: client)
+
+        await manager.configure(serverURLString: "https://example.test", password: "")
+
+        XCTAssertNil(manager.lastErrorMessage)
+        XCTAssertEqual(client.loginPasswords, [], "There is no credential to send.")
+        XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://example.test"))))
+        XCTAssertEqual(keychain.savedValues[.serverURL], "https://example.test")
+    }
+
+    /// Browser and app cookie jars are separate, so external browser sign-in
+    /// cannot be presented as a way to authenticate Hermex.
+    func testOIDCServerReportsSingleSignOnRatherThanPasskeys() async throws {
+        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
+            authEnabled: true,
+            loggedIn: false,
+            passwordAuthEnabled: false,
+            oidcEnabled: true
+        ))
+        let manager = makeManager(keychain: InMemoryKeychainStore(), store: CustomHeaderStore(), client: client)
+
+        await manager.configure(serverURLString: "https://example.test", password: "")
+
+        XCTAssertEqual(
+            manager.lastErrorMessage,
+            "This server signs in with single sign-on, which Hermex doesn't support yet."
+        )
+        XCTAssertNotEqual(manager.lastErrorMessage, AuthManager.passkeyOnlyMessage)
+        XCTAssertEqual(manager.state, .unconfigured)
+    }
+
+    /// Trusted-header mode where the proxy did not authorize this request is a
+    /// different problem again, with a different thing to try.
+    func testTrustedHeaderServerWithoutASessionExplainsTheProxy() async throws {
+        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
+            authEnabled: true,
+            loggedIn: false,
+            passwordAuthEnabled: false,
+            trustedAuthEnabled: true
+        ))
+        let manager = makeManager(keychain: InMemoryKeychainStore(), store: CustomHeaderStore(), client: client)
+
+        await manager.configure(serverURLString: "https://example.test", password: "")
+
+        XCTAssertEqual(manager.lastErrorMessage, AuthManager.trustedAuthNotSignedInMessage)
+        XCTAssertEqual(manager.state, .unconfigured)
+    }
+
+    /// `addServer` carried a verbatim copy of the same inference and has to
+    /// behave identically.
+    func testAddServerAcceptsAServerThatAlreadySignedUsIn() async throws {
+        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
+            authEnabled: true,
+            loggedIn: true,
+            passwordAuthEnabled: false,
+            trustedAuthEnabled: true
+        ))
+        let manager = AuthManager(
+            keychain: InMemoryKeychainStore(),
+            probeClientFactory: { _, _ in client },
+            serverRegistry: ServerRegistry.inMemory()
+        )
+
+        let outcome = await manager.addServer(serverURLString: "https://example.test", password: "")
+
+        XCTAssertEqual(outcome, .added(try XCTUnwrap(URL(string: "https://example.test"))))
+        XCTAssertEqual(client.loginPasswords, [])
+    }
+
     func testMissingPasswordFlagFallsThroughToPasswordLogin() async throws {
         let keychain = InMemoryKeychainStore()
         // authEnabled true but passwordAuthEnabled nil (older server) must NOT be
