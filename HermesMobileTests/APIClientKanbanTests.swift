@@ -862,6 +862,19 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertEqual(exactStatusReport.warnings, [.unsupportedStatus("TRIAGE")])
     }
 
+    func testKanbanDetailEventDecodesTheRunID() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        let event = try decoder.decode(KanbanDetailEvent.self, from: Data("""
+        {"id": 8, "task_id": "CARD-1", "run_id": "run-17", "kind": "status",
+         "created_at": 1700000000, "payload": {"status": "ready"}}
+        """.utf8))
+
+        XCTAssertEqual(event.runID, "run-17")
+        XCTAssertEqual(event.cardID, "CARD-1")
+    }
+
     private static let configurationJSON = """
     {"columns":["triage","todo","ready"],"assignees":["work"],"read_only":false}
     """

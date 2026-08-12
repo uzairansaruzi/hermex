@@ -823,7 +823,11 @@ struct KanbanDetailEvent: Decodable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case eventID = "id"
         case cardID = "taskId"
-        case runID, kind, createdAt, payload
+        // `runID` without a raw value spells the key "runID", but the decoder
+        // runs `.convertFromSnakeCase`, which turns the server's `run_id` into
+        // "runId" — so this never matched and `runID` was always nil.
+        case runID = "runId"
+        case kind, createdAt, payload
     }
 
     init(from decoder: Decoder) throws {
