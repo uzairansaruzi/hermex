@@ -222,6 +222,116 @@ final class ModelCatalogTests: XCTestCase {
             groups
         )
     }
+    /// The server prefixes every model of a non-active provider with
+    /// `@provider:`, so the same model is spelled two different ways depending
+    /// on which provider is active. Comparing raw ids left the picker unable to
+    /// mark the current default at all. Confirmed against the live
+    /// deployment: `openai-codex` is active and its ids are bare, while
+    /// `@deepseek:` and `@gemini:` ones carry the prefix.
+    func testModelSelectionMatchesAcrossTheProviderPrefix() {
+        let prefixed = ModelCatalogOption(
+            id: "@gemini:gemini-3.5-flash",
+            displayName: "Gemini 3.5 Flash",
+            providerID: "gemini"
+        )
+
+        XCTAssertTrue(prefixed.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
+        XCTAssertTrue(prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: "gemini"))
+        XCTAssertFalse(
+            prefixed.matchesSelection(modelID: "gemini-3.5-flash", providerID: nil),
+            "A bare selection belongs to the active provider, whose models are the unprefixed ones."
+        )
+
+        let bare = ModelCatalogOption(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash", providerID: "gemini")
+        XCTAssertTrue(bare.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
+    }
+
+    /// Normalizing must not merge two providers that offer the same bare id.
+    /// The live deployment really does list `@gemini:gemini-2.5-flash` and
+    /// `@google:gemini-2.5-flash` side by side, and an earlier version of this
+    /// fix ticked both.
+    func testModelSelectionStillSeparatesProvidersSharingABareID() {
+        let other = ModelCatalogOption(
+            id: "@deepseek:gemini-3.5-flash",
+            displayName: "Look-alike",
+            providerID: "deepseek"
+        )
+
+        XCTAssertFalse(other.matchesSelection(modelID: "@gemini:gemini-3.5-flash", providerID: nil))
+        XCTAssertFalse(other.matchesSelection(modelID: "gemini-3.5-flash", providerID: "gemini"))
+
+        // A bare selection is the ACTIVE provider's spelling — the prefix is
+        // precisely what the server adds to everyone else — so it must not tick
+        // a prefixed look-alike.
+        let prefixedLookAlike = ModelCatalogOption(
+            id: "@google:gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            providerID: "google"
+        )
+        let activeProviderOption = ModelCatalogOption(
+            id: "gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            providerID: "gemini"
+        )
+
+        XCTAssertFalse(prefixedLookAlike.matchesSelection(modelID: "gemini-2.5-flash", providerID: nil))
+
+        // The mirror direction: an option carrying no provider at all cannot be
+        // shown to belong to a named one either. Guessing "yes" here would be
+        // the same bug pointed the other way.
+        let providerlessOption = ModelCatalogOption(
+            id: "gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            providerID: nil
+        )
+        XCTAssertFalse(providerlessOption.matchesSelection(modelID: "gemini-2.5-flash", providerID: "gemini"))
+        XCTAssertFalse(providerlessOption.matchesSelection(modelID: "@gemini:gemini-2.5-flash", providerID: nil))
+        XCTAssertTrue(
+            providerlessOption.matchesSelection(modelID: "gemini-2.5-flash", providerID: nil),
+            "Neither side naming a provider is still a match."
+        )
+        XCTAssertTrue(activeProviderOption.matchesSelection(modelID: "gemini-2.5-flash", providerID: nil))
+        XCTAssertTrue(
+            activeProviderOption.matchesSelection(modelID: "@gemini:gemini-2.5-flash", providerID: nil),
+            "Saving through the app leaves the prefixed spelling while the server stores the bare one."
+        )
+    }
+
+    /// An exact spelling wins over a normalized one so a same-named model from
+    /// another provider can never be picked in its place.
+    func testFirstMatchingSelectionPrefersTheExactSpelling() {
+        let options = [
+            ModelCatalogOption(id: "@gemini:flash", displayName: "Prefixed", providerID: "gemini"),
+            ModelCatalogOption(id: "flash", displayName: "Bare", providerID: "gemini")
+        ]
+
+        XCTAssertEqual(options.firstMatchingSelection(modelID: "flash", providerID: nil)?.displayName, "Bare")
+        XCTAssertEqual(
+            options.firstMatchingSelection(modelID: "@gemini:flash", providerID: nil)?.displayName,
+            "Prefixed"
+        )
+    }
+
+    func testModelSelectionPreservesNamedCustomProviderIdentity() {
+        let beta = ModelCatalogOption(
+            id: "@custom:beta:model-a",
+            displayName: "Beta Model A",
+            providerID: "custom:beta"
+        )
+        let gamma = ModelCatalogOption(
+            id: "@custom:gamma:model-a",
+            displayName: "Gamma Model A",
+            providerID: "custom:gamma"
+        )
+
+        XCTAssertEqual("@custom:beta:model-a".bareModelID, "model-a")
+        XCTAssertEqual("@custom:beta:model-a".modelIDProviderPrefix, "custom:beta")
+        XCTAssertTrue(beta.matchesSelection(modelID: "@custom:beta:model-a", providerID: nil))
+        XCTAssertTrue(beta.matchesSelection(modelID: "model-a", providerID: "custom:beta"))
+        XCTAssertFalse(gamma.matchesSelection(modelID: "@custom:beta:model-a", providerID: nil))
+        XCTAssertFalse(gamma.matchesSelection(modelID: "model-a", providerID: "custom:beta"))
+    }
+
 }
 
 final class PersonalityAutocompleteTests: XCTestCase {
