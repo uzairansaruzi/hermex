@@ -81438,6 +81438,112 @@
         }
       }
     },
+    "The server did not accept that response. The request is still waiting." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لم يقبل الخادم هذا الرد. الطلب لا يزال في الانتظار."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Der Server hat diese Antwort nicht akzeptiert. Die Anfrage wartet weiterhin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El servidor no aceptó esa respuesta. La solicitud sigue pendiente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le serveur n'a pas accepté cette réponse. La demande est toujours en attente."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "השרת לא קיבל את התשובה הזו. הבקשה עדיין ממתינה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Il server non ha accettato questa risposta. La richiesta è ancora in attesa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "サーバーはその応答を受け付けませんでした。リクエストはまだ保留中です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "서버가 그 응답을 받아들이지 않았어요. 요청은 아직 대기 중이에요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De server heeft dat antwoord niet geaccepteerd. Het verzoek staat nog steeds open."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Serwer nie zaakceptował tej odpowiedzi. Żądanie nadal oczekuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O servidor não aceitou essa resposta. A solicitação continua pendente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Сервер не принял этот ответ. Запрос всё ещё ожидает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sunucu bu yanıtı kabul etmedi. İstek hâlâ bekliyor."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سرور نے یہ جواب قبول نہیں کیا۔ درخواست ابھی بھی زیرِ التوا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "伺服器未接受該回應。請求仍在等待中。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "服务器未接受该响应。请求仍在等待中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "伺服器未接受該回應。請求仍在等待中。"
+          }
+        }
+      }
+    },
     "The server did not confirm the change." : {
       "localizations" : {
         "ar" : {
