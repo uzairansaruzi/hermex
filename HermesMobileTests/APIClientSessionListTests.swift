@@ -197,4 +197,41 @@ final class APIClientSessionListTests: APIClientTestCase {
         XCTAssertNil(response.query)
         XCTAssertNil(response.count)
     }
+    /// One malformed row used to fail the whole array, so a single CLI or
+    /// subagent session with a drifted field emptied the entire list and
+    /// pull-to-refresh could never bring it back. Rows are decoded
+    /// independently and each field is lossy, matching `SessionDetail` and
+    /// `ProjectSummary`, which already worked this way.
+    func testSessionListSurvivesOneMalformedRow() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {"sessions": [
+              {"session_id": "good-1", "title": "Fine", "message_count": 3},
+              {"session_id": "drifted", "title": "Odd", "message_count": "12", "created_at": "not-a-number"},
+              {"session_id": 42},
+              {"title": "Missing server identity"},
+              {"session_id": "   ", "title": "Blank server identity"},
+              {"session_id": "good-2", "title": "Also fine"}
+            ]}
+            """, for: request)
+        }
+
+        let response = try await client.sessions()
+        let ids = (response.sessions ?? []).compactMap(\.sessionId)
+
+        XCTAssertEqual(response.sessions?.count, 6)
+        XCTAssertEqual(ids, ["good-1", "drifted", "42", "   ", "good-2"])
+        XCTAssertNil(response.sessions?[3].sessionId)
+        XCTAssertEqual(response.sessions?[4].sessionId, "   ")
+        XCTAssertEqual(
+            response.sessions?.first(where: { $0.sessionId == "drifted" })?.messageCount,
+            12,
+            "A numeric string still reads as a count."
+        )
+        XCTAssertEqual(
+            response.sessions?.first(where: { $0.sessionId == "42" })?.sessionId,
+            "42",
+            "A numeric id is coerced rather than dropped."
+        )
+    }
 }

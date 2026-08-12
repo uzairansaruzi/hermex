@@ -194,6 +194,17 @@ final class SessionListMutationTests: XCTestCase {
             {
               "sessions": [
                 {
+                  "title": "Missing identity",
+                  "message_count": 2,
+                  "archived": false
+                },
+                {
+                  "session_id": "   ",
+                  "title": "Blank identity",
+                  "message_count": 2,
+                  "archived": false
+                },
+                {
                   "session_id": "empty-placeholder",
                   "title": "Untitled Session",
                   "message_count": 0,
@@ -2835,6 +2846,15 @@ final class SessionListMutationTests: XCTestCase {
         """
         {
           "sessions": [
+            {
+              "title": "Missing archived identity",
+              "archived": true
+            },
+            {
+              "session_id": "   ",
+              "title": "Blank archived identity",
+              "archived": true
+            },
             {
               "session_id": "session-abc",
               "title": "Planning",

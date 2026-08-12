@@ -111,6 +111,49 @@ final class InsightsViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testFallbackTotalsIncludeSessionsWithoutUsableIDs() async throws {
+        let now = Date().timeIntervalSince1970
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(SessionsResponse.self, from: Data("""
+        {
+          "sessions": [
+            {
+              "title": "Missing identity",
+              "created_at": \(now - 60),
+              "message_count": 4,
+              "input_tokens": 10,
+              "output_tokens": 20,
+              "estimated_cost": 0.12
+            },
+            {
+              "session_id": "   ",
+              "title": "Blank identity",
+              "created_at": \(now - 120),
+              "message_count": 2,
+              "input_tokens": 5,
+              "output_tokens": 7,
+              "estimated_cost": 0.03
+            }
+          ]
+        }
+        """.utf8))
+        let client = StubInsightsClient(
+            insightsResult: .failure(StubInsightsError()),
+            sessionsResult: .success(response)
+        )
+        let viewModel = InsightsViewModel(client: client)
+        viewModel.selectedTimeframe = .last7Days
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.sessionCount, 2)
+        XCTAssertEqual(viewModel.totalMessages, 6)
+        XCTAssertEqual(viewModel.totalTokens, 42)
+        XCTAssertEqual(viewModel.estimatedCost, 0.15, accuracy: 0.0001)
+    }
+
+    @MainActor
     func testLoadUsesServerInsightsWhenAvailable() async throws {
         let client = StubInsightsClient(
             insightsResult: .success(try decodeInsights("""

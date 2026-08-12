@@ -218,7 +218,11 @@ final class SessionListViewModel {
         do {
             let response = try await client.sessions()
             let visibleSessions = (response.sessions ?? [])
-                .filter { $0.archived != true && $0.shouldAppearInSessionList }
+                .filter {
+                    Self.nonEmpty($0.sessionId) != nil
+                        && $0.archived != true
+                        && $0.shouldAppearInSessionList
+                }
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 

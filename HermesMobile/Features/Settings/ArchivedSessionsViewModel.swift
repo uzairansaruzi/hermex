@@ -36,7 +36,9 @@ final class ArchivedSessionsViewModel {
             // row carries an `archived` flag (verified against upstream routes.py
             // @312d3fab and the live server), so filter client-side.
             let response = try await client.sessions(includeArchived: true)
-            sessions = (response.sessions ?? []).filter { $0.archived == true }
+            sessions = (response.sessions ?? []).filter {
+                Self.nonEmpty($0.sessionId) != nil && $0.archived == true
+            }
         } catch {
             // A cancelled load (pull-to-refresh superseding `.task`, or the view
             // disappearing) is not a failure — don't flash an error state.
