@@ -49,23 +49,22 @@ struct SessionMutator {
         }
     }
 
-    func duplicate(sessionID: String, title: String) async throws -> SessionDuplicateResult {
-        let response = try await client.branchSession(id: sessionID, title: title)
+    /// Copies a session.
+    ///
+    /// Uses `/api/session/duplicate`, which deep-copies `messages` *and*
+    /// `tool_calls`, carries the token and cost counters over, and leaves the
+    /// copy a root session. This used to call `/api/session/branch`, whose
+    /// meaning is "fork a child from here": that dropped the tool calls and the
+    /// usage totals, and filed the result under the original in the lineage tree
+    /// — three wrong outcomes for a menu item labelled Duplicate (#25).
+    ///
+    /// The server names the copy itself (`title + " (copy)"`), so there is no
+    /// title to pass, and it answers with the whole duplicated session, so
+    /// there is no second fetch.
+    func duplicate(sessionID: String) async throws -> SessionDuplicateResult {
+        let response = try await client.duplicateSession(id: sessionID)
 
-        guard let duplicatedSessionID = response.sessionId else {
-            return SessionDuplicateResult(
-                session: nil,
-                errorMessage: response.error ?? String(localized: "The server did not return the duplicated session ID.")
-            )
-        }
-
-        let duplicatedResponse = try await client.session(
-            id: duplicatedSessionID,
-            includeMessages: false,
-            messageLimit: nil
-        )
-
-        guard let duplicatedSessionDetail = duplicatedResponse.session else {
+        guard let duplicatedSessionDetail = response.session else {
             return SessionDuplicateResult(
                 session: nil,
                 errorMessage: String(localized: "The server did not return the duplicated session.")

@@ -102,6 +102,17 @@ extension APIClient {
         )
     }
 
+    /// Copies a session. Answers with the whole duplicated session, so no
+    /// follow-up fetch is needed. Rejects subagent sessions with a 400 — they
+    /// are view-only upstream.
+    func duplicateSession(id: String) async throws -> SessionResponse {
+        try await send(
+            endpoint: .duplicateSession,
+            method: "POST",
+            body: SessionIDRequest(sessionId: id)
+        )
+    }
+
     func compressSession(id: String, focusTopic: String? = nil) async throws -> SessionCompressResponse {
         try await send(
             endpoint: .compressSession,
@@ -231,4 +242,3 @@ private struct SessionYoloRequest: Encodable {
     let sessionId: String
     let enabled: Bool
 }
-

@@ -198,7 +198,8 @@ These are the endpoints we know we need. Verify each one against your running se
 | POST | `/api/session/pin` | `{session_id, pinned: bool}` |
 | POST | `/api/session/archive` | `{session_id, archived: bool}` |
 | POST | `/api/session/move` | `{session_id, project_id?}` for moving a session into or out of a project |
-| POST | `/api/session/branch` | `{session_id, keep_count?, title?}` for forking from a message or duplicating a full conversation |
+| POST | `/api/session/duplicate` | `{session_id}` for a full independent copy, including messages, tool calls, and usage totals |
+| POST | `/api/session/branch` | `{session_id, keep_count?, title?}` for forking a child session from a message |
 | POST | `/api/session/truncate` | `{session_id, keep_count}` for edit/regenerate flows that discard later history after confirmation |
 | GET | `/api/session/usage?session_id=...` | Per-session token/cost snapshot for limited analytics and diagnostics |
 | GET | `/api/projects` | List projects for "Move to project" |
@@ -429,13 +430,13 @@ Each phase ends in a working, committable state. Run on the simulator after ever
 
 #### 8.1 Session long-press options
 - **User-facing goal:** Press and hold a session row to open native options: pin/unpin, move to project, archive/restore, duplicate, delete.
-- **Upstream API/server contract to verify:** `POST /api/session/pin`, `POST /api/session/move`, `GET /api/projects`, optional `POST /api/projects/create`, `POST /api/session/archive`, `POST /api/session/branch`, `POST /api/session/delete`.
+- **Upstream API/server contract to verify:** `POST /api/session/pin`, `POST /api/session/move`, `GET /api/projects`, optional `POST /api/projects/create`, `POST /api/session/archive`, `POST /api/session/duplicate`, `POST /api/session/delete`.
 - **iOS UI changes:** Replace or supplement swipe-only row actions with a long-press context menu. "Move to project" opens a project picker with "No project" and existing projects. Delete stays behind confirmation.
-- **Model/networking changes:** Add tolerant `Project` model and API client methods for project list, session move, branch, and existing mutations. Duplicate should call `/api/session/branch` with no `keep_count` and a custom title like `<title> (copy)`, then load/navigate to the returned session.
-- **Persistence/cache impact:** On mutation success, update or remove cached session rows. For duplicate, insert the newly loaded session after fetching it.
-- **Tests:** Request construction for move/project list/branch/delete; view model tests for cache updates and local filtering after archive/delete.
+- **Model/networking changes:** Add tolerant `Project` model and API client methods for project list, session move, duplicate, and existing mutations. Duplicate calls `/api/session/duplicate`; the server names and returns the full copied session.
+- **Persistence/cache impact:** On mutation success, update or remove cached session rows. For duplicate, insert the session returned by the mutation response.
+- **Tests:** Request construction for move/project list/duplicate/delete; view model tests for cache updates and local filtering after archive/delete.
 - **Manual simulator test plan:** Long-press a safe session, pin/unpin it, move it to a project and back to No project, archive/restore it, duplicate it and confirm transcript is copied, delete only a disposable session.
-- **Risks/open questions:** Moving to a project needs a clear "No project" state. Duplicate is intentionally a full transcript copy, not the current WebUI empty-copy shortcut.
+- **Risks/open questions:** Moving to a project needs a clear "No project" state. Duplicate is unavailable for state.db-only CLI/external sessions because they have no sidecar session document to copy.
 
 #### 8.2 User message long-press menu
 - **User-facing goal:** Press and hold the user's own message to show Edit Message, Fork From Here, and Copy.

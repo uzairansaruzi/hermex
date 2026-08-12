@@ -100,6 +100,7 @@ State-changing checks, only safe against disposable test data:
 - `POST /api/session/pin`
 - `POST /api/session/archive`
 - `POST /api/session/move`
+- `POST /api/session/duplicate`
 - `POST /api/session/branch`
 - `POST /api/session/truncate`
 - `POST /api/session/update`
