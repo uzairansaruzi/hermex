@@ -330,7 +330,7 @@ struct MessageComposerView: View {
                                 silenceRemaining: voiceFirstMode.silenceRemaining,
                                 phase: voiceFirstMode.phase,
                                 onLongPressStart: {
-                                    if !voiceInput.isListening, !isVoiceInputDisabled {
+                                    if !voiceInput.isListening, !isVoiceNoteRecordingDisabled {
                                         toggleVoiceInput()
                                     }
                                 },
