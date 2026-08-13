@@ -1210,19 +1210,38 @@ struct MessageComposerView: View {
 
     @MainActor
     private func voiceFirstApplyPendingAction() {
-        // Apply the pending action (from gesture direction) to the draft before sending.
+        // Temporarily override the streaming send behavior so ChatView routes
+        // the message correctly. The message stays as plain text (shows in chat
+        // as a normal user bubble) rather than being rewritten to a /slash command.
+        // We restore the original value after a brief delay — sendDraftMessage()
+        // reads the @AppStorage synchronously before any await.
         let content = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else { return }
 
+        let originalValue = UserDefaults.standard.string(forKey: StreamingSendBehavior.storageKey)
+            ?? StreamingSendBehavior.steer.rawValue
+
         switch voiceFirstPendingAction {
         case .interrupt:
-            draftMessage = "/interrupt \(content)"
+            UserDefaults.standard.set(
+                StreamingSendBehavior.interrupt.rawValue,
+                forKey: StreamingSendBehavior.storageKey
+            )
         case .steer:
-            draftMessage = "/steer \(content)"
+            UserDefaults.standard.set(
+                StreamingSendBehavior.steer.rawValue,
+                forKey: StreamingSendBehavior.storageKey
+            )
         case .send, .cancel:
-            break // Send as-is, or cancel (shouldn't reach here)
+            voiceFirstPendingAction = .send
+            return
         }
         voiceFirstPendingAction = .send
+
+        // Restore after send reads the value (next run loop).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            UserDefaults.standard.set(originalValue, forKey: StreamingSendBehavior.storageKey)
+        }
     }
 
     @MainActor
