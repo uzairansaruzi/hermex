@@ -369,7 +369,8 @@ struct MessageComposerView: View {
                                         // Interrupt current stream + new reply.
                                         let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
                                         if !draft.isEmpty {
-                                            draftMessage = "/interrupt \(draft)"
+                                            voiceFirstPendingAction = .interrupt
+                                            voiceFirstApplyPendingAction()
                                             onSend()
                                             voiceFirstMode.didCompleteSend()
                                         } else {
@@ -381,7 +382,8 @@ struct MessageComposerView: View {
                                         // Inject into current stream without interrupting.
                                         let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
                                         if !draft.isEmpty {
-                                            draftMessage = "/steer \(draft)"
+                                            voiceFirstPendingAction = .steer
+                                            voiceFirstApplyPendingAction()
                                             onSend()
                                             voiceFirstMode.didCompleteSend()
                                         } else {
