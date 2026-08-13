@@ -161,6 +161,8 @@ struct MessageComposerView: View {
     @State private var voiceFirstShowingTextMode = false
     /// Set when long press ends — waiting for server transcription to complete before auto-sending.
     @State private var voiceFirstWaitingToSend = false
+    /// The action to perform when server transcription completes (send/interrupt/steer).
+    @State private var voiceFirstPendingAction: ComposerVoiceFirstBar.ReleaseAction = .send
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(VoiceFirstModeSettings.isEnabledKey) private var voiceFirstModeEnabled = false
     @AppStorage(VoiceFirstModeSettings.hotWordsKey) private var voiceFirstHotWords = ""
@@ -327,6 +329,7 @@ struct MessageComposerView: View {
 
                             ComposerVoiceFirstBar(
                                 isListening: voiceInput.isListening,
+                                isStreaming: isWaitingForStream,
                                 silenceRemaining: voiceFirstMode.silenceRemaining,
                                 phase: voiceFirstMode.phase,
                                 onLongPressStart: {
@@ -334,20 +337,57 @@ struct MessageComposerView: View {
                                         toggleVoiceInput()
                                     }
                                 },
-                                onLongPressEnd: {
-                                    // User released — stop recording, let transcription complete.
+                                onLongPressEnd: { action in
+                                    // Stop recognition first.
                                     if voiceInput.isListening {
-                                        voiceInput.stopKeepingTranscript()
+                                        if action == .cancel {
+                                            voiceInput.stopBeforeSubmittingDraft()
+                                        } else {
+                                            voiceInput.stopKeepingTranscript()
+                                        }
                                     }
                                     voiceFirstMode.didStopListening()
-                                    // If on-device already has content, send immediately.
-                                    let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    if !draft.isEmpty {
-                                        onSend()
-                                        voiceFirstMode.didCompleteSend()
-                                    } else {
-                                        // Server mode: transcription is async — wait for it.
-                                        voiceFirstWaitingToSend = true
+
+                                    switch action {
+                                    case .cancel:
+                                        // Discard recording entirely.
+                                        voiceFirstWaitingToSend = false
+                                        draftMessage = ""
+
+                                    case .send:
+                                        // Normal send (not streaming).
+                                        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !draft.isEmpty {
+                                            onSend()
+                                            voiceFirstMode.didCompleteSend()
+                                        } else {
+                                            voiceFirstWaitingToSend = true
+                                            voiceFirstPendingAction = .send
+                                        }
+
+                                    case .interrupt:
+                                        // Interrupt current stream + new reply.
+                                        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !draft.isEmpty {
+                                            draftMessage = "/interrupt \(draft)"
+                                            onSend()
+                                            voiceFirstMode.didCompleteSend()
+                                        } else {
+                                            voiceFirstWaitingToSend = true
+                                            voiceFirstPendingAction = .interrupt
+                                        }
+
+                                    case .steer:
+                                        // Inject into current stream without interrupting.
+                                        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !draft.isEmpty {
+                                            draftMessage = "/steer \(draft)"
+                                            onSend()
+                                            voiceFirstMode.didCompleteSend()
+                                        } else {
+                                            voiceFirstWaitingToSend = true
+                                            voiceFirstPendingAction = .steer
+                                        }
                                     }
                                 },
                                 onTap: {
@@ -490,6 +530,7 @@ struct MessageComposerView: View {
                 let trimmed = newDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
                     voiceFirstWaitingToSend = false
+                    voiceFirstApplyPendingAction()
                     onSend()
                     voiceFirstMode.didCompleteSend()
                 }
@@ -501,6 +542,7 @@ struct MessageComposerView: View {
                 let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !draft.isEmpty {
                     voiceFirstWaitingToSend = false
+                    voiceFirstApplyPendingAction()
                     onSend()
                     voiceFirstMode.didCompleteSend()
                 }
@@ -1167,6 +1209,23 @@ struct MessageComposerView: View {
     }
 
     @MainActor
+    private func voiceFirstApplyPendingAction() {
+        // Apply the pending action (from gesture direction) to the draft before sending.
+        let content = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { return }
+
+        switch voiceFirstPendingAction {
+        case .interrupt:
+            draftMessage = "/interrupt \(content)"
+        case .steer:
+            draftMessage = "/steer \(content)"
+        case .send, .cancel:
+            break // Send as-is, or cancel (shouldn't reach here)
+        }
+        voiceFirstPendingAction = .send
+    }
+
+    @MainActor
     private func toggleVoiceInput() {
         voiceInput.apiClient = apiClient
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
@@ -1184,6 +1243,7 @@ struct MessageComposerView: View {
             voiceInput.onFinalTranscript = { [self] _ in
                 // Recognition ended with a final transcript — auto-send immediately.
                 Task { @MainActor in
+                    voiceFirstApplyPendingAction()
                     onSend()
                     voiceFirstMode.didCompleteSend()
                 }

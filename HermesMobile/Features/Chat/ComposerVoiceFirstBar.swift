@@ -2,16 +2,36 @@ import SwiftUI
 
 /// The "Hold to speak" bar shown in voice-first composer mode.
 /// Long press starts recording; short tap switches to text mode.
+/// Gestures while recording (during streaming):
+///   - Swipe up: cancel recording
+///   - Swipe down: steer (inject into current stream without interrupting)
+///   - Release without swiping: interrupt (stop stream + new reply)
+/// When not streaming, release = normal send, swipe up = cancel.
 struct ComposerVoiceFirstBar: View {
     let isListening: Bool
+    let isStreaming: Bool
     let silenceRemaining: TimeInterval
     let phase: ComposerVoiceFirstMode.Phase
     let onLongPressStart: () -> Void
-    let onLongPressEnd: () -> Void
+    let onLongPressEnd: (ReleaseAction) -> Void
     let onTap: () -> Void
+
+    enum ReleaseAction {
+        case send       // Normal send (no active stream)
+        case interrupt  // Stop stream + new reply (default during stream)
+        case steer      // Inject into current stream
+        case cancel     // Discard recording
+    }
 
     @State private var isPressed = false
     @State private var longPressTriggered = false
+    @State private var dragOffset: CGSize = .zero
+    @State private var armedAction: ReleaseAction = .send
+
+    /// Upward drag distance to arm cancel.
+    private static let cancelThreshold: CGFloat = -60
+    /// Downward drag distance to arm steer.
+    private static let steerThreshold: CGFloat = 60
 
     var body: some View {
         VStack(spacing: 4) {
@@ -19,39 +39,30 @@ struct ComposerVoiceFirstBar: View {
                 // Background capsule
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(backgroundFill)
-                    .frame(height: 40)
-
-                // Silence timer progress overlay
-                if isListening, phase == .hasTranscript {
-                    GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color.accentColor.opacity(0.15))
-                            .frame(width: geo.size.width * silenceProgress)
-                    }
-                    .frame(height: 40)
-                    .animation(.linear(duration: 0.1), value: silenceRemaining)
-                }
+                    .frame(height: 44)
 
                 // Label
                 HStack(spacing: 8) {
-                    Image(systemName: isListening ? "waveform" : "mic.fill")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(isListening ? Color.accentColor : .secondary)
-                        .symbolEffect(.variableColor.iterative, isActive: isListening)
+                    Image(systemName: iconName)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(iconColor)
+                        .symbolEffect(.variableColor.iterative, isActive: isPressed && longPressTriggered && (armedAction == .send || armedAction == .interrupt))
 
                     Text(statusText)
-                        .font(.subheadline)
-                        .foregroundStyle(isListening ? .primary : .secondary)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(textColor)
                 }
             }
-            .frame(height: 40)
+            .frame(height: 44)
             .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
+                    .onChanged { value in
                         if !isPressed {
                             isPressed = true
                             longPressTriggered = false
+                            armedAction = isStreaming ? .interrupt : .send
+                            dragOffset = .zero
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 if isPressed {
                                     longPressTriggered = true
@@ -59,64 +70,169 @@ struct ComposerVoiceFirstBar: View {
                                 }
                             }
                         }
+                        if longPressTriggered {
+                            dragOffset = value.translation
+                            armedAction = resolveAction(from: value.translation)
+                        }
                     }
                     .onEnded { _ in
                         let wasLongPress = longPressTriggered
+                        let action = armedAction
                         isPressed = false
                         longPressTriggered = false
+                        armedAction = isStreaming ? .interrupt : .send
+                        dragOffset = .zero
+
                         if wasLongPress {
-                            onLongPressEnd()
+                            onLongPressEnd(action)
                         } else {
                             onTap()
                         }
                     }
             )
 
-            // Hint text
-            if !isListening {
+            // Hint below the bar
+            if !isPressed, !isListening {
                 Text(String(localized: "Tap to switch to keyboard"))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+            } else if isPressed, longPressTriggered {
+                Text(hintText)
+                    .font(.caption2)
+                    .foregroundStyle(hintColor)
+                    .animation(.easeInOut(duration: 0.15), value: armedAction)
             }
         }
         .padding(.horizontal, 12)
-        .accessibilityLabel(isListening ? "Listening... tap to switch to text" : "Hold to speak, tap to type")
+        .accessibilityLabel(isListening ? "Listening" : "Hold to speak")
         .accessibilityAddTraits(.isButton)
     }
 
+    // MARK: - Gesture resolution
+
+    private func resolveAction(from translation: CGSize) -> ReleaseAction {
+        let dy = translation.height
+
+        // Up swipe = cancel
+        if dy < Self.cancelThreshold {
+            return .cancel
+        }
+
+        // Down swipe = steer (only meaningful during streaming)
+        if isStreaming, dy > Self.steerThreshold {
+            return .steer
+        }
+
+        // Default: interrupt during streaming, send otherwise
+        return isStreaming ? .interrupt : .send
+    }
+
+    // MARK: - Visual state
+
+    private var iconName: String {
+        switch armedAction {
+        case .cancel:
+            return "xmark.circle.fill"
+        case .steer:
+            return "arrow.forward.circle.fill"
+        case .interrupt:
+            return isPressed && longPressTriggered ? "waveform" : "mic.fill"
+        case .send:
+            return isPressed && longPressTriggered ? "waveform" : "mic.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch armedAction {
+        case .cancel: return .red
+        case .steer: return .orange
+        case .interrupt: return isPressed && longPressTriggered ? .accentColor : .secondary
+        case .send: return isPressed && longPressTriggered ? .accentColor : .secondary
+        }
+    }
+
+    private var textColor: Color {
+        switch armedAction {
+        case .cancel: return .red
+        case .steer: return .orange
+        case .interrupt: return .primary
+        case .send: return isPressed && longPressTriggered ? .primary : .secondary
+        }
+    }
+
     private var statusText: String {
+        if isPressed && longPressTriggered {
+            switch armedAction {
+            case .cancel:
+                return String(localized: "Release to cancel")
+            case .steer:
+                return String(localized: "↓ Release to steer")
+            case .interrupt:
+                return String(localized: "Listening… release to send")
+            case .send:
+                return String(localized: "Listening…")
+            }
+        }
+        // Not pressed — show phase status
         switch phase {
         case .idle:
             return String(localized: "Hold to speak")
         case .listening:
-            return String(localized: "Listening...")
+            return String(localized: "Transcribing…")
         case .hasTranscript:
             let seconds = Int(ceil(silenceRemaining))
-            return String(localized: "Sending in \(seconds)s...")
+            return String(localized: "Sending in \(seconds)s…")
         case .sending:
-            return String(localized: "Sending...")
+            return String(localized: "Sending…")
         }
     }
 
-    private var silenceProgress: CGFloat {
-        guard silenceRemaining > 0 else { return 0 }
-        let total = VoiceFirstModeSettings.defaultSilenceTimeout
-        return CGFloat(1.0 - silenceRemaining / total)
+    private var hintText: String {
+        switch armedAction {
+        case .cancel:
+            return String(localized: "↑ Release to cancel")
+        case .steer:
+            return String(localized: "Guide the reply without interrupting")
+        case .interrupt:
+            return isStreaming
+                ? String(localized: "↑ Cancel  ↓ Steer")
+                : String(localized: "↑ Swipe up to cancel")
+        case .send:
+            return String(localized: "↑ Swipe up to cancel")
+        }
     }
 
-    private var backgroundFill: some ShapeStyle {
-        if isListening {
-            return AnyShapeStyle(Color.accentColor.opacity(0.08))
-        } else if isPressed {
-            return AnyShapeStyle(Color.primary.opacity(0.08))
-        } else {
-            return AnyShapeStyle(Color.primary.opacity(0.04))
+    private var hintColor: Color {
+        switch armedAction {
+        case .cancel: return .red
+        case .steer: return .orange
+        case .interrupt, .send: return .secondary
+        }
+    }
+
+    private var backgroundFill: AnyShapeStyle {
+        switch armedAction {
+        case .cancel:
+            return AnyShapeStyle(Color.red.opacity(0.1))
+        case .steer:
+            return AnyShapeStyle(Color.orange.opacity(0.1))
+        case .interrupt:
+            if isPressed && longPressTriggered {
+                return AnyShapeStyle(Color.accentColor.opacity(0.08))
+            } else {
+                return AnyShapeStyle(Color.primary.opacity(0.04))
+            }
+        case .send:
+            if isPressed && longPressTriggered {
+                return AnyShapeStyle(Color.accentColor.opacity(0.08))
+            } else {
+                return AnyShapeStyle(Color.primary.opacity(0.04))
+            }
         }
     }
 }
 
 /// The "switch to voice" bar shown in text composer mode when voice-first is enabled.
-/// Same height/style as ComposerVoiceFirstBar for visual symmetry.
 struct ComposerSwitchToVoiceBar: View {
     let onTap: () -> Void
 
@@ -126,7 +242,7 @@ struct ComposerSwitchToVoiceBar: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(Color.accentColor.opacity(0.06))
-                        .frame(height: 40)
+                        .frame(height: 44)
 
                     HStack(spacing: 8) {
                         Image(systemName: "mic.fill")
@@ -138,7 +254,7 @@ struct ComposerSwitchToVoiceBar: View {
                             .foregroundStyle(Color.accentColor)
                     }
                 }
-                .frame(height: 40)
+                .frame(height: 44)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
