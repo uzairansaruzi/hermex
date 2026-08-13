@@ -195,6 +195,48 @@ struct SettingsView: View {
                     }
 
                     SettingsFootnote(String(localized: "On-device only keeps composer dictation audio off your Hermes server."))
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Voice-First Input"),
+                        systemImage: "waveform",
+                        isOn: Binding(
+                            get: { UserDefaults.standard.bool(forKey: VoiceFirstModeSettings.isEnabledKey) },
+                            set: { UserDefaults.standard.set($0, forKey: VoiceFirstModeSettings.isEnabledKey) }
+                        )
+                    )
+
+                    SettingsFootnote(String(localized: "When enabled, the composer defaults to voice listening mode. Speak and pause to auto-send. Tap the keyboard icon to type instead."))
+
+                    if UserDefaults.standard.bool(forKey: VoiceFirstModeSettings.isEnabledKey) {
+                        SettingsDivider()
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label {
+                                Text("Hot Words")
+                            } icon: {
+                                Image(systemName: "text.badge.star")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+
+                            TextField(
+                                "hermes, hermex, webui, state.db",
+                                text: Binding(
+                                    get: { UserDefaults.standard.string(forKey: VoiceFirstModeSettings.hotWordsKey) ?? "" },
+                                    set: { UserDefaults.standard.set($0, forKey: VoiceFirstModeSettings.hotWordsKey) }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .font(.footnote)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        }
+                        .padding(.horizontal, 4)
+
+                        SettingsFootnote(String(localized: "Comma-separated terms to boost STT accuracy for project-specific words."))
+                    }
                 }
 
                 SettingsCard(title: String(localized: "Chat")) {

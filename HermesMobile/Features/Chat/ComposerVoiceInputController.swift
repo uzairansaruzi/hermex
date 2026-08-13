@@ -41,6 +41,12 @@ final class ComposerVoiceInputController {
     @ObservationIgnored var apiClient: APIClient?
     @ObservationIgnored var providerPreference = ComposerSTTProviderPreference.defaultValue
     @ObservationIgnored var locale = Locale.current
+    /// Hot words injected into SFSpeechAudioBufferRecognitionRequest.contextualStrings (iOS 17+).
+    @ObservationIgnored var contextualStrings: [String] = []
+    /// Called on every partial transcript update (for voice-first silence timer).
+    @ObservationIgnored var onPartialTranscript: ((String) -> Void)?
+    /// Called when recognition produces a final transcript (isFinal=true). Used by voice-first mode for immediate send.
+    @ObservationIgnored var onFinalTranscript: ((String) -> Void)?
 
     init(
         speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
@@ -562,6 +568,9 @@ final class ComposerVoiceInputController {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = true
+        if !contextualStrings.isEmpty {
+            request.contextualStrings = contextualStrings
+        }
         recognitionRequest = request
 
         let audioEngine = audioEngineFactory()
@@ -599,6 +608,7 @@ final class ComposerVoiceInputController {
             if let composedDraft = draftUpdateSession.composedDraft(for: liveTranscript) {
                 updateDraft?(composedDraft)
             }
+            onPartialTranscript?(liveTranscript)
         }
 
         if let error {
@@ -611,10 +621,16 @@ final class ComposerVoiceInputController {
             }
             errorMessage = error.localizedDescription
         } else if result?.isFinal == true {
+            // In voice-first mode, notify with final transcript before stopping.
+            // This allows the caller to auto-send the completed utterance.
+            let finalTranscript = liveTranscript
             stopAcceptingDraftUpdates()
             stopAudio(cancelTask: false)
             state = .idle
             suppressNextRecognitionError = false
+            if !finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                onFinalTranscript?(finalTranscript)
+            }
         }
     }
 
