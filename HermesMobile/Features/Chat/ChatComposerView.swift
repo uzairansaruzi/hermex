@@ -378,17 +378,17 @@ struct MessageComposerView: View {
                                             voiceFirstPendingAction = .interrupt
                                         }
 
-                                    case .steer:
-                                        // Inject into current stream without interrupting.
+                                    case .queue:
+                                        // Queue message to send after response completes.
                                         let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
                                         if !draft.isEmpty {
-                                            voiceFirstPendingAction = .steer
+                                            voiceFirstPendingAction = .queue
                                             voiceFirstApplyPendingAction()
                                             onSend()
                                             voiceFirstMode.didCompleteSend()
                                         } else {
                                             voiceFirstWaitingToSend = true
-                                            voiceFirstPendingAction = .steer
+                                            voiceFirstPendingAction = .queue
                                         }
                                     }
                                 },
@@ -1229,9 +1229,9 @@ struct MessageComposerView: View {
                 StreamingSendBehavior.interrupt.rawValue,
                 forKey: StreamingSendBehavior.storageKey
             )
-        case .steer:
+        case .queue:
             UserDefaults.standard.set(
-                StreamingSendBehavior.steer.rawValue,
+                StreamingSendBehavior.queue.rawValue,
                 forKey: StreamingSendBehavior.storageKey
             )
         case .send, .cancel:

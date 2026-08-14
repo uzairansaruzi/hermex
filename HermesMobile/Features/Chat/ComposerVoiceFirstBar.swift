@@ -19,7 +19,7 @@ struct ComposerVoiceFirstBar: View {
     enum ReleaseAction {
         case send       // Normal send (no active stream)
         case interrupt  // Stop stream + new reply (default during stream)
-        case steer      // Inject into current stream
+        case queue      // Wait for response to finish, then send as new turn
         case cancel     // Discard recording
     }
 
@@ -118,9 +118,9 @@ struct ComposerVoiceFirstBar: View {
             return .cancel
         }
 
-        // Down swipe = steer (only meaningful during streaming)
+        // Down swipe = queue (only meaningful during streaming)
         if isStreaming, dy > Self.steerThreshold {
-            return .steer
+            return .queue
         }
 
         // Default: interrupt during streaming, send otherwise
@@ -133,8 +133,8 @@ struct ComposerVoiceFirstBar: View {
         switch armedAction {
         case .cancel:
             return "xmark.circle.fill"
-        case .steer:
-            return "arrow.forward.circle.fill"
+        case .queue:
+            return "text.badge.plus"
         case .interrupt:
             return isPressed && longPressTriggered ? "waveform" : "mic.fill"
         case .send:
@@ -145,7 +145,7 @@ struct ComposerVoiceFirstBar: View {
     private var iconColor: Color {
         switch armedAction {
         case .cancel: return .red
-        case .steer: return .orange
+        case .queue: return .orange
         case .interrupt: return isPressed && longPressTriggered ? .accentColor : .secondary
         case .send: return isPressed && longPressTriggered ? .accentColor : .secondary
         }
@@ -154,7 +154,7 @@ struct ComposerVoiceFirstBar: View {
     private var textColor: Color {
         switch armedAction {
         case .cancel: return .red
-        case .steer: return .orange
+        case .queue: return .orange
         case .interrupt: return .primary
         case .send: return isPressed && longPressTriggered ? .primary : .secondary
         }
@@ -165,8 +165,8 @@ struct ComposerVoiceFirstBar: View {
             switch armedAction {
             case .cancel:
                 return String(localized: "Release to cancel")
-            case .steer:
-                return String(localized: "↓ Release to steer")
+            case .queue:
+                return String(localized: "↓ Release to queue")
             case .interrupt:
                 return String(localized: "Listening… release to send")
             case .send:
@@ -191,11 +191,11 @@ struct ComposerVoiceFirstBar: View {
         switch armedAction {
         case .cancel:
             return String(localized: "↑ Release to cancel")
-        case .steer:
-            return String(localized: "Guide the reply without interrupting")
+        case .queue:
+            return String(localized: "Send after response completes")
         case .interrupt:
             return isStreaming
-                ? String(localized: "↑ Cancel  ↓ Steer")
+                ? String(localized: "↑ Cancel  ↓ Queue")
                 : String(localized: "↑ Swipe up to cancel")
         case .send:
             return String(localized: "↑ Swipe up to cancel")
@@ -205,7 +205,7 @@ struct ComposerVoiceFirstBar: View {
     private var hintColor: Color {
         switch armedAction {
         case .cancel: return .red
-        case .steer: return .orange
+        case .queue: return .orange
         case .interrupt, .send: return .secondary
         }
     }
@@ -214,7 +214,7 @@ struct ComposerVoiceFirstBar: View {
         switch armedAction {
         case .cancel:
             return AnyShapeStyle(Color.red.opacity(0.1))
-        case .steer:
+        case .queue:
             return AnyShapeStyle(Color.orange.opacity(0.1))
         case .interrupt:
             if isPressed && longPressTriggered {
