@@ -539,7 +539,7 @@ struct MessageComposerView: View {
             }
         }
         .onChange(of: voiceInput.isListening) { _, isListening in
-            // Voice-first: if we were waiting for transcription and recognition stopped with content, send.
+            // Voice-first: if we were waiting for transcription and recognition stopped, resolve.
             if voiceFirstWaitingToSend, !isListening {
                 let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !draft.isEmpty {
@@ -547,6 +547,9 @@ struct MessageComposerView: View {
                     voiceFirstApplyPendingAction()
                     onSend()
                     voiceFirstMode.didCompleteSend()
+                } else {
+                    // Empty transcription — disarm to prevent keyboard auto-send.
+                    voiceFirstWaitingToSend = false
                 }
             }
         }
@@ -1268,7 +1271,11 @@ struct MessageComposerView: View {
                 Task { @MainActor in
                     guard voiceFirstWaitingToSend else { return }
                     let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !draft.isEmpty else { return }
+                    guard !draft.isEmpty else {
+                        // Empty transcription — disarm so keyboard input won't auto-send.
+                        voiceFirstWaitingToSend = false
+                        return
+                    }
                     voiceFirstWaitingToSend = false
                     voiceFirstApplyPendingAction()
                     onSend()
