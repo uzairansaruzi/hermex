@@ -1262,8 +1262,14 @@ struct MessageComposerView: View {
                 voiceFirstMode?.didUpdateTranscript(transcript)
             }
             voiceInput.onFinalTranscript = { [self] _ in
-                // Recognition ended with a final transcript — auto-send immediately.
+                // Recognition ended with a final transcript.
+                // Only auto-send if user already released (voiceFirstWaitingToSend).
+                // If still holding, the release gesture handles sending.
                 Task { @MainActor in
+                    guard voiceFirstWaitingToSend else { return }
+                    let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !draft.isEmpty else { return }
+                    voiceFirstWaitingToSend = false
                     voiceFirstApplyPendingAction()
                     onSend()
                     voiceFirstMode.didCompleteSend()

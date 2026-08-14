@@ -27,6 +27,8 @@ struct ComposerVoiceFirstBar: View {
     @State private var longPressTriggered = false
     @State private var dragOffset: CGSize = .zero
     @State private var armedAction: ReleaseAction = .send
+    /// Token to prevent double-tap race: asyncAfter validates it matches current gesture.
+    @State private var gestureToken: UInt = 0
 
     /// Upward drag distance to arm cancel.
     private static let cancelThreshold: CGFloat = -60
@@ -63,8 +65,11 @@ struct ComposerVoiceFirstBar: View {
                             longPressTriggered = false
                             armedAction = isStreaming ? .interrupt : .send
                             dragOffset = .zero
+                            gestureToken &+= 1
+                            let token = gestureToken
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                if isPressed {
+                                // Only trigger if this is still the same gesture sequence.
+                                if isPressed, gestureToken == token {
                                     longPressTriggered = true
                                     onLongPressStart()
                                 }
@@ -106,6 +111,16 @@ struct ComposerVoiceFirstBar: View {
         .padding(.horizontal, 12)
         .accessibilityLabel(isListening ? "Listening" : "Hold to speak")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) {
+            // VoiceOver double-tap → switch to keyboard (same as short tap)
+            onTap()
+        }
+        .accessibilityAction(named: String(localized: "Start Recording")) {
+            onLongPressStart()
+        }
+        .accessibilityAction(named: String(localized: "Send Recording")) {
+            onLongPressEnd(isStreaming ? .interrupt : .send)
+        }
     }
 
     // MARK: - Gesture resolution
