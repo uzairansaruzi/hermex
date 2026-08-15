@@ -1074,6 +1074,8 @@ struct KanbanStatusFocusView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .appSurfaceBackground(.canvas)
         .refreshable { await model.refresh() }
     }
 
@@ -1432,6 +1434,8 @@ private struct KanbanBoardManagementView: View {
                 Text("Browsing a Board stays local to Hermex. Making a Board active changes shared server state.")
             }
         }
+        .scrollContentBackground(.hidden)
+        .appSurfaceBackground(.canvas)
         .navigationTitle("Manage")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1758,6 +1762,8 @@ private struct KanbanBoardEditorView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .appSurfaceBackground(.canvas)
         .navigationTitle(isEditing ? "Edit" : "Create")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1872,6 +1878,8 @@ private struct KanbanBulkActionsView: View {
                     .frame(minHeight: 44)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
             .navigationTitle("Bulk Actions")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(model.bulkActionPhase != nil)
@@ -1952,6 +1960,8 @@ private struct KanbanFiltersView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
             .navigationTitle("Card Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

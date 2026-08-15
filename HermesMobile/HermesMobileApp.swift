@@ -48,13 +48,26 @@ struct HermesMobileApp: App {
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-            // Launch argument hook so the Streaming Lab can be opened without
-            // UI navigation (agent-driven simulator diagnosis, issue #234):
-            // `xcrun simctl launch <udid> com.uzairansar.hermesmobile --streaming-lab`
-            if ProcessInfo.processInfo.arguments.contains("--streaming-lab") {
+            // Launch argument hooks for deterministic, server-free visual QA.
+            if ProcessInfo.processInfo.arguments.contains("--chat-theme-lab") {
+                NavigationStack {
+                    ChatThemeLabView()
+                }
+                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+            } else if ProcessInfo.processInfo.arguments.contains("--model-picker-capture") {
+                ModelPickerCaptureHost()
+                    .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                    .onAppear { applyModelPickerCapturePaletteIfRequested() }
+            } else if ProcessInfo.processInfo.arguments.contains("--surface-gallery") {
+                NavigationStack {
+                    SurfaceGalleryView()
+                }
+                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+            } else if ProcessInfo.processInfo.arguments.contains("--streaming-lab") {
                 NavigationStack {
                     StreamingLabView()
                 }
+                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
             } else {
                 ContentView(authManager: authManager)
                     .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
@@ -70,4 +83,17 @@ struct HermesMobileApp: App {
             SidebarCommands()
         }
     }
+    #if DEBUG
+    private func applyModelPickerCapturePaletteIfRequested() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--model-picker-palette"),
+              arguments.index(after: index) < arguments.endIndex,
+              let temperature = ChatPaletteTemperature(
+                rawValue: arguments[arguments.index(after: index)]
+              )
+        else { return }
+        UserDefaults.standard.set(temperature.rawValue, forKey: ChatPaletteTemperature.storageKey)
+    }
+
+    #endif
 }

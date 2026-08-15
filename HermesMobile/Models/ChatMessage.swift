@@ -17,6 +17,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     let reasoning: String?
     let attachments: [MessageAttachment]?
     let turnTps: Double?
+    let phase: String?
+    let codexMessageItems: [CodexMessageItem]?
 
     init(
         role: String?,
@@ -30,7 +32,9 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         contentParts: [JSONValue]? = nil,
         reasoning: String? = nil,
         attachments: [MessageAttachment]? = nil,
-        turnTps: Double? = nil
+        turnTps: Double? = nil,
+        phase: String? = nil,
+        codexMessageItems: [CodexMessageItem]? = nil
     ) {
         self.role = role
         self.content = content
@@ -44,6 +48,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         self.reasoning = reasoning
         self.attachments = attachments
         self.turnTps = turnTps
+        self.phase = phase
+        self.codexMessageItems = codexMessageItems
     }
 
     enum CodingKeys: String, CodingKey {
@@ -58,6 +64,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         case reasoning
         case attachments
         case turnTps = "_turnTps"
+        case phase
+        case codexMessageItems
         case underscoredTimestamp = "_ts"
     }
 
@@ -78,6 +86,51 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         let decodedAttachments = Self.decodeAttachmentsTolerantly(from: container)
         attachments = Self.attachments(decodedAttachments, enrichedByMarkerIn: content)
         turnTps = container.decodeLossyDoubleIfPresent(forKey: .turnTps)
+        phase = container.decodeLossyStringIfPresent(forKey: .phase)
+        codexMessageItems = try? container.decodeIfPresent([CodexMessageItem].self, forKey: .codexMessageItems)
+    }
+
+    var codexCommentaryTexts: [String] {
+        codexMessageItems?.compactMap { item in
+            guard item.phase == "commentary" else { return nil }
+            return item.visibleText
+        } ?? []
+    }
+
+    var codexFinalAnswerText: String? {
+        if phase == "final_answer" {
+            return Self.nonEmptyString(content)
+        }
+
+        return codexMessageItems?.reversed().compactMap { item in
+            guard item.phase == "final_answer" else { return nil }
+            return item.visibleText
+        }.first
+    }
+
+    var isCodexCommentaryOnly: Bool {
+        phase == "commentary" || (
+            codexCommentaryTexts.isEmpty == false && codexFinalAnswerText == nil
+        )
+    }
+
+    func replacingContentForTranscript(_ replacement: String) -> ChatMessage {
+        ChatMessage(
+            role: role,
+            content: replacement,
+            timestamp: timestamp,
+            messageId: messageId,
+            name: name,
+            toolCallId: toolCallId,
+            toolUseId: toolUseId,
+            toolCalls: toolCalls,
+            contentParts: contentParts,
+            reasoning: reasoning,
+            attachments: attachments,
+            turnTps: turnTps,
+            phase: phase,
+            codexMessageItems: codexMessageItems
+        )
     }
 
     private static func attachments(
@@ -200,6 +253,75 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     }
 }
 
+struct CodexMessageItem: Codable, Equatable {
+    let type: String?
+    let role: String?
+    let phase: String?
+    let text: String?
+    let content: [JSONValue]?
+
+    init(
+        type: String? = nil,
+        role: String? = nil,
+        phase: String? = nil,
+        text: String? = nil,
+        content: [JSONValue]? = nil
+    ) {
+        self.type = type
+        self.role = role
+        self.phase = phase
+        self.text = text
+        self.content = content
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case role
+        case phase
+        case text
+        case content
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = container.decodeLossyStringIfPresent(forKey: .type)
+        role = container.decodeLossyStringIfPresent(forKey: .role)
+        phase = container.decodeLossyStringIfPresent(forKey: .phase)
+        text = container.decodeLossyStringIfPresent(forKey: .text)
+        if let parts = try? container.decodeIfPresent([JSONValue].self, forKey: .content) {
+            content = parts
+        } else if let value = try? container.decodeIfPresent(JSONValue.self, forKey: .content) {
+            content = [value]
+        } else {
+            content = nil
+        }
+    }
+
+    var visibleText: String? {
+        if let text = nonEmpty(text) {
+            return text
+        }
+
+        let joined = (content ?? []).compactMap { part -> String? in
+            guard case .object(let object) = part else {
+                if case .string(let value) = part { return value }
+                return nil
+            }
+
+            guard case .string(let value)? = object["text"] else { return nil }
+            return value
+        }
+        .joined()
+
+        return nonEmpty(joined)
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
 enum TranscriptTurnClassifier {
     static func anchorID(for message: ChatMessage, at index: Int, messageOffset: Int? = nil) -> String {
         if let messageID = nonEmpty(message.messageId) {
@@ -237,6 +359,74 @@ enum TranscriptTurnClassifier {
 
     static func assistantTurnKeysByMessageID(_ messages: [ChatMessage]) -> [String: String] {
         assistantTurnKeysByAnchorID(messages)
+    }
+
+    /// Maps every assistant row in a user turn to the single row that should
+    /// own that turn's activity and final answer. Codex explicitly marks the
+    /// final message; other providers fall back to the last visible assistant.
+    static func assistantDisplayAnchorIDsByAnchorID(
+        _ messages: [ChatMessage],
+        messageOffset: Int? = nil
+    ) -> [String: String] {
+        var result: [String: String] = [:]
+        var turnAssistantIndexes: [Int] = []
+
+        func flushTurn() {
+            defer { turnAssistantIndexes = [] }
+            guard !turnAssistantIndexes.isEmpty else { return }
+
+            let displayIndex = turnAssistantIndexes.last(where: { index in
+                messages[index].codexFinalAnswerText != nil || messages[index].phase == "final_answer"
+            }) ?? turnAssistantIndexes.last(where: { index in
+                let message = messages[index]
+                return message.isCodexCommentaryOnly == false && nonEmpty(message.content) != nil
+            }) ?? turnAssistantIndexes[turnAssistantIndexes.count - 1]
+            let displayAnchor = anchorID(
+                for: messages[displayIndex],
+                at: displayIndex,
+                messageOffset: messageOffset
+            )
+
+            for index in turnAssistantIndexes {
+                result[anchorID(for: messages[index], at: index, messageOffset: messageOffset)] = displayAnchor
+            }
+        }
+
+        for (index, message) in messages.enumerated() {
+            if isUserTurnBoundary(message) {
+                flushTurn()
+            }
+
+            guard message.role == "assistant",
+                  ChatMarkerMessageClassifier.classify(message) == nil
+            else { continue }
+            turnAssistantIndexes.append(index)
+        }
+        flushTurn()
+        return result
+    }
+
+    static func displayAnchorID(
+        forAssistantAnchorID anchorID: String,
+        in messages: [ChatMessage],
+        messageOffset: Int? = nil
+    ) -> String {
+        assistantDisplayAnchorIDsByAnchorID(messages, messageOffset: messageOffset)[anchorID] ?? anchorID
+    }
+
+    static func progressTexts(
+        for message: ChatMessage,
+        anchorID: String,
+        displayAnchorIDsByAnchorID: [String: String]
+    ) -> [String] {
+        if !message.codexCommentaryTexts.isEmpty {
+            return message.codexCommentaryTexts
+        }
+
+        guard displayAnchorIDsByAnchorID[anchorID] != anchorID,
+              let content = nonEmpty(message.content)
+        else { return [] }
+        return [content]
     }
 
     static func assistantAnchorID(

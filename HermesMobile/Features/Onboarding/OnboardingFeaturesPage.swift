@@ -2,14 +2,17 @@ import SwiftUI
 
 struct OnboardingFeaturesPage: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
-    private let features: [(icon: String, color: Color, title: String, subtitle: String)] = [
-        ("bubble.left.and.bubble.right.fill", Color(red: 1.0, green: 0.74, blue: 0.10), String(localized: "Chat with your Hermes agent from iPhone"), String(localized: "Drive conversations from anywhere on your tailnet.")),
-        ("list.bullet.rectangle.portrait.fill", .green, String(localized: "Manage sessions, tasks, and files remotely"), String(localized: "Browse workspaces and stay on top of agent work.")),
-        ("mic.fill", .purple, String(localized: "Voice input and mobile-friendly composer controls"), String(localized: "Compose naturally with touch-first controls.")),
-        ("checkmark.shield.fill", .cyan, String(localized: "Review approvals and clarifications inline"), String(localized: "Respond to agent prompts without switching apps.")),
-        ("server.rack", .orange, String(localized: "Self-hosted: your machine, your tailnet"), String(localized: "Your Hermes Web UI stays on hardware you control."))
-    ]
+    private var features: [(icon: String, color: Color, title: String, subtitle: String)] {
+        [
+            ("bubble.left.and.bubble.right.fill", HeaderLogoColor.color(for: headerLogoColorHex), String(localized: "Chat with your Hermes agent from iPhone"), String(localized: "Drive conversations from anywhere on your tailnet.")),
+            ("list.bullet.rectangle.portrait.fill", .green, String(localized: "Manage sessions, tasks, and files remotely"), String(localized: "Browse workspaces and stay on top of agent work.")),
+            ("mic.fill", .purple, String(localized: "Voice input and mobile-friendly composer controls"), String(localized: "Compose naturally with touch-first controls.")),
+            ("checkmark.shield.fill", .cyan, String(localized: "Review approvals and clarifications inline"), String(localized: "Respond to agent prompts without switching apps.")),
+            ("server.rack", .orange, String(localized: "Self-hosted: your machine, your tailnet"), String(localized: "Your Hermes Web UI stays on hardware you control."))
+        ]
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {

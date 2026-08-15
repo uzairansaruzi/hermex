@@ -92,7 +92,7 @@ struct FileBrowserView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(Color(.secondarySystemBackground))
+                    .appSurfaceBackground(.surface)
                 } else if let errorMessage = viewModel.errorMessage {
                     HStack(spacing: 12) {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -109,7 +109,7 @@ struct FileBrowserView: View {
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(Color(.secondarySystemBackground))
+                    .appSurfaceBackground(.surface)
                 }
             }
         }
@@ -180,7 +180,7 @@ struct FileBrowserView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
     }
 
     private var searchBar: some View {
@@ -208,10 +208,10 @@ struct FileBrowserView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 40)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .appSurfaceBackground(.inset, opacity: 0.5, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal)
         .padding(.bottom, 10)
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
         .overlay(alignment: .bottom) {
             Divider()
         }
@@ -261,6 +261,8 @@ struct FileBrowserView: View {
 private struct FileBrowserRow: View {
     let entry: WorkspaceEntry
     let showsDisclosure: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 12) {
@@ -343,7 +345,8 @@ private struct FileBrowserRow: View {
     }
 
     private var iconBackground: Color {
-        isDirectory ? Color(.tertiarySystemFill) : Color(.secondarySystemFill)
+        let palette = ChatPalette.appChrome(colorScheme: colorScheme)
+        return isDirectory ? palette.surfaceInset : palette.surface
     }
 }
 

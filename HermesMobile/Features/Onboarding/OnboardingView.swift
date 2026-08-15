@@ -8,6 +8,11 @@ struct OnboardingView: View {
     @State private var hasBypassedCopyReminder = false
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
+    private var accentForeground: Color {
+        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+    }
 
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
@@ -102,13 +107,13 @@ struct OnboardingView: View {
                 Button(action: handlePrimaryAction) {
                     Text(OnboardingFlowPolicy.primaryButtonTitle(for: currentPage))
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(accentForeground)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 15)
                         .background(
-                            Color(red: 1.0, green: 0.74, blue: 0.10),
+                            HeaderLogoColor.color(for: headerLogoColorHex),
                             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                         )
                 }
@@ -182,7 +187,12 @@ struct OnboardingView: View {
             Label("Connect", systemImage: "checkmark.circle.fill")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(OnboardingPrimaryButtonStyle())
+        .buttonStyle(
+            OnboardingPrimaryButtonStyle(
+                accent: HeaderLogoColor.color(for: headerLogoColorHex),
+                accentForeground: accentForeground
+            )
+        )
         .disabled(viewModel.isWorking || !canSubmitConnection)
     }
 

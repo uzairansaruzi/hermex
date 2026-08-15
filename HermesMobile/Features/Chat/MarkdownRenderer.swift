@@ -1,19 +1,39 @@
 import Highlightr
 import MarkdownUI
 import OSLog
-import Splash
 import SwiftUI
 import UIKit
+
+enum MarkdownTypographyRole {
+    case standard
+    case assistantResponse
+    /// Reasoning text. Renders real markdown but one step quieter than an
+    /// answer: caption-scale body, damped headings, secondary foreground. A
+    /// thought containing an H1 must not shout louder than the answer it
+    /// precedes, which is what `assistantResponse` would do.
+    case reasoning
+
+    var usesResponseFontPreference: Bool {
+        self == .assistantResponse
+    }
+
+}
 
 struct MarkdownRenderer: View {
     let content: String
     let isStreaming: Bool
+    let typographyRole: MarkdownTypographyRole
 
     @Environment(\.colorScheme) private var colorScheme
 
-    init(content: String, isStreaming: Bool = false) {
+    init(
+        content: String,
+        isStreaming: Bool = false,
+        typographyRole: MarkdownTypographyRole = .standard
+    ) {
         self.content = content
         self.isStreaming = isStreaming
+        self.typographyRole = typographyRole
     }
 
     /// Keeps the streaming renderer mounted briefly after streaming ends so
@@ -24,7 +44,10 @@ struct MarkdownRenderer: View {
     var body: some View {
         Group {
             if isStreaming || lingersAfterStreaming {
-                StreamingMarkdownRenderer(content: content)
+                StreamingMarkdownRenderer(
+                    content: content,
+                    typographyRole: typographyRole
+                )
             } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(verbatim: " ")
             } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
@@ -62,7 +85,9 @@ struct MarkdownRenderer: View {
                             ChatMarkdownView(
                                 content: markdown,
                                 colorScheme: colorScheme,
-                                isStreaming: isStreaming
+                                isStreaming: isStreaming,
+                                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                                role: typographyRole
                             )
                         }
                     case .displayMath(let latex):
@@ -75,7 +100,9 @@ struct MarkdownRenderer: View {
             ChatMarkdownView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: content),
                 colorScheme: colorScheme,
-                isStreaming: isStreaming
+                isStreaming: isStreaming,
+                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                role: typographyRole
             )
             .textSelection(.enabled)
         }
@@ -84,12 +111,14 @@ struct MarkdownRenderer: View {
 
 struct StreamingMarkdownRenderer: View {
     let content: String
+    let typographyRole: MarkdownTypographyRole
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var displayedContent: String
 
-    init(content: String) {
+    init(content: String, typographyRole: MarkdownTypographyRole = .standard) {
         self.content = content
+        self.typographyRole = typographyRole
         _displayedContent = State(initialValue: content)
     }
 
@@ -126,7 +155,9 @@ struct StreamingMarkdownRenderer: View {
                         if !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             StreamingMarkdownChunkedView(
                                 content: markdown,
-                                colorScheme: colorScheme
+                                colorScheme: colorScheme,
+                                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                                role: typographyRole
                             )
                         }
                     case .displayMath(let latex):
@@ -137,7 +168,9 @@ struct StreamingMarkdownRenderer: View {
         } else {
             StreamingMarkdownChunkedView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: displayedContent),
-                colorScheme: colorScheme
+                colorScheme: colorScheme,
+                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                role: typographyRole
             )
         }
     }
@@ -147,6 +180,8 @@ struct StreamingMarkdownRenderer: View {
 private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
+    let usesResponseFontPreference: Bool
+    var role: MarkdownTypographyRole = .standard
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
@@ -185,7 +220,9 @@ private struct StreamingMarkdownChunkedView: View {
                 ChatMarkdownView(
                     content: chunk.text,
                     colorScheme: colorScheme,
-                    isStreaming: false
+                    isStreaming: false,
+                    usesResponseFontPreference: usesResponseFontPreference,
+                    role: role
                 )
             }
 
@@ -193,7 +230,9 @@ private struct StreamingMarkdownChunkedView: View {
                 ChatMarkdownView(
                     content: blockSplit.head,
                     colorScheme: colorScheme,
-                    isStreaming: true
+                    isStreaming: true,
+                    usesResponseFontPreference: usesResponseFontPreference,
+                    role: role
                 )
             }
 
@@ -211,7 +250,9 @@ private struct StreamingMarkdownChunkedView: View {
                                 fadeEnabled: block.fadeEnabled,
                                 armOnAppear: block.ordinal > mountBoundaryCount,
                                 clock: context.date.timeIntervalSinceReferenceDate,
-                                chain: chain
+                                chain: chain,
+                                usesResponseFontPreference: usesResponseFontPreference,
+                                role: role
                             )
                         }
                     }
@@ -308,6 +349,8 @@ private struct StreamingFadeBlockView: View {
     let fadeEnabled: Bool
     let armOnAppear: Bool
     let clock: TimeInterval
+    let usesResponseFontPreference: Bool
+    let role: MarkdownTypographyRole
 
     @State private var store: StreamingTextFadeStampStore<Text.Layout.CharacterIndex>
 
@@ -317,13 +360,17 @@ private struct StreamingFadeBlockView: View {
         fadeEnabled: Bool,
         armOnAppear: Bool,
         clock: TimeInterval,
-        chain: StreamingTextFadeStampChain
+        chain: StreamingTextFadeStampChain,
+        usesResponseFontPreference: Bool,
+        role: MarkdownTypographyRole = .standard
     ) {
         self.text = text
         self.colorScheme = colorScheme
         self.fadeEnabled = fadeEnabled
         self.armOnAppear = armOnAppear
         self.clock = clock
+        self.usesResponseFontPreference = usesResponseFontPreference
+        self.role = role
         _store = State(initialValue: StreamingTextFadeStampStore(chain: chain))
     }
 
@@ -334,14 +381,18 @@ private struct StreamingFadeBlockView: View {
                     ChatMarkdownView(
                         content: text,
                         colorScheme: colorScheme,
-                        isStreaming: true
+                        isStreaming: true,
+                        usesResponseFontPreference: usesResponseFontPreference,
+                        role: role
                     )
                     .textRenderer(StreamingTextFadeRenderer(clock: clock, store: store))
                 } else {
                     ChatMarkdownView(
                         content: text,
                         colorScheme: colorScheme,
-                        isStreaming: true
+                        isStreaming: true,
+                        usesResponseFontPreference: usesResponseFontPreference,
+                        role: role
                     )
                 }
             }
@@ -361,26 +412,31 @@ private struct ChatMarkdownView: View {
     let content: String
     let colorScheme: ColorScheme
     let isStreaming: Bool
+    let usesResponseFontPreference: Bool
+    var role: MarkdownTypographyRole = .standard
+
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
+    @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
     var body: some View {
+        let palette = ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
+        let responseFontStyle = ResponseFontStyle.storedValue(responseFontStyleRawValue)
+
         Markdown(content)
-            .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
-            .markdownTextStyle {
-                ForegroundColor(.primary)
-                BackgroundColor(nil)
-            }
-            .markdownTextStyle(\.code) {
-                FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
-                BackgroundColor(SwiftUI.Color(.tertiarySystemGroupedBackground))
-            }
+            .markdownTheme(MarkdownUI.Theme.chat(
+                isStreaming: isStreaming,
+                palette: palette,
+                usesSerif: usesResponseFontPreference && responseFontStyle.usesSerif,
+                accentColor: HeaderLogoColor.color(for: headerLogoColorHex),
+                role: role
+            ))
             .markdownCodeSyntaxHighlighter(.plainText)
-            .markdownBlockStyle(\.paragraph) { configuration in
-                configuration.label
-                    .fixedSize(horizontal: false, vertical: true)
-                    .relativeLineSpacing(.em(0.18))
-                    .markdownMargin(top: 0, bottom: 8)
-            }
     }
 }
 
@@ -393,6 +449,7 @@ private struct MathFenceOrCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
+    let palette: ChatPalette
 
     var body: some View {
         if MathFenceLanguage.matches(language), MathLaTeX.isRenderable(content) {
@@ -401,7 +458,8 @@ private struct MathFenceOrCodeBlock: View {
             ChatCodeBlock(
                 language: language,
                 content: content,
-                isStreaming: isStreaming
+                isStreaming: isStreaming,
+                palette: palette
             )
         }
     }
@@ -411,9 +469,11 @@ private struct ChatCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
+    let palette: ChatPalette
 
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(ChatPaletteTemperature.storageKey) private var codePaletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @State private var didCopy = false
     @State private var highlightedCode: NSAttributedString?
 
@@ -423,33 +483,24 @@ private struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(displayLanguage)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.caption2(weight: .semibold))
+                    .textCase(.uppercase)
+                    .kerning(0.8)
+                    .foregroundStyle(palette.textTertiary)
 
                 Spacer()
-
-                Button {
-                    wrapsCodeBlockLines.toggle()
-                } label: {
-                    Image(systemName: wrapsCodeBlockLines ? "arrow.turn.down.left" : "arrow.left.and.right")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 36, height: 36)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(SwiftUI.Color.primary)
-                .accessibilityLabel(wrapsCodeBlockLines ? "Disable code line wrapping" : "Enable code line wrapping")
 
                 Button {
                     UIPasteboard.general.string = content
                     didCopy = true
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "square.on.square")
-                        .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 36, height: 36)
+                        .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 28, height: 28)
                     .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(SwiftUI.Color.primary)
+                .foregroundStyle(palette.textSecondary)
                 .accessibilityLabel(didCopy ? "Copied code" : "Copy code")
             }
             .padding(.leading, 16)
@@ -466,11 +517,17 @@ private struct ChatCodeBlock: View {
                 }
             }
         }
-        .background(codeBlockBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(SwiftUI.Color(.separator).opacity(0.35), lineWidth: 1)
+        .background(palette.codeSlab)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contextMenu {
+            Button {
+                wrapsCodeBlockLines.toggle()
+            } label: {
+                Label(
+                    wrapsCodeBlockLines ? "Disable Line Wrapping" : "Wrap Long Lines",
+                    systemImage: wrapsCodeBlockLines ? "arrow.left.and.right" : "arrow.turn.down.left"
+                )
+            }
         }
         .onChange(of: content) { _, _ in
             didCopy = false
@@ -481,12 +538,6 @@ private struct ChatCodeBlock: View {
         // Code (and diff) blocks must never mirror inside an RTL message (#259):
         // the language header, copy/wrap controls, and the source itself stay LTR.
         .forcedLeftToRight()
-    }
-
-    private var codeBlockBackground: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.04, green: 0.05, blue: 0.07)
-            : SwiftUI.Color(.secondarySystemBackground)
     }
 
     @ViewBuilder
@@ -504,10 +555,10 @@ private struct ChatCodeBlock: View {
     private func styledCodeText(fixedHorizontal: Bool) -> some View {
         codeText
             .fixedSize(horizontal: fixedHorizontal, vertical: true)
-            .relativeLineSpacing(.em(0.18))
+            .relativeLineSpacing(.em(0.2))
             .markdownTextStyle {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.84))
+                FontSize(.em(0.82))
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -519,6 +570,7 @@ private struct ChatCodeBlock: View {
             code: content,
             language: language,
             colorScheme: colorScheme,
+            temperature: ChatPaletteTemperature.storedValue(codePaletteTemperatureRawValue),
             isStreaming: isStreaming
         )
     }
@@ -610,7 +662,7 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: 13, weight: .regular, design: .monospaced))
+        .font(AppFont.mono(style: .footnote))
         .foregroundStyle(.primary)
     }
 
@@ -839,7 +891,6 @@ enum MarkdownContentRenderingPolicy {
 }
 
 enum MarkdownHighlightEngine: Equatable {
-    case splashSwift
     case highlightr
 }
 
@@ -865,7 +916,6 @@ enum MarkdownHighlightPolicy {
     static let maxHighlightedCodeLineCount = 2_000
     static let maxHighlightedCodeLineLength = 4_000
 
-    private static let splashSwiftLanguages: Set<String> = ["swift"]
     private static let highRiskLanguages: Set<String> = [
         "ansi",
         "console",
@@ -897,6 +947,7 @@ enum MarkdownHighlightPolicy {
         "rust",
         "scss",
         "sql",
+        "swift",
         "toml",
         "typescript",
         "xml",
@@ -953,10 +1004,6 @@ enum MarkdownHighlightPolicy {
             return .plain(reason: .highRiskLanguage, normalizedLanguage: normalizedLanguage)
         }
 
-        if splashSwiftLanguages.contains(normalizedLanguage) {
-            return .highlight(language: normalizedLanguage, engine: .splashSwift)
-        }
-
         if highlightrLanguages.contains(normalizedLanguage) {
             return .highlight(language: normalizedLanguage, engine: .highlightr)
         }
@@ -982,10 +1029,6 @@ enum MarkdownHighlightPolicy {
     static func languageLogCategory(for normalizedLanguage: String?) -> String {
         guard let normalizedLanguage else {
             return "missing"
-        }
-
-        if splashSwiftLanguages.contains(normalizedLanguage) {
-            return "splashSwift"
         }
 
         if highlightrLanguages.contains(normalizedLanguage) {
@@ -1075,6 +1118,7 @@ struct MarkdownCodeHighlightRequest: Equatable {
     let code: String
     let language: String?
     let colorScheme: ColorScheme
+    var temperature: ChatPaletteTemperature = .defaultValue
     let isStreaming: Bool
 }
 
@@ -1093,18 +1137,12 @@ enum MarkdownCodeHighlighter {
         )
 
         switch decision {
-        case .highlight(_, .splashSwift):
-            return .highlighted(
-                SplashSwiftCodeHighlighter.highlightedAttributedString(
-                    for: request.code,
-                    colorScheme: request.colorScheme
-                )
-            )
         case .highlight(let normalizedLanguage, .highlightr):
             guard let highlighted = StableHighlightrStore.shared.highlight(
                 request.code,
                 language: normalizedLanguage,
-                colorScheme: request.colorScheme
+                colorScheme: request.colorScheme,
+                temperature: request.temperature
             ) else {
                 return .plain(reason: .highlighterUnavailable, normalizedLanguage: normalizedLanguage)
             }
@@ -1116,38 +1154,129 @@ enum MarkdownCodeHighlighter {
     }
 }
 
-private enum SplashSwiftCodeHighlighter {
-    static func highlightedAttributedString(for code: String, colorScheme: ColorScheme) -> NSAttributedString {
-        let font = Splash.Font(size: 13)
-        let theme = colorScheme == .dark
-            ? Splash.Theme.wwdc17(withFont: font)
-            : Splash.Theme.presentation(withFont: font)
-        let highlighter = SyntaxHighlighter(
-            format: AttributedStringOutputFormat(theme: theme)
-        )
-        return highlighter.highlight(code)
-    }
-}
-
 @MainActor
 private final class StableHighlightrStore {
     static let shared = StableHighlightrStore()
 
-    private enum ThemeKey: Hashable {
-        case light
-        case dark
+    private struct ThemeKey: Hashable {
+        let isDark: Bool
+        let temperature: ChatPaletteTemperature
+
+        /// Highlightr CSS theme for this combo. Warm combos use the Atom One
+        /// pair (whose neutral grays take the warm post-process well);
+        /// standard combos keep the existing github-dark / xcode mapping.
+        var themeName: String {
+            switch (temperature, isDark) {
+            case (.warm, true): "atom-one-dark"
+            case (.warm, false): "atom-one-light"
+            case (.standard, true): "github-dark"
+            case (.standard, false): "xcode"
+            }
+        }
+
+        /// Theme applied when `themeName` fails to load, matching the store's
+        /// pre-palette behavior.
+        var fallbackThemeName: String {
+            isDark ? "github-dark" : "xcode"
+        }
     }
 
     private var highlightrs: [ThemeKey: Highlightr] = [:]
 
     private init() {}
 
-    func highlight(_ code: String, language: String, colorScheme: ColorScheme) -> NSAttributedString? {
-        return highlightr(for: colorScheme)?.highlight(code, as: language, fastRender: true)
+    func highlight(
+        _ code: String,
+        language: String,
+        colorScheme: ColorScheme,
+        temperature: ChatPaletteTemperature = .defaultValue
+    ) -> NSAttributedString? {
+        let key = ThemeKey(isDark: colorScheme == .dark, temperature: temperature)
+        guard let highlighted = highlightr(for: key)?.highlight(code, as: language, fastRender: true) else {
+            return nil
+        }
+        let stripped = Self.strippingBackgroundAttributes(from: highlighted)
+        guard temperature.usesWarmSurfaces else { return stripped }
+        return Self.warmingForegroundAttributes(from: stripped, isDark: key.isDark)
     }
 
-    private func highlightr(for colorScheme: ColorScheme) -> Highlightr? {
-        let key: ThemeKey = colorScheme == .dark ? .dark : .light
+    /// Highlightr themes declare a canvas background of their own; if any run in
+    /// the attributed output carries `.backgroundColor`, it would paint hard
+    /// rectangles over our `palette.codeSlab` surface. Strip them so the slab
+    /// always shows through cleanly.
+    private static func strippingBackgroundAttributes(from attributed: NSAttributedString) -> NSAttributedString {
+        let fullRange = NSRange(location: 0, length: attributed.length)
+        var hasBackground = false
+        attributed.enumerateAttribute(.backgroundColor, in: fullRange) { value, _, stop in
+            if value != nil {
+                hasBackground = true
+                stop.pointee = true
+            }
+        }
+
+        guard hasBackground else { return attributed }
+
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+        mutable.removeAttribute(.backgroundColor, range: fullRange)
+        return mutable
+    }
+
+    /// Warm-palette post-process: near-gray token colors (saturation < 0.15)
+    /// are nudged toward a warm hue (~30°, orange) with a touch of saturation
+    /// so the code slab reads as part of the warm surface stack instead of a
+    /// cool neutral island. In warm-light, brightness is capped at 0.75 so no
+    /// token glows against the ivory slab. Colors whose HSB components can't
+    /// be extracted are left untouched.
+    private static func warmingForegroundAttributes(
+        from attributed: NSAttributedString,
+        isDark: Bool
+    ) -> NSAttributedString {
+        let fullRange = NSRange(location: 0, length: attributed.length)
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+        var changed = false
+
+        attributed.enumerateAttribute(.foregroundColor, in: fullRange) { value, range, _ in
+            guard let color = value as? UIColor else { return }
+
+            var hue: CGFloat = 0
+            var saturation: CGFloat = 0
+            var brightness: CGFloat = 0
+            var alpha: CGFloat = 0
+            guard color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+                return
+            }
+
+            var newHue = hue
+            var newSaturation = saturation
+            var newBrightness = brightness
+            var needsUpdate = false
+
+            if saturation < 0.15 {
+                // Near-gray: shift toward orange and pick up a whisper of warmth.
+                newHue = 30.0 / 360.0
+                newSaturation = min(0.12, max(0.08, saturation + 0.08))
+                needsUpdate = true
+            }
+
+            if !isDark, newBrightness > 0.75 {
+                newBrightness = 0.75
+                needsUpdate = true
+            }
+
+            guard needsUpdate else { return }
+
+            changed = true
+            mutable.addAttribute(
+                .foregroundColor,
+                value: UIColor(hue: newHue, saturation: newSaturation, brightness: newBrightness, alpha: alpha),
+                range: range
+            )
+        }
+
+        return changed ? mutable : attributed
+    }
+
+    private func highlightr(for key: ThemeKey) -> Highlightr? {
         if let highlightr = highlightrs[key] {
             return highlightr
         }
@@ -1156,7 +1285,9 @@ private final class StableHighlightrStore {
             return nil
         }
 
-        highlightr.setTheme(to: key == .dark ? "github-dark" : "xcode")
+        if !highlightr.setTheme(to: key.themeName) {
+            highlightr.setTheme(to: key.fallbackThemeName)
+        }
         highlightrs[key] = highlightr
         return highlightr
     }
@@ -1183,34 +1314,169 @@ private struct PlainMarkdownFallbackView: View {
 }
 
 private extension MarkdownUI.Theme {
-    static func chat(colorScheme: ColorScheme, isStreaming: Bool) -> MarkdownUI.Theme {
-        MarkdownUI.Theme.gitHub
+    static func chat(
+        isStreaming: Bool,
+        palette: ChatPalette,
+        usesSerif: Bool,
+        accentColor: SwiftUI.Color,
+        role: MarkdownTypographyRole = .standard
+    ) -> MarkdownUI.Theme {
+        // Reasoning renders the same markdown one step quieter. Headings are
+        // compressed toward body size and margins tightened, because a thought
+        // is a dense aside inside a card — full answer-scale headings would
+        // make it out-shout the answer that follows it.
+        let isReasoning = role == .reasoning
+        // Reasoning damping lives entirely in this absolute base size. It is
+        // deliberately NOT combined with a separate `.em` scale on `.text`:
+        // heading `.em` values resolve against the already-scaled base, so
+        // damping in both places compounds and drives headings below body size.
+        //
+        // Caption relative to the *body* size, expressed as an `.em` ratio
+        // rather than an absolute point size.
+        //
+        // An absolute `FontSize(pt)` was tried first and is wrong twice over:
+        // `UIFontMetrics.scaledValue(for: preferredFont(...).pointSize)` scales
+        // an already-scaled size (43pt → 137pt at AX5, measured), and even the
+        // single-scaled absolute value pins the text so MarkdownUI stops
+        // wrapping headings at accessibility sizes. A ratio keeps Dynamic Type
+        // in charge of the actual metrics, which is what the answer path does.
+        let bodyPointSize = UIFont.preferredFont(forTextStyle: .body).pointSize
+        let captionPointSize = UIFont.preferredFont(forTextStyle: .caption1).pointSize
+        let reasoningScale = captionPointSize / max(bodyPointSize, 1)
+        let h1: CGFloat = isReasoning ? 1.12 : 1.45
+        let h2: CGFloat = isReasoning ? 1.06 : 1.25
+        let h3: CGFloat = isReasoning ? 1.0 : 1.1
+        let headingTop: CGFloat = isReasoning ? 12 : 24
+        let headingBottom: CGFloat = isReasoning ? 4 : 8
+        // h4–h6 share the reasoning margins too; leaving them at answer scale
+        // made a thought's minor headings sit further apart than its major ones.
+        let minorHeadingTop: CGFloat = isReasoning ? 10 : 16
+        let minorHeadingBottom: CGFloat = isReasoning ? 3 : 4
+        let paragraphBottom: CGFloat = isReasoning ? 7 : 12
+        let thematicBreakMargin: CGFloat = isReasoning ? 8 : 16
+        let bodyColor = isReasoning ? palette.textSecondary : palette.textPrimary
+
+        return MarkdownUI.Theme()
             .text {
-                ForegroundColor(.primary)
+                // MarkdownUI resolves `.em` against the theme's own base, not
+                // the SwiftUI environment font, so an outer `.font()` cannot
+                // shrink reasoning text. The base has to be stated here.
+                if isReasoning {
+                    FontSize(.em(reasoningScale))
+                }
+                if usesSerif {
+                    FontFamily(.system(.serif))
+                    // New York runs optically smaller than SF at the same
+                    // point size; nudge the body up so both faces read equally.
+                    FontSize(.em(1.02))
+                }
+                ForegroundColor(bodyColor)
                 BackgroundColor(nil)
-                FontSize(16)
             }
             .code {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.85))
-                BackgroundColor(
-                    colorScheme == .dark
-                        ? SwiftUI.Color(red: 0.08, green: 0.09, blue: 0.12)
-                        : SwiftUI.Color(.tertiarySystemGroupedBackground)
-                )
+                FontSize(.em(0.9))
+                FontWeight(.medium)
+                ForegroundColor(palette.inlineCodeText)
+            }
+            .strong {
+                FontWeight(.semibold)
+            }
+            .link {
+                ForegroundColor(accentColor)
+            }
+            .heading1 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.12))
+                    .markdownMargin(top: headingTop, bottom: headingBottom)
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(h1))
+                    }
+            }
+            .heading2 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.12))
+                    .markdownMargin(top: headingTop, bottom: headingBottom)
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(h2))
+                    }
+            }
+            .heading3 { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.12))
+                    .markdownMargin(top: headingTop, bottom: headingBottom)
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(h3))
+                    }
+            }
+            .heading4 { configuration in
+                configuration.label
+                    .markdownMargin(top: minorHeadingTop, bottom: minorHeadingBottom)
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1.0))
+                    }
+            }
+            .heading5 { configuration in
+                configuration.label
+                    .markdownMargin(top: minorHeadingTop, bottom: minorHeadingBottom)
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1.0))
+                        ForegroundColor(palette.textSecondary)
+                    }
+            }
+            .heading6 { configuration in
+                configuration.label
+                    .markdownMargin(top: minorHeadingTop, bottom: minorHeadingBottom)
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1.0))
+                        ForegroundColor(palette.textSecondary)
+                    }
+            }
+            .paragraph { configuration in
+                configuration.label
+                    .fixedSize(horizontal: false, vertical: true)
+                    .relativeLineSpacing(.em(0.29))
+                    .markdownMargin(top: 0, bottom: paragraphBottom)
+            }
+            .blockquote { configuration in
+                HStack(alignment: .top, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(accentColor)
+                        .frame(width: 3)
+
+                    configuration.label
+                        .markdownTextStyle {
+                            ForegroundColor(palette.textSecondary)
+                        }
+                        .padding(.vertical, 2)
+                        .padding(.trailing, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(palette.quoteWash)
+                        )
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .markdownMargin(top: 4, bottom: 12)
             }
             .codeBlock { configuration in
                 MathFenceOrCodeBlock(
                     language: configuration.language,
                     content: configuration.content,
-                    isStreaming: isStreaming
+                    isStreaming: isStreaming,
+                    palette: palette
                 )
                 .markdownMargin(top: 4, bottom: 12)
             }
             .table { configuration in
                 ChatMarkdownTable(
                     label: configuration.label,
-                    colorScheme: colorScheme
+                    palette: palette
                 )
                 .markdownMargin(top: 0, bottom: 16)
             }
@@ -1232,6 +1498,22 @@ private extension MarkdownUI.Theme {
                 .padding(.horizontal, 13)
                 .relativeLineSpacing(.em(0.25))
             }
+            .listItem { configuration in
+                configuration.label
+                    .markdownMargin(top: .em(0.25))
+            }
+            .thematicBreak {
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, palette.tableRule, .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 1)
+                    .markdownMargin(top: thematicBreakMargin, bottom: thematicBreakMargin)
+            }
     }
 }
 
@@ -1240,36 +1522,15 @@ private struct ChatMarkdownTable: View {
     static let cellMaxWidth: CGFloat = 260
 
     let label: MarkdownUI.BlockConfiguration.Label
-    let colorScheme: ColorScheme
+    let palette: ChatPalette
 
     var body: some View {
         ScrollView(.horizontal) {
             label
                 .fixedSize(horizontal: true, vertical: true)
-                .markdownTableBorderStyle(.init(color: borderColor))
-                .markdownTableBackgroundStyle(
-                    .alternatingRows(backgroundColor, secondaryBackgroundColor)
-                )
+                .markdownTableBorderStyle(.init(.insideHorizontalBorders, color: palette.tableRule))
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-    }
-
-    private var backgroundColor: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.094, green: 0.098, blue: 0.114)
-            : SwiftUI.Color.white
-    }
-
-    private var secondaryBackgroundColor: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.145, green: 0.149, blue: 0.165)
-            : SwiftUI.Color(red: 0.969, green: 0.969, blue: 0.976)
-    }
-
-    private var borderColor: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.259, green: 0.267, blue: 0.306)
-            : SwiftUI.Color(red: 0.894, green: 0.894, blue: 0.91)
     }
 }
 

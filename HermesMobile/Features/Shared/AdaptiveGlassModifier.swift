@@ -133,6 +133,7 @@ enum AdaptiveScrollEdgeTreatment: Equatable {
 
 private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
 
@@ -212,7 +213,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 
     private func opaqueContent(_ content: Content) -> some View {
         content
-            .background(Color(.secondarySystemBackground), in: shape)
+            .background(ChatPalette.appChrome(colorScheme: colorScheme).surface, in: shape)
             .adaptiveGlassAccessibilityStroke(
                 shape: shape,
                 isVisible: true,

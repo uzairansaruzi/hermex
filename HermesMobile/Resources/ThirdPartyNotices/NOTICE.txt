@@ -21,3 +21,13 @@ with the iOS app.
   See swift-cmark-COPYING.txt.
 - Lucide icons
   See LucideIcons-LICENSE.txt.
+- Simple Icons provider marks
+  See SimpleIcons-LICENSE.txt. Product names and logos remain trademarks of
+  their respective owners; inclusion identifies a configured provider and does
+  not imply endorsement.
+- thinking-orbs (Jakub Antalik) — MIT
+  ThinkingOrbView.swift is a SwiftUI port derived from the canvas engine at
+  https://github.com/Jakubantalik/thinking-orbs (no code is bundled verbatim).
+- border-beam (Jakub Antalik) — MIT
+  BorderBeamModifier.swift is a SwiftUI port of the traveling-beam presets from
+  https://github.com/Jakubantalik/border-beam (no code is bundled verbatim).

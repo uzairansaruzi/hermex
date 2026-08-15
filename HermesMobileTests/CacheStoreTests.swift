@@ -417,6 +417,45 @@ final class CacheStoreTests: XCTestCase {
         )
     }
 
+    func testCodexMessagePhasesRoundTripThroughCache() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let message = try decoder.decode(
+            ChatMessage.self,
+            from: Data(#"""
+            {
+              "role":"assistant",
+              "content":"Working. Done.",
+              "message_id":"m1",
+              "codex_message_items":[
+                {"type":"message","phase":"commentary","content":[{"type":"output_text","text":"Working."}]},
+                {"type":"message","phase":"final_answer","content":[{"type":"output_text","text":"Done."}]}
+              ]
+            }
+            """#.utf8)
+        )
+
+        try CacheStore.cacheMessages(
+            [message],
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        let restored = try XCTUnwrap(CacheStore.cachedMessages(
+            serverURL: serverURL,
+            sessionID: "abc123",
+            in: context,
+            now: cachedAt.addingTimeInterval(60)
+        ).first)
+        XCTAssertEqual(restored.codexCommentaryTexts, ["Working."])
+        XCTAssertEqual(restored.codexFinalAnswerText, "Done.")
+    }
+
     func testCachedMessagesIgnoresExpiredMessages() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!

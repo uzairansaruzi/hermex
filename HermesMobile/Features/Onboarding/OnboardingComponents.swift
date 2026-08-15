@@ -23,14 +23,20 @@ struct SetupStepRow: View {
     var command: String?
     var commandPrefix: String? = "$"
     var copyValue: String?
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
+    private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
+    private var accentForeground: Color {
+        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(accentForeground)
                 .frame(width: 23, height: 23)
-                .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: Circle())
+                .background(accent, in: Circle())
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 7) {
@@ -105,12 +111,15 @@ struct OnboardingField<Content: View>: View {
     let systemImage: String
     let title: String
     @ViewBuilder let content: Content
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
+    private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.10))
+                .foregroundStyle(accent)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -168,16 +177,21 @@ struct OnboardingStatusBanner: View {
 }
 
 struct OnboardingPrimaryButtonStyle: ButtonStyle {
+    var accent: Color = HeaderLogoColor.color(for: HeaderLogoColor.defaultHex)
+    /// Onboarding labels sit directly on the accent fill, so a dark custom
+    /// header color must flip the label to white or the button reads as blank.
+    var accentForeground: Color = .black
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.black)
+            .foregroundStyle(accentForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.78)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 10)
             .padding(.vertical, 15)
-            .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
@@ -187,8 +201,9 @@ struct OnboardingStepHeader: View {
     let icon: String
     let title: String
     let description: String
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
-    private let accent = Color(red: 1.0, green: 0.74, blue: 0.10)
+    private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -234,6 +249,7 @@ struct OnboardingAgentPromptCard: View {
     @Binding var hasCopied: Bool
     @State private var didCopyRecently = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -258,7 +274,12 @@ struct OnboardingAgentPromptCard: View {
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(OnboardingPrimaryButtonStyle())
+            .buttonStyle(
+                OnboardingPrimaryButtonStyle(
+                    accent: HeaderLogoColor.color(for: headerLogoColorHex),
+                    accentForeground: HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+                )
+            )
             .accessibilityLabel(didCopyRecently ? String(localized: "Agent setup prompt copied") : String(localized: "Copy agent setup prompt"))
         }
         .padding(16)

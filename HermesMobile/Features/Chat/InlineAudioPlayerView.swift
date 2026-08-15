@@ -12,6 +12,7 @@ struct InlineAudioPlayerView: View {
     /// Lazily fetches the raw audio bytes; returns `nil` on failure.
     let load: () async -> Data?
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var model = InlineAudioPlayerModel()
 
     var body: some View {
@@ -34,11 +35,7 @@ struct InlineAudioPlayerView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         )
         .task {
             await model.loadIfNeeded(using: load)

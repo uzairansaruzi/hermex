@@ -92,7 +92,7 @@ struct SkillsView: View {
             .refreshable {
                 await loadSkills()
             }
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
         }
     }
 
@@ -206,7 +206,7 @@ private struct SkillRow: View {
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
                                 .foregroundStyle(.secondary)
-                                .background(Color(.tertiarySystemFill), in: Capsule())
+                                .appSurfaceBackground(.inset, in: Capsule())
                         }
 
                         ForEach(tags, id: \.self) { tag in
@@ -215,7 +215,7 @@ private struct SkillRow: View {
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
                                 .foregroundStyle(.secondary)
-                                .background(Color(.secondarySystemFill).opacity(0.8), in: Capsule())
+                                .appSurfaceBackground(.surface, opacity: 0.8, in: Capsule())
                         }
                     }
                 }
@@ -410,7 +410,7 @@ private struct SkillLinkedFilesSection: View {
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(.primary)
                                 .frame(width: 34, height: 34)
-                                .background(Color(.tertiarySystemFill).opacity(0.7), in: Circle())
+                                .appSurfaceBackground(.inset, opacity: 0.7, in: Circle())
 
                             Text(fileName)
                                 .font(.subheadline)

@@ -1,8 +1,9 @@
 import Foundation
 
 extension APIClient {
-    func models() async throws -> ModelsResponse {
-        try await send(endpoint: .models, method: "GET")
+    func models(freshness: ModelCatalogFreshness? = nil) async throws -> ModelsResponse {
+        let endpoint: Endpoint = freshness == .sessionVisit ? .modelsSessionVisit : .models
+        return try await send(endpoint: endpoint, method: "GET")
     }
 
     /// Live (uncached) model list for the active provider. The server resolves

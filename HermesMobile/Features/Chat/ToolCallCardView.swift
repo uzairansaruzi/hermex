@@ -2,13 +2,35 @@ import SwiftUI
 
 struct ToolCallCardView: View {
     let toolCall: ToolCall
+    /// When rendered inside an already-indented context (e.g. an expanded
+    /// `ToolActivityGroupView` list), the parent passes `true` so the quiet
+    /// rail doesn't double-indent.
+    var isNestedInGroup: Bool = false
+    /// Position of this row within its block, used only to stagger the shared
+    /// running-indicator sweep so a parallel batch doesn't pulse in lockstep.
+    var indicatorRowIndex: Int = 0
+    /// Whether the enclosing block is still active. A nested row shows the
+    /// travelling indicator only while its block is live; a settled block's
+    /// unfinished calls fall back to the static waiting ring.
+    var isBlockActive: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
 
     private var isExpanded: Bool {
-        ChatTranscriptDisplaySettings.isCardExpanded(
+        // Inside a block the row is already one quiet line under the block's
+        // own disclosure, so it must not inherit the "start expanded"
+        // preference — that setting governs the block, and honouring it here
+        // too opens every row at once and repeats the status shown inline.
+        if isNestedInGroup {
+            return userToggledExpansion ?? false
+        }
+
+        return ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
             startsExpanded: startsExpanded
         )
@@ -18,39 +40,172 @@ struct ToolCallCardView: View {
         let statusDisplay = ToolCallStatusDisplay(toolCall: toolCall)
 
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-            Button {
-                withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                    userToggledExpansion = !isExpanded
+            if isNestedInGroup {
+                // Inside a block the row is a quiet line, not its own capsule:
+                // the block owns the single orb and the single border, and the
+                // per-row indicator is painted by the block's shared overlay.
+                nestedHeader
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
+                    .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+            } else {
+                ActivityCapsuleView(
+                    orbState: ThinkingOrbState.forTool(name: toolCall.name),
+                    label: capsuleLabel,
+                    isActive: isRunning,
+                    completedIcon: statusIcon,
+                    completedIconColor: toolCall.isError == true ? .red : nil,
+                    completedLabel: completedCapsuleLabel,
+                    accessory: AnyView(chevron)
+                ) {
+                    withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+                        userToggledExpansion = !isExpanded
+                    }
                 }
-            } label: {
-                header(statusDisplay: statusDisplay)
+                .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
+                .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
-            .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
             if isExpanded {
-                expandedContent(statusDisplay: statusDisplay)
-                    .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                // Quiet indented list: a thin left rail instead of a boxed
+                // surface, with the details hanging off it in mono type.
+                HStack(alignment: .top, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(palette.tableRule)
+                        .frame(width: 2)
+
+                    expandedContent(statusDisplay: statusDisplay)
+                }
+                .padding(.leading, isNestedInGroup ? 4 : 8)
+                // Tool-call bodies are commands, JSON, file paths, and
+                // results — code-like content that must stay left-to-right
+                // inside an RTL message (#259).
+                .forcedLeftToRight()
+                .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, isExpanded ? 8 : 7)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .thinMaterial,
-            cornerRadius: 9
-        )
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Tool-call bodies are commands, JSON, file paths, and results — code-like
-        // content that must stay left-to-right inside an RTL message (#259). The
-        // group's summary header above (ToolActivityGroupView) still mirrors.
-        .forcedLeftToRight()
+    }
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
+    }
+
+    private var chevron: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    /// One line inside a tool block: indicator slot, name, subject, and the
+    /// duration or failure note. No capsule chrome, no orb, no beam.
+    private var nestedHeader: some View {
+        Button {
+            withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+                userToggledExpansion = !isExpanded
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                ToolRunIndicatorSlot(
+                    toolCall: toolCall,
+                    rowIndex: indicatorRowIndex,
+                    isBlockActive: isBlockActive
+                )
+                .alignmentGuide(.firstTextBaseline) { dimension in
+                    // Keep the glyph optically on the text baseline; without
+                    // this the slot's own height drives the alignment and the
+                    // row jitters when a label wraps.
+                    dimension[VerticalAlignment.center] + 4
+                }
+
+                Text(toolCall.displayName)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(palette.textPrimary)
+
+                if let subject = nestedSubject {
+                    Text(subject)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(palette.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 6)
+
+                if let trailing = nestedTrailingText {
+                    Text(trailing)
+                        .font(AppFont.caption2())
+                        .foregroundStyle(toolCall.isError == true ? .red : palette.textTertiary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The path-like argument shown after the tool name, if any.
+    private var nestedSubject: String? {
+        let rows = ToolCallDisplayFormatter.argumentRows(from: toolCall.args)
+        let pathKeys = ["path", "file_path", "filepath", "file", "cmd", "command", "query", "url"]
+        guard let subject = pathKeys
+            .compactMap({ key in rows.first { $0.key.lowercased() == key }?.value })
+            .first,
+            !subject.isEmpty
+        else {
+            return nil
+        }
+
+        return subject.contains("/") && !subject.contains(" ")
+            ? String(subject.split(separator: "/").last ?? Substring(subject))
+            : subject
+    }
+
+    private var nestedTrailingText: String? {
+        if toolCall.isError == true {
+            return String(localized: "Failed")
+        }
+        guard toolCall.isCompleted, let duration = toolCall.duration else { return nil }
+        return ActivityDurationFormat.string(duration)
+    }
+
+    /// Short activity title in "Reading ChatPalette.swift" style: the tool's
+    /// display name plus the most path-like argument, middle-truncated by the
+    /// capsule's label line.
+    private var capsuleLabel: String {
+        let rows = ToolCallDisplayFormatter.argumentRows(from: toolCall.args)
+        let pathKeys = ["path", "file_path", "filepath", "file", "cmd", "command", "query", "url"]
+        let subject = pathKeys
+            .compactMap { key in rows.first { $0.key.lowercased() == key }?.value }
+            .first
+
+        guard let subject, !subject.isEmpty else {
+            return toolCall.displayName
+        }
+
+        // Prefer the last path component for file-ish values.
+        let trimmed = subject.contains("/") && !subject.contains(" ")
+            ? String(subject.split(separator: "/").last ?? Substring(subject))
+            : subject
+        return "\(toolCall.displayName) \(trimmed)"
+    }
+
+    /// Completed label keeps the activity title and appends the tool's
+    /// duration when the backend reported one: "Read ChatPalette.swift · 3.4s".
+    private var completedCapsuleLabel: String {
+        guard let duration = toolCall.duration, toolCall.isError != true else {
+            return capsuleLabel
+        }
+        return "\(capsuleLabel) · \(ActivityDurationFormat.string(duration))"
     }
 
     private func expandedContent(statusDisplay: ToolCallStatusDisplay) -> some View {
         let displayContent = ToolCallDisplayFormatter.content(for: toolCall)
 
-        return VStack(alignment: .leading, spacing: 7) {
+        return VStack(alignment: .leading, spacing: 8) {
             if !displayContent.argumentRows.isEmpty {
                 argumentsSection(displayContent.argumentRows)
             }
@@ -63,49 +218,11 @@ struct ToolCallCardView: View {
                 statusDetail(statusDisplay.detailText)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var usesStackedHeader: Bool {
         dynamicTypeSize.isAccessibilitySize
-    }
-
-    private func header(statusDisplay: ToolCallStatusDisplay) -> some View {
-        HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image(systemName: statusIcon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: 18, height: 18)
-
-            if usesStackedHeader {
-                VStack(alignment: .leading, spacing: 3) {
-                    titleText
-                    if let collapsedText = statusDisplay.collapsedText {
-                        TranscriptStatusPill(text: collapsedText, color: statusColor)
-                    }
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    titleText
-                    if let collapsedText = statusDisplay.collapsedText {
-                        TranscriptStatusPill(text: collapsedText, color: statusColor)
-                    }
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var titleText: some View {
-        Text(toolCall.displayName)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
     }
 
     private var statusIcon: String {
@@ -114,6 +231,10 @@ struct ToolCallCardView: View {
         }
 
         return toolCall.isCompleted ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill"
+    }
+
+    private var isRunning: Bool {
+        toolCall.isError != true && !toolCall.isCompleted
     }
 
     private var statusColor: Color {
@@ -131,47 +252,31 @@ struct ToolCallCardView: View {
 
     private func statusDetail(_ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Status")
-                .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+            Image(systemName: statusIcon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(toolCall.isError == true ? .red : palette.textTertiary)
 
             Text(value)
                 .font(AppFont.caption())
-                .foregroundStyle(statusColor)
+                .foregroundStyle(toolCall.isError == true ? statusColor : palette.textTertiary)
                 .textSelection(.enabled)
         }
     }
 
     private func argumentsSection(_ rows: [ToolCallArgumentDisplay]) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("Arguments")
-                .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(rows) { row in
-                    argumentRow(row)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(rows) { row in
+                argumentRow(row)
             }
-            .padding(7)
-            .chatTimelineAccessoryInsetSurface()
         }
     }
 
     private func resultSection(_ result: ToolCallResultDisplay) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(result.title)
-                .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            Text(result.text)
-                .font(result.isMonospaced ? AppFont.mono(style: .caption) : AppFont.caption())
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(7)
-                .chatTimelineAccessoryInsetSurface()
-        }
+        Text(result.text)
+            .font(result.isMonospaced ? AppFont.mono(style: .caption) : AppFont.caption())
+            .foregroundStyle(palette.textSecondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -195,14 +300,14 @@ struct ToolCallCardView: View {
     private func argumentKey(_ value: String) -> some View {
         Text(value)
             .font(AppFont.mono(style: .caption2, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(palette.textTertiary)
             .lineLimit(1)
     }
 
     private func argumentValue(_ value: String) -> some View {
         Text(value)
             .font(AppFont.mono(style: .caption))
-            .foregroundStyle(.primary)
+            .foregroundStyle(palette.textSecondary)
             .textSelection(.enabled)
     }
 }

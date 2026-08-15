@@ -1,0 +1,11 @@
+Simple Icons
+
+The Simple Icons project is released under CC0 1.0 Universal. This does not
+waive or grant trademark rights in the individual brand marks. Product names,
+logos, and brands are property of their respective owners. Their inclusion in
+Hermex identifies user-configured providers and does not imply affiliation or
+endorsement.
+
+Full license: https://creativecommons.org/publicdomain/zero/1.0/
+Project: https://github.com/simple-icons/simple-icons
+Disclaimer: https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md

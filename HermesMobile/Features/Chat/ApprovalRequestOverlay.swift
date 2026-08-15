@@ -7,6 +7,17 @@ struct ApprovalRequestOverlay: View {
     let errorMessage: String?
     let onChoice: (ApprovalChoice) -> Void
     let onSkipAll: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
+
+    private var chrome: ChatPalette {
+        ChatPalette.appChrome(
+            colorScheme: colorScheme,
+            backgroundRawValue: chromeBackgroundRawValue,
+            temperatureRawValue: chromeTemperatureRawValue
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -64,7 +75,10 @@ struct ApprovalRequestOverlay: View {
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                .background(
+                    chrome.surface,
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
             }
 
             if !prompt.patternKeys.isEmpty {
@@ -79,7 +93,10 @@ struct ApprovalRequestOverlay: View {
                                 .font(.caption2.monospaced())
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(Color(uiColor: .tertiarySystemBackground), in: Capsule())
+                                .background(
+                                    chrome.surfaceInset,
+                                    in: Capsule()
+                                )
                         }
                     }
                 }

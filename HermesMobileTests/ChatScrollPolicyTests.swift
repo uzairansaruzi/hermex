@@ -8,10 +8,18 @@ final class ChatScrollPolicyTests: XCTestCase {
 
     func testTranscriptSizeChangesStayBottomAnchoredOnlyWhileFollowingLatest() {
         XCTAssertEqual(
-            ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true),
+            ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true, hasActiveStream: true),
             .bottom
         )
-        XCTAssertNil(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false))
+        XCTAssertNil(
+            ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false, hasActiveStream: true)
+        )
+        // A settled chat must not re-pin the bottom on every frame of an
+        // animated size change: expanding an activity card would yank the
+        // viewport up by more than a screen while the reader is reading it.
+        XCTAssertNil(
+            ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true, hasActiveStream: false)
+        )
     }
 
     func testInitialAsyncWorkWaitsForNavigationAppearanceCompletion() {

@@ -280,6 +280,8 @@ struct GitCommitView: View {
 /// One selectable changed-file row in the staging sheet, showing a selection checkbox,
 /// the file name + path, diff counts, and whether it is currently staged.
 private struct GitCommitFileRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let file: GitFile
     let isSelected: Bool
     let onTap: () -> Void
@@ -312,14 +314,18 @@ private struct GitCommitFileRow: View {
                         .font(AppFont.caption2(weight: .semibold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.18), in: Capsule())
-                        .foregroundStyle(.green)
+                        .background(
+                            GitStatusPalette.additions(colorScheme)
+                                .opacity(GitStatusPalette.chipFillOpacity(colorScheme)),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(GitStatusPalette.additions(colorScheme))
                 }
                 DiffCountsLabel(additions: file.additions ?? 0, deletions: file.deletions ?? 0)
                 GitStatusChip(kind: file.changeKind)
             }
             .padding(12)
-            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
+            .appSurfaceBackground(.surface, in: .rect(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color(.separator).opacity(0.35), lineWidth: isSelected ? 1 : 0.5)

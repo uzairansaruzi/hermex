@@ -30,6 +30,29 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store.favoriteKeys, favoriteKeys)
     }
 
+    func testProviderFavoritesAreOrderedDeduplicatedAndServerScoped() {
+        let store = ProviderFavoritesStore(defaults: defaults, storageKey: "provider-favorites")
+
+        store.save([" openai-codex ", "fireworks", "openai-codex", "  "], serverID: "work")
+        store.save(["anthropic"], serverID: "home")
+
+        XCTAssertEqual(store.favoriteProviderIDs(serverID: "work"), ["openai-codex", "fireworks"])
+        XCTAssertEqual(store.favoriteProviderIDs(serverID: "home"), ["anthropic"])
+        XCTAssertTrue(store.isFavorite(providerID: "fireworks", serverID: "work"))
+        XCTAssertFalse(store.isFavorite(providerID: "fireworks", serverID: "home"))
+    }
+
+    func testProviderFavoriteToggleAddsAndRemovesExactProvider() {
+        let store = ProviderFavoritesStore(defaults: defaults, storageKey: "provider-favorites-toggle")
+
+        XCTAssertEqual(store.toggleFavorite(providerID: "openai-codex", serverID: "server"), ["openai-codex"])
+        XCTAssertEqual(
+            store.toggleFavorite(providerID: "fireworks", serverID: "server"),
+            ["openai-codex", "fireworks"]
+        )
+        XCTAssertEqual(store.toggleFavorite(providerID: "openai-codex", serverID: "server"), ["fireworks"])
+    }
+
     func testToggleFavoriteRemovesExistingFavorite() {
         let store = ModelFavoritesStore(defaults: defaults, storageKey: "favorites")
         let option = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
@@ -152,6 +175,229 @@ final class ModelFavoritesStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(visibleOptions, [claude, missing, gemini])
+    }
+
+    func testFullPickerRecentOptionsIncludeFavoritesInMRUOrder() {
+        let gpt = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
+        let claude = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
+        let missing = ModelCatalogOption(id: "missing-model", displayName: "missing-model", providerID: "local")
+        let groups = [
+            ModelCatalogGroup(id: "openai", name: "OpenAI", providerID: "openai", models: [gpt]),
+            ModelCatalogGroup(id: "anthropic", name: "Anthropic", providerID: "anthropic", models: [claude])
+        ]
+
+        let visibleOptions = ModelRecentsStore.visibleAllRecentOptions(
+            in: groups,
+            recentKeys: [claude.favoriteKey, missing.favoriteKey, gpt.favoriteKey]
+        )
+
+        XCTAssertEqual(visibleOptions, [claude, missing, gpt])
+    }
+
+    func testUnifiedPickerSearchMatchesProviderPresentationAndExactIdentity() {
+        let openAI = ModelCatalogOption(id: "gpt-5.5-codex", displayName: "GPT-5.5 Codex", providerID: "openai-codex")
+        let kimi = ModelCatalogOption(id: "kimi-k2.5", displayName: "Kimi K2.5", providerID: "kimi-coding")
+        let options = [openAI, kimi]
+        let names = ["openai-codex": "Codex", "kimi-coding": "Moonshot"]
+
+        XCTAssertEqual(
+            ModelPickerCatalog.filteredOptions(options, query: "Codex", providerID: nil, providerDisplayNames: names),
+            [openAI]
+        )
+        XCTAssertEqual(
+            ModelPickerCatalog.filteredOptions(options, query: "kimi-k2.5", providerID: "kimi-coding", providerDisplayNames: names),
+            [kimi]
+        )
+        XCTAssertEqual(
+            ModelPickerCatalog.filteredOptions(options, query: "Moonshot", providerID: "openai-codex", providerDisplayNames: names),
+            []
+        )
+    }
+
+    func testProviderBrandCatalogHumanizesTechnicalNamesWithoutChangingIdentity() {
+        XCTAssertEqual(
+            ProviderBrandCatalog.displayName(providerID: "openai-codex", catalogName: "openai-codex"),
+            "OpenAI Codex"
+        )
+        XCTAssertEqual(
+            ProviderBrandCatalog.displayName(providerID: "fireworks", catalogName: "Fireworks AI"),
+            "Fireworks AI"
+        )
+        XCTAssertEqual(
+            ProviderBrandCatalog.displayName(providerID: "my-private-provider", catalogName: "my-private-provider"),
+            "My Private Provider"
+        )
+    }
+
+    func testProviderBrandCatalogUsesFallbackForProvidersWithoutLicensedArtwork() {
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "openai-codex"))
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "openai-api"))
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "fireworks"))
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "custom-private-provider"))
+    }
+
+    func testProviderAppearanceStoreScopesDisplayNamesByServerAndKeepsProviderIdentity() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceStoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearances",
+            artworkDirectory: directory
+        )
+
+        store.setDisplayName("Work Codex", serverID: "server-a", providerID: "openai-codex")
+        store.setDisplayName("Home Codex", serverID: "server-b", providerID: "openai-codex")
+
+        XCTAssertEqual(store.appearance(serverID: "server-a", providerID: "openai-codex").displayName, "Work Codex")
+        XCTAssertEqual(store.appearance(serverID: "server-b", providerID: "openai-codex").displayName, "Home Codex")
+        XCTAssertNil(store.appearance(serverID: "server-a", providerID: "openai").displayName)
+
+        store.reset(serverID: "server-a", providerID: "openai-codex")
+        XCTAssertFalse(store.appearance(serverID: "server-a", providerID: "openai-codex").hasOverride)
+        XCTAssertEqual(store.appearance(serverID: "server-b", providerID: "openai-codex").displayName, "Home Codex")
+    }
+
+    func testProviderAppearanceApplyRejectsBadImageWithoutChangingName() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceAtomicTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-atomic",
+            artworkDirectory: directory
+        )
+        store.setDisplayName("Original", serverID: "server", providerID: "provider")
+
+        XCTAssertThrowsError(try store.apply(
+            displayName: "Replacement",
+            artworkData: Data("not-an-image".utf8),
+            restoresDefaultArtwork: false,
+            serverID: "server",
+            providerID: "provider"
+        ))
+        XCTAssertEqual(store.appearance(serverID: "server", providerID: "provider").displayName, "Original")
+    }
+
+    func testProviderArtworkProcessorRejectsOversizedInputBeforeDecode() {
+        let oversized = Data(count: ProviderArtworkProcessor.maximumInputBytes + 1)
+
+        XCTAssertThrowsError(try ProviderArtworkProcessor.normalizedPNG(from: oversized)) { error in
+            guard case ProviderArtworkImportError.imageTooLarge = error else {
+                return XCTFail("Expected imageTooLarge, got \(error)")
+            }
+        }
+    }
+
+    func testProviderArtworkProcessorRejectsOversizedFileBeforeDecode() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderArtworkOversized-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data(count: ProviderArtworkProcessor.maximumInputBytes + 1).write(to: file)
+
+        XCTAssertThrowsError(try ProviderArtworkProcessor.normalizedPNG(fromFileAt: file)) { error in
+            guard case ProviderArtworkImportError.imageTooLarge = error else {
+                return XCTFail("Expected imageTooLarge, got \(error)")
+            }
+        }
+    }
+
+    func testProviderArtworkProcessorDownsamplesToBoundedPNG() throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1_200, height: 600))
+        let image = renderer.image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1_200, height: 600))
+        }
+        let input = try XCTUnwrap(image.jpegData(compressionQuality: 0.8))
+
+        let output = try ProviderArtworkProcessor.normalizedPNG(from: input)
+        let normalized = try XCTUnwrap(UIImage(data: output))
+
+        XCTAssertLessThanOrEqual(max(normalized.size.width, normalized.size.height), 512)
+    }
+
+    func testProviderAppearanceApplyCanRestoreNameAndArtworkTogether() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceRestoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-restore",
+            artworkDirectory: directory
+        )
+        store.setDisplayName("Custom", serverID: "server", providerID: "provider")
+
+        try store.apply(
+            displayName: nil,
+            artworkData: nil,
+            restoresDefaultArtwork: true,
+            serverID: "server",
+            providerID: "provider"
+        )
+
+        XCTAssertFalse(store.appearance(serverID: "server", providerID: "provider").hasOverride)
+    }
+
+    func testProviderAppearanceRejectsPersistedArtworkPathTraversal() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceTraversalTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("ProviderArtwork", isDirectory: true)
+        let outsideFile = root.appendingPathComponent("outside.png")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: outsideFile)
+        let payload: [String: Any] = [
+            "servers": ["server": ["provider": [
+                "artworkFileName": "../outside.png",
+                "usesFallback": false
+            ]]]
+        ]
+        defaults.set(try JSONSerialization.data(withJSONObject: payload), forKey: "provider-appearance-traversal")
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-traversal",
+            artworkDirectory: directory
+        )
+
+        XCTAssertNil(store.artworkImage(serverID: "server", providerID: "provider"))
+        store.reset(serverID: "server", providerID: "provider")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outsideFile.path))
+    }
+
+    func testProviderAppearanceOnlyRemovesGeneratedArtworkBasenames() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceFilenameTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("ProviderArtwork", isDirectory: true)
+        let nestedDirectory = directory.appendingPathComponent("nested", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)
+
+        let uuid = UUID().uuidString
+        let files: [(provider: String, persistedName: String, url: URL)] = [
+            ("absolute", root.appendingPathComponent("absolute.png").path, root.appendingPathComponent("absolute.png")),
+            ("nested", "nested/\(uuid).png", nestedDirectory.appendingPathComponent("\(uuid).png")),
+            ("nonuuid", "not-a-uuid.png", directory.appendingPathComponent("not-a-uuid.png")),
+            ("extension", "\(uuid).PNG", directory.appendingPathComponent("\(uuid).PNG"))
+        ]
+        for file in files {
+            try Data("keep".utf8).write(to: file.url)
+        }
+        let providers = Dictionary(uniqueKeysWithValues: files.map { file in
+            (file.provider, ["artworkFileName": file.persistedName, "usesFallback": false] as [String: Any])
+        })
+        let payload: [String: Any] = ["servers": ["server": providers]]
+        defaults.set(try JSONSerialization.data(withJSONObject: payload), forKey: "provider-appearance-filenames")
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-filenames",
+            artworkDirectory: directory
+        )
+
+        for file in files {
+            XCTAssertNil(store.artworkImage(serverID: "server", providerID: file.provider))
+            store.reset(serverID: "server", providerID: file.provider)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path), file.persistedName)
+        }
     }
 
     func testCustomModelFavoriteAndRecentOptionsRemainVisibleWithoutCatalogEntry() {

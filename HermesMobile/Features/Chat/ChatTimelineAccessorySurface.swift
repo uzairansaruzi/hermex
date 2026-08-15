@@ -2,6 +2,8 @@ import SwiftUI
 
 private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     let fallbackMaterial: Material
     let cornerRadius: CGFloat
@@ -9,7 +11,7 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.28 : 0.48),
+                palette.surface.opacity(colorScheme == .dark ? 0.52 : 0.72),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .adaptiveGlass(
@@ -19,37 +21,45 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
-                    .allowsHitTesting(false)
-            }
+    }
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
     }
 }
 
 private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     private var backgroundColor: Color {
         if reduceTransparency {
-            return Color(.secondarySystemGroupedBackground)
+            return palette.surfaceInset
         }
 
-        return Color(.secondarySystemFill).opacity(0.72)
+        return palette.surfaceInset.opacity(0.72)
+    }
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
     }
 
     func body(content: Content) -> some View {
         content
             .background(
                 backgroundColor,
-                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.22), lineWidth: 0.5)
-                    .allowsHitTesting(false)
-            }
     }
 }
 

@@ -235,14 +235,14 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertFalse(rendered.contains(#"\arg"#))
     }
 
-    func testMarkdownHighlightPolicyUsesSplashForNormalSwiftCode() {
+    func testMarkdownHighlightPolicyUsesHighlightrForNormalSwiftCode() {
         let decision = MarkdownHighlightPolicy.decision(
             for: "let value = 1",
             language: "swift",
             isStreaming: false
         )
 
-        XCTAssertEqual(decision, .highlight(language: "swift", engine: .splashSwift))
+        XCTAssertEqual(decision, .highlight(language: "swift", engine: .highlightr))
     }
 
     func testMarkdownHighlightPolicyNormalizesCommonAliases() {
@@ -263,7 +263,7 @@ final class MarkdownMathRendererTests: XCTestCase {
 
     func testMarkdownHighlightPolicyLanguageLogCategoryUsesFixedBuckets() {
         XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: nil), "missing")
-        XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "swift"), "splashSwift")
+        XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "swift"), "highlightr")
         XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "json"), "highlightr")
         XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "log"), "highRisk")
     }
@@ -373,7 +373,7 @@ final class MarkdownMathRendererTests: XCTestCase {
     }
 
     @MainActor
-    func testMarkdownCodeHighlighterRendersSwiftCodeWithSplash() {
+    func testMarkdownCodeHighlighterRendersSwiftCodeWithHighlightr() {
         let result = MarkdownCodeHighlighter.highlightedCode(
             for: MarkdownCodeHighlightRequest(
                 code: "let value = 1",
@@ -384,7 +384,7 @@ final class MarkdownMathRendererTests: XCTestCase {
         )
 
         guard case .highlighted(let highlightedCode) = result else {
-            return XCTFail("Expected Splash to highlight Swift code.")
+            return XCTFail("Expected Highlightr to highlight Swift code.")
         }
 
         XCTAssertEqual(highlightedCode.string, "let value = 1")
@@ -402,7 +402,7 @@ final class MarkdownMathRendererTests: XCTestCase {
         )
 
         guard case .highlighted(let highlightedCode) = result else {
-            return XCTFail("Expected Splash to highlight Swift code.")
+            return XCTFail("Expected Highlightr to highlight Swift code.")
         }
 
         let colors = foregroundColorSignatures(in: highlightedCode, userInterfaceStyle: .light)

@@ -7,6 +7,43 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientConfigurationTests: APIClientTestCase {
+    func testSessionVisitModelsUsesNonBlockingFreshnessHint() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/models")
+            XCTAssertEqual(request.httpMethod, "GET")
+
+            let components = URLComponents(
+                url: try XCTUnwrap(request.url),
+                resolvingAgainstBaseURL: false
+            )
+            let query = Dictionary(
+                uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) }
+            )
+            XCTAssertEqual(query["freshness"], "session_visit")
+
+            return apiTestJSONResponse(
+                #"{"default_model":"gpt-5.6","groups":[]}"#,
+                for: request
+            )
+        }
+
+        let response = try await client.models(freshness: .sessionVisit)
+        XCTAssertEqual(response.defaultModel, "gpt-5.6")
+    }
+
+    func testExplicitModelsRefreshKeepsBareEndpoint() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/models")
+            XCTAssertNil(request.url?.query)
+            return apiTestJSONResponse(
+                #"{"default_model":"gpt-5.6","groups":[]}"#,
+                for: request
+            )
+        }
+
+        _ = try await client.models()
+    }
+
     func testReasoningDisplayPrefersStructuredThinkingAndStripsVisibleAnswerEcho() {
         let finalAnswer = """
         **Terminal:** `/Users/hermes` directory listed.
@@ -88,15 +125,12 @@ final class APIClientConfigurationTests: APIClientTestCase {
         let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
         let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
 
-        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), [
-            "assistant-tools",
-            "assistant-post-tools",
-            "assistant-final"
-        ])
-        XCTAssertEqual(reasoningGroups[0].text, "The user wants me to use terminal and search_files. I should run a quick command.")
-        XCTAssertEqual(reasoningGroups[1].text, "Terminal works. Now run search_files to show that works too.")
-        XCTAssertTrue(reasoningGroups[2].text.contains("Both tools worked. I should give a concise summary."))
-        XCTAssertFalse(reasoningGroups[2].text.contains("**Terminal:**"))
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-final"])
+        XCTAssertTrue(reasoningGroups[0].text.contains("The user wants me to use terminal and search_files."))
+        XCTAssertTrue(reasoningGroups[0].text.contains("Terminal works. Now run search_files"))
+        XCTAssertTrue(reasoningGroups[0].text.contains("Both tools worked. I should give a concise summary."))
+        XCTAssertFalse(reasoningGroups[0].text.contains("**Terminal:**"))
+        XCTAssertEqual(transcriptMessages.map(\.message.id), ["user-tools", "assistant-final"])
         XCTAssertFalse(transcriptMessages.contains { $0.message.id == "tool-results" })
     }
 

@@ -30,15 +30,15 @@ final class LiveActivityTests: XCTestCase {
 
         let command = AgentRunActivityStateReducer.toolStarted(name: "shell_command", state: state)
         XCTAssertEqual(command.status, .runningCommand)
-        XCTAssertEqual(command.currentActivity, "Running command")
+        XCTAssertEqual(command.currentActivity, "Working · shell_command")
 
         let search = AgentRunActivityStateReducer.toolStarted(name: "ripgrep_search", state: state)
         XCTAssertEqual(search.status, .searchingFiles)
-        XCTAssertEqual(search.currentActivity, "Searching files")
+        XCTAssertEqual(search.currentActivity, "Reading · ripgrep_search")
 
         let generic = AgentRunActivityStateReducer.toolStarted(name: "apply_patch", state: state)
         XCTAssertEqual(generic.status, .usingTool)
-        XCTAssertEqual(generic.currentActivity, "Using apply patch")
+        XCTAssertEqual(generic.currentActivity, "Writing · apply_patch")
     }
 
     func testElapsedTimeFormatterUsesStableClockLabels() {

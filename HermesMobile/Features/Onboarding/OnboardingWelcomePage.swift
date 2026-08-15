@@ -2,6 +2,9 @@ import SwiftUI
 
 struct OnboardingWelcomePage: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
+    private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
 
     private var iconSize: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 108 : 124
@@ -21,8 +24,8 @@ struct OnboardingWelcomePage: View {
                 ZStack {
                     RadialGradient(
                         colors: [
-                            Color(red: 1.0, green: 0.74, blue: 0.10).opacity(0.55),
-                            Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.22),
+                            accent.opacity(0.55),
+                            accent.opacity(0.22),
                             .clear
                         ],
                         center: .center,
@@ -34,7 +37,7 @@ struct OnboardingWelcomePage: View {
 
                     RadialGradient(
                         colors: [
-                            Color(red: 1.0, green: 0.78, blue: 0.18).opacity(0.35),
+                            accent.opacity(0.35),
                             .clear
                         ],
                         center: .center,
@@ -59,7 +62,7 @@ struct OnboardingWelcomePage: View {
                                     lineWidth: 1
                                 )
                         )
-                        .shadow(color: Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.35), radius: 24, y: 10)
+                        .shadow(color: accent.opacity(0.35), radius: 24, y: 10)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Hermex")

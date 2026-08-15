@@ -59,7 +59,7 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidResetRecoveryState()
 
     @discardableResult
-    func streamCoordinatorAppendToken(_ text: String) -> Bool
+    func streamCoordinatorAppendToken(_ text: String, phase: AssistantStreamPhase) -> Bool
     @discardableResult
     func streamCoordinatorAppendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool
     @discardableResult
@@ -70,6 +70,8 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorCompleteToolCall(_ payload: ToolStreamEvent) -> Bool
     @discardableResult
     func streamCoordinatorUpdateTitle(_ payload: TitleStreamEvent) -> Bool
+    @discardableResult
+    func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool
     @discardableResult
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool
     func streamCoordinatorApplyApprovalUpdate(_ update: ApprovalPendingResponse)
@@ -437,11 +439,11 @@ final class ChatStreamCoordinator {
         lastTransportActivityDate = Date()
 
         switch event {
-        case .token(let text):
+        case .token(let text, let phase):
             if showsLiveActivityResponseExcerpts {
                 liveActivityManager.update(.token(text))
             }
-            if delegate?.streamCoordinatorAppendToken(text) == true {
+            if delegate?.streamCoordinatorAppendToken(text, phase: phase) == true {
                 markProgress()
             }
         case .interimAssistant(let payload):
@@ -470,6 +472,16 @@ final class ChatStreamCoordinator {
             }
         case .title(let payload):
             if delegate?.streamCoordinatorUpdateTitle(payload) == true {
+                markProgress()
+            }
+        case .todoState(let payload):
+            // The event carries its own session id precisely so a late snapshot
+            // from a session the user already left can be dropped rather than
+            // repainting the plan for the session now on screen.
+            guard payload.sessionID == nil || payload.sessionID == delegate?.streamCoordinatorSessionID else {
+                break
+            }
+            if delegate?.streamCoordinatorApplyTodoState(payload) == true {
                 markProgress()
             }
         case .metering(let payload):

@@ -114,7 +114,7 @@ struct GitDiffView: View {
             .foregroundStyle(.blue)
         }
         .padding(12)
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
     }
 
     private func hunkHeader(_ hunk: DiffHunk) -> some View {
@@ -136,7 +136,7 @@ struct GitDiffView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.tertiarySystemBackground))
+            .appSurfaceBackground(.inset)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(hunk.displayLabel))
@@ -167,14 +167,17 @@ struct GitDiffView: View {
 private struct DiffLineRow: View {
     let line: DiffLine
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
+        let palette = ChatPalette.appChrome(colorScheme: colorScheme)
         HStack(spacing: 0) {
             Text(line.gutterLabel)
                 .font(AppFont.mono(style: .caption))
                 .foregroundStyle(.secondary)
                 .frame(width: 48, alignment: .trailing)
                 .padding(.trailing, 8)
-                .background(line.kind.gutterBackground)
+                .background(line.kind.gutterBackground(palette: palette))
             Text(line.text.isEmpty ? " " : line.text)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(line.kind == .context ? .secondary : .primary)
@@ -182,7 +185,7 @@ private struct DiffLineRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minHeight: 19)
-        .background(line.kind.rowBackground)
+        .background(line.kind.rowBackground(palette: palette))
     }
 }
 
@@ -319,19 +322,19 @@ struct DiffLine: Identifiable, Equatable {
             }
         }
 
-        var rowBackground: Color {
+        func rowBackground(palette: ChatPalette) -> Color {
             switch self {
             case .addition: return Color(red: 0.20, green: 0.78, blue: 0.35).opacity(0.16)
             case .deletion: return Color(red: 0.95, green: 0.25, blue: 0.25).opacity(0.16)
-            case .context: return Color(.systemBackground)
+            case .context: return palette.codeSlab
             }
         }
 
-        var gutterBackground: Color {
+        func gutterBackground(palette: ChatPalette) -> Color {
             switch self {
             case .addition: return Color(red: 0.20, green: 0.68, blue: 0.32).opacity(0.24)
             case .deletion: return Color(red: 0.86, green: 0.20, blue: 0.20).opacity(0.24)
-            case .context: return Color(.secondarySystemBackground)
+            case .context: return palette.surface
             }
         }
     }

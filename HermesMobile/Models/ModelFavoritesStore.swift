@@ -5,6 +5,82 @@ struct ModelFavoriteKey: Codable, Equatable, Hashable {
     let providerID: String?
 }
 
+// Provider identity is server-scoped because two Hermex servers can expose the
+// same provider ID for unrelated backends.
+struct ProviderFavoritesStore: @unchecked Sendable {
+    static let shared = ProviderFavoritesStore()
+
+    private struct Snapshot: Codable {
+        var servers: [String: [String]] = [:]
+    }
+
+    private let defaults: UserDefaults
+    private let storageKey: String
+
+    init(
+        defaults: UserDefaults = .standard,
+        storageKey: String = "hermes.mobile.favoriteProviders"
+    ) {
+        self.defaults = defaults
+        self.storageKey = storageKey
+    }
+
+    func favoriteProviderIDs(serverID: String) -> [String] {
+        Self.deduplicated(snapshot.servers[serverID] ?? [])
+    }
+
+    func isFavorite(providerID: String, serverID: String) -> Bool {
+        favoriteProviderIDs(serverID: serverID).contains(providerID)
+    }
+
+    @discardableResult
+    func toggleFavorite(providerID: String, serverID: String) -> [String] {
+        guard let normalizedID = Self.normalized(providerID) else {
+            return favoriteProviderIDs(serverID: serverID)
+        }
+
+        var value = snapshot
+        var providerIDs = Self.deduplicated(value.servers[serverID] ?? [])
+        if let index = providerIDs.firstIndex(of: normalizedID) {
+            providerIDs.remove(at: index)
+        } else {
+            providerIDs.append(normalizedID)
+        }
+        value.servers[serverID] = providerIDs
+        save(value)
+        return providerIDs
+    }
+
+    func save(_ providerIDs: [String], serverID: String) {
+        var value = snapshot
+        value.servers[serverID] = Self.deduplicated(providerIDs)
+        save(value)
+    }
+
+    private var snapshot: Snapshot {
+        guard let data = defaults.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode(Snapshot.self, from: data) else {
+            return Snapshot()
+        }
+        return decoded
+    }
+
+    private func save(_ snapshot: Snapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+
+    private static func normalized(_ providerID: String) -> String? {
+        let trimmed = providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func deduplicated(_ providerIDs: [String]) -> [String] {
+        var seen = Set<String>()
+        return providerIDs.compactMap(normalized).filter { seen.insert($0).inserted }
+    }
+}
+
 // UserDefaults supports concurrent preference access; these stores are immutable wrappers around it.
 struct ModelFavoritesStore: @unchecked Sendable {
     static let shared = ModelFavoritesStore()
@@ -141,6 +217,19 @@ struct ModelRecentsStore: @unchecked Sendable {
 
         return limitedDeduplicated(recentKeys, limit: recentKeys.count)
             .filter { !favoriteKeySet.contains($0) }
+            .map { key in optionsByKey[key] ?? key.fallbackOption }
+    }
+
+    /// Full-picker recents intentionally include starred models. The compact
+    /// composer menu keeps using `visibleRecentOptions` above so its Favorites
+    /// and Recent sections remain de-duplicated.
+    static func visibleAllRecentOptions(
+        in groups: [ModelCatalogGroup],
+        recentKeys: [ModelFavoriteKey]
+    ) -> [ModelCatalogOption] {
+        let optionsByKey = groups.catalogOptionsByFavoriteKey()
+
+        return limitedDeduplicated(recentKeys, limit: recentKeys.count)
             .map { key in optionsByKey[key] ?? key.fallbackOption }
     }
 

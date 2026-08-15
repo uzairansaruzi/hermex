@@ -40,6 +40,7 @@ private struct ComposerAttachmentThumbnailView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -53,9 +54,8 @@ private struct ComposerAttachmentThumbnailView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
                     .frame(width: 24, height: 24)
-                    .background(Circle().fill(Color(.systemBackground)))
+                    .background(Circle().fill(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground))
                     .foregroundStyle(Color(.label))
-                    .overlay(Circle().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5))
             }
             .buttonStyle(.chatTactile(
                 .icon,
@@ -92,7 +92,7 @@ private struct ComposerAttachmentThumbnailView: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color(.systemFill))
                     .overlay(
                         Image(systemName: "photo")
@@ -103,7 +103,6 @@ private struct ComposerAttachmentThumbnailView: View {
         }
         .frame(width: imagePreviewSize, height: imagePreviewSize)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(previewBorder(cornerRadius: 14))
         .accessibilityLabel("Image attachment \(attachment.name)")
     }
 
@@ -145,16 +144,10 @@ private struct ComposerAttachmentThumbnailView: View {
         .frame(minHeight: usesAccessibilityLayout ? 112 : 92)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         )
-        .overlay(previewBorder(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(attachment.name), \(fileDetailText)")
-    }
-
-    private func previewBorder(cornerRadius: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
     }
 
     private var fileExtensionLabel: String {

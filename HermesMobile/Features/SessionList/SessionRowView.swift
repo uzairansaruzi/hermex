@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SessionRowView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .caption2) private var pinnedIconSize: CGFloat = 11
     @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 8
 
@@ -159,7 +160,7 @@ struct SessionRowView: View {
     private func relativeDateText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ChatPalette.appChrome(colorScheme: colorScheme).textTertiary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -201,7 +202,7 @@ struct SessionRowView: View {
     private func metadataText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ChatPalette.appChrome(colorScheme: colorScheme).textTertiary)
             .lineLimit(metadataLineLimit)
             .truncationMode(.middle)
             .fixedSize(horizontal: false, vertical: true)

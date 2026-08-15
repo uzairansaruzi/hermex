@@ -19,6 +19,8 @@ final class CachedMessage {
     var reasoning: String?
     var attachmentsData: Data?
     var turnTps: Double?
+    var phase: String?
+    var codexMessageItemsData: Data?
     var cachedAt: Date
     var expiresAt: Date
 
@@ -74,6 +76,12 @@ final class CachedMessage {
         }
         reasoning = message.reasoning
         turnTps = message.turnTps
+        phase = message.phase
+        if let codexMessageItems = message.codexMessageItems, !codexMessageItems.isEmpty {
+            codexMessageItemsData = try? JSONEncoder().encode(codexMessageItems)
+        } else {
+            codexMessageItemsData = nil
+        }
         if let attachments = message.attachments, !attachments.isEmpty {
             attachmentsData = try? JSONEncoder().encode(attachments)
         } else {

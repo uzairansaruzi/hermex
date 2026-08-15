@@ -348,6 +348,12 @@ private extension ChatMessage {
         } else {
             contentParts = nil
         }
+        let codexMessageItems: [CodexMessageItem]?
+        if let data = cachedMessage.codexMessageItemsData {
+            codexMessageItems = try? JSONDecoder().decode([CodexMessageItem].self, from: data)
+        } else {
+            codexMessageItems = nil
+        }
         self.init(
             role: cachedMessage.role,
             content: cachedMessage.content,
@@ -360,7 +366,9 @@ private extension ChatMessage {
             contentParts: contentParts,
             reasoning: cachedMessage.reasoning,
             attachments: attachments,
-            turnTps: cachedMessage.turnTps
+            turnTps: cachedMessage.turnTps,
+            phase: cachedMessage.phase,
+            codexMessageItems: codexMessageItems
         )
     }
 }

@@ -204,6 +204,126 @@ struct ChatScrollObserver: UIViewRepresentable {
     }
 }
 
+/// Holds the transcript's exact vertical content offset during a user-triggered
+/// historical disclosure. SwiftUI's semantic anchors can align a target to the
+/// top or bottom, but neither means "stay exactly where I tapped". This narrow
+/// bridge snapshots the enclosing `UIScrollView` before the card grows and
+/// cancels immediately if the reader begins interacting.
+@MainActor
+final class ChatScrollPositionPreserver {
+    private weak var scrollView: UIScrollView?
+    private var displayLink: CADisplayLink?
+    private var pinnedVerticalOffset: CGFloat?
+    private var deadline: CFTimeInterval = 0
+
+    var isAttached: Bool {
+        scrollView != nil
+    }
+
+    func attach(to scrollView: UIScrollView) {
+        self.scrollView = scrollView
+    }
+
+    func preserveCurrentVerticalOffset(for duration: TimeInterval) {
+        guard let scrollView else { return }
+
+        cancelPreservation()
+        pinnedVerticalOffset = scrollView.contentOffset.y
+        deadline = CACurrentMediaTime() + duration
+
+        let displayLink = CADisplayLink(target: self, selector: #selector(enforcePreservedOffset))
+        displayLink.add(to: .main, forMode: .common)
+        self.displayLink = displayLink
+    }
+
+    func cancelPreservation() {
+        displayLink?.invalidate()
+        displayLink = nil
+        pinnedVerticalOffset = nil
+    }
+
+    @objc
+    func enforcePreservedOffset() {
+        guard let scrollView, let pinnedVerticalOffset else {
+            cancelPreservation()
+            return
+        }
+
+        guard CACurrentMediaTime() < deadline,
+              !scrollView.isDragging,
+              !scrollView.isTracking,
+              !scrollView.isDecelerating else {
+            cancelPreservation()
+            return
+        }
+
+        guard abs(scrollView.contentOffset.y - pinnedVerticalOffset) > 0.5 else { return }
+        var offset = scrollView.contentOffset
+        offset.y = pinnedVerticalOffset
+        scrollView.setContentOffset(offset, animated: false)
+    }
+}
+
+struct ChatScrollPositionPreserverView: UIViewRepresentable {
+    let controller: ChatScrollPositionPreserver
+
+    func makeUIView(context: Context) -> AttachmentView {
+        AttachmentView(controller: controller)
+    }
+
+    func updateUIView(_ uiView: AttachmentView, context: Context) {
+        uiView.controller = controller
+        uiView.attachIfNeeded()
+    }
+
+    static func dismantleUIView(_ uiView: AttachmentView, coordinator: ()) {
+        uiView.controller.cancelPreservation()
+    }
+
+    @MainActor
+    final class AttachmentView: UIView {
+        var controller: ChatScrollPositionPreserver
+
+        init(controller: ChatScrollPositionPreserver) {
+            self.controller = controller
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+            backgroundColor = .clear
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            attachIfNeeded()
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            attachIfNeeded()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            attachIfNeeded()
+        }
+
+        func attachIfNeeded() {
+            var current = superview
+            while let candidate = current {
+                if let scrollView = candidate as? UIScrollView {
+                    controller.attach(to: scrollView)
+                    return
+                }
+                current = candidate.superview
+            }
+        }
+    }
+}
+
 /// Pins a subtree to left-to-right regardless of the surrounding chat layout
 /// direction, so code, math, data tables, tool-call bodies, file paths, and
 /// images never render mirrored inside an RTL message (issue #259). A fixed
@@ -535,6 +655,8 @@ struct ChatTranscriptLoadingSkeletonView: View {
 private struct ChatTranscriptLoadingSkeletonRow: View {
     let configuration: ChatTranscriptSkeletonRowConfiguration
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         switch configuration.role {
         case .assistant:
@@ -567,9 +689,9 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemFill))
+            .background(ChatPalette.appChrome(colorScheme: colorScheme).userBubble)
             .foregroundStyle(.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .redacted(reason: .placeholder)
         .accessibilityHidden(true)

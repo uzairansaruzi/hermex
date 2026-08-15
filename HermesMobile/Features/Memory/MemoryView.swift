@@ -103,6 +103,8 @@ struct MemoryView: View {
             .refreshable {
                 await loadMemory()
             }
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
         }
     }
 
@@ -236,6 +238,8 @@ private struct MemoryEditSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
             .navigationTitle("Edit \(section.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

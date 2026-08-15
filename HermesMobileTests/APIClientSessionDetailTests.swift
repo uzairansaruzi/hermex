@@ -1443,17 +1443,17 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         )
         let transcriptMessages = ChatViewModel.transcriptMessages(from: messages, messageOffset: 4)
 
-        XCTAssertEqual(transcriptMessages.map(\.anchorID), ["raw:4", "raw:5", "raw:7", "raw:9"])
+        XCTAssertEqual(transcriptMessages.map(\.anchorID), ["raw:4", "raw:9"])
         XCTAssertEqual(groups.count, 1)
         XCTAssertEqual(groups.first?.anchorMessageID, "raw:5")
         XCTAssertEqual(groups.first?.activityTitle, "Activity: 2 tools")
         XCTAssertEqual(groups.first?.toolCalls.map(\.id), ["functions.terminal:1", "functions.search_files:2"])
         XCTAssertEqual(groups.first?.toolCalls.map(\.name), ["terminal", "search_files"])
-        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["raw:5", "raw:7", "raw:9"])
-        XCTAssertEqual(reasoningGroups[0].text, "The user wants me to use terminal and search_files. I should run a quick command to show both work.")
-        XCTAssertEqual(reasoningGroups[1].text, "Terminal works. Now run search_files to show that works too.")
-        XCTAssertTrue(reasoningGroups[2].text.contains("Both tools worked. I should give a concise summary."))
-        XCTAssertFalse(reasoningGroups[2].text.contains(finalAnswer))
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["raw:9"])
+        XCTAssertTrue(reasoningGroups[0].text.contains("The user wants me to use terminal and search_files."))
+        XCTAssertTrue(reasoningGroups[0].text.contains("Terminal works. Now run search_files"))
+        XCTAssertTrue(reasoningGroups[0].text.contains("Both tools worked. I should give a concise summary."))
+        XCTAssertFalse(reasoningGroups[0].text.contains(finalAnswer))
     }
 
     func testPartialPersistedToolCallsMergeMissingMessageToolCalls() {

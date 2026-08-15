@@ -160,14 +160,63 @@ struct GitAheadBehindBadges: View {
     }
 }
 
+/// Scheme-tuned hues for git status chips and diff counts.
+///
+/// The system semantic colors are built for neutral system grays; on the warm
+/// ivory surfaces (`#EFEBE2` card over `#F7F4EE` canvas) the light ones wash out
+/// — `.yellow` (#FFCC00) reads at roughly 1.4:1 against the card, i.e. barely
+/// legible. Each state therefore gets a deep, slightly desaturated hue in light
+/// mode and a bright one in dark mode, so every chip clears ~4.5:1 either way.
+enum GitStatusPalette {
+    static func tint(for kind: GitFile.ChangeKind, colorScheme: ColorScheme) -> Color {
+        let isDark = colorScheme == .dark
+        switch kind {
+        case .added, .untracked:
+            return color(isDark ? "#74CE92" : "#186A32")
+        case .deleted:
+            return color(isDark ? "#F5978E" : "#B3261E")
+        case .renamed:
+            return color(isDark ? "#96BAF8" : "#25529F")
+        case .conflict:
+            return color(isDark ? "#F3AC6C" : "#8A430E")
+        case .modified:
+            return color(isDark ? "#E8BF6A" : "#7A5200")
+        case .ignored, .unknown:
+            return .secondary
+        }
+    }
+
+    static func additions(_ colorScheme: ColorScheme) -> Color {
+        tint(for: .added, colorScheme: colorScheme)
+    }
+
+    static func deletions(_ colorScheme: ColorScheme) -> Color {
+        tint(for: .deleted, colorScheme: colorScheme)
+    }
+
+    /// Capsule fill behind a chip, kept light enough that the label on top still
+    /// clears 4.5:1 (a heavier wash pulls the fill toward the label's own hue).
+    static func chipFillOpacity(_ colorScheme: ColorScheme) -> Double {
+        colorScheme == .dark ? 0.16 : 0.12
+    }
+
+    private static func color(_ hex: String) -> Color {
+        Color(hexRGB: hex) ?? .secondary
+    }
+}
+
 struct DiffCountsLabel: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let additions: Int
     let deletions: Int
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(verbatim: "+\(additions)").foregroundStyle(.green)
-            Text(verbatim: "−\(deletions)").foregroundStyle(.red)
+            Text(verbatim: "+\(additions)")
+                .foregroundStyle(GitStatusPalette.additions(colorScheme))
+            Text(verbatim: "−\(deletions)")
+                .foregroundStyle(GitStatusPalette.deletions(colorScheme))
         }
         .font(AppFont.mono(style: .caption, weight: .semibold))
         .monospacedDigit()
@@ -201,7 +250,7 @@ struct GitFileCard: View {
             GitStatusChip(kind: file.changeKind)
         }
         .padding(12)
-        .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
+        .appSurfaceBackground(.surface, in: .rect(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
@@ -212,6 +261,8 @@ struct GitFileCard: View {
 }
 
 struct GitStatusChip: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let kind: GitFile.ChangeKind
 
     var body: some View {
@@ -220,7 +271,10 @@ struct GitStatusChip: View {
                 .font(AppFont.caption2(weight: .semibold))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(tint.opacity(0.18), in: Capsule())
+                .background(
+                    tint.opacity(GitStatusPalette.chipFillOpacity(colorScheme)),
+                    in: Capsule()
+                )
                 .foregroundStyle(tint)
         }
     }
@@ -238,13 +292,6 @@ struct GitStatusChip: View {
     }
 
     private var tint: Color {
-        switch kind {
-        case .added, .untracked: return .green
-        case .deleted: return .red
-        case .renamed: return .blue
-        case .conflict: return .orange
-        case .modified: return .yellow
-        case .ignored, .unknown: return .secondary
-        }
+        GitStatusPalette.tint(for: kind, colorScheme: colorScheme)
     }
 }

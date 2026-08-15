@@ -18,7 +18,7 @@ struct ProvidersView: View {
     var body: some View {
         content
             .navigationTitle("Providers")
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
             .task {
                 await viewModel.load()
             }
@@ -141,6 +141,8 @@ private struct ProviderRow: View {
     let isExpanded: Bool
     let toggleExpanded: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -167,7 +169,7 @@ private struct ProviderRow: View {
                         .font(.caption2.weight(.medium))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
+                        .appSurfaceBackground(.inset, in: Capsule())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -198,7 +200,7 @@ private struct ProviderRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         )
     }
 

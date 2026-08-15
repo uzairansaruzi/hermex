@@ -5,6 +5,7 @@ struct ChatActiveRunStatusView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 8) {
@@ -18,10 +19,17 @@ struct ChatActiveRunStatusView: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 7)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .regularMaterial,
-            cornerRadius: 16
+        .background(
+            ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(colorScheme == .dark ? 0.28 : 0.48),
+            in: Capsule(style: .continuous)
         )
+        .adaptiveGlass(
+            .regular,
+            isInteractive: false,
+            fallbackMaterial: .regularMaterial,
+            in: Capsule(style: .continuous)
+        )
+        .clipShape(Capsule(style: .continuous))
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.accessibilityLabel)
@@ -53,5 +61,5 @@ struct ChatActiveRunStatusView: View {
         )
     }
     .padding()
-    .background(Color(.systemBackground))
+    .appSurfaceBackground(.canvas)
 }

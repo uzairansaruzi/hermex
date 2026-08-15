@@ -353,20 +353,59 @@ enum AgentRunActivityStateReducer {
         return statusState(.thinking, activity: activity, state: state, now: now)
     }
 
+    /// Capsule verb vocabulary for tool activity lines, mirroring
+    /// `ThinkingOrbState.forTool` in Features/Chat/ThinkingOrbView.swift (the
+    /// source of truth for the in-app activity capsule). Duplicated here rather
+    /// than referenced because this file also compiles into the widget target,
+    /// which does not include ThinkingOrbView.swift.
+    static func capsuleVerb(forToolNamed name: String?) -> String {
+        let name = name?.lowercased() ?? ""
+
+        let writing = ["write", "edit", "create", "apply_patch", "patch", "insert", "replace"]
+        if writing.contains(where: { name.contains($0) }) {
+            return String(localized: "Writing")
+        }
+
+        let reading = ["search", "read", "grep", "list", "web", "find", "glob", "fetch", "view"]
+        if reading.contains(where: { name.contains($0) }) {
+            return String(localized: "Reading")
+        }
+
+        let connecting = ["network", "server", "session", "connect", "http", "request", "api"]
+        if connecting.contains(where: { name.contains($0) }) {
+            return String(localized: "Connecting")
+        }
+
+        return String(localized: "Working")
+    }
+
+    /// "Verb · toolname" where a tool name exists (e.g. "Reading · read_file"),
+    /// plain verb otherwise. The ContentState initializer's sanitizer enforces
+    /// the single-line/length limits, so the raw name is safe to pass through.
+    private static func capsuleActivityLine(forToolNamed name: String?) -> String {
+        let verb = capsuleVerb(forToolNamed: name)
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmedName.isEmpty else { return verb }
+        return "\(verb) · \(trimmedName)"
+    }
+
     static func toolStarted(
         name: String?,
         state: AgentRunActivityAttributes.ContentState,
         now: Date = Date()
     ) -> AgentRunActivityAttributes.ContentState {
+        // The status (widget glyph/title) keeps the established kind mapping;
+        // only the user-visible activity line adopts the capsule verb wording.
+        let activity = capsuleActivityLine(forToolNamed: name)
         switch AgentRunActivitySanitizer.toolKind(name: name) {
         case .command:
-            return statusState(.runningCommand, activity: String(localized: "Running command"), state: state, now: now)
+            return statusState(.runningCommand, activity: activity, state: state, now: now)
         case .search:
-            return statusState(.searchingFiles, activity: String(localized: "Searching files"), state: state, now: now)
+            return statusState(.searchingFiles, activity: activity, state: state, now: now)
         case .files:
-            return statusState(.readingFiles, activity: String(localized: "Reading files"), state: state, now: now)
-        case .generic(let label):
-            return statusState(.usingTool, activity: String(localized: "Using \(label)"), state: state, now: now)
+            return statusState(.readingFiles, activity: activity, state: state, now: now)
+        case .generic:
+            return statusState(.usingTool, activity: activity, state: state, now: now)
         }
     }
 

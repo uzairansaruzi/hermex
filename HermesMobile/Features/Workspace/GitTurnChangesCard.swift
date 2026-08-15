@@ -16,7 +16,7 @@ struct GitTurnChangesCard: View {
     /// Open a single file's diff (per-row tap). Only called for rows with a status match.
     let onOpenFile: (GitFile) -> Void
 
-    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 14, style: .continuous) }
     private var dividerColor: Color { Color(.separator).opacity(colorScheme == .dark ? 0.8 : 1.0) }
     private var showsTotals: Bool { summary.totalAdditions > 0 || summary.totalDeletions > 0 }
 
@@ -35,7 +35,7 @@ struct GitTurnChangesCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: shape)
+        .appSurfaceBackground(.surface, in: shape)
         .overlay { shape.stroke(dividerColor, lineWidth: 0.5) }
         .clipShape(shape)
         .padding(.top, 2)
