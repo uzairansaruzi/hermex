@@ -215,15 +215,17 @@ These are the endpoints we know we need. Verify each one against your running se
 | POST | `/api/upload` | Multipart upload: fields `session_id`, `file`; returns `{filename, path, mime, size, is_image}` for chat attachments |
 | POST | `/api/upload/extract` | Multipart archive upload/extract; use only for supported archives and show extracted destination |
 
-**SSE event types you must handle** (from `api/streaming.py`):
-- `token` — append text to current assistant message
-- `tool_call` — render a collapsible tool-call card
-- `tool_result` — attach to the last tool call
-- `reasoning` — collapsible "thinking" block
-- `stream_end` — finalize message, close connection
-- `error` — show inline error, close connection
-- `cancel` — user cancelled, close connection
-- Heartbeat comments (lines starting with `:`) — ignore
+**SSE event types the client handles** (verified against the bridge docs and current `api/streaming.py`):
+- `token` — append assistant prose. An optional `phase` is `provisional`, `commentary`, or `final_answer`; missing/unknown phase is provisional and must not be treated as proof that the final answer started.
+- `interim_assistant` — reconcile a complete progress segment; `already_streamed: true` means move/deduplicate prose already delivered through `token`.
+- `reasoning` — append to the collapsible Thinking block.
+- `tool` / `tool_complete` — start or complete a tool card, using the upstream stable tool identifier when present.
+- `todo_state`, `title`, and `metering` — update turn/session metadata without ending the stream.
+- `done` — reconcile the authoritative completed session and usage snapshot.
+- `stream_end` — close the transport after terminal reconciliation.
+- `error` / `apperror` — show an inline error and close the stream.
+- `cancel` — user cancelled; close the stream.
+- Heartbeat comments (lines starting with `:`) — transport activity only; do not treat as semantic progress.
 
 The server keeps connections alive for ~30s with `: heartbeat` comments. **Cloudflare Tunnel is fine with long-lived SSE** — the server already sets `X-Accel-Buffering: no` and Cloudflare respects that for `text/event-stream`. But Cloudflare's free-tier idle timeout caps streams at ~100 seconds without activity. Heartbeats every 30s keep it alive; if a single agent turn produces no tokens for >100s the connection may be cut. Handle reconnect via `/api/chat/stream/status`.
 

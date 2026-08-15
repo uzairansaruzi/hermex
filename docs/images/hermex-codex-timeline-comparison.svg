@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg"><stop stop-color="#05070b"/><stop offset="1" stop-color="#111722"/></linearGradient>
+    <linearGradient id="accent"><stop stop-color="#ff8a20"/><stop offset="1" stop-color="#ffbd45"/></linearGradient>
+    <style>
+      .title{font:700 42px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#f6f7f9}.sub{font:400 22px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#9aa5b5}.cap{font:700 18px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:2px}.label{font:650 23px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#f1f4f8}.body{font:400 19px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#bdc6d2}.tiny{font:500 17px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#97a2b2}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <text x="800" y="66" text-anchor="middle" class="title">Hermex conversation timeline</text>
+  <text x="800" y="102" text-anchor="middle" class="sub">How one tool-heavy assistant turn reads now vs. the Codex-style update</text>
+  <g transform="translate(70 145)">
+    <rect width="700" height="680" rx="28" fill="#0b0f16" stroke="#26303e"/>
+    <text x="36" y="55" class="cap" fill="#f06d67">CURRENT HERMEX</text>
+    <text x="36" y="88" class="sub">Every stream fragment becomes another row</text>
+    <g fill="#171c25" stroke="#333d4c">
+      <rect x="36" y="118" width="628" height="58" rx="16"/><rect x="36" y="188" width="628" height="58" rx="16"/>
+      <rect x="36" y="258" width="628" height="58" rx="16"/><rect x="36" y="328" width="628" height="58" rx="16"/>
+      <rect x="36" y="398" width="628" height="58" rx="16"/>
+    </g>
+    <text x="58" y="154" class="label">Thinking</text><text x="620" y="154" text-anchor="end" class="tiny">Planning... v</text>
+    <text x="58" y="224" class="label">Thinking</text><text x="620" y="224" text-anchor="end" class="tiny">Checking files... v</text>
+    <text x="58" y="294" class="label">Thinking</text><text x="620" y="294" text-anchor="end" class="tiny">Running tests... v</text>
+    <text x="58" y="364" class="label">Thinking</text><text x="620" y="364" text-anchor="end" class="tiny">Fixing issue... v</text>
+    <text x="58" y="434" class="label">Activity: 8 tools</text><text x="620" y="434" text-anchor="end" class="tiny">v</text>
+    <text x="36" y="500" class="tiny">Intermediate assistant message</text><text x="36" y="530" class="body">I found the rendering path and I am checking...</text>
+    <text x="36" y="575" class="tiny">Final assistant message</text><text x="36" y="608" class="body">The timeline is updated and tests pass.</text>
+    <rect x="36" y="635" width="242" height="5" rx="2.5" fill="#f06d67"/><text x="295" y="646" class="tiny">noisy / fragmented / tall</text>
+  </g>
+  <g transform="translate(830 145)">
+    <rect width="700" height="680" rx="28" fill="#0b0f16" stroke="#784b21"/>
+    <text x="36" y="55" class="cap" fill="#ff9f2e">CODEX-STYLE UPDATE</text>
+    <text x="36" y="88" class="sub">One turn becomes one compact activity cluster</text>
+    <g fill="#171c25" stroke="#665039"><rect x="36" y="118" width="628" height="58" rx="16"/><rect x="36" y="188" width="628" height="58" rx="16"/></g>
+    <text x="58" y="154" class="label">Thinking</text><text x="620" y="154" text-anchor="end" class="tiny">Planning to tests to fix  v</text>
+    <text x="58" y="224" class="label">Activity: 8 tools</text><text x="620" y="224" text-anchor="end" class="tiny">v</text>
+    <path d="M350 276v48m-12-11 12 12 12-12" fill="none" stroke="#ff9f2e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="36" y="350" width="628" height="165" rx="18" fill="#111720" stroke="#2f3947"/>
+    <text x="58" y="392" class="tiny">Final assistant message</text>
+    <text x="58" y="438" class="label">The timeline is updated and tests pass.</text>
+    <text x="58" y="475" class="body">Thinking and tools stay available above,</text><text x="58" y="503" class="body">but only the final answer remains in the flow.</text>
+    <rect x="36" y="555" width="238" height="5" rx="2.5" fill="url(#accent)"/><text x="291" y="566" class="tiny">compact / ordered / scannable</text>
+  </g>
+  <rect x="600" y="840" width="400" height="42" rx="21" fill="url(#accent)"/>
+  <text x="800" y="868" text-anchor="middle" style="font:700 20px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#0a0d12">Same events, clearer hierarchy</text>
+</svg>

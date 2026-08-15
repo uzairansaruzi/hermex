@@ -114,6 +114,8 @@ struct TasksView: View {
             .refreshable {
                 await loadTasks()
             }
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
         }
     }
 
@@ -348,6 +350,8 @@ struct CronJobEditorSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

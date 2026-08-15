@@ -94,7 +94,7 @@ struct DefaultProfilePickerView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Color.accentColor)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .appSurfaceBackground(.inset, opacity: 0.5, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .disabled(isLoading)
         .accessibilityHint("Opens the new profile form.")
     }
@@ -525,7 +525,7 @@ private struct ProfilePickerSearchField: View {
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 44)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .appSurfaceBackground(.inset, opacity: 0.5, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -548,7 +548,7 @@ private struct ProfilePickerCard<Content: View>: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .appSurfaceBackground(.inset, opacity: 0.5, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
 }

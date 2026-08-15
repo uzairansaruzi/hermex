@@ -55,7 +55,7 @@ struct ClarificationRequestCard: View {
         if reduceTransparency {
             cardContent
                 .background(
-                    Color(.secondarySystemBackground),
+                    ChatPalette.appChrome(colorScheme: colorScheme).surface,
                     in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
                 )
                 .overlay(cardBorder)
@@ -102,9 +102,9 @@ struct ClarificationRequestCard: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(questionBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(questionBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(.primary.opacity(0.06), lineWidth: 1)
             )
     }
@@ -232,7 +232,7 @@ struct ClarificationRequestCard: View {
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .foregroundStyle(.primary)
-                .choiceButtonSurface(reduceTransparency: reduceTransparency)
+                .choiceButtonSurface(reduceTransparency: reduceTransparency, colorScheme: colorScheme)
         }
         .buttonStyle(.chatTactile(.capsule))
         .disabled(isResponding)
@@ -276,7 +276,7 @@ struct ClarificationRequestCard: View {
     }
 
     private var cardCornerRadius: CGFloat {
-        24
+        20
     }
 
     private var cardBorder: some View {
@@ -339,9 +339,12 @@ struct ClarificationRequestCard: View {
 
 private extension View {
     @ViewBuilder
-    func choiceButtonSurface(reduceTransparency: Bool) -> some View {
+    func choiceButtonSurface(reduceTransparency: Bool, colorScheme: ColorScheme) -> some View {
         if reduceTransparency {
-            background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            background(
+                ChatPalette.appChrome(colorScheme: colorScheme).surfaceInset,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(Color(.separator), lineWidth: 1)

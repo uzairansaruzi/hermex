@@ -218,6 +218,39 @@ final class SSEClientTests: XCTestCase {
         XCTAssertEqual(event, .reasoning("I need to inspect the file first."))
     }
 
+    func testTokenPhaseDefaultsToProvisionalForLegacyServers() {
+        let event = SSEEventDecoder.decode(
+            eventType: "token",
+            data: #"{"text":"Working"}"#
+        )
+
+        XCTAssertEqual(event, .token("Working", phase: .provisional))
+    }
+
+    func testDecodesKnownTokenPhasesAndTreatsUnknownAsProvisional() {
+        XCTAssertEqual(
+            SSEEventDecoder.decode(
+                eventType: "token",
+                data: #"{"text":"Checking","phase":"commentary","future":true}"#
+            ),
+            .token("Checking", phase: .commentary)
+        )
+        XCTAssertEqual(
+            SSEEventDecoder.decode(
+                eventType: "token",
+                data: #"{"text":"Answer","phase":"final_answer"}"#
+            ),
+            .token("Answer", phase: .finalAnswer)
+        )
+        XCTAssertEqual(
+            SSEEventDecoder.decode(
+                eventType: "token",
+                data: #"{"text":42,"phase":"future_phase"}"#
+            ),
+            .token("42", phase: .provisional)
+        )
+    }
+
     func testDecodesInterimAssistantEventFromUpstreamPayload() {
         let event = SSEEventDecoder.decode(
             eventType: "interim_assistant",

@@ -519,6 +519,9 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     let compressionAnchorVisibleIdx: Int?
     let compressionAnchorMessageKey: CompressionAnchorMessageKey?
     let compressionAnchorSummary: String?
+    /// Plan snapshot the server derives from settled history so a cold-loaded
+    /// session shows its plan before any stream attaches (`attach_todo_state`).
+    let todoState: TodoState?
 
     enum CodingKeys: String, CodingKey {
         case sessionId
@@ -568,6 +571,8 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
         case snakeCasedCompressionAnchorVisibleIdx = "compression_anchor_visible_idx"
         case snakeCasedCompressionAnchorMessageKey = "compression_anchor_message_key"
         case snakeCasedCompressionAnchorSummary = "compression_anchor_summary"
+        case todoState
+        case snakeCasedTodoState = "todo_state"
     }
 
     init(from decoder: Decoder) throws {
@@ -625,6 +630,8 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
             )) ?? nil)
         compressionAnchorSummary = container.decodeLossyStringIfPresent(forKey: .compressionAnchorSummary)
             ?? container.decodeLossyStringIfPresent(forKey: .snakeCasedCompressionAnchorSummary)
+        todoState = ((try? container.decodeIfPresent(TodoState.self, forKey: .todoState)) ?? nil)
+            ?? ((try? container.decodeIfPresent(TodoState.self, forKey: .snakeCasedTodoState)) ?? nil)
     }
 
     private static func decodeMessagesTolerantly(

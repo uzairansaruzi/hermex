@@ -65,11 +65,12 @@ final class SSEClient: SSEStreamingClient {
 }
 
 enum SSEEvent: Equatable {
-    case token(String)
+    case token(String, phase: AssistantStreamPhase = .provisional)
     case interimAssistant(InterimAssistantStreamEvent)
     case reasoning(String)
     case toolStarted(ToolStreamEvent)
     case toolCompleted(ToolStreamEvent)
+    case todoState(TodoState)
     case title(TitleStreamEvent)
     case metering(MeteringStreamEvent)
     case done(DoneStreamEvent)
@@ -82,6 +83,34 @@ enum SSEEvent: Equatable {
     case transportError(String)
     case heartbeat
     case ignored
+}
+
+enum AssistantStreamPhase: String, Equatable {
+    case provisional
+    case commentary
+    case finalAnswer = "final_answer"
+
+    init(serverValue: String?) {
+        self = serverValue.flatMap(Self.init(rawValue:)) ?? .provisional
+    }
+}
+
+private struct TokenStreamPayload: Decodable {
+    let text: String?
+    let phase: AssistantStreamPhase
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case phase
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = container.decodeLossyStringIfPresent(forKey: .text)
+        phase = AssistantStreamPhase(
+            serverValue: container.decodeLossyStringIfPresent(forKey: .phase)
+        )
+    }
 }
 
 struct TitleStreamEvent: Decodable, Equatable {
@@ -232,8 +261,13 @@ struct SSEEventDecoder {
 
         switch eventType {
         case "token":
-            let payload = decodePayload(TokenPayload.self, eventType: eventType, from: eventData, decoder: decoder)
-            return .token(payload?.text ?? "")
+            let payload = decodePayload(
+                TokenStreamPayload.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            )
+            return .token(payload?.text ?? "", phase: payload?.phase ?? .provisional)
         case "interim_assistant":
             let payload = decodePayload(
                 InterimAssistantStreamEvent.self,
@@ -251,6 +285,14 @@ struct SSEEventDecoder {
         case "tool_complete":
             let payload = decodePayload(ToolStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .toolCompleted(payload ?? ToolStreamEvent())
+        case "todo_state":
+            // Full plan snapshot, emitted on every `todo` tool call. Dropping a
+            // malformed one is safe: the next call re-sends the whole list, and
+            // the contract is idempotent under SSE replay.
+            guard let payload = decodePayload(TodoState.self, eventType: eventType, from: eventData, decoder: decoder) else {
+                return .ignored
+            }
+            return .todoState(payload)
         case "title":
             let payload = decodePayload(TitleStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .title(payload ?? TitleStreamEvent())

@@ -1098,7 +1098,10 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(streamClient.startedURLs.first?.path, "/api/chat/stream")
         XCTAssertEqual(viewModel.messages.map(\.role), ["user"])
         XCTAssertEqual(viewModel.messages.last?.content, "Start executing the goal.")
-        XCTAssertEqual(viewModel.pinnedLocalNotices, ["Goal set."])
+        XCTAssertTrue(
+            viewModel.pinnedLocalNotices.isEmpty,
+            "Structured goals render in the bounded composer surface, not an unbounded pinned notice."
+        )
 
         streamClient.emit(.token("Working now."))
 
@@ -1940,7 +1943,8 @@ final class ChatViewModelSendTests: XCTestCase {
         )))
 
         XCTAssertEqual(viewModel.messages.compactMap(\.role), ["user", "assistant"])
-        XCTAssertEqual(viewModel.messages.last?.content, "Inspecting repo structure.")
+        XCTAssertEqual(viewModel.messages.last?.content, "")
+        XCTAssertEqual(viewModel.liveReasoningText, "Inspecting repo structure.")
         XCTAssertNotNil(viewModel.streamingAssistantMessageID)
         XCTAssertFalse(viewModel.responseCompletionHapticTrigger > 0)
     }
@@ -2438,7 +2442,13 @@ final class ChatViewModelSendTests: XCTestCase {
             alreadyStreamed: true
         )))
 
-        XCTAssertEqual(viewModel.messages.last?.content, "Inspecting repo structure.")
+        XCTAssertEqual(viewModel.messages.last?.content, "")
+        XCTAssertEqual(viewModel.liveReasoningText, "Inspecting repo structure.")
+
+        streamClient.emit(.token("Final answer."))
+        viewModel.flushPendingStreamingContent()
+
+        XCTAssertEqual(viewModel.messages.last?.content, "Final answer.")
     }
 
     @MainActor
@@ -2635,13 +2645,13 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(viewModel.activeStreamID)
         XCTAssertTrue(viewModel.liveToolCalls.isEmpty)
         XCTAssertEqual(viewModel.completedToolCallGroups.count, 1)
-        XCTAssertEqual(viewModel.completedToolCallGroups.first?.anchorMessageID, "assistant-tool")
+        XCTAssertEqual(viewModel.completedToolCallGroups.first?.anchorMessageID, "assistant-final")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.activityTitle, "Activity: 1 tool")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.first?.name, "terminal")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.first?.preview, "/Users/uzair/project")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.first?.args?["command"], .string("pwd"))
         XCTAssertEqual(
-            viewModel.completedToolCallGroupsForAnchor("assistant-tool"),
+            viewModel.completedToolCallGroupsForAnchor("assistant-final"),
             viewModel.completedToolCallGroups
         )
         XCTAssertTrue(viewModel.completedToolCallGroupsForAnchor(nil).isEmpty)
@@ -2731,14 +2741,14 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(viewModel.activeStreamID)
         XCTAssertTrue(viewModel.liveToolCalls.isEmpty)
         XCTAssertEqual(viewModel.completedToolCallGroups.count, 1)
-        XCTAssertEqual(viewModel.completedToolCallGroups.first?.anchorMessageID, "assistant-skills")
+        XCTAssertEqual(viewModel.completedToolCallGroups.first?.anchorMessageID, "assistant-final")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.activityTitle, "Activity: 2 tools")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.map(\.name), ["skill_view", "terminal"])
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.first?.id, "toolu-skill-xurl")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.first?.preview, "X/Twitter via xurl CLI")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.last?.preview, "xurl not installed")
         XCTAssertEqual(
-            viewModel.completedToolCallGroupsForAnchor("assistant-skills"),
+            viewModel.completedToolCallGroupsForAnchor("assistant-final"),
             viewModel.completedToolCallGroups
         )
     }
@@ -2850,7 +2860,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(viewModel.activeStreamID)
         XCTAssertTrue(viewModel.liveToolCalls.isEmpty)
         XCTAssertEqual(viewModel.completedToolCallGroups.count, 1)
-        XCTAssertEqual(viewModel.completedToolCallGroups.first?.anchorMessageID, "assistant-tools")
+        XCTAssertEqual(viewModel.completedToolCallGroups.first?.anchorMessageID, "assistant-final")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.activityTitle, "Activity: 2 tools")
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.map(\.name), ["terminal", "search_files"])
         XCTAssertEqual(viewModel.completedToolCallGroups.first?.toolCalls.map(\.id), ["call-terminal", "call-search"])
@@ -4561,7 +4571,8 @@ final class ChatViewModelSendTests: XCTestCase {
         streamClient.emit(.interimAssistant(InterimAssistantStreamEvent(text: "Draft answer.")))
 
         XCTAssertEqual(viewModel.activeStreamRecoveryState, .reconnecting)
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Keep working", "Draft answer."])
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Keep working", ""])
+        XCTAssertEqual(viewModel.liveReasoningText, "Draft answer.")
     }
 
     @MainActor

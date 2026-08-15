@@ -59,6 +59,19 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testTokenPhaseIsForwardedToTheDelegate() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-phase")
+        streamClient.emit(.token("Final", phase: .finalAnswer))
+
+        XCTAssertEqual(delegate.tokens, ["Final"])
+        XCTAssertEqual(delegate.tokenPhases, [.finalAnswer])
+    }
+
+    @MainActor
     func testForegroundReconnectActiveStreamReloadsAndRestartsWithoutReplay() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
@@ -922,7 +935,9 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var startConnectionReplayValues: [Bool] = []
     private(set) var resetRecoveryCount = 0
     private(set) var tokens: [String] = []
+    private(set) var tokenPhases: [AssistantStreamPhase] = []
     private(set) var donePayloads: [DoneStreamEvent] = []
+    private(set) var todoStates: [TodoState] = []
     private(set) var pendingSteerLeftovers: [String] = []
     var latestAssistantMessageID: String? = "assistant-latest"
     var restoredSnapshotEventID: String?
@@ -996,8 +1011,9 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         resetRecoveryCount += 1
     }
 
-    func streamCoordinatorAppendToken(_ text: String) -> Bool {
+    func streamCoordinatorAppendToken(_ text: String, phase: AssistantStreamPhase) -> Bool {
         tokens.append(text)
+        tokenPhases.append(phase)
         return appendTokenResult
     }
 
@@ -1019,6 +1035,11 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorUpdateTitle(_ payload: TitleStreamEvent) -> Bool {
         payload.title?.isEmpty == false
+    }
+
+    func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool {
+        todoStates.append(payload)
+        return true
     }
 
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {

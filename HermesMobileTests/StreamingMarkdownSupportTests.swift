@@ -48,6 +48,94 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
     }
 }
 
+final class ReasoningMarkdownPresentationTests: XCTestCase {
+    func testFormatsProviderBoldLedgerAsRowsWithSectionRules() {
+        let source = """
+        **Inspecting source**
+        **Comparing results**
+
+        The result is ready.
+
+        **Planning follow-up**
+        **Verifying output**
+        """
+
+        XCTAssertEqual(
+            ReasoningMarkdownPresentation.formatted(source),
+            [
+                "**Inspecting source**  ",
+                "**Comparing results**",
+                "",
+                "---",
+                "",
+                "The result is ready.",
+                "",
+                "---",
+                "",
+                "**Planning follow-up**  ",
+                "**Verifying output**"
+            ].joined(separator: "\n")
+        )
+    }
+
+    func testLeavesOrdinaryMarkdownAndSingleBoldParagraphUntouched() {
+        let source = """
+        ## Real heading
+
+        A paragraph with **inline emphasis**.
+
+        **One bold paragraph**
+        """
+
+        XCTAssertEqual(ReasoningMarkdownPresentation.formatted(source), source)
+    }
+
+    func testLeavesBoldLookingLinesInsideFenceUntouched() {
+        let source = """
+        ```markdown
+        **First example**
+        **Second example**
+        ```
+        """
+
+        XCTAssertEqual(ReasoningMarkdownPresentation.formatted(source), source)
+    }
+
+    func testMixedFenceMarkerInsideFenceDoesNotHideFollowingLedger() {
+        let source = """
+        ```markdown
+        ~~~
+        ```
+
+        **Inspecting source**
+        **Verifying result**
+        """
+
+        XCTAssertEqual(
+            ReasoningMarkdownPresentation.formatted(source),
+            [
+                "```markdown",
+                "~~~",
+                "```",
+                "",
+                "---",
+                "",
+                "**Inspecting source**  ",
+                "**Verifying result**"
+            ].joined(separator: "\n")
+        )
+    }
+
+    func testLeavesStandaloneBoldItalicLinesUntouched() {
+        let source = """
+        ***Inspecting source***
+        ***Verifying result***
+        """
+
+        XCTAssertEqual(ReasoningMarkdownPresentation.formatted(source), source)
+    }
+}
+
 /// Width resolution for chat markdown table cells (issue #233). The layout
 /// itself needs a render pass to verify; this covers the pure clamp that
 /// decides the wrap width the cell height is measured at.

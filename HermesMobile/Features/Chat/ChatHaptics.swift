@@ -16,6 +16,10 @@ enum ChatHaptics {
         emit(.lightImpact, isEnabled: isEnabled, performer: performer)
     }
 
+    static func messageCopied(isEnabled: Bool, performer: Performer = perform) {
+        emit(.lightImpact, isEnabled: isEnabled, performer: performer)
+    }
+
     static func assistantResponseCompleted(isEnabled: Bool, performer: Performer = perform) {
         emit(.success, isEnabled: isEnabled, performer: performer)
     }

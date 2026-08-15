@@ -6,8 +6,6 @@ struct TranscriptLinkPreviewView: View {
     let url: URL
 
     @Environment(\.openURL) private var openURL
-    @Environment(\.colorScheme) private var colorScheme
-
     @State private var snapshot: TranscriptLinkPreviewSnapshot?
     @State private var previewImage: UIImage?
     @State private var didFail = false
@@ -20,7 +18,7 @@ struct TranscriptLinkPreviewView: View {
             compactCard
         }
         .buttonStyle(.chatTactile(.card))
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens in the external browser")
@@ -238,12 +236,8 @@ private extension TranscriptLinkPreviewView {
             .padding(.trailing, 10)
         }
         .frame(minHeight: 84, alignment: .center)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder

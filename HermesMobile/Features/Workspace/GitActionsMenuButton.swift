@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct GitActionsMenuButton: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let presentation: GitToolbarPresentation
     let isEnabled: Bool
     let fetchDisabled: Bool
@@ -78,8 +80,10 @@ struct GitActionsMenuButton: View {
             Label("Changes unavailable", systemImage: "exclamationmark.circle")
         } else if let status = presentation.status, status.changedCount > 0 {
             Label {
-                Text("+\(status.totalAdditions)").foregroundStyle(.green)
-                + Text("  −\(status.totalDeletions)").foregroundStyle(.red)
+                Text("+\(status.totalAdditions)")
+                    .foregroundStyle(GitStatusPalette.additions(colorScheme))
+                + Text("  −\(status.totalDeletions)")
+                    .foregroundStyle(GitStatusPalette.deletions(colorScheme))
                 + Text("  \(status.changedCount)").foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: "doc.text.magnifyingglass")

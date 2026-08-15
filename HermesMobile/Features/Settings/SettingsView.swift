@@ -58,6 +58,10 @@ struct SettingsView: View {
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
     @State private var notificationStatusMessage: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chatPaletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
+    @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
+    @AppStorage(ActivityBeamStyle.storageKey) private var activityBeamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(ResponseCompletionNotifications.hasRequestedPermissionKey) private var hasRequestedResponseCompletionNotificationPermission = false
@@ -128,6 +132,58 @@ struct SettingsView: View {
                             Text(theme.title).tag(theme.rawValue)
                         }
                     }
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Chat Palette"),
+                        systemImage: "paintpalette",
+                        selection: $chatPaletteTemperatureRawValue
+                    ) {
+                        ForEach(ChatPaletteTemperature.allCases) { temperature in
+                            Text(temperature.title).tag(temperature.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Warm tints chat surfaces toward a softer, paper-like gray. Standard uses neutral system grays."))
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Dark Chat Background"),
+                        systemImage: "moon.stars",
+                        selection: $chatBackgroundStyleRawValue
+                    ) {
+                        ForEach(ChatBackgroundStyle.allCases) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Applies in dark mode only. Black switches the chat canvas to pure black; Warm keeps the palette’s warm charcoal."))
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Serif Responses"),
+                        systemImage: "textformat",
+                        isOn: serifResponsesBinding
+                    )
+
+                    SettingsFootnote(String(localized: "Uses Apple’s New York serif for assistant prose. System font remains the default."))
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Activity Beam"),
+                        systemImage: "sparkles",
+                        selection: $activityBeamStyleRawValue
+                    ) {
+                        ForEach(ActivityBeamStyle.allCases) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Traveling glow around thinking and tool activity while they run. Ink is monochrome; Ember and Aurora are more vivid."))
 
                     SettingsDivider()
 
@@ -581,7 +637,7 @@ struct SettingsView: View {
             .padding(.bottom, 36)
             .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
         .navigationTitle("Settings")
         .task {
             await loadServerSettings()
@@ -843,6 +899,13 @@ struct SettingsView: View {
                     headerLogoColorHex = hex
                 }
             }
+        )
+    }
+
+    private var serifResponsesBinding: Binding<Bool> {
+        Binding(
+            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesSerif },
+            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.serif : .system).rawValue }
         )
     }
 
@@ -1495,6 +1558,7 @@ private struct HeaderLogoColorPresetButton: View {
 private struct SettingsCard<Content: View>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var contentSpacing: CGFloat = 12
 
     let title: String
@@ -1523,7 +1587,7 @@ private struct SettingsCard<Content: View>: View {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                shape.fill(Color(.secondarySystemBackground).opacity(cardFillOpacity))
+                shape.fill(ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(cardFillOpacity))
             }
             .adaptiveGlass(
                 .regular,
@@ -2136,7 +2200,7 @@ private struct ServerDetailView: View {
             .padding(.top, 18)
             .padding(.bottom, 36)
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
         .navigationTitle(displayName.isEmpty ? hostFallback : displayName)
         .navigationBarTitleDisplayMode(.inline)
         // Persist identity edits to this server's registry entry. When it's the
@@ -2288,7 +2352,7 @@ struct AddServerView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 36)
             }
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
             .navigationTitle("Add Server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

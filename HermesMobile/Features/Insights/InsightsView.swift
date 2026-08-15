@@ -161,6 +161,8 @@ struct InsightsView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .appSurfaceBackground(.canvas)
             .refreshable {
                 await loadInsights()
             }

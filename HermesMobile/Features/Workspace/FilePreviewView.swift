@@ -192,7 +192,7 @@ struct FilePreviewView: View {
                 Label("Copy", systemImage: "doc.on.doc")
             }
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
     }
 
     private var isMarkdownFile: Bool {
@@ -215,7 +215,7 @@ struct FilePreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
         } else {
             ContentUnavailableView {
                 Label("Could Not Preview Image", systemImage: "photo")

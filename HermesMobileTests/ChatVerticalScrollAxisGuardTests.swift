@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class ChatVerticalScrollAxisGuardTests: XCTestCase {
+    func testDisclosurePreserverRestoresExactVerticalOffset() {
+        let scrollView = makeOversizedScrollView()
+        let preserver = ChatScrollPositionPreserver()
+        scrollView.contentOffset.y = 320
+        preserver.attach(to: scrollView)
+        XCTAssertTrue(preserver.isAttached)
+        preserver.preserveCurrentVerticalOffset(for: 1)
+
+        scrollView.contentOffset.y = 900
+        preserver.enforcePreservedOffset()
+
+        XCTAssertEqual(scrollView.contentOffset.y, 320, accuracy: 0.001)
+        preserver.cancelPreservation()
+    }
+
     func testGuardConfiguresEnclosingScrollViewForVerticalAxis() {
         let scrollView = makeOversizedScrollView()
         let guardView = attachGuardView(to: scrollView)

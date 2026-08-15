@@ -23,8 +23,8 @@ final class TranscriptMessageTests: XCTestCase {
 
         let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
 
-        XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 1, 3])
-        XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a1", "a2"])
+        XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 3])
+        XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a2"])
     }
 
     func testTranscriptMessagesCanHideActiveStreamingAssistantTurn() {
@@ -172,6 +172,53 @@ final class TranscriptMessageTests: XCTestCase {
         XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 1])
         XCTAssertEqual(transcriptMessages.map(\.message.role), ["user", "assistant"])
     }
+
+    func testCodexItemsProjectCommentaryOntoOneThinkingCardAndFinalAnswerRow() throws {
+        let data = Data(#"""
+        [
+          {"role":"user","content":"Fix it","message_id":"u1"},
+          {
+            "role":"assistant",
+            "content":"Inspecting. Final answer.",
+            "message_id":"a1",
+            "codex_message_items":[
+              {"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"Inspecting the transcript."}]},
+              {"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Final answer."}]}
+            ]
+          }
+        ]
+        """#.utf8)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let messages = try decoder.decode([ChatMessage].self, from: data)
+
+        let transcript = ChatViewModel.transcriptMessages(from: messages)
+        let reasoning = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(transcript.map(\.message.content), ["Fix it", "Final answer."])
+        XCTAssertEqual(reasoning.count, 1)
+        XCTAssertEqual(reasoning.first?.anchorMessageID, "a1")
+        XCTAssertEqual(reasoning.first?.text, "Inspecting the transcript.")
+    }
+
+    func testMultipleAssistantToolRoundsCollapseOntoFinalTurnAnchor() {
+        let messages = [
+            ChatMessage(role: "user", content: "Fix it", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "Inspecting files.", timestamp: 2, messageId: "a1"),
+            ChatMessage(role: "tool", content: "result", timestamp: 3, messageId: "t1", toolCallId: "call-1"),
+            ChatMessage(role: "assistant", content: "Running tests.", timestamp: 4, messageId: "a2"),
+            ChatMessage(role: "tool", content: "passed", timestamp: 5, messageId: "t2", toolCallId: "call-2"),
+            ChatMessage(role: "assistant", content: "Fixed and verified.", timestamp: 6, messageId: "a3")
+        ]
+
+        let transcript = ChatViewModel.transcriptMessages(from: messages)
+        let reasoning = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(transcript.map(\.message.id), ["u1", "a3"])
+        XCTAssertEqual(reasoning.count, 1)
+        XCTAssertEqual(reasoning.first?.anchorMessageID, "a3")
+        XCTAssertEqual(reasoning.first?.text, "Inspecting files.\n\nRunning tests.")
+    }
 }
 
 final class ChatTranscriptDisplaySettingsTests: XCTestCase {
@@ -267,6 +314,83 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
     func testCardExpansionTapOverrideWinsOverPreference() {
         XCTAssertTrue(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: true, startsExpanded: false))
         XCTAssertFalse(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: false, startsExpanded: true))
+    }
+
+    func testReasoningBodyWindowHugsShortContentAndCapsLongContent() {
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 240,
+                availableHeight: 800,
+                reservedHeight: 56
+            ),
+            240
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 800,
+                reservedHeight: 56
+            ),
+            264
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 800,
+                reservedHeight: 56 + ReasoningBodyWindow.readerActionReservedHeight
+            ),
+            228,
+            "Overflowing previews must reserve room for the dedicated reader action."
+        )
+    }
+
+    func testReasoningBodyWindowFallbackAndTinyViewportStayBounded() {
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 0,
+                reservedHeight: 56
+            ),
+            184
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 80,
+                reservedHeight: 56
+            ),
+            24,
+            "A tiny viewport may prioritize the minimum readable preview, but must remain viewport-bounded."
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(measuredContentHeight: 0, availableHeight: 800),
+            0
+        )
+    }
+
+    /// The capped tool list must always get a bounded window: a `ScrollView`
+    /// given no height takes everything offered, which is exactly the 68-row
+    /// overflow this cap exists to prevent.
+    func testToolActivityListWindowIsAlwaysBounded() {
+        // No measurement yet — falls back to the conservative constant.
+        XCTAssertEqual(ToolActivityListWindow.height(measuredRowsHeight: nil, rowCount: 68), ToolActivityListWindow.fallbackHeight)
+        XCTAssertEqual(ToolActivityListWindow.height(measuredRowsHeight: 0, rowCount: 68), ToolActivityListWindow.fallbackHeight)
+        XCTAssertEqual(ToolActivityListWindow.height(measuredRowsHeight: 2000, rowCount: 0), ToolActivityListWindow.fallbackHeight)
+
+        // Measured: window is maximumVisibleRows worth of the average row.
+        let height = ToolActivityListWindow.height(measuredRowsHeight: 68 * 30, rowCount: 68)
+        XCTAssertEqual(height, CGFloat(ToolActivityGroupView.maximumVisibleRows) * 30)
+
+        // Self-calibrates: taller rows (Dynamic Type, wrapped previews) widen
+        // the window instead of clipping mid-row.
+        let tallRows = ToolActivityListWindow.height(measuredRowsHeight: 20 * 52, rowCount: 20)
+        XCTAssertEqual(tallRows, CGFloat(ToolActivityGroupView.maximumVisibleRows) * 52)
+    }
+
+    /// Eight, deliberately matching the summary row's result-dot cap so the
+    /// collapsed and expanded surfaces describe the same window of the turn.
+    func testToolActivityVisibleRowCapMatchesSummaryDots() {
+        XCTAssertEqual(ToolActivityGroupView.maximumVisibleRows, 8)
     }
 
     func testCardStartExpandedKeysAreStableAndDistinct() {

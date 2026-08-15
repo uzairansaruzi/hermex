@@ -16,8 +16,18 @@ enum ChatScrollPolicy {
     /// Rich Markdown can finish measuring after the scroll view's initial
     /// layout. Keep those size changes bottom-pinned only while the app still
     /// owns follow-latest intent; return nil as soon as the reader scrolls away.
-    static func sizeChangeAnchor(shouldFollowLatestMessage: Bool) -> UnitPoint? {
-        shouldFollowLatestMessage ? .bottom : nil
+    ///
+    /// Also requires a live stream. Without that, expanding a settled turn's
+    /// activity card re-pins the bottom on every frame of the height spring, so
+    /// a tall card yanks the whole viewport up by more than a screen while the
+    /// reader is just trying to look at it. Late-measuring content in a settled
+    /// chat no longer re-pins — a small drift, which is the intent: a settled
+    /// transcript should grow in place, not chase its own bottom.
+    static func sizeChangeAnchor(
+        shouldFollowLatestMessage: Bool,
+        hasActiveStream: Bool
+    ) -> UnitPoint? {
+        (shouldFollowLatestMessage && hasActiveStream) ? .bottom : nil
     }
 
     /// Distance (pt) from the bottom within which we treat the transcript as

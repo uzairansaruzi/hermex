@@ -135,6 +135,8 @@ struct ComposerVoiceRecordingBar: View {
     let onStop: () -> Void
     let onCancel: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(spacing: 10) {
             Circle()
@@ -160,8 +162,8 @@ struct ComposerVoiceRecordingBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Recording voice note, \(AudioDurationFormatter.string(from: elapsed))"))

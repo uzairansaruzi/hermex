@@ -195,6 +195,103 @@ enum ActiveStreamRecoveryState: Equatable {
     case reconnecting
 }
 
+/// Coarse phase of the live turn, derived from SSE event *kinds* rather than
+/// token arrival timing. Unlike `StreamActivitySignal` (micro-liveness with a
+/// 1.5s decay window), the phase only changes when the stream semantically
+/// moves on: a reasoning step stays `.reasoning` across long intra-step token
+/// pauses, and while the model is composing a tool call server-side (no SSE
+/// events arrive during that window — the backend has no argument-streaming
+/// event; `tool` lands fully formed, see `SSEEventDecoder`). This is what the
+/// activity capsules key off so "Thinking" animates for the whole thinking
+/// step instead of flickering off between deltas.
+///
+/// No time-based decay on purpose: while the turn is genuinely open the
+/// capsule should keep animating even through long silences (the model *is*
+/// still working); transport errors, cancellation, and stream end all route
+/// through `streamCoordinatorDidFinishStream`/`applyDone`, which reset to
+/// `.idle`.
+enum TurnPhase: Equatable {
+    case idle
+    /// Reasoning deltas (or interim assistant prose, which renders in the
+    /// same reasoning block) are the most recent semantic activity.
+    case reasoning
+    /// A tool has started and no later event has moved the phase on. Persists
+    /// across `tool_complete` — the model usually follows with reasoning or
+    /// text, which then advances the phase.
+    case toolCalling
+    /// Final assistant answer tokens are streaming.
+    case respondingText
+}
+
+/// Tracks whether a streamed signal (reasoning tokens, tool events) is
+/// "actively receiving": `isActive` flips true immediately on `bump()` and
+/// decays back to false after `decayInterval` seconds of silence.
+///
+/// Coalesced by design: one expiry task sleeps until the current deadline and
+/// loops if a later `bump()` pushed the deadline forward — no per-token timers.
+/// The rising edge has no debounce; activity resumes instantly.
+@MainActor
+@Observable
+final class StreamActivitySignal {
+    /// Silence window before the signal decays to inactive. 1.5s keeps the
+    /// orb alive across ordinary inter-chunk gaps while letting it settle
+    /// promptly once a reasoning/tool phase actually ends.
+    static let defaultDecayInterval: TimeInterval = 1.5
+
+    private(set) var isActive = false
+    private(set) var lastActivityAt: Date?
+
+    private let decayInterval: TimeInterval
+    private var deadline: ContinuousClock.Instant?
+    private var expiryTask: Task<Void, Never>?
+
+    init(decayInterval: TimeInterval = StreamActivitySignal.defaultDecayInterval) {
+        self.decayInterval = decayInterval
+    }
+
+    /// Records fresh activity: activates immediately and pushes the decay
+    /// deadline forward. Cheap enough to call for every streamed delta.
+    func bump(now: Date = Date()) {
+        lastActivityAt = now
+        deadline = .now + .seconds(decayInterval)
+        if !isActive {
+            isActive = true
+        }
+        scheduleExpiryIfNeeded()
+    }
+
+    /// Immediately deactivates and cancels any pending decay (stream ended,
+    /// cancelled, or live state was cleared).
+    func reset() {
+        expiryTask?.cancel()
+        expiryTask = nil
+        deadline = nil
+        if isActive {
+            isActive = false
+        }
+    }
+
+    private func scheduleExpiryIfNeeded() {
+        guard expiryTask == nil else { return }
+
+        expiryTask = Task { [weak self] in
+            // Single task per active burst: sleep until the deadline; if a bump
+            // moved the deadline while sleeping, loop and sleep again.
+            while !Task.isCancelled {
+                guard let deadline = self?.deadline else { break }
+                if ContinuousClock.now >= deadline { break }
+                try? await Task.sleep(until: deadline, clock: .continuous)
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.expiryTask = nil
+            self.deadline = nil
+            if self.isActive {
+                self.isActive = false
+            }
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -240,6 +337,7 @@ final class ChatViewModel {
     @ObservationIgnored private var pendingStreamingScrollTriggerTask: Task<Void, Never>?
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
+    @ObservationIgnored private var pendingReasoningStartsNewSegment = false
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
     private(set) var completedToolCallGroups: [ToolCallGroup] = []
     private var completedToolCallGroupLookup = ToolCallGroupAnchorLookup()
@@ -252,7 +350,46 @@ final class ChatViewModel {
         )
     }
     func completedToolCallGroupsForAnchor(_ anchorMessageID: String?) -> [ToolCallGroup] {
-        completedToolCallGroupLookup.groups(anchorMessageID: anchorMessageID)
+        // Re-apply the live batch map: reconcile rebuilds groups from persisted
+        // data, which stores no grouping, so without this the parallel cluster
+        // would flatten seconds after the turn ends (it is still expected to
+        // flatten after a relaunch, when the map is gone).
+        completedToolCallGroupLookup
+            .groups(anchorMessageID: anchorMessageID)
+            .map(applyingRememberedBatchIndexes)
+    }
+
+    /// Rebuilds batch bookkeeping after restoring a live stream snapshot.
+    ///
+    /// The counter resumes past the highest restored batch and the boundary
+    /// flag is forced, so the next announcement can only ever open a *new*
+    /// batch — never join one whose tools already ran.
+    private func restoreToolBatchState(from restoredCalls: [ToolCall]) {
+        let indexes = restoredCalls.compactMap(\.batchIndex)
+        currentToolBatchIndex = indexes.max() ?? 0
+        didCompleteToolSinceBatchStart = true
+        for call in restoredCalls {
+            guard let batchIndex = call.batchIndex else { continue }
+            toolBatchIndexesByID[call.id] = batchIndex
+        }
+    }
+
+    /// Restores `batchIndex` on a rebuilt group from this session's live map.
+    private func applyingRememberedBatchIndexes(_ group: ToolCallGroup) -> ToolCallGroup {
+        guard !toolBatchIndexesByID.isEmpty else { return group }
+        guard group.toolCalls.contains(where: { toolBatchIndexesByID[$0.id] != nil }) else {
+            return group
+        }
+        return ToolCallGroup(
+            id: group.id,
+            anchorMessageID: group.anchorMessageID,
+            toolCalls: group.toolCalls.map { toolCall in
+                guard let batchIndex = toolBatchIndexesByID[toolCall.id] else { return toolCall }
+                var restored = toolCall
+                restored.batchIndex = batchIndex
+                return restored
+            }
+        )
     }
 
     /// Tool calls for the latest assistant turn, driving the in-chat "file changes" recap
@@ -291,6 +428,42 @@ final class ChatViewModel {
         compressionAnchorMetadata = nil
         compressionReferenceCard = nil
     }
+
+    // MARK: - Plan (todo_state)
+
+    /// Latest plan snapshot for this session, or nil when the agent never
+    /// called the `todo` tool. Nil is the common case — Hermes agents don't
+    /// plan on every turn — so the surface must be genuinely absent rather than
+    /// an empty state, or most conversations carry dead chrome.
+    private(set) var planState: TodoState?
+    /// Expansion is view state, but it lives here so it survives the transcript
+    /// rebuilding underneath it mid-run.
+    var isPlanExpanded = false
+
+    /// Applies a snapshot from either the live stream or a cold load.
+    ///
+    /// Always replace, never merge: the server sends the complete list on every
+    /// write and its own frontend treats the snapshot as the single source of
+    /// truth. Ordering is by `ts` so a cold-load snapshot and an in-flight one
+    /// can't fight; see `TodoState.supersedes(_:)`.
+    @discardableResult
+    private func applyTodoState(_ snapshot: TodoState) -> Bool {
+        guard snapshot.supersedes(planState) else { return false }
+        guard snapshot != planState else { return false }
+        planState = snapshot
+        return true
+    }
+
+    private func applyTodoState(from session: SessionDetail?) {
+        guard let snapshot = session?.todoState else { return }
+        applyTodoState(snapshot)
+    }
+
+    private func clearPlanState() {
+        planState = nil
+        isPlanExpanded = false
+    }
+
     private func recomputeCompressionReferenceCard() {
         // Not folded into the messages/messagesOffset observers alone:
         // applyCompletedStreamSession can update the metadata without
@@ -308,9 +481,58 @@ final class ChatViewModel {
     }
     private(set) var liveToolCalls: [ToolCall] = []
     private(set) var liveReasoningText = ""
+    /// Semantic phase of the open turn; see `TurnPhase`. Advanced by the
+    /// stream-coordinator delegate callbacks below, reset to `.idle` when the
+    /// stream finishes, errors, is cancelled, or live state is cleared.
+    private(set) var turnPhase: TurnPhase = .idle
+    /// Micro-liveness of reasoning deltas (1.5s decay). Kept for surfaces that
+    /// want token-arrival granularity (e.g. future per-token effects), but the
+    /// thinking capsule is driven by `isReasoningPhaseActive`, which holds for
+    /// the whole reasoning step regardless of intra-step pauses.
+    let reasoningActivity = StreamActivitySignal()
+    /// Tool-call activity: bumped when a tool starts or completes on the live
+    /// stream. Tool output does not stream incrementally over SSE, so state
+    /// transitions are the activity granularity we have.
+    let toolActivity = StreamActivitySignal()
+
+    /// Wall-clock start of the current live reasoning stint. Set only when a
+    /// reasoning/interim delta *contributes new content* (replayed duplicates
+    /// during reconnect catch-up return false from the append and never start
+    /// the clock), cleared when the stint closes or live state resets.
+    private var reasoningPhaseStartedAt: Date?
+    /// Duration of the most recently completed reasoning stint in the open
+    /// turn. Each stint overwrites the previous value; the live thinking
+    /// capsule renders it as "Thought for Ns". Reset to nil when a new turn
+    /// starts. Historical (archived) reasoning blocks always show nil.
+    private(set) var lastReasoningDuration: TimeInterval?
+
+    /// Capsule-facing: the reasoning step is in progress. True from the first
+    /// reasoning/interim delta until the stream semantically moves on (tool
+    /// start or final answer tokens) — long thinking pauses stay active.
+    var isReasoningPhaseActive: Bool { turnPhase == .reasoning }
+    /// Capsule-facing: the live tool group should animate. True while a tool
+    /// is executing server-side *and* through the composing window after
+    /// reasoning hands off to a tool call (phase stays `.toolCalling` until a
+    /// later event advances it).
+    var isToolPhaseActive: Bool { turnPhase == .toolCalling }
+    /// True once the turn has started emitting answer text. Drives the
+    /// activity fold: blocks collapse when the answer begins, which is early
+    /// enough that the motion finishes before the post-stream reconcile
+    /// rebuilds these views with new identities.
+    var isAnswerPhaseActive: Bool { turnPhase == .respondingText }
     private(set) var streamingAssistantMessageID: String?
     private(set) var toolCallAnchorMessageID: String?
     private(set) var reasoningAnchorMessageID: String?
+    /// Monotonic id for the current parallel dispatch batch, and whether any
+    /// tool has completed since that batch opened. Together these turn stream
+    /// arrival order into `ToolCall.batchIndex` — see `appendToolCall`.
+    private var currentToolBatchIndex = 0
+    private var didCompleteToolSinceBatchStart = false
+    /// Live-session batch memory, keyed by tool id. Reconcile rebuilds groups
+    /// from persisted data (which carries no grouping), so without this the
+    /// parallel cluster the user just watched would visibly flatten seconds
+    /// after the turn ends. Cleared with the rest of the live state.
+    private var toolBatchIndexesByID: [String: Int] = [:]
     private(set) var messagesOffset = 0 {
         didSet { recomputeDisplayedTranscriptMessages() }
     }
@@ -679,6 +901,7 @@ final class ChatViewModel {
         cancelPendingStreamingContentFlush()
         pendingAssistantTokenChunks = []
         pendingReasoningChunks = []
+        pendingReasoningStartsNewSegment = false
         // Chunks are deduplicated at append time, so the replay matched-prefix
         // counters can reference unflushed content; dropping the buffers makes them
         // stale. Reset only the counters — the replay connection may still be live
@@ -699,6 +922,18 @@ final class ChatViewModel {
         }
 
         if didMutate {
+            scheduleStreamingScrollTrigger()
+        }
+    }
+
+    /// Commits reasoning at a tool boundary without bypassing the assistant
+    /// word-reveal cadence. A pending assistant backlog keeps its scheduled
+    /// drain task; reasoning-only buffers can cancel the now-redundant tick.
+    private func flushReasoningAtToolBoundary() {
+        if pendingAssistantTokenChunks.isEmpty {
+            cancelPendingStreamingContentFlush()
+        }
+        if flushReasoningChunks() {
             scheduleStreamingScrollTrigger()
         }
     }
@@ -1215,6 +1450,7 @@ final class ChatViewModel {
                 reloadedMessages = loadedMessages
             }
             applyCompressionAnchorMetadata(from: session)
+            applyTodoState(from: session)
             applyReloadedMessages(
                 reloadedMessages,
                 from: session,
@@ -1449,6 +1685,7 @@ final class ChatViewModel {
             let mergedMessages = Self.prependingOlderMessages(olderMessages, to: messages)
             let didAddMessages = mergedMessages.count > messages.count
             applyCompressionAnchorMetadata(from: session)
+            applyTodoState(from: session)
             messages = mergedMessages
             latestServerLoadHadAssistantResponseAfterLatestUser = Self.hasAssistantResponseAfterLatestUser(
                 in: messages
@@ -2093,6 +2330,13 @@ final class ChatViewModel {
         archiveLiveToolCallsIfNeeded()
         liveReasoningText = ""
         liveToolCalls = []
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
+        reasoningPhaseStartedAt = nil
+        lastReasoningDuration = nil
+        currentToolBatchIndex = 0
+        didCompleteToolSinceBatchStart = false
         reasoningAnchorMessageID = nil
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
@@ -2239,7 +2483,10 @@ final class ChatViewModel {
         }
 
         guard let streamID = activeStreamID else {
-            if let noticeMessage {
+            // A decoded goal has its own persistent, bounded composer surface.
+            // Only fall back to a transcript notice for legacy responses that
+            // did not include structured goal state.
+            if currentGoal == nil, let noticeMessage {
                 appendLocalNoticeMessage(noticeMessage)
             }
             return true
@@ -2251,7 +2498,10 @@ final class ChatViewModel {
         if streamingAssistantMessageID == nil {
             streamingAssistantMessageID = Self.latestAssistantMessageID(in: messages)
         }
-        if let noticeMessage {
+        // Do not pin the server's verbose "Goal set" prose above the composer:
+        // for a long goal that generic notice was unbounded and covered nearly
+        // the whole chat. Structured goal state is rendered by GoalStatusSurface.
+        if currentGoal == nil, let noticeMessage {
             pinLocalNoticeMessage(noticeMessage)
         }
 
@@ -2287,6 +2537,7 @@ final class ChatViewModel {
         cancelPendingStreamingScrollTrigger()
         resetPendingStreamingContentBuffers()
         clearCompressionAnchorMetadata()
+        clearPlanState()
         messages = []
         messagesOffset = 0
         hasOlderMessages = false
@@ -2294,6 +2545,14 @@ final class ChatViewModel {
         completedReasoningGroups = []
         liveToolCalls = []
         liveReasoningText = ""
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
+        reasoningPhaseStartedAt = nil
+        lastReasoningDuration = nil
+        currentToolBatchIndex = 0
+        didCompleteToolSinceBatchStart = false
+        toolBatchIndexesByID = [:]
         pinnedLocalNotices = []
         streamingAssistantMessageID = nil
         toolCallAnchorMessageID = nil
@@ -2942,6 +3201,7 @@ final class ChatViewModel {
             }
 
             applyCompressionAnchorMetadata(from: session)
+            applyTodoState(from: session)
             messages = session.messages ?? []
             updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
             isViewingCachedData = false
@@ -3059,6 +3319,13 @@ final class ChatViewModel {
         archiveLiveToolCallsIfNeeded()
         liveReasoningText = ""
         liveToolCalls = []
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
+        reasoningPhaseStartedAt = nil
+        lastReasoningDuration = nil
+        currentToolBatchIndex = 0
+        didCompleteToolSinceBatchStart = false
         reasoningAnchorMessageID = nil
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
@@ -3232,7 +3499,9 @@ final class ChatViewModel {
             contentParts: existing.contentParts,
             reasoning: existing.reasoning,
             attachments: existing.attachments,
-            turnTps: existing.turnTps
+            turnTps: existing.turnTps,
+            phase: existing.phase,
+            codexMessageItems: existing.codexMessageItems
         )
         scheduleStreamingScrollTrigger()
     }
@@ -3743,6 +4012,12 @@ final class ChatViewModel {
         setCompletedToolCallGroups(snapshot.completedToolCallGroups)
         completedReasoningGroups = snapshot.completedReasoningGroups
         liveToolCalls = snapshot.liveToolCalls
+        // Rebuild batch state from the restored calls. Without this a fresh
+        // view model re-entering a live stream starts the counter at 0, so the
+        // next genuinely new tool can be merged into a finished batch and
+        // render a false "Parallel · 2"; and the empty id map would let
+        // reconcile flatten the clusters this guards.
+        restoreToolBatchState(from: snapshot.liveToolCalls)
         liveReasoningText = snapshot.liveReasoningText
         streamingAssistantMessageID = merge.streamingAssistantMessageID ?? snapshot.streamingAssistantMessageID
         toolCallAnchorMessageID = Self.remappedAnchorMessageID(
@@ -3810,7 +4085,7 @@ final class ChatViewModel {
 
     private func handleBtwStreamEvent(_ event: SSEEvent) {
         switch event {
-        case .token(let text):
+        case .token(let text, _):
             activeBtwAnswer += text
             updateActiveBtwMessage(isLoading: true)
         case .interimAssistant(let payload):
@@ -3837,7 +4112,7 @@ final class ChatViewModel {
             activeBtwAnswer = "Error: \(message)"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
-        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover:
+        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .todoState, .title, .metering, .pendingSteerLeftover:
             break
         }
     }
@@ -3925,47 +4200,58 @@ final class ChatViewModel {
 
     @discardableResult
     private func appendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool {
-        guard payload.alreadyStreamed != true else { return false }
-
         let text = payload.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !text.isEmpty else { return false }
 
         flushPendingStreamingContent()
-
-        if let streamingAssistantMessageID,
-           let index = messages.firstIndex(where: { $0.messageId == streamingAssistantMessageID }) {
-            let existing = messages[index]
-            let currentContent = existing.content ?? ""
-            let textToAppend = deduplicatedReplayText(
-                text,
-                existingContent: currentContent,
-                matchedPrefixLength: &activeStreamReplayMatchedInterimLength
-            )
-            guard !textToAppend.isEmpty else { return false }
-
-            let shouldAppendReplaySuffixDirectly = isActiveStreamReplayConnection && textToAppend != text
-            let shouldUseSeparator = currentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                && !shouldAppendReplaySuffixDirectly
-            let separator = shouldUseSeparator ? "\n\n" : ""
-            messages[index] = ChatMessage(
-                role: existing.role,
-                content: currentContent + separator + textToAppend,
-                timestamp: existing.timestamp,
-                messageId: existing.messageId,
-                name: existing.name,
-                toolCallId: existing.toolCallId,
-                toolUseId: existing.toolUseId,
-                toolCalls: existing.toolCalls,
-                contentParts: existing.contentParts,
-                reasoning: existing.reasoning,
-                attachments: existing.attachments,
-                turnTps: existing.turnTps
-            )
-            scheduleStreamingScrollTrigger()
-            return true
+        let messageID = ensureStreamingAssistantMessage()
+        if payload.alreadyStreamed == true {
+            removeAlreadyStreamedInterimText(text, fromMessageID: messageID)
+        }
+        if reasoningAnchorMessageID == nil {
+            reasoningAnchorMessageID = messageID
         }
 
-        return appendAssistantToken(text)
+        // Phase-aware runtimes can stream commentary directly into Thought and
+        // still emit the completed interim boundary for persistence. In that
+        // case `alreadyStreamed` means the trailing Thought text is the same
+        // segment, not a second narration block.
+        if payload.alreadyStreamed == true,
+           liveReasoningText.hasSuffix(text) {
+            return false
+        }
+
+        let textToAppend = deduplicatedReplayText(
+            text,
+            existingContent: liveReasoningText,
+            matchedPrefixLength: &activeStreamReplayMatchedInterimLength
+        )
+        guard !textToAppend.isEmpty else { return false }
+
+        let separator = liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : "\n\n"
+        liveReasoningText += separator + textToAppend
+        scheduleStreamingScrollTrigger()
+        return true
+    }
+
+    private func removeAlreadyStreamedInterimText(_ text: String, fromMessageID messageID: String) {
+        guard let index = messages.firstIndex(where: { $0.messageId == messageID }) else { return }
+
+        let existing = messages[index]
+        let currentContent = existing.content ?? ""
+        let updatedContent: String
+        if currentContent.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+            updatedContent = ""
+        } else if let range = currentContent.range(of: text, options: [.backwards, .anchored]) {
+            updatedContent = String(currentContent[..<range.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            return
+        }
+
+        messages[index] = existing.replacingContentForTranscript(updatedContent)
     }
 
     private func applyCompletedStreamSession(_ completedSession: SessionDetail) {
@@ -3976,6 +4262,7 @@ final class ChatViewModel {
         }
 
         applyCompressionAnchorMetadata(from: completedSession)
+        applyTodoState(from: completedSession)
 
         var didApplyCompletedTranscript = false
         if let completedMessages = completedSession.messages,
@@ -4051,10 +4338,24 @@ final class ChatViewModel {
     }
 
     private func setCompletedToolCallGroups(_ groups: [ToolCallGroup]) {
-        let lookup = ToolCallGroupAnchorLookup(groups: groups)
-        guard completedToolCallGroups != groups else { return }
+        let reanchoredGroups = groups.map { group in
+            guard let anchorMessageID = group.anchorMessageID else { return group }
+            let displayAnchorID = TranscriptTurnClassifier.displayAnchorID(
+                forAssistantAnchorID: anchorMessageID,
+                in: messages,
+                messageOffset: messagesOffset
+            )
+            guard displayAnchorID != anchorMessageID else { return group }
+            return ToolCallGroup(
+                id: group.id,
+                anchorMessageID: displayAnchorID,
+                toolCalls: group.toolCalls
+            )
+        }
+        let lookup = ToolCallGroupAnchorLookup(groups: reanchoredGroups)
+        guard completedToolCallGroups != reanchoredGroups else { return }
 
-        completedToolCallGroups = groups
+        completedToolCallGroups = reanchoredGroups
         completedToolCallGroupLookup = lookup
     }
 
@@ -4116,7 +4417,7 @@ final class ChatViewModel {
     }
 
     @discardableResult
-    private func appendReasoning(_ text: String) -> Bool {
+    private func appendReasoning(_ text: String, startsNewSegment: Bool) -> Bool {
         guard !text.isEmpty else { return false }
 
         // Same append-time dedup contract as appendAssistantToken: return true iff
@@ -4130,6 +4431,10 @@ final class ChatViewModel {
         )
         guard !remainder.isEmpty else { return false }
 
+        if startsNewSegment,
+           !effectiveContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pendingReasoningStartsNewSegment = true
+        }
         pendingReasoningChunks.append(remainder)
         scheduleStreamingContentFlush()
         return true
@@ -4148,7 +4453,12 @@ final class ChatViewModel {
             reasoningAnchorMessageID = messageID
         }
 
-        liveReasoningText += appendedText
+        let separator = pendingReasoningStartsNewSegment
+            && !liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "\n\n"
+            : ""
+        pendingReasoningStartsNewSegment = false
+        liveReasoningText += separator + appendedText
         return true
     }
 
@@ -4164,14 +4474,29 @@ final class ChatViewModel {
             return false
         }
 
+        // Batch detection from arrival order. The agent announces every tool in
+        // a parallel batch before running any of them; a sequential call is
+        // announced, run, and only then is the next one announced. So a `tool`
+        // event arriving while no earlier call has completed since the last
+        // batch boundary belongs to the same batch. Any completion closes the
+        // current batch, so the next start opens a new one.
+        if didCompleteToolSinceBatchStart {
+            currentToolBatchIndex += 1
+            didCompleteToolSinceBatchStart = false
+        }
+
         liveToolCalls.append(
             ToolCall(
                 id: payload.stableID ?? "live-tool-\(UUID().uuidString)",
                 name: payload.name,
                 preview: payload.preview,
-                args: payload.args
+                args: payload.args,
+                batchIndex: currentToolBatchIndex
             )
         )
+        if let appended = liveToolCalls.last {
+            toolBatchIndexesByID[appended.id] = currentToolBatchIndex
+        }
         scheduleStreamingScrollTrigger()
         return true
     }
@@ -4182,6 +4507,11 @@ final class ChatViewModel {
         if toolCallAnchorMessageID == nil {
             toolCallAnchorMessageID = messageID
         }
+
+        // Any completion closes the current dispatch batch: the agent only
+        // announces the next tool after the previous one returned unless the
+        // whole batch was announced up front. See `appendToolCall`.
+        didCompleteToolSinceBatchStart = true
 
         if let duplicateReplayIndex = duplicateReplayToolCompletionIndex(for: payload) {
             let wasAlreadyCompleted = liveToolCalls[duplicateReplayIndex].isCompleted
@@ -4198,6 +4528,9 @@ final class ChatViewModel {
         activeStreamReplayPendingToolMatchIndex = nil
 
         guard let index = liveToolCallCompletionIndex(for: payload) else {
+            // A completion with no matching start: treat it as its own run
+            // rather than folding it into whichever batch happens to be open.
+            currentToolBatchIndex += 1
             liveToolCalls.append(
                 ToolCall(
                     id: payload.stableID ?? "live-tool-\(UUID().uuidString)",
@@ -4206,9 +4539,13 @@ final class ChatViewModel {
                     args: payload.args,
                     duration: payload.duration,
                     isError: payload.isError,
-                    isCompleted: true
+                    isCompleted: true,
+                    batchIndex: currentToolBatchIndex
                 )
             )
+            if let appended = liveToolCalls.last {
+                toolBatchIndexesByID[appended.id] = currentToolBatchIndex
+            }
             scheduleStreamingScrollTrigger()
             return true
         }
@@ -4337,7 +4674,9 @@ final class ChatViewModel {
                 contentParts: existing.contentParts,
                 reasoning: existing.reasoning,
                 attachments: existing.attachments,
-                turnTps: existing.turnTps
+                turnTps: existing.turnTps,
+                phase: existing.phase,
+                codexMessageItems: existing.codexMessageItems
             )
             return true
         }
@@ -4955,6 +5294,30 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
         responseCompletionNeedsTranscriptRefresh = false
+        // Stream ended without a `done` (error / cancel / transport loss): the
+        // stint clock is abandoned, not recorded — `done` is the only path that
+        // publishes a completed duration for the live block.
+        reasoningPhaseStartedAt = nil
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
+    }
+
+    /// Starts the reasoning stint clock on the first *contributing* reasoning
+    /// or interim delta of a stint. Idempotent while a stint is open.
+    private func beginReasoningStintIfNeeded() {
+        guard reasoningPhaseStartedAt == nil else { return }
+        reasoningPhaseStartedAt = Date()
+    }
+
+    /// Closes the current reasoning stint (if one is open) and records its
+    /// duration. Called when the turn semantically moves on from `.reasoning`
+    /// (tool start, answer tokens, or `done`). Later stints in the same turn
+    /// overwrite the value — the live block always shows its own stint.
+    private func closeReasoningStintIfNeeded() {
+        guard let startedAt = reasoningPhaseStartedAt else { return }
+        reasoningPhaseStartedAt = nil
+        lastReasoningDuration = Date().timeIntervalSince(startedAt)
     }
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {
@@ -4983,28 +5346,92 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
-    func streamCoordinatorAppendToken(_ text: String) -> Bool {
-        appendAssistantToken(text)
+    func streamCoordinatorAppendToken(_ text: String, phase: AssistantStreamPhase) -> Bool {
+        switch phase {
+        case .finalAnswer:
+            // Only an explicit semantic final-answer marker may fold live
+            // activity. The bridge otherwise guarantees prose, not whether
+            // that prose precedes a later tool call.
+            closeReasoningStintIfNeeded()
+            turnPhase = .respondingText
+        case .commentary:
+            // Commentary is semantically activity, so never stage it in the
+            // answer bubble while waiting for a retrospective interim event.
+            return streamCoordinatorAppendReasoning(text)
+        case .provisional:
+            // Keep the current reasoning/tool phase while generic providers
+            // stream prose whose role is not known until a later interim or
+            // completion boundary. The prose itself still renders immediately.
+            break
+        }
+        return appendAssistantToken(text)
     }
 
     @discardableResult
     func streamCoordinatorAppendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool {
-        appendInterimAssistant(payload)
+        // Interim assistant prose renders in the reasoning block, so it keeps
+        // (or starts) the thinking step for capsule purposes.
+        turnPhase = .reasoning
+        let didAppendNewContent = appendInterimAssistant(payload)
+        if didAppendNewContent {
+            beginReasoningStintIfNeeded()
+        }
+        return didAppendNewContent
     }
 
     @discardableResult
     func streamCoordinatorAppendReasoning(_ text: String) -> Bool {
-        appendReasoning(text)
+        // Phase advances on the event *kind*, deliberately including replayed
+        // duplicates: during reconnect catch-up the phase races through the
+        // journal and lands on the live frontier's step, which is the correct
+        // capsule state for an open turn.
+        let startsNewSegment = turnPhase != .reasoning
+        turnPhase = .reasoning
+        let didAppendNewContent = appendReasoning(text, startsNewSegment: startsNewSegment)
+        // Bump only when the delta contributed genuinely new content: replayed
+        // duplicates (reconnect journal catch-up) return false above, so the
+        // micro-liveness signal stays paused through replay and resumes at the
+        // live frontier.
+        if didAppendNewContent {
+            reasoningActivity.bump()
+            // Same live-vs-replay discipline for the stint clock: replayed
+            // duplicates must not (re)start the "Thought for Ns" timer.
+            beginReasoningStintIfNeeded()
+        }
+        return didAppendNewContent
     }
 
     @discardableResult
     func streamCoordinatorAppendToolCall(_ payload: ToolStreamEvent) -> Bool {
-        appendToolCall(payload)
+        // A tool event is a semantic boundary, and may arrive before the
+        // coalesced reasoning tick has painted its pending tail. Commit that
+        // tail now so reasoning that resumes after the tool can begin a new
+        // Markdown block instead of joining the previous sentence.
+        flushReasoningAtToolBoundary()
+        closeReasoningStintIfNeeded()
+        turnPhase = .toolCalling
+        let didAppendNewContent = appendToolCall(payload)
+        if didAppendNewContent {
+            toolActivity.bump()
+        }
+        return didAppendNewContent
     }
 
     @discardableResult
     func streamCoordinatorCompleteToolCall(_ payload: ToolStreamEvent) -> Bool {
-        completeToolCall(payload)
+        // Recovery can deliver a completion without its matching start. It is
+        // still a semantic boundary, so commit any reasoning tail before the
+        // completion is synthesized as a standalone tool run.
+        flushReasoningAtToolBoundary()
+        // Stay in `.toolCalling`: completion of one tool doesn't mean the tool
+        // step ended — sibling tools may still run, and the model's next
+        // reasoning/text event is what semantically moves the turn on.
+        turnPhase = .toolCalling
+        let didCompleteNewContent = completeToolCall(payload)
+        if didCompleteNewContent {
+            toolActivity.bump()
+        }
+        return didCompleteNewContent
     }
 
     @discardableResult
@@ -5013,8 +5440,19 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
+    func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool {
+        applyTodoState(payload)
+    }
+
+    @discardableResult
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {
         flushPendingStreamingContent()
+        // The turn is semantically complete on `done` even if the transport
+        // lingers until `streamEnd`; stop the capsules now.
+        closeReasoningStintIfNeeded()
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
         let currentStreamingAssistantID = streamingAssistantMessageID
         let hasCompletedTranscript = payload.session?.messages?.isEmpty == false
         if let completedSession = payload.session {
@@ -5056,7 +5494,9 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
                 contentParts: message.contentParts,
                 reasoning: message.reasoning,
                 attachments: message.attachments,
-                turnTps: finalTokensPerSecond
+                turnTps: finalTokensPerSecond,
+                phase: message.phase,
+                codexMessageItems: message.codexMessageItems
             )
         }
         return hasCompletedTranscript
@@ -5236,6 +5676,10 @@ extension ChatViewModel {
             messages,
             messageOffset: messageOffset
         )
+        let displayAnchorIDsByAnchorID = TranscriptTurnClassifier.assistantDisplayAnchorIDsByAnchorID(
+            messages,
+            messageOffset: messageOffset
+        )
         let assistantMessagesByID = messages.enumerated().reduce(into: [String: ChatMessage]()) { result, entry in
             let message = entry.element
             guard message.role == "assistant" else { return }
@@ -5263,6 +5707,20 @@ extension ChatViewModel {
                 messageOffset: messageOffset
             )
             let turnKey = turnKeysByMessageID[anchorID] ?? "message:\(anchorID)"
+            for text in TranscriptTurnClassifier.progressTexts(
+                for: message,
+                anchorID: anchorID,
+                displayAnchorIDsByAnchorID: displayAnchorIDsByAnchorID
+            ) {
+                appendReasoningCandidate(
+                    text: text,
+                    anchorMessageID: anchorID,
+                    turnKey: turnKey,
+                    visibleText: nil,
+                    order: &order,
+                    candidates: &candidates
+                )
+            }
             for text in reasoningTexts(from: message) {
                 appendReasoningCandidate(
                     text: text,
@@ -5275,19 +5733,32 @@ extension ChatViewModel {
             }
         }
 
-        var latestCandidateIndexByKey: [String: Int] = [:]
-        for (index, candidate) in candidates.enumerated() {
-            latestCandidateIndexByKey["\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"] = index
+        var turnOrder: [String] = []
+        var textsByTurn: [String: [String]] = [:]
+        var anchorByTurn: [String: String?] = [:]
+        var seenKeys: Set<String> = []
+
+        for candidate in candidates {
+            let normalizedKey = normalizedReasoningKey(candidate.text)
+            let candidateKey = "\(candidate.turnKey)::\(normalizedKey)"
+            guard seenKeys.insert(candidateKey).inserted else { continue }
+
+            if textsByTurn[candidate.turnKey] == nil {
+                turnOrder.append(candidate.turnKey)
+            }
+            textsByTurn[candidate.turnKey, default: []].append(candidate.text)
+            anchorByTurn[candidate.turnKey] = candidate.anchorMessageID.map {
+                displayAnchorIDsByAnchorID[$0] ?? $0
+            }
         }
 
-        return candidates.enumerated().compactMap { index, candidate in
-            let key = "\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"
-            guard latestCandidateIndexByKey[key] == index else { return nil }
-
+        return turnOrder.compactMap { turnKey in
+            guard let texts = textsByTurn[turnKey], !texts.isEmpty else { return nil }
+            let anchor = anchorByTurn[turnKey] ?? nil
             return ReasoningGroup(
-                id: "reasoning-\(candidate.anchorMessageID ?? "unanchored")-\(candidate.order)",
-                anchorMessageID: candidate.anchorMessageID,
-                text: candidate.text
+                id: "reasoning-turn-\(anchor ?? turnKey)",
+                anchorMessageID: anchor,
+                text: texts.joined(separator: "\n\n")
             )
         }
     }
@@ -5302,6 +5773,10 @@ extension ChatViewModel {
         hidingStreamingAssistantID streamingAssistantID: String?
     ) -> [TranscriptMessage] {
         let offset = max(0, messageOffset ?? 0)
+        let displayAnchorIDsByAnchorID = TranscriptTurnClassifier.assistantDisplayAnchorIDsByAnchorID(
+            messages,
+            messageOffset: messageOffset
+        )
         var transcriptMessages: [TranscriptMessage] = []
         transcriptMessages.reserveCapacity(messages.count)
 
@@ -5317,14 +5792,25 @@ extension ChatViewModel {
                 at: loadedIndex,
                 messageOffset: messageOffset
             )
+            if message.role == "assistant",
+               ChatMarkerMessageClassifier.classify(message) == nil,
+               displayAnchorIDsByAnchorID[anchorID] != anchorID {
+                continue
+            }
             let absoluteIndex = offset + loadedIndex
             let renderID = "transcript:\(absoluteIndex)"
+            let displayMessage: ChatMessage
+            if message.role == "assistant", let finalText = message.codexFinalAnswerText {
+                displayMessage = message.replacingContentForTranscript(finalText)
+            } else {
+                displayMessage = message
+            }
 
             transcriptMessages.append(TranscriptMessage(
                 loadedIndex: loadedIndex,
                 renderID: renderID,
                 anchorID: anchorID,
-                message: message
+                message: displayMessage
             ))
         }
 
@@ -5544,7 +6030,10 @@ private extension ToolCall {
             duration: payload.duration,
             isError: payload.isError,
             isCompleted: true,
-            startedAt: startedAt
+            startedAt: startedAt,
+            // Completion rebuilds the value; carry the dispatch batch through
+            // or the parallel cluster collapses the moment its tools finish.
+            batchIndex: batchIndex
         )
     }
 }

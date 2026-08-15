@@ -252,7 +252,7 @@ struct TaskDetailView: View {
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                             .padding(12)
-                            .background(Color(.secondarySystemBackground))
+                            .appSurfaceBackground(.surface)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     } else {
                         Text("Empty output")

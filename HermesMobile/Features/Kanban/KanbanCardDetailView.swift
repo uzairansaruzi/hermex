@@ -128,6 +128,8 @@ private struct KanbanCardDetailContent: View {
         }
         .refreshable { await state.refresh() }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .appSurfaceBackground(.canvas)
     }
 
     @ViewBuilder

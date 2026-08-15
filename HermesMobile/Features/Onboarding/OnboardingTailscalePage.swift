@@ -2,6 +2,12 @@ import SwiftUI
 
 struct OnboardingTailscalePage: View {
     @Environment(\.openURL) private var openURL
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
+    private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
+    private var accentForeground: Color {
+        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -21,7 +27,7 @@ struct OnboardingTailscalePage: View {
                     Button(action: openTailscaleInAppStore) {
                         Label("Get Tailscale on the App Store", systemImage: "arrow.up.forward.square")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.10))
+                            .foregroundStyle(accent)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 13)
@@ -53,9 +59,9 @@ struct OnboardingTailscalePage: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(accentForeground)
                 .frame(width: 23, height: 23)
-                .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: Circle())
+                .background(accent, in: Circle())
 
             Text(text)
                 .font(.subheadline)

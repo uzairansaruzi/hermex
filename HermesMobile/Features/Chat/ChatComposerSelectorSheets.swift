@@ -77,7 +77,7 @@ struct ComposerModelPickerSheet: View {
                     .autocorrectionDisabled()
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .appSurfaceBackground(.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 HStack(spacing: 8) {
                     TextField("Provider ID", text: $customProviderID)
@@ -86,7 +86,7 @@ struct ComposerModelPickerSheet: View {
                         .autocorrectionDisabled()
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .appSurfaceBackground(.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                     if !providerChoices.isEmpty {
                         Menu {

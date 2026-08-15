@@ -192,6 +192,6 @@ private struct GitBranchPickerSheet: View {
             .font(AppFont.mono(style: .caption2))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(Color(.secondarySystemFill), in: Capsule())
+            .appSurfaceBackground(.inset, in: Capsule())
     }
 }

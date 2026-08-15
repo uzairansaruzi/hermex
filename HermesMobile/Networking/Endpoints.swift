@@ -1,5 +1,12 @@
 import Foundation
 
+enum ModelCatalogFreshness: String {
+    /// Serve the last-known catalog immediately and revalidate out of band.
+    /// Normal chat hydration uses this so opening a transcript never triggers
+    /// or waits for live provider discovery.
+    case sessionVisit = "session_visit"
+}
+
 enum Endpoint {
     case health
     case authStatus
@@ -69,6 +76,7 @@ enum Endpoint {
     case gitCommitMessage
     case gitCommitMessageSelected
     case models
+    case modelsSessionVisit
     case modelsLive
     case commands
     case defaultModel
@@ -261,7 +269,7 @@ enum Endpoint {
             return "/api/git/commit-message"
         case .gitCommitMessageSelected:
             return "/api/git/commit-message-selected"
-        case .models:
+        case .models, .modelsSessionVisit:
             return "/api/models"
         case .modelsLive:
             return "/api/models/live"
@@ -503,6 +511,8 @@ enum Endpoint {
             return request.queryItems
         case let .kanbanAddDependency(request), let .kanbanRemoveDependency(request):
             return request.queryItems
+        case .modelsSessionVisit:
+            return [URLQueryItem(name: "freshness", value: ModelCatalogFreshness.sessionVisit.rawValue)]
         case let .reasoning(model, provider):
             var items: [URLQueryItem] = []
             if let model, !model.isEmpty {

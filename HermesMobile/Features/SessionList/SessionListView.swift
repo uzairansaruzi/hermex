@@ -61,6 +61,10 @@ struct SessionListView: View {
     @AppStorage private var showsCliSessions: Bool
     @AppStorage private var showsClaudeCodeSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+    // Palette preferences read reactively so list chrome repaints as soon as
+    // the palette changes, rather than on the next incidental rebuild.
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
@@ -300,7 +304,11 @@ struct SessionListView: View {
 
     private var sessionListSurface: some View {
         ZStack(alignment: .bottomTrailing) {
-            Color(.systemBackground)
+            ChatPalette.appChrome(
+            colorScheme: colorScheme,
+            backgroundRawValue: chromeBackgroundRawValue,
+            temperatureRawValue: chromeTemperatureRawValue
+        ).chatBackground
                 .ignoresSafeArea()
 
             content
@@ -480,7 +488,13 @@ struct SessionListView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollPosition(id: $sidebarScrollPosition)
-        .background(Color(.systemBackground))
+        // Shares the transcript canvas so the app reads as one warm material
+        // from the session list through the chat surface.
+        .background(ChatPalette.appChrome(
+            colorScheme: colorScheme,
+            backgroundRawValue: chromeBackgroundRawValue,
+            temperatureRawValue: chromeTemperatureRawValue
+        ).chatBackground)
         .scrollDismissesKeyboard(.interactively)
         // Disclosure subrows are real List rows; drive their fold from the List
         // so insert/remove animates. Value-based so it works with @AppStorage.
@@ -1377,7 +1391,10 @@ private struct ActiveSessionMonitorTaskID: Hashable {
 
 private struct PendingNewChatView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     let server: URL
     let viewModel: SessionListViewModel
@@ -1442,7 +1459,11 @@ private struct PendingNewChatView: View {
 
     private var pendingContent: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground)
+            ChatPalette.appChrome(
+            colorScheme: colorScheme,
+            backgroundRawValue: chromeBackgroundRawValue,
+            temperatureRawValue: chromeTemperatureRawValue
+        ).chatBackground
                 .ignoresSafeArea()
 
             ContentUnavailableView {
@@ -1489,7 +1510,7 @@ private struct PendingNewChatView: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(Color(.secondaryLabel))
                     .frame(width: 44, height: 44)
-                    .background(Color(.tertiarySystemFill), in: Circle())
+                    .appSurfaceBackground(.inset, in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(true)

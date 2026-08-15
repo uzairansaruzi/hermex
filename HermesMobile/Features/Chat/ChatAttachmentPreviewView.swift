@@ -166,7 +166,7 @@ struct ChatAttachmentPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
     }
 
     private func textContent(_ file: FileResponse) -> some View {
@@ -181,7 +181,7 @@ struct ChatAttachmentPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
     }
 
     @ViewBuilder
@@ -199,7 +199,7 @@ struct ChatAttachmentPreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
         } else {
             unavailableContent(String(localized: "Could not preview this image."))
         }

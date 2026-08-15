@@ -112,6 +112,7 @@
 		C05100000000000000000001 /* ChatTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000011 /* ChatTranscriptView.swift */; };
 		C05100000000000000000002 /* ChatMessageActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000012 /* ChatMessageActions.swift */; };
 		C05100000000000000000003 /* ChatGoalControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000013 /* ChatGoalControls.swift */; };
+		D0C500000000000000000001 /* ComposerStatusSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C500000000000000000002 /* ComposerStatusSurface.swift */; };
 		C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */; };
 		1A2B3C4D5E6F7000000000D0 /* SessionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */; };
 		1A2B3C4D5E6F7000000000D1 /* SessionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */; };
@@ -128,6 +129,7 @@
 		C1A042000000000000000005 /* ClarificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000006 /* ClarificationTests.swift */; };
 		A02400000000000000000001 /* Goal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02400000000000000000002 /* Goal.swift */; };
 		C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000002 /* ChatStreamCoordinator.swift */; };
+		D0P1A0000000000000000009 /* TodoStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000A /* TodoStateTests.swift */; };
 		C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */; };
 		C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */; };
 		C22600000000000000000003 /* StreamReconnectContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000004 /* StreamReconnectContractTests.swift */; };
@@ -177,6 +179,20 @@
 		C12900000000000000000001 /* ChatActiveRunStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12900000000000000000002 /* ChatActiveRunStatusView.swift */; };
 		C06000000000000000000001 /* ToolCallDisplayFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06000000000000000000002 /* ToolCallDisplayFormatter.swift */; };
 		1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */; };
+		C7C300000000000000000001 /* ThinkingOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C300000000000000000002 /* ThinkingOrbView.swift */; };
+		C7C400000000000000000001 /* ActivityCapsuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C400000000000000000002 /* ActivityCapsuleView.swift */; };
+		C7C500000000000000000001 /* ActivityHistoryRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C500000000000000000002 /* ActivityHistoryRailView.swift */; };
+		C7C800000000000000000001 /* ToolRunIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C800000000000000000002 /* ToolRunIndicatorView.swift */; };
+		D0P1A0000000000000000001 /* TodoState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000002 /* TodoState.swift */; };
+		D0P1A0000000000000000003 /* PlanTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000004 /* PlanTimelineView.swift */; };
+		D0P1A0000000000000000007 /* PlanTimelineGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */; };
+		D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */; };
+		D0P1A000000000000000000F /* ActivityContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000010 /* ActivityContainerView.swift */; };
+		D0P1A0000000000000000011 /* TranscriptStressLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000012 /* TranscriptStressLabView.swift */; };
+		D0P1A0000000000000000013 /* OrbGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000014 /* OrbGalleryView.swift */; };
+		C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */; };
+		C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C900000000000000000002 /* TurnActivityFoldView.swift */; };
+		C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C400000000000000000004 /* BorderBeamModifier.swift */; };
 		1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */; };
 		1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */; };
 		1A2B3C4D5E6F7000000000E8 /* FilePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */; };
@@ -191,6 +207,7 @@
 		1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */; };
 		C09200000000000000000001 /* AppFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000002 /* AppFont.swift */; };
 		1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000101 /* AppTheme.swift */; };
+		C7A200000000000000000001 /* ChatPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A200000000000000000002 /* ChatPalette.swift */; };
 		C012400000000000000002 /* AppIconChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000001 /* AppIconChoice.swift */; };
 		C03120000000000000B001 /* GitWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F001 /* GitWorkspace.swift */; };
 		C03120000000000000B002 /* APIClient+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F002 /* APIClient+Git.swift */; };
@@ -264,6 +281,9 @@
 		C21300000000000000000005 /* StreamingTextFadeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21300000000000000000006 /* StreamingTextFadeTests.swift */; };
 		C23400000000000000000001 /* StreamingLabReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000002 /* StreamingLabReplay.swift */; };
 		C23400000000000000000003 /* StreamingLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000004 /* StreamingLabView.swift */; };
+		C7B100000000000000000001 /* SurfaceGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B100000000000000000002 /* SurfaceGalleryView.swift */; };
+		C7C700000000000000000001 /* TurnTimelineMockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C700000000000000000002 /* TurnTimelineMockView.swift */; };
+		C7CB00000000000000000001 /* DisclosureMotionLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CB00000000000000000002 /* DisclosureMotionLabView.swift */; };
 		C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000006 /* StreamingLabReplayTests.swift */; };
 		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
 		C14900000000000000000003 /* APIClient+Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000004 /* APIClient+Kanban.swift */; };
@@ -451,6 +471,7 @@
 		C05100000000000000000011 /* ChatTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptView.swift; sourceTree = "<group>"; };
 		C05100000000000000000012 /* ChatMessageActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageActions.swift; sourceTree = "<group>"; };
 		C05100000000000000000013 /* ChatGoalControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGoalControls.swift; sourceTree = "<group>"; };
+		D0C500000000000000000002 /* ComposerStatusSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStatusSurface.swift; sourceTree = "<group>"; };
 		C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptSupportingViews.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
@@ -467,6 +488,7 @@
 		C1A042000000000000000006 /* ClarificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationTests.swift; sourceTree = "<group>"; };
 		A02400000000000000000002 /* Goal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goal.swift; sourceTree = "<group>"; };
 		C04600000000000000000002 /* ChatStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinator.swift; sourceTree = "<group>"; };
+		D0P1A000000000000000000A /* TodoStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoStateTests.swift; sourceTree = "<group>"; };
 		C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinatorTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
 		C22600000000000000000004 /* StreamReconnectContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamReconnectContractTests.swift; sourceTree = "<group>"; };
@@ -516,6 +538,20 @@
 		C12900000000000000000002 /* ChatActiveRunStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActiveRunStatusView.swift; sourceTree = "<group>"; };
 		C06000000000000000000002 /* ToolCallDisplayFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallDisplayFormatter.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningBlockView.swift; sourceTree = "<group>"; };
+		C7C300000000000000000002 /* ThinkingOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingOrbView.swift; sourceTree = "<group>"; };
+		C7C400000000000000000002 /* ActivityCapsuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCapsuleView.swift; sourceTree = "<group>"; };
+		C7C500000000000000000002 /* ActivityHistoryRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityHistoryRailView.swift; sourceTree = "<group>"; };
+		C7C800000000000000000002 /* ToolRunIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolRunIndicatorView.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000002 /* TodoState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoState.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000004 /* PlanTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTimelineView.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTimelineGalleryView.swift; sourceTree = "<group>"; };
+		D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityFoldGalleryView.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000010 /* ActivityContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityContainerView.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000012 /* TranscriptStressLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStressLabView.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000014 /* OrbGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbGalleryView.swift; sourceTree = "<group>"; };
+		C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivitySummaryRow.swift; sourceTree = "<group>"; };
+		C7C900000000000000000002 /* TurnActivityFoldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityFoldView.swift; sourceTree = "<group>"; };
+		C7C400000000000000000004 /* BorderBeamModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderBeamModifier.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewView.swift; sourceTree = "<group>"; };
@@ -530,6 +566,7 @@
 		1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		C09200000000000000000002 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000101 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		C7A200000000000000000002 /* ChatPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPalette.swift; sourceTree = "<group>"; };
 		C012400000000000000001 /* AppIconChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoice.swift; sourceTree = "<group>"; };
 		C03120000000000000F001 /* GitWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspace.swift; sourceTree = "<group>"; };
 		C03120000000000000F002 /* APIClient+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Git.swift"; sourceTree = "<group>"; };
@@ -626,6 +663,9 @@
 		C21300000000000000000006 /* StreamingTextFadeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTextFadeTests.swift; sourceTree = "<group>"; };
 		C23400000000000000000002 /* StreamingLabReplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplay.swift; sourceTree = "<group>"; };
 		C23400000000000000000004 /* StreamingLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabView.swift; sourceTree = "<group>"; };
+		C7B100000000000000000002 /* SurfaceGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceGalleryView.swift; sourceTree = "<group>"; };
+		C7C700000000000000000002 /* TurnTimelineMockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnTimelineMockView.swift; sourceTree = "<group>"; };
+		C7CB00000000000000000002 /* DisclosureMotionLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisclosureMotionLabView.swift; sourceTree = "<group>"; };
 		C23400000000000000000006 /* StreamingLabReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplayTests.swift; sourceTree = "<group>"; };
 		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
 		C14900000000000000000004 /* APIClient+Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Kanban.swift"; sourceTree = "<group>"; };
@@ -781,6 +821,7 @@
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 					C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */,
 					C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */,
+					D0P1A000000000000000000A /* TodoStateTests.swift */,
 					C04800000000000000000004 /* ChatAttachmentCoordinatorTests.swift */,
 					C0390000000000000000000E /* ChatViewModelSendTests.swift */,
 					C0DED00000000000000DE000 /* ChatViewModelMergeDedupTests.swift */,
@@ -902,6 +943,7 @@
 				1A2B3C4D5E6F70000000142 /* ModelFavoritesStore.swift */,
 				1A2B3C4D5E6F700000000301 /* ServerAccount.swift */,
 				1A2B3C4D5E6F7000000000DF /* ToolCall.swift */,
+				D0P1A0000000000000000002 /* TodoState.swift */,
 				C03180000000000000F005 /* TurnFileChangeSummary.swift */,
 				1A2B3C4D5E6F7000000000B9 /* JSONValue.swift */,
 				1A2B3C4D5E6F70000000120 /* ContextWindowSnapshot.swift */,
@@ -1003,6 +1045,7 @@
 				C05100000000000000000011 /* ChatTranscriptView.swift */,
 				C05100000000000000000012 /* ChatMessageActions.swift */,
 				C05100000000000000000013 /* ChatGoalControls.swift */,
+				D0C500000000000000000002 /* ComposerStatusSurface.swift */,
 				C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */,
 				C0CAM000000000000000B002 /* CameraPickerView.swift */,
 				C0DEC0DE0000000000000002 /* ChatComposerView.swift */,
@@ -1027,6 +1070,15 @@
 				C12900000000000000000002 /* ChatActiveRunStatusView.swift */,
 				C06000000000000000000002 /* ToolCallDisplayFormatter.swift */,
 				1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */,
+				D0P1A0000000000000000004 /* PlanTimelineView.swift */,
+				C7C300000000000000000002 /* ThinkingOrbView.swift */,
+				C7C400000000000000000002 /* ActivityCapsuleView.swift */,
+				C7C500000000000000000002 /* ActivityHistoryRailView.swift */,
+				C7C800000000000000000002 /* ToolRunIndicatorView.swift */,
+				C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */,
+				D0P1A0000000000000000010 /* ActivityContainerView.swift */,
+				C7C900000000000000000002 /* TurnActivityFoldView.swift */,
+				C7C400000000000000000004 /* BorderBeamModifier.swift */,
 				B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */,
 				B5A220000000000000000004 /* MarkerMessageCardView.swift */,
 				C22300000000000000000002 /* CompressionAnchorResolver.swift */,
@@ -1107,6 +1159,13 @@
 				1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */,
 				C23400000000000000000002 /* StreamingLabReplay.swift */,
 				C23400000000000000000004 /* StreamingLabView.swift */,
+				C7B100000000000000000002 /* SurfaceGalleryView.swift */,
+				D0P1A0000000000000000014 /* OrbGalleryView.swift */,
+				D0P1A0000000000000000012 /* TranscriptStressLabView.swift */,
+				D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */,
+				D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */,
+				C7C700000000000000000002 /* TurnTimelineMockView.swift */,
+				C7CB00000000000000000002 /* DisclosureMotionLabView.swift */,
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				19C1150000000000000000A2 /* CliSessionsSyncModel.swift */,
 				26AB000000000000000000F2 /* ProvidersView.swift */,
@@ -1121,6 +1180,7 @@
 				1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */,
 				C09200000000000000000002 /* AppFont.swift */,
 				1A2B3C4D5E6F700000000101 /* AppTheme.swift */,
+				C7A200000000000000000002 /* ChatPalette.swift */,
 				C012400000000000000001 /* AppIconChoice.swift */,
 			);
 			path = Config;
@@ -1501,11 +1561,15 @@
 				1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */,
 				C23400000000000000000001 /* StreamingLabReplay.swift in Sources */,
 				C23400000000000000000003 /* StreamingLabView.swift in Sources */,
+				C7B100000000000000000001 /* SurfaceGalleryView.swift in Sources */,
+				C7C700000000000000000001 /* TurnTimelineMockView.swift in Sources */,
+				C7CB00000000000000000001 /* DisclosureMotionLabView.swift in Sources */,
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,
+				C7A200000000000000000001 /* ChatPalette.swift in Sources */,
 				C012400000000000000002 /* AppIconChoice.swift in Sources */,
 				C09300000000000000000001 /* HapticButton.swift in Sources */,
 				C0FF000000000000000000B1 /* CustomHeadersEditor.swift in Sources */,
@@ -1516,6 +1580,7 @@
 					C05100000000000000000001 /* ChatTranscriptView.swift in Sources */,
 					C05100000000000000000002 /* ChatMessageActions.swift in Sources */,
 					C05100000000000000000003 /* ChatGoalControls.swift in Sources */,
+					D0C500000000000000000001 /* ComposerStatusSurface.swift in Sources */,
 					C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */,
 					C0CAM000000000000000B001 /* CameraPickerView.swift in Sources */,
 				C0DEC0DE0000000000000001 /* ChatComposerView.swift in Sources */,
@@ -1535,6 +1600,20 @@
 				C12900000000000000000001 /* ChatActiveRunStatusView.swift in Sources */,
 				C06000000000000000000001 /* ToolCallDisplayFormatter.swift in Sources */,
 				1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */,
+				C7C300000000000000000001 /* ThinkingOrbView.swift in Sources */,
+				C7C400000000000000000001 /* ActivityCapsuleView.swift in Sources */,
+				C7C500000000000000000001 /* ActivityHistoryRailView.swift in Sources */,
+				C7C800000000000000000001 /* ToolRunIndicatorView.swift in Sources */,
+				D0P1A0000000000000000001 /* TodoState.swift in Sources */,
+				D0P1A0000000000000000003 /* PlanTimelineView.swift in Sources */,
+				D0P1A0000000000000000007 /* PlanTimelineGalleryView.swift in Sources */,
+				D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */,
+				D0P1A000000000000000000F /* ActivityContainerView.swift in Sources */,
+				D0P1A0000000000000000011 /* TranscriptStressLabView.swift in Sources */,
+				D0P1A0000000000000000013 /* OrbGalleryView.swift in Sources */,
+				C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */,
+				C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */,
+				C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */,
 				B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */,
 				B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */,
 				C22300000000000000000001 /* CompressionAnchorResolver.swift in Sources */,
@@ -1646,6 +1725,7 @@
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 					C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */,
 					C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */,
+					D0P1A0000000000000000009 /* TodoStateTests.swift in Sources */,
 					C04800000000000000000003 /* ChatAttachmentCoordinatorTests.swift in Sources */,
 					C0391000000000000000000E /* ChatViewModelSendTests.swift in Sources */,
 					C0DED00000000000000DE001 /* ChatViewModelMergeDedupTests.swift in Sources */,

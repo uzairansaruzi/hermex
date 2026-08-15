@@ -92,7 +92,7 @@ struct SelectableTextPresentationView: View {
         NavigationStack {
             SelectableTextView(text: selection.text)
                 .accessibilityIdentifier("selectable-response-text")
-                .background(Color(.systemBackground))
+                .appSurfaceBackground(.canvas)
                 .navigationTitle("Select Text")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -113,7 +113,7 @@ struct SelectableTextView: UIViewRepresentable {
         let textView = UITextView()
         textView.isEditable = false
         textView.isSelectable = true
-        textView.backgroundColor = .systemBackground
+        textView.backgroundColor = .clear
         textView.font = .preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         // A wrapped UITextView does not inherit SwiftUI's layoutDirection; `.natural`
@@ -147,7 +147,7 @@ struct EditMessageSheet: View {
                     .font(.body)
                     .padding()
                     .scrollContentBackground(.hidden)
-                    .background(Color(.systemGroupedBackground))
+                    .appSurfaceBackground(.canvas)
             }
             .navigationTitle("Edit Message")
             .navigationBarTitleDisplayMode(.inline)

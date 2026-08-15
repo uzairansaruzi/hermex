@@ -49,6 +49,24 @@ struct SubmittedGoal: Decodable, Equatable {
     let lastReason: String?
     let pausedReason: String?
 
+    init(
+        goal: String?,
+        status: String?,
+        turnsUsed: Int? = nil,
+        maxTurns: Int? = nil,
+        lastVerdict: String? = nil,
+        lastReason: String? = nil,
+        pausedReason: String? = nil
+    ) {
+        self.goal = goal
+        self.status = status
+        self.turnsUsed = turnsUsed
+        self.maxTurns = maxTurns
+        self.lastVerdict = lastVerdict
+        self.lastReason = lastReason
+        self.pausedReason = pausedReason
+    }
+
     enum CodingKeys: String, CodingKey {
         case goal
         case status
@@ -78,6 +96,54 @@ struct SubmittedGoal: Decodable, Equatable {
             ?? container.decodeLossyStringIfPresent(forKey: .lastReasonSnake)
         pausedReason = container.decodeLossyStringIfPresent(forKey: .pausedReason)
             ?? container.decodeLossyStringIfPresent(forKey: .pausedReasonSnake)
+    }
+}
+
+/// Goal states currently persisted by Hermes' `GoalState` contract.
+/// Unknown values remain visible instead of being mislabeled as active, so a
+/// server-side addition degrades honestly while the app catches up.
+enum GoalPresentationStatus: Equatable {
+    case active
+    case paused
+    case done
+    case cleared
+    case unknown(String)
+
+    init(rawValue: String?) {
+        let normalized = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        switch normalized {
+        case "active": self = .active
+        case "paused": self = .paused
+        case "done": self = .done
+        case "cleared": self = .cleared
+        default: self = .unknown(normalized)
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .active: String(localized: "Active")
+        case .paused: String(localized: "Paused")
+        case .done: String(localized: "Done")
+        case .cleared: String(localized: "Cleared")
+        case .unknown(let raw): raw.isEmpty ? String(localized: "Goal") : raw.capitalized
+        }
+    }
+}
+
+extension SubmittedGoal {
+    var presentationStatus: GoalPresentationStatus {
+        GoalPresentationStatus(rawValue: status)
+    }
+
+    var displayGoal: String {
+        let trimmed = goal?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? String(localized: "Goal details unavailable") : trimmed
+    }
+
+    var turnProgress: Double? {
+        guard let turnsUsed, let maxTurns, maxTurns > 0 else { return nil }
+        return min(1, max(0, Double(turnsUsed) / Double(maxTurns)))
     }
 }
 

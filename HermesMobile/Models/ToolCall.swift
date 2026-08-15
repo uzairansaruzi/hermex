@@ -9,6 +9,14 @@ struct ToolCall: Identifiable, Equatable {
     var isError: Bool?
     var isCompleted: Bool
     let startedAt: Double
+    /// Which parallel dispatch batch this call belonged to, when known.
+    ///
+    /// The agent announces every tool in a parallel batch *before* running any
+    /// of them, and announce-run-announce-run for sequential calls, so batches
+    /// are derived from stream arrival order (see `ChatViewModel`), not from
+    /// timestamps. Nothing in the persisted session carries this, so it is
+    /// live-session only and nil after a relaunch — history renders flat.
+    var batchIndex: Int?
 
     init(
         id: String = "live-tool-\(UUID().uuidString)",
@@ -18,7 +26,8 @@ struct ToolCall: Identifiable, Equatable {
         duration: Double? = nil,
         isError: Bool? = nil,
         isCompleted: Bool = false,
-        startedAt: Double = Date().timeIntervalSince1970
+        startedAt: Double = Date().timeIntervalSince1970,
+        batchIndex: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -28,6 +37,7 @@ struct ToolCall: Identifiable, Equatable {
         self.isError = isError
         self.isCompleted = isCompleted
         self.startedAt = startedAt
+        self.batchIndex = batchIndex
     }
 
     var displayName: String {
@@ -123,6 +133,27 @@ struct ToolCallGroup: Identifiable, Equatable {
 
     var hasFailedTool: Bool {
         toolCalls.contains { $0.isError == true }
+    }
+
+    /// The group's calls arranged into runs, where a run is either one
+    /// sequential call or a parallel batch of two or more. Preserves order and
+    /// never reorders calls; a group with no batch information (history)
+    /// degrades to all-sequential runs, which is exactly the quieter history
+    /// rendering we accept.
+    var runs: [ToolCallRun] {
+        var result: [ToolCallRun] = []
+        for toolCall in toolCalls {
+            if let batchIndex = toolCall.batchIndex,
+               let lastIndex = result.indices.last,
+               result[lastIndex].batchIndex == batchIndex {
+                result[lastIndex].toolCalls.append(toolCall)
+            } else {
+                result.append(
+                    ToolCallRun(batchIndex: toolCall.batchIndex, toolCalls: [toolCall])
+                )
+            }
+        }
+        return result
     }
 
     static func live(anchorMessageID: String?, toolCalls: [ToolCall]) -> ToolCallGroup {
@@ -673,7 +704,11 @@ struct ToolCallGroup: Identifiable, Equatable {
             duration: existing.duration ?? fallback.duration,
             isError: mergedErrorState(existing.isError, fallback.isError),
             isCompleted: existing.isCompleted || fallback.isCompleted,
-            startedAt: min(existing.startedAt, fallback.startedAt)
+            startedAt: min(existing.startedAt, fallback.startedAt),
+            // Carry batching through the merge. The id can switch to the
+            // transcript's during merge, which would orphan the live batch-map
+            // entry and silently flatten the cluster.
+            batchIndex: existing.batchIndex ?? fallback.batchIndex
         )
     }
 
@@ -754,4 +789,14 @@ private extension JSONValue {
 
         return String(data: data, encoding: .utf8)
     }
+}
+
+/// One horizontal slice of a tool group: either a single sequential call or a
+/// parallel batch that the agent dispatched together.
+struct ToolCallRun: Identifiable, Equatable {
+    let batchIndex: Int?
+    var toolCalls: [ToolCall]
+
+    var id: String { toolCalls.first?.id ?? "empty-run" }
+    var isParallel: Bool { toolCalls.count > 1 }
 }
