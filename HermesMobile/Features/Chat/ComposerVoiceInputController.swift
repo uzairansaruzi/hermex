@@ -48,6 +48,8 @@ final class ComposerVoiceInputController {
     /// Called when recognition produces a final transcript (isFinal=true). Used by voice-first mode for immediate send.
     @ObservationIgnored var onFinalTranscript: ((String) -> Void)?
 
+    private var volcengineSTT: VolcengineStreamingSTT?
+
     init(
         speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
         audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() }
@@ -76,7 +78,13 @@ final class ComposerVoiceInputController {
         suppressNextRecognitionError = true
         switch state {
         case .serverListening:
-            stopServerRecordingAndTranscribe()
+            if volcengineSTT != nil {
+                // Volcengine streaming: send end-of-audio, then stop
+                volcengineSTT?.finishAudio()
+                stopVolcengineStreaming()
+            } else {
+                stopServerRecordingAndTranscribe()
+            }
         case .transcribing:
             cancelServerTranscription()
             stopAcceptingDraftUpdates()
@@ -91,6 +99,9 @@ final class ComposerVoiceInputController {
 
     func stopBeforeSubmittingDraft() {
         suppressNextRecognitionError = true
+        if volcengineSTT != nil {
+            stopVolcengineStreaming()
+        }
         cancelServerTranscription()
         stopAcceptingDraftUpdates()
         discardServerRecording()
@@ -113,10 +124,12 @@ final class ComposerVoiceInputController {
 
         let canUseServer = apiClient != nil
         let canUseOnDevice = onDeviceSpeechRecognizerForRecording() != nil
+        let canUseVolcengine = VolcengineSTTSettings.isConfigured
         let providers = ComposerSTTProviderPolicy.orderedProviders(
             preference: providerPreference,
             serverConfigured: canUseServer,
-            onDeviceSupported: canUseOnDevice
+            onDeviceSupported: canUseOnDevice,
+            volcengineConfigured: canUseVolcengine
         )
 
         guard let provider = providers.first else {
@@ -139,6 +152,8 @@ final class ComposerVoiceInputController {
             await startServerProvider()
         case .onDevice:
             await startOnDeviceProvider()
+        case .volcengineStreaming:
+            await startVolcengineProvider()
         }
     }
 
@@ -172,6 +187,167 @@ final class ComposerVoiceInputController {
                 logCategory: Self.logCategory(for: error)
             )
         }
+    }
+
+    // MARK: - Volcengine Streaming STT
+
+    private func startVolcengineProvider() async {
+        let isMicrophonePermissionGranted = await requestMicrophonePermission()
+        logger.info("Volcengine voice input microphone permission completed granted=\(isMicrophonePermissionGranted, privacy: .public)")
+        guard state == .requestingPermission else { return }
+        guard isMicrophonePermissionGranted else {
+            fail(
+                String(localized: "Microphone access is disabled. Enable it in Settings to use voice input."),
+                logCategory: .microphonePermission
+            )
+            return
+        }
+
+        guard ComposerVoiceInputStartPolicy.canStart(appIsActive: UIApplication.shared.applicationState == .active) else {
+            fail(
+                ComposerVoiceInputError.appNotActive.localizedDescription,
+                logCategory: .appNotActive
+            )
+            return
+        }
+
+        guard let config = VolcengineSTTSettings.configuration(hotwords: contextualStrings) else {
+            await fallbackOrFail(
+                from: .volcengineStreaming,
+                message: VolcengineSTTError.notConfigured.localizedDescription,
+                logCategory: .speechUnavailable
+            )
+            return
+        }
+
+        do {
+            try startVolcengineStreaming(configuration: config)
+            state = .serverListening
+        } catch {
+            await fallbackOrFail(
+                from: .volcengineStreaming,
+                message: error.localizedDescription,
+                logCategory: Self.logCategory(for: error)
+            )
+        }
+    }
+
+    private func startVolcengineStreaming(configuration: VolcengineStreamingSTT.Configuration) throws {
+        stopAudio(cancelTask: true)
+        logger.info("Volcengine streaming STT audio startup preparing")
+
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(
+            ComposerVoiceAudioSessionConfiguration.category,
+            mode: ComposerVoiceAudioSessionConfiguration.mode,
+            options: ComposerVoiceAudioSessionConfiguration.options
+        )
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        activatedAudioSessionForRecording = true
+
+        try ComposerVoiceInputStartPolicy.validateAudioSessionInput(
+            isInputAvailable: audioSession.isInputAvailable,
+            sampleRate: audioSession.sampleRate,
+            inputNumberOfChannels: audioSession.inputNumberOfChannels
+        )
+
+        // Set up Volcengine STT client
+        let stt = VolcengineStreamingSTT()
+        stt.onPartialResult = { [weak self] text in
+            guard let self else { return }
+            self.liveTranscript = text
+            if let composedDraft = self.draftUpdateSession.composedDraft(for: text) {
+                self.updateDraft?(composedDraft)
+            }
+            self.onPartialTranscript?(text)
+        }
+        stt.onFinalResult = { [weak self] text in
+            guard let self else { return }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                self.onFinalTranscript?(self.liveTranscript)
+            }
+        }
+        stt.onCompleted = { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let finalText):
+                self.logger.info("Volcengine STT completed: \(finalText.prefix(50))")
+                if !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.liveTranscript = finalText
+                    if let composedDraft = self.draftUpdateSession.composedDraft(for: finalText) {
+                        self.updateDraft?(composedDraft)
+                    }
+                }
+                self.stopVolcengineStreaming()
+            case .failure(let error):
+                self.logger.error("Volcengine STT error: \(error.localizedDescription)")
+                self.stopVolcengineStreaming()
+                self.errorMessage = error.localizedDescription
+            }
+        }
+        self.volcengineSTT = stt
+        stt.start(configuration: configuration)
+
+        // Set up AVAudioEngine to capture PCM frames and stream them
+        let audioEngine = audioEngineFactory()
+        self.audioEngine = audioEngine
+        try ComposerVoiceInputStartPolicy.validateAudioEngine(isRunning: audioEngine.isRunning)
+
+        let inputNode = audioEngine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        try ComposerVoiceInputPreflight.validate(recordingFormat: recordingFormat)
+
+        // Convert to 16kHz mono 16-bit PCM for Volcengine
+        let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: true
+        )!
+
+        let converter = AVAudioConverter(from: recordingFormat, to: targetFormat)
+
+        // Buffer size: 200ms at 16kHz = 3200 samples
+        let frameSamples: AVAudioFrameCount = 3_200
+
+        inputNode.installTap(onBus: 0, bufferSize: 4_096, format: recordingFormat) { [weak stt, weak converter] buffer, _ in
+            guard let stt, let converter else { return }
+
+            let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameSamples)!
+            var error: NSError?
+            let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+                outStatus.pointee = .haveData
+                return buffer
+            }
+
+            guard status == .haveData || status == .inputRanDry, error == nil else { return }
+
+            // Extract raw PCM bytes from the Int16 buffer
+            guard let int16Ptr = outputBuffer.int16ChannelData else { return }
+            let frameLength = Int(outputBuffer.frameLength)
+            let byteCount = frameLength * 2 // 16-bit = 2 bytes per sample
+            let pcmData = Data(bytes: int16Ptr[0], count: byteCount)
+
+            Task { @MainActor in
+                stt.sendAudioFrame(pcmData)
+            }
+        }
+        audioTapInstalled = true
+
+        audioEngine.prepare()
+        try audioEngine.start()
+        ComposerAudioCaptureState.shared.setCapturing(true)
+        logger.info("Volcengine streaming STT started with AVAudioEngine tap")
+    }
+
+    private func stopVolcengineStreaming() {
+        volcengineSTT?.cancel()
+        volcengineSTT = nil
+        stopAcceptingDraftUpdates()
+        stopAudio(cancelTask: true)
+        state = .idle
+        suppressNextRecognitionError = false
     }
 
     private func startOnDeviceProvider() async {
@@ -236,7 +412,8 @@ final class ComposerVoiceInputController {
             after: failedProvider,
             preference: providerPreference,
             serverConfigured: apiClient != nil,
-            onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil
+            onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil,
+            volcengineConfigured: VolcengineSTTSettings.isConfigured
         )
 
         guard let fallback else {
@@ -431,7 +608,8 @@ final class ComposerVoiceInputController {
             after: .server,
             preference: providerPreference,
             serverConfigured: apiClient != nil,
-            onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil
+            onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil,
+            volcengineConfigured: VolcengineSTTSettings.isConfigured
         ) == .onDevice,
               let speechRecognizer = onDeviceSpeechRecognizerForRecording()
         else {
@@ -820,7 +998,7 @@ enum ComposerVoiceMicrophonePermissionRequester {
 
 enum ComposerVoiceAudioSessionConfiguration {
     static let category = AVAudioSession.Category.playAndRecord
-    static let mode = AVAudioSession.Mode.measurement
+    static let mode = AVAudioSession.Mode.videoRecording
     static let options: AVAudioSession.CategoryOptions = [.mixWithOthers, .allowBluetoothHFP]
 }
 

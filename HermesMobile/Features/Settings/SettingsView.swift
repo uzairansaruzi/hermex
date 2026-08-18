@@ -196,6 +196,35 @@ struct SettingsView: View {
 
                     SettingsFootnote(String(localized: "On-device only keeps composer dictation audio off your Hermes server."))
 
+                    if sttProviderPreferenceRawValue == ComposerSTTProviderPreference.volcengineFirst.rawValue {
+                        SettingsDivider()
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label {
+                                Text("Volcengine API Key")
+                            } icon: {
+                                Image(systemName: "key")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+
+                            SecureField(
+                                "API Key from console.volcengine.com",
+                                text: Binding(
+                                    get: { UserDefaults.standard.string(forKey: VolcengineSTTSettings.apiKeyKey) ?? "" },
+                                    set: { UserDefaults.standard.set($0, forKey: VolcengineSTTSettings.apiKeyKey) }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .font(.footnote)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        }
+                        .padding(.horizontal, 4)
+
+                        SettingsFootnote(String(localized: "Get your API Key from the Volcengine Speech console. Enables low-latency streaming Chinese recognition."))
+                    }
+
                     SettingsDivider()
 
                     SettingsToggleRow(

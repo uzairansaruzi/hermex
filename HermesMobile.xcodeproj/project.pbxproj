@@ -178,6 +178,8 @@
 		C03250000000000000B102 /* APIClient+Transcribe.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F102 /* APIClient+Transcribe.swift */; };
 		C03250000000000000B103 /* MultipartFormData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F103 /* MultipartFormData.swift */; };
 		C03250000000000000B104 /* ComposerVoiceNoteRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F104 /* ComposerVoiceNoteRecorder.swift */; };
+		E01A00000000000000B201 /* VolcengineStreamingSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01A00000000000000F201 /* VolcengineStreamingSTT.swift */; };
+		E01A00000000000000B202 /* VolcengineSTTSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01A00000000000000F202 /* VolcengineSTTSettings.swift */; };
 		C03250000000000000B105 /* APIClientTranscribeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F105 /* APIClientTranscribeTests.swift */; };
 		C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */; };
 		C03260000000000000B101 /* APIClient+TTS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03260000000000000F101 /* APIClient+TTS.swift */; };
@@ -525,6 +527,8 @@
 		C03250000000000000F102 /* APIClient+Transcribe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Transcribe.swift"; sourceTree = "<group>"; };
 		C03250000000000000F103 /* MultipartFormData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipartFormData.swift; sourceTree = "<group>"; };
 		C03250000000000000F104 /* ComposerVoiceNoteRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerVoiceNoteRecorder.swift; sourceTree = "<group>"; };
+		E01A00000000000000F201 /* VolcengineStreamingSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcengineStreamingSTT.swift; sourceTree = "<group>"; };
+		E01A00000000000000F202 /* VolcengineSTTSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcengineSTTSettings.swift; sourceTree = "<group>"; };
 		C03250000000000000F105 /* APIClientTranscribeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTranscribeTests.swift; sourceTree = "<group>"; };
 		C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerVoiceNoteRecorderTests.swift; sourceTree = "<group>"; };
 		C03260000000000000F101 /* APIClient+TTS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+TTS.swift"; sourceTree = "<group>"; };
@@ -1040,6 +1044,8 @@
 				03227BCC723743B7B09A96AD /* ComposerVoiceFirstMode.swift */,
 				85452567F0194260D8966353 /* ComposerVoiceFirstBar.swift */,
 				C03250000000000000F104 /* ComposerVoiceNoteRecorder.swift */,
+				E01A00000000000000F201 /* VolcengineStreamingSTT.swift */,
+				E01A00000000000000F202 /* VolcengineSTTSettings.swift */,
 				1A2B3C4D5E6F70000000121 /* ContextWindowIndicatorView.swift */,
 				5DA59130ED4141049177576C /* SlashCommand.swift */,
 				1AB43F55AB4F4262963E6A6E /* SlashCommandCatalog.swift */,
@@ -1480,6 +1486,8 @@
 				C03270000000000000B101 /* APIClient+SessionExport.swift in Sources */,
 				C03250000000000000B103 /* MultipartFormData.swift in Sources */,
 				C03250000000000000B104 /* ComposerVoiceNoteRecorder.swift in Sources */,
+				E01A00000000000000B201 /* VolcengineStreamingSTT.swift in Sources */,
+				E01A00000000000000B202 /* VolcengineSTTSettings.swift in Sources */,
 				1A2B3C4D5E6F7000000000A3 /* APIError.swift in Sources */,
 				C04400000000000000000001 /* CacheFallbackPolicy.swift in Sources */,
 				1A2B3C4D5E6F7000000000A0 /* KeychainStore.swift in Sources */,
