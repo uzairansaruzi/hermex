@@ -79,9 +79,12 @@ final class ComposerVoiceInputController {
         switch state {
         case .serverListening:
             if volcengineSTT != nil {
-                // Volcengine streaming: send end-of-audio, then stop
+                // Volcengine streaming: send end-of-audio and stop mic,
+                // but keep WebSocket alive so server can return final result.
+                // The onCompleted callback will handle full cleanup.
                 volcengineSTT?.finishAudio()
-                stopVolcengineStreaming()
+                stopAudio(cancelTask: false)
+                state = .transcribing
             } else {
                 stopServerRecordingAndTranscribe()
             }
