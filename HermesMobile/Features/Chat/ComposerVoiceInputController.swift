@@ -286,10 +286,8 @@ final class ComposerVoiceInputController {
                 self.errorMessage = error.localizedDescription
             }
         }
-        self.volcengineSTT = stt
-        stt.start(configuration: configuration)
 
-        // Set up AVAudioEngine to capture PCM frames and stream them
+        // Start audio engine setup (but don't install tap yet — wait for WebSocket to be ready)
         let audioEngine = audioEngineFactory()
         self.audioEngine = audioEngine
         try ComposerVoiceInputStartPolicy.validateAudioEngine(isRunning: audioEngine.isRunning)
@@ -298,13 +296,31 @@ final class ComposerVoiceInputController {
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         try ComposerVoiceInputPreflight.validate(recordingFormat: recordingFormat)
 
+        // Prepare audio engine but don't start yet
+        audioEngine.prepare()
+
+        // Store STT reference and start WebSocket connection.
+        // Audio engine will be started once WebSocket is ready (state = .streaming).
+        self.volcengineSTT = stt
+        stt.onReady = { [weak self] in
+            guard let self else { return }
+            self.startVolcengineAudioCapture(audioEngine: audioEngine, inputNode: inputNode, recordingFormat: recordingFormat, stt: stt)
+        }
+        stt.start(configuration: configuration)
+        logger.info("Volcengine STT WebSocket connecting, audio engine prepared")
+    }
+
+    private func startVolcengineAudioCapture(audioEngine: AVAudioEngine, inputNode: AVAudioInputNode, recordingFormat: AVAudioFormat, stt: VolcengineStreamingSTT) {
         // Convert to 16kHz mono 16-bit PCM for Volcengine
-        let targetFormat = AVAudioFormat(
+        guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: 16_000,
             channels: 1,
             interleaved: true
-        )!
+        ) else {
+            logger.error("Failed to create target audio format")
+            return
+        }
 
         let converter = AVAudioConverter(from: recordingFormat, to: targetFormat)
 
@@ -335,10 +351,13 @@ final class ComposerVoiceInputController {
         }
         audioTapInstalled = true
 
-        audioEngine.prepare()
-        try audioEngine.start()
-        ComposerAudioCaptureState.shared.setCapturing(true)
-        logger.info("Volcengine streaming STT started with AVAudioEngine tap")
+        do {
+            try audioEngine.start()
+            ComposerAudioCaptureState.shared.setCapturing(true)
+            logger.info("Volcengine audio engine started — streaming audio frames")
+        } catch {
+            logger.error("Failed to start audio engine: \(error.localizedDescription)")
+        }
     }
 
     private func stopVolcengineStreaming() {

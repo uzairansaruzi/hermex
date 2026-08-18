@@ -39,6 +39,8 @@ final class VolcengineStreamingSTT: NSObject {
     var onFinalResult: ((String) -> Void)?
     /// Called when the session ends (either normally or with error).
     var onCompleted: ((Result<String, Error>) -> Void)?
+    /// Called when WebSocket is connected and ready to receive audio frames.
+    var onReady: (() -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
@@ -65,6 +67,7 @@ final class VolcengineStreamingSTT: NSObject {
         request.setValue(configuration.apiKey, forHTTPHeaderField: "X-Api-Key")
         request.setValue(configuration.resourceId, forHTTPHeaderField: "X-Api-Resource-Id")
         request.setValue(connectId, forHTTPHeaderField: "X-Api-Connect-Id")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Request-Id")
         request.setValue("-1", forHTTPHeaderField: "X-Api-Sequence")
 
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
@@ -128,8 +131,7 @@ final class VolcengineStreamingSTT: NSObject {
                 "codec": "raw",
                 "rate": 16000,
                 "bits": 16,
-                "channel": 1,
-                "language": configuration.language
+                "channel": 1
             ],
             "request": [
                 "model_name": "bigmodel",
@@ -368,6 +370,7 @@ final class VolcengineStreamingSTT: NSObject {
                 } else {
                     self.state = .streaming
                     self.startReceiving()
+                    self.onReady?()
                     self.logger.info("Volcengine STT streaming started")
                 }
             }
