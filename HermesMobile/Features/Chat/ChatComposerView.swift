@@ -1255,8 +1255,10 @@ struct MessageComposerView: View {
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
         voiceInput.locale = .current
         if voiceFirstModeEnabled {
-            // Voice-first mode: force server STT for multilingual support (Whisper auto-detects language).
-            voiceInput.providerPreference = .serverFirst
+            // Voice-first mode: use volcengine if configured, otherwise fall back to server STT.
+            if voiceInput.providerPreference != .volcengineFirst {
+                voiceInput.providerPreference = .serverFirst
+            }
             voiceInput.contextualStrings = ComposerSTTContextProvider.hotWords(
                 sessionTitle: nil,
                 userHotWords: voiceFirstHotWords
