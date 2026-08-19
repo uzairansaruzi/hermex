@@ -165,7 +165,6 @@ struct MessageComposerView: View {
     @State private var voiceFirstPendingAction: ComposerVoiceFirstBar.ReleaseAction = .send
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(VoiceFirstModeSettings.isEnabledKey) private var voiceFirstModeEnabled = false
-    @AppStorage(VoiceFirstModeSettings.hotWordsKey) private var voiceFirstHotWords = ""
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
     private enum DeferredUploadFocusPhase: Equatable {
@@ -317,14 +316,25 @@ struct MessageComposerView: View {
 
                     if voiceFirstModeEnabled, !voiceFirstShowingTextMode {
                         // Voice-first mode: "Hold to speak" bar replaces text input.
-                        VStack(spacing: 4) {
+                        VStack(spacing: 8) {
                             if voiceInput.isListening, !voiceInput.liveTranscript.isEmpty {
+                                // Live transcript preview. Truncating from the head keeps the
+                                // newest words visible as dictation grows past three lines.
                                 Text(voiceInput.liveTranscript)
                                     .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(3)
+                                    .truncationMode(.head)
+                                    .multilineTextAlignment(.leading)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 4)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .fill(Color(.tertiarySystemFill))
+                                    )
+                                    .padding(.horizontal, 12)
+                                    .transition(.opacity)
                             }
 
                             ComposerVoiceFirstBar(
@@ -437,7 +447,9 @@ struct MessageComposerView: View {
                                         .font(.system(size: 14, weight: .medium))
                                     Text(String(localized: "Voice"))
                                         .font(.caption)
+                                        .lineLimit(1)
                                 }
+                                .fixedSize(horizontal: true, vertical: false)
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
@@ -1259,10 +1271,6 @@ struct MessageComposerView: View {
             if voiceInput.providerPreference != .volcengineFirst {
                 voiceInput.providerPreference = .serverFirst
             }
-            voiceInput.contextualStrings = ComposerSTTContextProvider.hotWords(
-                sessionTitle: nil,
-                userHotWords: voiceFirstHotWords
-            )
             voiceInput.onPartialTranscript = { [weak voiceFirstMode] transcript in
                 voiceFirstMode?.didUpdateTranscript(transcript)
             }
