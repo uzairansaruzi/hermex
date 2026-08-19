@@ -123,7 +123,7 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
 
     func testVoiceInputAudioSessionConfigurationDoesNotDuckOtherAudio() {
         XCTAssertEqual(ComposerVoiceAudioSessionConfiguration.category, .playAndRecord)
-        XCTAssertEqual(ComposerVoiceAudioSessionConfiguration.mode, .measurement)
+        XCTAssertEqual(ComposerVoiceAudioSessionConfiguration.mode, .videoRecording)
         XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.mixWithOthers))
         XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.allowBluetoothHFP))
         XCTAssertFalse(ComposerVoiceAudioSessionConfiguration.options.contains(.duckOthers))
