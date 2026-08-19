@@ -527,15 +527,6 @@ struct MessageComposerView: View {
             // Voice-first mode: set up auto-send callback (listening starts on long press).
             if voiceFirstModeEnabled {
                 voiceFirstMode.activate()
-                voiceFirstMode.onAutoSend = { [self] in
-                    Task { @MainActor in
-                        if voiceInput.isListening {
-                            voiceInput.stopBeforeSubmittingDraft()
-                        }
-                        onSend()
-                        voiceFirstMode.didCompleteSend()
-                    }
-                }
             }
         }
         .onChange(of: draftMessage) { _, newDraft in
@@ -1270,9 +1261,6 @@ struct MessageComposerView: View {
             // Voice-first mode: use volcengine if configured, otherwise fall back to server STT.
             if voiceInput.providerPreference != .volcengineFirst {
                 voiceInput.providerPreference = .serverFirst
-            }
-            voiceInput.onPartialTranscript = { [weak voiceFirstMode] transcript in
-                voiceFirstMode?.didUpdateTranscript(transcript)
             }
             voiceInput.onFinalTranscript = { [self] _ in
                 // Recognition ended with a final transcript.
