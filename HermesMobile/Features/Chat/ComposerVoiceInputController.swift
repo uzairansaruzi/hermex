@@ -33,6 +33,12 @@ final class ComposerVoiceInputController {
     private var suppressNextRecognitionError = false
     private var activatedAudioSessionForRecording = false
     private var audioTapInstalled = false
+    /// Long-lived sample-rate converter for Volcengine capture. AVAudioConverter carries
+    /// internal resampling state, so it must outlive individual tap callbacks (a local
+    /// variable gets deallocated the moment the setup function returns).
+    private var volcengineAudioConverter: AVAudioConverter?
+    /// Accumulates downsampled PCM until we have ~200ms, which is Volcengine's optimal packet size.
+    private var volcenginePCMAccumulator = Data()
     @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
     @ObservationIgnored private var serverRecordingTimeoutTask: Task<Void, Never>?
     private var activeTranscriptionID: UUID?
@@ -150,6 +156,7 @@ final class ComposerVoiceInputController {
     }
 
     private func start(provider: ComposerSTTProvider) async {
+        logger.info("Starting voice input with provider: \(String(describing: provider))")
         switch provider {
         case .server:
             await startServerProvider()
@@ -314,7 +321,7 @@ final class ComposerVoiceInputController {
     }
 
     private func startVolcengineAudioCapture(audioEngine: AVAudioEngine, inputNode: AVAudioInputNode, recordingFormat: AVAudioFormat, stt: VolcengineStreamingSTT) {
-        // Convert to 16kHz mono 16-bit PCM for Volcengine
+        // Target: 16kHz mono 16-bit PCM for Volcengine
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: 16_000,
@@ -325,31 +332,53 @@ final class ComposerVoiceInputController {
             return
         }
 
-        let converter = AVAudioConverter(from: recordingFormat, to: targetFormat)
+        guard let converter = AVAudioConverter(from: recordingFormat, to: targetFormat) else {
+            logger.error("Failed to create audio converter from \(recordingFormat.sampleRate)Hz to 16000Hz")
+            return
+        }
+        volcengineAudioConverter = converter
+        volcenginePCMAccumulator = Data()
 
-        // Buffer size: 200ms at 16kHz = 3200 samples
-        let frameSamples: AVAudioFrameCount = 3_200
+        let sampleRateRatio = targetFormat.sampleRate / recordingFormat.sampleRate
+        // 200ms at 16kHz mono 16-bit = 6400 bytes; Volcengine's documented optimum.
+        let targetChunkBytes = 6_400
 
-        inputNode.installTap(onBus: 0, bufferSize: 4_096, format: recordingFormat) { [weak stt, weak converter] buffer, _ in
-            guard let stt, let converter else { return }
+        // The tap format MUST match the input node's hardware format. Passing a different
+        // sample rate here throws `IsFormatSampleRateAndChannelCountValid` and crashes the app,
+        // so downsampling happens via AVAudioConverter below instead.
+        inputNode.installTap(onBus: 0, bufferSize: 4_096, format: recordingFormat) { [weak self, weak stt, converter] buffer, _ in
+            guard let stt else { return }
 
-            let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameSamples)!
-            var error: NSError?
-            let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+            let outputCapacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * sampleRateRatio)) + 64
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputCapacity) else { return }
+
+            // Each input buffer may only be handed to the converter once; returning it again
+            // makes the converter spin or emit garbage.
+            var didSupplyInput = false
+            var conversionError: NSError?
+            let status = converter.convert(to: outputBuffer, error: &conversionError) { _, outStatus in
+                if didSupplyInput {
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                didSupplyInput = true
                 outStatus.pointee = .haveData
                 return buffer
             }
 
-            guard status == .haveData || status == .inputRanDry, error == nil else { return }
+            guard status == .haveData || status == .inputRanDry, conversionError == nil else { return }
+            guard let int16Channel = outputBuffer.int16ChannelData, outputBuffer.frameLength > 0 else { return }
 
-            // Extract raw PCM bytes from the Int16 buffer
-            guard let int16Ptr = outputBuffer.int16ChannelData else { return }
-            let frameLength = Int(outputBuffer.frameLength)
-            let byteCount = frameLength * 2 // 16-bit = 2 bytes per sample
-            let pcmData = Data(bytes: int16Ptr[0], count: byteCount)
+            let chunk = Data(bytes: int16Channel[0], count: Int(outputBuffer.frameLength) * 2)
 
             Task { @MainActor in
-                stt.sendAudioFrame(pcmData)
+                guard let self else { return }
+                self.volcenginePCMAccumulator.append(chunk)
+                while self.volcenginePCMAccumulator.count >= targetChunkBytes {
+                    let packet = self.volcenginePCMAccumulator.prefix(targetChunkBytes)
+                    self.volcenginePCMAccumulator.removeFirst(targetChunkBytes)
+                    stt.sendAudioFrame(Data(packet))
+                }
             }
         }
         audioTapInstalled = true
@@ -366,6 +395,8 @@ final class ComposerVoiceInputController {
     private func stopVolcengineStreaming() {
         volcengineSTT?.cancel()
         volcengineSTT = nil
+        volcengineAudioConverter = nil
+        volcenginePCMAccumulator = Data()
         stopAcceptingDraftUpdates()
         stopAudio(cancelTask: true)
         state = .idle

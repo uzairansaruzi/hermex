@@ -14,6 +14,10 @@ final class VolcengineStreamingSTT: NSObject {
         case idle
         case connecting
         case streaming
+        /// The last audio packet has been sent and we are waiting for the server's
+        /// final result. The server closes the socket itself once it finalizes, so a
+        /// close/read error in this state is the expected end of a dictation, not a fault.
+        case finishing
         case finished
         case failed(Error)
     }
@@ -49,6 +53,23 @@ final class VolcengineStreamingSTT: NSObject {
     private var configuration: Configuration?
     private var hasReceivedResult = false
 
+    // MARK: - Diagnostics
+    // These counters are surfaced in failure messages so a single screenshot pins down
+    // which stage broke, instead of guessing between capture / transport / parsing.
+    private var framesSent = 0
+    private var bytesSent = 0
+    /// Tap produced audio but the state gate rejected it (e.g. WebSocket not ready yet).
+    private var framesDropped = 0
+    private var packetsReceived = 0
+    private var payloadsParsed = 0
+    private var parseFailures = 0
+    private var lastServerMessageType: UInt8?
+
+    var diagnosticSummary: String {
+        let lastType = lastServerMessageType.map { String(format: "0x%02X", $0) } ?? "none"
+        return "sent=\(framesSent)f/\(bytesSent)B dropped=\(framesDropped) recv=\(packetsReceived) parsed=\(payloadsParsed) parseFail=\(parseFailures) lastType=\(lastType)"
+    }
+
     // MARK: - Public API
 
     func start(configuration: Configuration) {
@@ -60,15 +81,33 @@ final class VolcengineStreamingSTT: NSObject {
         self.configuration = configuration
         self.currentText = ""
         self.hasReceivedResult = false
+        framesSent = 0
+        bytesSent = 0
+        framesDropped = 0
+        packetsReceived = 0
+        payloadsParsed = 0
+        parseFailures = 0
+        lastServerMessageType = nil
         state = .connecting
 
-        let endpoint = URL(string: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async")!
-        var request = URLRequest(url: endpoint)
+        // Build URL with auth params as query string (fallback for iOS URLSession header issues)
+        var components = URLComponents(string: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async")!
+        components.queryItems = [
+            URLQueryItem(name: "X-Api-Key", value: configuration.apiKey),
+            URLQueryItem(name: "X-Api-Resource-Id", value: configuration.resourceId),
+            URLQueryItem(name: "X-Api-Connect-Id", value: connectId),
+            URLQueryItem(name: "X-Api-Request-Id", value: UUID().uuidString),
+            URLQueryItem(name: "X-Api-Sequence", value: "-1")
+        ]
+
+        var request = URLRequest(url: components.url!)
+        // Also set as headers (belt and suspenders)
         request.setValue(configuration.apiKey, forHTTPHeaderField: "X-Api-Key")
         request.setValue(configuration.resourceId, forHTTPHeaderField: "X-Api-Resource-Id")
         request.setValue(connectId, forHTTPHeaderField: "X-Api-Connect-Id")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Request-Id")
         request.setValue("-1", forHTTPHeaderField: "X-Api-Sequence")
+        request.timeoutInterval = 15
 
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         self.urlSession = session
@@ -81,7 +120,14 @@ final class VolcengineStreamingSTT: NSObject {
 
     /// Send a PCM audio frame (16kHz, mono, 16-bit, ~200ms recommended).
     func sendAudioFrame(_ pcmData: Data) {
-        guard case .streaming = state else { return }
+        guard case .streaming = state else {
+            // Counted rather than silently ignored: a high drop count means the mic was
+            // capturing before the socket was ready, which is invisible otherwise.
+            framesDropped += 1
+            return
+        }
+        framesSent += 1
+        bytesSent += pcmData.count
         let message = buildAudioOnlyMessage(pcmData)
         webSocketTask?.send(.data(message)) { [weak self] error in
             if let error {
@@ -96,6 +142,9 @@ final class VolcengineStreamingSTT: NSObject {
     func finishAudio() {
         guard case .streaming = state else { return }
         let message = buildLastAudioMessage()
+        // Flip state before sending: the server may close the socket as soon as it
+        // finalizes, and the close must not be reported as a connection failure.
+        state = .finishing
         webSocketTask?.send(.data(message)) { [weak self] error in
             if let error {
                 Task { @MainActor [weak self] in
@@ -214,14 +263,22 @@ final class VolcengineStreamingSTT: NSObject {
 
     // MARK: - Response Parsing
 
+    /// First bytes of a frame as hex, for diagnosing header/offset mistakes from a log line.
+    private static func hexPrefix(_ data: Data, count: Int = 16) -> String {
+        data.prefix(count).map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
+
     private func parseServerResponse(_ data: Data) {
+        packetsReceived += 1
         guard data.count >= 4 else {
             logger.warning("Response too short: \(data.count) bytes")
+            parseFailures += 1
             return
         }
 
         let byte1 = data[1]
         let msgType = (byte1 >> 4) & 0x0F
+        lastServerMessageType = msgType
 
         if msgType == 0x0F {
             // Error message from server
@@ -234,17 +291,34 @@ final class VolcengineStreamingSTT: NSObject {
             return
         }
 
-        // Full server response — extract JSON payload
-        guard data.count >= 8 else { return }
-        let payloadSize = data.subdata(in: 4..<8).withUnsafeBytes { ptr in
-            ptr.load(as: UInt32.self).bigEndian
+        // Full server response layout:
+        //   header (headerSize*4 B) | [sequence number 4B] | payload size 4B | payload
+        // Flags 0b0001 / 0b0011 mean the four bytes right after the header are a sequence
+        // number. Sequence numbers are small integers, so mis-reading one as the payload
+        // size yields a tiny length that still passes the bounds check and produces a
+        // garbage slice — the parseFail == recv signature measured on device.
+        let headerSize = max(Int(data[0] & 0x0F) * 4, 4)
+        let flags = data[1] & 0x0F
+        let hasSequenceNumber = (flags == 0x01 || flags == 0x03)
+        var cursor = headerSize + (hasSequenceNumber ? 4 : 0)
+
+        guard data.count >= cursor + 4 else {
+            parseFailures += 1
+            logger.error("Response too short for payload size: \(data.count)B cursor=\(cursor) hex=\(Self.hexPrefix(data))")
+            return
         }
-        guard data.count >= 8 + Int(payloadSize) else {
-            logger.warning("Incomplete payload: expected \(payloadSize), got \(data.count - 8)")
+        let payloadSize = Int(data.subdata(in: cursor..<(cursor + 4)).withUnsafeBytes { ptr in
+            ptr.load(as: UInt32.self).bigEndian
+        })
+        cursor += 4
+
+        guard payloadSize > 0, data.count >= cursor + payloadSize else {
+            parseFailures += 1
+            logger.error("Incomplete payload: declared \(payloadSize)B, have \(data.count - cursor)B hex=\(Self.hexPrefix(data))")
             return
         }
 
-        let payloadData = data.subdata(in: 8..<(8 + Int(payloadSize)))
+        let payloadData = data.subdata(in: cursor..<(cursor + payloadSize))
 
         // Check if payload is gzip compressed
         let byte2 = data[2]
@@ -257,8 +331,17 @@ final class VolcengineStreamingSTT: NSObject {
             jsonData = payloadData
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let result = json["result"] as? [String: Any],
+        guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            parseFailures += 1
+            let preview = String(data: jsonData.prefix(160), encoding: .utf8) ?? "<non-utf8>"
+            logger.error("Payload is not JSON: \(preview) hex=\(Self.hexPrefix(data))")
+            return
+        }
+        payloadsParsed += 1
+
+        // The acknowledgement of the full client request carries no result yet, so a
+        // missing result field is a normal early packet rather than a parsing fault.
+        guard let result = json["result"] as? [String: Any],
               let text = result["text"] as? String
         else {
             return
@@ -378,13 +461,35 @@ final class VolcengineStreamingSTT: NSObject {
     }
 
     private func handleDisconnected(error: Error?) {
-        guard case .streaming = state else { return }
-        if let error {
-            state = .failed(error)
-            onCompleted?(.failure(error))
-        } else {
-            state = .finished
-            onCompleted?(.success(currentText))
+        switch state {
+        case .finishing:
+            // The server closes the socket itself after finalizing, so a close here is the
+            // expected end of dictation — but only report success if a transcript actually
+            // arrived. Reporting success unconditionally hides real failures as an empty result.
+            if hasReceivedResult {
+                state = .finished
+                onCompleted?(.success(currentText))
+            } else {
+                let reason = "no transcript received before close — \(diagnosticSummary)"
+                logger.error("\(reason)")
+                let wrappedError = VolcengineSTTError.connectionFailed(reason)
+                state = .failed(wrappedError)
+                onCompleted?(.failure(wrappedError))
+            }
+        case .streaming, .connecting:
+            if let error {
+                let nsError = error as NSError
+                let detailedMessage = "Volcengine WS failed: \(nsError.localizedDescription) [domain=\(nsError.domain) code=\(nsError.code)] \(diagnosticSummary)"
+                logger.error("\(detailedMessage)")
+                let wrappedError = VolcengineSTTError.connectionFailed(detailedMessage)
+                state = .failed(wrappedError)
+                onCompleted?(.failure(wrappedError))
+            } else {
+                state = .finished
+                onCompleted?(.success(currentText))
+            }
+        default:
+            break
         }
     }
 }
@@ -419,7 +524,11 @@ extension VolcengineStreamingSTT: URLSessionWebSocketDelegate {
         didCompleteWithError error: (any Error)?
     ) {
         Task { @MainActor [weak self] in
-            self?.handleDisconnected(error: error)
+            guard let self else { return }
+            if let error {
+                self.logger.error("URLSession task completed with error: \(error.localizedDescription) code=\((error as NSError).code) domain=\((error as NSError).domain)")
+            }
+            self.handleDisconnected(error: error)
         }
     }
 }
