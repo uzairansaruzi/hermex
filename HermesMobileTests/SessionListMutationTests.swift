@@ -7,6 +7,19 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class SessionListMutationTests: XCTestCase {
+    func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
+        let active = SessionSummary(sessionId: "active", isStreaming: true)
+        let waiting = SessionSummary(sessionId: "waiting", hasPendingUserMessage: true)
+        let idle = SessionSummary(sessionId: "idle")
+
+        XCTAssertTrue(SessionListStatusFilter.active.includes(active))
+        XCTAssertFalse(SessionListStatusFilter.active.includes(idle))
+        XCTAssertTrue(SessionListStatusFilter.waiting.includes(waiting))
+        XCTAssertFalse(SessionListStatusFilter.waiting.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.idle.includes(idle))
+        XCTAssertFalse(SessionListStatusFilter.idle.includes(waiting))
+    }
+
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
         super.tearDown()

@@ -3,6 +3,33 @@ import Observation
 import SwiftData
 import SwiftUI
 
+enum SessionListStatusFilter: String, CaseIterable, Identifiable {
+    case all
+    case active
+    case waiting
+    case idle
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return String(localized: "All")
+        case .active: return String(localized: "Active")
+        case .waiting: return String(localized: "Waiting")
+        case .idle: return String(localized: "Idle")
+        }
+    }
+
+    func includes(_ session: SessionSummary) -> Bool {
+        switch self {
+        case .all: return true
+        case .active: return session.isStreaming == true || session.activeStreamId != nil
+        case .waiting: return session.hasPendingUserMessage == true
+        case .idle: return session.isStreaming != true && session.activeStreamId == nil && session.hasPendingUserMessage != true
+        }
+    }
+}
+
 struct SessionListSection: Identifiable {
     enum Kind: String {
         case pinned
@@ -147,10 +174,11 @@ final class SessionListViewModel {
     func visibleSessions(
         searchText rawSearchText: String,
         selectedProjectID: String?,
+        statusFilter: SessionListStatusFilter = .all,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
-        let baseSessions = sessions.filter { automatedVisibility.shows($0) }
+        let baseSessions = sessions.filter { automatedVisibility.shows($0) && statusFilter.includes($0) }
         let projectFilteredSessions = baseSessions.filter { session in
             guard let selectedProjectID else { return true }
             return session.projectId == selectedProjectID
@@ -184,16 +212,19 @@ final class SessionListViewModel {
     func scheduledSessionGroups(
         searchText: String,
         selectedProjectID: String?,
+        statusFilter: SessionListStatusFilter = .all,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> ScheduledSessionGroups {
         let ordinaryCandidates = visibleSessions(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
+            statusFilter: statusFilter,
             automatedVisibility: automatedVisibility
         )
         let scheduledCandidates = visibleSessions(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
+            statusFilter: statusFilter,
             automatedVisibility: automatedVisibility
         )
 

@@ -33,6 +33,7 @@ struct SessionListView: View {
     @State private var isSearchFocused = false
     @State private var searchChromeIsExpanded = false
     @State private var selectedProjectID: String?
+    @State private var selectedStatusFilter: SessionListStatusFilter = .all
     @State private var sidebarScrollPosition: String?
     @State private var didCompleteInitialLoad = false
     @State private var returnRefreshID: UUID?
@@ -402,6 +403,16 @@ struct SessionListView: View {
             header
                 .sessionsTopChromeListRow()
 
+            Picker("Session status", selection: $selectedStatusFilter) {
+                ForEach(SessionListStatusFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .sessionsScreenListRow()
+
             if viewModel.isViewingCachedData {
                 OfflineCacheBanner()
                     .padding(.top, 16)
@@ -678,6 +689,7 @@ struct SessionListView: View {
         viewModel.visibleSessions(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
+            statusFilter: selectedStatusFilter,
             automatedVisibility: automatedSessionVisibility
         )
     }
@@ -686,6 +698,7 @@ struct SessionListView: View {
         viewModel.scheduledSessionGroups(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
+            statusFilter: selectedStatusFilter,
             automatedVisibility: automatedSessionVisibility
         )
     }
