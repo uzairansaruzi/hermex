@@ -7,6 +7,21 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class SessionListMutationTests: XCTestCase {
+    func testSessionsGroupByProjectAndNormalizedWorktreeWithUnresolvedFallback() {
+        let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
+        let sessions = [
+            SessionSummary(sessionId: "one", projectId: "p1", worktreePath: " /worktrees/main "),
+            SessionSummary(sessionId: "two", projectId: "p1", worktreePath: "/worktrees/main"),
+            SessionSummary(sessionId: "three", projectId: nil, worktreePath: nil)
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [project])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups.first(where: { $0.project?.projectId == "p1" })?.sessions.count, 2)
+        XCTAssertEqual(groups.first(where: { $0.project == nil })?.displayName, "Unresolved workspace")
+    }
+
     func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
         let active = SessionSummary(sessionId: "active", isStreaming: true)
         let streamIDOnly = SessionSummary(sessionId: "stream-id-only", activeStreamId: "stream-1")

@@ -83,6 +83,45 @@ struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
     }
 }
 
+struct ProjectWorktreeGroup: Identifiable, Equatable {
+    let project: ProjectSummary?
+    let worktreePath: String?
+    let sessions: [SessionSummary]
+
+    var id: String {
+        "\(project?.projectId ?? \"unassigned\"):\(worktreePath ?? \"unresolved\")"
+    }
+
+    var displayName: String {
+        if let worktreePath, !worktreePath.isEmpty {
+            return URL(fileURLWithPath: worktreePath).lastPathComponent
+        }
+        return String(localized: "Unresolved workspace")
+    }
+}
+
+extension Array where Element == SessionSummary {
+    func groupedByProjectAndWorktree(projects: [ProjectSummary]) -> [ProjectWorktreeGroup] {
+        let projectsByID = Dictionary(uniqueKeysWithValues: projects.compactMap { project in
+            guard let projectID = project.projectId else { return nil }
+            return (projectID, project)
+        })
+        let grouped = Dictionary(grouping: self) { session in
+            let projectID = session.projectId ?? "unassigned"
+            let worktree = session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return "\(projectID)|\(worktree)"
+        }
+        return grouped.values.map { sessions in
+            let first = sessions[0]
+            let project = first.projectId.flatMap { projectsByID[$0] }
+            let worktree = first.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProjectWorktreeGroup(project: project, worktreePath: worktree, sessions: sessions)
+        }.sorted { lhs, rhs in
+            (lhs.project?.name ?? "").localizedCaseInsensitiveCompare(rhs.project?.name ?? "") == .orderedAscending
+        }
+    }
+}
+
 struct SessionBranchResponse: Decodable, Equatable {
     let sessionId: String?
     let title: String?
