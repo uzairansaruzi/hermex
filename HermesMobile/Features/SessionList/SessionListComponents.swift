@@ -385,6 +385,33 @@ struct SessionSidebarUtilityRows: View {
     }
 }
 
+struct ProjectWorktreeHeader: View {
+    let group: ProjectWorktreeGroup
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: group.project == nil ? "questionmark.folder" : "arrow.triangle.branch")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.project?.name ?? "Unassigned")
+                    .font(.subheadline.weight(.semibold))
+                Text(group.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("\(group.sessions.count)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+        .sessionsScreenListRow()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.project?.name ?? "Unassigned"), \(group.displayName), \(group.sessions.count) sessions")
+    }
+}
+
 struct SessionListRowsSection: View {
     let viewModel: SessionListViewModel
 
@@ -417,17 +444,24 @@ struct SessionListRowsSection: View {
                 .padding(.horizontal, 24)
                 .sessionsScreenListRow()
         } else {
-            ForEach(sessions) { session in
-                SessionInteractiveRow(
-                    viewModel: viewModel,
-                    session: session,
-                    showsMessageCount: showsMessageCount,
-                    showsWorkspace: showsWorkspace,
-                    selectedSessionID: selectedSessionID,
-                    actions: actions
-                )
+            ForEach(groupedSessions) { group in
+                ProjectWorktreeHeader(group: group)
+                ForEach(group.sessions) { session in
+                    SessionInteractiveRow(
+                        viewModel: viewModel,
+                        session: session,
+                        showsMessageCount: showsMessageCount,
+                        showsWorkspace: showsWorkspace,
+                        selectedSessionID: selectedSessionID,
+                        actions: actions
+                    )
+                }
             }
         }
+    }
+
+    private var groupedSessions: [ProjectWorktreeGroup] {
+        sessions.groupedByProjectAndWorktree(projects: viewModel.projects)
     }
 
     private var sessionsHeaderRow: some View {

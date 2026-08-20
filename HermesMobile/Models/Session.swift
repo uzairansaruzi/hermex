@@ -102,10 +102,10 @@ struct ProjectWorktreeGroup: Identifiable, Equatable {
 
 extension Array where Element == SessionSummary {
     func groupedByProjectAndWorktree(projects: [ProjectSummary]) -> [ProjectWorktreeGroup] {
-        let projectsByID = Dictionary(uniqueKeysWithValues: projects.compactMap { project in
+        let projectsByID = Dictionary(projects.compactMap { project in
             guard let projectID = project.projectId else { return nil }
             return (projectID, project)
-        })
+        }, uniquingKeysWith: { first, _ in first })
         let grouped = Dictionary(grouping: self) { session in
             let projectID = session.projectId ?? "unassigned"
             let worktree = session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
