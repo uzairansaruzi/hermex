@@ -403,7 +403,7 @@ struct SessionListView: View {
             header
                 .sessionsTopChromeListRow()
 
-            Picker("Session status", selection: $selectedStatusFilter) {
+            Picker("Session status", selection: $selectedStatusFilter.animation()) {
                 ForEach(SessionListStatusFilter.allCases) { filter in
                     Text(filter.title).tag(filter)
                 }
@@ -791,7 +791,7 @@ struct SessionListView: View {
     }
 
     private var hasActiveSessionFilter: Bool {
-        selectedProjectID != nil || !normalizedSearchText.isEmpty
+        selectedProjectID != nil || !normalizedSearchText.isEmpty || selectedStatusFilter != .all
     }
 
     private var showsSearchClearButton: Bool {

@@ -21,11 +21,14 @@ enum SessionListStatusFilter: String, CaseIterable, Identifiable {
     }
 
     func includes(_ session: SessionSummary) -> Bool {
+        let hasActiveStream = session.activeStreamId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
         switch self {
         case .all: return true
-        case .active: return session.isStreaming == true || session.activeStreamId != nil
+        case .active: return session.isStreaming == true || hasActiveStream
         case .waiting: return session.hasPendingUserMessage == true
-        case .idle: return session.isStreaming != true && session.activeStreamId == nil && session.hasPendingUserMessage != true
+        case .idle: return session.isStreaming != true && !hasActiveStream && session.hasPendingUserMessage != true
         }
     }
 }
@@ -232,7 +235,9 @@ final class SessionListViewModel {
             ordinary: ordinaryCandidates.filter { !$0.isCronSession },
             scheduled: scheduledCandidates.filter { $0.isCronSession && $0.archived != true },
             totalScheduledCount: automatedVisibility.showsCron
-                ? sessions.filter { $0.isCronSession && $0.archived != true }.count
+                ? sessions.filter {
+                    $0.isCronSession && $0.archived != true && statusFilter.includes($0)
+                }.count
                 : 0
         )
     }
