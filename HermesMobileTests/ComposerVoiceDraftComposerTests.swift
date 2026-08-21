@@ -125,7 +125,7 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(ComposerVoiceAudioSessionConfiguration.category, .playAndRecord)
         XCTAssertEqual(ComposerVoiceAudioSessionConfiguration.mode, .measurement)
         XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.mixWithOthers))
-        XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.allowBluetoothHFP))
+        XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.allowBluetooth))
         XCTAssertFalse(ComposerVoiceAudioSessionConfiguration.options.contains(.duckOthers))
     }
 
