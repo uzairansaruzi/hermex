@@ -83,6 +83,11 @@ struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
     }
 }
 
+private struct ProjectWorktreeGroupingKey: Hashable {
+    let projectID: String?
+    let worktreePath: String?
+}
+
 struct ProjectWorktreeGroup: Identifiable, Equatable {
     let project: ProjectSummary?
     let projectID: String?
@@ -117,9 +122,10 @@ extension Array where Element == SessionSummary {
             return (projectID, project)
         }, uniquingKeysWith: { first, _ in first })
         let grouped = Dictionary(grouping: self) { session in
-            let projectID = session.projectId ?? "unassigned"
-            let worktree = session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return "\(projectID)|\(worktree)"
+            ProjectWorktreeGroupingKey(
+                projectID: session.projectId,
+                worktreePath: session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
         }
         return grouped.values.map { sessions in
             let first = sessions[0]

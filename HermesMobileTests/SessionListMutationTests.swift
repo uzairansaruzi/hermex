@@ -59,6 +59,18 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(groups.allSatisfy { $0.displayName == "Unresolved workspace" })
     }
 
+    func testProjectAndWorktreeGroupingDoesNotCollideOnDelimiterCharacters() {
+        let sessions = [
+            SessionSummary(sessionId: "worktree-delimiter", projectId: "p", worktreePath: "x|y"),
+            SessionSummary(sessionId: "project-delimiter", projectId: "p|x", worktreePath: "y")
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(Set(groups.flatMap { $0.sessions.compactMap(\.sessionId) }), ["worktree-delimiter", "project-delimiter"])
+    }
+
     func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
         let active = SessionSummary(sessionId: "active", isStreaming: true)
         let streamIDOnly = SessionSummary(sessionId: "stream-id-only", activeStreamId: "stream-1")
