@@ -13,11 +13,11 @@ enum HapticButtonHaptics {
     static func tap(
         style: HapticButtonFeedbackStyle = .light,
         isEnabled: Bool,
-        performer: Performer = perform
+        performer: Performer? = nil
     ) {
         guard isEnabled else { return }
 
-        performer(style)
+        (performer ?? Self.perform)(style)
     }
 
     static func perform(_ style: HapticButtonFeedbackStyle) {
