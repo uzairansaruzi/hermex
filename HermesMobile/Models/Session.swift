@@ -104,7 +104,8 @@ struct ProjectWorktreeGroup: Identifiable, Equatable {
         let projectKey = project?.projectId
             ?? projectID.map { "unresolved-project:\($0)" }
             ?? "unassigned"
-        return "\(projectKey):\(normalizedWorktreePath ?? "unresolved")"
+        let worktreeKey = normalizedWorktreePath ?? "unresolved"
+        return "\(projectKey.count):\(projectKey)\(worktreeKey.count):\(worktreeKey)"
     }
 
     var displayName: String {
