@@ -156,7 +156,15 @@ struct MessageComposerView: View {
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
     @State private var voiceNoteCancelArmed = false
     @State private var didAutoStartVoiceInput = false
+    @State private var voiceFirstMode = ComposerVoiceFirstMode()
+    /// When voice-first is enabled, tracks if user tapped to temporarily show text input.
+    @State private var voiceFirstShowingTextMode = false
+    /// Set when long press ends — waiting for server transcription to complete before auto-sending.
+    @State private var voiceFirstWaitingToSend = false
+    /// The action to perform when server transcription completes (send/interrupt/steer).
+    @State private var voiceFirstPendingAction: ComposerVoiceFirstBar.ReleaseAction = .send
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
+    @AppStorage(VoiceFirstModeSettings.isEnabledKey) private var voiceFirstModeEnabled = false
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
     private enum DeferredUploadFocusPhase: Equatable {
@@ -306,20 +314,117 @@ struct MessageComposerView: View {
                         onPreview: onPreviewAttachment
                     )
 
-                    ComposerTextInputView(
-                        text: $draftMessage,
-                        isFocused: $isFocused,
-                        inputHeight: $textInputHeight,
-                        measuredHeight: $textFieldHeight,
-                        isDisabled: isOfflineReadOnly,
-                        isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
-                        verticalPadding: textFieldVerticalPadding,
-                        onKeyboardSend: actionButtonTapped,
-                        onPasteFileProviders: onPasteFileProviders,
-                        onPasteFileURLs: onPasteFileURLs,
-                        onPasteImageProviders: onPasteImageProviders,
-                        onPasteImages: onPasteImages
-                    )
+                    if voiceFirstModeEnabled, !voiceFirstShowingTextMode {
+                        // Voice-first mode: "Hold to speak" bar replaces text input.
+                        VStack(spacing: 8) {
+                            if voiceInput.isListening, !voiceInput.liveTranscript.isEmpty {
+                                // Live transcript preview. Truncating from the head keeps the
+                                // newest words visible as dictation grows past three lines.
+                                Text(voiceInput.liveTranscript)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(3)
+                                    .truncationMode(.head)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .fill(Color(.tertiarySystemFill))
+                                    )
+                                    .padding(.horizontal, 12)
+                                    .transition(.opacity)
+                            }
+
+                            ComposerVoiceFirstBar(
+                                isListening: voiceInput.isListening,
+                                isStreaming: isWaitingForStream,
+                                silenceRemaining: voiceFirstMode.silenceRemaining,
+                                phase: voiceFirstMode.phase,
+                                onLongPressStart: {
+                                    if !voiceInput.isListening, !isVoiceNoteRecordingDisabled {
+                                        toggleVoiceInput()
+                                    }
+                                },
+                                onLongPressEnd: { action in
+                                    // Stop recognition first.
+                                    if voiceInput.isListening {
+                                        if action == .cancel {
+                                            voiceInput.stopBeforeSubmittingDraft()
+                                        } else {
+                                            voiceInput.stopKeepingTranscript()
+                                        }
+                                    }
+                                    voiceFirstMode.didStopListening()
+
+                                    switch action {
+                                    case .cancel:
+                                        // Discard recording entirely.
+                                        voiceFirstWaitingToSend = false
+                                        draftMessage = ""
+
+                                    case .send:
+                                        // Normal send (not streaming).
+                                        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !draft.isEmpty {
+                                            onSend()
+                                            voiceFirstMode.didCompleteSend()
+                                        } else {
+                                            voiceFirstWaitingToSend = true
+                                            voiceFirstPendingAction = .send
+                                        }
+
+                                    case .interrupt:
+                                        // Interrupt current stream + new reply.
+                                        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !draft.isEmpty {
+                                            voiceFirstPendingAction = .interrupt
+                                            voiceFirstApplyPendingAction()
+                                            onSend()
+                                            voiceFirstMode.didCompleteSend()
+                                        } else {
+                                            voiceFirstWaitingToSend = true
+                                            voiceFirstPendingAction = .interrupt
+                                        }
+
+                                    case .queue:
+                                        // Queue message to send after response completes.
+                                        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !draft.isEmpty {
+                                            voiceFirstPendingAction = .queue
+                                            voiceFirstApplyPendingAction()
+                                            onSend()
+                                            voiceFirstMode.didCompleteSend()
+                                        } else {
+                                            voiceFirstWaitingToSend = true
+                                            voiceFirstPendingAction = .queue
+                                        }
+                                    }
+                                },
+                                onTap: {
+                                    // Short tap → switch to text mode.
+                                    voiceFirstShowingTextMode = true
+                                }
+                            )
+                        }
+                        .padding(.vertical, 6)
+                    } else {
+                        ComposerTextInputView(
+                            text: $draftMessage,
+                            isFocused: $isFocused,
+                            inputHeight: $textInputHeight,
+                            measuredHeight: $textFieldHeight,
+                            isDisabled: isOfflineReadOnly,
+                            isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
+                            verticalPadding: textFieldVerticalPadding,
+                            onKeyboardSend: actionButtonTapped,
+                            onPasteFileProviders: onPasteFileProviders,
+                            onPasteFileURLs: onPasteFileURLs,
+                            onPasteImageProviders: onPasteImageProviders,
+                            onPasteImages: onPasteImages
+                        )
+                    }
 
                     HStack(alignment: .center, spacing: 12) {
                         composerPlusMenu
@@ -332,20 +437,42 @@ struct MessageComposerView: View {
 
                         Spacer(minLength: 0)
 
-                        ComposerVoiceControlButton(
-                            isListening: voiceInput.isListening,
-                            isDisabled: isVoiceInputDisabled,
-                            color: metaControlColor,
-                            isRecordingVoiceNote: voiceNoteRecorder.isRecording,
-                            onTap: toggleVoiceInput,
-                            onRecordingStart: startVoiceNoteRecording,
-                            onRecordingDragChanged: { height in
-                                voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
-                            },
-                            onRecordingEnd: { height in
-                                finishVoiceNote(translationHeight: height)
+                        if voiceFirstModeEnabled, voiceFirstShowingTextMode {
+                            // Show prominent mic button to switch back to voice-first mode.
+                            Button {
+                                voiceFirstShowingTextMode = false
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "mic.fill")
+                                        .font(.system(size: 14, weight: .medium))
+                                    Text(String(localized: "Voice"))
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                }
+                                .fixedSize(horizontal: true, vertical: false)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.accentColor.opacity(0.1), in: Capsule())
                             }
-                        )
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Switch to voice input")
+                        } else if !voiceFirstModeEnabled {
+                            ComposerVoiceControlButton(
+                                isListening: voiceInput.isListening,
+                                isDisabled: isVoiceInputDisabled,
+                                color: metaControlColor,
+                                isRecordingVoiceNote: voiceNoteRecorder.isRecording,
+                                onTap: toggleVoiceInput,
+                                onRecordingStart: startVoiceNoteRecording,
+                                onRecordingDragChanged: { height in
+                                    voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
+                                },
+                                onRecordingEnd: { height in
+                                    finishVoiceNote(translationHeight: height)
+                                }
+                            )
+                        }
 
                         Button(action: actionButtonTapped) {
                             actionButtonLabel
@@ -397,6 +524,37 @@ struct MessageComposerView: View {
             // Cold path: the composer appears already active (the usual case for the
             // "New Chat with Voice" intent once its session is created) — start here.
             autoStartVoiceInputIfNeeded()
+            // Voice-first mode: set up auto-send callback (listening starts on long press).
+            if voiceFirstModeEnabled {
+                voiceFirstMode.activate()
+            }
+        }
+        .onChange(of: draftMessage) { _, newDraft in
+            // Voice-first: auto-send once server transcription populates the draft.
+            if voiceFirstWaitingToSend, !voiceInput.isListening {
+                let trimmed = newDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    voiceFirstWaitingToSend = false
+                    voiceFirstApplyPendingAction()
+                    onSend()
+                    voiceFirstMode.didCompleteSend()
+                }
+            }
+        }
+        .onChange(of: voiceInput.isListening) { _, isListening in
+            // Voice-first: if we were waiting for transcription and recognition stopped, resolve.
+            if voiceFirstWaitingToSend, !isListening {
+                let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !draft.isEmpty {
+                    voiceFirstWaitingToSend = false
+                    voiceFirstApplyPendingAction()
+                    onSend()
+                    voiceFirstMode.didCompleteSend()
+                } else {
+                    // Empty transcription — disarm to prevent keyboard auto-send.
+                    voiceFirstWaitingToSend = false
+                }
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
@@ -1059,13 +1217,78 @@ struct MessageComposerView: View {
     }
 
     @MainActor
+    private func voiceFirstApplyPendingAction() {
+        // Temporarily override the streaming send behavior so ChatView routes
+        // the message correctly. The message stays as plain text (shows in chat
+        // as a normal user bubble) rather than being rewritten to a /slash command.
+        // We restore the original value after a brief delay — sendDraftMessage()
+        // reads the @AppStorage synchronously before any await.
+        let content = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { return }
+
+        let originalValue = UserDefaults.standard.string(forKey: StreamingSendBehavior.storageKey)
+            ?? StreamingSendBehavior.steer.rawValue
+
+        switch voiceFirstPendingAction {
+        case .interrupt:
+            UserDefaults.standard.set(
+                StreamingSendBehavior.interrupt.rawValue,
+                forKey: StreamingSendBehavior.storageKey
+            )
+        case .queue:
+            UserDefaults.standard.set(
+                StreamingSendBehavior.queue.rawValue,
+                forKey: StreamingSendBehavior.storageKey
+            )
+        case .send, .cancel:
+            voiceFirstPendingAction = .send
+            return
+        }
+        voiceFirstPendingAction = .send
+
+        // Restore after send reads the value (next run loop).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            UserDefaults.standard.set(originalValue, forKey: StreamingSendBehavior.storageKey)
+        }
+    }
+
+    @MainActor
     private func toggleVoiceInput() {
         voiceInput.apiClient = apiClient
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
         voiceInput.locale = .current
+        if voiceFirstModeEnabled {
+            // Voice-first mode: use volcengine if configured, otherwise fall back to server STT.
+            if voiceInput.providerPreference != .volcengineFirst {
+                voiceInput.providerPreference = .serverFirst
+            }
+            voiceInput.onFinalTranscript = { [self] _ in
+                // Recognition ended with a final transcript.
+                // Only auto-send if user already released (voiceFirstWaitingToSend).
+                // If still holding, the release gesture handles sending.
+                Task { @MainActor in
+                    guard voiceFirstWaitingToSend else { return }
+                    let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !draft.isEmpty else {
+                        // Empty transcription — disarm so keyboard input won't auto-send.
+                        voiceFirstWaitingToSend = false
+                        return
+                    }
+                    voiceFirstWaitingToSend = false
+                    voiceFirstApplyPendingAction()
+                    onSend()
+                    voiceFirstMode.didCompleteSend()
+                }
+            }
+        }
         Task {
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
                 draftMessage = newDraft
+            }
+            if voiceInput.isListening {
+                voiceFirstMode.didStartListening()
+            } else {
+                voiceFirstMode.didStopListening()
             }
         }
     }

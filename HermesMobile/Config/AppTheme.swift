@@ -631,6 +631,7 @@ enum ComposerSTTProviderPreference: String, CaseIterable, Identifiable {
     case serverFirst
     case onDeviceFirst
     case onDeviceOnly
+    case volcengineFirst
 
     static let storageKey = "composerSTTProviderPreference"
     static let defaultValue: ComposerSTTProviderPreference = .serverFirst
@@ -645,6 +646,8 @@ enum ComposerSTTProviderPreference: String, CaseIterable, Identifiable {
             String(localized: "On-device first")
         case .onDeviceOnly:
             String(localized: "On-device only")
+        case .volcengineFirst:
+            String(localized: "Volcengine streaming")
         }
     }
 
@@ -656,13 +659,15 @@ enum ComposerSTTProviderPreference: String, CaseIterable, Identifiable {
 enum ComposerSTTProvider: Equatable {
     case server
     case onDevice
+    case volcengineStreaming
 }
 
 enum ComposerSTTProviderPolicy {
     static func orderedProviders(
         preference: ComposerSTTProviderPreference,
         serverConfigured: Bool,
-        onDeviceSupported: Bool
+        onDeviceSupported: Bool,
+        volcengineConfigured: Bool = false
     ) -> [ComposerSTTProvider] {
         switch preference {
         case .serverFirst:
@@ -677,6 +682,21 @@ enum ComposerSTTProviderPolicy {
             )
         case .onDeviceOnly:
             return compactProviders((.onDevice, onDeviceSupported))
+        case .volcengineFirst:
+            // If volcengine is configured, use it first; fall back to server then on-device.
+            // If not configured, behave like serverFirst.
+            if volcengineConfigured {
+                return compactProviders(
+                    (.volcengineStreaming, true),
+                    (.server, serverConfigured),
+                    (.onDevice, onDeviceSupported)
+                )
+            } else {
+                return compactProviders(
+                    (.server, serverConfigured),
+                    (.onDevice, onDeviceSupported)
+                )
+            }
         }
     }
 
@@ -684,12 +704,14 @@ enum ComposerSTTProviderPolicy {
         after failedProvider: ComposerSTTProvider,
         preference: ComposerSTTProviderPreference,
         serverConfigured: Bool,
-        onDeviceSupported: Bool
+        onDeviceSupported: Bool,
+        volcengineConfigured: Bool = false
     ) -> ComposerSTTProvider? {
         let providers = orderedProviders(
             preference: preference,
             serverConfigured: serverConfigured,
-            onDeviceSupported: onDeviceSupported
+            onDeviceSupported: onDeviceSupported,
+            volcengineConfigured: volcengineConfigured
         )
         guard let failedIndex = providers.firstIndex(of: failedProvider) else {
             return nil

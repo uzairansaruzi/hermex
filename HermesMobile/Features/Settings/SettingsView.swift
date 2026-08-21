@@ -57,6 +57,7 @@ struct SettingsView: View {
     @State private var showDefaultProfilePicker = false
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
     @State private var notificationStatusMessage: String?
+    @State private var volcengineTestResult: String = ""
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
@@ -195,6 +196,68 @@ struct SettingsView: View {
                     }
 
                     SettingsFootnote(String(localized: "On-device only keeps composer dictation audio off your Hermes server."))
+
+                    if sttProviderPreferenceRawValue == ComposerSTTProviderPreference.volcengineFirst.rawValue {
+                        SettingsDivider()
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label {
+                                Text("Volcengine API Key")
+                            } icon: {
+                                Image(systemName: "key")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+
+                            SecureField(
+                                "API Key from console.volcengine.com",
+                                text: Binding(
+                                    get: { UserDefaults.standard.string(forKey: VolcengineSTTSettings.apiKeyKey) ?? "" },
+                                    set: { UserDefaults.standard.set($0, forKey: VolcengineSTTSettings.apiKeyKey) }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .font(.footnote)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        }
+                        .padding(.horizontal, 4)
+
+                        SettingsFootnote(String(localized: "Get your API Key from the Volcengine Speech console. Enables low-latency streaming Chinese recognition."))
+
+                        Button {
+                            volcengineTestResult = "Testing..."
+                            Task {
+                                await testVolcengineConnection()
+                            }
+                        } label: {
+                            Label("Test Connection", systemImage: "network")
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.horizontal, 4)
+
+                        if !volcengineTestResult.isEmpty {
+                            Text(volcengineTestResult)
+                                .font(.caption)
+                                .foregroundStyle(volcengineTestResult.contains("✅") ? .green : .red)
+                                .padding(.horizontal, 4)
+                                .textSelection(.enabled)
+                        }
+                    }
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Voice-First Input"),
+                        systemImage: "waveform",
+                        isOn: Binding(
+                            get: { UserDefaults.standard.bool(forKey: VoiceFirstModeSettings.isEnabledKey) },
+                            set: { UserDefaults.standard.set($0, forKey: VoiceFirstModeSettings.isEnabledKey) }
+                        )
+                    )
+
+                    SettingsFootnote(String(localized: "When enabled, the composer defaults to voice listening mode. Speak and pause to auto-send. Tap the keyboard icon to type instead."))
+
                 }
 
                 SettingsCard(title: String(localized: "Chat")) {
@@ -1213,6 +1276,90 @@ struct SettingsView: View {
             updateApplyPhase = .idle
             updateApplyMessage = nil
         }
+    }
+
+    private func testVolcengineConnection() async {
+        guard let apiKey = UserDefaults.standard.string(forKey: VolcengineSTTSettings.apiKeyKey),
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            volcengineTestResult = "❌ No API Key configured"
+            return
+        }
+
+        let connectId = UUID().uuidString
+        var components = URLComponents(string: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async")!
+        components.queryItems = [
+            URLQueryItem(name: "X-Api-Key", value: apiKey.trimmingCharacters(in: .whitespacesAndNewlines)),
+            URLQueryItem(name: "X-Api-Resource-Id", value: VolcengineSTTSettings.defaultResourceId),
+            URLQueryItem(name: "X-Api-Connect-Id", value: connectId),
+            URLQueryItem(name: "X-Api-Request-Id", value: UUID().uuidString),
+            URLQueryItem(name: "X-Api-Sequence", value: "-1")
+        ]
+
+        var request = URLRequest(url: components.url!)
+        request.setValue(apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "X-Api-Key")
+        request.setValue(VolcengineSTTSettings.defaultResourceId, forHTTPHeaderField: "X-Api-Resource-Id")
+        request.setValue(connectId, forHTTPHeaderField: "X-Api-Connect-Id")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Request-Id")
+        request.setValue("-1", forHTTPHeaderField: "X-Api-Sequence")
+        request.timeoutInterval = 10
+
+        let session = URLSession(configuration: .default)
+        let task = session.webSocketTask(with: request)
+        task.resume()
+
+        // Wait for connection or timeout
+        let startTime = Date()
+        while Date().timeIntervalSince(startTime) < 10 {
+            switch task.state {
+            case .running:
+                // Try to send a ping to verify the connection is truly open
+                let pingResult: Result<Void, Error> = await withCheckedContinuation { cont in
+                    task.sendPing { error in
+                        if let error {
+                            cont.resume(returning: .failure(error))
+                        } else {
+                            cont.resume(returning: .success(()))
+                        }
+                    }
+                }
+                switch pingResult {
+                case .success:
+                    task.cancel(with: .goingAway, reason: nil)
+                    session.invalidateAndCancel()
+                    volcengineTestResult = "✅ Connected! WebSocket handshake OK (connectId: \(connectId.prefix(8))...)"
+                    return
+                case .failure(let error):
+                    let nsErr = error as NSError
+                    if nsErr.domain == "NSPOSIXErrorDomain" && nsErr.code == 57 {
+                        // Not connected yet, keep waiting
+                        try? await Task.sleep(nanoseconds: 200_000_000)
+                        continue
+                    }
+                    task.cancel(with: .goingAway, reason: nil)
+                    session.invalidateAndCancel()
+                    volcengineTestResult = "❌ \(nsErr.localizedDescription) [domain=\(nsErr.domain) code=\(nsErr.code)]"
+                    return
+                }
+            case .completed:
+                session.invalidateAndCancel()
+                volcengineTestResult = "❌ Connection closed immediately. Server likely rejected auth headers. Key prefix: \(apiKey.prefix(8))..."
+                return
+            case .canceling:
+                session.invalidateAndCancel()
+                volcengineTestResult = "❌ Connection cancelled"
+                return
+            case .suspended:
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                continue
+            @unknown default:
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                continue
+            }
+        }
+
+        task.cancel(with: .goingAway, reason: nil)
+        session.invalidateAndCancel()
+        volcengineTestResult = "❌ Timeout (10s). Could not establish WebSocket. Check network/proxy."
     }
 
     private func clearOfflineCache() async {
