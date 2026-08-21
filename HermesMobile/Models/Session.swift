@@ -85,6 +85,7 @@ struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
 
 struct ProjectWorktreeGroup: Identifiable, Equatable {
     let project: ProjectSummary?
+    let projectID: String?
     let worktreePath: String?
     let sessions: [SessionSummary]
 
@@ -95,11 +96,14 @@ struct ProjectWorktreeGroup: Identifiable, Equatable {
     }
 
     var id: String {
-        "\(project?.projectId ?? \"unassigned\"):\(normalizedWorktreePath ?? \"unresolved\")"
+        let projectKey = project?.projectId
+            ?? projectID.map { "unresolved-project:\($0)" }
+            ?? "unassigned"
+        return "\(projectKey):\(normalizedWorktreePath ?? \"unresolved\")"
     }
 
     var displayName: String {
-        guard let normalizedWorktreePath else {
+        guard project != nil, let normalizedWorktreePath else {
             return String(localized: "Unresolved workspace")
         }
         return URL(fileURLWithPath: normalizedWorktreePath).lastPathComponent
@@ -119,9 +123,10 @@ extension Array where Element == SessionSummary {
         }
         return grouped.values.map { sessions in
             let first = sessions[0]
-            let project = first.projectId.flatMap { projectsByID[$0] }
+            let projectID = first.projectId
+            let project = projectID.flatMap { projectsByID[$0] }
             let worktree = first.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
-            return ProjectWorktreeGroup(project: project, worktreePath: worktree, sessions: sessions)
+            return ProjectWorktreeGroup(project: project, projectID: projectID, worktreePath: worktree, sessions: sessions)
         }.sorted { lhs, rhs in
             let lhsProjectName = lhs.project?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let rhsProjectName = rhs.project?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

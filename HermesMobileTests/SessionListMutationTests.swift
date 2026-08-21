@@ -24,9 +24,9 @@ final class SessionListMutationTests: XCTestCase {
 
     func testProjectWorktreeGroupIdentityNormalizesNilEmptyAndWhitespacePaths() {
         let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
-        let nilGroup = ProjectWorktreeGroup(project: project, worktreePath: nil, sessions: [])
-        let emptyGroup = ProjectWorktreeGroup(project: project, worktreePath: "", sessions: [])
-        let whitespaceGroup = ProjectWorktreeGroup(project: project, worktreePath: "  \n", sessions: [])
+        let nilGroup = ProjectWorktreeGroup(project: project, projectID: "p1", worktreePath: nil, sessions: [])
+        let emptyGroup = ProjectWorktreeGroup(project: project, projectID: "p1", worktreePath: "", sessions: [])
+        let whitespaceGroup = ProjectWorktreeGroup(project: project, projectID: "p1", worktreePath: "  \n", sessions: [])
 
         XCTAssertEqual(nilGroup.id, emptyGroup.id)
         XCTAssertEqual(emptyGroup.id, whitespaceGroup.id)
@@ -44,6 +44,19 @@ final class SessionListMutationTests: XCTestCase {
         let groups = sessions.groupedByProjectAndWorktree(projects: [project])
 
         XCTAssertEqual(groups.map(\.worktreePath), [nil, "/worktrees/a", "/worktrees/z"])
+    }
+
+    func testUnknownProjectsKeepDistinctIdentityAndUseUnresolvedFallback() {
+        let sessions = [
+            SessionSummary(sessionId: "one", projectId: "missing-1", worktreePath: "/worktrees/main"),
+            SessionSummary(sessionId: "two", projectId: "missing-2", worktreePath: "/worktrees/main")
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertNotEqual(groups[0].id, groups[1].id)
+        XCTAssertTrue(groups.allSatisfy { $0.displayName == "Unresolved workspace" })
     }
 
     func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
