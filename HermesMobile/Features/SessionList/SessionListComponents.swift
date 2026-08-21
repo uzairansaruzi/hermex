@@ -648,6 +648,10 @@ struct ScheduledSessionsDisclosure: View {
         isSearchActive ? sessions : Array(sessions.prefix(5))
     }
 
+    private var displayedGroups: [ProjectWorktreeGroup] {
+        displayedSessions.groupedByProjectAndWorktree(projects: viewModel.projects)
+    }
+
     var body: some View {
         SidebarDisclosureButton(
             title: String(localized: "Scheduled sessions"),
@@ -676,16 +680,19 @@ struct ScheduledSessionsDisclosure: View {
         )
 
         if isExpanded {
-            ForEach(displayedSessions) { session in
-                SessionInteractiveRow(
-                    viewModel: viewModel,
-                    session: session,
-                    showsMessageCount: showsMessageCount,
-                    showsWorkspace: showsWorkspace,
-                    selectedSessionID: selectedSessionID,
-                    actions: actions
-                )
-                .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
+            ForEach(displayedGroups) { group in
+                ProjectWorktreeHeader(group: group)
+                ForEach(group.sessions) { session in
+                    SessionInteractiveRow(
+                        viewModel: viewModel,
+                        session: session,
+                        showsMessageCount: showsMessageCount,
+                        showsWorkspace: showsWorkspace,
+                        selectedSessionID: selectedSessionID,
+                        actions: actions
+                    )
+                    .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
+                }
             }
 
             if !isSearchActive && sessions.count > 5 {

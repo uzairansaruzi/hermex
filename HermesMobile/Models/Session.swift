@@ -124,7 +124,10 @@ extension Array where Element == SessionSummary {
         let grouped = Dictionary(grouping: self) { session in
             ProjectWorktreeGroupingKey(
                 projectID: session.projectId,
-                worktreePath: session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+                worktreePath: {
+                    let trimmed = session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed?.isEmpty == true ? nil : trimmed
+                }()
             )
         }
         return grouped.values.map { sessions in
