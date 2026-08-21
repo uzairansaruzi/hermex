@@ -165,7 +165,7 @@ struct DefaultModelPickerView: View {
 
                 if isSaving && selectedModel == model.id {
                     ProgressView()
-                } else if model.id == defaultModel || model.id == selectedModel {
+                } else if isCurrentDefault(model) {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.accentColor)
@@ -179,7 +179,19 @@ struct DefaultModelPickerView: View {
         .buttonStyle(.plain)
         .disabled(isSaving)
         .accessibilityLabel(modelAccessibilityLabel(for: model))
-        .accessibilityValue(model.id == defaultModel || model.id == selectedModel ? "Selected" : "")
+        .accessibilityValue(isCurrentDefault(model) ? "Selected" : "")
+    }
+
+    /// Whether this row is the current default.
+    ///
+    /// Compared through `matchesSelection`, which normalizes the `@provider:`
+    /// prefix the server adds to models outside the active provider. A raw `==`
+    /// left the checkmark off every row whose saved spelling differed from the
+    /// catalog's current one, so the picker could not answer "which one am I on"
+    /// at all.
+    private func isCurrentDefault(_ model: ModelCatalogOption) -> Bool {
+        model.matchesSelection(modelID: selectedModel, providerID: nil)
+            || model.matchesSelection(modelID: defaultModel, providerID: nil)
     }
 
     private func modelAccessibilityLabel(for model: ModelCatalogOption) -> String {
