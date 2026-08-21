@@ -12,19 +12,19 @@ enum ChatHapticFeedback: Equatable {
 enum ChatHaptics {
     typealias Performer = @MainActor (ChatHapticFeedback) -> Void
 
-    static func messageSent(isEnabled: Bool, performer: Performer = perform) {
+    static func messageSent(isEnabled: Bool, performer: Performer? = nil) {
         emit(.lightImpact, isEnabled: isEnabled, performer: performer)
     }
 
-    static func assistantResponseCompleted(isEnabled: Bool, performer: Performer = perform) {
+    static func assistantResponseCompleted(isEnabled: Bool, performer: Performer? = nil) {
         emit(.success, isEnabled: isEnabled, performer: performer)
     }
 
-    static func streamCancelled(isEnabled: Bool, performer: Performer = perform) {
+    static func streamCancelled(isEnabled: Bool, performer: Performer? = nil) {
         emit(.mediumImpact, isEnabled: isEnabled, performer: performer)
     }
 
-    static func approvalSubmitted(_ choice: ApprovalChoice, isEnabled: Bool, performer: Performer = perform) {
+    static func approvalSubmitted(_ choice: ApprovalChoice, isEnabled: Bool, performer: Performer? = nil) {
         switch choice {
         case .once, .session, .always:
             emit(.lightImpact, isEnabled: isEnabled, performer: performer)
@@ -33,25 +33,25 @@ enum ChatHaptics {
         }
     }
 
-    static func approvalBypassEnabled(isEnabled: Bool, performer: Performer = perform) {
+    static func approvalBypassEnabled(isEnabled: Bool, performer: Performer? = nil) {
         emit(.warning, isEnabled: isEnabled, performer: performer)
     }
 
-    static func clarificationSubmitted(isEnabled: Bool, performer: Performer = perform) {
+    static func clarificationSubmitted(isEnabled: Bool, performer: Performer? = nil) {
         emit(.selection, isEnabled: isEnabled, performer: performer)
     }
 
-    static func configurationSelected(isEnabled: Bool, performer: Performer = perform) {
+    static func configurationSelected(isEnabled: Bool, performer: Performer? = nil) {
         emit(.selection, isEnabled: isEnabled, performer: performer)
     }
 
-    static func destructiveConfirmationAccepted(isEnabled: Bool, performer: Performer = perform) {
+    static func destructiveConfirmationAccepted(isEnabled: Bool, performer: Performer? = nil) {
         emit(.warning, isEnabled: isEnabled, performer: performer)
     }
 
-    private static func emit(_ feedback: ChatHapticFeedback, isEnabled: Bool, performer: Performer) {
+    private static func emit(_ feedback: ChatHapticFeedback, isEnabled: Bool, performer: Performer?) {
         guard isEnabled else { return }
-        performer(feedback)
+        (performer ?? Self.perform)(feedback)
     }
 
     private static func perform(_ feedback: ChatHapticFeedback) {
