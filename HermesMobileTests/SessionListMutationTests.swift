@@ -22,6 +22,30 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(groups.first(where: { $0.project == nil })?.displayName, "Unresolved workspace")
     }
 
+    func testProjectWorktreeGroupIdentityNormalizesNilEmptyAndWhitespacePaths() {
+        let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
+        let nilGroup = ProjectWorktreeGroup(project: project, worktreePath: nil, sessions: [])
+        let emptyGroup = ProjectWorktreeGroup(project: project, worktreePath: "", sessions: [])
+        let whitespaceGroup = ProjectWorktreeGroup(project: project, worktreePath: "  \n", sessions: [])
+
+        XCTAssertEqual(nilGroup.id, emptyGroup.id)
+        XCTAssertEqual(emptyGroup.id, whitespaceGroup.id)
+        XCTAssertEqual(nilGroup.displayName, "Unresolved workspace")
+    }
+
+    func testProjectWorktreeGroupsSortByProjectThenWorktreeDeterministically() {
+        let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
+        let sessions = [
+            SessionSummary(sessionId: "z", projectId: "p1", worktreePath: "/worktrees/z"),
+            SessionSummary(sessionId: "a", projectId: "p1", worktreePath: "/worktrees/a"),
+            SessionSummary(sessionId: "unresolved", projectId: "p1", worktreePath: nil)
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [project])
+
+        XCTAssertEqual(groups.map(\.worktreePath), [nil, "/worktrees/a", "/worktrees/z"])
+    }
+
     func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
         let active = SessionSummary(sessionId: "active", isStreaming: true)
         let streamIDOnly = SessionSummary(sessionId: "stream-id-only", activeStreamId: "stream-1")

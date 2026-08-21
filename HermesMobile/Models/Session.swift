@@ -88,15 +88,21 @@ struct ProjectWorktreeGroup: Identifiable, Equatable {
     let worktreePath: String?
     let sessions: [SessionSummary]
 
+    private var normalizedWorktreePath: String? {
+        guard let worktreePath else { return nil }
+        let trimmed = worktreePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     var id: String {
-        "\(project?.projectId ?? \"unassigned\"):\(worktreePath ?? \"unresolved\")"
+        "\(project?.projectId ?? \"unassigned\"):\(normalizedWorktreePath ?? \"unresolved\")"
     }
 
     var displayName: String {
-        if let worktreePath, !worktreePath.isEmpty {
-            return URL(fileURLWithPath: worktreePath).lastPathComponent
+        guard let normalizedWorktreePath else {
+            return String(localized: "Unresolved workspace")
         }
-        return String(localized: "Unresolved workspace")
+        return URL(fileURLWithPath: normalizedWorktreePath).lastPathComponent
     }
 }
 
@@ -117,7 +123,21 @@ extension Array where Element == SessionSummary {
             let worktree = first.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
             return ProjectWorktreeGroup(project: project, worktreePath: worktree, sessions: sessions)
         }.sorted { lhs, rhs in
-            (lhs.project?.name ?? "").localizedCaseInsensitiveCompare(rhs.project?.name ?? "") == .orderedAscending
+            let lhsProjectName = lhs.project?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let rhsProjectName = rhs.project?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let projectComparison = lhsProjectName.localizedCaseInsensitiveCompare(rhsProjectName)
+            if projectComparison != .orderedSame {
+                return projectComparison == .orderedAscending
+            }
+
+            let lhsWorktree = lhs.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let rhsWorktree = rhs.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let worktreeComparison = lhsWorktree.localizedCaseInsensitiveCompare(rhsWorktree)
+            if worktreeComparison != .orderedSame {
+                return worktreeComparison == .orderedAscending
+            }
+
+            return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
         }
     }
 }
