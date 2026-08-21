@@ -805,7 +805,7 @@ enum ComposerVoiceMicrophonePermissionRequester {
 enum ComposerVoiceAudioSessionConfiguration {
     static let category = AVAudioSession.Category.playAndRecord
     static let mode = AVAudioSession.Mode.measurement
-    static let options: AVAudioSession.CategoryOptions = [.mixWithOthers, .allowBluetoothHFP]
+    static let options: AVAudioSession.CategoryOptions = [.mixWithOthers, .allowBluetooth]
 }
 
 enum ComposerVoiceInputError: LocalizedError {

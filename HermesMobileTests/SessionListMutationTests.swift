@@ -7,6 +7,91 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class SessionListMutationTests: XCTestCase {
+    func testSessionsGroupByProjectAndNormalizedWorktreeWithUnresolvedFallback() {
+        let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
+        let sessions = [
+            SessionSummary(sessionId: "one", projectId: "p1", worktreePath: " /worktrees/main "),
+            SessionSummary(sessionId: "two", projectId: "p1", worktreePath: "/worktrees/main"),
+            SessionSummary(sessionId: "three", projectId: nil, worktreePath: nil)
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [project])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups.first(where: { $0.project?.projectId == "p1" })?.sessions.count, 2)
+        XCTAssertEqual(groups.first(where: { $0.project == nil })?.displayName, "Unresolved workspace")
+    }
+
+    func testProjectWorktreeGroupIdentityNormalizesNilEmptyAndWhitespacePaths() {
+        let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
+        let nilGroup = ProjectWorktreeGroup(project: project, projectID: "p1", worktreePath: nil, sessions: [])
+        let emptyGroup = ProjectWorktreeGroup(project: project, projectID: "p1", worktreePath: "", sessions: [])
+        let whitespaceGroup = ProjectWorktreeGroup(project: project, projectID: "p1", worktreePath: "  \n", sessions: [])
+
+        XCTAssertEqual(nilGroup.id, emptyGroup.id)
+        XCTAssertEqual(emptyGroup.id, whitespaceGroup.id)
+        XCTAssertEqual(nilGroup.displayName, "Unresolved workspace")
+    }
+
+    func testProjectWorktreeGroupsSortByProjectThenWorktreeDeterministically() {
+        let project = ProjectSummary(projectId: "p1", name: "Hermex", color: nil, createdAt: nil)
+        let sessions = [
+            SessionSummary(sessionId: "z", projectId: "p1", worktreePath: "/worktrees/z"),
+            SessionSummary(sessionId: "a", projectId: "p1", worktreePath: "/worktrees/a"),
+            SessionSummary(sessionId: "unresolved", projectId: "p1", worktreePath: nil)
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [project])
+
+        XCTAssertEqual(groups.map(\.worktreePath), [nil, "/worktrees/a", "/worktrees/z"])
+    }
+
+    func testUnknownProjectsKeepDistinctIdentityAndUseUnresolvedFallback() {
+        let sessions = [
+            SessionSummary(sessionId: "one", projectId: "missing-1", worktreePath: "/worktrees/main"),
+            SessionSummary(sessionId: "two", projectId: "missing-2", worktreePath: "/worktrees/main")
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertNotEqual(groups[0].id, groups[1].id)
+        XCTAssertTrue(groups.allSatisfy { $0.displayName == "Unresolved workspace" })
+    }
+
+    func testProjectAndWorktreeGroupingDoesNotCollideOnDelimiterCharacters() {
+        let sessions = [
+            SessionSummary(sessionId: "worktree-delimiter", projectId: "p", worktreePath: "x|y"),
+            SessionSummary(sessionId: "project-delimiter", projectId: "p|x", worktreePath: "y")
+        ]
+
+        let groups = sessions.groupedByProjectAndWorktree(projects: [])
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(Set(groups.flatMap { $0.sessions.compactMap(\.sessionId) }), ["worktree-delimiter", "project-delimiter"])
+    }
+
+    func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
+        let active = SessionSummary(sessionId: "active", isStreaming: true)
+        let streamIDOnly = SessionSummary(sessionId: "stream-id-only", activeStreamId: "stream-1")
+        let emptyStreamID = SessionSummary(sessionId: "empty-stream-id", activeStreamId: "   ")
+        let waiting = SessionSummary(sessionId: "waiting", hasPendingUserMessage: true)
+        let idle = SessionSummary(sessionId: "idle")
+
+        XCTAssertTrue(SessionListStatusFilter.active.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.active.includes(streamIDOnly))
+        XCTAssertFalse(SessionListStatusFilter.active.includes(emptyStreamID))
+        XCTAssertFalse(SessionListStatusFilter.active.includes(idle))
+        XCTAssertTrue(SessionListStatusFilter.waiting.includes(waiting))
+        XCTAssertFalse(SessionListStatusFilter.waiting.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.idle.includes(idle))
+        XCTAssertTrue(SessionListStatusFilter.idle.includes(emptyStreamID))
+        XCTAssertFalse(SessionListStatusFilter.idle.includes(waiting))
+        XCTAssertTrue(SessionListStatusFilter.all.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.all.includes(waiting))
+        XCTAssertTrue(SessionListStatusFilter.all.includes(idle))
+    }
+
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
         super.tearDown()

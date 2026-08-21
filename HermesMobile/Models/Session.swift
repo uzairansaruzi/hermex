@@ -121,6 +121,80 @@ struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
     }
 }
 
+private struct ProjectWorktreeGroupingKey: Hashable {
+    let projectID: String?
+    let worktreePath: String?
+}
+
+struct ProjectWorktreeGroup: Identifiable, Equatable {
+    let project: ProjectSummary?
+    let projectID: String?
+    let worktreePath: String?
+    let sessions: [SessionSummary]
+
+    private var normalizedWorktreePath: String? {
+        guard let worktreePath else { return nil }
+        let trimmed = worktreePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var id: String {
+        let projectKey = project?.projectId
+            ?? projectID.map { "unresolved-project:\($0)" }
+            ?? "unassigned"
+        let worktreeKey = normalizedWorktreePath ?? "unresolved"
+        return "\(projectKey.count):\(projectKey)\(worktreeKey.count):\(worktreeKey)"
+    }
+
+    var displayName: String {
+        guard project != nil, let normalizedWorktreePath else {
+            return String(localized: "Unresolved workspace")
+        }
+        return URL(fileURLWithPath: normalizedWorktreePath).lastPathComponent
+    }
+}
+
+extension Array where Element == SessionSummary {
+    func groupedByProjectAndWorktree(projects: [ProjectSummary]) -> [ProjectWorktreeGroup] {
+        let projectsByID = Dictionary(projects.compactMap { project in
+            guard let projectID = project.projectId else { return nil }
+            return (projectID, project)
+        }, uniquingKeysWith: { first, _ in first })
+        let grouped = Dictionary(grouping: self) { session in
+            ProjectWorktreeGroupingKey(
+                projectID: session.projectId,
+                worktreePath: {
+                    let trimmed = session.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed?.isEmpty == true ? nil : trimmed
+                }()
+            )
+        }
+        return grouped.values.map { sessions in
+            let first = sessions[0]
+            let projectID = first.projectId
+            let project = projectID.flatMap { projectsByID[$0] }
+            let worktree = first.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProjectWorktreeGroup(project: project, projectID: projectID, worktreePath: worktree, sessions: sessions)
+        }.sorted { lhs, rhs in
+            let lhsProjectName = lhs.project?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let rhsProjectName = rhs.project?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let projectComparison = lhsProjectName.localizedCaseInsensitiveCompare(rhsProjectName)
+            if projectComparison != .orderedSame {
+                return projectComparison == .orderedAscending
+            }
+
+            let lhsWorktree = lhs.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let rhsWorktree = rhs.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let worktreeComparison = lhsWorktree.localizedCaseInsensitiveCompare(rhsWorktree)
+            if worktreeComparison != .orderedSame {
+                return worktreeComparison == .orderedAscending
+            }
+
+            return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+        }
+    }
+}
+
 struct SessionBranchResponse: Decodable, Equatable {
     let sessionId: String?
     let title: String?
