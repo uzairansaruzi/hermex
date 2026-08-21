@@ -1282,6 +1282,11 @@ struct MessageComposerView: View {
             }
         }
         Task {
+            // Clear the composer when starting a new voice session so the previous
+            // transcription isn't concatenated into the next one.
+            if !voiceInput.isListening {
+                draftMessage = ""
+            }
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
                 draftMessage = newDraft
             }
