@@ -27,10 +27,12 @@ final class OnboardingViewModel {
     }
 
     var isPasswordRequired: Bool {
-        // No auth → no password. Passkey-only (auth on, password auth explicitly
-        // off) → hide the password field; connect() surfaces the unsupported
-        // message instead. Unknown (nil) keeps today's "show the field" default.
+        // No auth → no password. Already signed in (trusted-header proxy) → no
+        // password either. Passkey/OIDC-only → hide the field; connect()
+        // surfaces the specific unsupported message instead. Unknown (nil)
+        // keeps today's "show the field" default.
         guard authStatus?.authEnabled != false else { return false }
+        guard authStatus?.isAlreadySignedIn != true else { return false }
         return authStatus?.passwordAuthEnabled != false
     }
 
@@ -46,8 +48,10 @@ final class OnboardingViewModel {
                 customHeaders: customHeaders
             )
             authStatus = status
-            if status.authEnabled == true, status.passwordAuthEnabled == false {
-                errorMessage = AuthManager.passkeyOnlyMessage
+            if let message = AuthManager.unsupportedSignInMessage(for: status) {
+                errorMessage = message
+            } else if status.isAlreadySignedIn {
+                connectionMessage = String(localized: "Connection ok. Already signed in by this server.")
             } else {
                 connectionMessage = status.authEnabled == true
                     ? String(localized: "Connection ok. Password required.")
@@ -97,8 +101,12 @@ final class OnboardingViewModel {
 
     nonisolated static func passwordValidationMessage(authStatus: AuthStatusResponse?, password: String) -> String? {
         guard authStatus?.authEnabled == true else { return nil }
-        // Passkey-only servers don't take a password — let configure() report the
-        // specific unsupported message instead of demanding one here (#255).
+        // A server that already signed this client in (trusted-header proxy)
+        // has no password to demand (#3).
+        guard authStatus?.isAlreadySignedIn != true else { return nil }
+        // Passkey/OIDC-only servers don't take a password either — let
+        // configure() report the specific unsupported message instead of
+        // demanding one here (#255, #3).
         guard authStatus?.passwordAuthEnabled != false else { return nil }
 
         let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
