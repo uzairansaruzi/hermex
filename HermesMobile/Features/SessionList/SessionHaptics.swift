@@ -10,24 +10,24 @@ enum SessionHapticFeedback: Equatable {
 enum SessionHaptics {
     typealias Performer = @MainActor (SessionHapticFeedback) -> Void
 
-    static func sessionCreated(isEnabled: Bool, performer: Performer = perform) {
-        emit(.lightImpact, isEnabled: isEnabled, performer: performer)
+    static func sessionCreated(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.lightImpact, isEnabled: isEnabled, performer: performer ?? Self.perform)
     }
 
-    static func pinStateChanged(isEnabled: Bool, performer: Performer = perform) {
-        emit(.lightImpact, isEnabled: isEnabled, performer: performer)
+    static func pinStateChanged(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.lightImpact, isEnabled: isEnabled, performer: performer ?? Self.perform)
     }
 
-    static func archiveStateChanged(isEnabled: Bool, performer: Performer = perform) {
-        emit(.lightImpact, isEnabled: isEnabled, performer: performer)
+    static func archiveStateChanged(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.lightImpact, isEnabled: isEnabled, performer: performer ?? Self.perform)
     }
 
-    static func sessionDeleted(isEnabled: Bool, performer: Performer = perform) {
-        emit(.warning, isEnabled: isEnabled, performer: performer)
+    static func sessionDeleted(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.warning, isEnabled: isEnabled, performer: performer ?? Self.perform)
     }
 
-    static func sessionRenamed(isEnabled: Bool, performer: Performer = perform) {
-        emit(.selection, isEnabled: isEnabled, performer: performer)
+    static func sessionRenamed(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.selection, isEnabled: isEnabled, performer: performer ?? Self.perform)
     }
 
     private static func emit(_ feedback: SessionHapticFeedback, isEnabled: Bool, performer: Performer) {
