@@ -3,6 +3,36 @@ import Observation
 import SwiftData
 import SwiftUI
 
+enum SessionListStatusFilter: String, CaseIterable, Identifiable {
+    case all
+    case active
+    case waiting
+    case idle
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return String(localized: "All")
+        case .active: return String(localized: "Active")
+        case .waiting: return String(localized: "Waiting")
+        case .idle: return String(localized: "Idle")
+        }
+    }
+
+    func includes(_ session: SessionSummary) -> Bool {
+        let hasActiveStream = session.activeStreamId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
+        switch self {
+        case .all: return true
+        case .active: return session.isStreaming == true || hasActiveStream
+        case .waiting: return session.hasPendingUserMessage == true
+        case .idle: return session.isStreaming != true && !hasActiveStream && session.hasPendingUserMessage != true
+        }
+    }
+}
+
 struct SessionListSection: Identifiable {
     enum Kind: String {
         case pinned
@@ -147,10 +177,11 @@ final class SessionListViewModel {
     func visibleSessions(
         searchText rawSearchText: String,
         selectedProjectID: String?,
+        statusFilter: SessionListStatusFilter = .all,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
-        let baseSessions = sessions.filter { automatedVisibility.shows($0) }
+        let baseSessions = sessions.filter { automatedVisibility.shows($0) && statusFilter.includes($0) }
         let projectFilteredSessions = baseSessions.filter { session in
             guard let selectedProjectID else { return true }
             return session.projectId == selectedProjectID
@@ -184,16 +215,19 @@ final class SessionListViewModel {
     func scheduledSessionGroups(
         searchText: String,
         selectedProjectID: String?,
+        statusFilter: SessionListStatusFilter = .all,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> ScheduledSessionGroups {
         let ordinaryCandidates = visibleSessions(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
+            statusFilter: statusFilter,
             automatedVisibility: automatedVisibility
         )
         let scheduledCandidates = visibleSessions(
             searchText: searchText,
             selectedProjectID: selectedProjectID,
+            statusFilter: statusFilter,
             automatedVisibility: automatedVisibility
         )
 
@@ -201,7 +235,9 @@ final class SessionListViewModel {
             ordinary: ordinaryCandidates.filter { !$0.isCronSession },
             scheduled: scheduledCandidates.filter { $0.isCronSession && $0.archived != true },
             totalScheduledCount: automatedVisibility.showsCron
-                ? sessions.filter { $0.isCronSession && $0.archived != true }.count
+                ? sessions.filter {
+                    $0.isCronSession && $0.archived != true && statusFilter.includes($0)
+                }.count
                 : 0
         )
     }

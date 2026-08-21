@@ -7,6 +7,27 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class SessionListMutationTests: XCTestCase {
+    func testSessionStatusFilterClassifiesActiveWaitingAndIdleRows() {
+        let active = SessionSummary(sessionId: "active", isStreaming: true)
+        let streamIDOnly = SessionSummary(sessionId: "stream-id-only", activeStreamId: "stream-1")
+        let emptyStreamID = SessionSummary(sessionId: "empty-stream-id", activeStreamId: "   ")
+        let waiting = SessionSummary(sessionId: "waiting", hasPendingUserMessage: true)
+        let idle = SessionSummary(sessionId: "idle")
+
+        XCTAssertTrue(SessionListStatusFilter.active.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.active.includes(streamIDOnly))
+        XCTAssertFalse(SessionListStatusFilter.active.includes(emptyStreamID))
+        XCTAssertFalse(SessionListStatusFilter.active.includes(idle))
+        XCTAssertTrue(SessionListStatusFilter.waiting.includes(waiting))
+        XCTAssertFalse(SessionListStatusFilter.waiting.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.idle.includes(idle))
+        XCTAssertTrue(SessionListStatusFilter.idle.includes(emptyStreamID))
+        XCTAssertFalse(SessionListStatusFilter.idle.includes(waiting))
+        XCTAssertTrue(SessionListStatusFilter.all.includes(active))
+        XCTAssertTrue(SessionListStatusFilter.all.includes(waiting))
+        XCTAssertTrue(SessionListStatusFilter.all.includes(idle))
+    }
+
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
         super.tearDown()
