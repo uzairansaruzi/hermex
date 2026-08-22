@@ -242,11 +242,13 @@ struct DefaultModelPickerView: View {
 
         // A stored `@provider:` spelling must not be pre-split with
         // `lastIndex(of: ":")` — that turns `@ollama:qwen3:32b` into provider
-        // `ollama:qwen3`. Passing nil lets `matchesSelection` use the row's
-        // own `providerID` as the prefix key. A bare stored id belongs to
-        // whichever provider is active.
+        // `ollama:qwen3`. Detect the prefix by whether one exists at all
+        // (`@cf/meta/...` model ids start with `@` but have no colon, so they
+        // stay bare and match against `activeProvider`). Passing nil then
+        // lets `matchesSelection` use the row's own `providerID` as the
+        // prefix key.
         let defaultProvider: String?
-        if let defaultModel, defaultModel.hasPrefix("@") {
+        if defaultModel?.modelIDProviderPrefix != nil {
             defaultProvider = nil
         } else {
             defaultProvider = activeProvider

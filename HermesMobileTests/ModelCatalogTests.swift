@@ -409,6 +409,34 @@ final class ModelCatalogTests: XCTestCase {
         )
     }
 
+    /// A stored default can itself start with `@` without being a provider
+    /// prefix (`@cf/meta/...`). Those ids have no colon, so they stay a bare
+    /// active-provider spelling — passing `providerID: nil` would tick every
+    /// provider that lists the same id.
+    func testPickerCheckmarkTreatsAtPrefixedBareIDsAsActiveProviderSpellings() {
+        let active = ModelCatalogOption(id: "@cf/meta/llama", displayName: "Llama", providerID: "openai")
+        let other = ModelCatalogOption(id: "@cf/meta/llama", displayName: "Llama via OR", providerID: "openrouter")
+
+        XCTAssertTrue(
+            DefaultModelPickerView.isChecked(
+                active,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "@cf/meta/llama",
+                activeProvider: "openai"
+            )
+        )
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                other,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "@cf/meta/llama",
+                activeProvider: "openai"
+            )
+        )
+    }
+
     /// An embedded `@provider:` spelling names its own provider and must win
     /// over the currently active one. Passing `activeProvider` blindly
     /// (without consulting the stored spelling) ticks the OpenAI look-alike.
