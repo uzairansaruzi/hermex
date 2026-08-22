@@ -1257,6 +1257,9 @@ struct MessageComposerView: View {
         voiceInput.apiClient = apiClient
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
         voiceInput.locale = .current
+        // Lets a late transcript see the live composer and skip the write-back when the
+        // user has typed into it (or a send has cleared it) since the mic was released.
+        voiceInput.readDraft = { draftMessage }
         if voiceFirstModeEnabled {
             // Voice-first mode: use volcengine if configured, otherwise fall back to server STT.
             if voiceInput.providerPreference != .volcengineFirst {
@@ -1282,9 +1285,12 @@ struct MessageComposerView: View {
             }
         }
         Task {
-            // Clear the composer when starting a new voice session so the previous
-            // transcription isn't concatenated into the next one.
-            if !voiceInput.isListening {
+            // Drop a leftover transcript so it isn't concatenated into the next one, but
+            // only when the composer still holds exactly what voice last wrote. Anything
+            // the user typed is kept and the new transcript appends to it.
+            if !voiceInput.isListening,
+               let lastVoiceDraft = voiceInput.lastVoiceWrittenDraft,
+               draftMessage == lastVoiceDraft {
                 draftMessage = ""
             }
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in

@@ -58,6 +58,55 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(session.composedDraft(for: "transcript"), "New transcript")
     }
 
+    func testDraftUpdateSessionAcceptsUpdateWhenComposerStillHoldsVoiceText() {
+        var session = ComposerVoiceDraftUpdateSession()
+
+        session.begin(baseDraft: "")
+
+        XCTAssertEqual(session.composedDraft(for: "hello", currentDraft: ""), "hello")
+        // Composer now holds exactly what voice wrote, so the next partial is applied.
+        XCTAssertEqual(session.composedDraft(for: "hello world", currentDraft: "hello"), "hello world")
+    }
+
+    func testDraftUpdateSessionDropsLateTranscriptAfterUserTyped() {
+        var session = ComposerVoiceDraftUpdateSession()
+
+        session.begin(baseDraft: "")
+        XCTAssertEqual(session.composedDraft(for: "hello", currentDraft: ""), "hello")
+
+        // User typed into the composer while the final transcript was still in flight.
+        XCTAssertNil(session.composedDraft(for: "hello world", currentDraft: "my steering text"))
+    }
+
+    func testDraftUpdateSessionDropsLateTranscriptAfterSendClearedComposer() {
+        var session = ComposerVoiceDraftUpdateSession()
+
+        session.begin(baseDraft: "")
+        XCTAssertEqual(session.composedDraft(for: "hello", currentDraft: ""), "hello")
+
+        // Send cleared the composer; a late final result must not re-populate it.
+        XCTAssertNil(session.composedDraft(for: "hello world", currentDraft: ""))
+    }
+
+    func testDraftUpdateSessionKeepsTypedBaseDraftWhenComposerIsUntouched() {
+        var session = ComposerVoiceDraftUpdateSession()
+
+        session.begin(baseDraft: "Please")
+
+        XCTAssertEqual(
+            session.composedDraft(for: "summarize this", currentDraft: "Please"),
+            "Please summarize this"
+        )
+    }
+
+    func testDraftUpdateSessionSkipsOwnershipCheckWhenDraftIsUnavailable() {
+        var session = ComposerVoiceDraftUpdateSession()
+
+        session.begin(baseDraft: "")
+
+        XCTAssertEqual(session.composedDraft(for: "hello", currentDraft: nil), "hello")
+    }
+
     func testVoiceInputPreflightAcceptsValidInputFormatValues() {
         XCTAssertNoThrow(
             try ComposerVoiceInputPreflight.validate(sampleRate: 44_100, channelCount: 1)

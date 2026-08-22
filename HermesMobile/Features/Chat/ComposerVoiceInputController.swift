@@ -30,6 +30,12 @@ final class ComposerVoiceInputController {
     private var recordingURL: URL?
     private var draftUpdateSession = ComposerVoiceDraftUpdateSession()
     private var updateDraft: ((String) -> Void)?
+    /// Reads the composer's live draft. Lets a late transcript detect that the user typed
+    /// (or that a send cleared the composer) and skip the write-back instead of clobbering it.
+    @ObservationIgnored var readDraft: (() -> String)?
+    /// The last value voice wrote into the composer. Survives across sessions so the next
+    /// session can tell an untouched leftover transcript from text the user typed.
+    private(set) var lastVoiceWrittenDraft: String?
     private var suppressNextRecognitionError = false
     private var activatedAudioSessionForRecording = false
     private var audioTapInstalled = false
@@ -266,9 +272,7 @@ final class ComposerVoiceInputController {
         stt.onPartialResult = { [weak self] text in
             guard let self else { return }
             self.liveTranscript = text
-            if let composedDraft = self.draftUpdateSession.composedDraft(for: text) {
-                self.updateDraft?(composedDraft)
-            }
+            self.applyTranscriptToDraft(text)
             self.onPartialTranscript?(text)
         }
         stt.onFinalResult = { [weak self] text in
@@ -285,9 +289,7 @@ final class ComposerVoiceInputController {
                 self.logger.info("Volcengine STT completed: \(finalText.prefix(50))")
                 if !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self.liveTranscript = finalText
-                    if let composedDraft = self.draftUpdateSession.composedDraft(for: finalText) {
-                        self.updateDraft?(composedDraft)
-                    }
+                    self.applyTranscriptToDraft(finalText)
                 }
                 self.stopVolcengineStreaming()
             case .failure(let error):
@@ -622,9 +624,7 @@ final class ComposerVoiceInputController {
             if let transcript = response.transcript?.trimmingCharacters(in: .whitespacesAndNewlines),
                !transcript.isEmpty {
                 liveTranscript = transcript
-                if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
-                    updateDraft?(composedDraft)
-                }
+                applyTranscriptToDraft(transcript)
                 stopAcceptingDraftUpdates()
                 cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
                 state = .idle
@@ -701,9 +701,7 @@ final class ComposerVoiceInputController {
                 )
                 return
             }
-            if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
-                updateDraft?(composedDraft)
-            }
+            applyTranscriptToDraft(transcript)
             stopAcceptingDraftUpdates()
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
             state = .idle
@@ -836,9 +834,7 @@ final class ComposerVoiceInputController {
     private func handleRecognition(result: SFSpeechRecognitionResult?, error: Error?) {
         if let result {
             liveTranscript = result.bestTranscription.formattedString
-            if let composedDraft = draftUpdateSession.composedDraft(for: liveTranscript) {
-                updateDraft?(composedDraft)
-            }
+            applyTranscriptToDraft(liveTranscript)
             onPartialTranscript?(liveTranscript)
         }
 
@@ -863,6 +859,20 @@ final class ComposerVoiceInputController {
                 onFinalTranscript?(finalTranscript)
             }
         }
+    }
+
+    /// Writes `transcript` into the composer unless someone else took ownership of it.
+    /// Dropping the write is what keeps a late final transcript from overwriting text the
+    /// user typed after releasing the mic, or from re-populating a composer that was
+    /// already sent and cleared.
+    private func applyTranscriptToDraft(_ transcript: String) {
+        guard let composed = draftUpdateSession.composedDraft(
+            for: transcript,
+            currentDraft: readDraft?()
+        ) else { return }
+
+        lastVoiceWrittenDraft = composed
+        updateDraft?(composed)
     }
 
     private func stopAcceptingDraftUpdates() {
@@ -1156,25 +1166,43 @@ enum ComposerVoiceDraftComposer {
 struct ComposerVoiceDraftUpdateSession {
     private var baseDraft = ""
     private var acceptsUpdates = false
+    /// The exact value this session last wrote into the composer, so a late result can
+    /// tell whether the composer still holds voice's own text.
+    private var lastWrittenDraft: String?
 
     mutating func begin(baseDraft: String) {
         self.baseDraft = baseDraft
         acceptsUpdates = true
+        lastWrittenDraft = nil
     }
 
     mutating func stopAcceptingUpdates() {
         acceptsUpdates = false
     }
 
-    func composedDraft(for transcript: String) -> String? {
+    /// Composes the draft to write, or nil when the update must be dropped.
+    ///
+    /// `currentDraft` is the composer's live value. When it no longer matches what this
+    /// session last wrote, something else owns the composer — the user typed into it, or
+    /// a send cleared it — and writing `baseDraft + transcript` would clobber that. This
+    /// is the window between releasing the mic and the final transcript arriving, where
+    /// a late write-back used to overwrite typed text and re-populate a sent composer.
+    /// Passing nil skips the check for callers that cannot read the live draft.
+    mutating func composedDraft(for transcript: String, currentDraft: String? = nil) -> String? {
         guard acceptsUpdates else {
             return nil
         }
 
-        return ComposerVoiceDraftComposer.composedDraft(
+        if let currentDraft, currentDraft != (lastWrittenDraft ?? baseDraft) {
+            return nil
+        }
+
+        let composed = ComposerVoiceDraftComposer.composedDraft(
             baseDraft: baseDraft,
             transcript: transcript
         )
+        lastWrittenDraft = composed
+        return composed
     }
 }
 
