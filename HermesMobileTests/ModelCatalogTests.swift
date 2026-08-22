@@ -462,6 +462,32 @@ final class ModelCatalogTests: XCTestCase {
         )
     }
 
+    /// A custom save records the typed id with no provider. That must not
+    /// tick every bare same-id catalog row while the request is in flight.
+    func testPickerCustomSaveDoesNotTickCatalogRows() {
+        let lookAlike = ModelCatalogOption(id: "mymodel", displayName: "DeepSeek", providerID: "deepseek")
+        let previousDefault = ModelCatalogOption(id: "gpt-5.6-luna", displayName: "Luna", providerID: "openai")
+
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                lookAlike,
+                selectedModel: "mymodel",
+                selectedProvider: nil,
+                defaultModel: "gpt-5.6-luna",
+                activeProvider: "openai"
+            )
+        )
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                previousDefault,
+                selectedModel: "mymodel",
+                selectedProvider: nil,
+                defaultModel: "gpt-5.6-luna",
+                activeProvider: "openai"
+            )
+        )
+    }
+
     /// A stored `@ollama:qwen3:32b` default must tick the Ollama row. Pre-parsing
     /// the stored spelling with `lastIndex(of: ":")` produces provider
     /// `ollama:qwen3` and leaves the row unchecked.

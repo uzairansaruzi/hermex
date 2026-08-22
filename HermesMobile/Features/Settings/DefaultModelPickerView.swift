@@ -231,7 +231,12 @@ struct DefaultModelPickerView: View {
     ) -> Bool {
         // An in-flight tap owns the projection: OR-ing the previous default
         // would leave two rows announcing "Selected" until the save finishes.
+        // A custom / providerless save names no catalog row — matching with
+        // `providerID: nil` would tick every bare same-id row after the live
+        // overlay. Leave the catalog unchecked; the custom button owns the
+        // spinner via `isSavingCustom`.
         if selectedModel != nil {
+            guard selectedProvider != nil else { return false }
             return model.matchesSelection(modelID: selectedModel, providerID: selectedProvider)
         }
 
