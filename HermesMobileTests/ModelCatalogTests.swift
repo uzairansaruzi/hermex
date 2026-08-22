@@ -436,27 +436,54 @@ final class ModelCatalogTests: XCTestCase {
         )
     }
 
-    /// A tap records the row's provider, so after the live overlay leaves two
-    /// bare `mymodel` rows only the tapped one is Selected / spinning.
+    /// A tap records the row's provider. The previous stored default must not
+    /// stay checkmarked / Selected while the save is in flight.
     func testPickerInFlightSelectionTicksOnlyTheTappedProviderRow() {
         let tapped = ModelCatalogOption(id: "mymodel", displayName: "DeepSeek", providerID: "deepseek")
-        let other = ModelCatalogOption(id: "mymodel", displayName: "OpenAI", providerID: "openai")
+        let previousDefault = ModelCatalogOption(id: "gpt-5.6-luna", displayName: "Luna", providerID: "openai")
 
         XCTAssertTrue(
             DefaultModelPickerView.isChecked(
                 tapped,
                 selectedModel: "mymodel",
                 selectedProvider: "deepseek",
-                defaultModel: nil,
+                defaultModel: "gpt-5.6-luna",
+                activeProvider: "openai"
+            )
+        )
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                previousDefault,
+                selectedModel: "mymodel",
+                selectedProvider: "deepseek",
+                defaultModel: "gpt-5.6-luna",
+                activeProvider: "openai"
+            )
+        )
+    }
+
+    /// A stored `@ollama:qwen3:32b` default must tick the Ollama row. Pre-parsing
+    /// the stored spelling with `lastIndex(of: ":")` produces provider
+    /// `ollama:qwen3` and leaves the row unchecked.
+    func testPickerCheckmarkHandlesPrefixedColonBearingDefault() {
+        let ollama = ModelCatalogOption(id: "@ollama:qwen3:32b", displayName: "Qwen3 32B", providerID: "ollama")
+        let other = ModelCatalogOption(id: "qwen3:32b", displayName: "Look-alike", providerID: "openai")
+
+        XCTAssertTrue(
+            DefaultModelPickerView.isChecked(
+                ollama,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "@ollama:qwen3:32b",
                 activeProvider: "openai"
             )
         )
         XCTAssertFalse(
             DefaultModelPickerView.isChecked(
                 other,
-                selectedModel: "mymodel",
-                selectedProvider: "deepseek",
-                defaultModel: nil,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "@ollama:qwen3:32b",
                 activeProvider: "openai"
             )
         )

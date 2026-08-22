@@ -229,11 +229,24 @@ struct DefaultModelPickerView: View {
         defaultModel: String?,
         activeProvider: String?
     ) -> Bool {
-        model.matchesSelection(modelID: selectedModel, providerID: selectedProvider)
-            || model.matchesSelection(
-                modelID: defaultModel,
-                providerID: defaultModel?.modelIDProviderPrefix ?? activeProvider
-            )
+        // An in-flight tap owns the projection: OR-ing the previous default
+        // would leave two rows announcing "Selected" until the save finishes.
+        if selectedModel != nil {
+            return model.matchesSelection(modelID: selectedModel, providerID: selectedProvider)
+        }
+
+        // A stored `@provider:` spelling must not be pre-split with
+        // `lastIndex(of: ":")` — that turns `@ollama:qwen3:32b` into provider
+        // `ollama:qwen3`. Passing nil lets `matchesSelection` use the row's
+        // own `providerID` as the prefix key. A bare stored id belongs to
+        // whichever provider is active.
+        let defaultProvider: String?
+        if let defaultModel, defaultModel.hasPrefix("@") {
+            defaultProvider = nil
+        } else {
+            defaultProvider = activeProvider
+        }
+        return model.matchesSelection(modelID: defaultModel, providerID: defaultProvider)
     }
 
     private func modelAccessibilityLabel(for model: ModelCatalogOption) -> String {
