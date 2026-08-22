@@ -11,8 +11,10 @@ struct DefaultModelPickerView: View {
     @State private var isLoading = false
     @State private var groups: [ModelCatalogGroup] = []
     @State private var defaultModel: String?
+    @State private var activeProvider: String?
     @State private var customModel = ""
     @State private var selectedModel: String?
+    @State private var selectedProvider: String?
     @State private var searchText = ""
     @State private var errorMessage: String?
     @State private var isSaving = false
@@ -144,7 +146,7 @@ struct DefaultModelPickerView: View {
 
     private func modelRow(_ model: ModelCatalogOption) -> some View {
         Button {
-            Task { await save(model.id) }
+            Task { await save(model.id, providerID: model.providerID) }
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -163,7 +165,7 @@ struct DefaultModelPickerView: View {
 
                 Spacer(minLength: 12)
 
-                if isSaving && selectedModel == model.id {
+                if isSavingRow(model) {
                     ProgressView()
                 } else if isCurrentDefault(model) {
                     Image(systemName: "checkmark")
@@ -182,6 +184,16 @@ struct DefaultModelPickerView: View {
         .accessibilityValue(isCurrentDefault(model) ? "Selected" : "")
     }
 
+    /// Whether this row shows the spinner for an in-flight save.
+    ///
+    /// Both the id and the provider recorded at tap time must agree: after
+    /// the live overlay replaces the active provider's prefixed cached row
+    /// with a bare id, two providers can offer the same spelling, and ticking
+    /// by id alone would spin both rows.
+    private func isSavingRow(_ model: ModelCatalogOption) -> Bool {
+        isSaving && selectedModel == model.id && model.providerID == selectedProvider
+    }
+
     /// Whether this row is the current default.
     ///
     /// Compared through `matchesSelection`, which normalizes the `@provider:`
@@ -189,9 +201,39 @@ struct DefaultModelPickerView: View {
     /// left the checkmark off every row whose saved spelling differed from the
     /// catalog's current one, so the picker could not answer "which one am I on"
     /// at all.
+    ///
+    /// The in-flight branch matches against the provider captured at tap time,
+    /// so only the tapped row announces "Selected". The stored default is
+    /// matched against the provider its own spelling names — an embedded
+    /// `@provider:` prefix stays authoritative — falling back to
+    /// `activeProvider` for a bare id, which belongs to whichever provider is
+    /// active. Without that fallback, Core's catalog dedup can prefix the
+    /// active provider's own rows while an inactive provider keeps the bare
+    /// spelling, and the wrong row ticks.
     private func isCurrentDefault(_ model: ModelCatalogOption) -> Bool {
-        model.matchesSelection(modelID: selectedModel, providerID: nil)
-            || model.matchesSelection(modelID: defaultModel, providerID: nil)
+        Self.isChecked(
+            model,
+            selectedModel: selectedModel,
+            selectedProvider: selectedProvider,
+            defaultModel: defaultModel,
+            activeProvider: activeProvider
+        )
+    }
+
+    /// The checkmark rule, static and internal so tests can pin the
+    /// decoded-response-to-checked-row mapping without driving SwiftUI.
+    static func isChecked(
+        _ model: ModelCatalogOption,
+        selectedModel: String?,
+        selectedProvider: String?,
+        defaultModel: String?,
+        activeProvider: String?
+    ) -> Bool {
+        model.matchesSelection(modelID: selectedModel, providerID: selectedProvider)
+            || model.matchesSelection(
+                modelID: defaultModel,
+                providerID: defaultModel?.modelIDProviderPrefix ?? activeProvider
+            )
     }
 
     private func modelAccessibilityLabel(for model: ModelCatalogOption) -> String {
@@ -211,6 +253,7 @@ struct DefaultModelPickerView: View {
             let response = try await APIClient(baseURL: server).models()
             defaultModel = response.defaultModel ?? currentDefaultModel
             groups = response.catalogGroups
+            activeProvider = response.activeProvider
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -228,27 +271,29 @@ struct DefaultModelPickerView: View {
         groups = groups.mergingLiveModels(from: live)
     }
 
-    private func save(_ model: String, isCustom: Bool = false) async {
+    private func save(_ model: String, providerID: String? = nil, isCustom: Bool = false) async {
         let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-
         isSaving = true
         isSavingCustom = isCustom
         saveError = nil
         selectedModel = trimmed
+        selectedProvider = providerID
 
         do {
-            let response = try await APIClient(baseURL: server).saveDefaultModel(model: trimmed)
+            let response = try await APIClient(baseURL: server).saveDefaultModel(model: trimmed, provider: providerID)
             if response.ok == true {
                 onSave(trimmed)
                 dismiss()
             } else {
                 saveError = String(localized: "The server did not confirm the change.")
                 selectedModel = nil
+                selectedProvider = nil
             }
         } catch {
             saveError = error.localizedDescription
             selectedModel = nil
+            selectedProvider = nil
         }
 
         isSaving = false

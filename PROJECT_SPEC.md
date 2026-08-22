@@ -484,7 +484,7 @@ Each phase ends in a working, committable state. Run on the simulator after ever
 
 #### 9.3 Settings default model picker ✅
 - **User-facing goal:** In Settings, select the default model from the server model picker.
-- **Upstream API/server contract to verify:** `GET /api/models` for grouped models and current `default_model`; `POST /api/default-model` with `{model}` to save.
+- **Upstream API/server contract to verify:** `GET /api/models` for grouped models, current `default_model`, and `active_provider`; `POST /api/default-model` with `{model}` to save. Verified in upstream source: the pin (`f1d399b4`, `api/routes.py:4475`) reads only `{model}`; `set_hermes_default_model` accepts `{model, provider, advanced}` from upstream HEAD `a00b02f` (`api/config.py:4780`). The client additionally sends the catalog row's `provider` when known — ignored by pinned servers, honored by current ones.
 - **iOS UI changes:** Add a Settings row/sheet for Default Model grouped by provider.
 - **Model/networking changes:** Preserve exact model IDs including provider-prefixed forms; do not normalize on the client.
 - **Persistence/cache impact:** No durable local cache beyond UI state. New sessions should use the updated server default.

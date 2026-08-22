@@ -298,17 +298,167 @@ final class ModelCatalogTests: XCTestCase {
     }
 
     /// An exact spelling wins over a normalized one so a same-named model from
-    /// another provider can never be picked in its place.
+    /// another provider can never be picked in its place. The bare row comes
+    /// first on purpose: with `[prefixed, exact]` ordering the prefixed row
+    /// rejects a bare selection, so deleting the exact-first branch still
+    /// returned "Bare" and proved nothing.
     func testFirstMatchingSelectionPrefersTheExactSpelling() {
         let options = [
-            ModelCatalogOption(id: "@gemini:flash", displayName: "Prefixed", providerID: "gemini"),
-            ModelCatalogOption(id: "flash", displayName: "Bare", providerID: "gemini")
+            ModelCatalogOption(id: "flash", displayName: "Bare", providerID: "gemini"),
+            ModelCatalogOption(id: "@gemini:flash", displayName: "Prefixed", providerID: "gemini")
         ]
 
         XCTAssertEqual(options.firstMatchingSelection(modelID: "flash", providerID: nil)?.displayName, "Bare")
         XCTAssertEqual(
             options.firstMatchingSelection(modelID: "@gemini:flash", providerID: nil)?.displayName,
             "Prefixed"
+        )
+    }
+
+    /// Ollama and OpenRouter model ids carry their own colons
+    /// (`qwen3:32b`, `...:free`). Prefix parsing splits on the FINAL
+    /// separator, so an id like `@ollama:qwen3:32b` is genuinely ambiguous —
+    /// the row's own `provider_id` anchors the match, and the provider named
+    /// on either side must still agree.
+    func testModelSelectionHandlesColonBearingModelIDs() {
+        // A bare id's trailing colons belong to the model: nothing to strip.
+        XCTAssertEqual("deepseek/deepseek-chat-v3:free".bareModelID, "deepseek/deepseek-chat-v3:free")
+        XCTAssertNil("deepseek/deepseek-chat-v3:free".modelIDProviderPrefix)
+
+        let ollama = ModelCatalogOption(id: "@ollama:qwen3:32b", displayName: "Qwen3 32B", providerID: "ollama")
+        XCTAssertTrue(ollama.matchesSelection(modelID: "@ollama:qwen3:32b", providerID: nil))
+
+        let openrouter = ModelCatalogOption(
+            id: "@openrouter:deepseek/deepseek-chat-v3:free",
+            displayName: "DeepSeek Chat v3",
+            providerID: "openrouter"
+        )
+        // The exact prefixed spelling matches itself...
+        XCTAssertTrue(openrouter.matchesSelection(
+            modelID: "@openrouter:deepseek/deepseek-chat-v3:free",
+            providerID: nil
+        ))
+        // ...and an active provider's bare row keeps matching its own bare
+        // spelling: both sides normalize through the same final-colon split,
+        // so a `:free` tail survives the symmetric comparison.
+        let bareOpenRouter = ModelCatalogOption(
+            id: "deepseek/deepseek-chat-v3:free",
+            displayName: "DeepSeek Chat v3",
+            providerID: "openrouter"
+        )
+        XCTAssertTrue(bareOpenRouter.matchesSelection(modelID: "deepseek/deepseek-chat-v3:free", providerID: "openrouter"))
+
+        // Cross-provider tails stay rejected even when both carry colons.
+        XCTAssertFalse(bareOpenRouter.matchesSelection(modelID: "deepseek/deepseek-chat-v3:free", providerID: "ollama"))
+        XCTAssertFalse(openrouter.matchesSelection(modelID: "deepseek/deepseek-chat-v3:free", providerID: "ollama"))
+        let ollamaLookAlike = ModelCatalogOption(id: "@ollama:deepseek/deepseek-chat-v3:free", displayName: "Look-alike", providerID: "ollama")
+        XCTAssertFalse(ollamaLookAlike.matchesSelection(modelID: "@openrouter:deepseek/deepseek-chat-v3:free", providerID: nil))
+
+        // `lastIndex(of: ":")` cannot tell `@provider:model:tag` apart from
+        // a named-custom-provider spelling at the string level, so the row's
+        // own provider_id anchors the comparison: anchored, both spellings
+        // still meet...
+        XCTAssertTrue(ollama.matchesSelection(modelID: "qwen3:32b", providerID: "ollama"))
+        // ...while a bare selection that names no provider stays the ACTIVE
+        // provider's spelling and must not tick a prefixed row.
+        XCTAssertFalse(ollama.matchesSelection(modelID: "qwen3:32b", providerID: nil))
+    }
+
+    /// Core's catalog dedup can prefix the ACTIVE provider's own rows when an
+    /// inactive provider lists the same bare id first, so a stored bare default
+    /// matched without naming the active provider ticks the inactive row and
+    /// leaves the real default unticked. Matching against `activeProvider`
+    /// (the picker now passes it) resolves both directions.
+    func testBareDefaultMatchedAgainstActiveProviderRejectsTheInactiveLookAlike() {
+        let activeRow = ModelCatalogOption(id: "@gemini:mymodel", displayName: "Prefixed", providerID: "gemini")
+        let inactiveRow = ModelCatalogOption(id: "mymodel", displayName: "Bare look-alike", providerID: "deepseek")
+
+        XCTAssertTrue(activeRow.matchesSelection(modelID: "mymodel", providerID: "gemini"))
+        XCTAssertFalse(inactiveRow.matchesSelection(modelID: "mymodel", providerID: "gemini"))
+        // An embedded @provider: spelling keeps naming its own provider even
+        // when another one is active.
+        XCTAssertTrue(activeRow.matchesSelection(modelID: "@gemini:mymodel", providerID: nil))
+        XCTAssertFalse(inactiveRow.matchesSelection(modelID: "@gemini:mymodel", providerID: nil))
+    }
+
+    /// Picker-boundary: decoded `(defaultModel, activeProvider)` must tick the
+    /// active provider's dedup-prefixed row and leave the inactive bare
+    /// look-alike unchecked. Passing `providerID: nil` (the pre-#284
+    /// `isCurrentDefault`) fails this case.
+    func testPickerCheckmarkResolvesTheActiveProvidersDedupPrefixedRow() {
+        let prefixedActive = ModelCatalogOption(id: "@gemini:mymodel", displayName: "Prefixed", providerID: "gemini")
+        let inactiveBare = ModelCatalogOption(id: "mymodel", displayName: "Bare look-alike", providerID: "deepseek")
+
+        XCTAssertTrue(
+            DefaultModelPickerView.isChecked(
+                prefixedActive,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "mymodel",
+                activeProvider: "gemini"
+            )
+        )
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                inactiveBare,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "mymodel",
+                activeProvider: "gemini"
+            )
+        )
+    }
+
+    /// An embedded `@provider:` spelling names its own provider and must win
+    /// over the currently active one. Passing `activeProvider` blindly
+    /// (without consulting the stored spelling) ticks the OpenAI look-alike.
+    func testPickerCheckmarkKeepsAnEmbeddedPrefixAuthoritative() {
+        let openAIRow = ModelCatalogOption(id: "mymodel", displayName: "OpenAI look-alike", providerID: "openai")
+        let geminiRow = ModelCatalogOption(id: "@gemini:mymodel", displayName: "Gemini", providerID: "gemini")
+
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                openAIRow,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "@gemini:mymodel",
+                activeProvider: "openai"
+            )
+        )
+        XCTAssertTrue(
+            DefaultModelPickerView.isChecked(
+                geminiRow,
+                selectedModel: nil,
+                selectedProvider: nil,
+                defaultModel: "@gemini:mymodel",
+                activeProvider: "openai"
+            )
+        )
+    }
+
+    /// A tap records the row's provider, so after the live overlay leaves two
+    /// bare `mymodel` rows only the tapped one is Selected / spinning.
+    func testPickerInFlightSelectionTicksOnlyTheTappedProviderRow() {
+        let tapped = ModelCatalogOption(id: "mymodel", displayName: "DeepSeek", providerID: "deepseek")
+        let other = ModelCatalogOption(id: "mymodel", displayName: "OpenAI", providerID: "openai")
+
+        XCTAssertTrue(
+            DefaultModelPickerView.isChecked(
+                tapped,
+                selectedModel: "mymodel",
+                selectedProvider: "deepseek",
+                defaultModel: nil,
+                activeProvider: "openai"
+            )
+        )
+        XCTAssertFalse(
+            DefaultModelPickerView.isChecked(
+                other,
+                selectedModel: "mymodel",
+                selectedProvider: "deepseek",
+                defaultModel: nil,
+                activeProvider: "openai"
+            )
         )
     }
 
