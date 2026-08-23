@@ -6,6 +6,7 @@ struct ContentView: View {
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @State private var pendingSharedImport: SharedImportReservation?
     @State private var hasWaitingSharedImport = false
+    @State private var hasRoutedSharedImport = false
     @State private var pendingDeepLinkedSessionID: String?
     @State private var pendingNewChatRequest: NewChatRequest?
     @State private var didCheckInitialPendingShare = false
@@ -131,6 +132,11 @@ struct ContentView: View {
             return
         }
 
+        guard !hasRoutedSharedImport else {
+            refreshWaitingSharedImport(in: directory)
+            return
+        }
+
         do {
             pendingSharedImport = try HermesShareDraft.reserveNextPendingImport(from: directory)
             refreshWaitingSharedImport(in: directory)
@@ -141,6 +147,8 @@ struct ContentView: View {
     }
 
     private func consumePendingSharedImport(_ reservation: SharedImportReservation) {
+        hasRoutedSharedImport = true
+
         defer {
             if pendingSharedImport?.reservationID == reservation.reservationID {
                 pendingSharedImport = nil
@@ -162,6 +170,7 @@ struct ContentView: View {
 
     private func openNextSharedImport() {
         hasWaitingSharedImport = false
+        hasRoutedSharedImport = false
         importPendingSharedDraftIfAvailable()
     }
 
