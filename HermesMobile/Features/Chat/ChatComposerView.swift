@@ -1285,15 +1285,13 @@ struct MessageComposerView: View {
             }
         }
         Task {
-            // Drop a leftover transcript so it isn't concatenated into the next one, but
-            // only when the composer still holds exactly what voice last wrote. Anything
-            // the user typed is kept and the new transcript appends to it.
-            if !voiceInput.isListening,
-               let lastVoiceDraft = voiceInput.lastVoiceWrittenDraft,
-               draftMessage == lastVoiceDraft {
+            // Always start a new voice session with a clean composer. Any leftover
+            // transcript from the previous round (including late write-backs from
+            // onCompleted) must not become the baseDraft for the next recording.
+            if !voiceInput.isListening {
                 draftMessage = ""
             }
-            await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
+            await voiceInput.toggle(currentDraft: "") { newDraft in
                 draftMessage = newDraft
             }
             if voiceInput.isListening {

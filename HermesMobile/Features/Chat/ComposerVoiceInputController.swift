@@ -865,10 +865,17 @@ final class ComposerVoiceInputController {
     /// Dropping the write is what keeps a late final transcript from overwriting text the
     /// user typed after releasing the mic, or from re-populating a composer that was
     /// already sent and cleared.
+    ///
+    /// The ownership check only runs once audio capture has stopped. While the mic is
+    /// live the composer belongs to dictation and every partial must land: comparing
+    /// against the live draft there would depend on the composer's `@State` write being
+    /// observable on the very next partial, and a single missed propagation would wedge
+    /// the comparison permanently, freezing the transcript after one word.
     private func applyTranscriptToDraft(_ transcript: String) {
+        let isCapturingAudio = state == .listening || state == .serverListening
         guard let composed = draftUpdateSession.composedDraft(
             for: transcript,
-            currentDraft: readDraft?()
+            currentDraft: isCapturingAudio ? nil : readDraft?()
         ) else { return }
 
         lastVoiceWrittenDraft = composed
@@ -878,6 +885,10 @@ final class ComposerVoiceInputController {
     private func stopAcceptingDraftUpdates() {
         draftUpdateSession.stopAcceptingUpdates()
         updateDraft = nil
+        // Note: readDraft is intentionally NOT cleared here. Late callbacks (volcengine
+        // onCompleted) still need to read the composer to decide whether to block the
+        // write-back. The closure captures the view's Binding whose lifetime matches the
+        // controller's @State — no retain cycle. It's overwritten on the next toggle().
     }
 
     private func stopAudio(cancelTask: Bool) {
