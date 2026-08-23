@@ -4,7 +4,7 @@ struct ContentView: View {
     @Bindable var authManager: AuthManager
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
-    @State private var pendingSharedImport: SharedImport?
+    @State private var pendingSharedImport: SharedImportReservation?
     @State private var pendingDeepLinkedSessionID: String?
     @State private var pendingNewChatRequest: NewChatRequest?
     @State private var didCheckInitialPendingShare = false
@@ -62,6 +62,7 @@ struct ContentView: View {
                 authManager: authManager,
                 server: server,
                 pendingSharedImport: $pendingSharedImport,
+                didRoutePendingSharedImport: consumePendingSharedImport,
                 pendingDeepLinkedSessionID: $pendingDeepLinkedSessionID,
                 requestedNewChat: $pendingNewChatRequest
             )
@@ -119,16 +120,37 @@ struct ContentView: View {
     }
 
     private func importPendingSharedDraftIfAvailable() {
+        guard pendingSharedImport == nil else {
+            return
+        }
+
         guard let directory = HermesShareDraft.containerURL() else {
             return
         }
 
         do {
-            if let sharedImport = try HermesShareDraft.loadPendingImport(from: directory) {
-                pendingSharedImport = sharedImport
-            }
+            pendingSharedImport = try HermesShareDraft.reserveNextPendingImport(from: directory)
         } catch {
             pendingSharedImport = nil
+        }
+    }
+
+    private func consumePendingSharedImport(_ reservation: SharedImportReservation) {
+        defer {
+            if pendingSharedImport?.reservationID == reservation.reservationID {
+                pendingSharedImport = nil
+            }
+        }
+
+        guard let directory = HermesShareDraft.containerURL() else {
+            return
+        }
+
+        do {
+            try HermesShareDraft.consume(reservation, from: directory)
+        } catch {
+            // Keep the share recoverable if acknowledgement fails after routing.
+            try? HermesShareDraft.release(reservation, in: directory)
         }
     }
 }

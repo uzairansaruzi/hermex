@@ -9,7 +9,8 @@ struct SessionListView: View {
 
     @Bindable var authManager: AuthManager
     let server: URL
-    @Binding private var pendingSharedImport: SharedImport?
+    @Binding private var pendingSharedImport: SharedImportReservation?
+    private let didRoutePendingSharedImport: (SharedImportReservation) -> Void
     @Binding private var pendingDeepLinkedSessionID: String?
     @Binding private var requestedNewChat: NewChatRequest?
 
@@ -70,13 +71,15 @@ struct SessionListView: View {
     init(
         authManager: AuthManager,
         server: URL,
-        pendingSharedImport: Binding<SharedImport?> = .constant(nil),
+        pendingSharedImport: Binding<SharedImportReservation?> = .constant(nil),
+        didRoutePendingSharedImport: @escaping (SharedImportReservation) -> Void = { _ in },
         pendingDeepLinkedSessionID: Binding<String?> = .constant(nil),
         requestedNewChat: Binding<NewChatRequest?> = .constant(nil)
     ) {
         self.authManager = authManager
         self.server = server
         _pendingSharedImport = pendingSharedImport
+        self.didRoutePendingSharedImport = didRoutePendingSharedImport
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
         _viewModel = State(initialValue: SessionListViewModel(server: server))
@@ -1134,13 +1137,14 @@ struct SessionListView: View {
     }
 
     private func openPendingSharedImportIfNeeded() {
-        guard let sharedImport = pendingSharedImport else {
+        guard let reservation = pendingSharedImport else {
             return
         }
 
-        pendingSharedImport = nil
+        let sharedImport = reservation.sharedImport
         let draft = HermesShareDraft.composerDraft(from: sharedImport.draft)
         guard !draft.isEmpty || !sharedImport.attachments.isEmpty else {
+            didRoutePendingSharedImport(reservation)
             return
         }
 
@@ -1150,6 +1154,7 @@ struct SessionListView: View {
                 initialAttachments: sharedImport.attachments
             )
         )
+        didRoutePendingSharedImport(reservation)
     }
 
     /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before
