@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @State private var pendingSharedImport: SharedImportReservation?
+    @State private var hasWaitingSharedImport = false
     @State private var pendingDeepLinkedSessionID: String?
     @State private var pendingNewChatRequest: NewChatRequest?
     @State private var didCheckInitialPendingShare = false
@@ -63,6 +64,8 @@ struct ContentView: View {
                 server: server,
                 pendingSharedImport: $pendingSharedImport,
                 didRoutePendingSharedImport: consumePendingSharedImport,
+                hasWaitingSharedImport: hasWaitingSharedImport,
+                openNextSharedImport: openNextSharedImport,
                 pendingDeepLinkedSessionID: $pendingDeepLinkedSessionID,
                 requestedNewChat: $pendingNewChatRequest
             )
@@ -130,8 +133,10 @@ struct ContentView: View {
 
         do {
             pendingSharedImport = try HermesShareDraft.reserveNextPendingImport(from: directory)
+            refreshWaitingSharedImport(in: directory)
         } catch {
             pendingSharedImport = nil
+            hasWaitingSharedImport = false
         }
     }
 
@@ -152,6 +157,16 @@ struct ContentView: View {
             // Keep the share recoverable if acknowledgement fails after routing.
             try? HermesShareDraft.release(reservation, in: directory)
         }
+        refreshWaitingSharedImport(in: directory)
+    }
+
+    private func openNextSharedImport() {
+        hasWaitingSharedImport = false
+        importPendingSharedDraftIfAvailable()
+    }
+
+    private func refreshWaitingSharedImport(in directory: URL) {
+        hasWaitingSharedImport = (try? HermesShareDraft.hasPendingImport(in: directory)) ?? false
     }
 }
 

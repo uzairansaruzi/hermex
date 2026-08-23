@@ -234,6 +234,24 @@ enum HermesShareDraft {
         return nil
     }
 
+    static func hasPendingImport(
+        in directory: URL,
+        fileManager: FileManager = .default,
+        now: Date = Date(),
+        reservationTimeout: TimeInterval = reservationLifetime
+    ) throws -> Bool {
+        try prepareInbox(in: directory, fileManager: fileManager)
+        try migrateLegacyPendingImportIfNeeded(in: directory, fileManager: fileManager, now: now)
+        try recoverExpiredReservations(
+            in: directory,
+            fileManager: fileManager,
+            now: now,
+            reservationTimeout: reservationTimeout
+        )
+        try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
+        return try !sortedPendingItemURLs(in: directory, fileManager: fileManager).isEmpty
+    }
+
     static func consume(
         _ reservation: SharedImportReservation,
         from directory: URL,
@@ -421,10 +439,17 @@ enum HermesShareDraft {
             return
         }
 
-        let payload = try JSONDecoder().decode(
-            SharedDraftPayload.self,
-            from: Data(contentsOf: legacyPayloadURL)
-        )
+        let legacyData = try Data(contentsOf: legacyPayloadURL)
+        let payload: SharedDraftPayload
+        do {
+            payload = try JSONDecoder().decode(SharedDraftPayload.self, from: legacyData)
+        } catch {
+            // The legacy format has no partial recovery path. Drop malformed data so
+            // it cannot permanently block valid records in the transactional inbox.
+            try? fileManager.removeItem(at: legacyPayloadURL)
+            try? fileManager.removeItem(at: pendingAttachmentsDirectoryURL(in: directory))
+            return
+        }
         let draft = (payload.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = loadLegacyAttachments(from: payload, in: directory)
         let sharedImport = normalizedImport(draft: draft, attachments: attachments)

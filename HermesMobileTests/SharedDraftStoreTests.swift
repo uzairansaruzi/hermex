@@ -177,12 +177,14 @@ final class SharedDraftStoreTests: XCTestCase {
 
         try HermesShareDraft.savePendingDraft("First share", in: directory, now: firstDate)
         try HermesShareDraft.savePendingDraft("Second share", in: directory, now: secondDate)
+        XCTAssertTrue(try HermesShareDraft.hasPendingImport(in: directory, now: secondDate))
 
         let first = try XCTUnwrap(
             try HermesShareDraft.reserveNextPendingImport(from: directory, now: secondDate)
         )
         XCTAssertEqual(first.sharedImport.draft, "First share")
         XCTAssertEqual(first.createdAt, firstDate)
+        XCTAssertTrue(try HermesShareDraft.hasPendingImport(in: directory, now: secondDate))
         try HermesShareDraft.consume(first, from: directory)
 
         let second = try XCTUnwrap(
@@ -192,6 +194,7 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(second.createdAt, secondDate)
         try HermesShareDraft.consume(second, from: directory)
 
+        XCTAssertFalse(try HermesShareDraft.hasPendingImport(in: directory, now: secondDate))
         XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: directory, now: secondDate))
     }
 
@@ -351,6 +354,28 @@ final class SharedDraftStoreTests: XCTestCase {
 
         XCTAssertEqual(sharedImport.draft, "Legacy note")
         XCTAssertTrue(sharedImport.attachments.isEmpty)
+    }
+
+    func testMalformedLegacyPayloadDoesNotBlockTransactionalInbox() throws {
+        let directory = try temporaryDirectory()
+        try HermesShareDraft.savePendingDraft("Valid new share", in: directory)
+
+        let legacyPayloadURL = directory.appendingPathComponent(HermesShareDraft.pendingDraftFileName)
+        try Data("not json".utf8).write(to: legacyPayloadURL)
+        let legacyAttachmentsURL = directory.appendingPathComponent(
+            HermesShareDraft.pendingAttachmentsDirectoryName,
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: legacyAttachmentsURL, withIntermediateDirectories: true)
+        try Data("orphan".utf8).write(to: legacyAttachmentsURL.appendingPathComponent("orphan.txt"))
+
+        let reservation = try XCTUnwrap(
+            try HermesShareDraft.reserveNextPendingImport(from: directory)
+        )
+
+        XCTAssertEqual(reservation.sharedImport.draft, "Valid new share")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyPayloadURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyAttachmentsURL.path))
     }
 
     func testEmptyPendingDraftIsNotWritten() throws {
