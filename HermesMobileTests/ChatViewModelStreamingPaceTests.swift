@@ -151,6 +151,53 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testLargeNormalStreamConvergesByteIdenticalWithoutReplayState() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            wordCadenceNanoseconds: 1_000_000,
+            maxLagNanoseconds: 100_000_000
+        )
+
+        let didStart = await viewModel.sendMessage("Stream a long reply")
+        XCTAssertTrue(didStart)
+
+        let chunks = (0..<160).map { index in
+            "## Section \(index)\n\n"
+                + String(
+                    repeating: "stable markdown text with **formatting** and `code`. ",
+                    count: 10
+                )
+                + "\n"
+        }
+        let reasoningChunks = (0..<32).map { "reasoning-\($0) " }
+        for chunk in reasoningChunks {
+            streamClient.emit(.reasoning(chunk))
+        }
+        for chunk in chunks {
+            streamClient.emit(.token(chunk))
+        }
+
+        let target = chunks.joined()
+        _ = try await observeAssistantContent(
+            viewModel,
+            until: target,
+            timeoutNanoseconds: 12_000_000_000
+        )
+        let content = try XCTUnwrap(assistantContent(of: viewModel))
+        XCTAssertEqual(
+            Array(content.utf8),
+            Array(target.utf8),
+            "a large normal stream must preserve every byte without replay de-duplication"
+        )
+        XCTAssertEqual(
+            viewModel.liveReasoningText,
+            reasoningChunks.joined(),
+            "normal reasoning events must preserve every byte without replay de-duplication"
+        )
+    }
+
     // MARK: - Helpers
 
     /// 60s cadence with a far larger lag bound keeps the quota at one word per

@@ -127,6 +127,16 @@ A future implementation PR should be split into reviewable slices where possible
 
 No implementation should remove the `.sizeChanges` scroll anchor, reduce the user-visible page size, remove Markdown features, or add a dependency merely to improve a benchmark.
 
+## Implemented in this PR
+
+This PR now includes the first low-risk runtime slice in addition to the design analysis:
+
+- `ChatViewModel.appendAssistantToken` no longer constructs flushed + pending replay content on ordinary streams; that work is restricted to reconnect replay connections.
+- `ChatViewModel.appendReasoning` applies the same normal-path bypass.
+- `ChatViewModelStreamingPaceTests` adds a large normal-stream fixture and verifies assistant and reasoning content byte-for-byte.
+
+The incremental Markdown render-state design below remains a follow-up slice. It is intentionally not implemented without macOS/Xcode profiling and compilation.
+
 ## Concrete improvement analysis
 
 ### 1. First low-risk change: do not build replay state on the normal stream path
