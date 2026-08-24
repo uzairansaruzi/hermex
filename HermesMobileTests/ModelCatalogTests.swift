@@ -71,7 +71,7 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(group.models.map(\.id), ["@nous:anthropic/claude-opus-4.7"])
         XCTAssertEqual(group.extraModels.map(\.id), ["@nous:qwen/qwen3-coder"])
         XCTAssertEqual(
-            group.slashAutocompleteModels.map(\.id),
+            group.allModels.map(\.id),
             ["@nous:anthropic/claude-opus-4.7", "@nous:qwen/qwen3-coder"]
         )
         XCTAssertEqual(response.displayName(for: "@nous:qwen/qwen3-coder"), "Qwen3 Coder (via Nous)")

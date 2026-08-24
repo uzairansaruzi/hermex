@@ -329,7 +329,7 @@ struct SlashCommandAutocompleteView: View {
     private func subArgs(for command: SlashCommand) -> [String] {
         switch command.subArgs {
         case .models:
-            let allModels = modelGroups.flatMap(\.slashAutocompleteModels).map(\.id)
+            let allModels = modelGroups.flatMap(\.allModels).map(\.id)
             // Deduplicate while preserving order
             var seen = Set<String>()
             return allModels.filter { seen.insert($0).inserted }

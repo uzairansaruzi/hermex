@@ -681,7 +681,12 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
 }
 
 extension ModelCatalogGroup {
-    var slashAutocompleteModels: [ModelCatalogOption] {
+    /// All models in the group, including the overflow tail the server
+    /// exposes as `extra_models` (visible `models` + searchable `extraModels`).
+    /// `slashAutocompleteModels` was the old name — it happens to be the same
+    /// set, but the concept is broader than one consumer. De-duplicated by `id`
+    /// to keep ForEach identity unique.
+    var allModels: [ModelCatalogOption] {
         var seen = Set<String>()
         return (models + extraModels).filter { seen.insert($0.id).inserted }
     }
@@ -785,7 +790,7 @@ extension ModelsResponse {
     func displayName(for modelID: String?) -> String? {
         guard let modelID else { return nil }
         return catalogGroups
-            .flatMap(\.slashAutocompleteModels)
+            .flatMap(\.allModels)
             .first(where: { $0.id == modelID })?
             .displayName
     }

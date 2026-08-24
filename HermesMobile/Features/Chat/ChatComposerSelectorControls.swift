@@ -177,7 +177,7 @@ struct ComposerModelMenu: View {
     }
 
     private var compactOptions: [ModelCatalogOption] {
-        let allModels = modelGroups.flatMap(\.models)
+        let allModels = modelGroups.flatMap(\.allModels)
         let favoriteKeys = Set(favoriteOptions.map(\.favoriteKey))
         let recentKeys = Set(recentOptions.map(\.favoriteKey))
         var seen = Set<ModelFavoriteKey>()

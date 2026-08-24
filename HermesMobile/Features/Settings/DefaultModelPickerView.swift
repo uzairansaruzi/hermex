@@ -126,7 +126,7 @@ struct DefaultModelPickerView: View {
         guard !query.isEmpty else { return groups }
 
         return groups.compactMap { group in
-            let matchingModels = group.models.filter { model in
+            let matchingModels = group.allModels.filter { model in
                 model.displayName.lowercased().contains(query)
                     || model.id.lowercased().contains(query)
                     || group.name.lowercased().contains(query)

@@ -585,7 +585,7 @@ final class ChatViewModel {
         }
 
         let catalogName = modelCatalogGroups
-            .flatMap(\.models)
+            .flatMap(\.allModels)
             .firstMatchingSelection(modelID: currentModel, providerID: currentModelProvider)?
             .displayName
 
@@ -3203,7 +3203,7 @@ final class ChatViewModel {
 
     private func modelOption(matching query: String) -> ModelCatalogOption? {
         let normalizedQuery = query.lowercased()
-        let options = modelCatalogGroups.flatMap(\.slashAutocompleteModels)
+        let options = modelCatalogGroups.flatMap(\.allModels)
 
         if let exact = options.first(where: { $0.id.lowercased() == normalizedQuery }) {
             return exact

@@ -162,7 +162,7 @@ struct ModelRecentsStore: @unchecked Sendable {
 extension Sequence where Element == ModelCatalogGroup {
     func catalogOptionsByFavoriteKey() -> [ModelFavoriteKey: ModelCatalogOption] {
         var optionsByKey: [ModelFavoriteKey: ModelCatalogOption] = [:]
-        for option in flatMap(\.models) where optionsByKey[option.favoriteKey] == nil {
+        for option in flatMap(\.allModels) where optionsByKey[option.favoriteKey] == nil {
             optionsByKey[option.favoriteKey] = option
         }
         return optionsByKey
