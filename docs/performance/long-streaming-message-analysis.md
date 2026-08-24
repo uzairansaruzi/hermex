@@ -127,6 +127,134 @@ A future implementation PR should be split into reviewable slices where possible
 
 No implementation should remove the `.sizeChanges` scroll anchor, reduce the user-visible page size, remove Markdown features, or add a dependency merely to improve a benchmark.
 
+## Concrete improvement analysis
+
+### 1. First low-risk change: do not build replay state on the normal stream path
+
+The current token path constructs `flushedContent + pendingAssistantTokenChunks.joined()` before calling `deduplicatedReplayToken`, even when the connection is **not** a replay connection. The de-duplication helper immediately returns the input in that normal case, so the full effective-content string is unnecessary work for every ordinary token.
+
+The same pattern exists for reasoning chunks: `appendReasoning` joins pending reasoning chunks before calling `deduplicatedReplayText`, although the helper returns the input immediately when replay mode is inactive.
+
+A focused first implementation should:
+
+- append directly to the pending token buffer on the normal connection path;
+- append directly to the pending reasoning buffer on the normal connection path;
+- perform effective-content construction only while replay de-duplication is actually enabled;
+- keep the existing full replay algorithm unchanged initially;
+- add tests proving normal streams and replay streams produce identical final bytes.
+
+This is preferable to changing replay matching and buffering simultaneously. It removes avoidable work from the common path while keeping the most delicate recovery behavior stable.
+
+### 2. Second low-risk change: move repeated state lookup out of every token
+
+`appendAssistantToken` also searches `messages` for the streaming assistant message on every token. The message ID is already established by `ensureStreamingAssistantMessage()` and the visible message is only mutated during flushes and explicit event paths.
+
+A safe design should either:
+
+- resolve the message index once per flush, not once per token; or
+- add a stream-scoped index/cache that is invalidated whenever a reload, snapshot merge, prepend, or completed-session reconciliation can reorder or replace `messages`.
+
+The first option has less correctness risk. It avoids introducing stale-index bugs while still removing the lookup from the hot append path.
+
+### 3. Replace whole-document streaming scans with an append-only render state
+
+The current streaming renderer has several whole-string scans per update:
+
+1. `MarkdownContentRenderingPolicy.fallbackReason(for:)` checks character and line limits;
+2. `MarkdownMathLayoutCache.uncachedLayout(for:)` segments the complete displayed string;
+3. `StreamingMarkdownBlockSplitter.split(content)` scans every line and recreates stable chunk strings;
+4. `StreamingTextFadeTailSplitter.split(...)` scans the active Markdown again;
+5. `advanceFadeWindow` splits both the old and new content again before comparing prefixes;
+6. MarkdownUI lays out the changing active content.
+
+For an append-only normal stream, the renderer should own an incremental value model, for example `StreamingMarkdownRenderState`, containing:
+
+- immutable stable chunks with stable IDs;
+- the current active Markdown tail;
+- fence/list/block state needed to recognise the next stable boundary;
+- incremental character and line counts;
+- a stream generation/revision for replacement events;
+- the small fade-window state for the active tail.
+
+On an ordinary append, scan only the newly appended suffix plus the unfinished boundary line. Once a chunk is sealed, never pass it through the streaming splitter again. On a replacement, replay mismatch, interim replacement, snapshot restore, or non-prefix update, reset the state and rebuild from the new complete content. Correctness is more important than forcing every update through the incremental path.
+
+The SwiftUI shape should be:
+
+```text
+raw stream content
+        │
+        ├─ normal append ──► append to StreamingMarkdownRenderState
+        │                         ├─ stable chunks (unchanged IDs/content)
+        │                         └─ active tail (the only changing view)
+        │
+        └─ replacement/reset ─► rebuild state and increment generation
+```
+
+`StreamingMarkdownRenderer` should render the state rather than calculate `segments` from the complete string in `body`. `StreamingMarkdownChunkedView` should receive the stable chunks and active tail as values. A generation ID must invalidate SwiftUI state when the stream is reset so old fade stores cannot be reused for unrelated content.
+
+### 4. Make the large-content fallback incremental too
+
+The current streaming body repeatedly calls `content.count`, trims the content, and counts lines through `MarkdownContentRenderingPolicy`. For large Swift `String` values these checks are themselves non-constant work.
+
+The incremental render state should maintain:
+
+- `characterCount` or the exact threshold state;
+- `lineCount` or the exact threshold state;
+- `hasVisibleContent`.
+
+The fallback decision can then be made from metadata. The final/static renderer can continue to use the existing policy and cache. The thresholds must remain unchanged unless a product decision explicitly changes them.
+
+### 5. Keep stable Markdown and fade rendering separate
+
+The current implementation correctly tries to avoid re-rendering old chunks, but the parent still recomputes the split model on every body evaluation. The improved design should make that optimisation real:
+
+- stable chunks use stable IDs and `isStreaming: false`;
+- only the active tail uses `isStreaming: true`;
+- the fade timeline is mounted only for the active fade window;
+- settled chunks are not included in the changing `TimelineView` input;
+- a chunk is not copied into a new `String` merely because another token arrived.
+
+Do not cache each token-sized string in `MarkdownMathLayoutCache`: that would churn the cache and evict settled layouts. Cache or retain only sealed chunks and use the existing static layout cache for those chunks where appropriate.
+
+### 6. Scope transcript invalidation to the active row
+
+`ChatTranscriptMessageBlock` is already `Equatable`, but its equality compares the complete `reasoningGroups` array for every row. `ChatView` also supplies `viewModel.displayedReasoningGroups` at the transcript root on every body pass.
+
+After measuring this path, a follow-up should pre-index reasoning groups by anchor and pass each row only its own groups. The same principle applies to tool groups and live state: unrelated rows should receive stable empty/nil values and should not compare against changing arrays owned by the active row.
+
+This is a secondary optimisation. It should not be mixed into the first token-buffer change unless profiling shows it is a dominant cost.
+
+### 7. Treat lazy transcript rows as a separate slice
+
+Changing `VStack` to `LazyVStack` is still the right direction for many-message transcripts, but it is not a substitute for fixing one huge active message. It belongs to #32/#33 because it has separate risks:
+
+- initial scroll-to-bottom targeting an unrealised row;
+- preserving the visible row after loading older messages;
+- `.defaultScrollAnchor(..., for: .sizeChanges)` behavior while Markdown height settles;
+- interaction with the existing `ChatPrependScrollPositionController`.
+
+Do not merge the lazy-row change with a streaming parser rewrite or a page-size reduction. Each slice should have an isolated benchmark and regression coverage.
+
+## Recommended implementation order
+
+1. **Measure** the current path with signposts around token append, buffer drain, fallback checks, splitter calls, `uncachedLayout`, and scroll-trigger handling.
+2. **Add tests** for a pure append-only render state: stable chunks, active tail, prefix append, reset, fence boundaries, lists, math, and byte-identical reconstruction.
+3. **Remove normal-path replay work** from `appendAssistantToken` and `appendReasoning`; keep replay behavior unchanged and test both branches.
+4. **Avoid per-token message lookup** by resolving the row at flush time, with explicit invalidation on reload/snapshot/reconciliation.
+5. **Introduce incremental streaming Markdown state** and compare its reconstructed output against the current splitter on generated fixtures.
+6. **Optimise active-row invalidation** only if Instruments shows it is material.
+7. **Land lazy transcript rows separately** under #32/#33.
+8. **Run full XCTest, Instruments, and signed simulator/manual validation** before marking the implementation PR ready.
+
+## What should not be done
+
+- Do not simply increase the 16 ms or 48 ms pacing intervals: that hides work and makes the displayed answer fall further behind.
+- Do not put every partial string into `NSCache`: it creates cache churn and memory pressure.
+- Do not remove Markdown, code highlighting, math, fade animation, or scroll anchoring without measuring the user-visible regression.
+- Do not use `LazyVStack` alone as evidence that the single-message streaming path is fixed.
+- Do not change replay de-duplication semantics without fixtures for prefix, suffix, overlap, awkward Unicode boundaries, and reconnect replay.
+- Do not claim a performance win from source inspection; the win must be demonstrated with macOS/Xcode measurements.
+
 ## Acceptance criteria
 
 - Final assistant content is byte-for-byte identical to the server content for normal streams and replay/reconnect streams.
