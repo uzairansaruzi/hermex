@@ -6,13 +6,20 @@ import Observation
 final class OnboardingViewModel {
     nonisolated static let emptyPasswordMessage = String(localized: "Enter the server password.")
 
-    var serverURLString = ""
+    var serverURLString = "" {
+        didSet { invalidateProbedAuthStatusIfNeeded() }
+    }
     var password = ""
-    var customHeaders: [CustomHeader] = []
+    var customHeaders: [CustomHeader] = [] {
+        didSet { invalidateProbedAuthStatusIfNeeded() }
+    }
     var authStatus: AuthStatusResponse?
     var connectionMessage: String?
     var errorMessage: String?
     var isWorking = false
+
+    @ObservationIgnored private var probedConnectionIdentity: String?
+    @ObservationIgnored private var probeGeneration = 0
 
     init(
         savedServer: URL? = nil,
@@ -36,17 +43,52 @@ final class OnboardingViewModel {
         return authStatus?.passwordAuthEnabled != false
     }
 
+    // MARK: - Connection identity (issue #285)
+
+    private func currentConnectionIdentity() -> String {
+        let urlPart: String
+        do {
+            let url = try AuthManager.normalizedServerURL(from: serverURLString)
+            urlPart = url.absoluteString.lowercased()
+        } catch {
+            urlPart = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        let headerPart = customHeaders.sanitizedForStorage()
+            .map { "\($0.sanitizedName.lowercased()):\($0.sanitizedValue)" }
+            .sorted()
+            .joined(separator: "|")
+        return "\(urlPart)|\(headerPart)"
+    }
+
+    private func invalidateProbedAuthStatusIfNeeded() {
+        guard let probed = probedConnectionIdentity else { return }
+        let current = currentConnectionIdentity()
+        if current != probed {
+            authStatus = nil
+            connectionMessage = nil
+            errorMessage = nil
+            probedConnectionIdentity = nil
+        }
+    }
+
     func testConnection(authManager: AuthManager) async {
         errorMessage = nil
         connectionMessage = nil
         isWorking = true
         defer { isWorking = false }
 
+        probeGeneration += 1
+        let generation = probeGeneration
+        let identityAtStart = currentConnectionIdentity()
+
         do {
             let status = try await authManager.testConnection(
                 serverURLString: serverURLString,
                 customHeaders: customHeaders
             )
+            guard generation == probeGeneration else { return }
+            guard identityAtStart == currentConnectionIdentity() else { return }
+            probedConnectionIdentity = identityAtStart
             authStatus = status
             if let message = AuthManager.unsupportedSignInMessage(for: status) {
                 errorMessage = message
@@ -58,6 +100,9 @@ final class OnboardingViewModel {
                     : String(localized: "Connection ok. Password not required.")
             }
         } catch {
+            guard generation == probeGeneration else { return }
+            guard identityAtStart == currentConnectionIdentity() else { return }
+            probedConnectionIdentity = identityAtStart
             errorMessage = error.localizedDescription
         }
     }
@@ -75,12 +120,22 @@ final class OnboardingViewModel {
         defer { isWorking = false }
 
         if authStatus == nil {
+            probeGeneration += 1
+            let generation = probeGeneration
+            let identityAtStart = currentConnectionIdentity()
             do {
-                authStatus = try await authManager.testConnection(
+                let status = try await authManager.testConnection(
                     serverURLString: serverURLString,
                     customHeaders: customHeaders
                 )
+                guard generation == probeGeneration else { return }
+                guard identityAtStart == currentConnectionIdentity() else { return }
+                probedConnectionIdentity = identityAtStart
+                authStatus = status
             } catch {
+                guard generation == probeGeneration else { return }
+                guard identityAtStart == currentConnectionIdentity() else { return }
+                probedConnectionIdentity = identityAtStart
                 errorMessage = error.localizedDescription
                 return
             }
@@ -89,6 +144,10 @@ final class OnboardingViewModel {
                 errorMessage = validationMessage
                 return
             }
+        } else if probedConnectionIdentity == nil {
+            // Auth status exists but probe identity was never recorded (e.g. restored
+            // from a previous session). Seed it so future edits can invalidate.
+            probedConnectionIdentity = currentConnectionIdentity()
         }
 
         await authManager.configure(
