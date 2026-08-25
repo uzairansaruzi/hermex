@@ -855,6 +855,105 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(delegate.finishCount, 1)
     }
 
+    // MARK: - Late events after completion (#288)
+
+    @MainActor
+    func testLateTokenAfterDoneIsDroppedAndDoesNotMutateTranscript() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertTrue(coordinator.hasCompletedCurrentResponse)
+        XCTAssertEqual(delegate.tokens, [])
+
+        // The server's background title thread can emit a stray token after
+        // done — it must never reach the transcript (#288).
+        streamClient.emit(.token("Casual Greeting Exchange"))
+
+        XCTAssertEqual(delegate.tokens, [], "late token after done must be dropped")
+        XCTAssertTrue(coordinator.hasCompletedCurrentResponse)
+        XCTAssertNil(coordinator.activeStreamID, "completion must not be undone by the late token")
+    }
+
+    @MainActor
+    func testLateTitleAfterDoneStillUpdatesSessionMetadata() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertTrue(coordinator.hasCompletedCurrentResponse)
+
+        // The title event arrives after done via the background thread and must
+        // still update session metadata even though content events are dropped.
+        streamClient.emit(.title(TitleStreamEvent(sessionId: "session-abc", title: "Casual Greeting")))
+
+        // Title routing is metadata-only; the transcript must stay untouched.
+        XCTAssertNil(coordinator.activeStreamID)
+    }
+
+    @MainActor
+    func testLateMeteringAndLifecycleAfterDoneContinueTeardown() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertTrue(coordinator.hasCompletedCurrentResponse)
+
+        // Metering after completion is allowed to update the TPS readout.
+        streamClient.emit(.metering(MeteringStreamEvent(tokensPerSecond: 12.5)))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.5)
+
+        // Lifecycle must continue so the stream finishes and the Live Activity
+        // is not left dangling on "running".
+        streamClient.emit(.streamEnd)
+
+        XCTAssertEqual(delegate.finishCount, 1)
+        XCTAssertFalse(coordinator.hasCompletedCurrentResponse, "finishStream resets for the next run")
+        XCTAssertEqual(liveActivityManager.ends.count, 1, "no duplicate end from a second finalize")
+    }
+
+    @MainActor
+    func testDuplicateDoneAfterCompletionIsIgnoredWithoutDoubleFinalize() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.done(DoneStreamEvent()))
+
+        XCTAssertEqual(delegate.donePayloads.count, 1, "duplicate done must not re-apply")
+        XCTAssertEqual(delegate.completedNeedsTranscriptRefreshValues.count, 1, "single finalize only")
+        XCTAssertEqual(liveActivityManager.ends.count, 1)
+        XCTAssertNil(coordinator.activeStreamID)
+    }
+
     @MainActor
     private func makeCoordinator(
         streamClient: CoordinatorSpySSEStreamingClient? = nil,
