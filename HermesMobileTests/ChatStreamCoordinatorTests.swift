@@ -920,9 +920,25 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         streamClient.emit(.done(DoneStreamEvent()))
         XCTAssertTrue(coordinator.hasCompletedCurrentResponse)
 
-        // Metering after completion is allowed to update the TPS readout.
-        streamClient.emit(.metering(MeteringStreamEvent(tokensPerSecond: 12.5)))
+        // Metering after completion is allowed to update the TPS readout. The
+        // event must be production-shaped: displayableTokensPerSecond projects
+        // only when isTokensPerSecondAvailable == true and isEstimated != true.
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.5,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
         XCTAssertEqual(coordinator.liveTokensPerSecond, 12.5)
+
+        // Foreign-session metering must not update the readout.
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 99,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "other-session"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.5, "foreign session metering ignored")
 
         // Lifecycle must continue so the stream finishes and the Live Activity
         // is not left dangling on "running".
@@ -931,6 +947,132 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(delegate.finishCount, 1)
         XCTAssertFalse(coordinator.hasCompletedCurrentResponse, "finishStream resets for the next run")
         XCTAssertEqual(liveActivityManager.ends.count, 1, "no duplicate end from a second finalize")
+        XCTAssertTrue(coordinator.isTerminalFenceActiveForTesting(), "terminal fence survives finishStream")
+    }
+
+    @MainActor
+    func testTokenAfterStreamEndIsStillDroppedByTerminalFence() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.streamEnd)
+        XCTAssertEqual(delegate.finishCount, 1)
+
+        // done → streamEnd → late token must still not corrupt the transcript
+        // (#288 review): finishStream clears hasCompletedCurrentResponse but the
+        // terminal fence stays armed until the next run starts.
+        streamClient.emit(.token("Casual Greeting Exchange"))
+
+        XCTAssertEqual(delegate.tokens, [], "token after streamEnd must be dropped")
+    }
+
+    @MainActor
+    func testNewRunStartDisarmsTerminalFence() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.streamEnd)
+        XCTAssertTrue(coordinator.isTerminalFenceActiveForTesting())
+
+        // The user sends a follow-up message → new response → fence disarms.
+        coordinator.prepareForNewResponse()
+
+        XCTAssertFalse(coordinator.isTerminalFenceActiveForTesting(), "next run must accept content again")
+    }
+
+    @MainActor
+    func testLateTitlePayloadReachesDelegateAfterDone() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+
+        streamClient.emit(.title(TitleStreamEvent(sessionId: "session-abc", title: "Casual Greeting Exchange")))
+
+        XCTAssertEqual(
+            delegate.titles.last?.title,
+            "Casual Greeting Exchange",
+            "late title must actually route to streamCoordinatorUpdateTitle (not silently dropped)"
+        )
+    }
+
+    @MainActor
+    func testPostDoneErrorDoesNotDoubleEndLiveActivity() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.error("late failure"))
+
+        // Exactly one end (.complete from done); the late error tears down the
+        // transport without publishing a failed end over a settled completion.
+        XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
+        XCTAssertEqual(delegate.errorMessages, [], "post-completion error must not surface as failure banner")
+        XCTAssertEqual(delegate.finishCount, 1)
+    }
+
+    @MainActor
+    func testPostDoneCancelDoesNotDoubleEndLiveActivity() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.cancelled)
+
+        XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete], "settled complete wins; no second end")
+        XCTAssertEqual(delegate.finishCount, 1)
+    }
+
+    /// Table-driven matrix: every content-family event after completion is
+    /// dropped, so a future enum case cannot silently land in the wrong bucket.
+    @MainActor
+    func testAllContentEventsAreDroppedAfterCompletion() throws {
+        let cases: [(String, SSEEvent)] = [
+            ("token", .token("late")),
+            ("interimAssistant", .interimAssistant(InterimAssistantStreamEvent(text: "late"))),
+            ("reasoning", .reasoning("late")),
+            ("toolStarted", .toolStarted(ToolStreamEvent(eventType: "tool.started", name: "bash", preview: nil, args: nil, duration: nil, isError: false))),
+            ("toolCompleted", .toolCompleted(ToolStreamEvent(eventType: "tool.completed", name: "bash", preview: nil, args: nil, duration: 0.1, isError: false)))
+        ]
+        for (name, event) in cases {
+            let streamClient = CoordinatorSpySSEStreamingClient()
+            let liveActivityManager = CoordinatorSpyLiveActivityManager()
+            let delegate = CoordinatorDelegateSpy()
+            let coordinator = makeCoordinator(
+                streamClient: streamClient,
+                liveActivityManager: liveActivityManager,
+                delegate: delegate
+            )
+
+            coordinator.start(streamID: "stream-123")
+            streamClient.emit(.done(DoneStreamEvent()))
+            streamClient.emit(event)
+
+            XCTAssertTrue(delegate.tokens.isEmpty, "\(name) after done leaked into transcript tokens")
+            XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete], "\(name): exactly one complete end")
+        }
     }
 
     @MainActor
@@ -1116,8 +1258,11 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         true
     }
 
+    private(set) var titles: [TitleStreamEvent] = []
+
     func streamCoordinatorUpdateTitle(_ payload: TitleStreamEvent) -> Bool {
-        payload.title?.isEmpty == false
+        titles.append(payload)
+        return payload.title?.isEmpty == false
     }
 
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {

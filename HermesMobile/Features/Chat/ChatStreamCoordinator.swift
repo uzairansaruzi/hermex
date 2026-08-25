@@ -92,6 +92,11 @@ final class ChatStreamCoordinator {
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false
+    /// Terminal-content fence (#288 review): set when the response completes and
+    /// NOT cleared by finishStream, so content queued after `done → streamEnd`
+    /// still cannot reach the transcript. Cleared only by the next run start /
+    /// new-response preparation / session load.
+    @ObservationIgnored private var isTerminalContentFenceActive = false
     private(set) var lastEventID: String?
     private(set) var lastProgressDate: Date?
     private(set) var lastTransportActivityDate: Date?
@@ -132,8 +137,13 @@ final class ChatStreamCoordinator {
 
     func prepareForNewResponse() {
         hasCompletedCurrentResponse = false
+        isTerminalContentFenceActive = false
         isConnectionSuspended = false
         liveTokensPerSecond = nil
+    }
+
+    func isTerminalFenceActiveForTesting() -> Bool {
+        isTerminalContentFenceActive
     }
 
     func start(
@@ -142,6 +152,7 @@ final class ChatStreamCoordinator {
         recoveryState: ActiveStreamRecoveryState = .idle
     ) {
         hasCompletedCurrentResponse = false
+        isTerminalContentFenceActive = false
         liveTokensPerSecond = nil
         runGeneration &+= 1
         activeStreamID = streamID
@@ -208,6 +219,7 @@ final class ChatStreamCoordinator {
         usedCacheFallback: Bool
     ) {
         hasCompletedCurrentResponse = false
+        isTerminalContentFenceActive = false
         liveTokensPerSecond = nil
 
         if usedCacheFallback {
@@ -433,10 +445,13 @@ final class ChatStreamCoordinator {
     }
 
     private func handle(_ event: SSEEvent) {
-        // Ignore late content after the response has already completed (#288).
-        // Title/done/stream lifecycle events must still pass so session metadata
-        // updates and stream teardown are not dropped.
-        if hasCompletedCurrentResponse {
+        // Terminal-content fence (#288): once the response has completed, late
+        // content must never reach the transcript. The fence survives streamEnd
+        // (finishStream resets hasCompletedCurrentResponse but not the fence),
+        // closing the done → streamEnd → token ordering. Title and metering are
+        // session metadata and still pass; a settled completion is never
+        // re-ended by late error/cancel (#288 review).
+        if isTerminalContentFenceActive {
             switch event {
             case .title(let payload):
                 if delegate?.streamCoordinatorUpdateTitle(payload) == true {
@@ -452,10 +467,24 @@ final class ChatStreamCoordinator {
             case .done:
                 // Duplicate done after completion — already finalized; ignore.
                 return
-            case .streamEnd, .cancelled, .error, .transportError, .heartbeat, .ignored:
+            case .heartbeat, .ignored:
                 break
+            case .transportError(let message):
+                // No active stream left to recover; ignore without re-ending.
+                return
+            case .cancelled:
+                // Settled complete wins: tear down transport without publishing
+                // a second Live Activity end.
+                finishStream()
+                return
+            case .error:
+                finishStream()
+                return
             case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted,
                  .approvalPending, .clarificationPending, .pendingSteerLeftover:
+                return
+            case .streamEnd:
+                finishStream()
                 return
             }
         }
@@ -667,6 +696,7 @@ final class ChatStreamCoordinator {
         liveTokensPerSecond = nil
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         hasCompletedCurrentResponse = true
+        isTerminalContentFenceActive = true
         delegate?.streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: needsTranscriptRefresh)
         resetRecoveryState()
     }
