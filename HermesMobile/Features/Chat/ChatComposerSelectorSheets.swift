@@ -351,22 +351,44 @@ struct ComposerModelPickerSheet: View {
 
     private var selectedCustomOption: ModelCatalogOption? {
         guard let selectedModelID, !selectedModelID.isEmpty else { return nil }
-        let catalogOptions = modelGroups.flatMap(\.allModels)
-        if catalogOptions.firstMatchingSelection(
-            modelID: selectedModelID,
-            providerID: selectedModelProviderID
-        ) != nil {
-            return nil
-        }
-
         let option = ModelCatalogOption(
             id: selectedModelID,
             displayName: selectedModelID,
             providerID: selectedModelProviderID
         )
+        let isRendered = Self.isRenderedByCurrentPicker(
+            option: option,
+            modelGroups: modelGroups,
+            searchQuery: searchText
+        )
+        guard !isRendered else { return nil }
+
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.isEmpty || matches(option, query: query) else { return nil }
         return option
+    }
+
+    /// Whether `option` is already represented by a rendered picker row under
+    /// the current query. Empty query renders only the server's visible slice
+    /// (`group.models`); searching renders `allModels`. Classifying against the
+    /// full catalog with an empty query would hide the "Current Custom" row for
+    /// a selection that lives in `extraModels`, leaving the active model without
+    /// any visible checkmark until the user searches again (PR #293 review).
+    static func isRenderedByCurrentPicker(
+        option: ModelCatalogOption,
+        modelGroups: [ModelCatalogGroup],
+        searchQuery: String
+    ) -> Bool {
+        let renderedOptions: [ModelCatalogOption]
+        if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            renderedOptions = modelGroups.flatMap(\.models)
+        } else {
+            renderedOptions = modelGroups.flatMap(\.allModels)
+        }
+        return renderedOptions.firstMatchingSelection(
+            modelID: option.id,
+            providerID: option.providerID
+        ) != nil
     }
 
     private var providerChoices: [ModelProviderChoice] {

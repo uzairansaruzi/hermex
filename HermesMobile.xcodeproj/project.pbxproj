@@ -316,6 +316,7 @@
 		C5A0D8F5502048B6B9258B01 /* InsightsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0D8F5502048B6B9258B00 /* InsightsViewModelTests.swift */; };
 		105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */; };
 		105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */; };
+		1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -663,6 +664,7 @@
 		FC2A37872AC842629FBDDFA4 /* SlashCommandAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandAutocompleteView.swift; sourceTree = "<group>"; };
 		105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSectionExpansionState.swift; sourceTree = "<group>"; };
 		105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSectionExpansionStateTests.swift; sourceTree = "<group>"; };
+		1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSelectionClassificationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -836,6 +838,7 @@
 				1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */,
 				1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */,
 				105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */,
+				1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */,
 				0485E1E1FFB64A24BB729CD4 /* SlashCommandTests.swift */,
 				6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */,
 				A710739233F64F4FA4C2B711 /* ComposerVoiceDraftComposerTests.swift */,
@@ -1704,6 +1707,7 @@
 					1A2B3C4D5E6F70000000132 /* ContextWindowIndicatorTests.swift in Sources */,
 					1A2B3C4D5E6F70000000141 /* ModelFavoritesStoreTests.swift in Sources */,
 					105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */,
+					1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */,
 					8F63EE9A9B344C4FA579D5A8 /* SlashCommandTests.swift in Sources */,
 				0D82B28493C6401D98DA9C0E /* SlashCommandExecutorTests.swift in Sources */,
 				A710739233F64F4FA4C2B701 /* ComposerVoiceDraftComposerTests.swift in Sources */,
