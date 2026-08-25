@@ -53,11 +53,27 @@ final class OnboardingViewModel {
         } catch {
             urlPart = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
+        // Encode header names/values so delimiters (":" and "|") inside a
+        // header value cannot collide with the identity serialization (e.g.
+        // "X: 1|y:2" as one header vs "X: 1" + "Y: 2" as two). Values are not
+        // lowercased — header values are case-sensitive.
         let headerPart = customHeaders.sanitizedForStorage()
-            .map { "\($0.sanitizedName.lowercased()):\($0.sanitizedValue)" }
+            .map { header -> String in
+                let name = Self.escapeForIdentity(header.sanitizedName.lowercased())
+                let value = Self.escapeForIdentity(header.sanitizedValue)
+                return "\(name):\(value)"
+            }
             .sorted()
             .joined(separator: "|")
         return "\(urlPart)|\(headerPart)"
+    }
+
+    nonisolated private static func escapeForIdentity(_ raw: String) -> String {
+        // Must escape "%" first so ":"/"|" escapes don't double-escape.
+        var out = raw.replacingOccurrences(of: "%", with: "%25")
+        out = out.replacingOccurrences(of: ":", with: "%3A")
+        out = out.replacingOccurrences(of: "|", with: "%7C")
+        return out
     }
 
     private func invalidateProbedAuthStatusIfNeeded() {
