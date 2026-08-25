@@ -17,12 +17,15 @@ final class OnboardingViewModel {
     var connectionMessage: String?
     var errorMessage: String?
     var isWorking = false
+    /// True while an operation owns the form: views disable the URL/password
+    /// fields, header editor, and Return-key submission so a side effect that
+    /// has already run (AuthManager.configure persists and activates server
+    /// state) cannot be superseded by mid-flight edits (PR #294 re-gate).
+    var isConnectionLocked = false
 
     // Identity + generation of the probe that produced `authStatus`.
     @ObservationIgnored private var probedConnectionIdentity: String?
     @ObservationIgnored private var operationGeneration = 0
-    /// Set while a configure is in flight; edits during it are fenced out.
-    @ObservationIgnored private var configureGeneration: Int?
 
     init(
         savedServer: URL? = nil,
@@ -124,13 +127,17 @@ final class OnboardingViewModel {
     }
 
     func testConnection(authManager: AuthManager) async {
+        guard !isConnectionLocked else { return }
         errorMessage = nil
         connectionMessage = nil
         isWorking = true
+        isConnectionLocked = true
         let token = beginOperation()
         let identityAtStart = currentConnectionIdentity()
         defer {
-            if token == operationGeneration { isWorking = false }
+            guard token == operationGeneration else { return }
+            isWorking = false
+            isConnectionLocked = false
         }
 
         do {
@@ -163,6 +170,7 @@ final class OnboardingViewModel {
     }
 
     func connect(authManager: AuthManager) async {
+        guard !isConnectionLocked else { return }
         errorMessage = nil
         connectionMessage = nil
 
@@ -172,9 +180,16 @@ final class OnboardingViewModel {
         }
 
         isWorking = true
+        // Inputs stay frozen across probe AND configure: AuthManager.configure
+        // persists credentials and activates the captured URL/headers as a side
+        // effect, so accepting edits mid-operation would let the old server be
+        // configured under a form now showing a different one (PR #294 re-gate).
+        isConnectionLocked = true
         let token = beginOperation()
         defer {
-            if token == operationGeneration { isWorking = false }
+            guard token == operationGeneration else { return }
+            isWorking = false
+            isConnectionLocked = false
         }
 
         if authStatus == nil {

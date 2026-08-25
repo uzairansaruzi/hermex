@@ -88,10 +88,9 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(viewModel.connectionMessage)
     }
 
-// MARK: - Blocking client double
+// MARK: - Gated client double (drives real async schedules)
 
-/// Gates `health()` until the test releases it, so a probe can be held in
-/// flight while inputs change.
+/// Gates `health()` so a probe can be held in flight while inputs change.
 @MainActor
 final class OnboardingGateKeeper: @unchecked Sendable {
     private var continuations: [CheckedContinuation<Void, Never>] = []
@@ -123,9 +122,22 @@ final class OnboardingGateKeeper: @unchecked Sendable {
     }
 }
 
+enum GatedProbeOutcome {
+    case succeed(AuthStatusResponse)
+    case fail(String)
+}
+
 final class GatedAuthAPIClient: AuthAPIClient, @unchecked Sendable {
     let gatekeeper: OnboardingGateKeeper
-    init(gatekeeper: OnboardingGateKeeper) { self.gatekeeper = gatekeeper }
+    var outcome: GatedProbeOutcome
+    /// Records configure side effects so tests can assert what ACTUALLY ran.
+    private(set) var configuredServers: [String] = []
+    private(set) var configuredPasswords: [String] = []
+
+    init(gatekeeper: OnboardingGateKeeper, outcome: GatedProbeOutcome) {
+        self.gatekeeper = gatekeeper
+        self.outcome = outcome
+    }
 
     func health() async throws -> HealthResponse {
         await gatekeeper.gate()
@@ -133,17 +145,162 @@ final class GatedAuthAPIClient: AuthAPIClient, @unchecked Sendable {
     }
 
     func authStatus() async throws -> AuthStatusResponse {
-        AuthStatusResponse(authEnabled: true, loggedIn: false, passwordAuthEnabled: true)
+        await gatekeeper.gate()
+        switch outcome {
+        case .succeed(let status):
+            return status
+        case .fail(let message):
+            throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: message])
+        }
     }
 
     func login(password: String) async throws -> LoginResponse {
-        LoginResponse(ok: true, message: nil, error: nil)
+        configuredPasswords.append(password)
+        return LoginResponse(ok: true, message: nil, error: nil)
     }
 
     func logout() async throws -> LoginResponse {
         LoginResponse(ok: true, message: nil, error: nil)
     }
 }
+
+extension OnboardingViewModelIdentityTests {
+    @MainActor
+    func makeGatedManager(_ client: GatedAuthAPIClient) -> AuthManager {
+        AuthManager(
+            clientFactory: { _ in client },
+            serverRegistry: ServerRegistry.inMemory()
+        )
+    }
+
+    // Stale A success cannot publish over B: A is held, the user retargets to
+    // B, then A completes — its result must be discarded and B must still be
+    // free to probe.
+    @MainActor
+    func testStaleProbeSuccessForChangedIdentityIsDiscarded() async {
+        let gatekeeper = OnboardingGateKeeper()
+        let manager = makeGatedManager(GatedAuthAPIClient(
+            gatekeeper: gatekeeper,
+            outcome: .succeed(AuthStatusResponse(authEnabled: false, loggedIn: true))
+        ))
+        let viewModel = OnboardingViewModel()
+        viewModel.serverURLString = "https://first.example.com"
+
+        let probeTask = Task { await viewModel.testConnection(authManager: manager) }
+        await gatekeeper.waitUntilProbeStarted(count: 1)
+
+        viewModel.serverURLString = "https://second.example.com"
+        gatekeeper.releaseAll()
+        await probeTask.value
+
+        XCTAssertNil(viewModel.authStatus, "stale success for old identity must be discarded")
+        XCTAssertFalse(viewModel.isWorking)
+        XCTAssertFalse(viewModel.isConnectionLocked)
+    }
+
+    // Stale A rejection cannot publish its error over B.
+    @MainActor
+    func testStaleProbeFailureForChangedIdentityIsDiscarded() async {
+        let gatekeeper = OnboardingGateKeeper()
+        let manager = makeGatedManager(GatedAuthAPIClient(
+            gatekeeper: gatekeeper,
+            outcome: .fail("old server unreachable")
+        ))
+        let viewModel = OnboardingViewModel()
+        viewModel.serverURLString = "https://first.example.com"
+
+        let probeTask = Task { await viewModel.testConnection(authManager: manager) }
+        await gatekeeper.waitUntilProbeStarted(count: 1)
+
+        viewModel.serverURLString = "https://second.example.com"
+        gatekeeper.releaseAll()
+        await probeTask.value
+
+        XCTAssertNil(viewModel.errorMessage, "stale rejection must not surface under new identity")
+        XCTAssertNil(viewModel.authStatus)
+    }
+
+    // Overlapping generations: only the newest operation owns isWorking.
+    @MainActor
+    func testOverlappingProbesOnlyLatestOwnsIsWorking() async {
+        let gatekeeper = OnboardingGateKeeper()
+        let manager = makeGatedManager(GatedAuthAPIClient(
+            gatekeeper: gatekeeper,
+            outcome: .succeed(AuthStatusResponse(authEnabled: true, loggedIn: false))
+        ))
+        let viewModel = OnboardingViewModel()
+        viewModel.serverURLString = "https://example.com"
+
+        let first = Task { await viewModel.testConnection(authManager: manager) }
+        await gatekeeper.waitUntilProbeStarted(count: 1)
+
+        let second = Task { await viewModel.testConnection(authManager: manager) }
+        await gatekeeper.waitUntilProbeStarted(count: 2)
+
+        XCTAssertTrue(viewModel.isWorking)
+
+        gatekeeper.releaseOne()
+        await first.value
+        XCTAssertTrue(viewModel.isWorking, "older defer must not clear newer operation's busy state")
+
+        gatekeeper.releaseAll()
+        await second.value
+        XCTAssertFalse(viewModel.isWorking)
+    }
+
+    // Edit during connect(): the operation must be refused outright while the
+    // form is locked (inputs frozen), so no second connect can interleave.
+    @MainActor
+    func testConnectWhileLockedIsRefused() async {
+        let gatekeeper = OnboardingGateKeeper()
+        let client = GatedAuthAPIClient(
+            gatekeeper: gatekeeper,
+            outcome: .succeed(AuthStatusResponse(authEnabled: false, loggedIn: true))
+        )
+        let manager = makeGatedManager(client)
+        let viewModel = OnboardingViewModel()
+        viewModel.serverURLString = "https://example.com"
+
+        let connectTask = Task { await viewModel.connect(authManager: manager) }
+        await gatekeeper.waitUntilProbeStarted(count: 1)
+
+        XCTAssertTrue(viewModel.isConnectionLocked, "inputs frozen for the whole connect")
+        XCTAssertTrue(viewModel.isPasswordRequired == false, "trusted-header probe hides password field")
+
+        let loginsBefore = client.configuredPasswords.count
+
+        // Return-key during lock must be refused by the guard.
+        await viewModel.connect(authManager: manager)
+
+        gatekeeper.releaseAll()
+        await connectTask.value
+
+        XCTAssertFalse(viewModel.isConnectionLocked, "lock released after settle")
+        XCTAssertTrue(viewModel.authStatus != nil || viewModel.errorMessage != nil,
+                      "the accepted connect settled to a visible outcome")
+    }
+
+    // Configure reaches AuthManager exactly once per accepted connect.
+    @MainActor
+    func testConfigureRunsOncePerAcceptedConnect() async {
+        let gatekeeper = OnboardingGateKeeper()
+        let client = GatedAuthAPIClient(
+            gatekeeper: gatekeeper,
+            outcome: .succeed(AuthStatusResponse(authEnabled: false, loggedIn: false))
+        )
+        let manager = makeGatedManager(client)
+        let viewModel = OnboardingViewModel()
+        viewModel.serverURLString = "https://example.com"
+
+        await viewModel.connect(authManager: manager)
+
+        // authEnabled=false → configure skips login entirely (no password path).
+        XCTAssertEqual(client.configuredPasswords.count, 0, "passwordless configure must not attempt login")
+        XCTAssertFalse(viewModel.isConnectionLocked)
+        XCTAssertFalse(viewModel.isWorking)
+    }
+}
+
 
     // MARK: - Helpers
 

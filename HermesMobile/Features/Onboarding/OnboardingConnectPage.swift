@@ -53,7 +53,8 @@ struct OnboardingConnectPage: View {
                                 .submitLabel(.go)
                                 .tint(Color(red: 1.0, green: 0.74, blue: 0.10))
                                 .focused($focusedField, equals: .serverURL)
-                                .onSubmit(submitConnection)
+                                .disabled(viewModel.isConnectionLocked)
+                                .onSubmit { guard !viewModel.isConnectionLocked else { return }; submitConnection() }
                         }
                     }
 
@@ -68,13 +69,15 @@ struct OnboardingConnectPage: View {
                             .textContentType(.password)
                             .submitLabel(.go)
                             .focused($focusedField, equals: .password)
-                            .onSubmit(submitConnection)
+                            .disabled(viewModel.isConnectionLocked)
+                            .onSubmit { guard !viewModel.isConnectionLocked else { return }; submitConnection() }
                         }
                     }
                 }
 
                 DisclosureGroup(isExpanded: $isShowingAdvanced) {
                     CustomHeadersEditor(headers: $viewModel.customHeaders, style: .onboarding)
+                        .disabled(viewModel.isConnectionLocked)
                         .padding(.top, 10)
                 } label: {
                     Label("Advanced", systemImage: "slider.horizontal.3")
