@@ -1,6 +1,6 @@
 # Long streaming assistant messages: performance investigation
 
-> **Status:** draft investigation for issue [#291](https://github.com/uzairansaruzi/hermex/issues/291)
+> **Status:** implementation slice and follow-up performance design for issue [#291](https://github.com/uzairansaruzi/hermex/issues/291)
 >
 > **Repository revision investigated:** `b1605f91f5f6d06f4b505578564268436f769c9b`
 >
@@ -276,9 +276,9 @@ Do not merge the lazy-row change with a streaming parser rewrite or a page-size 
 - Full XCTest passes on macOS/Xcode.
 - No new third-party dependency, API change, or upstream `hermes-webui` change.
 
-## Validation limitation for this draft
+## Validation limitation
 
-The initial analysis was performed on Linux. No compilation, XCTest, simulator, Instruments, or device run was possible here because the required Apple toolchain is unavailable. Consequently, this draft must remain explicitly unverified until CI and a macOS/Xcode maintainer environment provide build/test/runtime evidence.
+The initial analysis and implementation were performed on Linux. No compilation, XCTest, simulator, Instruments, or device run was possible here because the required Apple toolchain is unavailable. The focused runtime slice is therefore ready for maintainer review but still requires CI and macOS/Xcode build, test, and runtime evidence before merge.
 
 ## Related work
 
