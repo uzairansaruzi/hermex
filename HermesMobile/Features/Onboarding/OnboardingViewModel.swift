@@ -18,8 +18,11 @@ final class OnboardingViewModel {
     var errorMessage: String?
     var isWorking = false
 
+    // Identity + generation of the probe that produced `authStatus`.
     @ObservationIgnored private var probedConnectionIdentity: String?
-    @ObservationIgnored private var probeGeneration = 0
+    @ObservationIgnored private var operationGeneration = 0
+    /// Set while a configure is in flight; edits during it are fenced out.
+    @ObservationIgnored private var configureGeneration: Int?
 
     init(
         savedServer: URL? = nil,
@@ -31,6 +34,10 @@ final class OnboardingViewModel {
         }
         customHeaders = savedHeaders
         errorMessage = initialErrorMessage
+        if initialErrorMessage != nil {
+            // The banner belongs to the restored identity so later edits clear it.
+            probedConnectionIdentity = nil
+        }
     }
 
     var isPasswordRequired: Bool {
@@ -45,6 +52,25 @@ final class OnboardingViewModel {
 
     // MARK: - Connection identity (issue #285)
 
+    /// Effective headers exactly as the request path would apply them:
+    /// applicable rows only, case-insensitive names, array order preserved with
+    /// last-write-wins for duplicate names (matches
+    /// `Array<CustomHeader>.apply(to:)` via `URLRequest.setValue`). This is the
+    /// credential set that actually reaches the server, so reordering duplicate
+    /// names or adding/removing a newline-broken row must change it.
+    private func effectiveHeaderMap() -> [(name: String, value: String)] {
+        var map: [(name: String, value: String)] = []
+        for header in customHeaders where header.isApplicable {
+            let lowered = header.sanitizedName.lowercased()
+            if let index = map.firstIndex(where: { $0.name == lowered }) {
+                map[index].value = header.sanitizedValue
+            } else {
+                map.append((name: lowered, value: header.sanitizedValue))
+            }
+        }
+        return map
+    }
+
     private func currentConnectionIdentity() -> String {
         let urlPart: String
         do {
@@ -53,15 +79,11 @@ final class OnboardingViewModel {
         } catch {
             urlPart = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
-        // Encode header names/values so delimiters (":" and "|") inside a
-        // header value cannot collide with the identity serialization (e.g.
-        // "X: 1|y:2" as one header vs "X: 1" + "Y: 2" as two). Values are not
-        // lowercased — header values are case-sensitive.
-        let headerPart = customHeaders.sanitizedForStorage()
-            .map { header -> String in
-                let name = Self.escapeForIdentity(header.sanitizedName.lowercased())
-                let value = Self.escapeForIdentity(header.sanitizedValue)
-                return "\(name):\(value)"
+        // Escape delimiters so distinct header sets cannot collide, then sort
+        // canonical keys for stable serialization.
+        let headerPart = effectiveHeaderMap()
+            .map { name, value -> String in
+                "\(Self.escapeForIdentity(name)):\(Self.escapeForIdentity(value))"
             }
             .sorted()
             .joined(separator: "|")
@@ -69,7 +91,6 @@ final class OnboardingViewModel {
     }
 
     nonisolated private static func escapeForIdentity(_ raw: String) -> String {
-        // Must escape "%" first so ":"/"|" escapes don't double-escape.
         var out = raw.replacingOccurrences(of: "%", with: "%25")
         out = out.replacingOccurrences(of: ":", with: "%3A")
         out = out.replacingOccurrences(of: "|", with: "%7C")
@@ -77,7 +98,15 @@ final class OnboardingViewModel {
     }
 
     private func invalidateProbedAuthStatusIfNeeded() {
-        guard let probed = probedConnectionIdentity else { return }
+        guard let probed = probedConnectionIdentity else {
+            // No probe yet, but an inherited banner (re-login error) still has no
+            // owner — clear it on any edit so stale copy can't survive.
+            if errorMessage != nil || connectionMessage != nil {
+                errorMessage = nil
+                connectionMessage = nil
+            }
+            return
+        }
         let current = currentConnectionIdentity()
         if current != probed {
             authStatus = nil
@@ -87,22 +116,29 @@ final class OnboardingViewModel {
         }
     }
 
+    /// Begins a tracked async operation and returns its generation token used
+    /// to fence settlement against newer overlapping operations.
+    private func beginOperation() -> Int {
+        operationGeneration += 1
+        return operationGeneration
+    }
+
     func testConnection(authManager: AuthManager) async {
         errorMessage = nil
         connectionMessage = nil
         isWorking = true
-        defer { isWorking = false }
-
-        probeGeneration += 1
-        let generation = probeGeneration
+        let token = beginOperation()
         let identityAtStart = currentConnectionIdentity()
+        defer {
+            if token == operationGeneration { isWorking = false }
+        }
 
         do {
             let status = try await authManager.testConnection(
                 serverURLString: serverURLString,
                 customHeaders: customHeaders
             )
-            guard generation == probeGeneration else { return }
+            guard token == operationGeneration else { return }
             guard identityAtStart == currentConnectionIdentity() else { return }
             probedConnectionIdentity = identityAtStart
             authStatus = status
@@ -116,9 +152,12 @@ final class OnboardingViewModel {
                     : String(localized: "Connection ok. Password not required.")
             }
         } catch {
-            guard generation == probeGeneration else { return }
+            guard token == operationGeneration else { return }
             guard identityAtStart == currentConnectionIdentity() else { return }
-            probedConnectionIdentity = identityAtStart
+            // A failed re-probe invalidates the prior successful status: the old
+            // capability result no longer describes this identity.
+            authStatus = nil
+            probedConnectionIdentity = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -133,25 +172,24 @@ final class OnboardingViewModel {
         }
 
         isWorking = true
-        defer { isWorking = false }
+        let token = beginOperation()
 
         if authStatus == nil {
-            probeGeneration += 1
-            let generation = probeGeneration
             let identityAtStart = currentConnectionIdentity()
             do {
                 let status = try await authManager.testConnection(
                     serverURLString: serverURLString,
                     customHeaders: customHeaders
                 )
-                guard generation == probeGeneration else { return }
+                guard token == operationGeneration else { return }
                 guard identityAtStart == currentConnectionIdentity() else { return }
                 probedConnectionIdentity = identityAtStart
                 authStatus = status
             } catch {
-                guard generation == probeGeneration else { return }
+                guard token == operationGeneration else { return }
                 guard identityAtStart == currentConnectionIdentity() else { return }
-                probedConnectionIdentity = identityAtStart
+                authStatus = nil
+                probedConnectionIdentity = nil
                 errorMessage = error.localizedDescription
                 return
             }
@@ -161,16 +199,19 @@ final class OnboardingViewModel {
                 return
             }
         } else if probedConnectionIdentity == nil {
-            // Auth status exists but probe identity was never recorded (e.g. restored
-            // from a previous session). Seed it so future edits can invalidate.
             probedConnectionIdentity = currentConnectionIdentity()
         }
 
+        // Fence the side effect: capture the identity configure was launched for
+        // and refuse to publish its outcome under different inputs.
+        let configureIdentity = currentConnectionIdentity()
         await authManager.configure(
             serverURLString: serverURLString,
             password: password,
             customHeaders: customHeaders
         )
+        guard token == operationGeneration else { return }
+        guard configureIdentity == currentConnectionIdentity() else { return }
         errorMessage = authManager.lastErrorMessage
     }
 
