@@ -948,6 +948,66 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertFalse(coordinator.hasCompletedCurrentResponse, "finishStream resets for the next run")
         XCTAssertEqual(liveActivityManager.ends.count, 1, "no duplicate end from a second finalize")
         XCTAssertTrue(coordinator.isTerminalFenceActiveForTesting(), "terminal fence survives finishStream")
+
+        // Teardown is one-shot per run: later terminal events must not repeat
+        // delegate finish/drain/title-refresh side effects (PR #295 re-gate).
+        streamClient.emit(.error("late"))
+        streamClient.emit(.cancelled)
+        streamClient.emit(.streamEnd)
+
+        XCTAssertEqual(delegate.finishCount, 1, "teardown exactly once")
+        XCTAssertEqual(liveActivityManager.ends.count, 1)
+        XCTAssertTrue(coordinator.isTransportFinishedForTesting())
+    }
+
+    @MainActor
+    func testTransportErrorAfterDoneStillFinishesExactlyOnce() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        )
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        // Transport closes without delivering streamEnd.
+        streamClient.emit(.transportError("connection dropped"))
+
+        // Settled teardown still runs: finish, snapshot cleanup, drain,
+        // completed-title refresh — with the completed outcome preserved.
+        XCTAssertEqual(delegate.finishCount, 1, "transportError after done must not skip teardown")
+        XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
+        XCTAssertNil(coordinator.activeStreamID)
+
+        // And it is idempotent against further terminal events.
+        streamClient.emit(.streamEnd)
+        streamClient.emit(.cancelled)
+        XCTAssertEqual(delegate.finishCount, 1)
+    }
+
+    @MainActor
+    func testNewRunResetsTeardownOwnerAndContentFence() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.done(DoneStreamEvent()))
+        streamClient.emit(.streamEnd)
+        XCTAssertTrue(coordinator.isTerminalFenceActiveForTesting())
+
+        // Next run disarms both the content fence and the teardown owner.
+        coordinator.prepareForNewResponse()
+        XCTAssertFalse(coordinator.isTerminalFenceActiveForTesting())
+        XCTAssertFalse(coordinator.isTransportFinishedForTesting())
+
+        // A token in the new run is accepted again.
+        coordinator.start(streamID: "stream-456")
+        streamClient.emit(.token("fresh answer"))
+        XCTAssertEqual(delegate.tokens.last, "fresh answer", "content accepted after new run starts")
     }
 
     @MainActor
@@ -1071,6 +1131,10 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             streamClient.emit(event)
 
             XCTAssertTrue(delegate.tokens.isEmpty, "\(name) after done leaked into transcript tokens")
+            XCTAssertTrue(delegate.interimPayloads.isEmpty, "\(name): interim projection must be empty")
+            XCTAssertTrue(delegate.reasoningTexts.isEmpty, "\(name): reasoning projection must be empty")
+            XCTAssertTrue(delegate.toolStartedPayloads.isEmpty, "\(name): tool-started projection must be empty")
+            XCTAssertTrue(delegate.toolCompletedPayloads.isEmpty, "\(name): tool-completed projection must be empty")
             XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete], "\(name): exactly one complete end")
         }
     }
@@ -1242,20 +1306,29 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         return appendTokenResult
     }
 
+    private(set) var interimPayloads: [InterimAssistantStreamEvent] = []
+    private(set) var reasoningTexts: [String] = []
+    private(set) var toolStartedPayloads: [ToolStreamEvent] = []
+    private(set) var toolCompletedPayloads: [ToolStreamEvent] = []
+
     func streamCoordinatorAppendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool {
-        payload.text?.isEmpty == false
+        interimPayloads.append(payload)
+        return payload.text?.isEmpty == false
     }
 
     func streamCoordinatorAppendReasoning(_ text: String) -> Bool {
-        !text.isEmpty
+        reasoningTexts.append(text)
+        return !text.isEmpty
     }
 
     func streamCoordinatorAppendToolCall(_ payload: ToolStreamEvent) -> Bool {
-        true
+        toolStartedPayloads.append(payload)
+        return true
     }
 
     func streamCoordinatorCompleteToolCall(_ payload: ToolStreamEvent) -> Bool {
-        true
+        toolCompletedPayloads.append(payload)
+        return true
     }
 
     private(set) var titles: [TitleStreamEvent] = []

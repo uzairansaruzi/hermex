@@ -97,6 +97,12 @@ final class ChatStreamCoordinator {
     /// still cannot reach the transcript. Cleared only by the next run start /
     /// new-response preparation / session load.
     @ObservationIgnored private var isTerminalContentFenceActive = false
+    /// Per-run one-shot teardown owner (PR #295 re-gate): the first terminal
+    /// event under the fence (streamEnd / error / cancelled / transportError)
+    /// owns finishStream; later terminal events are ignored so delegate finish,
+    /// snapshot cleanup, queue drain, and title-refresh side effects cannot
+    /// repeat. Reset wherever the content fence disarms.
+    @ObservationIgnored private var isTransportFinished = false
     private(set) var lastEventID: String?
     private(set) var lastProgressDate: Date?
     private(set) var lastTransportActivityDate: Date?
@@ -138,12 +144,17 @@ final class ChatStreamCoordinator {
     func prepareForNewResponse() {
         hasCompletedCurrentResponse = false
         isTerminalContentFenceActive = false
+        isTransportFinished = false
         isConnectionSuspended = false
         liveTokensPerSecond = nil
     }
 
     func isTerminalFenceActiveForTesting() -> Bool {
         isTerminalContentFenceActive
+    }
+
+    func isTransportFinishedForTesting() -> Bool {
+        isTransportFinished
     }
 
     func start(
@@ -153,6 +164,7 @@ final class ChatStreamCoordinator {
     ) {
         hasCompletedCurrentResponse = false
         isTerminalContentFenceActive = false
+        isTransportFinished = false
         liveTokensPerSecond = nil
         runGeneration &+= 1
         activeStreamID = streamID
@@ -220,6 +232,7 @@ final class ChatStreamCoordinator {
     ) {
         hasCompletedCurrentResponse = false
         isTerminalContentFenceActive = false
+        isTransportFinished = false
         liveTokensPerSecond = nil
 
         if usedCacheFallback {
@@ -469,22 +482,19 @@ final class ChatStreamCoordinator {
                 return
             case .heartbeat, .ignored:
                 break
-            case .transportError(let message):
-                // No active stream left to recover; ignore without re-ending.
-                return
-            case .cancelled:
-                // Settled complete wins: tear down transport without publishing
-                // a second Live Activity end.
-                finishStream()
-                return
-            case .error:
+            case .transportError, .cancelled, .error, .streamEnd:
+                // Settled completion wins: tear down exactly once without
+                // publishing a second Live Activity end or repeating delegate
+                // finish/drain/title-refresh side effects. transportError after
+                // done must still finish (snapshot cleanup, queued-slash drain,
+                // completed-title refresh) — it previously fell through to the
+                // pre-change handleTransportError path (PR #295 re-gate).
+                guard !isTransportFinished else { return }
+                isTransportFinished = true
                 finishStream()
                 return
             case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted,
                  .approvalPending, .clarificationPending, .pendingSteerLeftover:
-                return
-            case .streamEnd:
-                finishStream()
                 return
             }
         }
