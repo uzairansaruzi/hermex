@@ -173,6 +173,9 @@ final class OnboardingViewModel {
 
         isWorking = true
         let token = beginOperation()
+        defer {
+            if token == operationGeneration { isWorking = false }
+        }
 
         if authStatus == nil {
             let identityAtStart = currentConnectionIdentity()
