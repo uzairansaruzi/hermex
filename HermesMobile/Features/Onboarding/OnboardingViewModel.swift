@@ -215,6 +215,16 @@ final class OnboardingViewModel {
         errorMessage = authManager.lastErrorMessage
     }
 
+    // MARK: - Testing hooks (issue #285 regression matrix)
+
+    func probeConnectionIdentityForTesting() -> String {
+        currentConnectionIdentity()
+    }
+
+    func seedProbedIdentityForTesting() {
+        probedConnectionIdentity = currentConnectionIdentity()
+    }
+
     nonisolated static func passwordValidationMessage(authStatus: AuthStatusResponse?, password: String) -> String? {
         guard authStatus?.authEnabled == true else { return nil }
         // A server that already signed this client in (trusted-header proxy)
