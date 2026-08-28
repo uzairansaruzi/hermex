@@ -39,6 +39,16 @@
 	<string>$(KEYCHAIN_SERVICE)</string>
 	<key>HermesURLScheme</key>
 	<string>$(HERMES_URL_SCHEME)</string>
+	<!-- LOAD-BEARING: do not remove. This CIDR exception permits cleartext HTTP
+	     to the Tailscale CGNAT range, which is the documented physical-device
+	     connection path (see DEVELOPMENT.md). iOS ATS *does* match raw-IP
+	     connections against a CIDR-style exception-domain key: verified by an
+	     app-hosted unit test, where 100.64.0.1 reaches the network (URLSession
+	     -1001 timeout) with this entry and is blocked (-1022 ATS) without it,
+	     while out-of-range 8.8.8.8 stays blocked either way. A previous audit
+	     claimed this key was dead config on the premise that CIDR is not a
+	     supported ATS form; that premise is empirically false and removing the
+	     entry regresses device connectivity. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
