@@ -6,19 +6,6 @@ This is the step-by-step checklist for getting Hermex ready for external TestFli
 
 Goal: invite external testers only after a clean release-candidate build has been uploaded, owner-verified internally on device, submitted to Beta App Review, and approved.
 
-## Current Readiness Snapshot
-
-As of 2026-08-04:
-
-- This file remains the external TestFlight mechanics runbook (the separate full App Store release checklist doc was retired during open-source prep).
-- Version `1.4` is the approved App Store release; App Store Connect has closed the `1.4` pre-release train, so external-capable uploads now require a higher marketing version (this forced the bump to `1.5` in #223).
-- Current external-capable upload: version `1.5`, build `1`.
-- Verified workflow evidence: run `30888612331` / `External TestFlight from master` completed successfully from `master` at `a4adf347b00a925b168245287e80a0f2b889cc55`.
-- Run `30888612331` selected build number `1`, used `ci/ExternalTestFlightExportOptions.plist`, archived successfully, and uploaded to App Store Connect successfully.
-- Owner still needs to wait for App Store Connect processing, confirm build `1.5 (1)` appears and is not internal-only, and resolve any compliance prompts before using it for external testing or App Review replacement.
-- The share extension's automatic app-launch workaround remains the highest Beta/App Store Review code risk until removed or explicitly accepted.
-- Full local XCTest passed on iPhone 17 Simulator for the latest code validation recorded in `CURRENT.md`, but every RC should be validated again before submission.
-
 ## Stop Conditions
 
 Do not invite external testers if any of these are true:
@@ -38,15 +25,7 @@ Do not invite external testers if any of these are true:
 
 Purpose: make sure the source tree has one clear release candidate.
 
-Owner/Codex tasks:
-
-1. Review `codex/i-013-record-permission-deprecation`.
-2. Either merge it into local `master` after review, or explicitly defer it and leave it out of the RC.
-3. Confirm paused issues remain unreproduced:
-   - `I-002`: active session can show blank transcript after sleep/return.
-   - `I-004`: thinking card spacing inconsistency.
-   - `I-005`: pin can return `HTTP 404 Session not found`.
-4. Do not start new feature/polish work unless it fixes an external TestFlight blocker.
+Start from a clean, up-to-date `master` with CI green. Do not start new feature/polish work unless it fixes an external TestFlight blocker.
 
 Validation:
 
@@ -60,90 +39,20 @@ Exit criteria:
 
 - `master` contains the selected RC fixes.
 - `git status --short --branch` is clean.
-- Any excluded issue is intentionally deferred or paused in GitHub Issues.
-
-Current result as of 2026-05-15:
-
-- Complete. `codex/i-013-record-permission-deprecation` is merged into local `master`.
-- `I-002`, `I-004`, and `I-005` remain paused (legacy tracker notes; see GitHub Issues).
-- `master` remains ahead of `origin/master`; do not upload or invite testers until the intended RC is validated and pushed.
 
 ### 2. Reconcile Handoff Docs Before RC
 
 Purpose: make sure future sessions and the owner see the real RC state.
 
-Codex tasks:
-
-1. Update `CURRENT.md` to describe the RC candidate state.
-2. Confirm any merged readiness slice is reflected in `CURRENT.md` (history lives in `git log` and merged PRs).
-3. Confirm `README.md`, `DEVELOPMENT.md`, `PROJECT_SPEC.md`, and this file agree about:
-   - whether `I-013` is done;
-   - whether external TestFlight is still pending;
-   - the current tested WebUI pin;
-   - privacy policy status;
-   - internal-only versus external-capable upload path.
-
-Validation:
-
-```zsh
-git diff --check
-rg -n "I-013|external TestFlight|internal-only|testFlightInternalTestingOnly|privacy policy|UPSTREAM_TESTED_SHA" README.md DEVELOPMENT.md PROJECT_SPEC.md TESTFLIGHT.md
-```
+Confirm `README.md`, `DEVELOPMENT.md`, and this file agree on the current version and external-TestFlight status.
 
 Exit criteria:
 
 - Handoff docs accurately describe the release candidate and remaining external-launch tasks.
 
-### 3. Add An External-Capable Upload Path
+### 3. External-Capable Upload Path
 
-Purpose: create a safe way to upload a build that can be submitted to external TestFlight.
-
-Current state:
-
-- `.github/workflows/internal-testflight.yml` uses `ci/TestFlightExportOptions.plist`.
-- `ci/TestFlightExportOptions.plist` sets `testFlightInternalTestingOnly = true`.
-- Apple marks those builds internal-only; they cannot be submitted for external testing or customers.
-
-Preferred implementation:
-
-1. Keep the existing internal-only workflow unchanged for quick owner smoke builds.
-2. Add a separate external-capable export options plist, for example `ci/ExternalTestFlightExportOptions.plist`, with:
-   - `method = app-store-connect`
-   - `destination = upload`
-   - `signingStyle = automatic`
-   - `teamID = 6GYD9C9N6R`
-   - `uploadSymbols = true`
-   - no `testFlightInternalTestingOnly` key
-3. Add a separate manual workflow, for example `.github/workflows/external-testflight.yml`, with stronger gates:
-   - only runs on `master`;
-   - requires an explicit input such as `confirm_external_review = EXTERNAL_REVIEW`;
-   - uses a separate GitHub environment such as `external-testflight`;
-   - does not auto-invite testers;
-   - logs the commit SHA and build number clearly;
-   - uses the external export options file.
-4. Document that this workflow only uploads the build. Adding it to an external group and submitting to Beta App Review remains manual in App Store Connect.
-
-Validation:
-
-```zsh
-plutil -lint ci/ExternalTestFlightExportOptions.plist
-ruby -e 'require "yaml"; YAML.load_file(".github/workflows/external-testflight.yml"); puts "YAML OK"'
-rg -n "testFlightInternalTestingOnly|EXTERNAL_REVIEW|external-testflight" ci .github/workflows DEVELOPMENT.md TESTFLIGHT.md
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
-git diff --check
-```
-
-Exit criteria:
-
-- There is a clearly separate, manually gated external-capable upload path.
-- The internal-only path still exists and remains internal-only.
-
-Current result as of 2026-05-15:
-
-- Complete locally on `codex/testflight-doc-reconcile`.
-- `.github/workflows/external-testflight.yml` adds a manually gated `External TestFlight` upload workflow with `confirm_external_review = EXTERNAL_REVIEW`, `external-testflight` environment gating, `master`-only enforcement, and no tester invites.
-- `ci/ExternalTestFlightExportOptions.plist` uploads to App Store Connect without `testFlightInternalTestingOnly`.
-- The existing `Internal TestFlight` workflow and `ci/TestFlightExportOptions.plist` remain internal-only.
+`.github/workflows/external-testflight.yml` uploads a build that can be submitted to external TestFlight, gated to `master` and an explicit `confirm_external_review = EXTERNAL_REVIEW` input. It uses `ci/ExternalTestFlightExportOptions.plist` (no `testFlightInternalTestingOnly` key), so builds are not internal-only. The separate internal-only workflow (`.github/workflows/internal-testflight.yml` + `ci/TestFlightExportOptions.plist`) stays available for quick owner smoke builds. The external workflow only uploads the build — assigning it to an external group and submitting to Beta App Review stays manual in App Store Connect.
 
 ### 4. Confirm Apple Developer Portal Capabilities
 
@@ -173,18 +82,6 @@ xcodebuild -showBuildSettings -project HermesMobile.xcodeproj -scheme HermesMobi
 Exit criteria:
 
 - App and extension archive/export signing can succeed without manual project setting changes.
-
-Current local result as of 2026-05-15:
-
-- Local validation passed on `codex/testflight-doc-reconcile`.
-- App target Release settings use automatic signing, Team ID `6GYD9C9N6R`, bundle ID `com.uzairansar.hermesmobile`, and `HermesMobile/Resources/HermesMobile.entitlements`.
-- Share extension Release settings use automatic signing, Team ID `6GYD9C9N6R`, bundle ID `com.uzairansar.hermesmobile.shareextension`, and `HermesShareExtension/Resources/HermesShareExtension.entitlements`.
-- Both entitlement files include `group.com.uzairansar.hermesmobile`.
-- Owner confirmed the Apple Developer Portal and App Store Connect API key items on 2026-05-15.
-
-Current Step 4 status:
-
-- Complete.
 
 ### 5. Finish App Store Connect Metadata Required For Beta Review
 
@@ -240,7 +137,7 @@ What to Test:
 Test core Hermex workflows: sign in to a self-hosted Hermes Web UI server, browse sessions, open existing conversations, send messages with model/reasoning/workspace options, stream responses, attach photos/files, use share extension import, browse workspace files, and view read-only Tasks, Skills, Memory, and Usage Analytics.
 ```
 
-Beta App Review Information:
+Beta App Review Information (this is also the App Store Connect review notes template — keep it accurate for the exact submitted build):
 
 ```text
 Review server:
@@ -265,61 +162,18 @@ Notes:
 - Photo/file access is used only when the user selects attachments or shares content into the app.
 ```
 
-Current Step 5 status as of 2026-05-15:
+### 6. Share Extension Auto-Launch Risk
 
-- Draft metadata is prepared in this runbook.
-- Owner confirmed the metadata was entered and saved in App Store Connect, the private review password was supplied there, the public privacy policy URL was saved, and App Privacy answers were confirmed.
-
-Current Step 5 status:
-
-- Complete.
-
-### 6. Decide On Share Extension Auto-Launch Risk
-
-Purpose: choose the safest external-review posture before the RC upload.
-
-Current behavior:
-
-- The share extension stages a draft/attachment in the App Group.
-- It then attempts to open the containing app through a dynamic `UIApplication`/`openURL:` workaround because iOS share extensions do not provide a clean containing-app launcher.
-
-Decision options:
-
-1. Keep the workaround for external TestFlight.
-   - Pros: best current user experience.
-   - Cons: highest Beta App Review risk; dynamic use may be rejected even though it builds.
-   - Required: explain the share flow clearly in Notes for Review and be ready to remove it quickly if rejected.
-2. Replace with a review-safer flow before external submission.
-   - Pros: lower review risk.
-   - Cons: less automatic UX; may require user to open Hermes manually after sharing.
-   - Required: implement, test Safari/Notes/Files/Photos share cases, and update docs.
-
-Recommended path:
-
-- Decide this before uploading the external-capable build. Do not submit one build and then change this behavior unless you are willing to restart the review cycle for a new build.
-
-Current code note as of 2026-05-15:
-
-- The extension saves the pending draft/attachment import to the App Group before attempting to open Hermes.
-- The automatic launch path uses responder-chain and dynamic `UIApplication` URL-opening fallbacks to open `hermes-agent://share`.
-- If automatic launch fails, the App Group import fallback still lets Hermes import the pending share when the app is next opened or foregrounded.
-- The review-safer alternative is to remove automatic launch and show a saved status, requiring the user to open Hermes manually.
+Keep the automatic app-launch workaround for external TestFlight (current behavior and accepted risk are recorded in the Known Risk Register below). App Store Connect review notes must describe the share import flow, and manual regression must cover Safari/Notes/Files/Photos share import and fallback behavior before external submission.
 
 Exit criteria:
 
-- The owner explicitly chooses keep or revert.
 - The exact RC behavior is covered in manual regression.
-- App Store Connect review notes match the chosen behavior.
-
-Current Step 6 status as of 2026-05-15:
-
-- Complete. Owner chose to keep the automatic app-launch workaround for external TestFlight.
-- App Store Connect review notes include the share import flow.
-- Manual regression should cover Safari/Notes/Files/Photos share import and fallback behavior before external submission.
+- App Store Connect review notes match the current behavior.
 
 ### 7. Run Local RC Validation
 
-Purpose: prove the code is buildable/testable before spending App Store Connect cycles.
+Purpose: prove the code is buildable/testable before spending App Store Connect cycles. (Step 9, pushing the RC commit, is merged into this step below.)
 
 Commands:
 
@@ -347,15 +201,15 @@ Exit criteria:
 - full XCTest passes.
 - generic iOS Release build passes.
 
-Current Step 7 status as of 2026-05-15:
+Once validation passes, push the RC commit so the upload workflow builds the audited source:
 
-- Complete on `codex/testflight-doc-reconcile`.
-- iPhone 17 Simulator is available.
-- `git diff --check` passed.
-- plist lint passed for app/share-extension Info.plist and privacy manifests.
-- `xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'` completed with `TEST SUCCEEDED`.
-- XCTest result bundle: `~/Library/Developer/Xcode/DerivedData/HermesMobile-dodyrzzipcxecicrwnfmjwjkqngb/Logs/Test/Test-HermesMobile-2026.05.14_22-45-59--0400.xcresult`.
-- `xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` completed with `BUILD SUCCEEDED`.
+```zsh
+git switch master
+git status --short --branch
+git push origin master
+```
+
+`origin/master` must point to the intended RC commit before Step 10.
 
 ### 8. Run Live Authenticated Server Smoke
 
@@ -381,10 +235,7 @@ Minimum smoke:
 12. Open Skills list/search/detail/linked file.
 13. Open Memory.
 14. Open Usage Analytics and switch timeframes.
-15. Exercise paused-risk repros:
-    - active session sleep/return;
-    - pin/unpin on multiple sessions;
-    - thinking/tool card spacing in long sessions.
+15. Exercise any currently open paused-risk issues from GitHub Issues.
 
 Exit criteria:
 
@@ -393,44 +244,6 @@ Exit criteria:
 - No blank transcript after reload/foreground.
 - No destructive action affects non-disposable data.
 - Any issue found is captured in GitHub Issues and either fixed or explicitly accepted before external launch.
-
-Current Step 8 status as of 2026-05-16:
-
-- Complete on iPhone 17 Simulator `A6ACE4D8-B20A-4E1C-AB21-4F92B862337A` against `https://<your-server>`.
-- `GET https://<your-server>/health` returned HTTP 200 with `status: ok`.
-- Owner entered credentials directly in the Simulator; no server password or reviewer password was committed.
-- Sessions loaded, one WebUI-created session opened, and two disposable Step 8 sessions were created for state-changing checks.
-- Normal send, stream completion, stop streaming, and background/foreground during an active stream passed without crash, logout, or blank transcript.
-- Image and PDF attachment upload passed in a disposable session.
-- Files text preview, image preview, and unsupported binary `No Preview` state passed.
-- Tasks list/detail/output, Skills list/search/detail/linked file, Memory, and Usage Analytics timeframe switching passed.
-- Paused-risk checks passed or remained known issues:
-  - active session sleep/return did not reproduce `I-002`;
-  - pin/unpin on multiple disposable sessions passed and did not reproduce `I-005`;
-  - existing long-session Thinking-card duplication/spacing issues were observed again under `I-004`/`I-015`.
-- New polish issue captured: `I-016`, Skills linked-file sheets need an obvious visible close/dismiss control.
-
-### 9. Push The RC Commit
-
-Purpose: ensure the upload workflow uses the audited source.
-
-Owner task:
-
-```zsh
-git switch master
-git status --short --branch
-git push origin master
-```
-
-Exit criteria:
-
-- `origin/master` points to the intended RC commit.
-- App Store Connect upload workflow will build the audited source, not an older commit.
-
-Current Step 9 status as of 2026-05-17:
-
-- Complete. `master` was pushed for the internal TestFlight RC path.
-- The latest local and remote commit before this Step 11 handoff was `cebdb38` (`Issues: Capture owner-observed polish items`).
 
 ### 10. Upload Fresh Internal TestFlight Build
 
@@ -449,75 +262,32 @@ Use the existing internal-only workflow:
 Exit criteria:
 
 - The owner installs the internal RC build from TestFlight.
-- The installed build number is recorded in `CURRENT.md`.
+- The installed build number is recorded on the release's GitHub issue.
 - Internal smoke passes before any external-capable upload.
-
-Current Step 10 status as of 2026-05-17:
-
-- Complete. Owner installed internal TestFlight build `1.0 (7)` on a physical iPhone for Step 11 manual regression.
 
 ### 11. Owner Device Manual Regression
 
 Purpose: verify real-device behavior that simulator and unit tests cannot cover.
 
-Use the full checklist in `DEVELOPMENT.md`, with extra attention to:
+Run the Full-App Manual Regression Checklist in `DEVELOPMENT.md`. In addition, cover these TestFlight-specific items not in that checklist:
 
-- onboarding and wrong-password errors;
-- server/tunnel down messaging;
-- background audio does not pause until voice recording starts;
-- voice permission allowed and denied;
-- notification permission behavior;
-- haptics;
-- large Dynamic Type;
-- VoiceOver core path;
-- physical share sheet behavior from Safari, Notes/Mail, Photos, Files/PDF;
-- attachment upload progress and failure recovery;
-- long streaming response over two minutes;
-- background/foreground stream recovery;
-- app icon and launch screen;
-- landscape and portrait.
+- install from TestFlight (not a direct Xcode/simulator install);
+- update over an existing TestFlight install;
+- TestFlight feedback capture (screenshot + text) works.
 
 Exit criteria:
 
 - 30 minutes of normal iPhone use without crashes.
 - Full checklist has no unresolved P0/P1.
-- Accepted known risks are written down in GitHub Issues, `CURRENT.md`, or review notes.
-
-Current Step 11 status as of 2026-05-17:
-
-- Complete. Owner completed the physical iPhone manual regression on internal TestFlight build `1.0 (7)`.
-- Step 11.7 Server Panels passed in Simulator before the device pass:
-  - Files list/search;
-  - text file preview;
-  - image preview;
-  - unsupported binary preview;
-  - Tasks list/detail/output;
-  - Skills list/search/detail;
-  - Memory notes/profile;
-  - Usage Analytics timeframe switching.
-- Polish/Launch checks passed:
-  - light mode;
-  - dark mode;
-  - portrait;
-  - landscape on owner iPhone;
-  - largest Dynamic Type on owner iPhone;
-  - app icon/display name;
-  - relaunch;
-  - launch screen;
-  - VoiceOver core path;
-  - privacy prompts;
-  - TestFlight path;
-  - share sheet behavior.
-- Owner documented newly observed issues in the tracker; there are no open P0/P1 blockers.
-- Accepted non-blocking risks for external beta include `I-014`, `I-015`, `I-016`, `I-017`, `I-018`, `I-019`, `I-020`, `I-024`, `I-025`, `I-026`, and `I-027`.
+- Accepted known risks are written down in GitHub Issues or review notes.
 
 ### 12. Upload External-Capable Build
 
 Purpose: create the build that can be submitted to Beta App Review.
 
-Use the new external-capable workflow or manual Xcode upload. The build must not be marked internal-only.
+Use the external-capable workflow or manual Xcode upload. The build must not be marked internal-only.
 
-Version-train rule (bitten 2026-06-02 with `1.0` → `1.0.1` and 2026-08-04 with `1.4` → `1.5`): once a version is approved for the App Store, Apple closes its pre-release train and rejects any upload with that `CFBundleShortVersionString` (ASC errors 90186/90062). Two defenses:
+Version-train rule: once a version is approved for the App Store, Apple closes its pre-release train and rejects any upload with that `CFBundleShortVersionString` (ASC errors 90186/90062). Two defenses:
 
 - Bump `MARKETING_VERSION` (in `HermesMobile.xcodeproj/project.pbxproj`, all entries) on `master` right after each App Store release goes live, so the next upload always targets an open train.
 - The workflow preflights the train against App Store Connect before archiving (`ENFORCE_OPEN_TRAIN` in `ci/select_testflight_build_number.rb`) and fails in seconds with a bump instruction if the train is closed.
@@ -543,69 +313,6 @@ Exit criteria:
 - Build has compliance information resolved.
 - dSYMs/symbols are uploaded.
 
-Current Step 12 status as of 2026-05-17:
-
-- External upload workflow was dispatched from `master` at commit `a6767f4`.
-- First run `25979198228` failed during App Store Connect upload because the default external workflow run number selected bundle version `1`, and App Store Connect already had uploaded build `7`.
-- Retried as run `25979270377` / `External TestFlight #8 from master` with explicit `build_number = 8`.
-- Run `25979270377` completed successfully:
-  - manual gate passed;
-  - required App Store Connect secrets were present;
-  - archive succeeded;
-  - upload to App Store Connect succeeded.
-- Owner still needs to wait for App Store Connect processing, confirm build `1.0 (8)` appears and is not marked internal-only, and resolve any compliance prompts before Step 13.
-
-Current Step 12 update as of 2026-05-27:
-
-- Owner reran `External TestFlight` from GitHub Actions after repairing the Apple signing/upload path.
-- Run `26485474969` completed successfully from `master` at commit `8ebafc8fb8e4d30414be120b4194140322da53bb`.
-- Verified run/job metadata:
-  - workflow: `External TestFlight`;
-  - display title: `External TestFlight from master`;
-  - conclusion: `success`;
-  - job: `Archive and Upload`, conclusion `success`;
-  - marketing version: `1.0`;
-  - build number: `30`;
-  - export options: `ci/ExternalTestFlightExportOptions.plist`;
-  - archive and App Store Connect upload succeeded.
-- Current uploaded RC candidate is build `1.0 (30)`.
-- Owner reported App Store Connect looks good for build `1.0 (30)`. Next owner decision is whether to submit build `1.0 (30)` for Beta App Review or hold it for internal/external stabilization first.
-
-Current Step 12 update as of 2026-05-30:
-
-- After issue #23 merged, GitHub Actions `External TestFlight` run `26674733144` completed successfully from `master` at commit `70d818fba2dced6eb3e37188c900ec79734fbb8c`.
-- Verified run/job metadata:
-  - workflow: `External TestFlight`;
-  - display title: `External TestFlight from master`;
-  - conclusion: `success`;
-  - job: `Archive and Upload`, conclusion `success`;
-  - marketing version: `1.0`;
-  - build number: `33`;
-  - export options: `ci/ExternalTestFlightExportOptions.plist`;
-  - archive and App Store Connect upload succeeded.
-- Current uploaded external-capable build is `1.0 (33)`.
-- The workflow upload did not assign external tester groups, submit Beta App Review, replace the existing App Review build, invite testers, or release the app.
-- Owner still needs to wait for App Store Connect processing, confirm build `1.0 (33)` appears and is not internal-only, resolve any compliance prompts, and manually choose whether to use build `1.0 (33)` for external testing and/or App Review replacement.
-
-Current Step 12 update as of 2026-06-02:
-
-- After issue #50 merged, GitHub Actions `External TestFlight` run `26831954965` was dispatched from `master` at commit `720105514823354f8c1988095596c9cb611e9c84`.
-- Run `26831954965` selected build `1.0 (34)` and archived successfully, but App Store Connect rejected the upload because the `1.0` pre-release train is closed after the previously approved `1.0` version.
-- Owner approved bumping `MARKETING_VERSION` to `1.0.1`.
-- GitHub Actions `External TestFlight` retry run `26833031469` completed successfully from `master` at commit `9e8078215586643eb11c519bf9c73dfa103070ea`.
-- Verified run/job metadata:
-  - workflow: `External TestFlight`;
-  - display title: `External TestFlight from master`;
-  - conclusion: `success`;
-  - job: `Archive and Upload`, conclusion `success`;
-  - marketing version: `1.0.1`;
-  - build number: `1`;
-  - export options: `ci/ExternalTestFlightExportOptions.plist`;
-  - archive and App Store Connect upload succeeded.
-- Current uploaded external-capable build is `1.0.1 (1)`.
-- The workflow upload did not assign external tester groups, submit Beta App Review, replace the existing App Review build, invite testers, or release the app.
-- Owner still needs to wait for App Store Connect processing, confirm build `1.0.1 (1)` appears and is not internal-only, resolve any compliance prompts, and manually choose whether to use build `1.0.1 (1)` for external testing and/or App Review replacement.
-
 ### 13. Submit Beta App Review
 
 Purpose: get the first external build approved by Apple.
@@ -614,32 +321,14 @@ Owner task in App Store Connect:
 
 1. Create an external tester group, for example `External Beta`.
 2. Add the external-capable build to that group.
-3. Fill `What to Test` with concise tester instructions.
+3. Fill `What to Test` — use the What to Test text from Step 5.
 4. Submit for review.
 5. Monitor App Store Connect review status and email.
-6. If rejected, capture the rejection in GitHub Issues or `CURRENT.md`, fix only the rejection scope, upload a new external-capable build, and resubmit.
-
-Suggested `What to Test`:
-
-```text
-Test core Hermex workflows: sign in to a self-hosted Hermes Web UI server, browse sessions, open existing conversations, send messages with model/reasoning/workspace options, stream responses, attach photos/files, use share extension import, browse workspace files, and view read-only Tasks, Skills, Memory, and Usage Analytics.
-```
+6. If rejected, capture the rejection in a GitHub Issue, fix only the rejection scope, upload a new external-capable build, and resubmit.
 
 Exit criteria:
 
 - External build is approved for TestFlight beta testing.
-
-Historical Step 13 status as of 2026-05-17:
-
-- Owner submitted external-capable build `1.0 (8)` for Beta App Review in App Store Connect.
-- App Store Connect status is `Waiting for Review`.
-- External testers have not been invited yet. Continue to wait for Beta App Review approval before Step 14.
-
-Current Step 13 status as of 2026-05-30:
-
-- Repo-local evidence records App Review submission for build `1.0 (32)`, not build `1.0 (33)`.
-- No repo-local evidence has been recorded yet that build `1.0 (33)` was submitted for Beta App Review, assigned to external testers, or selected as an App Review replacement.
-- Use build `1.0 (33)` for the next external review/stabilization decision unless the owner intentionally uploads a newer RC.
 
 ### 14. Invite External Testers
 
@@ -680,49 +369,38 @@ Daily during first week:
    - P1: fix before widening tester pool.
    - P2/P3: batch unless they block trust or core workflows.
 
-Before each new external build:
+#### Where exported TestFlight feedback lives
 
-```zsh
-git status --short --branch
-git diff --check
-xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+Feedback exported by Xcode lands on the maintainer's Mac at:
+
+```
+~/Library/Developer/Xcode/Products/com.uzairansar.hermesmobile/Feedback/Points/
 ```
 
-## App Store Connect Review Notes Template
+One `<id>.xcfeedbackpoint/` bundle per submission, each containing
+`Filters/Filter_*-<version>-<build>/PointInfo.json` and `Images/Thumbnail.jpg`.
+Useful `PointInfo.json` keys: `appInfo.versionString` / `buildNumber`,
+`timestamp`, `testerInfo.emailAddress`, `comment` (free text; empty for
+screenshot-only reports), `deviceMetadata` (model / osVersion), `kind`
+(`textual` | `screenshot`), `imageCount`. The folder name encodes app version and
+build — use it to decide whether a report predates a later fix. Read the
+`Thumbnail.jpg` files directly to see the screenshots.
 
-Use this as a starting point and keep it accurate for the exact submitted build.
+**Tester email addresses are PII.** Never put them in public GitHub issues —
+paraphrase the report and cite the build number instead.
 
-```text
-Hermex is a native iOS client for a user-controlled Hermes Web UI developer-agent server.
+Triage method that works: parse every `PointInfo.json` into one sorted list,
+cluster by theme, cross-reference each cluster against `git log` and open/closed
+issues to spot already-shipped fixes, verify "is it actually fixed?" against
+current code, then confirm each cluster with the owner before filing issues.
 
-Review server:
-https://<your-server>
-
-Review password:
-<provide current password in App Store Connect, not in git>
-
-Suggested review path:
-1. Launch the app.
-2. Enter the review server URL and password.
-3. Open Sessions and select an existing session.
-4. Send a short message and watch the streamed response.
-5. Open Files, Tasks, Skills, Memory, and Usage Analytics from the Sessions screen.
-6. Optional: use the iOS share sheet from Safari/Notes/Files/Photos to import content into a new Hermes draft. The app stages shared content locally, uploads selected attachments to the configured Hermes server, and does not send a chat message until the user taps Send.
-
-Notes:
-- There is no in-app account creation or purchase flow.
-- The server is self-hosted and password protected.
-- Camera capture is not implemented in this build.
-- Microphone and speech recognition are used only for explicit composer dictation.
-- Photo/file access is used only when the user selects attachments or shares content into the app.
-```
+Before each new external build: re-run the Step 7 validation commands.
 
 ## Known Risk Register For External Beta
 
 Track these during launch:
 
-- Share extension automatic app launch may be rejected by Beta App Review.
+- Share extension automatic app launch may be rejected by Beta App Review. Current behavior: the extension stages a draft/attachment in the App Group, then attempts to open the containing app via a dynamic `UIApplication`/`openURL:` workaround (responder-chain and dynamic URL-opening fallbacks to `hermes-agent://share`); if that fails, the App Group import fallback lets Hermes import the pending share when next opened/foregrounded. Accepted risk: this workaround is kept for external TestFlight rather than switched to a review-safer manual-open flow.
 - Upstream API has no stability guarantee; current pin is recorded in `UPSTREAM_TESTED_SHA`.
 - Full Docker-backed contract tests are future hardening; current gate is request-shape coverage plus URLProtocol-backed decoding tests.
 - Cloudflare long-stream behavior can still fail if no bytes are emitted for longer than Cloudflare's idle tolerance.

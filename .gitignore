@@ -56,6 +56,3 @@ fastlane/test_output/
 
 # Retired per-session progress log (removed in #224; history lives in git log / merged PRs)
 /PROGRESS.md
-
-# Local session-handoff state (read at session start, overwritten at wrap-up; not tracked)
-/CURRENT.md

@@ -1,15 +1,9 @@
-# Multi-server state isolation audit (I-039 / issue #18)
+# Multi-server state isolation
 
-This is the audit deliverable for issue #18 (I-039d). It documents which app
-state is **per-server** versus intentionally **global**, where each lives, and
-which tests guard the isolation. It reflects the state of the multi-server epic
-after #15 (server model), #16 (auth/cookie/header isolation), #17 (Settings
-list + switcher), and #18 (cache isolation validation + scoped clear-cache).
-
-The short version: with the #15–#17 foundation in place, **almost all isolation
-already holds by construction**. Issue #18 added focused two-server tests and
-the one behavioral fix that was missing — scoping "Clear Offline Cache" to the
-active server.
+Which app state is **per-server** versus intentionally **global**, where each
+lives, and which tests guard the isolation. Almost all isolation holds by
+construction through the server-keyed view tree and cache keys described below;
+"Clear Offline Cache" is explicitly scoped to the active server.
 
 ## How a server switch works (the mechanism most isolation relies on)
 
