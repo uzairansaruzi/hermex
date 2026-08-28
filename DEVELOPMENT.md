@@ -22,7 +22,7 @@ curl https://<your-server>/health
 
 ## Upstream Contract Pin
 
-The app is tested against `hermes-webui` tag `v0.51.85`, commit `f1d399b437c1ca7fe4b6d2093aebe334c32f34a3`. The root [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA) file is the machine-readable pin. The advance procedure lives in `AGENTS.md` § Working with the server.
+The app is tested against the `hermes-webui` commit in the root [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA) file — the only copy of the pin, so it cannot drift. To see its release tag: `git -C .codex-tmp/hermes-webui describe --tags --exact-match $(cat UPSTREAM_TESTED_SHA)`. The advance procedure lives in `AGENTS.md` § Working with the server.
 
 ## SSE and Cloudflare Stream Verification
 

@@ -173,7 +173,7 @@ Exit criteria:
 
 ### 7. Run Local RC Validation
 
-Purpose: prove the code is buildable/testable before spending App Store Connect cycles. (Step 9, pushing the RC commit, is merged into this step below.)
+Purpose: prove the code is buildable/testable before spending App Store Connect cycles. Pushing the RC commit is included in this step below (there is no Step 9).
 
 Commands:
 
