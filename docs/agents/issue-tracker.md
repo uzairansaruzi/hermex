@@ -23,7 +23,7 @@ Use heredocs for multi-line issue bodies and comments.
 
 ## Pull Requests as a Triage Surface
 
-**PRs as a request surface: no.**
+**PRs as a request surface: no.** Bug reports and feature requests belong in issues, not in PR comments. Review comments on an open PR are still actionable — triage and address them as described below.
 
 ## Branch and PR Workflow
 
