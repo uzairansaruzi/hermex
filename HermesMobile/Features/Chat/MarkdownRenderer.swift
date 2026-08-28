@@ -51,7 +51,12 @@ struct MarkdownRenderer: View {
 
     @ViewBuilder
     private var markdownContent: some View {
-        switch MarkdownMathLayoutCache.layout(for: content) {
+        let layout = MarkdownMathLayoutCache.layout(for: content)
+        let _ = ChatPerformanceInstrumentation.shared.record(
+            .markdownBlocks,
+            units: markdownBlocksHanded(to: layout)
+        )
+        switch layout {
         case .segmented(let segments):
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
@@ -118,7 +123,13 @@ struct StreamingMarkdownRenderer: View {
         // Streaming text changes on nearly every token, so this deliberately
         // does not memoize; it only avoids the redundant second full-string
         // `replacingInlineMath` pass the no-math branch used to run.
-        switch MarkdownMathLayoutCache.uncachedLayout(for: displayedContent) {
+        let _ = ChatPerformanceInstrumentation.shared.record(.uncachedMathLayouts)
+        let layout = MarkdownMathLayoutCache.uncachedLayout(for: displayedContent)
+        let _ = ChatPerformanceInstrumentation.shared.record(
+            .markdownBlocks,
+            units: markdownBlocksHanded(to: layout)
+        )
+        switch layout {
         case .segmented(let segments):
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
@@ -204,6 +215,7 @@ private struct StreamingMarkdownChunkedView: View {
                 // inputs are untouched, so their bodies (and text layout) are
                 // not re-evaluated.
                 TimelineView(.animation(minimumInterval: nil, paused: !fadesActive)) { context in
+                    let _ = ChatPerformanceInstrumentation.shared.record(.fadeTimelineFrames)
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(blockSplit.blocks, id: \.ordinal) { block in
                             StreamingFadeBlockView(
@@ -1319,6 +1331,20 @@ struct TableCellWidthCap: Layout {
             anchor: .leading,
             proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
         )
+    }
+}
+
+private func markdownBlocksHanded(to layout: MarkdownMathLayout) -> Int {
+    switch layout {
+    case .segmented(let segments):
+        return segments.reduce(into: 0) { count, segment in
+            if case .markdown(let markdown) = segment,
+               !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                count += 1
+            }
+        }
+    case .plain:
+        return 1
     }
 }
 

@@ -1,3 +1,4 @@
+import Observation
 import SwiftData
 import XCTest
 @testable import HermesMobile
@@ -386,6 +387,78 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(coordinator.recoveryState, .idle)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
         XCTAssertEqual(streamClient.stopCount, 0)
+    }
+
+    @MainActor
+    func testMarkProgressDoesNotNotifyWhenRecoveryAlreadyIdle() {
+        let coordinator = makeCoordinator()
+        coordinator.start(streamID: "stream-123")
+        XCTAssertEqual(coordinator.recoveryState, .idle)
+
+        ChatPerformanceInstrumentation.shared.reset()
+        let probe = ObservationChangeProbe()
+        withObservationTracking {
+            _ = coordinator.recoveryState
+        } onChange: {
+            probe.increment()
+        }
+
+        coordinator.markProgress()
+
+        XCTAssertEqual(probe.value, 0)
+        XCTAssertEqual(coordinator.recoveryState, .idle)
+        XCTAssertEqual(
+            ChatPerformanceInstrumentation.shared.summary.counters[
+                ChatPerformancePhase.progressRecoveryWrites.rawValue
+            ] ?? 0,
+            1
+        )
+    }
+
+    @MainActor
+    func testMarkProgressNotifiesWhenRecoveryLeavesChecking() async throws {
+        var statusRequests = 0
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            timing: ChatStreamCoordinatorTiming(
+                checkingInterval: 5,
+                reconnectInterval: 18,
+                runningToolReconnectInterval: 25,
+                statusPollCooldown: 4,
+                transportFreshInterval: 12
+            )
+        ) { request in
+            statusRequests += 1
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+        let start = Date(timeIntervalSince1970: 1_770_000_000)
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.markProgress(now: start)
+        await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(12.1))
+        XCTAssertEqual(statusRequests, 1)
+        XCTAssertEqual(coordinator.recoveryState, .checking)
+
+        ChatPerformanceInstrumentation.shared.reset()
+        let probe = ObservationChangeProbe()
+        withObservationTracking {
+            _ = coordinator.recoveryState
+        } onChange: {
+            probe.increment()
+        }
+
+        coordinator.markProgress()
+
+        XCTAssertEqual(probe.value, 1)
+        XCTAssertEqual(coordinator.recoveryState, .idle)
+        XCTAssertEqual(
+            ChatPerformanceInstrumentation.shared.summary.counters[
+                ChatPerformancePhase.progressRecoveryWrites.rawValue
+            ] ?? 0,
+            1
+        )
     }
 
     // The MockURLProtocol handler runs on URLSession's protocol thread while the
@@ -809,6 +882,74 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testMeteringDoesNotNotifyWhenTokensPerSecondUnchanged() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+        coordinator.start(streamID: "stream-one")
+
+        let first = ObservationChangeProbe()
+        withObservationTracking {
+            _ = coordinator.liveTokensPerSecond
+        } onChange: {
+            first.increment()
+        }
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(first.value, 1)
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
+
+        let duplicate = ObservationChangeProbe()
+        withObservationTracking {
+            _ = coordinator.liveTokensPerSecond
+        } onChange: {
+            duplicate.increment()
+        }
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(duplicate.value, 0)
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 12.25)
+
+        let cleared = ObservationChangeProbe()
+        withObservationTracking {
+            _ = coordinator.liveTokensPerSecond
+        } onChange: {
+            cleared.increment()
+        }
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 12.25,
+            isTokensPerSecondAvailable: true,
+            isEstimated: true,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(cleared.value, 1)
+        XCTAssertNil(coordinator.liveTokensPerSecond)
+
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 24.5,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "session-abc"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 24.5)
+        streamClient.emit(.metering(MeteringStreamEvent(
+            tokensPerSecond: 99,
+            isTokensPerSecondAvailable: true,
+            isEstimated: false,
+            sessionId: "another-session"
+        )))
+        XCTAssertEqual(coordinator.liveTokensPerSecond, 24.5)
+    }
+
+    @MainActor
     func testLiveResponseSpeedClearsImmediatelyWhenTransportFails() {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
@@ -1094,5 +1235,22 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
 
     func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?) {
         ends.append(End(status: status, activity: activity, errorSummary: errorSummary))
+    }
+}
+
+private final class ObservationChangeProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
     }
 }

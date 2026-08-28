@@ -2004,17 +2004,66 @@ final class ChatViewModelSendTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Stream a long response")
         XCTAssertTrue(didStart)
         assertMemoMatchesPureMapping("memo should match after the optimistic append")
+        XCTAssertEqual(viewModel.messages.count, 1)
+        XCTAssertEqual(viewModel.messages.last?.role, "user")
+        XCTAssertNil(viewModel.streamingAssistantMessageID)
 
-        // Edit: streaming tokens mutate the assistant message content in place.
+        // First default emit+flush is structural (assistant append + first content).
         streamClient.emit(.token("first chunk "))
         viewModel.flushPendingStreamingContent()
         XCTAssertTrue(viewModel.messages.last?.content?.contains("first chunk") == true)
         assertMemoMatchesPureMapping("memo should match after a streaming content edit")
+        XCTAssertEqual(viewModel.messages.count, 2)
+        XCTAssertEqual(viewModel.messages.last?.role, "assistant")
+        let renderIDs = viewModel.displayedTranscriptMessages.map(\.renderID)
+        XCTAssertEqual(Set(renderIDs).count, renderIDs.count)
 
-        // Further edit: a second flush updates the same message again.
+        let before = mappingRows()
+
+        // Further edit: a later content-only flush patches one identity-stable row.
         streamClient.emit(.token("second chunk "))
         viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(mappingRows() - before, 1)
         assertMemoMatchesPureMapping("memo should match after a second content edit")
+        XCTAssertEqual(viewModel.displayedTranscriptMessages.map(\.renderID), renderIDs)
+        XCTAssertEqual(Set(renderIDs).count, renderIDs.count)
+        XCTAssertTrue(viewModel.messages.last?.content?.contains("first chunk") == true)
+        XCTAssertTrue(viewModel.messages.last?.content?.contains("second chunk") == true)
+    }
+
+    @MainActor
+    func testDisplayedTranscriptMessagesFullRemapsWhenMessageCountChanges() async throws {
+        let streamClient = SpySSEStreamingClient()
+        streamClient.automaticallyFlushPendingStreamingContent = false
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        ChatPerformanceInstrumentation.shared.reset()
+        let didStart = await viewModel.sendMessage("Stream a long response")
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.messages.count, 1)
+        XCTAssertEqual(viewModel.messages.last?.role, "user")
+        XCTAssertNil(viewModel.streamingAssistantMessageID)
+        XCTAssertEqual(mappingRows(), 1)
+        ChatPerformanceInstrumentation.shared.reset()
+        streamClient.emit(.token("x"))
+        XCTAssertEqual(viewModel.messages.count, 2)
+        XCTAssertEqual(viewModel.messages.last?.role, "assistant")
+        XCTAssertEqual(mappingRows(), 2)
+        XCTAssertEqual(
+            viewModel.displayedTranscriptMessages,
+            ChatViewModel.transcriptMessages(
+                from: viewModel.messages,
+                messageOffset: viewModel.messagesOffset
+            )
+        )
     }
 
     @MainActor
@@ -7665,6 +7714,11 @@ final class ChatViewModelSendTests: XCTestCase {
         let deletedNames = await attachmentStore.deletedNames()
 
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
+    }
+
+    @MainActor
+    private func mappingRows() -> Int {
+        ChatPerformanceInstrumentation.shared.summary.counters[ChatPerformancePhase.transcriptMappingRows.rawValue] ?? 0
     }
 
     /// Lets a `Task { @MainActor … }` enqueued by a delegate callback run to completion

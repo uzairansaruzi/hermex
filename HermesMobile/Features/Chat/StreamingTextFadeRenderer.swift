@@ -14,6 +14,11 @@ struct StreamingTextFadeRenderer: TextRenderer {
     let store: StreamingTextFadeStampStore<Text.Layout.CharacterIndex>
 
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                ChatPerformanceInstrumentation.shared.record(.fadeDraws)
+            }
+        }
         // First pass: hand every slice to the reveal queue in reading order,
         // so glyphs that arrived together cascade instead of fading as one
         // chunk. A ligature slice can span several characters; the newest one

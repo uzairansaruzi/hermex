@@ -83,6 +83,7 @@ struct ChatScrollObserver: UIViewRepresentable {
 
         override func layoutSubviews() {
             super.layoutSubviews()
+            ChatPerformanceInstrumentation.shared.record(.transcriptLayoutPasses)
             coordinator?.reportMetrics(delivery: .deferred)
         }
     }
@@ -184,6 +185,7 @@ struct ChatScrollObserver: UIViewRepresentable {
 
             switch delivery {
             case .immediate:
+                ChatPerformanceInstrumentation.shared.record(.scrollMetricCallbacks)
                 onMetrics(metrics)
             case .deferred:
                 pendingMetrics = metrics
@@ -197,6 +199,7 @@ struct ChatScrollObserver: UIViewRepresentable {
                         self.pendingMetrics = nil
                         self.hasScheduledMetricDelivery = false
                         guard let metrics, self.lastMetrics == metrics else { return }
+                        ChatPerformanceInstrumentation.shared.record(.scrollMetricCallbacks)
                         self.onMetrics(metrics)
                     }
                 }

@@ -2386,9 +2386,11 @@ struct ChatView: View {
                     ? ChatMotion.streamingFollow(reduceMotion: reduceMotion)
                     : ChatMotion.scrollToLatest(reduceMotion: reduceMotion)
                 withAnimation(animation) {
+                    ChatPerformanceInstrumentation.shared.record(.followScrollFires)
                     proxy.scrollTo(targetID, anchor: anchor)
                 }
             } else {
+                ChatPerformanceInstrumentation.shared.record(.followScrollFires)
                 proxy.scrollTo(targetID, anchor: anchor)
             }
         }

@@ -125,6 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           start_seconds=${SECONDS}
+          set +e
           xcodebuild test-without-building \
             -project "${PROJECT_PATH}" \
             -scheme "${SCHEME}" \
@@ -133,10 +134,14 @@ jobs:
             -resultBundlePath "${RESULT_BUNDLE_PATH}" \
             -parallel-testing-enabled YES \
             -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee xcodebuild-test.log
+          xcodebuild_status=${PIPESTATUS[0]}
+          set -e
           duration_seconds=$((SECONDS - start_seconds))
           echo "Test-without-building duration: ${duration_seconds}s"
           echo "- Test without building (${TEST_WORKER_COUNT} workers): ${duration_seconds}s" >> "${GITHUB_STEP_SUMMARY}"
+          exit "${xcodebuild_status}"
 
       - name: Report slowest tests
         if: always()
@@ -186,12 +191,228 @@ jobs:
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Upload test results on failure
-        if: failure()
+      - name: Extract test summary and performance evidence
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ctypes
+          import json
+          import os
+          import sqlite3
+          import subprocess
+          from pathlib import Path
+
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          results_path = Path("test-results.json")
+          log_path = Path("xcodebuild-test.log")
+          evidence_path = Path("chat-performance-evidence.json")
+          result_bundle = Path(os.environ.get("RESULT_BUNDLE_PATH", "TestResults.xcresult"))
+
+          total = passed = failed = skipped = 0
+          perf_rows = []
+
+          if results_path.is_file():
+              results = json.loads(results_path.read_text(encoding="utf-8"))
+
+              def visit(node, parents):
+                  global total, passed, failed, skipped
+                  name = node.get("name", "<unnamed>")
+                  node_type = node.get("nodeType")
+                  path = [*parents, name]
+                  if node_type == "Test Case":
+                      total += 1
+                      result = str(node.get("result") or "").lower()
+                      if result == "passed":
+                          passed += 1
+                      elif result == "failed":
+                          failed += 1
+                      elif result == "skipped":
+                          skipped += 1
+                      duration = node.get("durationInSeconds")
+                      if any("ChatPerformance" in part for part in path):
+                          perf_rows.append((path[-2] if len(path) >= 2 else "", name, duration))
+                  for child in node.get("children", []):
+                      visit(child, path)
+
+              for root in results.get("testNodes", []):
+                  visit(root, [])
+
+          ATTACHMENT_NAMES = (
+              "chat-performance-evidence.json",
+              "chat-performance-replay-evidence.json",
+              "chat-performance-matrix-mapping.json",
+              "chat-performance-matrix-streaming.json",
+              "chat-performance-hosted-50-evidence.json",
+              "chat-performance-hosted-200-evidence.json",
+              "chat-performance-hosted-500-evidence.json",
+              "chat-performance-hosted-stream-evidence.json",
+          )
+
+          def as_evidence_objects(candidate):
+              if isinstance(candidate, (bytes, bytearray)):
+                  try:
+                      candidate = candidate.decode("utf-8")
+                  except UnicodeDecodeError:
+                      return []
+              try:
+                  parsed = json.loads(candidate)
+              except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+                  return []
+              if isinstance(parsed, dict) and "samplesNanoseconds" in parsed:
+                  return [parsed]
+              if isinstance(parsed, list):
+                  return [
+                      item
+                      for item in parsed
+                      if isinstance(item, dict) and "samplesNanoseconds" in item
+                  ]
+              return []
+
+          def evidence_identity(parsed):
+              return (
+                  str(parsed.get("suite") or ""),
+                  str(parsed.get("testName") or ""),
+                  parsed.get("rowCount"),
+                  parsed.get("responseBytes"),
+                  str(parsed.get("p95Definition") or ""),
+              )
+
+          def decompress_zstd(payload):
+              try:
+                  lib = ctypes.CDLL("/usr/lib/libcompression.dylib")
+                  lib.compression_decode_buffer.argtypes = [
+                      ctypes.c_void_p, ctypes.c_size_t,
+                      ctypes.c_void_p, ctypes.c_size_t,
+                      ctypes.c_void_p, ctypes.c_int,
+                  ]
+                  lib.compression_decode_buffer.restype = ctypes.c_ssize_t
+                  dst = ctypes.create_string_buffer(max(len(payload) * 32, 65536))
+                  src = ctypes.create_string_buffer(payload, len(payload))
+                  n = lib.compression_decode_buffer(
+                      ctypes.addressof(dst), len(dst),
+                      ctypes.addressof(src), len(payload),
+                      None, 0x103,
+                  )
+                  if n > 0:
+                      return dst.raw[:n]
+              except (OSError, AttributeError, ValueError):
+                  pass
+              try:
+                  return subprocess.check_output(["zstd", "-d", "-c"], input=payload)
+              except (OSError, subprocess.CalledProcessError):
+                  return None
+
+          collected = []
+          seen = set()
+
+          def add_evidence(parsed):
+              key = evidence_identity(parsed)
+              if key in seen:
+                  return
+              seen.add(key)
+              collected.append(parsed)
+
+          marker = "HERMEX_PERF_EVIDENCE "
+          if log_path.is_file():
+              for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                  idx = line.find(marker)
+                  if idx == -1:
+                      continue
+                  for found in as_evidence_objects(line[idx + len(marker):].strip()):
+                      add_evidence(found)
+
+          db_path = result_bundle / "database.sqlite3"
+          if db_path.is_file():
+              connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+              try:
+                  placeholders = ",".join("?" * len(ATTACHMENT_NAMES))
+                  rows = connection.execute(
+                      f"SELECT name, xcResultKitPayloadRefId FROM Attachments WHERE name IN ({placeholders})",
+                      ATTACHMENT_NAMES,
+                  ).fetchall()
+              finally:
+                  connection.close()
+              for name, ref_id in rows:
+                  if not ref_id:
+                      continue
+                  payload_path = result_bundle / "Data" / f"data.{ref_id}"
+                  if not payload_path.is_file():
+                      continue
+                  decoded = decompress_zstd(payload_path.read_bytes())
+                  if not decoded:
+                      continue
+                  for found in as_evidence_objects(decoded):
+                      add_evidence(found)
+
+          evidence_text = None
+          if collected:
+              collected.sort(
+                  key=lambda cell: (
+                      str(cell.get("suite") or ""),
+                      int(cell.get("rowCount") or 0),
+                      int(cell.get("responseBytes") or 0),
+                      str(cell.get("testName") or ""),
+                  )
+              )
+              evidence_text = json.dumps(collected, sort_keys=True, separators=(",", ":"))
+              evidence_path.write_text(evidence_text + "\n", encoding="utf-8")
+
+          lines = [
+              "",
+              "### Test results",
+              f"- Total: {total}",
+              f"- Passed: {passed}",
+              f"- Failed: {failed}",
+              f"- Skipped: {skipped}",
+              "",
+              "#### ChatPerformance tests",
+          ]
+          if perf_rows:
+              for suite, name, duration in perf_rows:
+                  duration_text = f"{duration:.3f}" if isinstance(duration, (int, float)) else "n/a"
+                  label = f"{suite}.{name}" if suite else name
+                  lines.append(f"- {label}: {duration_text}s")
+          else:
+              lines.append("- none found")
+          lines.extend(["", "#### HERMEX_PERF_EVIDENCE"])
+          if evidence_text is not None:
+              lines.append(f"- cells: {len(collected)}")
+              for cell in collected:
+                  counters = cell.get("counters") or {}
+                  closed = cell.get("closedIntervals") or {}
+                  nonempty = bool(counters) or bool(closed)
+                  lines.append(
+                      "- suite={suite} rowCount={row_count} responseBytes={response_bytes} "
+                      "p50={p50} p95={p95} counters_nonempty={nonempty}".format(
+                          suite=cell.get("suite"),
+                          row_count=cell.get("rowCount"),
+                          response_bytes=cell.get("responseBytes"),
+                          p50=cell.get("p50Nanoseconds"),
+                          p95=cell.get("p95Nanoseconds"),
+                          nonempty=str(nonempty).lower(),
+                      )
+                  )
+              lines.extend(["```json", evidence_text, "```"])
+          else:
+              lines.append("not found")
+          text = "\n".join(lines) + "\n"
+          print(text)
+          with summary_path.open("a", encoding="utf-8") as summary_file:
+              summary_file.write(text)
+          PY
+
+      - name: Upload test results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: ${{ env.RESULT_BUNDLE_PATH }}
+          path: |
+            TestResults.xcresult
+            test-results.json
+            slowest-tests.txt
+            chat-performance-evidence.json
           if-no-files-found: ignore
 
   gate:

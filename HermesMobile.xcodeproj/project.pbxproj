@@ -129,6 +129,13 @@
 		A02400000000000000000001 /* Goal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02400000000000000000002 /* Goal.swift */; };
 		C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000002 /* ChatStreamCoordinator.swift */; };
 		C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */; };
+		C72500000000000000000002 /* ChatPerformanceInstrumentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000001 /* ChatPerformanceInstrumentation.swift */; };
+		C72500000000000000000012 /* ChatPerformanceFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000011 /* ChatPerformanceFixtures.swift */; };
+		C72500000000000000000022 /* ChatPerformanceFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000021 /* ChatPerformanceFixtureTests.swift */; };
+		C72500000000000000000032 /* ChatPerformanceMeasurementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000031 /* ChatPerformanceMeasurementTests.swift */; };
+		C72500000000000000000042 /* ChatPerformanceInstrumentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000041 /* ChatPerformanceInstrumentationTests.swift */; };
+		C72500000000000000000052 /* ChatTranscriptHostingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000051 /* ChatTranscriptHostingSupport.swift */; };
+		C72500000000000000000062 /* ChatPerformanceHostedMeasurementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72500000000000000000061 /* ChatPerformanceHostedMeasurementTests.swift */; };
 		C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */; };
 		C22600000000000000000003 /* StreamReconnectContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000004 /* StreamReconnectContractTests.swift */; };
 		1A2B3C4D5E6F7000000000D4 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D5 /* ChatViewModel.swift */; };
@@ -419,6 +426,12 @@
 		C0390000000000000000000C /* APIClientSkillEndpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientSkillEndpointTests.swift; sourceTree = "<group>"; };
 		C0390000000000000000000D /* APIClientUploadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientUploadTests.swift; sourceTree = "<group>"; };
 		C0390000000000000000000E /* ChatViewModelSendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelSendTests.swift; sourceTree = "<group>"; };
+		C72500000000000000000011 /* ChatPerformanceFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPerformanceFixtures.swift; sourceTree = "<group>"; };
+		C72500000000000000000021 /* ChatPerformanceFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPerformanceFixtureTests.swift; sourceTree = "<group>"; };
+		C72500000000000000000031 /* ChatPerformanceMeasurementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPerformanceMeasurementTests.swift; sourceTree = "<group>"; };
+		C72500000000000000000041 /* ChatPerformanceInstrumentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPerformanceInstrumentationTests.swift; sourceTree = "<group>"; };
+		C72500000000000000000051 /* ChatTranscriptHostingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptHostingSupport.swift; sourceTree = "<group>"; };
+		C72500000000000000000061 /* ChatPerformanceHostedMeasurementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPerformanceHostedMeasurementTests.swift; sourceTree = "<group>"; };
 		C0DED00000000000000DE000 /* ChatViewModelMergeDedupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelMergeDedupTests.swift; sourceTree = "<group>"; };
 		C14600000000000000000001 /* ChatToolbarHeaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolbarHeaderTests.swift; sourceTree = "<group>"; };
 		C15200000000000000000001 /* OnboardingFlowPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowPolicy.swift; sourceTree = "<group>"; };
@@ -472,6 +485,7 @@
 		C1A042000000000000000006 /* ClarificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationTests.swift; sourceTree = "<group>"; };
 		A02400000000000000000002 /* Goal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goal.swift; sourceTree = "<group>"; };
 		C04600000000000000000002 /* ChatStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinator.swift; sourceTree = "<group>"; };
+		C72500000000000000000001 /* ChatPerformanceInstrumentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPerformanceInstrumentation.swift; sourceTree = "<group>"; };
 		C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinatorTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
 		C22600000000000000000004 /* StreamReconnectContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamReconnectContractTests.swift; sourceTree = "<group>"; };
@@ -793,6 +807,12 @@
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 					C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */,
 					C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */,
+					C72500000000000000000011 /* ChatPerformanceFixtures.swift */,
+					C72500000000000000000021 /* ChatPerformanceFixtureTests.swift */,
+					C72500000000000000000031 /* ChatPerformanceMeasurementTests.swift */,
+					C72500000000000000000041 /* ChatPerformanceInstrumentationTests.swift */,
+					C72500000000000000000051 /* ChatTranscriptHostingSupport.swift */,
+					C72500000000000000000061 /* ChatPerformanceHostedMeasurementTests.swift */,
 					C04800000000000000000004 /* ChatAttachmentCoordinatorTests.swift */,
 					C0390000000000000000000E /* ChatViewModelSendTests.swift */,
 					C0DED00000000000000DE000 /* ChatViewModelMergeDedupTests.swift */,
@@ -1063,6 +1083,7 @@
 				031031031031031031031008 /* MarkdownMathFormatter+Support.swift */,
 					C04100000000000000000002 /* ChatComposerConfigLoader.swift */,
 					C04600000000000000000002 /* ChatStreamCoordinator.swift */,
+					C72500000000000000000001 /* ChatPerformanceInstrumentation.swift */,
 					C04700000000000000000002 /* ChatPendingActionCoordinator.swift */,
 					C04800000000000000000002 /* ChatAttachmentCoordinator.swift */,
 					1A2B3C4D5E6F7000000000D5 /* ChatViewModel.swift */,
@@ -1585,6 +1606,7 @@
 				031031031031031031031007 /* MarkdownMathFormatter+Support.swift in Sources */,
 					C04100000000000000000001 /* ChatComposerConfigLoader.swift in Sources */,
 					C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */,
+					C72500000000000000000002 /* ChatPerformanceInstrumentation.swift in Sources */,
 					C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */,
 					C04800000000000000000001 /* ChatAttachmentCoordinator.swift in Sources */,
 					1A2B3C4D5E6F7000000000D4 /* ChatViewModel.swift in Sources */,
@@ -1663,6 +1685,12 @@
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 					C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */,
 					C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */,
+					C72500000000000000000012 /* ChatPerformanceFixtures.swift in Sources */,
+					C72500000000000000000022 /* ChatPerformanceFixtureTests.swift in Sources */,
+					C72500000000000000000032 /* ChatPerformanceMeasurementTests.swift in Sources */,
+					C72500000000000000000042 /* ChatPerformanceInstrumentationTests.swift in Sources */,
+					C72500000000000000000052 /* ChatTranscriptHostingSupport.swift in Sources */,
+					C72500000000000000000062 /* ChatPerformanceHostedMeasurementTests.swift in Sources */,
 					C04800000000000000000003 /* ChatAttachmentCoordinatorTests.swift in Sources */,
 					C0391000000000000000000E /* ChatViewModelSendTests.swift in Sources */,
 					C0DED00000000000000DE001 /* ChatViewModelMergeDedupTests.swift in Sources */,

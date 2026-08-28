@@ -14,6 +14,11 @@ enum StreamingMarkdownBlockSplitter {
     static let stableChunkTargetCharacterCount = 6_000
 
     static func split(_ text: String) -> StreamingMarkdownBlockSegments {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                ChatPerformanceInstrumentation.shared.record(.streamingMarkdownSplits)
+            }
+        }
         var lineStart = text.startIndex
         var chunkStart = text.startIndex
         var isInsideFence = false

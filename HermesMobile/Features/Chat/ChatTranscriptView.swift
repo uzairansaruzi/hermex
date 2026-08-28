@@ -168,6 +168,7 @@ struct ChatTranscriptView: View {
                 .background(Color(.systemBackground))
                 .onChange(of: messages.count) {
                     guard shouldFollowLatestMessage else { return }
+                    ChatPerformanceInstrumentation.shared.record(.followScrollSchedules)
 
                     if latestTranscriptMessageRole == "user" {
                         onScrollToLatestTranscriptMessage(proxy)
@@ -177,6 +178,7 @@ struct ChatTranscriptView: View {
                 }
                 .onChange(of: streamingScrollTrigger) {
                     if shouldFollowLatestMessage {
+                        ChatPerformanceInstrumentation.shared.record(.followScrollSchedules)
                         onScrollToLatestContent(proxy, true)
                     }
                 }
@@ -185,6 +187,7 @@ struct ChatTranscriptView: View {
                     // the lighter cached render, so snap back to the bottom (no
                     // animation) unless the reader has scrolled away in the meantime.
                     guard shouldFollowLatestMessage else { return }
+                    ChatPerformanceInstrumentation.shared.record(.followScrollSchedules)
                     onScrollToLatestContent(proxy, false)
                 }
                 .onChange(of: clarificationPrompt?.id) {
@@ -205,7 +208,9 @@ struct ChatTranscriptView: View {
         viewportWidth: CGFloat,
         contentWidth: CGFloat
     ) -> some View {
-        VStack(spacing: transcriptMessageSpacing) {
+        // Deliberate: count each transcript content-body evaluation.
+        ChatPerformanceInstrumentation.shared.record(.transcriptContentEvaluations)
+        return LazyVStack(spacing: transcriptMessageSpacing) {
             olderMessagesButton(proxy: proxy)
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
