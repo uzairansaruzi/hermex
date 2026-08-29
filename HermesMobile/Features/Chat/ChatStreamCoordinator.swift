@@ -97,11 +97,10 @@ final class ChatStreamCoordinator {
     /// still cannot reach the transcript. Cleared only by the next run start /
     /// new-response preparation / session load.
     @ObservationIgnored private var isTerminalContentFenceActive = false
-    /// Per-run one-shot teardown owner (PR #295 re-gate): the first terminal
-    /// event under the fence (streamEnd / error / cancelled / transportError)
-    /// owns finishStream; later terminal events are ignored so delegate finish,
-    /// snapshot cleanup, queue drain, and title-refresh side effects cannot
-    /// repeat. Reset wherever the content fence disarms.
+    /// Per-run one-shot teardown owner. The first caller of finishStream owns
+    /// teardown; later terminal events are ignored so delegate finish, snapshot
+    /// cleanup, queue drain, and title-refresh side effects cannot repeat.
+    /// Reset wherever the content fence disarms.
     @ObservationIgnored private var isTransportFinished = false
     private(set) var lastEventID: String?
     private(set) var lastProgressDate: Date?
@@ -489,8 +488,6 @@ final class ChatStreamCoordinator {
                 // done must still finish (snapshot cleanup, queued-slash drain,
                 // completed-title refresh) — it previously fell through to the
                 // pre-change handleTransportError path (PR #295 re-gate).
-                guard !isTransportFinished else { return }
-                isTransportFinished = true
                 finishStream()
                 return
             case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted,
@@ -749,6 +746,8 @@ final class ChatStreamCoordinator {
     }
 
     private func finishStream() {
+        guard !isTransportFinished else { return }
+        isTransportFinished = true
         runGeneration &+= 1
         let completedNormally = hasCompletedCurrentResponse
         let finishedStreamID = activeStreamID

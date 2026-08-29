@@ -211,6 +211,33 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testRefreshTranscriptCompletionOwnsTeardownBeforeQueuedTerminalEventsArrive() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        delegate.latestServerLoadHadAssistantResponseAfterLatestUser = true
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        ) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            return apiTestJSONResponse(#"{"active": false, "stream_id": "stream-123"}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-123")
+
+        await coordinator.refreshTranscriptIfCompleted(streamID: "stream-123")
+        streamClient.emit(.streamEnd)
+        streamClient.emit(.transportError("connection closed"))
+
+        XCTAssertEqual(delegate.finishCount, 1)
+        XCTAssertEqual(delegate.drainQueueCount, 1)
+        XCTAssertEqual(delegate.refreshTitleCount, 1)
+        XCTAssertEqual(liveActivityManager.ends.map(\.status), [.complete])
+    }
+
+    @MainActor
     func testRefreshTranscriptIfCompletedBailsWhenStreamReplacedDuringLoad() async throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
