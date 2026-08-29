@@ -35,3 +35,26 @@ struct ComposerModelPickerSectionExpansionState {
         }
     }
 }
+
+/// Tracks the provider groups whose server-supplied overflow models the user
+/// has chosen to reveal. Both model pickers use the same small state model so
+/// their counts and visible rows cannot drift apart.
+struct ModelPickerOverflowExpansionState {
+    private var expandedGroupIDs: Set<String> = []
+
+    func isExpanded(groupID: String) -> Bool {
+        expandedGroupIDs.contains(groupID)
+    }
+
+    func displayedModels(in group: ModelCatalogGroup) -> [ModelCatalogOption] {
+        isExpanded(groupID: group.id) ? group.allModels : group.models
+    }
+
+    mutating func setExpanded(_ isExpanded: Bool, groupID: String) {
+        if isExpanded {
+            expandedGroupIDs.insert(groupID)
+        } else {
+            expandedGroupIDs.remove(groupID)
+        }
+    }
+}

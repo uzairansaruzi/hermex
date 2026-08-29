@@ -16,6 +16,7 @@ struct DefaultModelPickerView: View {
     @State private var selectedModel: String?
     @State private var selectedProvider: String?
     @State private var searchText = ""
+    @State private var overflowExpansion = ModelPickerOverflowExpansionState()
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var isSavingCustom = false
@@ -108,19 +109,67 @@ struct DefaultModelPickerView: View {
             }
         } else {
             ForEach(filteredGroups) { group in
-                ModelPickerCard(title: group.name) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
+                let displayedModels = overflowExpansion.displayedModels(in: group)
+
+                ModelPickerCard(title: group.name, detail: modelCountLabel(for: group)) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(displayedModels.enumerated()), id: \.element.id) { index, model in
                             modelRow(model)
 
-                            if index < group.models.count - 1 {
+                            if index < displayedModels.count - 1 {
                                 Divider()
                             }
                         }
                     }
+
+                    if shouldShowOverflowToggle(for: group) {
+                        Divider()
+                        overflowToggle(for: group)
+                    }
                 }
             }
         }
+    }
+
+    private func modelCountLabel(for group: ModelCatalogGroup) -> String {
+        let displayedCount = overflowExpansion.displayedModels(in: group).count
+        let totalCount = group.allModels.count
+        return totalCount > group.models.count
+            ? "\(displayedCount) / \(totalCount)"
+            : "\(displayedCount)"
+    }
+
+    private func shouldShowOverflowToggle(for group: ModelCatalogGroup) -> Bool {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !group.extraModels.isEmpty
+    }
+
+    private func overflowToggle(for group: ModelCatalogGroup) -> some View {
+        let isExpanded = overflowExpansion.isExpanded(groupID: group.id)
+
+        return Button {
+            overflowExpansion.setExpanded(!isExpanded, groupID: group.id)
+        } label: {
+            HStack(spacing: 8) {
+                Text(
+                    isExpanded
+                        ? String(localized: "Show fewer models")
+                        : String(localized: "Show all models")
+                )
+                    .font(.subheadline.weight(.medium))
+
+                Spacer(minLength: 0)
+
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(.primary)
+            .padding(.vertical, 9)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var filteredGroups: [ModelCatalogGroup] {
@@ -359,16 +408,30 @@ private struct ModelPickerSearchField: View {
 
 private struct ModelPickerCard<Content: View>: View {
     let title: String
+    var detail: String?
     @ViewBuilder let content: Content
+
+    init(title: String, detail: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.detail = detail
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .textCase(.uppercase)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
+            HStack(spacing: 6) {
+                Text(title)
+                    .textCase(.uppercase)
+
+                if let detail {
+                    Text(detail)
+                        .accessibilityLabel(detail)
+                }
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 12) {
                 content

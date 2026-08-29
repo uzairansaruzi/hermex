@@ -15,6 +15,7 @@ struct ComposerModelPickerSheet: View {
     @State private var customModelID = ""
     @State private var customProviderID = ""
     @State private var sectionExpansion = ComposerModelPickerSectionExpansionState()
+    @State private var overflowExpansion = ModelPickerOverflowExpansionState()
 
     private let currentCustomGroupID = "current-custom-model"
     private let savedCustomGroupID = "saved-custom-models"
@@ -139,7 +140,10 @@ struct ComposerModelPickerSheet: View {
     }
 
     private func modelGroupDisclosure(_ group: ModelCatalogGroup) -> some View {
-        DisclosureGroup(
+        let displayedModels = overflowExpansion.displayedModels(in: group)
+        let totalModelCount = group.allModels.count
+
+        return DisclosureGroup(
             isExpanded: Binding(
                 get: { sectionExpansion.isExpanded(groupID: group.id) },
                 set: { isExpanded in
@@ -152,9 +156,16 @@ struct ComposerModelPickerSheet: View {
                     .padding(.leading, 10)
 
                 LazyVStack(spacing: 1) {
-                    ForEach(group.models, id: \.self) { option in
+                    ForEach(displayedModels, id: \.self) { option in
                         modelOptionRow(option, allowsDelete: group.id == savedCustomGroupID)
                     }
+                }
+
+                if shouldShowOverflowToggle(for: group) {
+                    Divider()
+                        .padding(.leading, 10)
+
+                    overflowToggle(for: group)
                 }
             }
             .padding(.top, 4)
@@ -165,9 +176,16 @@ struct ComposerModelPickerSheet: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text("\(group.models.count)")
+                Text(
+                    totalModelCount > group.models.count
+                        ? "\(displayedModels.count) / \(totalModelCount)"
+                        : "\(displayedModels.count)"
+                )
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(
+                        Text("Showing \(displayedModels.count) of \(totalModelCount) models")
+                    )
 
                 Spacer(minLength: 0)
             }
@@ -175,6 +193,38 @@ struct ComposerModelPickerSheet: View {
             .contentShape(Rectangle())
         }
         .tint(Color(.secondaryLabel))
+    }
+
+    private func shouldShowOverflowToggle(for group: ModelCatalogGroup) -> Bool {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !group.extraModels.isEmpty
+    }
+
+    private func overflowToggle(for group: ModelCatalogGroup) -> some View {
+        let isExpanded = overflowExpansion.isExpanded(groupID: group.id)
+
+        return Button {
+            overflowExpansion.setExpanded(!isExpanded, groupID: group.id)
+        } label: {
+            HStack(spacing: 8) {
+                Text(
+                    isExpanded
+                        ? String(localized: "Show fewer models")
+                        : String(localized: "Show all models")
+                )
+                    .font(.system(size: 13, weight: .semibold))
+
+                Spacer(minLength: 0)
+
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
+            .padding(.leading, 28)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func modelOptionRow(_ option: ModelCatalogOption, allowsDelete: Bool) -> some View {
@@ -359,7 +409,8 @@ struct ComposerModelPickerSheet: View {
         let isRendered = Self.isRenderedByCurrentPicker(
             option: option,
             modelGroups: modelGroups,
-            searchQuery: searchText
+            searchQuery: searchText,
+            overflowExpansion: overflowExpansion
         )
         guard !isRendered else { return nil }
 
@@ -369,19 +420,19 @@ struct ComposerModelPickerSheet: View {
     }
 
     /// Whether `option` is already represented by a rendered picker row under
-    /// the current query. Empty query renders only the server's visible slice
-    /// (`group.models`); searching renders `allModels`. Classifying against the
-    /// full catalog with an empty query would hide the "Current Custom" row for
-    /// a selection that lives in `extraModels`, leaving the active model without
-    /// any visible checkmark until the user searches again (PR #293 review).
+    /// the current query. Empty query renders the server's visible slice plus
+    /// any provider groups the user expanded; searching renders `allModels`.
+    /// Classifying every empty-query group against the full catalog would hide
+    /// the "Current Custom" row for an overflow selection that is still hidden.
     static func isRenderedByCurrentPicker(
         option: ModelCatalogOption,
         modelGroups: [ModelCatalogGroup],
-        searchQuery: String
+        searchQuery: String,
+        overflowExpansion: ModelPickerOverflowExpansionState = .init()
     ) -> Bool {
         let renderedOptions: [ModelCatalogOption]
         if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            renderedOptions = modelGroups.flatMap(\.models)
+            renderedOptions = modelGroups.flatMap { overflowExpansion.displayedModels(in: $0) }
         } else {
             renderedOptions = modelGroups.flatMap(\.allModels)
         }

@@ -51,6 +51,38 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         XCTAssertTrue(rendered)
     }
 
+    func testOverflowSelectionWithExpandedGroupIsRendered() {
+        var overflowExpansion = ModelPickerOverflowExpansionState()
+        overflowExpansion.setExpanded(true, groupID: "openrouter")
+
+        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+            option: overflowModel,
+            modelGroups: groups,
+            searchQuery: "",
+            overflowExpansion: overflowExpansion
+        )
+
+        XCTAssertTrue(rendered)
+    }
+
+    func testOverflowExpansionRevealsAndCollapsesExtraModels() {
+        guard let group = groups.first else {
+            return XCTFail("Expected an OpenRouter group")
+        }
+        var overflowExpansion = ModelPickerOverflowExpansionState()
+
+        XCTAssertEqual(overflowExpansion.displayedModels(in: group), [visibleModel])
+
+        overflowExpansion.setExpanded(true, groupID: group.id)
+        XCTAssertEqual(
+            overflowExpansion.displayedModels(in: group),
+            [visibleModel, overflowModel]
+        )
+
+        overflowExpansion.setExpanded(false, groupID: group.id)
+        XCTAssertEqual(overflowExpansion.displayedModels(in: group), [visibleModel])
+    }
+
     // While searching, allModels are rendered — an overflow match found by that
     // search IS represented and must not duplicate a Current Custom row.
     func testOverflowMatchWhileSearchingIsRendered() {
