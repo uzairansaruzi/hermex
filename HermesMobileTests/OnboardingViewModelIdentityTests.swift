@@ -62,6 +62,18 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    func testEditingHeaderValueThroughElementBindingInvalidates() {
+        let viewModel = makeProbedViewModel(headers: [
+            CustomHeader(name: "Authorization", value: "Bearer old")
+        ])
+
+        viewModel.customHeaders[0].value = "Bearer new"
+
+        XCTAssertNil(viewModel.authStatus, "element edits from CustomHeadersEditor must invalidate")
+        XCTAssertNil(viewModel.connectionMessage)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testNewlineBrokenRowIsNotPartOfIdentity() {
         let viewModel = makeProbedViewModel(headers: [])
         XCTAssertNotNil(viewModel.authStatus)
@@ -101,7 +113,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
     /// Distinct call sites inside `AuthManager`'s probe: `testConnection(client:)`
     /// awaits `health()` and then `authStatus()`, so a parked probe is always in
     /// exactly one known phase.
-    private enum GatePhase: String {
+    enum GatePhase: String {
         case health
         case authStatus
     }
@@ -110,26 +122,33 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
     final class OnboardingGateKeeper: @unchecked Sendable {
         private(set) var recordedPhases: [GatePhase] = []
         private var pending: [(phase: GatePhase, continuation: CheckedContinuation<Void, Never>)] = []
+        private var eventWaiters: [(count: Int, expectation: XCTestExpectation)] = []
         /// When set, further gate entries return immediately — drains the
         /// abandoned tail of a superseded schedule without extra bookkeeping.
         private var autoRelease = false
 
-        /// Deadline-bounded waiter: fails the test instead of hanging when the
-        /// production schedule never reaches the expected number of gate events.
+        /// Event-driven waiter with a failure bound. On timeout it drains the
+        /// schedule so the owning task can settle instead of hanging at task.value.
         func waitForEvents(_ count: Int, _ comment: String = "", timeout seconds: Double = 5) async {
-            let deadline = Date().addingTimeInterval(seconds)
-            while recordedPhases.count < count {
-                if Date() >= deadline {
-                    XCTFail("timed out after \(seconds)s waiting for \(count) gate event(s); saw \(recordedPhases.map(\.rawValue)) \(comment)")
-                    return
-                }
-                await Task.yield()
-                try? await Task.sleep(nanoseconds: 2_000_000)
+            guard recordedPhases.count < count else { return }
+
+            let expectation = XCTestExpectation(description: "wait for \(count) gate event(s) \(comment)")
+            eventWaiters.append((count, expectation))
+
+            let result = await XCTWaiter.fulfillment(of: [expectation], timeout: seconds)
+            guard result == .completed else {
+                eventWaiters.removeAll { $0.expectation === expectation }
+                XCTFail("timed out after \(seconds)s waiting for \(count) gate event(s); saw \(recordedPhases.map(\.rawValue)) \(comment)")
+                drainEverything()
+                return
             }
         }
 
         func gate(_ phase: GatePhase) async {
             recordedPhases.append(phase)
+            let readyWaiters = eventWaiters.filter { $0.count <= recordedPhases.count }
+            eventWaiters.removeAll { $0.count <= recordedPhases.count }
+            readyWaiters.forEach { $0.expectation.fulfill() }
             if autoRelease { return }
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 pending.append((phase, continuation))
@@ -324,7 +343,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNotNil(viewModel.authStatus, "accepted connect settles to a probed status")
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertFalse(viewModel.isPasswordRequired, "trusted-header status hides the password field AFTER settle")
-        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")))
+        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")!))
     }
 
     // Configure reaches AuthManager exactly once per accepted connect: one
@@ -350,7 +369,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(client.configuredPasswords.count, 0, "passwordless configure must not attempt login")
         XCTAssertFalse(viewModel.isConnectionLocked)
         XCTAssertFalse(viewModel.isWorking)
-        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")))
+        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")!))
     }
 
     // Full password path: probe demands auth, configure logs in with the typed
@@ -372,7 +391,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
 
         XCTAssertEqual(client.configuredPasswords, ["typed-secret"], "configure must log in with the typed password")
         XCTAssertEqual(keychain.savedValues[.serverURL], "https://example.com")
-        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")))
+        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")!))
         XCTAssertFalse(viewModel.isConnectionLocked)
         XCTAssertFalse(viewModel.isWorking)
     }

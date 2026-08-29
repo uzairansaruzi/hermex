@@ -135,9 +135,10 @@ final class OnboardingViewModel {
         let token = beginOperation()
         let identityAtStart = currentConnectionIdentity()
         defer {
-            guard token == operationGeneration else { return }
-            isWorking = false
-            isConnectionLocked = false
+            if token == operationGeneration {
+                isWorking = false
+                isConnectionLocked = false
+            }
         }
 
         do {
@@ -187,9 +188,10 @@ final class OnboardingViewModel {
         isConnectionLocked = true
         let token = beginOperation()
         defer {
-            guard token == operationGeneration else { return }
-            isWorking = false
-            isConnectionLocked = false
+            if token == operationGeneration {
+                isWorking = false
+                isConnectionLocked = false
+            }
         }
 
         if authStatus == nil {
