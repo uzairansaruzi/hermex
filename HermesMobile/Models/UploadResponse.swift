@@ -11,13 +11,37 @@ struct UploadResponse: Codable {
 }
 
 struct PendingAttachment: Identifiable, Equatable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let path: String
     let mime: String
     let size: Int?
     let isImage: Bool
     let thumbnailData: Data?
+    /// File name of the durable app-owned draft copy in ChatDraftAttachmentStore.
+    /// Fresh composer attachments always have one; standalone sends such as voice
+    /// notes do not participate in draft persistence and leave it nil.
+    let draftFileName: String?
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        path: String,
+        mime: String,
+        size: Int? = nil,
+        isImage: Bool,
+        thumbnailData: Data? = nil,
+        draftFileName: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.mime = mime
+        self.size = size
+        self.isImage = isImage
+        self.thumbnailData = thumbnailData
+        self.draftFileName = draftFileName
+    }
 }
 
 enum ImagePreviewDownsampler {

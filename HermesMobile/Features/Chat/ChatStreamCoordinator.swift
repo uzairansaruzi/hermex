@@ -92,6 +92,16 @@ final class ChatStreamCoordinator {
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false
+    /// Terminal-content fence (#288 review): set when the response completes and
+    /// NOT cleared by finishStream, so content queued after `done → streamEnd`
+    /// still cannot reach the transcript. Cleared only by the next run start /
+    /// new-response preparation / session load.
+    @ObservationIgnored private var isTerminalContentFenceActive = false
+    /// Per-run one-shot teardown owner. The first caller of finishStream owns
+    /// teardown; later terminal events are ignored so delegate finish, snapshot
+    /// cleanup, queue drain, and title-refresh side effects cannot repeat.
+    /// Reset wherever the content fence disarms.
+    @ObservationIgnored private var isTransportFinished = false
     private(set) var lastEventID: String?
     private(set) var lastProgressDate: Date?
     private(set) var lastTransportActivityDate: Date?
@@ -132,8 +142,18 @@ final class ChatStreamCoordinator {
 
     func prepareForNewResponse() {
         hasCompletedCurrentResponse = false
+        isTerminalContentFenceActive = false
+        isTransportFinished = false
         isConnectionSuspended = false
         liveTokensPerSecond = nil
+    }
+
+    func isTerminalFenceActiveForTesting() -> Bool {
+        isTerminalContentFenceActive
+    }
+
+    func isTransportFinishedForTesting() -> Bool {
+        isTransportFinished
     }
 
     func start(
@@ -142,6 +162,8 @@ final class ChatStreamCoordinator {
         recoveryState: ActiveStreamRecoveryState = .idle
     ) {
         hasCompletedCurrentResponse = false
+        isTerminalContentFenceActive = false
+        isTransportFinished = false
         liveTokensPerSecond = nil
         runGeneration &+= 1
         activeStreamID = streamID
@@ -208,6 +230,8 @@ final class ChatStreamCoordinator {
         usedCacheFallback: Bool
     ) {
         hasCompletedCurrentResponse = false
+        isTerminalContentFenceActive = false
+        isTransportFinished = false
         liveTokensPerSecond = nil
 
         if usedCacheFallback {
@@ -433,6 +457,45 @@ final class ChatStreamCoordinator {
     }
 
     private func handle(_ event: SSEEvent) {
+        // Terminal-content fence (#288): once the response has completed, late
+        // content must never reach the transcript. The fence survives streamEnd
+        // (finishStream resets hasCompletedCurrentResponse but not the fence),
+        // closing the done → streamEnd → token ordering. Title and metering are
+        // session metadata and still pass; a settled completion is never
+        // re-ended by late error/cancel (#288 review).
+        if isTerminalContentFenceActive {
+            switch event {
+            case .title(let payload):
+                if delegate?.streamCoordinatorUpdateTitle(payload) == true {
+                    markProgress()
+                }
+                return
+            case .metering(let payload):
+                guard payload.sessionId == nil || payload.sessionId == delegate?.streamCoordinatorSessionID else {
+                    return
+                }
+                liveTokensPerSecond = payload.displayableTokensPerSecond
+                return
+            case .done:
+                // Duplicate done after completion — already finalized; ignore.
+                return
+            case .heartbeat, .ignored:
+                break
+            case .transportError, .cancelled, .error, .streamEnd:
+                // Settled completion wins: tear down exactly once without
+                // publishing a second Live Activity end or repeating delegate
+                // finish/drain/title-refresh side effects. transportError after
+                // done must still finish (snapshot cleanup, queued-slash drain,
+                // completed-title refresh) — it previously fell through to the
+                // pre-change handleTransportError path (PR #295 re-gate).
+                finishStream()
+                return
+            case .token, .interimAssistant, .reasoning, .toolStarted, .toolCompleted,
+                 .approvalPending, .clarificationPending, .pendingSteerLeftover:
+                return
+            }
+        }
+
         lastEventID = streamClient.lastEventID ?? lastEventID
         lastTransportActivityDate = Date()
 
@@ -640,6 +703,7 @@ final class ChatStreamCoordinator {
         liveTokensPerSecond = nil
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         hasCompletedCurrentResponse = true
+        isTerminalContentFenceActive = true
         delegate?.streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: needsTranscriptRefresh)
         resetRecoveryState()
     }
@@ -682,6 +746,8 @@ final class ChatStreamCoordinator {
     }
 
     private func finishStream() {
+        guard !isTransportFinished else { return }
+        isTransportFinished = true
         runGeneration &+= 1
         let completedNormally = hasCompletedCurrentResponse
         let finishedStreamID = activeStreamID

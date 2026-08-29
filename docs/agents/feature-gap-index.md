@@ -23,13 +23,12 @@ unless the item is explicitly an upstream WebUI parity gap.
 
 | Status | Meaning | Source |
 | :--- | :--- | :--- |
-| `implemented` | Shipping in the app. | **Derived live** from `HermesMobile/Networking/Endpoints.swift` — never hand-listed here, so it cannot drift from what the app ships. |
+| `implemented` | Shipping in the app. | Whatever `HermesMobile/Networking/Endpoints.swift` calls — never hand-listed here, so it cannot drift from what the app ships. |
 | `roadmap` | A known upstream feature tracked as a future/deferred mobile slice (covers the old `[ ]`/`[~]`/`[defer]`). | The hand-maintained table below. |
 | `n-a` | Web-, desktop-, or server-internal surface. No mobile implementation expected. | The hand-maintained table below. |
-| `new` | Genuinely uncatalogued upstream route — the triage queue. | **Computed**: any upstream route matching neither `Endpoints.swift` nor the table below falls through to `new`. |
+| `new` | Genuinely uncatalogued upstream route — the triage queue. | Any upstream route matching neither `Endpoints.swift` nor the table below. |
 
-Only `roadmap` and `n-a` are hand-maintained in the table; `implemented` and
-`new` are computed by `scripts/upstream-watch`, so this index stays small.
+Only `roadmap` and `n-a` are hand-maintained in the table, so this index stays small.
 
 ## Priority guide
 
@@ -45,10 +44,10 @@ The **Safety** column flags surfaces that need explicit confirmation/guardrails:
 (API keys/credentials), `privacy` (data leaves the device), `admin`
 (server-management), `read` (read-only, low risk), `—` (n/a).
 
-## Route Classification (machine-readable)
+## Route classification
 
-`scripts/upstream-watch` parses the table below: every row whose **Status** is
-`roadmap` or `n-a` becomes a route-prefix classification. Matching is by prefix,
+Every row whose **Status** is `roadmap` or `n-a` is a route-prefix
+classification. Matching is by prefix,
 **first match wins**, so specific prefixes must be listed before general ones
 (e.g. `/api/file/reveal` before `/api/file/`). A trailing `/` scopes a prefix to
 sub-paths of a group. Do not reorder casually.
@@ -113,8 +112,8 @@ sub-paths of a group. Do not reorder casually.
 
 ### Implemented (for reference, derived — not parsed)
 
-`scripts/upstream-watch` decides `implemented` live from `Endpoints.swift`; this
-list is a human convenience only and is intentionally **not** machine-read.
+`Endpoints.swift` is the authority for `implemented`; this list is a human
+convenience only.
 Shipping parity features include: Clarification System, Goal Submission, Session
 Search, Memory Editing, Cron mutations, Project Rename, Server-Side Insights,
 Transcript `MEDIA:` inline image rendering, Kanban Board, and the core
@@ -132,6 +131,21 @@ and `btw`. Leaving them uncatalogued is deliberate: they need an owner triage
 decision (priority + fit) before they earn a durable row here. Do not invent a
 classification for them without that decision.
 
+### Already triaged — do not re-file
+
+The 2026-07-02 docs-vs-app gap analysis was fully triaged into issues #15–#26
+(tracker #27, now closed and shipped). Two route groups were **dropped by owner
+decision** and must not resurface as new findings:
+
+- `POST /api/updates/summary` — undocumented, and it fires a server LLM call.
+- `POST /api/commands/exec` — needs product framing before any client work.
+
+A further set was **deferred pending explicit owner opt-in** — do not file these
+without asking first: session import; stream/status `replay_available` decode;
+cron history view; auxiliary model routing; settings-editor UI; profile
+create/delete; all `/api/file/*` mutations and folder zip; skill authoring;
+command bundles.
+
 ## Just-in-time research rule
 
 Deep request/response/handler validation happens **when a feature is selected for
@@ -145,48 +159,7 @@ implementation**, not pre-cached in this index. When you pick up a `roadmap` row
 3. If the durable judgment changes (priority, safety, defer/skip), update this
    row — that is the only thing the index should accumulate.
 
-## Implementation rules for any slice
+## Implementing a row
 
-1. Start from `CURRENT.md` if it exists (local-only, gitignored — a fresh clone
-   won't have one), then this index.
-2. Create a short `issue/<n>-slug` branch unless the owner explicitly says otherwise.
-3. Validate the route in `.codex-tmp/hermes-webui/api/routes.py` before coding
-   (the just-in-time rule above).
-4. Prefer existing mobile patterns in `Endpoints.swift`, `APIClient.swift`, model
-   files, view models, and XCTest.
-5. Decode tolerantly. Optional fields stay optional unless the server handler
-   enforces them.
-6. Add focused tests for endpoint path/query/body construction and tolerant model
-   decoding.
-7. Run focused tests for the touched area, then the full XCTest suite before
-   asking for review.
-8. For `write`/`exec`/`secret`/`admin`/`privacy` surfaces, add explicit
-   confirmation copy and avoid default-on dangerous behavior.
-9. At wrap-up or completed-slice handoff, update `CURRENT.md`,
-   update this index's status if the durable judgment changed, and commit only a
-   validated build/test state.
-
-## Agent prompt template
-
-```markdown
-Read CURRENT.md first if it exists (it is local-only and gitignored), then read
-docs/agents/feature-gap-index.md.
-
-We are implementing "[FEATURE NAME]".
-
-Before coding (just-in-time validation):
-- Create a branch with the prefix `issue/` (e.g. `issue/<n>-slug`).
-- Validate the endpoint and JSON shape in .codex-tmp/hermes-webui/api/routes.py
-  at the pinned upstream commit. Never guess shapes.
-- Check WebUI static callers when relevant.
-- Record the validated shape + handler + upstream commit in the issue/PR.
-
-Implementation:
-1. Add/extend Endpoint cases and APIClient methods.
-2. Add tolerant Codable models.
-3. Integrate view-model and SwiftUI changes using existing patterns.
-4. Add focused XCTest coverage for endpoint/body/decode/view-model behavior.
-5. Run focused tests, then full simulator XCTest.
-6. Update the feature-gap-index row (only if durable judgment changed)
-   and CURRENT.md before a checkpoint commit.
-```
+Follow `AGENTS.md`. Surfaces flagged `write`/`exec`/`secret`/`admin`/`privacy`
+get explicit confirmation copy and never default-on dangerous behavior.

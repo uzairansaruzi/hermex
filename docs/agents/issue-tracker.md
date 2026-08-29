@@ -21,6 +21,10 @@ Infer the repo from `git remote -v` when possible; `gh` does this automatically 
 
 Use heredocs for multi-line issue bodies and comments.
 
+## Pull Requests as a Triage Surface
+
+**PRs as a request surface: no.** Bug reports and feature requests belong in issues, not in PR comments. Review comments on an open PR are still actionable — triage and address them as described below.
+
 ## Branch and PR Workflow
 
 GitHub Issues are the work queue; pull requests are the review and merge record.
@@ -29,7 +33,7 @@ GitHub Issues are the work queue; pull requests are the review and merge record.
 - `ready-for-agent` issues default to express mode (autonomous from approved plan to review-addressed PR). An issue also labeled `needs-manual-validation` forces staged mode, where the owner manually tests before the PR publishes. See `docs/agents/triage-labels.md`.
 - Create a short `issue/<n>-slug` branch for one issue or narrow slice (no-issue branches use `chore/`/`fix/`).
 - Commit completed, validated work locally with the matching handoff updates.
-- Push feature branches and open draft PRs only when the human asks to publish/open a PR.
+- Push feature branches and open PRs only when the human asks to publish/open a PR. Open them ready for review, not as drafts: the review bots only run on ready PRs.
 - Use the PR for review: GitHub/Copilot review, CI, external agent review, and human comments should live there when possible.
 - Address PR review comments by triaging them first; do not blindly accept automated review feedback.
 - Merge into `master` only after validation passes, review feedback is resolved, and the human approves.

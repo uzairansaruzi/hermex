@@ -138,6 +138,21 @@ enum CacheStore {
                 sortIndex: offset
             )
         })
+        // One session-scoped fetch serves both the upsert lookups below and the
+        // stale sweep at the end. `CachedMessage.cacheKey` already embeds the
+        // server and session, so this window holds every row a per-message
+        // lookup could have matched. Rows inserted below are absent from the
+        // snapshot, which is what the stale sweep wants: their keys are fresh.
+        let descriptor = FetchDescriptor<CachedMessage>(
+            predicate: #Predicate { cachedMessage in
+                cachedMessage.serverURLString == serverURLString
+                    && cachedMessage.sessionID == sessionID
+            }
+        )
+        let cachedMessages = try context.fetch(descriptor)
+        let cachedMessagesByKey = cachedMessages.reduce(into: [String: CachedMessage]()) {
+            $0[$1.cacheKey] = $1
+        }
 
         for (offset, message) in messages.enumerated() {
             let cacheKey = CachedMessage.cacheKey(
@@ -146,7 +161,7 @@ enum CacheStore {
                 message: message,
                 sortIndex: offset
             )
-            if let cachedMessage = try cachedMessage(cacheKey: cacheKey, in: context) {
+            if let cachedMessage = cachedMessagesByKey[cacheKey] {
                 cachedMessage.apply(message, sortIndex: offset, cachedAt: cachedAt)
             } else {
                 context.insert(CachedMessage(
@@ -159,13 +174,7 @@ enum CacheStore {
             }
         }
 
-        let descriptor = FetchDescriptor<CachedMessage>(
-            predicate: #Predicate { cachedMessage in
-                cachedMessage.serverURLString == serverURLString
-                    && cachedMessage.sessionID == sessionID
-            }
-        )
-        let staleMessages = try context.fetch(descriptor).filter { !freshKeys.contains($0.cacheKey) }
+        let staleMessages = cachedMessages.filter { !freshKeys.contains($0.cacheKey) }
         for staleMessage in staleMessages {
             context.delete(staleMessage)
         }
@@ -273,17 +282,6 @@ enum CacheStore {
         var descriptor = FetchDescriptor<CachedSession>(
             predicate: #Predicate { cachedSession in
                 cachedSession.cacheKey == cacheKey
-            }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
-    }
-
-    @MainActor
-    private static func cachedMessage(cacheKey: String, in context: ModelContext) throws -> CachedMessage? {
-        var descriptor = FetchDescriptor<CachedMessage>(
-            predicate: #Predicate { cachedMessage in
-                cachedMessage.cacheKey == cacheKey
             }
         )
         descriptor.fetchLimit = 1

@@ -884,7 +884,7 @@ final class KanbanFeatureState {
         }
 
         do {
-            // Ordered exactly as §17.2 requires; every probe is a verified GET.
+            // Ordered exactly as docs/agents/kanban.md requires; every probe is a verified GET.
             let configuration = try await client.kanbanConfiguration()
             guard isCurrent(loadID) else { return }
             let boardsResponse = try await client.kanbanBoards()

@@ -43,41 +43,118 @@ final class ChatAttachmentCoordinator {
     weak var delegate: ChatAttachmentCoordinatorDelegate?
 
     private let client: APIClient
+    private let draftAttachmentStore: any ChatDraftAttachmentStoring
     private var reservedUploadFilenames: Set<String> = []
 
-    init(client: APIClient) {
+    init(
+        client: APIClient,
+        draftAttachmentStore: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared
+    ) {
         self.client = client
+        self.draftAttachmentStore = draftAttachmentStore
     }
 
-    func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async {
-        guard let attachment = await performUpload(data: data, filename: filename, previewData: previewData) else {
-            return
-        }
-        pendingAttachments.append(attachment)
-    }
-
-    /// Uploads a single file and returns it as a `PendingAttachment` *without*
-    /// adding it to `pendingAttachments`. The voice-note flow uses this: the clip
-    /// is sent as the sole attachment of its own message, so it must not sweep up
-    /// the user's typed draft or other staged attachments. Failures surface via
-    /// `uploadAttachmentErrorMessage` and the method returns nil.
-    func uploadStandaloneAttachment(data: Data, filename: String) async -> PendingAttachment? {
-        await performUpload(data: data, filename: filename, previewData: nil)
-    }
-
-    private func performUpload(data: Data, filename: String, previewData: Data?) async -> PendingAttachment? {
-        guard delegate?.attachmentIsViewingCachedData != true else {
-            uploadAttachmentErrorMessage = String(localized: "Reconnect to the server to upload attachments.")
-            return nil
-        }
-
+    /// Saves a durable app-owned copy, uploads it, and appends the result to the
+    /// pending strip. Staging stops if the durable copy cannot be established,
+    /// so every attachment shown in the composer is restorable from its draft.
+    @discardableResult
+    func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async -> PendingAttachment? {
         guard data.count <= PendingAttachment.maximumUploadBytes else {
             uploadAttachmentErrorMessage = PendingAttachment.uploadTooLargeMessage(filename: filename)
             return nil
         }
 
+        let draftFileName: String
+        do {
+            draftFileName = try await draftAttachmentStore.save(
+                data: data,
+                suggestedFilename: filename
+            )
+        } catch {
+            uploadAttachmentErrorMessage = String(localized: "Could not save the attachment on this device.")
+            delegate?.attachmentCoordinatorDidFail(error)
+            return nil
+        }
+
+        guard let attachment = await performUpload(
+            data: data,
+            filename: filename,
+            previewData: previewData,
+            draftFileName: draftFileName,
+            draftAttachmentID: nil,
+            reportsErrors: true
+        ) else {
+            await draftAttachmentStore.delete(named: draftFileName)
+            return nil
+        }
+        pendingAttachments.append(attachment)
+        return attachment
+    }
+
+    /// Re-uploads a restored draft attachment from its durable local copy,
+    /// preserving the draft record's identity so the restored pending
+    /// attachment reconciles with the persisted draft instead of duplicating
+    /// it. Failures stay quiet (no banner, no delegate error): the caller
+    /// reports them in aggregate and keeps the record for a later retry.
+    @discardableResult
+    func reuploadDraftAttachment(data: Data, draftAttachment: ChatDraftAttachment) async -> PendingAttachment? {
+        guard let attachment = await performUpload(
+            data: data,
+            filename: draftAttachment.name,
+            previewData: draftAttachment.isImage ? data : nil,
+            draftFileName: draftAttachment.file,
+            draftAttachmentID: draftAttachment.id,
+            reportsErrors: false
+        ) else {
+            return nil
+        }
+        pendingAttachments.append(attachment)
+        return attachment
+    }
+
+    /// Uploads a single file and returns it as a `PendingAttachment` *without*
+    /// adding it to `pendingAttachments`. The voice-note flow uses this: the clip
+    /// is sent as the sole attachment of its own message, so it must not sweep up
+    /// the user's typed draft or other staged attachments — and it is never part
+    /// of a persisted draft. Failures surface via `uploadAttachmentErrorMessage`
+    /// and the method returns nil.
+    func uploadStandaloneAttachment(data: Data, filename: String) async -> PendingAttachment? {
+        await performUpload(
+            data: data,
+            filename: filename,
+            previewData: nil,
+            draftFileName: nil,
+            draftAttachmentID: nil,
+            reportsErrors: true
+        )
+    }
+
+    private func performUpload(
+        data: Data,
+        filename: String,
+        previewData: Data?,
+        draftFileName: String?,
+        draftAttachmentID: UUID?,
+        reportsErrors: Bool
+    ) async -> PendingAttachment? {
+        guard delegate?.attachmentIsViewingCachedData != true else {
+            if reportsErrors {
+                uploadAttachmentErrorMessage = String(localized: "Reconnect to the server to upload attachments.")
+            }
+            return nil
+        }
+
+        guard data.count <= PendingAttachment.maximumUploadBytes else {
+            if reportsErrors {
+                uploadAttachmentErrorMessage = PendingAttachment.uploadTooLargeMessage(filename: filename)
+            }
+            return nil
+        }
+
         guard let sessionID = delegate?.attachmentSessionID else {
-            uploadAttachmentErrorMessage = String(localized: "The server did not provide a session ID.")
+            if reportsErrors {
+                uploadAttachmentErrorMessage = String(localized: "The server did not provide a session ID.")
+            }
             return nil
         }
 
@@ -86,8 +163,10 @@ final class ChatAttachmentCoordinator {
 
         activeUploadCount += 1
         uploadStartGeneration += 1
-        uploadAttachmentErrorMessage = nil
-        delegate?.attachmentCoordinatorWillUpload()
+        if reportsErrors {
+            uploadAttachmentErrorMessage = nil
+            delegate?.attachmentCoordinatorWillUpload()
+        }
         defer {
             releaseReservedUploadFilename(uploadFilename)
             activeUploadCount = max(activeUploadCount - 1, 0)
@@ -96,26 +175,34 @@ final class ChatAttachmentCoordinator {
         do {
             let response = try await client.uploadFile(sessionID: sessionID, data: data, filename: uploadFilename)
             if let errorMessage = response.error {
-                uploadAttachmentErrorMessage = errorMessage
+                if reportsErrors {
+                    uploadAttachmentErrorMessage = errorMessage
+                }
                 return nil
             }
 
             guard let path = response.path, !path.isEmpty else {
-                uploadAttachmentErrorMessage = String(localized: "The server did not return the uploaded file path.")
+                if reportsErrors {
+                    uploadAttachmentErrorMessage = String(localized: "The server did not return the uploaded file path.")
+                }
                 return nil
             }
 
             return PendingAttachment(
+                id: draftAttachmentID ?? UUID(),
                 name: displayFilename,
                 path: path,
                 mime: response.mime ?? "application/octet-stream",
                 size: response.size,
                 isImage: response.isImage ?? false,
-                thumbnailData: await Self.thumbnailData(for: response, originalData: data, previewData: previewData)
+                thumbnailData: await Self.thumbnailData(for: response, originalData: data, previewData: previewData),
+                draftFileName: draftFileName
             )
         } catch {
-            delegate?.attachmentCoordinatorDidFail(error)
-            uploadAttachmentErrorMessage = error.localizedDescription
+            if reportsErrors {
+                delegate?.attachmentCoordinatorDidFail(error)
+                uploadAttachmentErrorMessage = error.localizedDescription
+            }
             return nil
         }
     }
@@ -131,6 +218,10 @@ final class ChatAttachmentCoordinator {
 
     func setUploadAttachmentError(_ message: String?) {
         uploadAttachmentErrorMessage = message
+    }
+
+    func deleteDraftCopy(named fileName: String) async {
+        await draftAttachmentStore.delete(named: fileName)
     }
 
     func attachmentImageData(path: String) async -> Data? {

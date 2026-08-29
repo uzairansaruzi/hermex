@@ -109,6 +109,8 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["model"] as? String, "claude-sonnet-4")
             XCTAssertNil(body?["modelId"])
+            // A providerless save keeps the bare {model} body.
+            XCTAssertNil(body?["provider"])
 
             return apiTestJSONResponse("""
             {
@@ -143,6 +145,36 @@ final class APIClientConfigurationTests: APIClientTestCase {
         let response = try await client.saveDefaultModel(model: "@openai:gpt-5.4")
 
         XCTAssertEqual(response.model, "@openai:gpt-5.4")
+    }
+
+    /// A catalog row that names its provider must send it: Core persists
+    /// `{model, provider}` atomically and resolves slash-qualified ids like
+    /// `anthropic/...` through the named provider's route.
+    func testSaveDefaultModelSendsTheRowProviderWhenKnown() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/default-model")
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let data = try XCTUnwrap(apiTestBodyData(from: request))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(body?["model"] as? String, "deepseek/deepseek-chat-v3:free")
+            XCTAssertEqual(body?["provider"] as? String, "openrouter")
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "model": "deepseek/deepseek-chat-v3:free"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.saveDefaultModel(
+            model: "deepseek/deepseek-chat-v3:free",
+            provider: "openrouter"
+        )
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.model, "deepseek/deepseek-chat-v3:free")
     }
 
     func testCommandsBuildsExpectedPathAndDecodesTolerantMetadata() async throws {

@@ -105,15 +105,13 @@ Local validation defaults for XcodeBuildMCP users live in `.xcodebuildmcp/config
 
 ## Server compatibility
 
-The app is developed and tested against the `hermes-webui` commit pinned in [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA). Upstream does not yet guarantee API stability (its README declares version skew unsupported pending their stable-API work), so newer or older server versions may break individual features — please include your server version in bug reports. The app decodes tolerantly (unknown fields never crash it) and endpoint shapes are verified against upstream source, never invented; see [`CONTRACT_TESTS.md`](CONTRACT_TESTS.md) for the contract-testing approach.
+The app is developed and tested against the `hermes-webui` commit pinned in [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA). Upstream does not yet guarantee API stability (its README declares version skew unsupported pending their stable-API work), so newer or older server versions may break individual features — please include your server version in bug reports. The app decodes tolerantly (unknown fields never crash it) and endpoint shapes are verified against upstream source, never invented.
 
 ## Documentation map
 
-- [`PROJECT_SPEC.md`](PROJECT_SPEC.md): source of truth for product scope, API behavior, dependencies, and architecture decisions.
-- [`PROJECT_INTENT.md`](PROJECT_INTENT.md): short orientation; useful for product tradeoffs, not implementation details.
+- [`AGENTS.md`](AGENTS.md): the working agreement — product boundaries, server-contract rules, locked dependencies, verification, and PR flow.
 - [`DEVELOPMENT.md`](DEVELOPMENT.md): local development workflow, server setup notes, and the maintainer release runbook.
 - [`TESTFLIGHT.md`](TESTFLIGHT.md): maintainer-only TestFlight/App Store Connect operations.
-- [`CONTRACT_TESTS.md`](CONTRACT_TESTS.md): upstream contract-test readiness and the pin-advance policy.
 - [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
 - [`docs/agents/`](docs/agents): repo-local agent workflow conventions (issues, triage labels, domain notes).
 - [GitHub Issues](https://github.com/uzairansaruzi/hermex/issues): source of truth for active bugs, polish notes, and feature requests.
@@ -124,7 +122,7 @@ Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for how t
 
 - Do not invent API endpoints or JSON shapes; verify against the upstream server source or a running server.
 - Every `Codable` model decodes tolerantly — never crash on unknown fields.
-- Add no third-party dependencies beyond the locked list in `PROJECT_SPEC.md` without explicit approval.
+- Add no third-party dependencies beyond the locked list in `AGENTS.md` without explicit approval.
 - Do not modify the upstream `hermes-webui` server from this repo.
 
 ## Support the project

@@ -1,6 +1,6 @@
 # Development
 
-This app is developed against a self-hosted `hermes-webui` server exposed over real HTTPS. See [`PROJECT_SPEC.md`](PROJECT_SPEC.md) for the full product and API plan.
+This app is developed against a self-hosted `hermes-webui` server exposed over real HTTPS. See [`README.md`](README.md) for the product overview and [`AGENTS.md`](AGENTS.md) for the working rules.
 
 > Sections covering TestFlight and App Store Connect are **maintainer-only ops** — they require the maintainer's Apple Developer account and App Store Connect access. Contributors never need them to build, test, or run the app.
 
@@ -22,29 +22,13 @@ curl https://<your-server>/health
 
 ## Upstream Contract Pin
 
-The app is currently tested against `hermes-webui` tag `v0.51.85`, peeled commit `f1d399b437c1ca7fe4b6d2093aebe334c32f34a3`. The root [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA) file is the machine-readable pin for future drift checks and contract tests.
-
-The pin was last verified against the upstream GitHub tag source during the 2026-05-05 audit slice; authenticated settings/version checks require server credentials.
-
-Contract test readiness is documented in [`CONTRACT_TESTS.md`](CONTRACT_TESTS.md). Current coverage verifies the app's endpoint matrix and native POST header shape with URLProtocol-backed tests; the full Docker-backed upstream contract target remains future hardening.
+The app is tested against the `hermes-webui` commit in the root [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA) file — the only copy of the pin, so it cannot drift. To see its release tag: `git -C .codex-tmp/hermes-webui describe --tags --exact-match $(cat UPSTREAM_TESTED_SHA)`. The advance procedure lives in `AGENTS.md` § Working with the server.
 
 ## SSE and Cloudflare Stream Verification
 
-Phase 4 streaming uses `GET /api/chat/stream?stream_id=...` over Server-Sent Events. Current upstream source confirms the stream response uses `Content-Type: text/event-stream; charset=utf-8`, `X-Accel-Buffering: no`, `Connection: keep-alive`, and sends `: heartbeat` comments every 30 seconds while no app event is ready.
+Chat streaming uses `GET /api/chat/stream?stream_id=...` over Server-Sent Events. The stream response uses `Content-Type: text/event-stream; charset=utf-8`, `X-Accel-Buffering: no`, `Connection: keep-alive`, and sends `: heartbeat` comments about every 30 seconds while no app event is ready. If the connection is cut while the upstream stream is still active, returning to the foreground or reconnecting should use `GET /api/chat/stream/status?stream_id=...` and reattach to the same stream instead of resending the user message.
 
-Cloudflare can still close long-lived responses if the origin does not send data for long enough. The expected healthy behavior for Hermex is:
-
-- streams longer than 2 minutes continue delivering tokens, tool events, reasoning events, title events, `done`, and `stream_end` when the server emits them;
-- quiet periods under normal heartbeat behavior stay connected because the server writes `: heartbeat` about every 30 seconds;
-- if the connection is cut while the upstream stream is still active, returning to the foreground or reconnecting should use `GET /api/chat/stream/status?stream_id=...` and reattach to the same stream instead of resending the user message.
-
-Manual verification before closing Phase 4:
-
-1. Sign in to `https://<your-server>` from the simulator.
-2. Start a prompt that naturally runs for more than 2 minutes.
-3. Keep the app foregrounded and verify streamed content continues past the 2 minute mark.
-4. During another long response, background the app for at least 30 seconds, foreground it, and verify the app either reattaches to the active stream or reloads the completed transcript without duplicating the user message.
-5. If a stream drops after a quiet gap, record whether the server emitted no tokens/tool/reasoning events for more than roughly 100 seconds. That is a known Cloudflare risk even with normal SSE support.
+Cloudflare's free-plan idle timeout is roughly 100 seconds, so a gap with no events longer than that cuts the stream and reconnect logic must handle it even with normal heartbeat behavior. The server's CSRF check compares `Origin`/`Referer` against `Host` on POSTs; the native client sends neither header, so the server treats it as curl-equivalent and allows it.
 
 ## Local-Only Fallback
 
@@ -63,65 +47,21 @@ For simulator-only testing, `http://localhost:8787` can work when the server is 
 
 ## Example Server Setup (macOS + launchd)
 
-One proven way to run the server natively on macOS is through launchd:
+One proven way to run the server natively on macOS is through launchd, for contributors who want a local reference (this is not the maintainer's setup, which runs on a different Mac):
 
 - LaunchAgent: `~/Library/LaunchAgents/com.hermes.webui.plist`
-- Server script: `server.py` in your `hermes-webui` checkout
 - Local bind: `127.0.0.1:8787`
-- Public hostname: `https://<your-server>`
 - Tunnel target: `http://127.0.0.1:8787`
-
-Useful commands for this setup:
 
 ```zsh
 launchctl load ~/Library/LaunchAgents/com.hermes.webui.plist
 launchctl unload ~/Library/LaunchAgents/com.hermes.webui.plist
 launchctl kickstart -k gui/$(id -u)/com.hermes.webui
-cloudflared tunnel info <tunnel-name>
-launchctl list | grep cloudflared
-curl https://<your-server>/health
-```
-
-If the server appears down, check in this order:
-
-1. launchd job status
-2. local port `8787`
-3. Cloudflare Tunnel status
-
-For local port inspection:
-
-```zsh
-lsof -i :8787
 ```
 
 ## Local Validation With XcodeBuildMCP
 
-XcodeBuildMCP is the preferred local validation path for feature and bug-fix slices. The repo config lives in `.xcodebuildmcp/config.yaml` and sets:
-
-- Project: `HermesMobile.xcodeproj`
-- Scheme: `HermesMobile`
-- Configuration: `Debug`
-- Simulator: `iPhone 17`
-- Bundle ID: `com.uzairansar.hermesmobile`
-
-After each completed implementation slice:
-
-1. Confirm XcodeBuildMCP sees the repo defaults.
-2. Run focused tests for the changed behavior when available.
-3. Run the full XCTest suite before asking for review or committing.
-4. Build and launch the app in Simulator when UI or runtime behavior changed.
-5. Capture a screenshot or logs if the slice needs visual/runtime evidence.
-6. Let the owner run the manual simulator checklist for the slice.
-
-Agent/MCP flow:
-
-- Call `session_show_defaults` before the first local build/run/test.
-- If defaults are missing, set project `HermesMobile.xcodeproj`, scheme `HermesMobile`, configuration `Debug`, simulator `iPhone 17`, and bundle ID `com.uzairansar.hermesmobile`.
-- Use `test_sim` for XCTest validation.
-- Use `build_run_sim` to build, install, launch, and open Simulator for manual testing.
-- Use `screenshot`, UI inspection, and log capture only when they help validate the slice.
-
-Human/CLI equivalents:
+Defaults and the verification flow live in `AGENTS.md` § Verifying. Human/CLI equivalents:
 
 ```zsh
 xcodebuildmcp simulator list --enabled
@@ -135,31 +75,11 @@ xcodebuildmcp simulator test --output jsonl
 xcodebuildmcp simulator build-and-run --output jsonl
 ```
 
-If `iPhone 17` is not installed, choose a nearby available iPhone simulator and update `.xcodebuildmcp/config.yaml` only if that should become the shared repo default.
+Update `.xcodebuildmcp/config.yaml` only when a new simulator should become the shared repo default.
 
 ## Swift File-Size Policy
 
-The repo keeps the project style target of small Swift files, but file-size enforcement is warning-only while the large code-audit refactors continue.
-
-Run:
-
-```zsh
-scripts/check-swift-file-sizes
-```
-
-Policy:
-
-- Warn on production app Swift files over 500 LOC.
-- Exit successfully even when warnings are present.
-- Scope the check to `HermesMobile/` production app files.
-- Exempt tests, generated files, preview files, the share extension, and the live activity widget for now.
-- Use warnings to make future drift visible; do not block current work on known oversized files.
-
-You can override the warning threshold for local experiments:
-
-```zsh
-HERMES_SWIFT_FILE_SIZE_LIMIT=300 scripts/check-swift-file-sizes
-```
+`scripts/check-swift-file-sizes` warns on production app Swift files (`HermesMobile/`) over 500 LOC; tests, generated files, preview files, the share extension, and the live activity widget are exempt. It exits successfully even with warnings — it makes drift visible without blocking current work. Override the threshold for local experiments with `HERMES_SWIFT_FILE_SIZE_LIMIT=300 scripts/check-swift-file-sizes`.
 
 ## Raw xcodebuild Fallback
 
@@ -181,15 +101,6 @@ If `iPhone 15` is not installed, choose a nearby available iPhone simulator.
 
 ## TestFlight Readiness Notes
 
-Current status:
-
-- App Store Connect app name: `Hermex`.
-- Xcode target/scheme name: `HermesMobile`.
-- iPhone home-screen display name: `Hermex`.
-- Bundle ID: `com.uzairansar.hermesmobile`.
-- Test bundle ID: `com.uzairansar.hermesmobile.tests`.
-- SKU: `hermes-mobile-ios`.
-- Apple Developer Team ID: `6GYD9C9N6R`.
 - Signing uses Xcode automatic signing.
 - Export compliance is declared in `Info.plist` with `ITSAppUsesNonExemptEncryption = NO`; the app does not implement custom/proprietary encryption and uses normal Apple/platform networking security.
 - App icon uses owner-supplied light and dark assets in `AppIcon.appiconset`.
@@ -197,15 +108,6 @@ Current status:
 - `PrivacyInfo.xcprivacy` is bundled with the app target. It declares no tracking, no developer-collected data, and app-only `UserDefaults` access for local preferences.
 - Camera capture is deferred and is not declared. Add `NSCameraUsageDescription` and update the privacy review only if camera capture is implemented later.
 - The current GitHub Actions upload path is intentionally internal-only. External TestFlight readiness and Beta App Review sequencing are tracked in [`TESTFLIGHT.md`](TESTFLIGHT.md).
-
-### Owner checklist: App Store Connect rename to Hermex
-
-After merging the repo rebrand slice, update App Store Connect metadata separately:
-
-1. Production app (`com.uzairansar.hermesmobile`): rename listing from `Hermes Agent Mobile` → `Hermex`.
-2. Branch TestFlight app (`com.uzairansar.hermesmobile.branch`): rename listing from `Hermes Agent Branch` → `Hermex Branch`.
-3. Update TestFlight/review notes and any metadata copy that still says the old app name.
-4. Upload a build and confirm TestFlight shows **Hermex** / **Hermex Branch** on the home screen after processing.
 
 ### Branch TestFlight upload (CLI) — the "push to branch testflight" command
 
@@ -389,10 +291,3 @@ Capture bugs, polish notes, and follow-up ideas in [GitHub Issues](https://githu
 - Launch screen acceptable.
 - Privacy permission prompts readable.
 - TestFlight install path documented.
-
-Preferred Git workflow before CI automation:
-
-1. Create one short branch per work item, such as `issue/<n>-slug`.
-2. Build and test on that branch.
-3. Merge to `master` only after validation passes.
-4. Treat `master` as the source for internal TestFlight candidates.

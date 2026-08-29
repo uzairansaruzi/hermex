@@ -2159,6 +2159,7 @@ private struct ServerDetailView: View {
                     // #286 W2).
                     if let removedServerURL = URL(string: account.urlString) {
                         try? CacheStore.clearCache(for: removedServerURL, in: modelContext)
+                        await ChatDraftStore.shared.discardDrafts(for: removedServerURL)
                     }
                     await authManager.removeServer(account)
                     // Only a non-active removal leaves this view alive to reset its

@@ -189,6 +189,8 @@
 		1A2B3C4D5E6F7000000000F2 /* CacheStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F4 /* CacheStoreTests.swift */; };
 		C28702000000000000000001 /* ChatDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000002 /* ChatDraftStore.swift */; };
 		C28702000000000000000003 /* ChatDraftStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000004 /* ChatDraftStoreTests.swift */; };
+		C28702000000000000000005 /* ChatDraftAttachmentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000006 /* ChatDraftAttachmentStore.swift */; };
+		C28702000000000000000007 /* ChatDraftAttachmentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */; };
 		C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04400000000000000000004 /* CacheFallbackPolicyTests.swift */; };
 		1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */; };
 		1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */; };
@@ -317,6 +319,7 @@
 		105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */; };
 		105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */; };
 		1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */; };
+		1050500000000000000000B1 /* OnboardingViewModelIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -532,6 +535,8 @@
 		1A2B3C4D5E6F7000000000F4 /* CacheStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStoreTests.swift; sourceTree = "<group>"; };
 		C28702000000000000000002 /* ChatDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftStore.swift; sourceTree = "<group>"; };
 		C28702000000000000000004 /* ChatDraftStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftStoreTests.swift; sourceTree = "<group>"; };
+		C28702000000000000000006 /* ChatDraftAttachmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftAttachmentStore.swift; sourceTree = "<group>"; };
+		C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftAttachmentStoreTests.swift; sourceTree = "<group>"; };
 		C04400000000000000000004 /* CacheFallbackPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheFallbackPolicyTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -665,6 +670,7 @@
 		105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSectionExpansionState.swift; sourceTree = "<group>"; };
 		105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSectionExpansionStateTests.swift; sourceTree = "<group>"; };
 		1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSelectionClassificationTests.swift; sourceTree = "<group>"; };
+		1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModelIdentityTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -765,6 +771,7 @@
 			isa = PBXGroup;
 			children = (
 				C28702000000000000000004 /* ChatDraftStoreTests.swift */,
+				C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */,
 				10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */,
 				1A2B3C4D5E6F7000000000BC /* APIClientTests.swift */,
 				B5A1000000000000000000A1 /* ServerRegistryTests.swift */,
@@ -839,6 +846,7 @@
 				1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */,
 				105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */,
 				1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */,
+				1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */,
 				0485E1E1FFB64A24BB729CD4 /* SlashCommandTests.swift */,
 				6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */,
 				A710739233F64F4FA4C2B711 /* ComposerVoiceDraftComposerTests.swift */,
@@ -1102,6 +1110,7 @@
 			isa = PBXGroup;
 			children = (
 				C28702000000000000000002 /* ChatDraftStore.swift */,
+				C28702000000000000000006 /* ChatDraftAttachmentStore.swift */,
 				1A2B3C4D5E6F7000000000F3 /* CacheStore.swift */,
 				1A2B3C4D5E6F7000000000EE /* CachedSession.swift */,
 				1A2B3C4D5E6F7000000000EF /* CachedMessage.swift */,
@@ -1507,6 +1516,7 @@
 				1A2B3C4D5E6F7000000000ED /* CachedMessage.swift in Sources */,
 				1A2B3C4D5E6F7000000000F1 /* CacheStore.swift in Sources */,
 				C28702000000000000000001 /* ChatDraftStore.swift in Sources */,
+				C28702000000000000000005 /* ChatDraftAttachmentStore.swift in Sources */,
 				1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */,
 				C012400000000000000004 /* AppIconSettingsSection.swift in Sources */,
 				1A2B3C4D5E6F70000000114 /* DefaultModelPickerView.swift in Sources */,
@@ -1708,6 +1718,7 @@
 					1A2B3C4D5E6F70000000141 /* ModelFavoritesStoreTests.swift in Sources */,
 					105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */,
 					1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */,
+					1050500000000000000000B1 /* OnboardingViewModelIdentityTests.swift in Sources */,
 					8F63EE9A9B344C4FA579D5A8 /* SlashCommandTests.swift in Sources */,
 				0D82B28493C6401D98DA9C0E /* SlashCommandExecutorTests.swift in Sources */,
 				A710739233F64F4FA4C2B701 /* ComposerVoiceDraftComposerTests.swift in Sources */,
@@ -1718,6 +1729,7 @@
 				22AB000000000000000000B3 /* WorkspaceRegistryViewModelTests.swift in Sources */,
 				B5A100000000000000000005 /* SharedDraftStoreTests.swift in Sources */,
 				C28702000000000000000003 /* ChatDraftStoreTests.swift in Sources */,
+				C28702000000000000000007 /* ChatDraftAttachmentStoreTests.swift in Sources */,
 				B5A100000000000000000009 /* ShareInputReaderTests.swift in Sources */,
 				B5A100000000000000000060 /* AuthManagerStateTests.swift in Sources */,
 				B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */,

@@ -9,6 +9,7 @@ struct SessionListView: View {
 
     @Bindable var authManager: AuthManager
     let server: URL
+    private let draftStore: ChatDraftStore
     @Binding private var pendingSharedImport: SharedImportReservation?
     private let didRoutePendingSharedImport: (SharedImportReservation) -> Void
     private let hasWaitingSharedImport: Bool
@@ -78,7 +79,8 @@ struct SessionListView: View {
         hasWaitingSharedImport: Bool = false,
         openNextSharedImport: @escaping () -> Void = {},
         pendingDeepLinkedSessionID: Binding<String?> = .constant(nil),
-        requestedNewChat: Binding<NewChatRequest?> = .constant(nil)
+        requestedNewChat: Binding<NewChatRequest?> = .constant(nil),
+        draftStore: ChatDraftStore? = nil
     ) {
         self.authManager = authManager
         self.server = server
@@ -86,6 +88,7 @@ struct SessionListView: View {
         self.didRoutePendingSharedImport = didRoutePendingSharedImport
         self.hasWaitingSharedImport = hasWaitingSharedImport
         self.openNextSharedImport = openNextSharedImport
+        self.draftStore = draftStore ?? .shared
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
         _viewModel = State(initialValue: SessionListViewModel(server: server))
@@ -376,7 +379,12 @@ struct SessionListView: View {
     private func navigationDestination(_ destination: SessionNavigationDestination) -> some View {
         switch destination {
         case .session(let session):
-            ChatView(session: session, server: server, onAPIError: authManager.handleAPIError)
+            ChatView(
+                session: session,
+                server: server,
+                onAPIError: authManager.handleAPIError,
+                draftStore: draftStore
+            )
                 .id(session.id)
         case .newChat(let route):
             PendingNewChatView(
@@ -387,7 +395,8 @@ struct SessionListView: View {
                 server: server,
                 viewModel: viewModel,
                 onAPIError: authManager.handleAPIError,
-                onSessionCreated: rememberCreatedSession
+                onSessionCreated: rememberCreatedSession,
+                draftStore: draftStore
             )
             .id(route.id)
         case .utility(let destination):
@@ -1113,9 +1122,16 @@ struct SessionListView: View {
         handleLastError()
 
         if didDelete {
+            await draftStore.discardDraft(for: draftKey(for: session))
             removeSessionFromNavigation(session)
             SessionHaptics.sessionDeleted(isEnabled: isHapticsEnabled)
         }
+    }
+
+    private func draftKey(for session: SessionSummary) -> ChatDraftKey {
+        let normalizedSessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sessionID = normalizedSessionID.flatMap { $0.isEmpty ? nil : $0 } ?? session.id
+        return .session(server: server, sessionID: sessionID)
     }
 
     private func rename(_ session: SessionSummary, to title: String) async -> Bool {
@@ -1475,6 +1491,7 @@ private struct PendingNewChatView: View {
                     loadsInitialMessages: false,
                     autoStartsVoiceInput: autoStartsVoiceInput,
                     draftStore: draftStore,
+                    restoresDraftSettings: true,
                     onConversationStarted: markConversationStarted
                 )
             } else {
@@ -1594,7 +1611,7 @@ private struct PendingNewChatView: View {
         if let session {
             let sessionKey = draftKey(for: session)
             draftStore.setDraft(draftMessage, for: draftKey)
-            draftMessage = draftStore.moveDraft(from: draftKey, to: sessionKey)
+            draftMessage = draftStore.moveDraft(from: draftKey, to: sessionKey).text
             SessionHaptics.sessionCreated(isEnabled: isHapticsEnabled)
             onSessionCreated(session)
             createdSession = session
@@ -1646,8 +1663,8 @@ private struct PendingNewChatView: View {
         guard !Task.isCancelled, draftMessage == textBeforeHydration else { return }
 
         if textBeforeHydration.isEmpty {
-            if let persistedDraft {
-                draftMessage = persistedDraft
+            if let persistedDraft, !persistedDraft.text.isEmpty {
+                draftMessage = persistedDraft.text
             }
         } else {
             draftStore.setDraft(textBeforeHydration, for: draftKey)
@@ -1670,7 +1687,7 @@ private struct PendingNewChatView: View {
             from: draftKey(for: createdSession),
             to: draftKey,
             didStartConversation: didStartConversation
-        ) ?? draftMessage
+        )?.text ?? draftMessage
     }
 
     private func requestPendingComposerFocus() {

@@ -1,15 +1,9 @@
-# Multi-server state isolation audit (I-039 / issue #18)
+# Multi-server state isolation
 
-This is the audit deliverable for issue #18 (I-039d). It documents which app
-state is **per-server** versus intentionally **global**, where each lives, and
-which tests guard the isolation. It reflects the state of the multi-server epic
-after #15 (server model), #16 (auth/cookie/header isolation), #17 (Settings
-list + switcher), and #18 (cache isolation validation + scoped clear-cache).
-
-The short version: with the #15–#17 foundation in place, **almost all isolation
-already holds by construction**. Issue #18 added focused two-server tests and
-the one behavioral fix that was missing — scoping "Clear Offline Cache" to the
-active server.
+Which app state is **per-server** versus intentionally **global**, where each
+lives, and which tests guard the isolation. Almost all isolation holds by
+construction through the server-keyed view tree and cache keys described below;
+"Clear Offline Cache" is explicitly scoped to the active server.
 
 ## How a server switch works (the mechanism most isolation relies on)
 
@@ -40,7 +34,7 @@ to `CacheStore`. Two consequences:
 | Custom request headers | Keychain, per-server-scoped keys (#16) | `CustomHeaderStore` is hydrated for the active server; SSE + requests source headers from the active store. |
 | Display name / initials / **Header Logo Color** | `ServerAccount` in the Keychain registry blob (`Models/ServerAccount.swift`) | Per-server. The **active** server's identity is mirrored into the global `@AppStorage` keys (`SessionIdentitySettings.*`, `HeaderLogoColor.storageKey`) by `ServerRegistry.mirrorIdentityToDefaults`, on activate / set-active / identity-edit / remove — **never on first insert**, so first-run/single-server behavior is unchanged. Consumers (session-list avatar, header logo tint, New Chat / Send primary-action tint) read the mirrored global keys and therefore follow the active server automatically. |
 | Offline session/message cache | SwiftData (`CachedSession`, `CachedMessage`) | Keyed by `serverURLString` (the active server URL's `absoluteString`) on the unique `cacheKey` and on every read/write predicate. See below. |
-| Default model / profile | Not persisted locally | Held in transient `@State` in `SettingsView` and re-fetched from the **active** server's API client each time Settings opens. There is no cross-server storage to leak. New sessions use the server's current default. |
+| Default model / profile | Server defaults are not persisted locally; unfinished new-chat choices can be | Settings re-fetches defaults from the **active** server. A non-empty new-chat draft may also retain that server's effective composer choices in `ChatDraftStore`, keyed by server URL plus `newChat`; removing the server discards those records. Without a saved draft, new sessions use the server's current defaults. |
 | Active project / session selection | View-local `@State` only | Not persisted. Destroyed and rebuilt on switch via `.id(server)`. |
 | "Show CLI sessions" toggle | UserDefaults, per-server key (`SessionRowDisplaySettings.showCliSessionsKey(for:)` = `sessionRow.showCliSessions|<server absoluteString>`) | Per-server since #19: the toggle mirrors the server's own `show_cli_sessions` setting (adopted on Settings load, written back via `POST /api/settings`), so an adopted value on one server cannot leak to another. Reads fall back to the pre-#19 global key as a migration seed, then to shown-by-default. Tested in `CliSessionsSyncModelTests`. |
 

@@ -25678,6 +25678,25 @@
         }
       }
     },
+    "Could not save the attachment on this device." : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Anhang konnte auf diesem Gerät nicht gespeichert werden." } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudo guardar el archivo adjunto en este dispositivo." } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible d’enregistrer la pièce jointe sur cet appareil." } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile salvare l’allegato su questo dispositivo." } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Nie udało się zapisać załącznika na tym urządzeniu." } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Não foi possível salvar o anexo neste dispositivo." } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "De bijlage kan niet op dit apparaat worden opgeslagen." } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Ek bu aygıta kaydedilemedi." } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не удалось сохранить вложение на этом устройстве." } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "このデバイスに添付ファイルを保存できませんでした。" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法将附件存储到此设备。" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 기기에 첨부 파일을 저장할 수 없습니다." } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "تعذر حفظ المرفق على هذا الجهاز." } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "לא ניתן לשמור את הקובץ המצורף במכשיר הזה." } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "اس ڈیوائس پر منسلکہ محفوظ نہیں کیا جا سکا۔" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "無法將附件儲存到此裝置。" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "無法將附件儲存到此裝置。" } }
+    } },
     "Could not save memory." : {
       "localizations" : {
         "ar" : {
@@ -112966,6 +112985,768 @@
         "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "更新失敗" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "更新失败" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "更新失敗" } }
+      }
+    },
+    "Couldn't restore %lld saved attachments yet. They're still saved in this draft." : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "تعذّرت استعادة %lld مرفق محفوظ حتى الآن. لا يزال محفوظًا في هذه المسودة."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "تعذّرت استعادة %lld مرفقات محفوظة حتى الآن. لا تزال محفوظة في هذه المسودة."
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld gespeicherter Anhang konnte noch nicht wiederhergestellt werden. Er ist weiterhin in diesem Entwurf gespeichert."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld gespeicherte Anhänge konnten noch nicht wiederhergestellt werden. Sie sind weiterhin in diesem Entwurf gespeichert."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Couldn't restore %lld saved attachment yet. It's still saved in this draft."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Couldn't restore %lld saved attachments yet. They're still saved in this draft."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Aún no se pudo restaurar %lld adjunto guardado. Sigue guardado en este borrador."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Aún no se pudieron restaurar %lld adjuntos guardados. Siguen guardados en este borrador."
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Impossible de restaurer %lld pièce jointe enregistrée pour l'instant. Elle est toujours enregistrée dans ce brouillon."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Impossible de restaurer %lld pièces jointes enregistrées pour l'instant. Elles sont toujours enregistrées dans ce brouillon."
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "עדיין לא ניתן היה לשחזר קובץ מצורף שמור %lld. הוא עדיין שמור בטיוטה הזו."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "עדיין לא ניתן היה לשחזר %lld קבצים מצורפים שמורים. הם עדיין שמורים בטיוטה הזו."
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Non è stato ancora possibile ripristinare %lld allegato salvato. È ancora salvato in questa bozza."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Non è stato ancora possibile ripristinare %lld allegati salvati. Sono ancora salvati in questa bozza."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld件の保存された添付ファイルをまだ復元できません。下書きには引き続き保存されています。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld件の保存された添付ファイルをまだ復元できません。下書きには引き続き保存されています。"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld개의 저장된 첨부 파일을 아직 복원하지 못했어요. 이 초안에는 계속 저장되어 있어요."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld개의 저장된 첨부 파일을 아직 복원하지 못했어요. 이 초안에는 계속 저장되어 있어요."
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Kon %lld opgeslagen bijlage nog niet herstellen. Deze is nog steeds opgeslagen in dit concept."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Kon %lld opgeslagen bijlagen nog niet herstellen. Deze zijn nog steeds opgeslagen in dit concept."
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Nie udało się jeszcze przywrócić %lld zapisanego załącznika. Nadal jest zapisany w tej wersji roboczej."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Nie udało się jeszcze przywrócić %lld zapisanych załączników. Nadal są zapisane w tej wersji roboczej."
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Ainda não foi possível restaurar %lld anexo salvo. Ele ainda está salvo neste rascunho."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Ainda não foi possível restaurar %lld anexos salvos. Eles ainda estão salvos neste rascunho."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Не удалось восстановить %lld сохранённое вложение. Оно всё ещё сохранено в этом черновике."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Не удалось восстановить %lld сохранённых вложения. Они всё ещё сохранены в этом черновике."
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld kaydedilen ek henüz geri yüklenemedi. Yine de bu taslakta kayıtlı."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld kaydedilen ek henüz geri yüklenemedi. Yine de bu taslakta kayıtlı."
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محفوظ شدہ منسلکہ ابھی بحال نہیں ہو سکا۔ یہ اب بھی اس مسودے میں محفوظ ہے۔"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محفوظ شدہ منسلکات ابھی بحال نہیں ہو سکے۔ یہ اب بھی اس مسودے میں محفوظ ہیں۔"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件尚未恢復，仍儲存在此草稿中。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件尚未恢復，仍儲存在此草稿中。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 个已保存的附件尚未恢复，仍保存在此草稿中。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 个已保存的附件尚未恢复，仍保存在此草稿中。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件尚未恢復，仍儲存在此草稿中。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件尚未恢復，仍儲存在此草稿中。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld saved attachments are no longer available and were removed from this draft." : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld مرفق محفوظ لم يعد متاحًا وتمت إزالته من هذه المسودة."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld مرفقات محفوظة لم تعد متاحة وتمت إزالتها من هذه المسودة."
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld gespeicherter Anhang ist nicht mehr verfügbar und wurde aus diesem Entwurf entfernt."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld gespeicherte Anhänge sind nicht mehr verfügbar und wurden aus diesem Entwurf entfernt."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld saved attachment is no longer available and was removed from this draft."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld saved attachments are no longer available and were removed from this draft."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld adjunto guardado ya no está disponible y se eliminó de este borrador."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld adjuntos guardados ya no están disponibles y se eliminaron de este borrador."
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld pièce jointe enregistrée n'est plus disponible et a été supprimée de ce brouillon."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld pièces jointes enregistrées ne sont plus disponibles et ont été supprimées de ce brouillon."
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "קובץ מצורף שמור %lld כבר אינו זמין והוסר מהטיוטה הזו."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld קבצים מצורפים שמורים כבר אינם זמינים והוסרו מהטיוטה הזו."
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld allegato salvato non è più disponibile ed è stato rimosso da questa bozza."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld allegati salvati non sono più disponibili e sono stati rimossi da questa bozza."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld件の保存された添付ファイルは利用できなくなったため、この下書きから削除されました。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld件の保存された添付ファイルは利用できなくなったため、この下書きから削除されました。"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld개의 저장된 첨부 파일을 더 이상 사용할 수 없어 이 초안에서 제거되었어요."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld개의 저장된 첨부 파일을 더 이상 사용할 수 없어 이 초안에서 제거되었어요."
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld opgeslagen bijlage is niet meer beschikbaar en is uit dit concept verwijderd."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld opgeslagen bijlagen zijn niet meer beschikbaar en zijn uit dit concept verwijderd."
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld zapisany załącznik nie jest już dostępny i został usunięty z tej wersji roboczej."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld zapisanych załączników nie jest już dostępnych i zostały usunięte z tej wersji roboczej."
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld anexo salvo não está mais disponível e foi removido deste rascunho."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld anexos salvos não estão mais disponíveis e foram removidos deste rascunho."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld сохранённое вложение больше недоступно и было удалено из этого черновика."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld сохранённых вложения больше недоступны и были удалены из этого черновика."
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld kaydedilen ek artık kullanılamıyor ve bu taslaktan kaldırıldı."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld kaydedilen ek artık kullanılamıyor ve bu taslaktan kaldırıldı."
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محفوظ شدہ منسلکہ اب دستیاب نہیں ہے اور اسے اس مسودے سے ہٹا دیا گیا ہے۔"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محفوظ شدہ منسلکات اب دستیاب نہیں ہیں اور انہیں اس مسودے سے ہٹا دیا گیا ہے۔"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件已無法使用，已從此草稿中移除。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件已無法使用，已從此草稿中移除。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 个已保存的附件已不可用，已从此草稿中移除。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 个已保存的附件已不可用，已从此草稿中移除。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件已無法使用，已從此草稿中移除。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個已儲存的附件已無法使用，已從此草稿中移除。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Some saved attachments couldn't be restored. Check this draft's attachments before sending." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تعذّرت استعادة بعض المرفقات المحفوظة. تحقق من مرفقات هذه المسودة قبل الإرسال."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Einige gespeicherte Anhänge konnten nicht wiederhergestellt werden. Überprüfe die Anhänge dieses Entwurfs vor dem Senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Algunos adjuntos guardados no se pudieron restaurar. Revisa los adjuntos de este borrador antes de enviar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Certaines pièces jointes enregistrées n'ont pas pu être restaurées. Vérifiez les pièces jointes de ce brouillon avant l'envoi."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לא ניתן היה לשחזר חלק מהקבצים המצורפים השמורים. בדוק את הקבצים המצורפים בטיוטה הזו לפני השליחה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Alcuni allegati salvati non sono stati ripristinati. Controlla gli allegati di questa bozza prima di inviare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "一部の保存された添付ファイルを復元できませんでした。送信する前に、この下書きの添付ファイルを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "일부 저장된 첨부 파일을 복원하지 못했어요. 보내기 전에 이 초안의 첨부 파일을 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sommige opgeslagen bijlagen konden niet worden hersteld. Controleer de bijlagen van dit concept voordat u verzendt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Niektórych zapisanych załączników nie udało się przywrócić. Sprawdź załączniki tej wersji roboczej przed wysłaniem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Alguns anexos salvos não puderam ser restaurados. Verifique os anexos deste rascunho antes de enviar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Некоторые сохранённые вложения не удалось восстановить. Проверьте вложения этого черновика перед отправкой."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bazı kaydedilen ekler geri yüklenemedi. Göndermeden önce bu taslağın eklerini kontrol edin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "کچھ محفوظ شدہ منسلکات بحال نہیں ہو سکے۔ بھیجنے سے پہلے اس مسودے کے منسلکات چیک کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "部分已儲存的附件未能恢復。請在傳送前檢查此草稿的附件。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "部分已保存的附件未能恢复。请在发送前检查此草稿的附件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "部分已儲存的附件未能恢復。請在傳送前檢查此草稿的附件。"
+          }
+        }
       }
     }
   },
