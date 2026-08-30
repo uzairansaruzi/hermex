@@ -1305,7 +1305,7 @@ final class ChatViewModel {
             let session = response.session
             let loadedMessages = session?.messages ?? []
             let loadedActiveStreamID = session?.activeStreamId?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let reloadedMessages: [ChatMessage]
+            var reloadedMessages = loadedMessages
             if let modelContext {
                 do {
                     let cachedMessages = try CacheStore.cachedMessages(
@@ -1316,14 +1316,21 @@ final class ChatViewModel {
                     )
                     reloadedMessages = Self.mergingLoadedMessages(
                         loadedMessages,
-                        withCachedLocalOptimisticMessages: cachedMessages
+                        withLocalOptimisticMessages: cachedMessages
                     )
                 } catch {
                     cacheErrorMessage = error.localizedDescription
-                    reloadedMessages = loadedMessages
                 }
-            } else {
-                reloadedMessages = loadedMessages
+            }
+            if streamCoordinator.shouldPreserveLocalOptimisticMessages(
+                for: streamLoadPreparation,
+                loadedActiveStreamID: loadedActiveStreamID
+            ) {
+                reloadedMessages = Self.mergingLoadedMessages(
+                    reloadedMessages,
+                    withLocalOptimisticMessages: previousMessages,
+                    knownMessageIDsBeforeLoad: Set(previousMessages.compactMap(\.messageId))
+                )
             }
             applyCompressionAnchorMetadata(from: session)
             applyReloadedMessages(
@@ -1637,11 +1644,16 @@ final class ChatViewModel {
 
     nonisolated static func mergingLoadedMessages(
         _ loadedMessages: [ChatMessage],
-        withCachedLocalOptimisticMessages cachedMessages: [ChatMessage]
+        withLocalOptimisticMessages candidateMessages: [ChatMessage],
+        knownMessageIDsBeforeLoad: Set<String>? = nil
     ) -> [ChatMessage] {
-        let localUserMessages = cachedMessages.filter { cachedMessage in
-            isLocalOptimisticUserMessage(cachedMessage)
-                && !loadedMessagesContainEquivalentUserMessage(loadedMessages, localMessage: cachedMessage)
+        let localUserMessages = candidateMessages.filter { candidateMessage in
+            isLocalOptimisticUserMessage(candidateMessage)
+                && !loadedMessagesContainEquivalentUserMessage(
+                    loadedMessages,
+                    localMessage: candidateMessage,
+                    knownMessageIDsBeforeLoad: knownMessageIDsBeforeLoad
+                )
         }
 
         guard !localUserMessages.isEmpty else {
@@ -1998,7 +2010,8 @@ final class ChatViewModel {
 
     nonisolated private static func loadedMessagesContainEquivalentUserMessage(
         _ loadedMessages: [ChatMessage],
-        localMessage: ChatMessage
+        localMessage: ChatMessage,
+        knownMessageIDsBeforeLoad: Set<String>?
     ) -> Bool {
         let localContent = normalizedUserMessageContent(localMessage.content)
         let localAttachmentKeys = attachmentKeys(for: localMessage)
@@ -2021,6 +2034,14 @@ final class ChatViewModel {
                 else {
                     return false
                 }
+            }
+
+            if let loadedMessageID = loadedMessage.messageId,
+               let knownMessageIDsBeforeLoad,
+               knownMessageIDsBeforeLoad.contains(loadedMessageID) {
+                // This row already preceded the optimistic turn. Matching text
+                // cannot make it the server-confirmed copy of a repeated prompt.
+                return false
             }
 
             guard let localTimestamp = localMessage.timestamp,
@@ -4150,7 +4171,7 @@ final class ChatViewModel {
             let previousMessagesOffset = messagesOffset
             let reloadedMessages = Self.mergingLoadedMessages(
                 completedMessages,
-                withCachedLocalOptimisticMessages: messages
+                withLocalOptimisticMessages: messages
             )
             applyReloadedMessages(
                 reloadedMessages,

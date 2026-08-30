@@ -28,6 +28,7 @@ struct ChatStreamCoordinatorTiming: Equatable {
 
 struct ChatStreamLoadPreparation: Equatable {
     let activeStreamIDBeforeLoad: String?
+    let runGenerationBeforeLoad: Int
     let shouldPrepareSuspendedStreamResume: Bool
 }
 
@@ -234,8 +235,28 @@ final class ChatStreamCoordinator {
 
         return ChatStreamLoadPreparation(
             activeStreamIDBeforeLoad: activeStreamIDBeforeLoad,
+            runGenerationBeforeLoad: runGeneration,
             shouldPrepareSuspendedStreamResume: activeStreamID == nil || isConnectionSuspended
         )
+    }
+
+    func shouldPreserveLocalOptimisticMessages(
+        for preparation: ChatStreamLoadPreparation,
+        loadedActiveStreamID: String?
+    ) -> Bool {
+        guard let activeStreamIDBeforeLoad = preparation.activeStreamIDBeforeLoad else {
+            return false
+        }
+
+        guard runGeneration == preparation.runGenerationBeforeLoad,
+              activeStreamID == activeStreamIDBeforeLoad
+        else {
+            return false
+        }
+
+        let loadedActiveStreamID = loadedActiveStreamID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return loadedActiveStreamID == activeStreamIDBeforeLoad
     }
 
     func reconcileSessionLoad(

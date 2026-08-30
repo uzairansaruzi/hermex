@@ -3557,6 +3557,471 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testNilContextReconnectPreservesInMemoryOptimisticUserMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-preserve-text"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-preserve-text"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-preserve-text",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Earlier question",
+                        "message_id": "earlier-user"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Earlier answer",
+                        "message_id": "earlier-assistant"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
+            args: "Keep working"
+        )
+        XCTAssertEqual(result, .executed(message: nil))
+        let optimisticID = try XCTUnwrap(viewModel.messages.last?.messageId)
+        XCTAssertTrue(optimisticID.hasPrefix("local-"))
+
+        viewModel.suspendStreamForBackground()
+        await viewModel.reconnectStreamIfNeeded()
+
+        XCTAssertEqual(
+            viewModel.messages.compactMap(\.content),
+            ["Earlier question", "Earlier answer", "Keep working"]
+        )
+        XCTAssertEqual(viewModel.messages.last?.messageId, optimisticID)
+    }
+
+    @MainActor
+    func testLateContextJoinPreservesNilContextReconnectMessageAndCachesIt() async throws {
+        let context = try makeContext()
+        let sessionRequestStarted = expectation(description: "nil-context session reload started")
+        let releaseSessionResponse = DispatchSemaphore(value: 0)
+        let sessionLoadCount = LockedCounter()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-late-context"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-late-context"}"#,
+                    for: request
+                )
+            case "/api/session":
+                if sessionLoadCount.increment() == 1 {
+                    sessionRequestStarted.fulfill()
+                    XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
+                }
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-late-context",
+                    "messages": [
+                      {
+                        "role": "assistant",
+                        "content": "Earlier answer",
+                        "message_id": "earlier-assistant"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
+            args: "Keep working"
+        )
+        XCTAssertEqual(result, .executed(message: nil))
+        let optimisticID = try XCTUnwrap(viewModel.messages.last?.messageId)
+
+        viewModel.suspendStreamForBackground()
+        let nilContextReconnect = Task { @MainActor in
+            await viewModel.reconnectStreamIfNeeded()
+        }
+        defer { releaseSessionResponse.signal() }
+        await fulfillment(of: [sessionRequestStarted], timeout: 2)
+
+        let contextReconnect = Task { @MainActor in
+            await viewModel.reconnectStreamIfNeeded(modelContext: context)
+        }
+        await drainMainActor()
+        releaseSessionResponse.signal()
+        await nilContextReconnect.value
+        await contextReconnect.value
+
+        XCTAssertEqual(sessionLoadCount.count, 2)
+        XCTAssertEqual(viewModel.messages.filter { $0.messageId == optimisticID }.count, 1)
+        XCTAssertEqual(
+            try CacheStore.cachedMessages(
+                serverURL: URL(string: "https://example.test")!,
+                sessionID: "session-abc",
+                in: context
+            ).filter { $0.messageId == optimisticID }.count,
+            1
+        )
+    }
+
+    @MainActor
+    func testNilContextReconnectDoesNotDuplicateServerEquivalentOptimisticMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-dedupe-text"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-dedupe-text"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-dedupe-text",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Keep working",
+                        "message_id": "server-user"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+
+        viewModel.suspendStreamForBackground()
+        await viewModel.reconnectStreamIfNeeded()
+
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "user" }.count, 1)
+        XCTAssertEqual(viewModel.messages.first?.messageId, "server-user")
+    }
+
+    @MainActor
+    func testNilContextReconnectDoesNotMistakeOlderRepeatedPromptForConfirmation() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var sessionLoadCount = 0
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-repeated-prompt"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-repeated-prompt"}"#,
+                    for: request
+                )
+            case "/api/session":
+                sessionLoadCount += 1
+                let activeStreamField = sessionLoadCount == 1
+                    ? ""
+                    : #","active_stream_id":"stream-repeated-prompt""#
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc"\(activeStreamField),
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Repeat",
+                        "message_id": "older-user"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let didStart = await viewModel.sendMessage("Repeat")
+        XCTAssertTrue(didStart)
+
+        viewModel.suspendStreamForBackground()
+        await viewModel.reconnectStreamIfNeeded()
+
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "user" }.count, 2)
+        XCTAssertEqual(viewModel.messages.first?.messageId, "older-user")
+        XCTAssertTrue(viewModel.messages.last?.messageId?.hasPrefix("local-") == true)
+    }
+
+    @MainActor
+    func testInFlightReloadDoesNotCarryOptimisticMessageIntoSuccessorRun() async throws {
+        let sessionRequestStarted = expectation(description: "old-run session reload started")
+        let releaseSessionResponse = DispatchSemaphore(value: 0)
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-old"}"#,
+                    for: request
+                )
+            case "/api/session":
+                sessionRequestStarted.fulfill()
+                XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-new",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Successor message",
+                        "message_id": "successor-server-user"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let oldResult = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
+            args: "Old optimistic message"
+        )
+        XCTAssertEqual(oldResult, .executed(message: nil))
+        let oldOptimisticID = try XCTUnwrap(viewModel.messages.last?.messageId)
+
+        let loadTask = Task { @MainActor in
+            await viewModel.loadMessages()
+        }
+        defer { releaseSessionResponse.signal() }
+        await fulfillment(of: [sessionRequestStarted], timeout: 2)
+
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+
+        releaseSessionResponse.signal()
+        await loadTask.value
+
+        XCTAssertEqual(viewModel.activeStreamID, "stream-new")
+        XCTAssertFalse(viewModel.messages.contains { $0.messageId == oldOptimisticID })
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "user" }.map(\.messageId), ["successor-server-user"])
+    }
+
+    @MainActor
+    func testOrdinaryInactiveReloadDoesNotResurrectObsoleteOptimisticMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-finished"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Server transcript",
+                        "message_id": "server-user"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
+            args: "Obsolete optimistic message"
+        )
+        XCTAssertEqual(result, .executed(message: nil))
+        let obsoleteOptimisticID = try XCTUnwrap(viewModel.messages.last?.messageId)
+
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+        await viewModel.loadMessages()
+
+        XCTAssertFalse(viewModel.messages.contains { $0.messageId == obsoleteOptimisticID })
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "user" }.map(\.messageId), ["server-user"])
+    }
+
+    @MainActor
+    func testNilContextReconnectPreservesInMemoryOptimisticAttachmentMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/upload":
+                return apiTestJSONResponse("""
+                {
+                  "filename": "photo.png",
+                  "path": "/tmp/workspace/photo.png",
+                  "size": 4,
+                  "mime": "image/png",
+                  "is_image": true
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-preserve-attachment"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-preserve-attachment"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-preserve-attachment",
+                    "messages": [
+                      {
+                        "role": "assistant",
+                        "content": "Earlier answer",
+                        "message_id": "earlier-assistant"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.uploadAttachment(data: Data("test".utf8), filename: "photo.png")
+        let didStart = await viewModel.sendMessage("Summarize it")
+        XCTAssertTrue(didStart)
+
+        viewModel.suspendStreamForBackground()
+        await viewModel.reconnectStreamIfNeeded()
+
+        let optimisticMessage = try XCTUnwrap(
+            viewModel.messages.first(where: { $0.messageId?.hasPrefix("local-") == true })
+        )
+        XCTAssertEqual(optimisticMessage.content, "Summarize it")
+        XCTAssertEqual(optimisticMessage.attachments?.map(\.path), ["/tmp/workspace/photo.png"])
+    }
+
+    @MainActor
+    func testNilContextReconnectDeduplicatesServerEquivalentAttachmentMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/upload":
+                return apiTestJSONResponse("""
+                {
+                  "filename": "photo.png",
+                  "path": "/tmp/workspace/photo.png",
+                  "size": 4,
+                  "mime": "image/png",
+                  "is_image": true
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-dedupe-attachment"}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(
+                    #"{"active":true,"stream_id":"stream-dedupe-attachment"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-dedupe-attachment",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Summarize it\\n\\n[Attached files: /tmp/workspace/photo.png]",
+                        "message_id": "server-attachment-user"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.uploadAttachment(data: Data("test".utf8), filename: "photo.png")
+        let didStart = await viewModel.sendMessage("Summarize it")
+        XCTAssertTrue(didStart)
+
+        viewModel.suspendStreamForBackground()
+        await viewModel.reconnectStreamIfNeeded()
+
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "user" }.count, 1)
+        XCTAssertEqual(viewModel.messages.first?.messageId, "server-attachment-user")
+        XCTAssertEqual(viewModel.messages.first?.attachments?.map(\.identityKey), ["photo.png"])
+    }
+
+    @MainActor
     func testReloadDoesNotDuplicateCachedOptimisticAttachmentMessageWhenServerReturnsIt() async throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!

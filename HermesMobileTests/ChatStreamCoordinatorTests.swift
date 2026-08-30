@@ -37,6 +37,50 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testSessionLoadPreparationBelongsOnlyToCapturedStreamRun() {
+        let coordinator = makeCoordinator()
+
+        coordinator.start(streamID: "stream-old")
+        let preparation = coordinator.prepareForSessionLoad()
+
+        XCTAssertTrue(coordinator.shouldPreserveLocalOptimisticMessages(
+            for: preparation,
+            loadedActiveStreamID: "stream-old"
+        ))
+        XCTAssertFalse(coordinator.shouldPreserveLocalOptimisticMessages(
+            for: preparation,
+            loadedActiveStreamID: nil
+        ))
+        XCTAssertFalse(coordinator.shouldPreserveLocalOptimisticMessages(
+            for: preparation,
+            loadedActiveStreamID: "stream-new"
+        ))
+
+        coordinator.start(streamID: "stream-new")
+
+        XCTAssertFalse(coordinator.shouldPreserveLocalOptimisticMessages(
+            for: preparation,
+            loadedActiveStreamID: "stream-old"
+        ))
+    }
+
+    @MainActor
+    func testSessionLoadPreparationExpiresWhenCapturedRunFinishes() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient)
+
+        coordinator.start(streamID: "stream-123")
+        let preparation = coordinator.prepareForSessionLoad()
+
+        streamClient.emit(.streamEnd)
+
+        XCTAssertFalse(coordinator.shouldPreserveLocalOptimisticMessages(
+            for: preparation,
+            loadedActiveStreamID: "stream-123"
+        ))
+    }
+
+    @MainActor
     func testSuspendSavesLastEventStopsStreamAndMarksLiveActivityStale() throws {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
