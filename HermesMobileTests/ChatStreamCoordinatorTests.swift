@@ -161,6 +161,51 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testJoiningReconnectRepeatsInFlightNilContextLoadWithModelContext() async throws {
+        let firstLoadSuspended = expectation(description: "nil-context transcript load suspended")
+        let joiningReconnectStarted = expectation(description: "joining reconnect request started")
+        var releaseFirstLoad: CheckedContinuation<Void, Never>?
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            _ = statusRequestCount.increment()
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+        delegate.onLoadMessages = {
+            guard delegate.loadMessagesCount == 1 else { return }
+            await withCheckedContinuation { continuation in
+                releaseFirstLoad = continuation
+                firstLoadSuspended.fulfill()
+            }
+        }
+        let modelContext = try makeModelContext()
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+        let firstReconnect = Task { @MainActor in
+            await coordinator.reconnectIfNeeded()
+        }
+        await fulfillment(of: [firstLoadSuspended], timeout: 1)
+
+        let joiningReconnect = Task { @MainActor in
+            joiningReconnectStarted.fulfill()
+            await coordinator.reconnectIfNeeded(modelContext: modelContext)
+        }
+        await fulfillment(of: [joiningReconnectStarted], timeout: 1)
+
+        let continuation = try XCTUnwrap(releaseFirstLoad)
+        releaseFirstLoad = nil
+        continuation.resume()
+        await firstReconnect.value
+        await joiningReconnect.value
+
+        XCTAssertEqual(statusRequestCount.value, 1)
+        XCTAssertEqual(delegate.loadMessageReceivedModelContextValues, [false, true])
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+    }
+
+    @MainActor
     func testForegroundReconnectStartsNewRecoveryAfterStreamReplacement() async {
         let firstStatusStarted = expectation(description: "first stream status request started")
         let secondStatusStarted = expectation(description: "second stream status request started")

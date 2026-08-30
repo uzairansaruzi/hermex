@@ -873,14 +873,24 @@ final class ChatStreamCoordinator {
     }
 
     private func loadMessagesForReconnect(reconnectTaskID: UUID) async -> Bool {
-        guard reconnectTask?.id == reconnectTaskID else { return false }
-        reconnectTranscriptLoadTaskID = reconnectTaskID
-        await delegate?.streamCoordinatorLoadMessages(modelContext: recoveryModelContext(for: reconnectTaskID))
-        let completedLoad = reconnectTranscriptLoadTaskID == reconnectTaskID
-        if completedLoad {
+        while reconnectTask?.id == reconnectTaskID {
+            let modelContext = recoveryModelContext(for: reconnectTaskID)
+            reconnectTranscriptLoadTaskID = reconnectTaskID
+            await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
+            guard reconnectTranscriptLoadTaskID == reconnectTaskID else { return false }
+
+            // The transport-error path can begin recovery without persistence
+            // access. If a foreground caller supplied it while that nil-context
+            // load was in flight, repeat the shared load once so optimistic
+            // messages and the cache participate in reconciliation.
+            if modelContext == nil, recoveryModelContext(for: reconnectTaskID) != nil {
+                continue
+            }
+
             reconnectTranscriptLoadTaskID = nil
+            return true
         }
-        return completedLoad
+        return false
     }
 
     private func reconnectTaskIsCurrent(
