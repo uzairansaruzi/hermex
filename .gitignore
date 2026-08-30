@@ -25,6 +25,7 @@ Config/Local.xcconfig
 # Local reference material
 UPDATES.md
 .obsidian/
+docs/research/
 
 # Local agent tooling (per-machine caches, skills, session state)
 node_modules/
