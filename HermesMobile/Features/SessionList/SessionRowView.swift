@@ -176,23 +176,37 @@ struct SessionRowView: View {
     @ViewBuilder
     private var supplementalArea: some View {
         if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 4) {
-                if showsStateBadges {
-                    stateBadgesRow
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !visibleStateBadges.isEmpty {
+                        stateBadgesRow
+                    }
+
+                    if let metadataLabel {
+                        metadataText(metadataLabel)
+                    }
                 }
 
-                if let metadataLabel {
-                    metadataText(metadataLabel)
+                Spacer(minLength: 8)
+
+                if let sourceLabel = session.sourceDisplayLabel {
+                    SessionSourceBadge(label: sourceLabel)
                 }
             }
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                if showsStateBadges {
+                if !visibleStateBadges.isEmpty {
                     stateBadgesRow
                 }
 
                 if let metadataLabel {
                     metadataText(metadataLabel)
+                }
+
+                Spacer(minLength: 8)
+
+                if let sourceLabel = session.sourceDisplayLabel {
+                    SessionSourceBadge(label: sourceLabel)
                 }
             }
         }
@@ -200,10 +214,6 @@ struct SessionRowView: View {
 
     private var stateBadgesRow: some View {
         HStack(spacing: 5) {
-            if let sourceLabel = session.sourceDisplayLabel {
-                SessionSourceBadge(label: sourceLabel)
-            }
-
             ForEach(visibleStateBadges) { badge in
                 SessionRowStateBadge(badge: badge)
             }
