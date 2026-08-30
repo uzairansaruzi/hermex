@@ -2297,6 +2297,11 @@ final class SessionListMutationTests: XCTestCase {
                   "sessions": [{
                     "session_id": "telegram-1",
                     "title": "Support chat",
+                    "pinned": true,
+                    "project_id": "support",
+                    "last_message_at": 1770000123,
+                    "active_stream_id": "stream-live",
+                    "is_streaming": true,
                     "is_cli_session": true,
                     "raw_source": "telegram",
                     "session_source": "messaging",
@@ -2335,12 +2340,22 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(opened?.sessionId, "telegram-1")
         XCTAssertEqual(opened?.sourceDisplayLabel, "Telegram")
         XCTAssertEqual(opened?.readOnly, false)
+        XCTAssertEqual(opened?.pinned, true)
+        XCTAssertEqual(opened?.projectId, "support")
+        XCTAssertEqual(opened?.lastMessageAt, 1_770_000_123)
+        XCTAssertEqual(opened?.activeStreamId, "stream-live")
+        XCTAssertEqual(opened?.isStreaming, true)
         XCTAssertEqual(viewModel.sessions.first, opened)
         let cached = try XCTUnwrap(
             CacheStore.cachedSessions(serverURL: URL(string: "https://example.test")!, in: context).first
         )
         XCTAssertEqual(cached.sourceDisplayLabel, "Telegram")
         XCTAssertEqual(cached.readOnly, false)
+        XCTAssertEqual(cached.pinned, true)
+        XCTAssertEqual(cached.projectId, "support")
+        XCTAssertEqual(cached.lastMessageAt, 1_770_000_123)
+        XCTAssertEqual(cached.activeStreamId, "stream-live")
+        XCTAssertEqual(cached.isStreaming, true)
     }
 
     @MainActor

@@ -502,7 +502,7 @@ final class SessionListViewModel {
                 return nil
             }
 
-            let importedSession = SessionSummary(from: detail)
+            let importedSession = session.mergingImportedDetail(detail)
             guard importedSession.sessionId == sessionID else {
                 actionErrorMessage = String(localized: "The server did not return the linked session.")
                 return nil

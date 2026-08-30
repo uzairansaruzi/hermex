@@ -410,6 +410,46 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         matchType = nil
     }
 
+    /// Applies the import response without dropping list metadata that the
+    /// detail endpoint does not consistently return.
+    func mergingImportedDetail(_ detail: SessionDetail) -> SessionSummary {
+        let imported = SessionSummary(from: detail)
+        return SessionSummary(
+            sessionId: imported.sessionId ?? sessionId,
+            title: imported.title ?? title,
+            workspace: imported.workspace ?? workspace,
+            model: imported.model ?? model,
+            modelProvider: imported.modelProvider ?? modelProvider,
+            messageCount: imported.messageCount ?? messageCount,
+            createdAt: imported.createdAt ?? createdAt,
+            updatedAt: imported.updatedAt ?? updatedAt,
+            lastMessageAt: imported.lastMessageAt ?? lastMessageAt,
+            pinned: imported.pinned ?? pinned,
+            archived: imported.archived ?? archived,
+            projectId: imported.projectId ?? projectId,
+            profile: imported.profile ?? profile,
+            inputTokens: imported.inputTokens ?? inputTokens,
+            outputTokens: imported.outputTokens ?? outputTokens,
+            estimatedCost: imported.estimatedCost ?? estimatedCost,
+            activeStreamId: imported.activeStreamId ?? activeStreamId,
+            isStreaming: imported.isStreaming ?? isStreaming,
+            isCliSession: imported.isCliSession ?? isCliSession,
+            userMessageCount: imported.userMessageCount ?? userMessageCount,
+            hasPendingUserMessage: imported.hasPendingUserMessage ?? hasPendingUserMessage,
+            pendingStartedAt: imported.pendingStartedAt ?? pendingStartedAt,
+            worktreePath: imported.worktreePath ?? worktreePath,
+            sourceTag: imported.sourceTag ?? sourceTag,
+            rawSource: imported.rawSource ?? rawSource,
+            sessionSource: imported.sessionSource ?? sessionSource,
+            sourceLabel: imported.sourceLabel ?? sourceLabel,
+            parentSessionId: imported.parentSessionId ?? parentSessionId,
+            relationshipType: imported.relationshipType ?? relationshipType,
+            readOnly: imported.readOnly ?? readOnly,
+            isReadOnly: imported.isReadOnly ?? isReadOnly,
+            matchType: imported.matchType ?? matchType
+        )
+    }
+
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
     /// Update this when `SessionSummary` gains a new stored property.
     func replacingTitle(with title: String) -> SessionSummary {
