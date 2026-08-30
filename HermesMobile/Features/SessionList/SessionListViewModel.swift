@@ -502,37 +502,89 @@ final class SessionListViewModel {
                 return nil
             }
 
-            let importedSession = session.mergingImportedDetail(detail)
-            guard importedSession.sessionId == sessionID else {
+            guard let importedSession = storeOpenedExternalSession(
+                detail,
+                listedSession: session,
+                expectedSessionID: sessionID,
+                modelContext: modelContext
+            ) else {
                 actionErrorMessage = String(localized: "The server did not return the linked session.")
                 return nil
             }
 
-            if let index = sessions.firstIndex(where: { $0.sessionId == sessionID }) {
-                sessions[index] = importedSession
-            }
-
-            if let modelContext, importedSession.shouldAppearInSessionList {
-                do {
-                    try CacheStore.cacheSession(importedSession, serverURL: server, in: modelContext)
-                } catch {
-                    cacheErrorMessage = error.localizedDescription
-                }
-            }
-
             return importedSession
-        } catch {
+        } catch let importError {
             guard !Task.isCancelled,
                   generation == sessionOpenGeneration,
-                  !isCancellationError(error)
+                  !isCancellationError(importError)
             else {
                 return nil
             }
 
-            lastError = error
-            actionErrorMessage = (error as? APIError)?.serverMessage ?? error.localizedDescription
-            return nil
+            // WebUI treats import as a refresh: if it fails, an already imported
+            // session may still be available through the canonical detail route.
+            do {
+                let response = try await client.session(
+                    id: sessionID,
+                    includeMessages: false,
+                    messageLimit: nil
+                )
+                guard !Task.isCancelled, generation == sessionOpenGeneration else { return nil }
+                guard let detail = response.session,
+                      let existingSession = storeOpenedExternalSession(
+                          detail,
+                          listedSession: session,
+                          expectedSessionID: sessionID,
+                          modelContext: modelContext
+                      )
+                else {
+                    recordSessionImportFailure(importError)
+                    return nil
+                }
+
+                return existingSession
+            } catch {
+                guard !Task.isCancelled,
+                      generation == sessionOpenGeneration,
+                      !isCancellationError(error)
+                else {
+                    return nil
+                }
+
+                recordSessionImportFailure(importError)
+                return nil
+            }
         }
+    }
+
+    private func storeOpenedExternalSession(
+        _ detail: SessionDetail,
+        listedSession: SessionSummary,
+        expectedSessionID: String,
+        modelContext: ModelContext?
+    ) -> SessionSummary? {
+        let currentSession = sessions.first(where: { $0.sessionId == expectedSessionID }) ?? listedSession
+        let resolvedSession = currentSession.mergingImportedDetail(detail)
+        guard resolvedSession.sessionId == expectedSessionID else { return nil }
+
+        if let index = sessions.firstIndex(where: { $0.sessionId == expectedSessionID }) {
+            sessions[index] = resolvedSession
+        }
+
+        if let modelContext, resolvedSession.shouldAppearInSessionList {
+            do {
+                try CacheStore.cacheSession(resolvedSession, serverURL: server, in: modelContext)
+            } catch {
+                cacheErrorMessage = error.localizedDescription
+            }
+        }
+
+        return resolvedSession
+    }
+
+    private func recordSessionImportFailure(_ error: Error) {
+        lastError = error
+        actionErrorMessage = (error as? APIError)?.serverMessage ?? error.localizedDescription
     }
 
     func invalidateSessionOpening() {
