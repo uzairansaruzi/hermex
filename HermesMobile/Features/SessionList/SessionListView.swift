@@ -27,6 +27,8 @@ struct SessionListView: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingProjectCreation: SessionSummary?
+    @State private var sessionOpenErrorMessage: String?
+    @State private var sessionOpenTask: Task<Void, Never>?
     @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
     @State private var isPresentingAddServer = false
@@ -146,6 +148,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.height(180), .medium])
             }
+            .alert("Session Action Failed", isPresented: sessionOpenErrorIsPresented) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(sessionOpenErrorMessage ?? "")
+            }
             .sheet(item: $sessionPendingProjectCreation) { session in
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
@@ -248,6 +255,10 @@ struct SessionListView: View {
                 openPendingSharedImportIfNeeded()
                 openRequestedNewChatIfNeeded()
                 refreshAfterReturningIfNeeded()
+            }
+            .onDisappear {
+                sessionOpenTask?.cancel()
+                viewModel.invalidateSessionOpening()
             }
             .onChange(of: pendingSharedImport) {
                 openPendingSharedImportIfNeeded()
@@ -470,9 +481,7 @@ struct SessionListView: View {
                     selectedProjectID: $selectedProjectID,
                     projectPendingDeletion: $projectPendingDeletion,
                     projectPendingRename: $projectPendingRename,
-                    openDestination: { destination in
-                        navigationState.select(destination)
-                    },
+                    openDestination: selectDestination,
                     switchActiveProfile: { profile in
                         Task { await switchActiveProfile(profile) }
                     },
@@ -495,7 +504,7 @@ struct SessionListView: View {
                         : nil,
                     userIsExpanded: $scheduledSessionsAreExpanded,
                     actions: sessionRowActions,
-                    viewAll: { navigationState.select(.scheduled) }
+                    viewAll: { selectDestination(.scheduled) }
                 )
             }
 
@@ -636,7 +645,7 @@ struct SessionListView: View {
             if searchChromeIsExpanded {
                 closeSearch()
             } else {
-                navigationState.select(.settings(nil))
+                selectDestination(.settings(nil))
             }
         } label: {
             ZStack {
@@ -683,7 +692,7 @@ struct SessionListView: View {
                         authManager.switchActiveServer(to: account)
                     },
                     addServer: { isPresentingAddServer = true },
-                    manageServers: { navigationState.select(.settings(.servers)) }
+                    manageServers: { selectDestination(.settings(.servers)) }
                 )
             }
         }
@@ -773,7 +782,7 @@ struct SessionListView: View {
 
     private var archivedEntryRow: some View {
         HapticButton {
-            navigationState.select(.archived)
+            selectDestination(.archived)
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "archivebox")
@@ -933,7 +942,7 @@ struct SessionListView: View {
                 Task { await refreshSessionsAndActiveProfile() }
             },
             open: { session in
-                selectSession(session)
+                startOpeningSession(session)
             },
             togglePinned: { session in
                 Task { await togglePinned(session) }
@@ -1203,7 +1212,7 @@ struct SessionListView: View {
             return
         }
 
-        navigationState.select(
+        selectDestination(
             PendingNewChatRoute(
                 initialDraft: draft,
                 initialAttachments: sharedImport.attachments
@@ -1253,7 +1262,7 @@ struct SessionListView: View {
     private func openRequestedNewChatIfNeeded() {
         guard let request = requestedNewChat else { return }
         requestedNewChat = nil
-        navigationState.select(
+        selectDestination(
             PendingNewChatRoute(
                 autoStartsVoiceInput: request.autoStartsVoiceInput,
                 profileName: request.profileName
@@ -1262,12 +1271,54 @@ struct SessionListView: View {
     }
 
     private func openNewChat() {
-        navigationState.select(PendingNewChatRoute())
+        selectDestination(PendingNewChatRoute())
     }
 
     private func selectSession(_ session: SessionSummary) {
-        navigationState.select(session)
+        selectDestination(session)
         persistLastSelectedSession()
+    }
+
+    private func selectDestination(_ session: SessionSummary) {
+        viewModel.invalidateSessionOpening()
+        navigationState.select(session)
+    }
+
+    private func selectDestination(_ route: PendingNewChatRoute) {
+        viewModel.invalidateSessionOpening()
+        navigationState.select(route)
+    }
+
+    private func selectDestination(_ utility: SessionListUtilityDestination) {
+        viewModel.invalidateSessionOpening()
+        navigationState.select(utility)
+    }
+
+    private func startOpeningSession(_ session: SessionSummary) {
+        sessionOpenTask?.cancel()
+        sessionOpenTask = Task { await openSession(session) }
+    }
+
+    private func openSession(_ session: SessionSummary) async {
+        let sessionToOpen = await viewModel.sessionForOpening(session, modelContext: modelContext)
+        guard !Task.isCancelled else { return }
+
+        if let message = viewModel.actionErrorMessage {
+            sessionOpenErrorMessage = message
+        }
+
+        if let sessionToOpen {
+            selectSession(sessionToOpen)
+        }
+    }
+
+    private var sessionOpenErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { sessionOpenErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { sessionOpenErrorMessage = nil }
+            }
+        )
     }
 
     private func rememberCreatedSession(_ session: SessionSummary) {

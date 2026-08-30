@@ -150,6 +150,33 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(cached.filter(hidden.shows).compactMap(\.sessionId), ["ordinary-cli"])
     }
 
+    func testCachedSessionsPreserveExternalSourceLabelAndImportClassification() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let session = SessionSummary(
+            sessionId: "telegram",
+            title: "Support chat",
+            archived: false,
+            isCliSession: true,
+            rawSource: "telegram",
+            sessionSource: "messaging",
+            sourceLabel: "Telegram"
+        )
+
+        try CacheStore.cacheSession(session, serverURL: serverURL, in: context, cachedAt: cachedAt)
+
+        let cached = try XCTUnwrap(
+            CacheStore.cachedSessions(
+                serverURL: serverURL,
+                in: context,
+                now: cachedAt.addingTimeInterval(60)
+            ).first
+        )
+        XCTAssertTrue(cached.requiresExternalImport)
+        XCTAssertEqual(cached.sourceDisplayLabel, "Telegram")
+    }
+
     func testCacheMessagesWritesLoadedWindowAndRemovesStaleMessages() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!

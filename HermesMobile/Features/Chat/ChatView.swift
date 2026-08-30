@@ -399,7 +399,7 @@ struct ChatView: View {
             isCompressingSession: viewModel.isCompressingSession,
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
-            isOfflineReadOnly: viewModel.isViewingCachedData,
+            readOnlyMessage: composerReadOnlyMessage,
             isChromeCompact: isComposerChromeCompact,
             errorMessage: viewModel.sendErrorMessage,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage,
@@ -541,6 +541,26 @@ struct ChatView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         )
+    }
+
+    private var composerReadOnlyMessage: String? {
+        Self.composerReadOnlyMessage(
+            for: session,
+            isViewingCachedData: viewModel.isViewingCachedData
+        )
+    }
+
+    static func composerReadOnlyMessage(
+        for session: SessionSummary,
+        isViewingCachedData: Bool
+    ) -> String? {
+        if isViewingCachedData {
+            return String(localized: "Reconnect to send messages.")
+        }
+        if session.isSessionReadOnly {
+            return String(localized: "Read-only")
+        }
+        return nil
     }
 
     private func transcriptMediaPreviewView(for item: TranscriptMediaPreviewItem) -> some View {

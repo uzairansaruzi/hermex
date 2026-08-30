@@ -451,6 +451,11 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
 }
 
 extension SessionSummary {
+    private static let messagingSourceMarkers: Set<String> = [
+        "discord", "email", "matrix", "slack", "telegram", "wecom", "wecom_callback", "weixin"
+    ]
+    private static let cliSourceMarkers: Set<String> = ["acp", "cli", "desktop", "tui"]
+
     /// Delegated children are identified only by an explicit source marker.
     /// Parent linkage is shared by ordinary forks and compression continuations,
     /// so it must never classify a row as a subagent on its own.
@@ -474,6 +479,56 @@ extension SessionSummary {
     /// true value preserves that safety for other imported sessions.
     var isSessionReadOnly: Bool {
         isDelegatedSubagentSession || readOnly == true || isReadOnly == true
+    }
+
+    /// External sessions need the same import step hermes-webui performs before
+    /// opening them. An explicit WebUI source wins over stale CLI flags left on
+    /// an already-imported sidecar.
+    var requiresExternalImport: Bool {
+        if Self.normalizedSourceMarker(sessionSource) == "webui" { return false }
+        if Self.normalizedSourceMarker(sessionSource) == "messaging" { return true }
+
+        let markers = [rawSource, sourceTag, sourceLabel]
+            .compactMap(Self.normalizedSourceMarker)
+        return isCliSession == true
+            || markers.contains(where: Self.messagingSourceMarkers.contains)
+            || markers.contains(where: Self.cliSourceMarkers.contains)
+    }
+
+    /// The source chip shown by hermes-webui, preferring the server's label and
+    /// falling back to stable brand/acronym casing for older servers.
+    var sourceDisplayLabel: String? {
+        guard requiresExternalImport else { return nil }
+
+        if let label = Self.nonEmpty(sourceLabel), label.lowercased() != "webui" {
+            return label
+        }
+
+        let marker = [rawSource, sourceTag, sessionSource]
+            .compactMap(Self.normalizedSourceMarker)
+            .first { $0 != "messaging" && $0 != "webui" }
+
+        switch marker {
+        case "cli": return "CLI"
+        case "tui": return "TUI"
+        case "acp": return "ACP"
+        case "telegram": return "Telegram"
+        case "discord": return "Discord"
+        case "slack": return "Slack"
+        case "email": return "Email"
+        case "matrix": return "Matrix"
+        case "weixin": return "WeChat"
+        case "wecom": return "WeCom"
+        case "wecom_callback": return "WeCom Callback"
+        case "desktop": return "Desktop"
+        case let marker?:
+            return marker
+                .replacingOccurrences(of: "_", with: " ")
+                .replacingOccurrences(of: "-", with: " ")
+                .capitalized
+        case nil:
+            return isCliSession == true ? "CLI" : "Messaging"
+        }
     }
 
     var shouldAppearInSessionList: Bool {

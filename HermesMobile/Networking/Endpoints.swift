@@ -9,6 +9,7 @@ enum Endpoint {
     case sessionsSearch(query: String, content: Bool, depth: Int)
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
     case sessionStatus(id: String)
+    case importCLISession
     case newSession
     case renameSession
     case deleteSession
@@ -146,6 +147,8 @@ enum Endpoint {
             return "/api/session"
         case .sessionStatus:
             return "/api/session/status"
+        case .importCLISession:
+            return "/api/session/import_cli"
         case .newSession:
             return "/api/session/new"
         case .renameSession:

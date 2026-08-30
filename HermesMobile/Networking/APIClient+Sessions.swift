@@ -49,6 +49,16 @@ extension APIClient {
         try await send(endpoint: .sessionStatus(id: id), method: "GET")
     }
 
+    /// Imports a CLI or messaging session into the WebUI-owned session store.
+    /// The returned session is authoritative for whether continuation is safe.
+    func importExternalSession(id: String) async throws -> SessionResponse {
+        try await send(
+            endpoint: .importCLISession,
+            method: "POST",
+            body: SessionIDRequest(sessionId: id)
+        )
+    }
+
     func createSession(workspace: String?, model: String?, modelProvider: String?, profile: String?) async throws -> SessionResponse {
         try await send(
             endpoint: .newSession,

@@ -81,6 +81,7 @@ final class SessionListViewModel {
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
     private var activeRemoteSearchQuery: String?
+    private var sessionOpenGeneration = 0
 
     private let client: APIClient
     private let sessionMutator: SessionMutator
@@ -470,6 +471,72 @@ final class SessionListViewModel {
             actionErrorMessage = error.localizedDescription
             return nil
         }
+    }
+
+    /// Imports external sessions before navigation, matching hermes-webui's
+    /// `_openSidebarSession`. A newer tap invalidates any older response so a
+    /// slow import cannot replace the user's current destination.
+    func sessionForOpening(
+        _ session: SessionSummary,
+        modelContext: ModelContext? = nil
+    ) async -> SessionSummary? {
+        sessionOpenGeneration &+= 1
+        let generation = sessionOpenGeneration
+        actionErrorMessage = nil
+        lastError = nil
+
+        guard !isViewingCachedData, session.requiresExternalImport else {
+            return session
+        }
+
+        guard let sessionID = Self.nonEmpty(session.sessionId) else {
+            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            return nil
+        }
+
+        do {
+            let response = try await client.importExternalSession(id: sessionID)
+            guard !Task.isCancelled, generation == sessionOpenGeneration else { return nil }
+            guard let detail = response.session else {
+                actionErrorMessage = String(localized: "The server did not return the linked session.")
+                return nil
+            }
+
+            let importedSession = SessionSummary(from: detail)
+            guard importedSession.sessionId == sessionID else {
+                actionErrorMessage = String(localized: "The server did not return the linked session.")
+                return nil
+            }
+
+            if let index = sessions.firstIndex(where: { $0.sessionId == sessionID }) {
+                sessions[index] = importedSession
+            }
+
+            if let modelContext, importedSession.shouldAppearInSessionList {
+                do {
+                    try CacheStore.cacheSession(importedSession, serverURL: server, in: modelContext)
+                } catch {
+                    cacheErrorMessage = error.localizedDescription
+                }
+            }
+
+            return importedSession
+        } catch {
+            guard !Task.isCancelled,
+                  generation == sessionOpenGeneration,
+                  !isCancellationError(error)
+            else {
+                return nil
+            }
+
+            lastError = error
+            actionErrorMessage = (error as? APIError)?.serverMessage ?? error.localizedDescription
+            return nil
+        }
+    }
+
+    func invalidateSessionOpening() {
+        sessionOpenGeneration &+= 1
     }
 
     func setPinned(

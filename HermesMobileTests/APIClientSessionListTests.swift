@@ -7,6 +7,39 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientSessionListTests: APIClientTestCase {
+    func testImportExternalSessionPostsSessionIDAndDecodesSourceMetadata() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/session/import_cli")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+
+            let body = try XCTUnwrap(apiTestBodyData(from: request))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+            XCTAssertEqual(json, ["session_id": "telegram-1"])
+
+            return apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "telegram-1",
+                "title": "Support chat",
+                "is_cli_session": true,
+                "raw_source": "telegram",
+                "session_source": "messaging",
+                "source_label": "Telegram",
+                "read_only": false
+              },
+              "imported": true
+            }
+            """, for: request)
+        }
+
+        let response = try await client.importExternalSession(id: "telegram-1")
+
+        XCTAssertEqual(response.session?.sessionId, "telegram-1")
+        XCTAssertEqual(response.session?.sourceLabel, "Telegram")
+        XCTAssertEqual(response.session?.readOnly, false)
+    }
+
     func testSessionsDecodesSnakeCaseResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/sessions")

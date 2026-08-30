@@ -71,7 +71,7 @@ struct MessageComposerView: View {
     let isCompressingSession: Bool
     let isWaitingForStream: Bool
     let isCancellingStream: Bool
-    let isOfflineReadOnly: Bool
+    let readOnlyMessage: String?
     let isChromeCompact: Bool
     let errorMessage: String?
     let configurationErrorMessage: String?
@@ -147,6 +147,7 @@ struct MessageComposerView: View {
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
+
     @State private var deferredUploadFocusPhase: DeferredUploadFocusPhase = .none
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
@@ -158,6 +159,10 @@ struct MessageComposerView: View {
     @State private var didAutoStartVoiceInput = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
+
+    private var isReadOnly: Bool {
+        readOnlyMessage != nil
+    }
 
     private enum DeferredUploadFocusPhase: Equatable {
         case none
@@ -311,7 +316,7 @@ struct MessageComposerView: View {
                         isFocused: $isFocused,
                         inputHeight: $textInputHeight,
                         measuredHeight: $textFieldHeight,
-                        isDisabled: isOfflineReadOnly,
+                        isDisabled: isReadOnly,
                         isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
                         verticalPadding: textFieldVerticalPadding,
                         onKeyboardSend: actionButtonTapped,
@@ -447,7 +452,7 @@ struct MessageComposerView: View {
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
                 suggestions: workspaceSuggestions,
-                managementServer: isOfflineReadOnly ? nil : workspaceManagementServer,
+                managementServer: isReadOnly ? nil : workspaceManagementServer,
                 onLoadSuggestions: onLoadWorkspaceSuggestions,
                 onSelect: { path in
                     optimisticWorkspacePath = path
@@ -714,7 +719,7 @@ struct MessageComposerView: View {
                 branches: gitViewModel.branches,
                 isLoading: gitViewModel.isLoadingBranches,
                 isSwitching: gitViewModel.isSwitchingBranch,
-                isDisabled: isOfflineReadOnly || isWaitingForStream,
+                isDisabled: isReadOnly || isWaitingForStream,
                 onSelect: onSelectGitBranch,
                 onCreate: onCreateGitBranch,
                 onRefresh: onRefreshGitBranches
@@ -831,8 +836,8 @@ struct MessageComposerView: View {
     }
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool)? {
-        if isOfflineReadOnly {
-            return (String(localized: "Reconnect to send messages."), false, false)
+        if let readOnlyMessage {
+            return (readOnlyMessage, false, false)
         } else if isWaitingForStream && isCancellingStream {
             return (String(localized: "Stopping response..."), false, false)
         } else if isCompressingSession {
@@ -931,7 +936,7 @@ struct MessageComposerView: View {
     }
 
     private var isConfigurationControlDisabled: Bool {
-        isOfflineReadOnly || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
+        isReadOnly || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
     }
 
     private var isVoiceInputDisabled: Bool {
@@ -939,7 +944,7 @@ struct MessageComposerView: View {
             return false
         }
 
-        return isOfflineReadOnly
+        return isReadOnly
             || isSending
             || isCompressingSession
             || isWaitingForStream
@@ -952,7 +957,7 @@ struct MessageComposerView: View {
     /// Recording mid-stream is fine (it queues like any send), so unlike dictation
     /// this does not block on `isWaitingForStream`.
     private var isVoiceNoteRecordingDisabled: Bool {
-        isOfflineReadOnly
+        isReadOnly
             || isSending
             || isSendingVoiceNote
             || isCompressingSession
@@ -1019,7 +1024,7 @@ struct MessageComposerView: View {
     }
 
     private var isActionButtonDisabled: Bool {
-        if isOfflineReadOnly {
+        if isReadOnly {
             return true
         }
 
@@ -1106,7 +1111,7 @@ struct MessageComposerView: View {
     }
 
     private var canFocusTextView: Bool {
-        !isOfflineReadOnly && !isUploadingAttachment && uploadAttachmentErrorMessage == nil
+        !isReadOnly && !isUploadingAttachment && uploadAttachmentErrorMessage == nil
     }
 
     private func prepareForComposerPresentation() {

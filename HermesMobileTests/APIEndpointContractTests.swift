@@ -56,6 +56,7 @@ final class ContractReadinessTests: XCTestCase {
                 path: "/api/session/status",
                 query: ["session_id": "session-123"]
             ),
+            .init(name: "import external session", method: "POST", endpoint: .importCLISession, path: "/api/session/import_cli"),
             .init(name: "new session", method: "POST", endpoint: .newSession, path: "/api/session/new"),
             .init(name: "rename session", method: "POST", endpoint: .renameSession, path: "/api/session/rename"),
             .init(name: "delete session", method: "POST", endpoint: .deleteSession, path: "/api/session/delete"),

@@ -101,6 +101,80 @@ final class SessionIdentityTests: XCTestCase {
         )
     }
 
+    func testExternalSessionSourceLabelsPreferServerValueAndUseStableFallbacks() {
+        let serverLabeled = SessionSummary(
+            sessionId: "telegram",
+            isCliSession: true,
+            rawSource: "telegram",
+            sessionSource: "messaging",
+            sourceLabel: "Telegram Business"
+        )
+        let legacyTelegram = SessionSummary(
+            sessionId: "legacy-telegram",
+            rawSource: "telegram",
+            sessionSource: "messaging"
+        )
+        let legacyCLI = SessionSummary(sessionId: "cli", sourceTag: "cli")
+
+        XCTAssertTrue(serverLabeled.requiresExternalImport)
+        XCTAssertEqual(serverLabeled.sourceDisplayLabel, "Telegram Business")
+        XCTAssertTrue(legacyTelegram.requiresExternalImport)
+        XCTAssertEqual(legacyTelegram.sourceDisplayLabel, "Telegram")
+        XCTAssertTrue(legacyCLI.requiresExternalImport)
+        XCTAssertEqual(legacyCLI.sourceDisplayLabel, "CLI")
+    }
+
+    func testWebUISourceOverridesStaleCLIFlag() {
+        let imported = SessionSummary(
+            sessionId: "imported",
+            isCliSession: true,
+            rawSource: "telegram",
+            sessionSource: "webui",
+            sourceLabel: "WebUI"
+        )
+
+        XCTAssertFalse(imported.requiresExternalImport)
+        XCTAssertNil(imported.sourceDisplayLabel)
+    }
+
+    func testSessionRowAccessibilityIncludesSourceAndReadOnlyState() {
+        let session = SessionSummary(
+            sessionId: "telegram",
+            isCliSession: true,
+            rawSource: "telegram",
+            sourceLabel: "Telegram",
+            readOnly: true
+        )
+
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(for: session, isViewingCachedData: false),
+            ["Telegram", "Read-only"]
+        )
+    }
+
+    func testChatComposerReadOnlyMessageUsesServerAndOfflineState() {
+        XCTAssertEqual(
+            ChatView.composerReadOnlyMessage(
+                for: SessionSummary(sessionId: "read-only", readOnly: true),
+                isViewingCachedData: false
+            ),
+            "Read-only"
+        )
+        XCTAssertEqual(
+            ChatView.composerReadOnlyMessage(
+                for: SessionSummary(sessionId: "offline"),
+                isViewingCachedData: true
+            ),
+            "Reconnect to send messages."
+        )
+        XCTAssertNil(
+            ChatView.composerReadOnlyMessage(
+                for: SessionSummary(sessionId: "writable"),
+                isViewingCachedData: false
+            )
+        )
+    }
+
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
