@@ -7,7 +7,7 @@ Security sections per release.
 
 ## [Unreleased]
 
-## [1.5.0] - TBA
+## [1.5.0] - 2026-08-04
 
 ### Added
 - Kanban boards: browse cards by status column, view card detail with comments
