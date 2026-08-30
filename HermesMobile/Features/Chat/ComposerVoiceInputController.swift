@@ -34,7 +34,6 @@ final class ComposerVoiceInputController {
     private var activatedAudioSessionForRecording = false
     private var audioTapInstalled = false
     @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
-    @ObservationIgnored private var serverRecordingTimeoutTask: Task<Void, Never>?
     private var activeTranscriptionID: UUID?
     private let logger = Logger.hermesVoiceInput
 
@@ -261,15 +260,18 @@ final class ComposerVoiceInputController {
 
     // MARK: - Server STT
 
-    private static let maxServerRecordingDuration: UInt64 = 60
-
-    private static let serverRecordingSettings: [String: Any] = [
-        AVFormatIDKey: Int(kAudioFormatLinearPCM),
-        AVSampleRateKey: 16_000.0,
+    // Mono AAC at a speech bitrate keeps long recordings far below the server's
+    // upload ceiling (~14 MB/hour against a 20 MB default), so recording runs
+    // until the user stops it rather than being cut off by a duration cap.
+    static let serverRecordingSettings: [String: Any] = [
+        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+        AVSampleRateKey: 44_100.0,
         AVNumberOfChannelsKey: 1,
-        AVLinearPCMBitDepthKey: 16,
-        AVLinearPCMIsFloatKey: false
+        AVEncoderBitRateKey: serverRecordingBitrate
     ]
+
+    static let serverRecordingBitrate = 32_000
+    static let serverRecordingFileExtension = "m4a"
 
     private func startServerRecording() throws {
         stopAudio(cancelTask: true)
@@ -292,7 +294,7 @@ final class ComposerVoiceInputController {
 
         let recordingURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("hermex-composer-stt-\(UUID().uuidString)")
-            .appendingPathExtension("wav")
+            .appendingPathExtension(Self.serverRecordingFileExtension)
         let recorder = try AVAudioRecorder(url: recordingURL, settings: Self.serverRecordingSettings)
         recorder.prepareToRecord()
         guard recorder.record() else {
@@ -303,25 +305,10 @@ final class ComposerVoiceInputController {
         self.recordingURL = recordingURL
         audioRecorder = recorder
         ComposerAudioCaptureState.shared.setCapturing(true)
-        startServerRecordingTimeout()
         logger.info("Server voice input recording started")
     }
 
-    private func startServerRecordingTimeout() {
-        serverRecordingTimeoutTask?.cancel()
-        serverRecordingTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.maxServerRecordingDuration * 1_000_000_000)
-            await MainActor.run {
-                guard let self, !Task.isCancelled, self.state == .serverListening else { return }
-                self.stopServerRecordingAndTranscribe()
-            }
-        }
-    }
-
     private func stopServerRecordingAndTranscribe() {
-        serverRecordingTimeoutTask?.cancel()
-        serverRecordingTimeoutTask = nil
-
         guard state == .serverListening,
               let recorder = audioRecorder,
               let recordingURL
@@ -625,8 +612,6 @@ final class ComposerVoiceInputController {
 
     private func stopAudio(cancelTask: Bool) {
         ComposerAudioCaptureState.shared.setCapturing(false)
-        serverRecordingTimeoutTask?.cancel()
-        serverRecordingTimeoutTask = nil
 
         if let recorder = audioRecorder, recorder.isRecording {
             recorder.stop()
@@ -666,9 +651,6 @@ final class ComposerVoiceInputController {
     }
 
     private func discardServerRecording() {
-        serverRecordingTimeoutTask?.cancel()
-        serverRecordingTimeoutTask = nil
-
         if let recorder = audioRecorder, recorder.isRecording {
             recorder.stop()
         }
