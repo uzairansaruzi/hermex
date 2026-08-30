@@ -6225,6 +6225,9 @@ final class ChatViewModelSendTests: XCTestCase {
         ) { request in
             switch request.url?.path {
             case "/api/reasoning" where request.httpMethod == "POST":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["effort"] as? String, "xhigh")
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
                 return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "xhigh"}"#, for: request)
             case "/api/session/update":
                 return apiTestJSONResponse("""
@@ -6277,6 +6280,58 @@ final class ChatViewModelSendTests: XCTestCase {
         // "xhigh" is not supported by the new model: snap to the server's
         // coerced reasoning_effort.
         XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
+    }
+
+    @MainActor
+    func testReasoningEffortSlashCommandSendsActiveSessionID() async throws {
+        let viewModel = try makeViewModel(
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai")
+        ) { request in
+            XCTAssertEqual(request.url?.path, "/api/reasoning")
+            XCTAssertEqual(request.httpMethod, "POST")
+            let body = try XCTUnwrap(apiTestJSONBody(from: request))
+            XCTAssertEqual(body["effort"] as? String, "high")
+            XCTAssertEqual(body["session_id"] as? String, "session-abc")
+            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
+        }
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "reasoning")),
+            args: "high"
+        )
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
+        XCTAssertNil(viewModel.composerConfigurationErrorMessage)
+    }
+
+    @MainActor
+    func testReasoningEffortChangesWithBlankSessionIDAreBlockedLocally() async throws {
+        let session = SessionSummary(
+            sessionId: "   ",
+            title: "Planning",
+            workspace: "/tmp/workspace",
+            model: "gpt-5.4",
+            modelProvider: "openai"
+        )
+        let viewModel = try makeViewModel(sessionSummary: session) { request in
+            XCTFail("Changing reasoning effort without a session ID must not call \(request.url?.path ?? "nil").")
+            throw URLError(.badURL)
+        }
+
+        let didSelect = await viewModel.selectReasoningEffort("high")
+        XCTAssertFalse(didSelect)
+        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
+
+        let slashResult = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "reasoning")),
+            args: "high"
+        )
+        XCTAssertEqual(
+            slashResult,
+            .unsupported(friendlyMessage: "The server did not provide a session ID.")
+        )
+        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
     }
 
     @MainActor

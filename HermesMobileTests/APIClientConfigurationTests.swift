@@ -329,6 +329,8 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let data = try XCTUnwrap(apiTestBodyData(from: request))
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["effort"] as? String, "xhigh")
+            XCTAssertEqual(body?["session_id"] as? String, "session-abc")
+            XCTAssertNil(body?["sessionId"])
 
             return apiTestJSONResponse("""
             {
@@ -338,7 +340,10 @@ final class APIClientConfigurationTests: APIClientTestCase {
             """, for: request)
         }
 
-        let response = try await client.saveReasoningEffort("xhigh")
+        let response = try await client.saveReasoningEffort(
+            "xhigh",
+            sessionID: "session-abc"
+        )
 
         XCTAssertEqual(response.ok, true)
         XCTAssertEqual(response.effectiveEffort, "xhigh")

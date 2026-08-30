@@ -1128,13 +1128,22 @@ final class ChatViewModel {
             return false
         }
 
+        guard let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty else {
+            composerConfigurationErrorMessage = String(localized: "The server did not provide a session ID.")
+            return false
+        }
+
         isUpdatingComposerConfiguration = true
         composerConfigurationErrorMessage = nil
         lastError = nil
         defer { isUpdatingComposerConfiguration = false }
 
         do {
-            let response = try await client.saveReasoningEffort(selectedEffort)
+            let response = try await client.saveReasoningEffort(
+                selectedEffort,
+                sessionID: sessionID
+            )
             selectedReasoningEffort = response.effectiveEffort ?? selectedEffort
             return true
         } catch {
@@ -2852,7 +2861,16 @@ final class ChatViewModel {
             if Self.reasoningDisplayArgs.contains(reasoning) {
                 _ = try await client.saveReasoningDisplay(reasoning)
             } else if Self.reasoningEffortArgs.contains(reasoning) {
-                let response = try await client.saveReasoningEffort(reasoning)
+                guard let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !sessionID.isEmpty else {
+                    let message = String(localized: "The server did not provide a session ID.")
+                    composerConfigurationErrorMessage = message
+                    return .unsupported(friendlyMessage: message)
+                }
+                let response = try await client.saveReasoningEffort(
+                    reasoning,
+                    sessionID: sessionID
+                )
                 selectedReasoningEffort = response.effectiveEffort ?? reasoning
             } else {
                 return .unsupported(friendlyMessage: String(localized: "Unknown reasoning level: \(reasoning)."))
