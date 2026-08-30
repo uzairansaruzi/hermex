@@ -28,7 +28,6 @@ struct ChatStreamCoordinatorTiming: Equatable {
 
 struct ChatStreamLoadPreparation: Equatable {
     let activeStreamIDBeforeLoad: String?
-    let runGenerationBeforeLoad: Int
     let shouldPrepareSuspendedStreamResume: Bool
 }
 
@@ -235,7 +234,6 @@ final class ChatStreamCoordinator {
 
         return ChatStreamLoadPreparation(
             activeStreamIDBeforeLoad: activeStreamIDBeforeLoad,
-            runGenerationBeforeLoad: runGeneration,
             shouldPrepareSuspendedStreamResume: activeStreamID == nil || isConnectionSuspended
         )
     }
@@ -248,9 +246,11 @@ final class ChatStreamCoordinator {
             return false
         }
 
-        guard runGeneration == preparation.runGenerationBeforeLoad,
-              activeStreamID == activeStreamIDBeforeLoad
-        else {
+        // A same-stream `start()` (foreground reconnect / replay) bumps
+        // `runGeneration` without replacing the server run. Stream identity is
+        // the successor fence; generation would treat that restart as a new
+        // authority and drop the uncached optimistic row.
+        guard activeStreamID == activeStreamIDBeforeLoad else {
             return false
         }
 

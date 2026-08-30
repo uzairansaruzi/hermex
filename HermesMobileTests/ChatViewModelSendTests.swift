@@ -2068,7 +2068,6 @@ final class ChatViewModelSendTests: XCTestCase {
                       {
                         "role": "user",
                         "content": "Keep working",
-                        "timestamp": 1770000100,
                         "message_id": "user-1"
                       },
                       {
@@ -4224,7 +4223,6 @@ final class ChatViewModelSendTests: XCTestCase {
                       {
                         "role": "user",
                         "content": "Keep working",
-                        "timestamp": 1770000100,
                         "message_id": "user-1"
                       },
                       {

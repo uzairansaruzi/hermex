@@ -56,6 +56,13 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             loadedActiveStreamID: "stream-new"
         ))
 
+        coordinator.start(streamID: "stream-old")
+
+        XCTAssertTrue(coordinator.shouldPreserveLocalOptimisticMessages(
+            for: preparation,
+            loadedActiveStreamID: "stream-old"
+        ))
+
         coordinator.start(streamID: "stream-new")
 
         XCTAssertFalse(coordinator.shouldPreserveLocalOptimisticMessages(
