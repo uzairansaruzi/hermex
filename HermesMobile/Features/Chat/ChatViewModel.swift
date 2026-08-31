@@ -447,6 +447,10 @@ final class ChatViewModel {
     private var activeStreamReplayMatchedPrefixLength = 0
     private var activeStreamReplayMatchedInterimLength = 0
     private var activeStreamReplayMatchedReasoningLength = 0
+    private var activeStreamReplayLoadedReasoningText = ""
+    private var activeStreamReplayLoadedToolCalls: [ToolCall] = []
+    private var activeStreamReplayLoadedToolMatchIndex = 0
+    private var activeStreamReplayPendingLoadedToolMatchIndex: Int?
     private var activeStreamReplayToolMatchIndex = 0
     private var activeStreamReplayPendingToolMatchIndex: Int?
     private var latestServerLoadHadAssistantResponseAfterLatestUser = false
@@ -3932,14 +3936,14 @@ final class ChatViewModel {
     }
 
     @discardableResult
-    private func restoreActiveStreamSnapshotIfAvailable(streamID: String) -> String? {
+    private func restoreActiveStreamSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
         guard let sessionID,
               let snapshot = ActiveChatStreamSnapshotStore.shared.snapshot(
                 server: server,
                 sessionID: sessionID,
                 streamID: streamID
               )
-        else { return nil }
+        else { return .notRestored }
 
         let merge = Self.mergingLoadedMessages(messages, withActiveStreamSnapshot: snapshot)
         messages = merge.messages
@@ -3967,7 +3971,10 @@ final class ChatViewModel {
         attachmentCoordinator.mergeLocalAttachmentPreviews(snapshot.localAttachmentPreviews)
         pinnedLocalNotices = snapshot.pinnedLocalNotices
         scheduleStreamingScrollTrigger()
-        return snapshot.activeStreamLastEventID
+        return ChatStreamSnapshotRestoreResult(
+            didRestoreSnapshot: true,
+            lastEventID: snapshot.activeStreamLastEventID
+        )
     }
 
     private func removeActiveStreamSnapshot(streamID: String?) {
@@ -4333,7 +4340,9 @@ final class ChatViewModel {
         _ = ensureStreamingAssistantMessage()
         let remainder: String
         if isActiveStreamReplayConnection {
-            let effectiveContent = liveReasoningText + pendingReasoningChunks.joined()
+            let effectiveContent = activeStreamReplayLoadedReasoningText
+                + liveReasoningText
+                + pendingReasoningChunks.joined()
             remainder = deduplicatedReplayText(
                 text,
                 existingContent: effectiveContent,
@@ -4373,6 +4382,11 @@ final class ChatViewModel {
             toolCallAnchorMessageID = messageID
         }
 
+        if let duplicateLoadedIndex = duplicateLoadedReplayToolStartIndex(for: payload) {
+            activeStreamReplayPendingLoadedToolMatchIndex = duplicateLoadedIndex
+            return false
+        }
+
         if let duplicateReplayIndex = duplicateReplayToolStartIndex(for: payload) {
             activeStreamReplayPendingToolMatchIndex = duplicateReplayIndex
             return false
@@ -4395,6 +4409,10 @@ final class ChatViewModel {
         let messageID = ensureStreamingAssistantMessage()
         if toolCallAnchorMessageID == nil {
             toolCallAnchorMessageID = messageID
+        }
+
+        if duplicateLoadedReplayToolCompletion(for: payload) {
+            return false
         }
 
         if let duplicateReplayIndex = duplicateReplayToolCompletionIndex(for: payload) {
@@ -4468,6 +4486,68 @@ final class ChatViewModel {
         }
 
         return index
+    }
+
+    private func duplicateLoadedReplayToolStartIndex(for payload: ToolStreamEvent) -> Int? {
+        guard isActiveStreamReplayConnection else { return nil }
+
+        if let stableID = payload.stableID?.nonEmptyReplayMatchText,
+           let index = activeStreamReplayLoadedToolCalls.firstIndex(where: { $0.matchesStableToolID(stableID) }) {
+            return index
+        }
+
+        guard activeStreamReplayLoadedToolMatchIndex < activeStreamReplayLoadedToolCalls.count else {
+            return nil
+        }
+
+        let index = activeStreamReplayLoadedToolMatchIndex
+        return activeStreamReplayLoadedToolCalls[index].matchesReplayToolStart(payload) ? index : nil
+    }
+
+    private func duplicateLoadedReplayToolCompletion(for payload: ToolStreamEvent) -> Bool {
+        guard isActiveStreamReplayConnection else { return false }
+
+        let index: Int?
+        if let stableID = payload.stableID?.nonEmptyReplayMatchText {
+            index = activeStreamReplayLoadedToolCalls.firstIndex { $0.matchesStableToolID(stableID) }
+        } else if let pendingIndex = activeStreamReplayPendingLoadedToolMatchIndex,
+                  pendingIndex < activeStreamReplayLoadedToolCalls.count,
+                  activeStreamReplayLoadedToolCalls[pendingIndex].matchesReplayToolCompletion(payload) {
+            index = pendingIndex
+        } else if activeStreamReplayLoadedToolMatchIndex < activeStreamReplayLoadedToolCalls.count,
+                  activeStreamReplayLoadedToolCalls[activeStreamReplayLoadedToolMatchIndex]
+                    .matchesReplayToolCompletion(payload) {
+            index = activeStreamReplayLoadedToolMatchIndex
+        } else {
+            index = nil
+        }
+
+        guard let index else { return false }
+        activeStreamReplayLoadedToolMatchIndex = max(activeStreamReplayLoadedToolMatchIndex, index + 1)
+        activeStreamReplayPendingLoadedToolMatchIndex = nil
+        return true
+    }
+
+    private func loadedReplayReasoningText() -> String {
+        guard let streamingAssistantMessageID,
+              let message = messages.first(where: { $0.messageId == streamingAssistantMessageID })
+        else { return "" }
+
+        return Self.reasoningTexts(from: message).joined(separator: "\n")
+    }
+
+    private func loadedReplayToolCalls() -> [ToolCall] {
+        let currentTurnAnchors = Set(
+            TranscriptTurnClassifier.currentTurnAssistantAnchorIDs(
+                in: messages,
+                messageOffset: messagesOffset
+            )
+        )
+        return completedToolCallGroups
+            .filter { group in
+                group.anchorMessageID.map(currentTurnAnchors.contains) ?? false
+            }
+            .flatMap(\.toolCalls)
     }
 
     private func stableReplayToolIndex(for payload: ToolStreamEvent) -> Int? {
@@ -5148,7 +5228,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> String? {
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
         restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
     }
 
@@ -5197,6 +5277,10 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         activeStreamReplayMatchedPrefixLength = 0
         activeStreamReplayMatchedInterimLength = 0
         activeStreamReplayMatchedReasoningLength = 0
+        activeStreamReplayLoadedReasoningText = isReplay ? loadedReplayReasoningText() : ""
+        activeStreamReplayLoadedToolCalls = isReplay ? loadedReplayToolCalls() : []
+        activeStreamReplayLoadedToolMatchIndex = 0
+        activeStreamReplayPendingLoadedToolMatchIndex = nil
         activeStreamReplayToolMatchIndex = 0
         activeStreamReplayPendingToolMatchIndex = nil
     }
@@ -5205,6 +5289,10 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         activeStreamReplayMatchedPrefixLength = 0
         activeStreamReplayMatchedInterimLength = 0
         activeStreamReplayMatchedReasoningLength = 0
+        activeStreamReplayLoadedReasoningText = ""
+        activeStreamReplayLoadedToolCalls = []
+        activeStreamReplayLoadedToolMatchIndex = 0
+        activeStreamReplayPendingLoadedToolMatchIndex = nil
         activeStreamReplayToolMatchIndex = 0
         activeStreamReplayPendingToolMatchIndex = nil
     }

@@ -31,6 +31,16 @@ struct ChatStreamLoadPreparation: Equatable {
     let shouldPrepareSuspendedStreamResume: Bool
 }
 
+struct ChatStreamSnapshotRestoreResult: Equatable {
+    let didRestoreSnapshot: Bool
+    let lastEventID: String?
+
+    static let notRestored = ChatStreamSnapshotRestoreResult(
+        didRestoreSnapshot: false,
+        lastEventID: nil
+    )
+}
+
 @MainActor
 protocol ChatStreamCoordinatorDelegate: AnyObject {
     var streamCoordinatorSessionID: String? { get }
@@ -46,7 +56,7 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: Bool)
     func streamCoordinatorSaveSnapshotIfNeeded()
     @discardableResult
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> String?
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult
     func streamCoordinatorRemoveSnapshot(streamID: String?)
     func streamCoordinatorFlushPinnedLocalNoticesToTranscript()
     func streamCoordinatorDrainQueuedSlashMessageIfIdle()
@@ -108,6 +118,7 @@ final class ChatStreamCoordinator {
     @ObservationIgnored private(set) var lastTransportActivityDate: Date?
     private(set) var liveTokensPerSecond: Double?
     @ObservationIgnored private var lastRecoveryStatusCheckDate: Date?
+    @ObservationIgnored private var hasInMemorySnapshotForActiveStream = false
     private(set) var isReplayConnection = false
     // Foreground activation and view appearance can both request recovery for the
     // same suspended stream. Share one recovery task so callers cannot duplicate
@@ -159,6 +170,7 @@ final class ChatStreamCoordinator {
         isTransportFinished = false
         isConnectionSuspended = false
         setLiveTokensPerSecondIfChanged(nil)
+        hasInMemorySnapshotForActiveStream = false
         invalidateReconnectTask()
     }
 
@@ -182,6 +194,7 @@ final class ChatStreamCoordinator {
         runGeneration &+= 1
         invalidateReconnectTask()
         activeStreamID = streamID
+        hasInMemorySnapshotForActiveStream = false
         isConnectionSuspended = false
         if replayAfterSeq == nil {
             lastEventID = nil
@@ -220,6 +233,7 @@ final class ChatStreamCoordinator {
 
         lastEventID = streamClient.lastEventID ?? lastEventID
         delegate?.streamCoordinatorSaveSnapshotIfNeeded()
+        hasInMemorySnapshotForActiveStream = true
         liveActivityManager.markStale()
         isConnectionSuspended = true
         streamClient.stop()
@@ -273,6 +287,7 @@ final class ChatStreamCoordinator {
 
         if usedCacheFallback {
             activeStreamID = nil
+            hasInMemorySnapshotForActiveStream = false
             isConnectionSuspended = false
             delegate?.streamCoordinatorStreamingAssistantMessageID = nil
             resetRecoveryState()
@@ -286,9 +301,13 @@ final class ChatStreamCoordinator {
                 activeStreamID = streamID
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 isConnectionSuspended = true
-                restoreSnapshotIfAvailable(streamID: streamID)
+                let didRestoreSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
+                if preparation.activeStreamIDBeforeLoad != streamID {
+                    hasInMemorySnapshotForActiveStream = didRestoreSnapshot
+                }
             } else {
                 activeStreamID = nil
+                hasInMemorySnapshotForActiveStream = false
                 isConnectionSuspended = false
                 resetRecoveryState()
             }
@@ -299,7 +318,10 @@ final class ChatStreamCoordinator {
             if let streamID {
                 activeStreamID = streamID
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
-                restoreSnapshotIfAvailable(streamID: streamID)
+                let didRestoreSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
+                if preparation.activeStreamIDBeforeLoad != streamID {
+                    hasInMemorySnapshotForActiveStream = didRestoreSnapshot
+                }
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                     delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 }
@@ -377,8 +399,18 @@ final class ChatStreamCoordinator {
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                     delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 }
+                // A cold process has no snapshot cursor. Ask the server journal
+                // for the run from the beginning so the loaded partial transcript
+                // can be filled in immediately instead of waiting for `done`.
+                // Existing foreground/background resumes keep their ordinary
+                // connection when this process still owns an in-memory snapshot.
+                let replayAfterSeq = response.replayAvailable == true
+                    && !hasInMemorySnapshotForActiveStream
+                    && lastEventID == nil
+                    ? 0
+                    : nil
                 isConnectionSuspended = false
-                start(streamID: streamID)
+                start(streamID: streamID, replayAfterSeq: replayAfterSeq)
             } else if response.replayAvailable == true {
                 guard reconnectTaskIsCurrent(
                     reconnectTaskID: reconnectTaskID,
@@ -713,6 +745,7 @@ final class ChatStreamCoordinator {
 
         lastEventID = streamClient.lastEventID ?? lastEventID
         delegate?.streamCoordinatorSaveSnapshotIfNeeded()
+        hasInMemorySnapshotForActiveStream = true
         liveActivityManager.markStale()
         isConnectionSuspended = true
         streamClient.stop()
@@ -816,6 +849,7 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorRemoveSnapshot(streamID: activeStreamID)
         delegate?.streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: true)
         activeStreamID = nil
+        hasInMemorySnapshotForActiveStream = false
         lastEventID = nil
         setLiveTokensPerSecondIfChanged(nil)
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
@@ -874,6 +908,7 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorFlushPinnedLocalNoticesToTranscript()
         delegate?.streamCoordinatorRemoveSnapshot(streamID: finishedStreamID)
         activeStreamID = nil
+        hasInMemorySnapshotForActiveStream = false
         lastEventID = nil
         setLiveTokensPerSecondIfChanged(nil)
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
@@ -1012,12 +1047,15 @@ final class ChatStreamCoordinator {
         )
     }
 
-    private func restoreSnapshotIfAvailable(streamID: String) {
+    @discardableResult
+    private func restoreSnapshotIfAvailable(streamID: String) -> Bool {
+        let result = delegate?.streamCoordinatorRestoreSnapshotIfAvailable(streamID: streamID) ?? .notRestored
+
         guard lastEventID == nil else {
-            _ = delegate?.streamCoordinatorRestoreSnapshotIfAvailable(streamID: streamID)
-            return
+            return result.didRestoreSnapshot
         }
 
-        lastEventID = delegate?.streamCoordinatorRestoreSnapshotIfAvailable(streamID: streamID) ?? lastEventID
+        lastEventID = result.lastEventID ?? lastEventID
+        return result.didRestoreSnapshot
     }
 }

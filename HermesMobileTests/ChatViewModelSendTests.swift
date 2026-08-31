@@ -2312,6 +2312,213 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testColdReopenActiveStreamReplaysFromStartWithoutDuplicatingLoadedState() async throws {
+        ChatViewModel.resetActiveStreamSnapshotsForTesting()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Recovery",
+                    "active_stream_id": "stream-123",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Inspect the report",
+                        "timestamp": 1770000100,
+                        "message_id": "user-1"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "Partial answer.",
+                        "reasoning": "Plan the inspection.",
+                        "attachments": [
+                          {"name": "report.txt", "path": "/tmp/report.txt"}
+                        ],
+                        "timestamp": 1770000101,
+                        "message_id": "assistant-1"
+                      }
+                    ],
+                    "tool_calls": [
+                      {
+                        "name": "read_file",
+                        "snippet": "Read report.txt",
+                        "tid": "tool-1",
+                        "assistant_msg_idx": 1,
+                        "args": {"path": "/tmp/report.txt"}
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse("""
+                {
+                  "active": true,
+                  "stream_id": "stream-123",
+                  "replay_available": true
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.reconnectStreamIfNeeded()
+
+        let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
+        let replayQueryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(replayQueryItems.first(where: { $0.name == "stream_id" })?.value, "stream-123")
+        XCTAssertEqual(replayQueryItems.first(where: { $0.name == "replay" })?.value, "1")
+        XCTAssertEqual(replayQueryItems.first(where: { $0.name == "after_seq" })?.value, "0")
+
+        let replayedToolStart = ToolStreamEvent(
+            eventType: "tool.started",
+            name: "read_file",
+            preview: "Reading report.txt",
+            args: ["path": .string("/tmp/report.txt")],
+            duration: nil,
+            isError: nil,
+            stableID: "tool-1"
+        )
+        let replayedToolCompletion = ToolStreamEvent(
+            eventType: "tool.completed",
+            name: "read_file",
+            preview: "Read report.txt",
+            args: ["path": .string("/tmp/report.txt")],
+            duration: 0.2,
+            isError: false,
+            stableID: "tool-1"
+        )
+        let approval = ApprovalPendingResponse(
+            pending: PendingApproval(
+                approvalId: "approval-1",
+                command: "open report.txt",
+                description: "Open the report"
+            ),
+            pendingCount: 1
+        )
+        let clarification = ClarificationPendingResponse(
+            pending: PendingClarification(
+                clarifyId: "clarify-1",
+                question: "Inspect every section?",
+                sessionId: "session-abc"
+            ),
+            pendingCount: 1
+        )
+
+        streamClient.emit(.reasoning("Plan the inspection."), lastEventID: "stream-123:1")
+        streamClient.emit(.toolStarted(replayedToolStart), lastEventID: "stream-123:2")
+        streamClient.emit(.toolCompleted(replayedToolCompletion), lastEventID: "stream-123:3")
+        streamClient.emit(.approvalPending(approval), lastEventID: "stream-123:4")
+        streamClient.emit(.clarificationPending(clarification), lastEventID: "stream-123:5")
+        streamClient.emit(.token("Partial "), lastEventID: "stream-123:6")
+        streamClient.emit(.token("answer."), lastEventID: "stream-123:7")
+        streamClient.emit(.token(" Continued."), lastEventID: "stream-123:8")
+
+        XCTAssertEqual(viewModel.messages.last?.content, "Partial answer. Continued.")
+        XCTAssertEqual(viewModel.messages.last?.attachments?.count, 1)
+        XCTAssertEqual(viewModel.displayedReasoningGroups.map(\.text), ["Plan the inspection."])
+        XCTAssertEqual(viewModel.latestTurnToolCalls.map(\.id), ["tool-1"])
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+        XCTAssertEqual(viewModel.clarificationPrompt?.pending.clarifyId, "clarify-1")
+
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "title": "Recovery complete",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Inspect the report",
+              "timestamp": 1770000100,
+              "message_id": "user-1"
+            },
+            {
+              "role": "assistant",
+              "content": "Partial answer. Continued and complete.",
+              "reasoning": "Plan the inspection.",
+              "attachments": [
+                {"name": "report.txt", "path": "/tmp/report.txt"}
+              ],
+              "timestamp": 1770000101,
+              "message_id": "assistant-1"
+            }
+          ],
+          "tool_calls": [
+            {
+              "name": "read_file",
+              "snippet": "Read report.txt",
+              "tid": "tool-1",
+              "assistant_msg_idx": 1,
+              "args": {"path": "/tmp/report.txt"}
+            }
+          ]
+        }
+        """)
+        streamClient.emit(.done(DoneStreamEvent(session: completedSession)), lastEventID: "stream-123:9")
+        streamClient.emit(.streamEnd, lastEventID: "stream-123:10")
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), [
+            "Inspect the report",
+            "Partial answer. Continued and complete."
+        ])
+        XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
+        XCTAssertEqual(viewModel.latestTurnToolCalls.map(\.id), ["tool-1"])
+        XCTAssertNil(viewModel.activeStreamID)
+    }
+
+    @MainActor
+    func testColdReopenActiveStreamFallsBackToOrdinaryReconnectWithoutJournal() async throws {
+        ChatViewModel.resetActiveStreamSnapshotsForTesting()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "active_stream_id": "stream-123",
+                    "messages": [
+                      {"role": "user", "content": "Keep working", "message_id": "user-1"},
+                      {"role": "assistant", "content": "Server prefix. ", "message_id": "assistant-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse("""
+                {
+                  "active": true,
+                  "stream_id": "stream-123",
+                  "replay_available": false
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.reconnectStreamIfNeeded()
+
+        let reconnectURL = try XCTUnwrap(streamClient.startedURLs.last)
+        let queryItems = URLComponents(url: reconnectURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(queryItems.first(where: { $0.name == "replay" }))
+        XCTAssertNil(queryItems.first(where: { $0.name == "after_seq" }))
+
+        streamClient.emit(.token("new tail."))
+        XCTAssertEqual(viewModel.messages.last?.content, "Server prefix. new tail.")
+    }
+
+    @MainActor
     func testActiveStreamStatusRefreshReloadsTranscriptWhenSSECompletionIsMissed() async throws {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false
@@ -5424,7 +5631,10 @@ final class ChatViewModelSendTests: XCTestCase {
             duration: 0.15,
             isError: false
         )))
-        originalStreamClient.emit(.token("Once Raj reached the river. "))
+        originalStreamClient.emit(
+            .token("Once Raj reached the river. "),
+            lastEventID: "stream-123:4"
+        )
 
         originalViewModel.suspendStreamForNavigation()
 
@@ -5459,7 +5669,8 @@ final class ChatViewModelSendTests: XCTestCase {
                 return apiTestJSONResponse("""
                 {
                   "active": true,
-                  "stream_id": "stream-123"
+                  "stream_id": "stream-123",
+                  "replay_available": true
                 }
                 """, for: request)
             default:
@@ -5474,6 +5685,10 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didRequestStatus)
         XCTAssertEqual(sessionReloadCount, 2)
         XCTAssertEqual(reopenedStreamClient.startedURLs.count, 1)
+        let reconnectURL = try XCTUnwrap(reopenedStreamClient.startedURLs.last)
+        let reconnectQueryItems = URLComponents(url: reconnectURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(reconnectQueryItems.first(where: { $0.name == "replay" }))
+        XCTAssertNil(reconnectQueryItems.first(where: { $0.name == "after_seq" }))
         XCTAssertEqual(reopenedViewModel.activeStreamID, "stream-123")
         XCTAssertEqual(reopenedViewModel.liveReasoningText, "Planning the tiger story.")
         XCTAssertEqual(reopenedViewModel.liveToolCalls.count, 1)

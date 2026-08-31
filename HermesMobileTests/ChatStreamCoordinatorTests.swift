@@ -133,6 +133,38 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testForegroundReconnectSnapshotWithoutCursorDoesNotReplayFromStart() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        delegate.restoresSnapshot = true
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            return apiTestJSONResponse(
+                #"{"active": true, "stream_id": "stream-123", "replay_available": true}"#,
+                for: request
+            )
+        }
+        delegate.onLoadMessages = {
+            let preparation = coordinator.prepareForSessionLoad()
+            coordinator.reconcileSessionLoad(
+                loadedActiveStreamID: "stream-123",
+                preparation: preparation,
+                usedCacheFallback: false
+            )
+        }
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+
+        await coordinator.reconnectIfNeeded()
+
+        let resumedURL = try XCTUnwrap(streamClient.startedURLs.last)
+        let queryItems = URLComponents(url: resumedURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(queryItems.first(where: { $0.name == "replay" }))
+        XCTAssertNil(queryItems.first(where: { $0.name == "after_seq" }))
+    }
+
+    @MainActor
     func testSuccessfulReconnectConfirmsRecoveryAfterTransientStatusFailure() async {
         let statusRequestCount = CoordinatorLockedCounter()
         let streamClient = CoordinatorSpySSEStreamingClient()
@@ -1946,6 +1978,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var donePayloads: [DoneStreamEvent] = []
     private(set) var pendingSteerLeftovers: [String] = []
     var latestAssistantMessageID: String? = "assistant-latest"
+    var restoresSnapshot = false
     var restoredSnapshotEventID: String?
     var appendTokenResult = true
     var doneHasCompletedTranscript = false
@@ -1973,9 +2006,12 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
         saveSnapshotCount += 1
     }
 
-    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> String? {
+    func streamCoordinatorRestoreSnapshotIfAvailable(streamID: String) -> ChatStreamSnapshotRestoreResult {
         restoredSnapshotStreamIDs.append(streamID)
-        return restoredSnapshotEventID
+        return ChatStreamSnapshotRestoreResult(
+            didRestoreSnapshot: restoresSnapshot || restoredSnapshotEventID != nil,
+            lastEventID: restoredSnapshotEventID
+        )
     }
 
     func streamCoordinatorRemoveSnapshot(streamID: String?) {
