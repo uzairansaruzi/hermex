@@ -152,7 +152,7 @@ struct ComposerModelPickerSheet: View {
                     .padding(.leading, 10)
 
                 LazyVStack(spacing: 1) {
-                    ForEach(group.models, id: \.self) { option in
+                    ForEach(group.allModels, id: \.self) { option in
                         modelOptionRow(option, allowsDelete: group.id == savedCustomGroupID)
                     }
                 }
@@ -165,7 +165,7 @@ struct ComposerModelPickerSheet: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text("\(group.models.count)")
+                Text("\(group.allModels.count)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
 
@@ -267,7 +267,7 @@ struct ComposerModelPickerSheet: View {
             baseGroups = modelGroups
         } else {
             baseGroups = modelGroups.compactMap { group in
-                let filteredModels = group.models.filter { option in
+                let filteredModels = group.allModels.filter { option in
                     matches(option, query: query)
                 }
 
@@ -315,7 +315,7 @@ struct ComposerModelPickerSheet: View {
     }
 
     private var storedCustomOptions: [ModelCatalogOption] {
-        let catalogKeys = Set(modelGroups.flatMap(\.models).map(\.favoriteKey))
+        let catalogKeys = Set(modelGroups.flatMap(\.allModels).map(\.favoriteKey))
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         var seen = Set<ModelFavoriteKey>()
         var result: [ModelCatalogOption] = []
@@ -351,7 +351,7 @@ struct ComposerModelPickerSheet: View {
 
     private var selectedCustomOption: ModelCatalogOption? {
         guard let selectedModelID, !selectedModelID.isEmpty else { return nil }
-        let catalogOptions = modelGroups.flatMap(\.models)
+        let catalogOptions = modelGroups.flatMap(\.allModels)
         if catalogOptions.firstMatchingSelection(
             modelID: selectedModelID,
             providerID: selectedModelProviderID

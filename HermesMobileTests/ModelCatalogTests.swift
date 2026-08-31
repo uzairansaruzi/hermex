@@ -77,6 +77,35 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(response.displayName(for: "@nous:qwen/qwen3-coder"), "Qwen3 Coder (via Nous)")
     }
 
+    func testAllModelsMergesModelsAndExtraModelsDeduplicatedByID() {
+        let group = ModelCatalogGroup(
+            id: "nous",
+            name: "Nous",
+            providerID: "nous",
+            models: [
+                ModelCatalogOption(id: "@nous:alpha", displayName: "Alpha", providerID: "nous"),
+                ModelCatalogOption(id: "@nous:shared", displayName: "Shared (featured)", providerID: "nous")
+            ],
+            extraModels: [
+                ModelCatalogOption(id: "@nous:shared", displayName: "Shared (extra)", providerID: "nous"),
+                ModelCatalogOption(id: "@nous:beta", displayName: "Beta", providerID: "nous")
+            ]
+        )
+
+        // Deduplicated by id, order preserved (models first); the featured copy
+        // wins when an id appears in both lists.
+        XCTAssertEqual(
+            group.allModels.map(\.id),
+            ["@nous:alpha", "@nous:shared", "@nous:beta"]
+        )
+        XCTAssertEqual(
+            group.allModels.first { $0.id == "@nous:shared" }?.displayName,
+            "Shared (featured)"
+        )
+        XCTAssertEqual(group.allModels.count, 3)
+        XCTAssertEqual(group.slashAutocompleteModels, group.allModels)
+    }
+
     // MARK: - /api/models/live (issue #236)
 
     func testModelsLiveResponseDecodesUpstreamShape() throws {

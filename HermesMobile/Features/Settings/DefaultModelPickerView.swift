@@ -108,10 +108,10 @@ struct DefaultModelPickerView: View {
             ForEach(filteredGroups) { group in
                 ModelPickerCard(title: group.name) {
                     VStack(spacing: 0) {
-                        ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
+                        ForEach(Array(group.allModels.enumerated()), id: \.element.id) { index, model in
                             modelRow(model)
 
-                            if index < group.models.count - 1 {
+                            if index < group.allModels.count - 1 {
                                 Divider()
                             }
                         }
@@ -126,7 +126,7 @@ struct DefaultModelPickerView: View {
         guard !query.isEmpty else { return groups }
 
         return groups.compactMap { group in
-            let matchingModels = group.models.filter { model in
+            let matchingModels = group.allModels.filter { model in
                 model.displayName.lowercased().contains(query)
                     || model.id.lowercased().contains(query)
                     || group.name.lowercased().contains(query)

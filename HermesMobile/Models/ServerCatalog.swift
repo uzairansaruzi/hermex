@@ -681,9 +681,18 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
 }
 
 extension ModelCatalogGroup {
-    var slashAutocompleteModels: [ModelCatalogOption] {
+    /// The full catalog for this provider: `models` + `extraModels`, deduplicated
+    /// by id with order preserved (`models` first). The pickers render this list
+    /// so nothing the server ships under `extra_models` is hidden behind a
+    /// "featured subset" overflow.
+    var allModels: [ModelCatalogOption] {
         var seen = Set<String>()
         return (models + extraModels).filter { seen.insert($0.id).inserted }
+    }
+
+    /// Slash autocomplete surfaces the same full catalog as the pickers.
+    var slashAutocompleteModels: [ModelCatalogOption] {
+        allModels
     }
 }
 
