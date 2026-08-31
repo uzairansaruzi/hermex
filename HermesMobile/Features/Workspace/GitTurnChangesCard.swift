@@ -38,7 +38,6 @@ struct GitTurnChangesCard: View {
         .background(Color(.secondarySystemBackground), in: shape)
         .overlay { shape.stroke(dividerColor, lineWidth: 0.5) }
         .clipShape(shape)
-        .padding(.top, 2)
     }
 
     private var header: some View {

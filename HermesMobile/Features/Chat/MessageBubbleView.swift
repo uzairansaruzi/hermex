@@ -80,7 +80,6 @@ struct MessageBubbleView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.vertical, 2)
     }
 
     private var assistantMessageRow: some View {
@@ -107,7 +106,6 @@ struct MessageBubbleView: View {
             linkPreview
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 2)
         // While this row is the active streaming message, animate its height
         // growth at the same curve as the bottom-follow scroll so the streaming
         // edge stays visually stationary instead of stepping per word flush.

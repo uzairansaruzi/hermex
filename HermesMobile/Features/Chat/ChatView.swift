@@ -255,8 +255,7 @@ private struct ListenPlaybackBar: View {
 
 struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
-    private let transcriptMessageSpacing: CGFloat = 10
-    private let transcriptBlockSpacing: CGFloat = 6
+    private let transcriptSpacing: CGFloat = 8
     private let composerAccessoryVerticalSpacing: CGFloat = 8
     private let activeRunStatusSpacerHeight: CGFloat = 36
     private let approvalBypassStatusSpacerHeight: CGFloat = 38
@@ -1170,8 +1169,7 @@ struct ChatView: View {
             streamingScrollTrigger: viewModel.streamingScrollTrigger,
             cacheFirstReconcileScrollToken: viewModel.cacheFirstReconcileScrollToken,
             bottomAnchorID: bottomAnchorID,
-            transcriptMessageSpacing: transcriptMessageSpacing,
-            transcriptBlockSpacing: transcriptBlockSpacing,
+            transcriptSpacing: transcriptSpacing,
             transcriptBottomInsetHeight: transcriptBottomInsetHeight,
             scrollToBottomButtonBottomPadding: scrollToBottomButtonBottomPadding,
             localAttachmentPreviews: viewModel.localAttachmentPreviews,

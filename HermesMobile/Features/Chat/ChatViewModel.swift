@@ -246,7 +246,9 @@ final class ChatViewModel {
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
     private(set) var completedToolCallGroups: [ToolCallGroup] = []
     private var completedToolCallGroupLookup = ToolCallGroupAnchorLookup()
-    private(set) var completedReasoningGroups: [ReasoningGroup] = []
+    private(set) var completedReasoningGroups: [ReasoningGroup] = [] {
+        didSet { recomputeDisplayedTranscriptMessages() }
+    }
     var displayedReasoningGroups: [ReasoningGroup] {
         Self.reasoningDisplayGroups(
             messages: messages,
@@ -275,9 +277,15 @@ final class ChatViewModel {
     }
 
     private func recomputeDisplayedTranscriptMessages() {
+        let renderedActivityAnchorIDs = Self.transcriptActivityAnchorIDs(
+            reasoningGroups: displayedReasoningGroups,
+            toolCallGroups: completedToolCallGroups
+        )
         displayedTranscriptMessages = Self.transcriptMessages(
             from: messages,
-            messageOffset: messagesOffset
+            messageOffset: messagesOffset,
+            preservingEmptyAssistantID: streamingAssistantMessageID,
+            renderedActivityAnchorIDs: renderedActivityAnchorIDs
         )
         recomputeCompressionReferenceCard()
     }
@@ -311,7 +319,12 @@ final class ChatViewModel {
     }
     private(set) var liveToolCalls: [ToolCall] = []
     private(set) var liveReasoningText = ""
-    private(set) var streamingAssistantMessageID: String?
+    private(set) var streamingAssistantMessageID: String? {
+        didSet {
+            guard oldValue != streamingAssistantMessageID else { return }
+            recomputeDisplayedTranscriptMessages()
+        }
+    }
     private(set) var toolCallAnchorMessageID: String?
     private(set) var reasoningAnchorMessageID: String?
     private(set) var messagesOffset = 0 {
@@ -4305,6 +4318,7 @@ final class ChatViewModel {
 
         completedToolCallGroups = groups
         completedToolCallGroupLookup = lookup
+        recomputeDisplayedTranscriptMessages()
     }
 
     private func appendCompletedToolCallGroup(_ group: ToolCallGroup) {
@@ -5642,16 +5656,41 @@ extension ChatViewModel {
         }
     }
 
-    nonisolated static func transcriptMessages(from messages: [ChatMessage], messageOffset: Int? = nil) -> [TranscriptMessage] {
-        transcriptMessages(from: messages, messageOffset: messageOffset, hidingStreamingAssistantID: nil)
+    nonisolated static func transcriptMessages(
+        from messages: [ChatMessage],
+        messageOffset: Int? = nil,
+        preservingEmptyAssistantID: String? = nil,
+        renderedActivityAnchorIDs: Set<String>? = nil
+    ) -> [TranscriptMessage] {
+        transcriptMessages(
+            from: messages,
+            messageOffset: messageOffset,
+            hidingStreamingAssistantID: nil,
+            preservingEmptyAssistantID: preservingEmptyAssistantID,
+            renderedActivityAnchorIDs: renderedActivityAnchorIDs
+        )
     }
 
     nonisolated static func transcriptMessages(
         from messages: [ChatMessage],
         messageOffset: Int? = nil,
-        hidingStreamingAssistantID streamingAssistantID: String?
+        hidingStreamingAssistantID streamingAssistantID: String?,
+        preservingEmptyAssistantID: String? = nil,
+        renderedActivityAnchorIDs: Set<String>? = nil
     ) -> [TranscriptMessage] {
         let offset = max(0, messageOffset ?? 0)
+        let activityAnchorIDs = renderedActivityAnchorIDs ?? transcriptActivityAnchorIDs(
+            reasoningGroups: reasoningDisplayGroups(
+                messages: messages,
+                messageOffset: messageOffset,
+                archivedGroups: []
+            ),
+            toolCallGroups: ToolCallGroup.groups(
+                persistedToolCalls: [],
+                messages: messages,
+                messageOffset: messageOffset
+            )
+        )
         var transcriptMessages: [TranscriptMessage] = []
         transcriptMessages.reserveCapacity(messages.count)
 
@@ -5667,6 +5706,12 @@ extension ChatViewModel {
                 at: loadedIndex,
                 messageOffset: messageOffset
             )
+            guard anchorID == preservingEmptyAssistantID
+                || activityAnchorIDs.contains(anchorID)
+                || hasTranscriptMessageRowContent(message)
+            else {
+                continue
+            }
             let absoluteIndex = offset + loadedIndex
             let renderID = "transcript:\(absoluteIndex)"
 
@@ -5679,6 +5724,22 @@ extension ChatViewModel {
         }
 
         return transcriptMessages
+    }
+
+    nonisolated private static func transcriptActivityAnchorIDs(
+        reasoningGroups: [ReasoningGroup],
+        toolCallGroups: [ToolCallGroup]
+    ) -> Set<String> {
+        Set(reasoningGroups.compactMap(\.anchorMessageID))
+            .union(toolCallGroups.compactMap(\.anchorMessageID))
+    }
+
+    nonisolated private static func hasTranscriptMessageRowContent(_ message: ChatMessage) -> Bool {
+        if message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return true
+        }
+
+        return message.role == "user" && message.attachments?.isEmpty == false
     }
 
     nonisolated static func compressionReferenceCard(

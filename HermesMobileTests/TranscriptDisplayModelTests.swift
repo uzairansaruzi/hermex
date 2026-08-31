@@ -27,6 +27,80 @@ final class TranscriptMessageTests: XCTestCase {
         XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a1", "a2"])
     }
 
+    func testTranscriptMessagesDropEmptyBlocksButKeepAssistantActivity() {
+        let messages = [
+            ChatMessage(role: "user", content: "Use tools", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "  ", timestamp: 2, messageId: "empty"),
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 3,
+                messageId: "reasoning",
+                reasoning: "Inspecting the transcript"
+            ),
+            ChatMessage(
+                role: "assistant",
+                content: nil,
+                timestamp: 4,
+                messageId: "tool-call",
+                toolCalls: [.object(["id": .string("call-1")])]
+            )
+        ]
+
+        let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
+
+        XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "reasoning", "tool-call"])
+    }
+
+    func testTranscriptMessagesDropShellsAfterActivityGroupingAndReasoningDeduplication() {
+        func assistant(_ id: String, reasoning: String?, toolID: String) -> ChatMessage {
+            ChatMessage(
+                role: "assistant",
+                content: "",
+                timestamp: 2,
+                messageId: id,
+                toolCalls: [
+                    .object([
+                        "id": .string(toolID),
+                        "function": .object([
+                            "name": .string("browser_console"),
+                            "arguments": .string("{}")
+                        ])
+                    ])
+                ],
+                reasoning: reasoning
+            )
+        }
+
+        func toolResult(_ id: String) -> ChatMessage {
+            ChatMessage(
+                role: "tool",
+                content: "result",
+                timestamp: 3,
+                messageId: "result-\(id)",
+                toolCallId: id
+            )
+        }
+
+        let messages = [
+            ChatMessage(role: "user", content: "Inspect the app", timestamp: 1, messageId: "u1"),
+            assistant("a1", reasoning: "First visible thought", toolID: "call-1"),
+            toolResult("call-1"),
+            assistant("a2", reasoning: nil, toolID: "call-2"),
+            toolResult("call-2"),
+            assistant("a3", reasoning: nil, toolID: "call-3"),
+            toolResult("call-3"),
+            assistant("a4", reasoning: "Repeated thought", toolID: "call-4"),
+            toolResult("call-4"),
+            assistant("a5", reasoning: "Repeated thought", toolID: "call-5"),
+            toolResult("call-5")
+        ]
+
+        let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
+
+        XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a1", "a5"])
+    }
+
     func testTranscriptMessagesCanHideActiveStreamingAssistantTurn() {
         let messages = [
             ChatMessage(role: "user", content: "Use tools", timestamp: 1, messageId: "u1"),
@@ -60,8 +134,14 @@ final class TranscriptMessageTests: XCTestCase {
             ChatMessage(role: "assistant", content: "First streamed token.", timestamp: 2, messageId: "stream-1")
         ]
 
-        let initialTranscriptMessages = ChatViewModel.transcriptMessages(from: initialMessages)
-        let updatedTranscriptMessages = ChatViewModel.transcriptMessages(from: updatedMessages)
+        let initialTranscriptMessages = ChatViewModel.transcriptMessages(
+            from: initialMessages,
+            preservingEmptyAssistantID: "stream-1"
+        )
+        let updatedTranscriptMessages = ChatViewModel.transcriptMessages(
+            from: updatedMessages,
+            preservingEmptyAssistantID: "stream-1"
+        )
 
         XCTAssertEqual(initialTranscriptMessages.map(\.anchorID), ["u1", "stream-1"])
         XCTAssertEqual(updatedTranscriptMessages.map(\.anchorID), ["u1", "stream-1"])
@@ -99,11 +179,13 @@ final class TranscriptMessageTests: XCTestCase {
 
         let initialTranscriptMessages = ChatViewModel.transcriptMessages(
             from: initialMessages,
-            messageOffset: 10
+            messageOffset: 10,
+            preservingEmptyAssistantID: "raw:11"
         )
         let updatedTranscriptMessages = ChatViewModel.transcriptMessages(
             from: updatedMessages,
-            messageOffset: 10
+            messageOffset: 10,
+            preservingEmptyAssistantID: "raw:11"
         )
 
         XCTAssertEqual(initialTranscriptMessages.map(\.anchorID), ["raw:10", "raw:11"])

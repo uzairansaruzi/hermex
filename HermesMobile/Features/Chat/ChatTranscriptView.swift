@@ -34,8 +34,7 @@ struct ChatTranscriptView: View {
     let streamingScrollTrigger: Int
     let cacheFirstReconcileScrollToken: Int
     let bottomAnchorID: String
-    let transcriptMessageSpacing: CGFloat
-    let transcriptBlockSpacing: CGFloat
+    let transcriptSpacing: CGFloat
     let transcriptBottomInsetHeight: CGFloat
     let scrollToBottomButtonBottomPadding: CGFloat
     let localAttachmentPreviews: [String: [String: Data]]
@@ -205,7 +204,7 @@ struct ChatTranscriptView: View {
         viewportWidth: CGFloat,
         contentWidth: CGFloat
     ) -> some View {
-        VStack(spacing: transcriptMessageSpacing) {
+        VStack(spacing: transcriptSpacing) {
             olderMessagesButton(proxy: proxy)
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
@@ -225,7 +224,7 @@ struct ChatTranscriptView: View {
 
                 ChatTranscriptMessageBlock(
                     transcriptMessage: transcriptMessage,
-                    transcriptBlockSpacing: transcriptBlockSpacing,
+                    transcriptSpacing: transcriptSpacing,
                     showsThinkingAndToolCards: showsThinkingAndToolCards,
                     reasoningGroups: reasoningGroups,
                     toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
@@ -420,7 +419,6 @@ struct ChatTranscriptView: View {
                 action: onInlineCommit
             )
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 2)
         }
     }
 
@@ -455,7 +453,7 @@ struct ChatTranscriptView: View {
 
 private struct ChatTranscriptMessageBlock: View, Equatable {
     let transcriptMessage: TranscriptMessage
-    let transcriptBlockSpacing: CGFloat
+    let transcriptSpacing: CGFloat
     let showsThinkingAndToolCards: Bool
     let reasoningGroups: [ReasoningGroup]
     let toolCallGroups: [ToolCallGroup]
@@ -495,7 +493,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     // even though their closure props are recreated on every parent body pass.
     static func == (lhs: ChatTranscriptMessageBlock, rhs: ChatTranscriptMessageBlock) -> Bool {
         lhs.transcriptMessage == rhs.transcriptMessage &&
-            lhs.transcriptBlockSpacing == rhs.transcriptBlockSpacing &&
+            lhs.transcriptSpacing == rhs.transcriptSpacing &&
             lhs.showsThinkingAndToolCards == rhs.showsThinkingAndToolCards &&
             lhs.reasoningGroups == rhs.reasoningGroups &&
             lhs.toolCallGroups == rhs.toolCallGroups &&
@@ -516,7 +514,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
+        VStack(alignment: .leading, spacing: transcriptSpacing) {
             reasoningBlocks
             liveReasoningBlock
             toolActivityGroups
