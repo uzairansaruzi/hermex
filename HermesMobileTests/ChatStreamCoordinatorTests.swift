@@ -133,6 +133,47 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testSuccessfulReconnectConfirmsRecoveryAfterTransientStatusFailure() async {
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            if statusRequestCount.increment() == 1 {
+                throw URLError(.timedOut)
+            }
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+
+        await coordinator.reconnectIfNeeded()
+
+        XCTAssertEqual(delegate.recoveryErrors.count, 1)
+        XCTAssertEqual(delegate.confirmedRecoveryCount, 0)
+
+        await coordinator.reconnectIfNeeded()
+
+        XCTAssertEqual(delegate.confirmedRecoveryCount, 1)
+        XCTAssertFalse(coordinator.isConnectionSuspended)
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+    }
+
+    @MainActor
+    func testValidStreamActivityConfirmsRecovery() {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.token("Recovered response"))
+        streamClient.emit(.heartbeat)
+
+        XCTAssertEqual(delegate.confirmedRecoveryCount, 2)
+    }
+
+    @MainActor
     func testConcurrentForegroundReconnectRequestsShareOneRecoveryAttempt() async {
         let firstStatusStarted = expectation(description: "first stream status request started")
         let releaseFirstStatus = DispatchSemaphore(value: 0)
@@ -1898,6 +1939,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var finishCount = 0
     private(set) var errorMessages: [String] = []
     private(set) var recoveryErrors: [String] = []
+    private(set) var confirmedRecoveryCount = 0
     private(set) var startConnectionReplayValues: [Bool] = []
     private(set) var resetRecoveryCount = 0
     private(set) var tokens: [String] = []
@@ -1966,6 +2008,10 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
         recoveryErrors.append(error.localizedDescription)
+    }
+
+    func streamCoordinatorDidConfirmRecovery() {
+        confirmedRecoveryCount += 1
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {

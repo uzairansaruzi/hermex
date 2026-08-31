@@ -55,6 +55,7 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidFinishStream()
     func streamCoordinatorDidReceiveErrorMessage(_ message: String)
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error)
+    func streamCoordinatorDidConfirmRecovery()
     func streamCoordinatorDidStartConnection(isReplay: Bool)
     func streamCoordinatorDidResetRecoveryState()
 
@@ -358,6 +359,7 @@ final class ChatStreamCoordinator {
                 streamID: streamID,
                 runGeneration: runGeneration
             ) else { return }
+            delegate?.streamCoordinatorDidConfirmRecovery()
 
             if response.active == true {
                 let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
@@ -439,6 +441,8 @@ final class ChatStreamCoordinator {
 
         do {
             let response = try await client.chatStreamStatus(streamID: expectedStreamID)
+            guard activeStreamID == expectedStreamID, !isConnectionSuspended else { return }
+            delegate?.streamCoordinatorDidConfirmRecovery()
             guard response.active == false else { return }
 
             await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
@@ -534,6 +538,7 @@ final class ChatStreamCoordinator {
     }
 
     func markProgress(now: Date = Date()) {
+        delegate?.streamCoordinatorDidConfirmRecovery()
         lastProgressDate = now
         lastTransportActivityDate = now
         lastRecoveryStatusCheckDate = nil
@@ -681,6 +686,7 @@ final class ChatStreamCoordinator {
         case .transportError(let message):
             handleTransportError(message)
         case .heartbeat:
+            delegate?.streamCoordinatorDidConfirmRecovery()
             // #227: a heartbeat proves the transport is alive without carrying
             // semantic progress — drop an already-shown "Checking stream" state
             // immediately. Never demote .reconnecting; that chip is owned by
@@ -734,6 +740,7 @@ final class ChatStreamCoordinator {
         do {
             let response = try await client.chatStreamStatus(streamID: expectedStreamID)
             guard activeStreamID == expectedStreamID, !isConnectionSuspended else { return }
+            delegate?.streamCoordinatorDidConfirmRecovery()
 
             if response.active == false {
                 await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)

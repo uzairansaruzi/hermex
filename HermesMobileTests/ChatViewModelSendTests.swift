@@ -31,6 +31,42 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testValidStreamProgressClearsRecoveryOwnedComposerError() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse(
+                #"{"session_id": "session-abc", "stream_id": "stream-123"}"#,
+                for: request
+            )
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        viewModel.streamCoordinatorDidReceiveRecoveryError(APIError.network(underlying: URLError(.timedOut)))
+        XCTAssertNotNil(viewModel.sendErrorMessage)
+
+        streamClient.emit(.token("Recovered response"))
+
+        XCTAssertNil(viewModel.sendErrorMessage)
+    }
+
+    @MainActor
+    func testRecoveryConfirmationDoesNotClearLaterComposerError() throws {
+        let viewModel = try makeViewModel { request in
+            XCTFail("This test should not make a network request: \(request)")
+            throw URLError(.badURL)
+        }
+
+        viewModel.streamCoordinatorDidReceiveRecoveryError(APIError.network(underlying: URLError(.timedOut)))
+        viewModel.setSendErrorMessage("The response failed on the server.")
+
+        viewModel.streamCoordinatorDidConfirmRecovery()
+
+        XCTAssertEqual(viewModel.sendErrorMessage, "The response failed on the server.")
+    }
+
+    @MainActor
     func testListenCreatesSpeechSynthesizerOnlyWhenRequested() async throws {
         let speechSynthesizer = SpySpeechSynthesizer()
         var createdSynthesizers = 0
@@ -3150,7 +3186,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertFalse(viewModel.isViewingCachedData)
         XCTAssertEqual(
             viewModel.errorMessage,
-            "The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected."
+            "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected."
         )
         XCTAssertNotNil(viewModel.lastError)
     }

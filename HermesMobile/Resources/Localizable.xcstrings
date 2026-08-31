@@ -82095,108 +82095,108 @@
         }
       }
     },
-    "The server did not respond in time. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected." : {
+    "The server did not respond in time. Check that the server is running and the connection is available." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "لم يستجب الخادم في الوقت المحدد. تأكد من أن جهاز Mac نشط، وأن hermes-webui قيد التشغيل، وأن النفق متصل."
+            "value" : "لم يستجب الخادم في الوقت المحدد. تأكد من أن الخادم قيد التشغيل وأن الاتصال متاح."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Der Server hat nicht rechtzeitig geantwortet. Prüfe, ob der Mac wach ist, hermes-webui läuft und der Tunnel verbunden ist."
+            "value" : "Der Server hat nicht rechtzeitig geantwortet. Prüfe, ob der Server läuft und die Verbindung verfügbar ist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "El servidor no respondió a tiempo. Verifica que el Mac esté activo, que hermes-webui esté en ejecución y que el túnel esté conectado."
+            "value" : "El servidor no respondió a tiempo. Verifica que el servidor esté en ejecución y que la conexión esté disponible."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Le serveur n'a pas répondu à temps. Vérifiez que le Mac est éveillé, que hermes-webui est en cours d'exécution et que le tunnel est connecté."
+            "value" : "Le serveur n'a pas répondu à temps. Vérifiez que le serveur est en cours d'exécution et que la connexion est disponible."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "השרת לא הגיב בזמן. ודא שה-Mac ער, ש-hermes-webui פועל, ושהמנהרה מחוברת."
+            "value" : "השרת לא הגיב בזמן. ודא שהשרת פועל ושהחיבור זמין."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Il server non ha risposto in tempo. Verifica che il Mac sia attivo, che hermes-webui sia in esecuzione e che il tunnel sia connesso."
+            "value" : "Il server non ha risposto in tempo. Verifica che il server sia in esecuzione e che la connessione sia disponibile."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "サーバが時間内に応答しませんでした。Macがスリープしていないこと、hermes-webuiが実行中であること、トンネルが接続されていることを確認してください。"
+            "value" : "サーバが時間内に応答しませんでした。サーバが実行中で、接続が利用可能であることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "서버가 제때 응답하지 않았어요. Mac이 켜져 있고, hermes-webui가 실행 중이며, 터널이 연결되어 있는지 확인하세요."
+            "value" : "서버가 제때 응답하지 않았어요. 서버가 실행 중이고 연결을 사용할 수 있는지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "De server reageerde niet op tijd. Controleer of de Mac wakker is, hermes-webui actief is en de tunnel is verbonden."
+            "value" : "De server reageerde niet op tijd. Controleer of de server actief is en de verbinding beschikbaar is."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Serwer nie odpowiedział na czas. Sprawdź, czy Mac jest aktywny, hermes-webui działa, a tunel jest połączony."
+            "value" : "Serwer nie odpowiedział na czas. Sprawdź, czy serwer działa i połączenie jest dostępne."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "O servidor não respondeu a tempo. Verifique se o Mac está ativo, se o hermes-webui está em execução e se o túnel está conectado."
+            "value" : "O servidor não respondeu a tempo. Verifique se o servidor está em execução e se a conexão está disponível."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Сервер не ответил вовремя. Убедитесь, что Mac не спит, hermes-webui запущен, а туннель подключён."
+            "value" : "Сервер не ответил вовремя. Убедитесь, что сервер запущен и подключение доступно."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Sunucu zamanında yanıt vermedi. Mac'in uyanık olduğunu, hermes-webui'nin çalıştığını ve tünelin bağlı olduğunu kontrol edin."
+            "value" : "Sunucu zamanında yanıt vermedi. Sunucunun çalıştığını ve bağlantının kullanılabilir olduğunu kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "سرور نے بروقت جواب نہیں دیا۔ یقینی بنائیں کہ Mac بیدار ہے، hermes-webui چل رہا ہے، اور ٹنل منسلک ہے۔"
+            "value" : "سرور نے بروقت جواب نہیں دیا۔ یقینی بنائیں کہ سرور چل رہا ہے اور کنکشن دستیاب ہے۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "伺服器未及時回應。請檢查 Mac 是否已喚醒、hermes-webui 是否正在執行以及通道是否已連線。"
+            "value" : "伺服器未及時回應。請檢查伺服器是否正在執行以及連線是否可用。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "服务器未及时响应。请检查 Mac 是否已唤醒、hermes-webui 是否正在运行以及隧道是否已连接。"
+            "value" : "服务器未及时响应。请检查服务器是否正在运行以及连接是否可用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "伺服器未及時回應。請檢查 Mac 是否已喚醒、hermes-webui 是否正在執行，以及通道是否已連線。"
+            "value" : "伺服器未及時回應。請檢查伺服器是否正在執行，以及連線是否可用。"
           }
         }
       }

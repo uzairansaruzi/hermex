@@ -173,7 +173,7 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             let message = APIError.http(statusCode: statusCode, body: body).localizedDescription
             XCTAssertEqual(
                 message,
-                "The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected."
+                "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected."
             )
             XCTAssertFalse(message.contains("<html>"))
             XCTAssertFalse(message.localizedCaseInsensitiveContains("bad gateway"))
@@ -207,7 +207,7 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
 
         XCTAssertEqual(
             error.localizedDescription,
-            "The server did not respond in time. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected."
+            "The server did not respond in time. Check that the server is running and the connection is available."
         )
     }
 

@@ -223,7 +223,10 @@ final class ChatViewModel {
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
     var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
     private(set) var errorMessage: String?
-    private(set) var sendErrorMessage: String?
+    private(set) var sendErrorMessage: String? {
+        didSet { sendErrorIsFromStreamRecovery = false }
+    }
+    @ObservationIgnored private var sendErrorIsFromStreamRecovery = false
     private(set) var messageActionErrorMessage: String?
     private(set) var cacheErrorMessage: String?
     private(set) var lastError: Error?
@@ -5182,6 +5185,12 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {
         lastError = error
         sendErrorMessage = error.localizedDescription
+        sendErrorIsFromStreamRecovery = true
+    }
+
+    func streamCoordinatorDidConfirmRecovery() {
+        guard sendErrorIsFromStreamRecovery else { return }
+        sendErrorMessage = nil
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {
