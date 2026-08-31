@@ -274,45 +274,23 @@ final class ComposerVoiceInputController {
     static let serverRecordingFileExtension = "m4a"
     static let maximumServerRecordingUploadBytes = 19 * 1_024 * 1_024
 
-    enum ServerRecordingUploadPreparation: Equatable {
-        case upload(Data)
-        case onDeviceFallback
-    }
-
-    enum ServerRecordingUploadPreparationError: LocalizedError {
-        case fileSize(Error)
-        case dataLoad(Error)
-
-        var errorDescription: String? {
-            switch self {
-            case .fileSize(let error), .dataLoad(let error):
-                return error.localizedDescription
-            }
+    static func serverRecordingFileSize(at url: URL) throws -> Int {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        guard let size = values.fileSize else {
+            throw CocoaError(.fileReadUnknown)
         }
+        return size
     }
 
-    /// Checks the file's size before loading it into memory. A recording over
-    /// the client boundary goes straight to the existing on-device fallback.
-    static func prepareServerRecordingUpload(
-        fileSize: () throws -> Int,
+    /// Returns `nil` before reading an oversized recording into memory.
+    static func loadServerRecordingForUpload(
+        fileSize: Int,
         dataLoader: () throws -> Data
-    ) throws -> ServerRecordingUploadPreparation {
-        let size: Int
-        do {
-            size = try fileSize()
-        } catch {
-            throw ServerRecordingUploadPreparationError.fileSize(error)
+    ) rethrows -> Data? {
+        guard fileSize <= maximumServerRecordingUploadBytes else {
+            return nil
         }
-
-        guard size <= maximumServerRecordingUploadBytes else {
-            return .onDeviceFallback
-        }
-
-        do {
-            return .upload(try dataLoader())
-        } catch {
-            throw ServerRecordingUploadPreparationError.dataLoad(error)
-        }
+        return try dataLoader()
     }
 
     private func startServerRecording() throws {
@@ -400,44 +378,33 @@ final class ComposerVoiceInputController {
             return
         }
 
-        let uploadPreparation: ServerRecordingUploadPreparation
+        let fileSize: Int
         do {
-            uploadPreparation = try Self.prepareServerRecordingUpload(
-                fileSize: {
-                    let values = try recordingURL.resourceValues(forKeys: [.fileSizeKey])
-                    guard let size = values.fileSize else {
-                        throw CocoaError(.fileReadUnknown)
-                    }
-                    return size
-                },
-                dataLoader: {
-                    try Data(contentsOf: recordingURL)
-                }
-            )
-        } catch let error as ServerRecordingUploadPreparationError {
-            switch error {
-            case .fileSize:
-                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
-                fail(error.localizedDescription, logCategory: .speechUnavailable)
-            case .dataLoad:
-                await fallbackFromServerFailure(
-                    recordingURL: recordingURL,
-                    transcriptionID: transcriptionID,
-                    message: error.localizedDescription
-                )
-            }
-            return
+            fileSize = try Self.serverRecordingFileSize(at: recordingURL)
         } catch {
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
             fail(error.localizedDescription, logCategory: .speechUnavailable)
             return
         }
 
-        let audioData: Data
-        switch uploadPreparation {
-        case .upload(let data):
-            audioData = data
-        case .onDeviceFallback:
+        let audioData: Data?
+        do {
+            audioData = try Self.loadServerRecordingForUpload(
+                fileSize: fileSize,
+                dataLoader: {
+                    try Data(contentsOf: recordingURL)
+                }
+            )
+        } catch {
+            await fallbackFromServerFailure(
+                recordingURL: recordingURL,
+                transcriptionID: transcriptionID,
+                message: error.localizedDescription
+            )
+            return
+        }
+
+        guard let audioData else {
             await fallbackFromServerFailure(
                 recordingURL: recordingURL,
                 transcriptionID: transcriptionID,

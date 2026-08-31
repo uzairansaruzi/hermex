@@ -15,53 +15,51 @@ final class ComposerVoiceInputServerRecordingTests: XCTestCase {
         XCTAssertEqual(ComposerVoiceInputController.serverRecordingFileExtension, "m4a")
     }
 
-    func testRecordingAtUploadBoundaryLoadsForServerTranscription() throws {
+    func testRecordingAtUploadBoundaryLoadsForServerTranscription() {
         var dataLoadCount = 0
         let expectedData = Data("recording".utf8)
 
-        let preparation = try ComposerVoiceInputController.prepareServerRecordingUpload(
-            fileSize: { ComposerVoiceInputController.maximumServerRecordingUploadBytes },
+        let data = ComposerVoiceInputController.loadServerRecordingForUpload(
+            fileSize: ComposerVoiceInputController.maximumServerRecordingUploadBytes,
             dataLoader: {
                 dataLoadCount += 1
                 return expectedData
             }
         )
 
-        XCTAssertEqual(preparation, .upload(expectedData))
+        XCTAssertEqual(data, expectedData)
         XCTAssertEqual(dataLoadCount, 1)
     }
 
-    func testRecordingOneByteOverUploadBoundarySkipsDataLoadAndServerUpload() throws {
+    func testRecordingOneByteOverUploadBoundarySkipsDataLoadAndServerUpload() {
         var dataLoadCount = 0
 
-        let preparation = try ComposerVoiceInputController.prepareServerRecordingUpload(
-            fileSize: { ComposerVoiceInputController.maximumServerRecordingUploadBytes + 1 },
+        let data = ComposerVoiceInputController.loadServerRecordingForUpload(
+            fileSize: ComposerVoiceInputController.maximumServerRecordingUploadBytes + 1,
             dataLoader: {
                 dataLoadCount += 1
                 return Data("should-not-load".utf8)
             }
         )
 
-        XCTAssertEqual(preparation, .onDeviceFallback)
+        XCTAssertNil(data)
         XCTAssertEqual(dataLoadCount, 0)
     }
 
     func testFileSizeFailureSkipsDataLoad() {
         var dataLoadCount = 0
+        let missingFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
 
         XCTAssertThrowsError(
-            try ComposerVoiceInputController.prepareServerRecordingUpload(
-                fileSize: { throw TestFileError.metadataUnavailable },
+            try ComposerVoiceInputController.loadServerRecordingForUpload(
+                fileSize: ComposerVoiceInputController.serverRecordingFileSize(at: missingFile),
                 dataLoader: {
                     dataLoadCount += 1
                     return Data("should-not-load".utf8)
                 }
             )
-        ) { error in
-            guard case .fileSize = error as? ComposerVoiceInputController.ServerRecordingUploadPreparationError else {
-                return XCTFail("Expected file-size error, got \(error)")
-            }
-        }
+        )
 
         XCTAssertEqual(dataLoadCount, 0)
     }
@@ -74,8 +72,4 @@ final class ComposerVoiceInputServerRecordingTests: XCTestCase {
         let approxBytes = ComposerVoiceInputController.serverRecordingBitrate / 8 * thirtyMinutesInSeconds
         XCTAssertLessThan(approxBytes, PendingAttachment.maximumUploadBytes)
     }
-}
-
-private enum TestFileError: Error {
-    case metadataUnavailable
 }
