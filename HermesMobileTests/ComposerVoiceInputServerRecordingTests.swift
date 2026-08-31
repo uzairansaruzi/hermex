@@ -18,9 +18,19 @@ final class ComposerVoiceInputServerRecordingTests: XCTestCase {
     func testRecordingAtUploadBoundaryLoadsForServerTranscription() {
         var dataLoadCount = 0
         let expectedData = Data("recording".utf8)
+        let expectedBoundary = 19 * 1_024 * 1_024
+
+        XCTAssertEqual(
+            ComposerVoiceInputController.maximumServerRecordingUploadBytes,
+            expectedBoundary
+        )
+        XCTAssertLessThan(
+            ComposerVoiceInputController.maximumServerRecordingUploadBytes,
+            PendingAttachment.maximumUploadBytes
+        )
 
         let data = ComposerVoiceInputController.loadServerRecordingForUpload(
-            fileSize: ComposerVoiceInputController.maximumServerRecordingUploadBytes,
+            fileSize: expectedBoundary,
             dataLoader: {
                 dataLoadCount += 1
                 return expectedData
@@ -46,22 +56,13 @@ final class ComposerVoiceInputServerRecordingTests: XCTestCase {
         XCTAssertEqual(dataLoadCount, 0)
     }
 
-    func testFileSizeFailureSkipsDataLoad() {
-        var dataLoadCount = 0
+    func testMissingRecordingFailsFileSizeInspection() {
         let missingFile = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
 
         XCTAssertThrowsError(
-            try ComposerVoiceInputController.loadServerRecordingForUpload(
-                fileSize: ComposerVoiceInputController.serverRecordingFileSize(at: missingFile),
-                dataLoader: {
-                    dataLoadCount += 1
-                    return Data("should-not-load".utf8)
-                }
-            )
+            try ComposerVoiceInputController.serverRecordingFileSize(at: missingFile)
         )
-
-        XCTAssertEqual(dataLoadCount, 0)
     }
 
     // Recording has no duration cap: it runs until the user stops it. This

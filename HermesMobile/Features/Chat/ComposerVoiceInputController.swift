@@ -272,6 +272,8 @@ final class ComposerVoiceInputController {
 
     static let serverRecordingBitrate = 32_000
     static let serverRecordingFileExtension = "m4a"
+    // Leave 1 MiB below the server's configurable 20 MiB default for the
+    // multipart envelope. A lower custom limit still uses the existing fallback.
     static let maximumServerRecordingUploadBytes = 19 * 1_024 * 1_024
 
     static func serverRecordingFileSize(at url: URL) throws -> Int {
