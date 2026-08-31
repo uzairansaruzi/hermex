@@ -306,7 +306,7 @@ struct SettingsView: View {
                         isOn: $showsChatGitControls
                     )
 
-                    SettingsFootnote(String(localized: "Covers both the git menu in the chat toolbar and the branch picker in the composer."))
+                    SettingsFootnote(String(localized: "Hides the git menu, branch picker, and commit controls."))
                 }
 
                 SettingsCard(title: String(localized: "Main Page")) {

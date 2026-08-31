@@ -948,11 +948,14 @@ struct ChatView: View {
     /// Only for git workspaces, when the latest message is an assistant turn (not while a
     /// response streams), and there is something to commit (or a commit is in flight).
     private var inlineCommitContext: ChatInlineCommitContext? {
-        guard gitAvailabilityViewModel.hasRepository,
-              viewModel.activeStreamID == nil,
-              latestTranscriptMessageRole == "assistant",
-              gitAvailabilityViewModel.hasCommittableChanges || gitAvailabilityViewModel.isCommitting
-        else { return nil }
+        guard ChatGitControlsVisibilityPolicy.showsInlineCommitButton(
+            showsGitControls: showsGitControls,
+            hasRepository: gitAvailabilityViewModel.hasRepository,
+            isStreaming: viewModel.activeStreamID != nil,
+            latestMessageRole: latestTranscriptMessageRole,
+            hasCommittableChanges: gitAvailabilityViewModel.hasCommittableChanges,
+            isCommitting: gitAvailabilityViewModel.isCommitting
+        ) else { return nil }
         return ChatInlineCommitContext(
             runningPhase: gitAvailabilityViewModel.commitPhase,
             isDisabled: gitWriteAvailability.writesDisabled
@@ -963,10 +966,12 @@ struct ChatView: View {
     /// workspaces once the response finishes (status has refreshed) and the latest turn
     /// actually changed files.
     private var turnChangesRecapSummary: TurnFileChangeSummary? {
-        guard gitAvailabilityViewModel.hasRepository,
-              viewModel.activeStreamID == nil,
-              latestTranscriptMessageRole == "assistant"
-        else { return nil }
+        guard ChatGitControlsVisibilityPolicy.showsTurnChangesRecap(
+            showsGitControls: showsGitControls,
+            hasRepository: gitAvailabilityViewModel.hasRepository,
+            isStreaming: viewModel.activeStreamID != nil,
+            latestMessageRole: latestTranscriptMessageRole
+        ) else { return nil }
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: viewModel.latestTurnToolCalls,
             status: gitAvailabilityViewModel.status

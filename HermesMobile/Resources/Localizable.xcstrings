@@ -113750,6 +113750,112 @@
           }
         }
       }
+    },
+    "Hides the git menu, branch picker, and commit controls." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يخفي قائمة Git ومنتقي الفروع وعناصر التحكم في الالتزام."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Blendet das Git-Menü, die Branch-Auswahl und die Commit-Steuerelemente aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Oculta el menú de Git, el selector de ramas y los controles de commit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Masque le menu Git, le sélecteur de branches et les commandes de commit."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מסתיר את תפריט Git, בורר הענפים ופקדי ה-commit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nasconde il menu Git, il selettore dei branch e i controlli di commit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gitメニュー、ブランチ選択、コミットコントロールを非表示にします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git 메뉴, 브랜치 선택기 및 커밋 컨트롤을 숨겨요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Verbergt het Git-menu, de branchkiezer en de commitknoppen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ukrywa menu Git, selektor gałęzi i opcje zatwierdzania zmian."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Oculta o menu do Git, o seletor de branches e os controles de commit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Скрывает меню Git, выбор ветки и элементы управления коммитами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git menüsünü, dal seçiciyi ve commit denetimlerini gizler."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Git مینو، برانچ منتخب کنندہ، اور کمٹ کنٹرولز کو چھپاتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "隱藏 Git 選單、分支選擇器及提交控制項。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "隐藏 Git 菜单、分支选择器和提交控件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "隱藏 Git 選單、分支選擇器和提交控制項。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
