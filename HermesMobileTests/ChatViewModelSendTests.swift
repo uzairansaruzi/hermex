@@ -8303,6 +8303,98 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(requestCount, 1)
     }
 
+    @MainActor
+    func testSuccessfulSteeringUsesOneTransientConfirmationAndRestartsDismissal() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let dismissalDelay = ManualAsyncDelay()
+        var steerRequests = 0
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            steeringConfirmationDismissDelay: { await dismissalDelay.wait() }
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-123"}"#,
+                    for: request
+                )
+            case "/api/chat/steer":
+                steerRequests += 1
+                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a response")
+        XCTAssertTrue(didStart)
+
+        let steerCommand = try XCTUnwrap(SlashCommandCatalog.command(named: "steer"))
+        let slashResult = await viewModel.executeSlashCommand(steerCommand, args: "First hint")
+        XCTAssertEqual(slashResult, .executed(message: nil))
+        XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
+        await dismissalDelay.waitForRegistrationCount(1)
+
+        let normalSendResult = await viewModel.submitStreamingMessage("Second hint", behavior: .steer)
+        XCTAssertEqual(normalSendResult, .executed(message: nil))
+        await dismissalDelay.waitForRegistrationCount(2)
+
+        XCTAssertEqual(steerRequests, 2)
+        XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+
+        await dismissalDelay.resumeNext()
+        await drainMainActor()
+
+        XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
+
+        await dismissalDelay.resumeNext()
+        await drainMainActor()
+
+        XCTAssertNil(viewModel.steeringConfirmationNotice)
+        XCTAssertFalse(viewModel.messages.contains { $0.content == "Steering hint delivered." })
+    }
+
+    @MainActor
+    func testStreamCompletionDiscardsSteeringConfirmationInsteadOfPersistingIt() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let dismissalDelay = ManualAsyncDelay()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            steeringConfirmationDismissDelay: { await dismissalDelay.wait() }
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-123"}"#,
+                    for: request
+                )
+            case "/api/chat/steer":
+                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a response")
+        XCTAssertTrue(didStart)
+        _ = await viewModel.submitStreamingMessage("Steer it", behavior: .steer)
+        await dismissalDelay.waitForRegistrationCount(1)
+        XCTAssertNotNil(viewModel.steeringConfirmationNotice)
+
+        streamClient.emit(.streamEnd)
+
+        XCTAssertNil(viewModel.steeringConfirmationNotice)
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+        XCTAssertFalse(viewModel.messages.contains { $0.content == "Steering hint delivered." })
+
+        await dismissalDelay.resumeNext()
+        await drainMainActor()
+        XCTAssertNil(viewModel.steeringConfirmationNotice)
+    }
+
     /// Issue #202: a queued slash message whose send fails must not be retried in a tight loop.
     /// This is the verify-first verdict test — it queues one message behind a live stream, makes
     /// every drained send fail, triggers the drain, and counts how many times the send is retried.
@@ -8472,6 +8564,9 @@ final class ChatViewModelSendTests: XCTestCase {
         sessionSummary: SessionSummary? = nil,
         liveActivityManager: (any AgentLiveActivityManaging)? = nil,
         pollingIntervals: ChatPollingIntervals = .standard,
+        steeringConfirmationDismissDelay: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+        },
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
         speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
@@ -8505,6 +8600,7 @@ final class ChatViewModelSendTests: XCTestCase {
             clarifyStreamClient: clarifyStreamClient ?? SpySSEStreamingClient(),
             liveActivityManager: liveActivityManager,
             pollingIntervals: pollingIntervals,
+            steeringConfirmationDismissDelay: steeringConfirmationDismissDelay,
             streamingScrollCoalescingDelayNanoseconds: streamingScrollCoalescingDelayNanoseconds,
             speechSynthesizerFactory: speechSynthesizerFactory,
             // Default to a spy so unit tests never drive the live shared AVAudioSession.
@@ -8900,6 +8996,41 @@ private final class SpySSEStreamingClient: SSEStreamingClient {
         onEvent?(event)
         if automaticallyFlushPendingStreamingContent {
             flushPendingStreamingContent?()
+        }
+    }
+}
+
+private actor ManualAsyncDelay {
+    private var waiters: [UnsafeContinuation<Void, Never>] = []
+    private var registrationCount = 0
+    private var registrationObservers: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    func wait() async {
+        await withUnsafeContinuation { continuation in
+            waiters.append(continuation)
+            registrationCount += 1
+            resumeSatisfiedRegistrationObservers()
+        }
+    }
+
+    func waitForRegistrationCount(_ expectedCount: Int) async {
+        guard registrationCount < expectedCount else { return }
+
+        await withCheckedContinuation { continuation in
+            registrationObservers.append((expectedCount, continuation))
+        }
+    }
+
+    func resumeNext() {
+        guard !waiters.isEmpty else { return }
+        waiters.removeFirst().resume()
+    }
+
+    private func resumeSatisfiedRegistrationObservers() {
+        let satisfied = registrationObservers.filter { $0.count <= registrationCount }
+        registrationObservers.removeAll { $0.count <= registrationCount }
+        for observer in satisfied {
+            observer.continuation.resume()
         }
     }
 }

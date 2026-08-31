@@ -1111,8 +1111,8 @@ struct ChatView: View {
     private var composerAccessoryStack: some View {
         if composerAccessoryVisibleItemCount > 0 {
             VStack(spacing: composerAccessoryVerticalSpacing) {
-                if !viewModel.pinnedLocalNotices.isEmpty {
-                    PinnedLocalNoticeStack(notices: viewModel.pinnedLocalNotices)
+                if !composerLocalNotices.isEmpty {
+                    PinnedLocalNoticeStack(notices: composerLocalNotices)
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
 
@@ -1132,7 +1132,7 @@ struct ChatView: View {
             .zIndex(8)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerAccessoryVisibleItemCount)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
-            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.pinnedLocalNotices)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
         }
     }
@@ -1294,7 +1294,15 @@ struct ChatView: View {
     }
 
     private var pinnedNoticeSpacerHeight: CGFloat {
-        viewModel.pinnedLocalNotices.isEmpty ? 0 : CGFloat(viewModel.pinnedLocalNotices.count) * 60
+        composerLocalNotices.isEmpty ? 0 : CGFloat(composerLocalNotices.count) * 60
+    }
+
+    private var composerLocalNotices: [String] {
+        var notices = viewModel.pinnedLocalNotices
+        if let steeringConfirmationNotice = viewModel.steeringConfirmationNotice {
+            notices.append(steeringConfirmationNotice)
+        }
+        return notices
     }
 
     private var activeRunStatusPresentation: ChatActiveRunStatusPresentation? {
@@ -1329,7 +1337,7 @@ struct ChatView: View {
 
     private var composerAccessoryVisibleItemCount: Int {
         var count = 0
-        if !viewModel.pinnedLocalNotices.isEmpty {
+        if !composerLocalNotices.isEmpty {
             count += 1
         }
         if activeRunStatusPresentation != nil {

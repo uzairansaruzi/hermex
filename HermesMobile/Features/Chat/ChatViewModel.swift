@@ -355,6 +355,7 @@ final class ChatViewModel {
     var uploadAttachmentErrorMessage: String? { attachmentCoordinator.uploadAttachmentErrorMessage }
     var localAttachmentPreviews: [String: [String: Data]] { attachmentCoordinator.localAttachmentPreviews }
     private(set) var pinnedLocalNotices: [String] = []
+    private(set) var steeringConfirmationNotice: String?
     var approvalPrompt: ApprovalPromptState? { pendingActionCoordinator.approvalPrompt }
     var isRespondingToApproval: Bool { pendingActionCoordinator.isRespondingToApproval }
     var approvalErrorMessage: String? { pendingActionCoordinator.approvalErrorMessage }
@@ -385,6 +386,8 @@ final class ChatViewModel {
     private let listenRemoteControlCenter: any ListenRemoteControlControlling
     private let userDefaults: UserDefaults
     private let pollingIntervals: ChatPollingIntervals
+    private let steeringConfirmationDismissDelay: @Sendable () async throws -> Void
+    @ObservationIgnored private var steeringConfirmationDismissTask: Task<Void, Never>?
     // Real-time window over which rapid streaming updates coalesce into a single
     // scroll trigger / first content flush. Injectable so tests can drive
     // coalescing deterministically; production keeps the 16ms default.
@@ -469,6 +472,9 @@ final class ChatViewModel {
         liveActivityManager: (any AgentLiveActivityManaging)? = nil,
         showsLiveActivityResponseExcerpts: Bool = false,
         pollingIntervals: ChatPollingIntervals = .standard,
+        steeringConfirmationDismissDelay: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+        },
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
         streamingWordRevealCadenceNanoseconds: UInt64 = 48_000_000,
         streamingMaxRevealLagNanoseconds: UInt64 = 1_000_000_000,
@@ -510,6 +516,7 @@ final class ChatViewModel {
         self.liveActivityManager = resolvedLiveActivityManager
         self.showsLiveActivityResponseExcerpts = showsLiveActivityResponseExcerpts
         self.pollingIntervals = pollingIntervals
+        self.steeringConfirmationDismissDelay = steeringConfirmationDismissDelay
         self.streamingScrollCoalescingDelayNanoseconds = streamingScrollCoalescingDelayNanoseconds
         self.streamingWordRevealCadenceNanoseconds = streamingWordRevealCadenceNanoseconds
         self.streamingMaxRevealLagNanoseconds = streamingMaxRevealLagNanoseconds
@@ -528,6 +535,7 @@ final class ChatViewModel {
 
     deinit {
         backgroundPollTask?.cancel()
+        steeringConfirmationDismissTask?.cancel()
         pendingStreamingScrollTriggerTask?.cancel()
         pendingStreamingContentFlushTask?.cancel()
         listenPreparationTask?.cancel()
@@ -2498,6 +2506,7 @@ final class ChatViewModel {
         liveToolCalls = []
         liveReasoningText = ""
         pinnedLocalNotices = []
+        dismissSteeringConfirmation()
         streamingAssistantMessageID = nil
         toolCallAnchorMessageID = nil
         reasoningAnchorMessageID = nil
@@ -2616,7 +2625,8 @@ final class ChatViewModel {
         do {
             let response = try await client.steerChat(sessionID: sessionID, text: message)
             if response.accepted == true {
-                return .executed(message: String(localized: "Steering hint delivered."))
+                showSteeringConfirmation(String(localized: "Steering hint delivered."))
+                return .executed(message: nil)
             }
         } catch {
             lastError = error
@@ -3410,6 +3420,30 @@ final class ChatViewModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         pinnedLocalNotices.append(trimmed)
+    }
+
+    private func showSteeringConfirmation(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        steeringConfirmationDismissTask?.cancel()
+        steeringConfirmationNotice = trimmed
+        let dismissDelay = steeringConfirmationDismissDelay
+        steeringConfirmationDismissTask = Task { @MainActor [weak self] in
+            do {
+                try await dismissDelay()
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.dismissSteeringConfirmation()
+        }
+    }
+
+    private func dismissSteeringConfirmation() {
+        steeringConfirmationDismissTask?.cancel()
+        steeringConfirmationDismissTask = nil
+        steeringConfirmationNotice = nil
     }
 
     private func appendLocalMessage(_ text: String, role: String, idPrefix: String) -> String? {
@@ -5255,6 +5289,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
+        dismissSteeringConfirmation()
         responseCompletionNeedsTranscriptRefresh = false
     }
 
