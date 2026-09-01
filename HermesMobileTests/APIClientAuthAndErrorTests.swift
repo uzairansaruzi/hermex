@@ -182,6 +182,107 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         }
     }
 
+    // MARK: - HTTP 403 (issue #333)
+
+    func testForbiddenChatStartSurfacesServerReasonInsteadOfPasswordCopy() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 403,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+            let body = Data(#"{"error":"Read-only imported sessions cannot be continued from WebUI"}"#.utf8)
+            return (try XCTUnwrap(response), body)
+        }
+
+        do {
+            _ = try await client.startChat(
+                sessionID: "20260831_041231_abc",
+                message: "hello",
+                workspace: nil,
+                model: nil
+            )
+            XCTFail("Expected HTTP 403 error")
+        } catch let error as APIError {
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The server refused the request: Read-only imported sessions cannot be continued from WebUI"
+            )
+            XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("password"))
+            XCTAssertEqual(error.privacySafeLogCategory, "http.403")
+        } catch {
+            XCTFail("Expected APIError, got \(error)")
+        }
+    }
+
+    func testForbiddenSurfacesMessageAndDetailPayloadShapes() {
+        XCTAssertEqual(
+            APIError.http(statusCode: 403, body: #"{"message":"Workspace is locked"}"#).localizedDescription,
+            "The server refused the request: Workspace is locked"
+        )
+        XCTAssertEqual(
+            APIError.http(statusCode: 403, body: #"{"detail":"Not permitted"}"#).localizedDescription,
+            "The server refused the request: Not permitted"
+        )
+    }
+
+    func testForbiddenWithoutStructuredBodyUsesGenericFallback() {
+        let fallback = "The server refused the request. Check the server permissions and try again."
+        let bodies: [String?] = [
+            nil,
+            "",
+            "   ",
+            "not json",
+            #"{"error":""}"#,
+            "<html><title>Forbidden</title><body>cloudflare access denied</body></html>",
+        ]
+
+        for body in bodies {
+            let message = APIError.http(statusCode: 403, body: body).localizedDescription
+            XCTAssertEqual(message, fallback, "body: \(String(describing: body))")
+            XCTAssertFalse(message.contains("<"))
+            XCTAssertFalse(message.localizedCaseInsensitiveContains("password"))
+        }
+    }
+
+    func testUnauthorizedAndBadRequestCopyIsUnchangedByForbiddenHandling() {
+        XCTAssertEqual(
+            APIError.unauthorized.localizedDescription,
+            "The password was rejected. Check the server password and try again."
+        )
+        XCTAssertEqual(
+            APIError.http(statusCode: 400, body: #"{"error":"Missing message"}"#).localizedDescription,
+            "The server rejected the request: Missing message"
+        )
+        XCTAssertEqual(
+            APIError.http(statusCode: 400, body: "<html>nope</html>").localizedDescription,
+            "The server rejected the request."
+        )
+    }
+
+    func testDisplayedServerMessageIsBoundedAcrossHTTPBranches() {
+        let long = String(repeating: "x", count: 500)
+        let body = #"{"error":"\#(long)"}"#
+        let clipped = String(repeating: "x", count: 200) + "…"
+
+        XCTAssertEqual(
+            APIError.http(statusCode: 403, body: body).localizedDescription,
+            "The server refused the request: \(clipped)"
+        )
+        XCTAssertEqual(
+            APIError.http(statusCode: 400, body: body).localizedDescription,
+            "The server rejected the request: \(clipped)"
+        )
+        XCTAssertEqual(
+            APIError.http(statusCode: 418, body: body).localizedDescription,
+            "Server returned HTTP 418: \(clipped)"
+        )
+        // The raw body is still available to callers that inspect it programmatically.
+        XCTAssertEqual(APIError.http(statusCode: 403, body: body).serverMessage, long)
+    }
+
     func testHTTPErrorPrivacySafeLogCategoryDoesNotExposeServerBody() {
         let error = APIError.http(
             statusCode: 400,
