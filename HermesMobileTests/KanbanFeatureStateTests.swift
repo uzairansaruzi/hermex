@@ -3,6 +3,11 @@ import XCTest
 
 @MainActor
 final class KanbanFeatureStateTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        clearSavedKanbanBoards()
+    }
+
     func testCompatibleHandshakeIsOrderedAndBoundToItsServer() async {
         let client = KanbanClientStub()
         let firstServer = URL(string: "https://first.example.test")!
@@ -24,6 +29,97 @@ final class KanbanFeatureStateTests: XCTestCase {
             .stats("main"),
             .assignees("main")
         ])
+    }
+
+    // MARK: - Browsed Board restoration (#259)
+
+    func testBrowsedBoardIsRestoredForTheSameServerAndIsolatedFromOthers() async {
+        let defaults = makeIsolatedDefaults()
+        let firstServer = URL(string: "https://first.example.test")!
+        let secondServer = URL(string: "https://second.example.test")!
+
+        let browsing = KanbanFeatureState(
+            server: firstServer,
+            client: KanbanClientStub(boardsResult: .success(KanbanFixtures.multiBoards)),
+            defaults: defaults
+        )
+        await browsing.load()
+        await browsing.selectBoard("release")
+        XCTAssertEqual(browsing.selectedBoardSlug, "release")
+
+        // A rebuilt state for the same server reopens Release directly: the
+        // handshake never requests the server-global current Board first.
+        let restoredClient = KanbanClientStub(boardsResult: .success(KanbanFixtures.multiBoards))
+        let restored = KanbanFeatureState(server: firstServer, client: restoredClient, defaults: defaults)
+        await restored.load()
+        XCTAssertEqual(restored.selectedBoardSlug, "release")
+        XCTAssertEqual(restored.sharedActiveBoardSlug, "main")
+        XCTAssertNil(restored.boardSelectionNotice)
+        let restoredCalls = await restoredClient.calls()
+        XCTAssertEqual(restoredCalls, [
+            .configuration,
+            .boards,
+            .board(KanbanBoardRequest(board: "release")),
+            .stats("release"),
+            .assignees("release")
+        ])
+
+        let otherServer = KanbanFeatureState(
+            server: secondServer,
+            client: KanbanClientStub(boardsResult: .success(KanbanFixtures.multiBoards)),
+            defaults: defaults
+        )
+        await otherServer.load()
+        XCTAssertEqual(otherServer.selectedBoardSlug, "main")
+        XCTAssertEqual(KanbanBoardPreference.savedSlug(for: firstServer, in: defaults), "release")
+        XCTAssertEqual(KanbanBoardPreference.savedSlug(for: secondServer, in: defaults), "main")
+    }
+
+    func testStaleSavedBoardIsDroppedAndColdStartFallsBackToCurrentBoard() async {
+        let defaults = makeIsolatedDefaults()
+        let server = URL(string: "https://example.test")!
+        KanbanBoardPreference.save("ghost", for: server, in: defaults)
+        let client = KanbanClientStub(boardsResult: .success(KanbanFixtures.multiBoards))
+        let state = KanbanFeatureState(server: server, client: client, defaults: defaults)
+
+        await state.load()
+
+        XCTAssertEqual(state.state, .compatible)
+        XCTAssertEqual(state.selectedBoardSlug, "main")
+        XCTAssertNil(state.boardSelectionNotice)
+        let calls = await client.calls()
+        XCTAssertFalse(calls.contains(.board(KanbanBoardRequest(board: "ghost"))))
+        XCTAssertEqual(KanbanBoardPreference.savedSlug(for: server, in: defaults), "main")
+    }
+
+    func testBoardRemovedWhileBrowsingClearsTheSavedChoice() async throws {
+        let defaults = makeIsolatedDefaults()
+        let server = URL(string: "https://example.test")!
+        let client = BoardManagementClient(boardsResponses: [
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
+            )),
+            .success(mutationDecode(
+                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
+            ))
+        ])
+        let state = KanbanFeatureState(server: server, client: client, defaults: defaults)
+        await state.load()
+        await state.selectBoard("release")
+        XCTAssertEqual(KanbanBoardPreference.savedSlug(for: server, in: defaults), "release")
+
+        await state.refresh()
+
+        XCTAssertNil(state.selectedBoardSlug)
+        XCTAssertNil(KanbanBoardPreference.savedSlug(for: server, in: defaults))
+    }
+
+    private func makeIsolatedDefaults() -> UserDefaults {
+        let suiteName = "KanbanFeatureStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        return defaults
     }
 
     func testCommentCapabilityUsesEnvelopePermissionAndHonorsExplicitBoardReadOnly() async {
@@ -2619,5 +2715,17 @@ private enum KanbanFixtures {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try! decoder.decode(T.self, from: Data(json.utf8))
+    }
+}
+
+extension XCTestCase {
+    /// `KanbanFeatureState` persists the browsed Board slug into
+    /// `UserDefaults.standard` unless a test injects its own suite (#259). Clear
+    /// those keys so one test's browsing cannot leak into another's cold load.
+    func clearSavedKanbanBoards() {
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("kanban.selectedBoard|") {
+            defaults.removeObject(forKey: key)
+        }
     }
 }

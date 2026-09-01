@@ -3,6 +3,11 @@ import XCTest
 
 @MainActor
 final class KanbanLiveUpdateTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        clearSavedKanbanBoards()
+    }
+
     func testVisibleBoardStartsAtSnapshotCursorAndCoalescesEventBurst() async throws {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
         let stream = KanbanStreamSpy()
@@ -216,6 +221,37 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    func testRestoredBoardIsReconciledAndRestreamedAfterForeground() async {
+        let server = URL(string: "https://example.test")!
+        let suiteName = "KanbanLiveUpdateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        KanbanBoardPreference.save("release", for: server, in: defaults)
+        let client = LiveKanbanClient(
+            boards: .multiple,
+            boardResults: [.success(.release), .success(.releaseUpdated)]
+        )
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream, defaults: defaults)
+
+        await state.load()
+        state.setVisible(true)
+        XCTAssertEqual(state.selectedBoardSlug, "release")
+        XCTAssertEqual(stream.startURLs.first?.queryValue("board"), "release")
+        XCTAssertEqual(stream.startURLs.first?.queryValue("since"), "20")
+
+        await state.setSceneActive(false)
+        await state.setSceneActive(true)
+
+        let boardRequests = await client.boardRequests
+        XCTAssertEqual(boardRequests.map(\.board), ["release", "release"])
+        XCTAssertNil(boardRequests.last?.since)
+        XCTAssertEqual(state.snapshot?.latestEventID, 21)
+        XCTAssertEqual(stream.startURLs.count, 2)
+        XCTAssertEqual(stream.startURLs.last?.queryValue("board"), "release")
+        state.setVisible(false)
+    }
+
     func testPullToRefreshRetriesDelayedStreamAndNoticeClearsOnlyAfterHello() async throws {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
         let stream = KanbanStreamSpy()
@@ -320,13 +356,15 @@ final class KanbanLiveUpdateTests: XCTestCase {
             reconnectDelays: [.milliseconds(5), .milliseconds(5)],
             pollingInterval: .seconds(60),
             failuresBeforePolling: 3
-        )
+        ),
+        defaults: UserDefaults = .standard
     ) -> KanbanFeatureState {
         KanbanFeatureState(
             server: URL(string: "https://example.test")!,
             client: client,
             streamClient: stream,
-            timing: timing
+            timing: timing,
+            defaults: defaults
         )
     }
 

@@ -300,9 +300,32 @@ struct KanbanLiveUpdateTiming: Sendable {
     )
 }
 
-/// Server-bound, transient Kanban browsing state. Each instance owns one
-/// server's Board choice, filters, selection, and snapshots; nothing is shared
-/// across servers or persisted by this slice.
+/// Remembers the last locally browsed Board per server (#259) so a rebuilt
+/// `KanbanFeatureState` reopens it instead of the server-global active Board.
+/// Keyed by the server's absolute URL like the other per-server defaults. The
+/// value is only a hint: `load()` validates it against the fresh Board list
+/// before it reaches the wire, and it never changes the server's active Board.
+enum KanbanBoardPreference {
+    static func key(for server: URL) -> String {
+        "kanban.selectedBoard|\(server.absoluteString)"
+    }
+
+    static func savedSlug(for server: URL, in defaults: UserDefaults) -> String? {
+        defaults.string(forKey: key(for: server))
+    }
+
+    static func save(_ slug: String?, for server: URL, in defaults: UserDefaults) {
+        if let slug {
+            defaults.set(slug, forKey: key(for: server))
+        } else {
+            defaults.removeObject(forKey: key(for: server))
+        }
+    }
+}
+
+/// Server-bound Kanban browsing state. Each instance owns one server's Board
+/// choice, filters, selection, and snapshots; nothing is shared across servers.
+/// Only the browsed Board slug outlives the instance, via `KanbanBoardPreference`.
 @MainActor
 @Observable
 final class KanbanFeatureState {
@@ -338,7 +361,12 @@ final class KanbanFeatureState {
     private(set) var dispatchState: KanbanDispatchState?
     private(set) var dispatcherCapabilityIsIncompatible = false
 
-    private(set) var selectedBoardSlug: String?
+    private(set) var selectedBoardSlug: String? {
+        didSet {
+            guard selectedBoardSlug != oldValue else { return }
+            KanbanBoardPreference.save(selectedBoardSlug, for: server, in: defaults)
+        }
+    }
     var selectedStatus = "triage"
     var searchText = ""
     var selectedProfile: String?
@@ -357,6 +385,7 @@ final class KanbanFeatureState {
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
     private let now: @MainActor @Sendable () -> Date
     private let onAPIError: (Error) -> Void
+    private let defaults: UserDefaults
     private var isVisible = false
     private var sceneIsActive = true
     private var liveGeneration = 0
@@ -387,7 +416,8 @@ final class KanbanFeatureState {
             try await Task.sleep(for: duration)
         },
         now: @escaping @MainActor @Sendable () -> Date = { Date() },
-        onAPIError: @escaping (Error) -> Void = { _ in }
+        onAPIError: @escaping (Error) -> Void = { _ in },
+        defaults: UserDefaults = .standard
     ) {
         self.server = server
         self.client = client ?? APIClient(baseURL: server)
@@ -397,6 +427,7 @@ final class KanbanFeatureState {
         self.sleep = sleep
         self.now = now
         self.onAPIError = onAPIError
+        self.defaults = defaults
     }
 
     /// Future write slices must use this single seam before exposing any
@@ -914,7 +945,9 @@ final class KanbanFeatureState {
                 state = report.isPartial ? .partial : .compatible
                 return
             }
-            let boardToLoad = previouslySelectedBoard ?? currentBoard
+            let boardToLoad = previouslySelectedBoard
+                ?? restoredBoard(from: availableBoards)
+                ?? currentBoard
             let snapshot = try await client.kanbanBoard(KanbanBoardRequest(board: boardToLoad))
             guard isCurrent(loadID) else { return }
 
@@ -2263,6 +2296,18 @@ final class KanbanFeatureState {
         capabilityWarnings = []
         refreshFailed = false
         boardSelectionNotice = KanbanBoardSelectionNotice(boardName: boardDisplayName)
+    }
+
+    /// The saved per-server Board choice, only while the fresh Board list still
+    /// contains it. A stale slug is dropped here so it never reaches the wire and
+    /// a cold start falls back silently to the server's current Board.
+    private func restoredBoard(from availableBoards: [KanbanBoard]) -> String? {
+        guard let saved = normalized(KanbanBoardPreference.savedSlug(for: server, in: defaults)) else {
+            return nil
+        }
+        if availableBoards.contains(where: { normalized($0.slug) == saved }) { return saved }
+        KanbanBoardPreference.save(nil, for: server, in: defaults)
+        return nil
     }
 
     private func normalizedOptional(_ value: String?) -> String? {

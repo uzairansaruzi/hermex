@@ -79,7 +79,9 @@ Kanban is a distinct `SessionListUtilityDestination` constructed with the active
 server URL and centralized authentication-error handling. Browsing a Board is local
 to Hermex and never changes the server's active Board. Profile grouping is also a
 local presentation choice. Any persisted Board/filter/Status preference must be keyed
-by server.
+by server. The browsed Board slug is the one persisted preference (`KanbanBoardPreference`,
+#259): it is restored on load only after the fresh Board list confirms it, and a stale
+slug falls back silently to the server's current Board.
 
 The interaction model is **Status Focus**:
 
