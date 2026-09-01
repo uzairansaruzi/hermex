@@ -159,8 +159,47 @@ struct MarkdownMathFormatter {
         if trimmed.range(of: #"^[A-Za-z](?:_[A-Za-z0-9]+|\^[A-Za-z0-9]+)?$"#, options: .regularExpression) != nil {
             return true
         }
+        if looksLikeAssignment(trimmed) { return true }
         if trimmed.contains("\\") || trimmed.contains("^") || trimmed.contains("_") { return true }
         return trimmed.range(of: #"[A-Za-z0-9]\s*[=<>+\-*/|]\s*[A-Za-z0-9]"#, options: .regularExpression) != nil
+    }
+
+    /// Recognizes assignment forms whose grouped right-hand side prevented the
+    /// general operator rule from seeing an alphanumeric value after `=`.
+    private static func looksLikeAssignment(_ value: String) -> Bool {
+        let parts = value.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return false }
+
+        let lhs = parts[0].trimmingCharacters(in: .whitespaces)
+        guard lhs.range(
+            of: #"^[A-Za-z](?:_[A-Za-z0-9]+|\^[A-Za-z0-9]+)?$"#,
+            options: .regularExpression
+        ) != nil else {
+            return false
+        }
+
+        let rhs = parts[1].trimmingCharacters(in: .whitespaces)
+        guard !rhs.isEmpty else { return false }
+
+        let allowedSymbols = CharacterSet(charactersIn: #"\_^,+-*/.=<>|[](){}"#)
+            .union(.alphanumerics)
+            .union(.whitespaces)
+        guard rhs.unicodeScalars.allSatisfy(allowedSymbols.contains) else { return false }
+
+        var stack: [Character] = []
+        let closingForOpening: [Character: Character] = ["[": "]", "(": ")", "{": "}"]
+        let openingsForClosing: [Character: Character] = ["]": "[", ")": "(", "}": "{"]
+
+        for character in rhs {
+            if closingForOpening[character] != nil {
+                stack.append(character)
+            } else if let opening = openingsForClosing[character] {
+                guard stack.popLast() == opening else { return false }
+            }
+        }
+
+        guard stack.isEmpty else { return false }
+        return rhs.range(of: #"[0-9\\_^,+\-*/<>|]"#, options: .regularExpression) != nil
     }
 }
 

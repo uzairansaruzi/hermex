@@ -27,6 +27,49 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertTrue(rendered.contains(#"\$not math\$"#))
     }
 
+    func testInlineAssignmentsRecognizeVectorsTuplesAndExistingScriptForms() {
+        let input = #"Vectors $E=[4,-2]$ and $O=[6,-2]$; tuple $P=(x,y)$; scripts $W_0=e^0$, $W_2$, $O_0$, and $X_0=\sum x_n$."#
+
+        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
+
+        XCTAssertFalse(rendered.contains("$"))
+        XCTAssertTrue(rendered.contains("E=[4,-2]"))
+        XCTAssertTrue(rendered.contains("O=[6,-2]"))
+        XCTAssertTrue(rendered.contains("P=(x,y)"))
+        XCTAssertTrue(rendered.contains("W₀=e⁰"))
+        XCTAssertTrue(rendered.contains("W₂"))
+        XCTAssertTrue(rendered.contains("O₀"))
+        XCTAssertTrue(rendered.contains("X₀=∑ xₙ"))
+    }
+
+    func testInlineAssignmentRecognitionPreservesCurrencyAndProtectedDollars() {
+        let inputs = [
+            "It costs $5 today.",
+            #"Escaped \$E=[4,-2]\$ stays."#,
+            "Unmatched $O=[6,-2] stays.",
+            "Code `$P=(x,y)$` stays.",
+            "```md\n$E=[4,-2]$\n```"
+        ]
+
+        for input in inputs {
+            XCTAssertEqual(MarkdownMathFormatter.replacingInlineMath(in: input), input)
+        }
+    }
+
+    func testProductionLayoutsRecognizeAssignmentsForStreamingAndFinalizedMarkdown() {
+        let input = #"Result: **$E=[4,-2]$** and `$O=[6,-2]$` stays code."#
+
+        let finalized = MarkdownMathLayoutCache.layout(for: input)
+        let streaming = MarkdownMathLayoutCache.uncachedLayout(for: input)
+
+        XCTAssertEqual(finalized, streaming)
+        guard case .plain(let rendered) = finalized else {
+            return XCTFail("Expected inline math to keep the production renderer on its plain layout path.")
+        }
+        XCTAssertTrue(rendered.contains("**E=[4,-2]**"))
+        XCTAssertTrue(rendered.contains("`$O=[6,-2]$`"))
+    }
+
     func testInlineScreenshotCommandsDoNotLeakRawLatex() {
         let input = #"Probability: $P(A \mid B) = \frac{P(B \mid A)P(A)}{P(B)}$ and norm $\Vert x \rVert_2 = \sqrt{\sum_{i=1}^n x_i^2}$."#
 
