@@ -77,7 +77,14 @@ final class ChatScrollPolicyTests: XCTestCase {
 
     func testDragEndAboveBottomKeepsFollowOff() {
         XCTAssertFalse(follow(false, .userScrollEnd(isAtBottom: false)))
-        XCTAssertFalse(follow(true, .userScrollEnd(isAtBottom: false)))
+    }
+
+    func testExplicitResetSurvivesLateDragSettlement() {
+        // Drag lifted above the bottom, then send or scroll-to-bottom landed inside the
+        // 160 ms settle window. The late settle report must not undo the reset.
+        let afterReset = follow(follow(true, .userScrollBegin), .reset)
+        XCTAssertTrue(afterReset)
+        XCTAssertTrue(follow(afterReset, .userScrollEnd(isAtBottom: false)))
     }
 
     func testDragEndAtBottomReArmsFollow() {

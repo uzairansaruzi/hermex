@@ -61,7 +61,10 @@ enum ChatScrollPolicy {
         /// The user started dragging the transcript.
         case userScrollBegin
         /// The user's gesture settled: a drag with no momentum after
-        /// `dragSettleDelay`, or deceleration coming to rest.
+        /// `dragSettleDelay`, or deceleration coming to rest. Re-arms at the
+        /// bottom; elsewhere it keeps whatever the latch already is, so a
+        /// send or scroll-to-bottom tap that landed while the gesture was
+        /// still settling is not undone by the late settle report.
         case userScrollEnd(isAtBottom: Bool)
         /// The content offset changed for any other reason: streaming growth,
         /// keyboard presentation, a programmatic scroll, or a live gesture.
@@ -76,7 +79,7 @@ enum ChatScrollPolicy {
         case .userScrollBegin:
             return false
         case .userScrollEnd(let isAtBottom):
-            return isAtBottom
+            return isAtBottom || current
         case .contentScrolled(let isAtBottom, let isUserScrolling):
             if isUserScrolling {
                 return false

@@ -5,8 +5,9 @@ struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var prependScrollPositionController = ChatPrependScrollPositionController()
-    /// While true the bottom size-change anchor is suspended so a disclosure
-    /// toggle near the end grows or shrinks in place instead of moving the view.
+    /// While true the bottom size-change anchor and follow-driven scrolls are
+    /// suspended so a disclosure toggle near the end grows or shrinks in place
+    /// instead of moving the view.
     @State private var isDisclosureSettling = false
     @State private var disclosureSettleGeneration = 0
 
@@ -172,7 +173,7 @@ struct ChatTranscriptView: View {
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
                 .background(Color(.systemBackground))
                 .onChange(of: messages.count) {
-                    guard shouldFollowLatestMessage else { return }
+                    guard isFollowingLatestContent else { return }
 
                     if latestTranscriptMessageRole == "user" {
                         onScrollToLatestTranscriptMessage(proxy)
@@ -181,7 +182,7 @@ struct ChatTranscriptView: View {
                     }
                 }
                 .onChange(of: streamingScrollTrigger) {
-                    if shouldFollowLatestMessage {
+                    if isFollowingLatestContent {
                         onScrollToLatestContent(proxy, true)
                     }
                 }
@@ -189,11 +190,11 @@ struct ChatTranscriptView: View {
                     // Cache-first reconcile (#289): the server transcript just replaced
                     // the lighter cached render, so snap back to the bottom (no
                     // animation) unless the reader has scrolled away in the meantime.
-                    guard shouldFollowLatestMessage else { return }
+                    guard isFollowingLatestContent else { return }
                     onScrollToLatestContent(proxy, false)
                 }
                 .onChange(of: clarificationPrompt?.id) {
-                    guard clarificationPrompt != nil, shouldFollowLatestMessage else { return }
+                    guard clarificationPrompt != nil, isFollowingLatestContent else { return }
                     onScrollToBottom(proxy)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -205,9 +206,15 @@ struct ChatTranscriptView: View {
         }
     }
 
+    /// Follow-driven scrolls run only while the latch is on and no disclosure
+    /// toggle is mid-animation; the latch itself is untouched, so the next
+    /// streaming trigger catches up once the toggle has settled.
+    private var isFollowingLatestContent: Bool {
+        shouldFollowLatestMessage && !isDisclosureSettling
+    }
+
     /// Holds the current offset through a disclosure animation so the tapped
-    /// row stays under the finger; follow itself is untouched, so the next
-    /// streaming trigger still catches up once the toggle has settled.
+    /// row stays under the finger.
     private func suspendBottomAnchorForDisclosure() {
         disclosureSettleGeneration += 1
         let generation = disclosureSettleGeneration
