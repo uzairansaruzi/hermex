@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ReasoningBlockView: View {
     let text: String
@@ -22,8 +23,8 @@ struct ReasoningBlockView: View {
     }
 
     var body: some View {
-        if let trimmedText {
-            let summary = summary(for: trimmedText)
+        if let displayText = ReasoningBlockContent.displayText(from: text) {
+            let summary = summary(for: displayText)
 
             VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
                 Button {
@@ -38,7 +39,7 @@ struct ReasoningBlockView: View {
                 .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
                 if isExpanded {
-                    reasoningText
+                    reasoningText(displayText)
                         .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
                 }
             }
@@ -93,12 +94,12 @@ struct ReasoningBlockView: View {
     }
 
     @ViewBuilder
-    private var reasoningText: some View {
+    private func reasoningText(_ displayText: String) -> some View {
         if let liveStreamID {
-            LiveReasoningTextView(text: text)
+            LiveReasoningTextView(text: displayText)
                 .id(liveStreamID)
         } else {
-            Text(text)
+            Text(displayText)
                 .font(AppFont.caption())
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
@@ -113,11 +114,6 @@ struct ReasoningBlockView: View {
             .lineLimit(lineLimit)
     }
 
-    private var trimmedText: String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
     private func summary(for value: String) -> String {
         let oneLine = value
             .replacingOccurrences(of: "\n", with: " ")
@@ -128,6 +124,13 @@ struct ReasoningBlockView: View {
         }
 
         return "\(oneLine.prefix(80))..."
+    }
+}
+
+enum ReasoningBlockContent {
+    static func displayText(from text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -187,7 +190,7 @@ struct StreamingReasoningTextState: Equatable {
         }
     }
 
-    /// Prefer a nearby blank line so separate Text views keep paragraph layout.
+    /// Prefer a nearby blank line so stable chunk identity follows content structure.
     /// The character-count fallback also bounds a paragraph with no line breaks.
     private func stableChunkBoundary(in text: String) -> String.Index {
         let target = text.index(
@@ -224,6 +227,22 @@ struct StreamingReasoningTextState: Equatable {
     }
 }
 
+enum StreamingReasoningTextStorageUpdate: Equatable {
+    case unchanged
+    case append(String)
+    case replace(String)
+
+    static func make(renderedText: String, newText: String) -> Self {
+        guard renderedText != newText else { return .unchanged }
+        guard newText.utf8.starts(with: renderedText.utf8) else {
+            return .replace(newText)
+        }
+
+        let appendedBytes = newText.utf8.dropFirst(renderedText.utf8.count)
+        return .append(String(decoding: appendedBytes, as: UTF8.self))
+    }
+}
+
 private struct LiveReasoningTextView: View {
     let text: String
 
@@ -235,32 +254,162 @@ private struct LiveReasoningTextView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(state.stableChunks) { chunk in
-                ReasoningTextFragment(text: chunk.text)
-                    .equatable()
-            }
-
-            if !state.activeTail.isEmpty {
-                ReasoningTextFragment(text: state.activeTail)
-            }
-        }
+        StreamingReasoningTextView(state: state)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(text)
+        .allowsHitTesting(false)
         .onChange(of: text) { _, newText in
             state.update(with: newText)
         }
     }
 }
 
-private struct ReasoningTextFragment: View, Equatable {
-    let text: String
+private struct StreamingReasoningTextView: UIViewRepresentable {
+    let state: StreamingReasoningTextState
 
-    var body: some View {
-        Text(text)
-            .font(AppFont.caption())
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.isSelectable = false
+        textView.isScrollEnabled = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.adjustsFontForContentSizeCategory = true
+        textView.isAccessibilityElement = true
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        let font = UIFont.preferredFont(forTextStyle: .caption1)
+        let textColor = UIColor.label
+        let layoutDirection = context.environment.layoutDirection
+
+        context.coordinator.update(
+            textView,
+            to: state,
+            font: font,
+            textColor: textColor
+        )
+        textView.textAlignment = layoutDirection == .rightToLeft ? .right : .left
+        textView.accessibilityLabel = state.sourceText
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        let size = uiView.sizeThatFits(
+            CGSize(width: width, height: .greatestFiniteMagnitude)
+        )
+        return CGSize(width: width, height: ceil(size.height))
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        private static let chunkIDAttribute = NSAttributedString.Key(
+            "HermexStreamingReasoningChunkID"
+        )
+
+        private var renderedText = ""
+        private var stableChunkIDs: [Int] = []
+        private var stableUTF16Length = 0
+        private var font: UIFont?
+        private var textColor: UIColor?
+
+        func update(
+            _ textView: UITextView,
+            to state: StreamingReasoningTextState,
+            font: UIFont,
+            textColor: UIColor
+        ) {
+            let storageUpdate = StreamingReasoningTextStorageUpdate.make(
+                renderedText: renderedText,
+                newText: state.sourceText
+            )
+
+            switch storageUpdate {
+            case .unchanged:
+                break
+            case .append(let suffix):
+                textView.textStorage.append(
+                    NSAttributedString(
+                        string: suffix,
+                        attributes: [.font: font, .foregroundColor: textColor]
+                    )
+                )
+            case .replace(let replacement):
+                textView.attributedText = NSAttributedString(
+                    string: replacement,
+                    attributes: [.font: font, .foregroundColor: textColor]
+                )
+                stableChunkIDs = []
+                stableUTF16Length = 0
+            }
+
+            renderedText = state.sourceText
+            markNewStableChunks(in: textView.textStorage, from: state)
+            updateAppearance(
+                in: textView,
+                font: font,
+                textColor: textColor
+            )
+
+            if storageUpdate != .unchanged {
+                textView.invalidateIntrinsicContentSize()
+            }
+        }
+
+        private func markNewStableChunks(
+            in textStorage: NSTextStorage,
+            from state: StreamingReasoningTextState
+        ) {
+            let retainedIDs = state.stableChunks.prefix(stableChunkIDs.count).map(\.id)
+            guard Array(retainedIDs) == stableChunkIDs else {
+                stableChunkIDs = []
+                stableUTF16Length = 0
+                textStorage.removeAttribute(
+                    Self.chunkIDAttribute,
+                    range: NSRange(location: 0, length: textStorage.length)
+                )
+                markNewStableChunks(in: textStorage, from: state)
+                return
+            }
+
+            for chunk in state.stableChunks.dropFirst(stableChunkIDs.count) {
+                let length = chunk.text.utf16.count
+                textStorage.addAttribute(
+                    Self.chunkIDAttribute,
+                    value: chunk.id,
+                    range: NSRange(location: stableUTF16Length, length: length)
+                )
+                stableChunkIDs.append(chunk.id)
+                stableUTF16Length += length
+            }
+        }
+
+        private func updateAppearance(
+            in textView: UITextView,
+            font: UIFont,
+            textColor: UIColor
+        ) {
+            guard self.font != font || self.textColor != textColor else { return }
+
+            self.font = font
+            self.textColor = textColor
+            let fullRange = NSRange(location: 0, length: textView.textStorage.length)
+            textView.textStorage.addAttributes(
+                [.font: font, .foregroundColor: textColor],
+                range: fullRange
+            )
+            textView.typingAttributes[.font] = font
+            textView.typingAttributes[.foregroundColor] = textColor
+        }
     }
 }

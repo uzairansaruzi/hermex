@@ -49,6 +49,14 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
 }
 
 final class StreamingReasoningTextStateTests: XCTestCase {
+    func testReasoningBlockDisplayTextPreservesExistingBoundaryTrimming() {
+        XCTAssertEqual(
+            ReasoningBlockContent.displayText(from: " \nReasoning stays complete.\n "),
+            "Reasoning stays complete."
+        )
+        XCTAssertNil(ReasoningBlockContent.displayText(from: " \n\t "))
+    }
+
     func testLargePrefixStreamReconstructsExactlyAndPreservesStableChunks() {
         let paragraph = "Hermes inspects the workspace before choosing the next step.\n\n"
         let fullText = String(String(repeating: paragraph, count: 1_500).prefix(80_000))
@@ -138,6 +146,42 @@ final class StreamingReasoningTextStateTests: XCTestCase {
 
         XCTAssertEqual(state.stableChunks.first?.id, 0)
         XCTAssertEqual(state.reconstructedText, secondStream)
+    }
+
+    func testTextStorageUpdateAppendsOnlyNewSuffix() {
+        let rendered = String(repeating: "Long paragraph without breaks. ", count: 100)
+        let newText = rendered + "Still streaming."
+
+        XCTAssertEqual(
+            StreamingReasoningTextStorageUpdate.make(
+                renderedText: rendered,
+                newText: newText
+            ),
+            .append("Still streaming.")
+        )
+    }
+
+    func testTextStorageUpdateReplacesNonPrefixContent() {
+        XCTAssertEqual(
+            StreamingReasoningTextStorageUpdate.make(
+                renderedText: "Old stream",
+                newText: "Replacement stream"
+            ),
+            .replace("Replacement stream")
+        )
+    }
+
+    func testTextStorageUpdatePreservesCrossUpdateGraphemeBytes() {
+        let rendered = "Planning e"
+        let newText = rendered + "\u{301}"
+
+        XCTAssertEqual(
+            StreamingReasoningTextStorageUpdate.make(
+                renderedText: rendered,
+                newText: newText
+            ),
+            .append("\u{301}")
+        )
     }
 }
 
