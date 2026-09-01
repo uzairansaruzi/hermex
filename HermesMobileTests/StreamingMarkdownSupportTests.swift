@@ -48,6 +48,99 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
     }
 }
 
+final class StreamingReasoningTextStateTests: XCTestCase {
+    func testLargePrefixStreamReconstructsExactlyAndPreservesStableChunks() {
+        let paragraph = "Hermes inspects the workspace before choosing the next step.\n\n"
+        let fullText = String(String(repeating: paragraph, count: 1_500).prefix(80_000))
+        var state = StreamingReasoningTextState()
+        var previousChunks: [StreamingReasoningChunk] = []
+
+        for characterCount in stride(from: 2_000, through: 80_000, by: 2_000) {
+            let end = fullText.index(fullText.startIndex, offsetBy: characterCount)
+            state.update(with: String(fullText[..<end]))
+
+            XCTAssertEqual(Array(state.stableChunks.prefix(previousChunks.count)), previousChunks)
+            XCTAssertLessThanOrEqual(
+                state.activeTail.count,
+                StreamingReasoningTextState.maximumActiveTailCharacterCount
+            )
+            previousChunks = state.stableChunks
+        }
+
+        XCTAssertEqual(Array(state.reconstructedText.utf8), Array(fullText.utf8))
+        XCTAssertFalse(state.stableChunks.isEmpty)
+    }
+
+    func testBlankLineBecomesAStableChunkBoundary() {
+        let firstParagraph = String(repeating: "A", count: 900) + "\n\n"
+        let text = firstParagraph + String(repeating: "B", count: 1_000)
+        let state = StreamingReasoningTextState(text: text)
+
+        XCTAssertEqual(state.stableChunks.first?.text, firstParagraph)
+        XCTAssertEqual(state.reconstructedText, text)
+    }
+
+    func testLongUnbrokenTextUsesBoundedGraphemeSafeChunks() {
+        let text = String(repeating: "x", count: 5_000)
+        let state = StreamingReasoningTextState(text: text)
+
+        XCTAssertTrue(state.stableChunks.allSatisfy {
+            $0.text.count == StreamingReasoningTextState.targetChunkCharacterCount
+        })
+        XCTAssertLessThanOrEqual(
+            state.activeTail.count,
+            StreamingReasoningTextState.maximumActiveTailCharacterCount
+        )
+        XCTAssertEqual(state.reconstructedText, text)
+    }
+
+    func testEmojiAndMultiScalarGraphemesStayIntact() {
+        let graphemes = ["👨🏽‍💻", "e\u{301}", "🇺🇸", "🫶🏻"]
+        let text = String(repeating: graphemes.joined(), count: 800)
+        let state = StreamingReasoningTextState(text: text)
+
+        XCTAssertEqual(Array(state.reconstructedText.utf8), Array(text.utf8))
+        XCTAssertTrue(state.stableChunks.allSatisfy { chunk in
+            chunk.text.allSatisfy { graphemes.contains(String($0)) }
+        })
+    }
+
+    func testPrefixAppendCanExtendTheFinalGrapheme() {
+        let initialText = String(repeating: "x", count: 2_000) + "e"
+        let extendedText = initialText + "\u{301}"
+        var state = StreamingReasoningTextState(text: initialText)
+
+        state.update(with: extendedText)
+
+        XCTAssertEqual(Array(state.reconstructedText.utf8), Array(extendedText.utf8))
+        XCTAssertTrue(state.activeTail.hasSuffix("e\u{301}"))
+    }
+
+    func testNonPrefixReplacementDropsPreviousChunks() {
+        let original = String(repeating: "Original paragraph.\n\n", count: 200)
+        let replacement = String(repeating: "Replacement paragraph.\n\n", count: 200)
+        var state = StreamingReasoningTextState(text: original)
+
+        state.update(with: replacement)
+
+        XCTAssertEqual(state.stableChunks.first?.id, 0)
+        XCTAssertTrue(state.stableChunks.first?.text.hasPrefix("Replacement") == true)
+        XCTAssertFalse(state.reconstructedText.contains("Original"))
+        XCTAssertEqual(state.reconstructedText, replacement)
+    }
+
+    func testExplicitNewStreamResetRestartsChunkIdentity() {
+        let firstStream = String(repeating: "First stream.\n\n", count: 200)
+        let secondStream = String(repeating: "Second stream.\n\n", count: 200)
+        var state = StreamingReasoningTextState(text: firstStream)
+
+        state.reset(with: secondStream)
+
+        XCTAssertEqual(state.stableChunks.first?.id, 0)
+        XCTAssertEqual(state.reconstructedText, secondStream)
+    }
+}
+
 /// Width resolution for chat markdown table cells (issue #233). The layout
 /// itself needs a render pass to verify; this covers the pure clamp that
 /// decides the wrap width the cell height is measured at.
