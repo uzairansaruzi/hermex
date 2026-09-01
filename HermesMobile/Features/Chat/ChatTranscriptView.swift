@@ -5,6 +5,10 @@ struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var prependScrollPositionController = ChatPrependScrollPositionController()
+    /// While true the bottom size-change anchor is suspended so a disclosure
+    /// toggle near the end grows or shrinks in place instead of moving the view.
+    @State private var isDisclosureSettling = false
+    @State private var disclosureSettleGeneration = 0
 
     let isLoading: Bool
     let errorMessage: String?
@@ -55,6 +59,7 @@ struct ChatTranscriptView: View {
     let onLoadMessages: () async -> Void
     let onLoadOlderMessages: () async -> Bool
     let onUpdateScrollMetrics: (ChatScrollMetrics) -> Void
+    let onFollowEvent: (ChatScrollPolicy.FollowEvent) -> Void
     let onDismissKeyboard: () -> Void
     let onScrollToBottom: (ScrollViewProxy) -> Void
     let onScrollToLatestTranscriptMessage: (ScrollViewProxy) -> Void
@@ -127,7 +132,8 @@ struct ChatTranscriptView: View {
                     )
                     .defaultScrollAnchor(
                         ChatScrollPolicy.sizeChangeAnchor(
-                            shouldFollowLatestMessage: shouldFollowLatestMessage
+                            shouldFollowLatestMessage: shouldFollowLatestMessage,
+                            isDisclosureSettling: isDisclosureSettling
                         ),
                         for: .sizeChanges
                     )
@@ -196,6 +202,21 @@ struct ChatTranscriptView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Holds the current offset through a disclosure animation so the tapped
+    /// row stays under the finger; follow itself is untouched, so the next
+    /// streaming trigger still catches up once the toggle has settled.
+    private func suspendBottomAnchorForDisclosure() {
+        disclosureSettleGeneration += 1
+        let generation = disclosureSettleGeneration
+        isDisclosureSettling = true
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(ChatScrollPolicy.disclosureAnchorSuspension))
+            guard generation == disclosureSettleGeneration else { return }
+            isDisclosureSettling = false
         }
     }
 
@@ -284,11 +305,13 @@ struct ChatTranscriptView: View {
         .padding(.horizontal, transcriptHorizontalPadding)
         .frame(width: viewportWidth, alignment: .leading)
         .clipped()
+        .environment(\.chatDisclosureToggled, suspendBottomAnchorForDisclosure)
         .background {
             ZStack {
                 ChatScrollObserver(
                     isStreaming: activeStreamID != nil,
-                    prependScrollPositionController: prependScrollPositionController
+                    prependScrollPositionController: prependScrollPositionController,
+                    onFollowEvent: onFollowEvent
                 ) { metrics in
                     onUpdateScrollMetrics(metrics)
                 }

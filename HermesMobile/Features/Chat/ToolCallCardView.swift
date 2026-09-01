@@ -4,6 +4,7 @@ struct ToolCallCardView: View {
     let toolCall: ToolCall
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
 
@@ -19,6 +20,7 @@ struct ToolCallCardView: View {
 
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
             Button {
+                chatDisclosureToggled()
                 withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
                     userToggledExpansion = !isExpanded
                 }

@@ -296,8 +296,6 @@ struct ChatView: View {
     @State private var isReadingOlderTranscript = false
     @State private var shouldFollowLatestMessage = true
     @State private var followScrollGeneration = 0
-    @State private var isUserInteractingWithScroll = false
-    @State private var userScrollCooldownUntil: Date?
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
@@ -1209,6 +1207,7 @@ struct ChatView: View {
                 await loadOlderMessages()
             },
             onUpdateScrollMetrics: updateScrollMetrics,
+            onFollowEvent: handleFollowEvent,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
             onScrollToLatestTranscriptMessage: { proxy in
@@ -2383,17 +2382,17 @@ struct ChatView: View {
         animated: Bool,
         isUserInitiated: Bool
     ) {
-        // Auto-follow (streaming tokens, new rows) must not override the user's
-        // scroll position while they are interacting or within the cooldown.
-        if !isUserInitiated, isAutoFollowScrollPaused {
+        // Explicit jumps re-arm the follow latch; automatic follows (streaming
+        // tokens, new rows) only run while the latch is already on.
+        if isUserInitiated {
+            shouldFollowLatestMessage = ChatScrollPolicy.resolveFollow(
+                current: shouldFollowLatestMessage,
+                event: .reset
+            )
+        } else if !shouldFollowLatestMessage {
             return
         }
 
-        if isUserInitiated {
-            userScrollCooldownUntil = nil
-        }
-
-        shouldFollowLatestMessage = true
         isReadingOlderTranscript = false
         followScrollGeneration += 1
         let generation = followScrollGeneration
@@ -2402,8 +2401,8 @@ struct ChatView: View {
             await Task.yield()
             try? await Task.sleep(nanoseconds: 16_000_000)
             guard !Task.isCancelled, generation == followScrollGeneration else { return }
-            // Re-check at fire time: a gesture may have begun during the delay.
-            if !isUserInitiated, isAutoFollowScrollPaused { return }
+            // Re-check at fire time: a drag may have begun during the delay.
+            if !isUserInitiated, !shouldFollowLatestMessage { return }
 
             // Snap (no animation) while inside the cache-first reconcile window so the
             // taller server transcript replacing the cached one doesn't animate a jump
@@ -2484,6 +2483,13 @@ struct ChatView: View {
         }
     }
 
+    private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
+        shouldFollowLatestMessage = ChatScrollPolicy.resolveFollow(
+            current: shouldFollowLatestMessage,
+            event: event
+        )
+    }
+
     private func updateScrollMetrics(_ metrics: ChatScrollMetrics) {
         let isStreaming = viewModel.activeStreamID != nil
         let isNearBottom = ChatScrollPolicy.isNearBottom(
@@ -2491,23 +2497,18 @@ struct ChatView: View {
             isStreaming: isStreaming
         )
         isScrolledNearBottom = isNearBottom
-        isUserInteractingWithScroll = metrics.isUserInteracting
-
-        // Touching the scroll view pauses auto-follow for a short window so
-        // streaming layout growth cannot yank the viewport mid-gesture.
-        if metrics.isUserInteracting {
-            userScrollCooldownUntil = ChatScrollPolicy.cooldownDeadline()
-        }
+        handleFollowEvent(.contentScrolled(
+            isAtBottom: ChatScrollPolicy.isAtBottom(distanceFromBottom: metrics.distanceFromBottom),
+            isUserScrolling: metrics.isUserInteracting
+        ))
 
         if isNearBottom {
-            shouldFollowLatestMessage = true
             if isReadingOlderTranscript {
                 withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
                     isReadingOlderTranscript = false
                 }
             }
         } else if metrics.isUserInteracting {
-            shouldFollowLatestMessage = false
             if !isReadingOlderTranscript,
                ChatScrollPolicy.shouldEnterReadingOlder(
                    distanceFromBottom: metrics.distanceFromBottom,
@@ -2520,16 +2521,11 @@ struct ChatView: View {
         }
     }
 
-    private var isAutoFollowScrollPaused: Bool {
-        ChatScrollPolicy.isAutoScrollPaused(
-            isUserInteracting: isUserInteractingWithScroll,
-            cooldownUntil: userScrollCooldownUntil
-        )
-    }
-
     private func prepareTranscriptForExplicitSend() {
-        shouldFollowLatestMessage = true
-        userScrollCooldownUntil = nil
+        shouldFollowLatestMessage = ChatScrollPolicy.resolveFollow(
+            current: shouldFollowLatestMessage,
+            event: .reset
+        )
         if isReadingOlderTranscript {
             withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
                 isReadingOlderTranscript = false

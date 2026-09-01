@@ -4,6 +4,7 @@ struct ToolActivityGroupView: View {
     let group: ToolCallGroup
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
 
@@ -17,6 +18,7 @@ struct ToolActivityGroupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
             Button {
+                chatDisclosureToggled()
                 withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
                     userToggledExpansion = !isExpanded
                 }
