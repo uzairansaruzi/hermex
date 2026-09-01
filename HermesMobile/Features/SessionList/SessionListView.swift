@@ -2,6 +2,20 @@ import SwiftUI
 import SwiftData
 import UIKit
 
+enum SessionListForegroundRefreshPolicy {
+    static func shouldRefresh(
+        previousPhase: ScenePhase,
+        currentPhase: ScenePhase,
+        didCompleteInitialLoad: Bool,
+        isLoading: Bool
+    ) -> Bool {
+        previousPhase != .active
+            && currentPhase == .active
+            && didCompleteInitialLoad
+            && !isLoading
+    }
+}
+
 @MainActor
 struct SessionListView: View {
     private static let searchChromeIconVisualSize: CGFloat = 36
@@ -22,6 +36,7 @@ struct SessionListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: SessionListViewModel
     @State private var navigationState: SessionNavigationState
     @State private var sessionPendingRename: SessionSummary?
@@ -259,6 +274,16 @@ struct SessionListView: View {
             .onDisappear {
                 sessionOpenTask?.cancel()
                 viewModel.invalidateSessionOpening()
+            }
+            .onChange(of: scenePhase) { previousPhase, currentPhase in
+                guard SessionListForegroundRefreshPolicy.shouldRefresh(
+                    previousPhase: previousPhase,
+                    currentPhase: currentPhase,
+                    didCompleteInitialLoad: didCompleteInitialLoad,
+                    isLoading: viewModel.isLoading
+                ) else { return }
+
+                Task { await refreshSessionsAndActiveProfile() }
             }
             .onChange(of: pendingSharedImport) {
                 openPendingSharedImportIfNeeded()
