@@ -5333,9 +5333,12 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorDidStartConnection(isReplay: Bool) {
-        // Each connection re-arms the pulse so a reply's first live token always
-        // ticks, even when the previous reply pulsed less than an interval ago.
-        streamingHapticPulseThrottle.reset()
+        // A fresh connection re-arms the pulse so a reply's first live token
+        // always ticks, even when the previous reply pulsed less than an interval
+        // ago. A replay continues the same reply, so its window carries over.
+        if !isReplay {
+            streamingHapticPulseThrottle.reset()
+        }
         activeStreamReplayMatchedPrefixLength = 0
         activeStreamReplayMatchedInterimLength = 0
         activeStreamReplayMatchedReasoningLength = 0

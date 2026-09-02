@@ -97,6 +97,10 @@ final class ChatHapticsTests: XCTestCase {
         viewModel.streamCoordinatorDidStartConnection(isReplay: false)
         XCTAssertTrue(viewModel.streamCoordinatorAppendToken("Again"))
         XCTAssertEqual(viewModel.streamingHapticPulseTrigger, 2, "a new connection re-arms the first pulse")
+
+        viewModel.streamCoordinatorDidStartConnection(isReplay: true)
+        XCTAssertTrue(viewModel.streamCoordinatorAppendToken(" continued"))
+        XCTAssertEqual(viewModel.streamingHapticPulseTrigger, 2, "a replay continues the same reply and keeps its window")
     }
 
     @MainActor
