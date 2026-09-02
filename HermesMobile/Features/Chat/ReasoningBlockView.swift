@@ -1,13 +1,15 @@
 import SwiftUI
 import UIKit
 
+/// A turn's reasoning as the same dense log row tool calls use: brain icon,
+/// bold `Thinking`, dim one-line summary, chevron, and an empty status slot so
+/// the labels line up. Tap reveals the reasoning under the row; long-press
+/// copies it. Live thinking streams through `LiveReasoningTextView`; settled
+/// text is selectable. "Expand Thinking by Default" decides the initial state.
 struct ReasoningBlockView: View {
     let text: String
     let liveStreamID: String?
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
 
@@ -25,74 +27,27 @@ struct ReasoningBlockView: View {
 
     var body: some View {
         if let displayText = ReasoningBlockContent.displayText(from: text) {
-            let summary = summary(for: displayText)
+            let summary = ReasoningSummaryFormatter.summary(for: displayText)
 
-            VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-                Button {
-                    chatDisclosureToggled()
-                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                        userToggledExpansion = !isExpanded
-                    }
-                } label: {
-                    header(summary: summary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Thinking, \(summary)"))
-                .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
-
-                if isExpanded {
-                    reasoningText(displayText)
-                        .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
-                }
+            TranscriptLogRowView(
+                summary: String(localized: "Thinking"),
+                detail: summary,
+                isExpanded: isExpanded,
+                accessibilityLabel: String(localized: "Thinking, \(summary)"),
+                copyText: { displayText },
+                toggleExpansion: { userToggledExpansion = !isExpanded }
+            ) {
+                Image("LucideBrain")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14)
+            } status: {
+                EmptyView()
+            } expandedBody: {
+                reasoningText(displayText)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .chatTimelineAccessorySurface(
-                fallbackMaterial: .thinMaterial,
-                cornerRadius: 10
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var usesStackedHeader: Bool {
-        dynamicTypeSize.isAccessibilitySize
-    }
-
-    private func header(summary: String) -> some View {
-        HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image("LucideBrain")
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
-
-            if usesStackedHeader {
-                VStack(alignment: .leading, spacing: 1) {
-                    titleText
-                    summaryText(summary, lineLimit: 2)
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    titleText
-                    summaryText(summary, lineLimit: 1)
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var titleText: some View {
-        Text("Thinking")
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
     }
 
     @ViewBuilder
@@ -107,25 +62,6 @@ struct ReasoningBlockView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private func summaryText(_ value: String, lineLimit: Int) -> some View {
-        Text(value)
-            .font(AppFont.caption())
-            .foregroundStyle(.secondary)
-            .lineLimit(lineLimit)
-    }
-
-    private func summary(for value: String) -> String {
-        let oneLine = value
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if oneLine.count <= 80 {
-            return oneLine
-        }
-
-        return "\(oneLine.prefix(80))..."
     }
 }
 

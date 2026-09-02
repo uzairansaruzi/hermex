@@ -82,7 +82,7 @@ struct ToolActivityGroupView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 2)
-            .frame(minHeight: ToolCallLogRowView.minimumHeight)
+            .frame(minHeight: TranscriptLogRowMetrics.minimumHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
