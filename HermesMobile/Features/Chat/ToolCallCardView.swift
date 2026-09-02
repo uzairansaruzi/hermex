@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// The per-call material card shown while a response is still streaming. Once
+/// the group settles, `ToolCallLogRowView` shows the same call as a log line.
 struct ToolCallCardView: View {
     let toolCall: ToolCall
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,7 +34,7 @@ struct ToolCallCardView: View {
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
             if isExpanded {
-                expandedContent(statusDisplay: statusDisplay)
+                ToolCallDetailBodyView(toolCall: toolCall)
                     .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
@@ -47,24 +49,6 @@ struct ToolCallCardView: View {
         // content that must stay left-to-right inside an RTL message (#259). The
         // group's summary header above (ToolActivityGroupView) still mirrors.
         .forcedLeftToRight()
-    }
-
-    private func expandedContent(statusDisplay: ToolCallStatusDisplay) -> some View {
-        let displayContent = ToolCallDisplayFormatter.content(for: toolCall)
-
-        return VStack(alignment: .leading, spacing: 7) {
-            if !displayContent.argumentRows.isEmpty {
-                argumentsSection(displayContent.argumentRows)
-            }
-
-            if let result = displayContent.result {
-                resultSection(result)
-            }
-
-            if shouldShowStatusDetail(displayContent: displayContent) {
-                statusDetail(statusDisplay.detailText)
-            }
-        }
     }
 
     private var usesStackedHeader: Bool {
@@ -125,6 +109,40 @@ struct ToolCallCardView: View {
 
         return .secondary
     }
+}
+
+/// The Arguments, Result, and Status sections of a tool call. Shared by the
+/// live card and the settled log row so expanding either shows the same body.
+struct ToolCallDetailBodyView: View {
+    let toolCall: ToolCall
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let statusDisplay = ToolCallStatusDisplay(toolCall: toolCall)
+        let displayContent = ToolCallDisplayFormatter.content(for: toolCall)
+
+        VStack(alignment: .leading, spacing: 7) {
+            if !displayContent.argumentRows.isEmpty {
+                argumentsSection(displayContent.argumentRows)
+            }
+
+            if let result = displayContent.result {
+                resultSection(result)
+            }
+
+            if shouldShowStatusDetail(displayContent: displayContent) {
+                statusDetail(statusDisplay.detailText)
+            }
+        }
+    }
+
+    private var usesStackedRows: Bool {
+        dynamicTypeSize.isAccessibilitySize
+    }
+
+    private var statusColor: Color {
+        toolCall.isError == true ? .red : .secondary
+    }
 
     private func shouldShowStatusDetail(displayContent: ToolCallDisplayContent) -> Bool {
         let hasPrimaryContent = !displayContent.argumentRows.isEmpty || displayContent.result != nil
@@ -178,7 +196,7 @@ struct ToolCallCardView: View {
 
     @ViewBuilder
     private func argumentRow(_ row: ToolCallArgumentDisplay) -> some View {
-        if usesStackedHeader {
+        if usesStackedRows {
             VStack(alignment: .leading, spacing: 2) {
                 argumentKey(row.key)
                 argumentValue(row.value)
