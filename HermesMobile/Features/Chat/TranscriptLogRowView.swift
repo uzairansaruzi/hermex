@@ -7,13 +7,69 @@ enum TranscriptLogRowMetrics {
     static let minimumHeight: CGFloat = 32
     /// Icon column width plus the gap, so the expanded body indents under the text.
     static let bodyIndent: CGFloat = 26
+    /// Tallest an expanded body gets before it scrolls inside its own window.
+    /// Fixed at every Dynamic Type size so a long result never owns the screen.
+    static let bodyWindowHeight: CGFloat = 240
+}
+
+/// Pure sizing rule for an expanded body window: the frame it takes and
+/// whether it scrolls, from the measured content height. Shared by the
+/// SwiftUI window and the live thinking text view so both cap alike.
+struct TranscriptLogRowBodyWindowLayout: Equatable {
+    /// `nil` until the content has been measured; the window then sizes to
+    /// whatever the content asks for.
+    let frameHeight: CGFloat?
+    let scrolls: Bool
+
+    static func resolve(contentHeight: CGFloat?, cap: CGFloat) -> Self {
+        guard let contentHeight else {
+            return Self(frameHeight: nil, scrolls: false)
+        }
+        return Self(frameHeight: min(contentHeight, cap), scrolls: contentHeight > cap)
+    }
+}
+
+/// Clips an expanded body at `TranscriptLogRowMetrics.bodyWindowHeight` and
+/// scrolls the overflow inside the window. Shorter content takes its natural
+/// height and cannot scroll. The measurement lives only here, so collapsed
+/// rows in the lazy transcript pay nothing for it.
+struct TranscriptLogRowBodyWindow<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    @State private var contentHeight: CGFloat?
+
+    var body: some View {
+        let layout = TranscriptLogRowBodyWindowLayout.resolve(
+            contentHeight: contentHeight,
+            cap: TranscriptLogRowMetrics.bodyWindowHeight
+        )
+
+        ScrollView(.vertical) {
+            content()
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    // The window resizes to its content outside the disclosure
+                    // animation, so a tall body opens straight at the cap.
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        contentHeight = height
+                    }
+                }
+        }
+        .scrollDisabled(!layout.scrolls)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: layout.frameHeight)
+    }
 }
 
 /// The dense log row settled tool calls and thinking share: a 20 pt icon
 /// column, bold summary, dim one-line detail, `Copied` badge, chevron slot, and
 /// a fixed status slot so labels align across rows. Tap toggles the owner's
-/// expansion state and reveals `expandedBody` under the text behind a hairline;
-/// long-press copies `copyText` with a haptic and a short "Copied" badge.
+/// expansion state and reveals `expandedBody` under the text behind a hairline,
+/// inside a `TranscriptLogRowBodyWindow` that scrolls once the body outgrows
+/// the cap; long-press copies `copyText` with a haptic and a short "Copied" badge.
 struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View {
     let summary: String
     let detail: String?
@@ -41,7 +97,7 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
             rowLine
 
             if isExpanded {
-                expandedBody()
+                TranscriptLogRowBodyWindow(content: expandedBody)
                     .padding(.leading, 12)
                     .overlay(alignment: .leading) {
                         Rectangle()

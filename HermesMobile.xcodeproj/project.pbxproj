@@ -178,6 +178,7 @@
 		1A2B3C4D5E6F7000000000E0 /* ToolCallCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E1 /* ToolCallCardView.swift */; };
 		C0AA02000000000000000B02 /* ToolCallLogRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F02 /* ToolCallLogRowView.swift */; };
 		C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */; };
+		C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */; };
 		C0AA020000000000000000B11 /* ReasoningSummaryFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F11 /* ReasoningSummaryFormatter.swift */; };
 		C0AA020000000000000000B10 /* TranscriptLogRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F10 /* TranscriptLogRowView.swift */; };
 		C0AA03000000000000000B01 /* TranscriptTurnFolding.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F01 /* TranscriptTurnFolding.swift */; };
@@ -538,6 +539,7 @@
 		1A2B3C4D5E6F7000000000E1 /* ToolCallCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallCardView.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F02 /* ToolCallLogRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallLogRowView.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningSummaryFormatterTests.swift; sourceTree = "<group>"; };
+		C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLogRowBodyWindowTests.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F11 /* ReasoningSummaryFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningSummaryFormatter.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F10 /* TranscriptLogRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLogRowView.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F01 /* TranscriptTurnFolding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFolding.swift; sourceTree = "<group>"; };
@@ -869,6 +871,7 @@
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
+				C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */,
 				C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */,
 				C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */,
 				C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */,
@@ -1762,6 +1765,7 @@
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,
+				C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */,
 				C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */,
 				C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */,
 				C0AA05000000000000000B02 /* ChatMessageMetaTests.swift in Sources */,

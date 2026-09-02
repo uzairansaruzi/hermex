@@ -209,10 +209,11 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = TailPinnedTextView()
         textView.isEditable = false
         textView.isSelectable = false
         textView.isScrollEnabled = false
+        textView.showsVerticalScrollIndicator = true
         textView.backgroundColor = .clear
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
@@ -237,6 +238,9 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
         textView.accessibilityLabel = state.sourceText
     }
 
+    /// Reports at most the row body cap. Past it the text view scrolls itself
+    /// and `TailPinnedTextView` keeps the newest chunk in view, so the SwiftUI
+    /// window around it never needs to scroll for live thinking.
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: UITextView,
@@ -246,7 +250,29 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
         let size = uiView.sizeThatFits(
             CGSize(width: width, height: .greatestFiniteMagnitude)
         )
-        return CGSize(width: width, height: ceil(size.height))
+        let layout = TranscriptLogRowBodyWindowLayout.resolve(
+            contentHeight: ceil(size.height),
+            cap: TranscriptLogRowMetrics.bodyWindowHeight
+        )
+        if uiView.isScrollEnabled != layout.scrolls {
+            uiView.isScrollEnabled = layout.scrolls
+        }
+        return CGSize(width: width, height: layout.frameHeight ?? 0)
+    }
+
+    /// A text view that stays scrolled to its last line whenever it scrolls,
+    /// so streaming thinking shows the newest text. It is never interactive
+    /// while live, so there is no user offset to respect.
+    final class TailPinnedTextView: UITextView {
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard isScrollEnabled else { return }
+
+            let tailOffset = max(0, contentSize.height + adjustedContentInset.bottom - bounds.height)
+            if abs(contentOffset.y - tailOffset) > 0.5 {
+                contentOffset = CGPoint(x: contentOffset.x, y: tailOffset)
+            }
+        }
     }
 
     @MainActor
