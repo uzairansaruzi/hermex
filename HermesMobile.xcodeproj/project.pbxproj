@@ -179,10 +179,12 @@
 		C0AA02000000000000000B02 /* ToolCallLogRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F02 /* ToolCallLogRowView.swift */; };
 		C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */; };
 		C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */; };
+		C0AA0208000000000000B002 /* ChatMessageActionMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA0208000000000000F002 /* ChatMessageActionMenuTests.swift */; };
 		C0AA020000000000000000B11 /* ReasoningSummaryFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F11 /* ReasoningSummaryFormatter.swift */; };
 		C0AA020000000000000000B10 /* TranscriptLogRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F10 /* TranscriptLogRowView.swift */; };
 		C0AA03000000000000000B01 /* TranscriptTurnFolding.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F01 /* TranscriptTurnFolding.swift */; };
 		C0AA05000000000000000B01 /* ChatMessageMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA05000000000000000F01 /* ChatMessageMeta.swift */; };
+		C0AA0208000000000000B001 /* ChatMessageContextMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA0208000000000000F001 /* ChatMessageContextMenuView.swift */; };
 		C0AA02000000000000000B01 /* ToolCallSummaryFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F01 /* ToolCallSummaryFormatter.swift */; };
 		C12800000000000000000003 /* ChatTimelineAccessorySurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12800000000000000000004 /* ChatTimelineAccessorySurface.swift */; };
 		C12900000000000000000001 /* ChatActiveRunStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12900000000000000000002 /* ChatActiveRunStatusView.swift */; };
@@ -540,10 +542,12 @@
 		C0AA02000000000000000F02 /* ToolCallLogRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallLogRowView.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningSummaryFormatterTests.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLogRowBodyWindowTests.swift; sourceTree = "<group>"; };
+		C0AA0208000000000000F002 /* ChatMessageActionMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageActionMenuTests.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F11 /* ReasoningSummaryFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningSummaryFormatter.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F10 /* TranscriptLogRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLogRowView.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F01 /* TranscriptTurnFolding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFolding.swift; sourceTree = "<group>"; };
 		C0AA05000000000000000F01 /* ChatMessageMeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageMeta.swift; sourceTree = "<group>"; };
+		C0AA0208000000000000F001 /* ChatMessageContextMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageContextMenuView.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F01 /* ToolCallSummaryFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatter.swift; sourceTree = "<group>"; };
 		C12800000000000000000004 /* ChatTimelineAccessorySurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineAccessorySurface.swift; sourceTree = "<group>"; };
 		C12900000000000000000002 /* ChatActiveRunStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActiveRunStatusView.swift; sourceTree = "<group>"; };
@@ -872,6 +876,7 @@
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
 				C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */,
+				C0AA0208000000000000F002 /* ChatMessageActionMenuTests.swift */,
 				C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */,
 				C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */,
 				C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */,
@@ -1086,6 +1091,7 @@
 				C0AA020000000000000000F10 /* TranscriptLogRowView.swift */,
 				C0AA03000000000000000F01 /* TranscriptTurnFolding.swift */,
 				C0AA05000000000000000F01 /* ChatMessageMeta.swift */,
+				C0AA0208000000000000F001 /* ChatMessageContextMenuView.swift */,
 				C0AA02000000000000000F01 /* ToolCallSummaryFormatter.swift */,
 				C12800000000000000000004 /* ChatTimelineAccessorySurface.swift */,
 				C12900000000000000000002 /* ChatActiveRunStatusView.swift */,
@@ -1604,6 +1610,7 @@
 				C0AA020000000000000000B10 /* TranscriptLogRowView.swift in Sources */,
 				C0AA03000000000000000B01 /* TranscriptTurnFolding.swift in Sources */,
 				C0AA05000000000000000B01 /* ChatMessageMeta.swift in Sources */,
+				C0AA0208000000000000B001 /* ChatMessageContextMenuView.swift in Sources */,
 				C0AA02000000000000000B01 /* ToolCallSummaryFormatter.swift in Sources */,
 				C12800000000000000000003 /* ChatTimelineAccessorySurface.swift in Sources */,
 				C12900000000000000000001 /* ChatActiveRunStatusView.swift in Sources */,
@@ -1766,6 +1773,7 @@
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */,
+				C0AA0208000000000000B002 /* ChatMessageActionMenuTests.swift in Sources */,
 				C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */,
 				C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */,
 				C0AA05000000000000000B02 /* ChatMessageMetaTests.swift in Sources */,

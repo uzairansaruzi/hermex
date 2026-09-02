@@ -775,7 +775,7 @@ private struct ChatTranscriptMessageRow: View {
             VStack(alignment: isUserMessage ? .trailing : .leading, spacing: 4) {
                 if let actionContext {
                     bubble
-                        .contextMenu {
+                        .chatMessageContextMenu(
                             ChatMessageActionMenu(
                                 context: actionContext,
                                 listeningMessageID: listeningMessageID,
@@ -791,7 +791,7 @@ private struct ChatTranscriptMessageRow: View {
                                 onFork: onFork,
                                 onCopy: onCopy
                             )
-                        }
+                        )
                 } else {
                     bubble
                 }
