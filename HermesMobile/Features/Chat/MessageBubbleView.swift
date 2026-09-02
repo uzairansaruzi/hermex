@@ -66,7 +66,6 @@ struct MessageBubbleView: View {
         VStack(alignment: .trailing, spacing: 8) {
             if let attachments = message.attachments, !attachments.isEmpty {
                 attachmentPreviews
-                    .chatMessageContextMenu(contextMenu)
             }
 
             // When the attachment-path line is hidden, an attachment-only
@@ -275,6 +274,8 @@ struct MessageBubbleView: View {
                 )
             }
         }
+        // Before the full-width frame, so the marker covers the grid only.
+        .chatMessageContextMenu(contextMenu)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
