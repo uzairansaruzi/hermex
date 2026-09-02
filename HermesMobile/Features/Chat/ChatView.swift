@@ -294,8 +294,12 @@ struct ChatView: View {
     @State private var draftRevision = 0
     @State private var isScrolledNearBottom = true
     @State private var isReadingOlderTranscript = false
-    @State private var shouldFollowLatestMessage = true
+    @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var followScrollGeneration = 0
+    /// While true the transcript's bottom size-change anchor and follow-driven
+    /// scrolls are suspended so a disclosure toggle grows or shrinks in place.
+    @State private var isDisclosureSettling = false
+    @State private var disclosureSettleGeneration = 0
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
@@ -1166,6 +1170,7 @@ struct ChatView: View {
             showsAssistantTypingIndicator: showsAssistantTypingIndicator,
             showsScrollToBottomButton: showsScrollToBottomButton,
             shouldFollowLatestMessage: shouldFollowLatestMessage,
+            isDisclosureSettling: isDisclosureSettling,
             latestTranscriptMessageRole: latestTranscriptMessageRole,
             isScrolledNearBottom: isScrolledNearBottom,
             activeStreamID: viewModel.activeStreamID,
@@ -1208,6 +1213,7 @@ struct ChatView: View {
             },
             onUpdateScrollMetrics: updateScrollMetrics,
             onFollowEvent: handleFollowEvent,
+            onDisclosureToggle: suspendBottomAnchorForDisclosure,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
             onScrollToLatestTranscriptMessage: { proxy in
@@ -1265,6 +1271,16 @@ struct ChatView: View {
     /// sidebar, settings, and navigation chrome stay in the default direction.
     private var chatLayoutDirection: LayoutDirection {
         ChatTranscriptDisplaySettings.chatLayoutDirection(rtlEnabled: rtlChatLayoutEnabled)
+    }
+
+    private var shouldFollowLatestMessage: Bool {
+        followLatch.isFollowing
+    }
+
+    /// Automatic follows run only while the latch is on and no disclosure
+    /// toggle is mid-animation.
+    private var isFollowingLatestContent: Bool {
+        shouldFollowLatestMessage && !isDisclosureSettling
     }
 
     private var showsScrollToBottomButton: Bool {
@@ -1479,7 +1495,7 @@ struct ChatView: View {
     }
 
     private func loadOlderMessages() async -> Bool {
-        shouldFollowLatestMessage = false
+        followLatch.isFollowing = false
         if !isReadingOlderTranscript {
             withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
                 isReadingOlderTranscript = true
@@ -2383,13 +2399,11 @@ struct ChatView: View {
         isUserInitiated: Bool
     ) {
         // Explicit jumps re-arm the follow latch; automatic follows (streaming
-        // tokens, new rows) only run while the latch is already on.
+        // tokens, new rows) only run while the latch is already on and no
+        // disclosure toggle is settling.
         if isUserInitiated {
-            shouldFollowLatestMessage = ChatScrollPolicy.resolveFollow(
-                current: shouldFollowLatestMessage,
-                event: .reset
-            )
-        } else if !shouldFollowLatestMessage {
+            handleFollowEvent(.reset)
+        } else if !isFollowingLatestContent {
             return
         }
 
@@ -2401,8 +2415,9 @@ struct ChatView: View {
             await Task.yield()
             try? await Task.sleep(nanoseconds: 16_000_000)
             guard !Task.isCancelled, generation == followScrollGeneration else { return }
-            // Re-check at fire time: a drag may have begun during the delay.
-            if !isUserInitiated, !shouldFollowLatestMessage { return }
+            // Re-check at fire time: a drag or a disclosure toggle may have
+            // begun during the delay.
+            if !isUserInitiated, !isFollowingLatestContent { return }
 
             // Snap (no animation) while inside the cache-first reconcile window so the
             // taller server transcript replacing the cached one doesn't animate a jump
@@ -2484,10 +2499,25 @@ struct ChatView: View {
     }
 
     private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
-        shouldFollowLatestMessage = ChatScrollPolicy.resolveFollow(
-            current: shouldFollowLatestMessage,
-            event: event
-        )
+        let resolved = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
+        if resolved != followLatch {
+            followLatch = resolved
+        }
+    }
+
+    /// Holds the transcript offset through a disclosure animation so the tapped
+    /// row stays under the finger. The latch itself is untouched, so the next
+    /// streaming trigger catches up once the toggle has settled.
+    private func suspendBottomAnchorForDisclosure() {
+        disclosureSettleGeneration += 1
+        let generation = disclosureSettleGeneration
+        isDisclosureSettling = true
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(ChatScrollPolicy.disclosureAnchorSuspension))
+            guard generation == disclosureSettleGeneration else { return }
+            isDisclosureSettling = false
+        }
     }
 
     private func updateScrollMetrics(_ metrics: ChatScrollMetrics) {
@@ -2522,10 +2552,7 @@ struct ChatView: View {
     }
 
     private func prepareTranscriptForExplicitSend() {
-        shouldFollowLatestMessage = ChatScrollPolicy.resolveFollow(
-            current: shouldFollowLatestMessage,
-            event: .reset
-        )
+        handleFollowEvent(.reset)
         if isReadingOlderTranscript {
             withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
                 isReadingOlderTranscript = false

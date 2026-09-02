@@ -71,21 +71,37 @@ enum ChatScrollPolicy {
         case contentScrolled(isAtBottom: Bool, isUserScrolling: Bool)
     }
 
+    /// The follow latch. `isFollowing` is the answer; the second flag lets an
+    /// explicit reset outlive a gesture that was still coasting when it landed.
+    struct FollowLatch: Equatable {
+        var isFollowing = true
+        /// Set by `.reset`. Until the gesture settles or a new drag begins, live
+        /// offset changes still flagged as user scrolling belong to momentum
+        /// that predates the explicit action and must not switch follow off.
+        var ignoresCoastingGesture = false
+    }
+
     /// Reduces one event onto the current latch state.
-    static func resolveFollow(current: Bool, event: FollowEvent) -> Bool {
+    static func resolveFollow(current: FollowLatch, event: FollowEvent) -> FollowLatch {
+        var latch = current
         switch event {
         case .reset:
-            return true
+            latch.isFollowing = true
+            latch.ignoresCoastingGesture = true
         case .userScrollBegin:
-            return false
+            latch.isFollowing = false
+            latch.ignoresCoastingGesture = false
         case .userScrollEnd(let isAtBottom):
-            return isAtBottom || current
+            latch.isFollowing = isAtBottom || current.isFollowing
+            latch.ignoresCoastingGesture = false
         case .contentScrolled(let isAtBottom, let isUserScrolling):
-            if isUserScrolling {
-                return false
+            if isUserScrolling, !current.ignoresCoastingGesture {
+                latch.isFollowing = false
+            } else if isAtBottom {
+                latch.isFollowing = true
             }
-            return isAtBottom ? true : current
         }
+        return latch
     }
 
     static func isAtBottom(distanceFromBottom: CGFloat) -> Bool {

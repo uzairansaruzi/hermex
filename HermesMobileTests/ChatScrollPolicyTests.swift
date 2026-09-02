@@ -66,8 +66,14 @@ final class ChatScrollPolicyTests: XCTestCase {
 
     // MARK: Follow latch
 
+    private typealias Latch = ChatScrollPolicy.FollowLatch
+
     private func follow(_ current: Bool, _ event: ChatScrollPolicy.FollowEvent) -> Bool {
-        ChatScrollPolicy.resolveFollow(current: current, event: event)
+        ChatScrollPolicy.resolveFollow(current: Latch(isFollowing: current), event: event).isFollowing
+    }
+
+    private func reduce(_ latch: Latch, _ events: ChatScrollPolicy.FollowEvent...) -> Latch {
+        events.reduce(latch) { ChatScrollPolicy.resolveFollow(current: $0, event: $1) }
     }
 
     func testTouchDownTurnsFollowOff() {
@@ -82,9 +88,33 @@ final class ChatScrollPolicyTests: XCTestCase {
     func testExplicitResetSurvivesLateDragSettlement() {
         // Drag lifted above the bottom, then send or scroll-to-bottom landed inside the
         // 160 ms settle window. The late settle report must not undo the reset.
-        let afterReset = follow(follow(true, .userScrollBegin), .reset)
-        XCTAssertTrue(afterReset)
-        XCTAssertTrue(follow(afterReset, .userScrollEnd(isAtBottom: false)))
+        let latch = reduce(Latch(), .userScrollBegin, .reset, .userScrollEnd(isAtBottom: false))
+        XCTAssertTrue(latch.isFollowing)
+        XCTAssertFalse(latch.ignoresCoastingGesture)
+    }
+
+    func testExplicitResetSurvivesCoastingMomentum() {
+        // Send or scroll-to-bottom while the transcript is still decelerating: the
+        // remaining momentum ticks belong to the gesture that predates the reset.
+        let coasting = reduce(
+            Latch(),
+            .userScrollBegin,
+            .reset,
+            .contentScrolled(isAtBottom: false, isUserScrolling: true)
+        )
+        XCTAssertTrue(coasting.isFollowing)
+
+        // Once that momentum settles, the next real drag turns follow off as usual.
+        let settled = reduce(coasting, .userScrollEnd(isAtBottom: false))
+        XCTAssertTrue(settled.isFollowing)
+        XCTAssertFalse(settled.ignoresCoastingGesture)
+        XCTAssertFalse(reduce(settled, .contentScrolled(isAtBottom: false, isUserScrolling: true)).isFollowing)
+    }
+
+    func testNewDragAfterResetTurnsFollowOff() {
+        let latch = reduce(Latch(), .reset, .userScrollBegin)
+        XCTAssertFalse(latch.isFollowing)
+        XCTAssertFalse(latch.ignoresCoastingGesture)
     }
 
     func testDragEndAtBottomReArmsFollow() {

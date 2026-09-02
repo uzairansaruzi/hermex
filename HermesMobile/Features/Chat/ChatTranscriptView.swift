@@ -5,11 +5,6 @@ struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var prependScrollPositionController = ChatPrependScrollPositionController()
-    /// While true the bottom size-change anchor and follow-driven scrolls are
-    /// suspended so a disclosure toggle near the end grows or shrinks in place
-    /// instead of moving the view.
-    @State private var isDisclosureSettling = false
-    @State private var disclosureSettleGeneration = 0
 
     let isLoading: Bool
     let errorMessage: String?
@@ -33,6 +28,9 @@ struct ChatTranscriptView: View {
     let showsAssistantTypingIndicator: Bool
     let showsScrollToBottomButton: Bool
     let shouldFollowLatestMessage: Bool
+    /// True while a disclosure toggle animates; suspends the bottom size-change
+    /// anchor and follow-driven scrolls so the tapped row stays stationary.
+    let isDisclosureSettling: Bool
     let latestTranscriptMessageRole: String?
     let isScrolledNearBottom: Bool
     let activeStreamID: String?
@@ -61,6 +59,7 @@ struct ChatTranscriptView: View {
     let onLoadOlderMessages: () async -> Bool
     let onUpdateScrollMetrics: (ChatScrollMetrics) -> Void
     let onFollowEvent: (ChatScrollPolicy.FollowEvent) -> Void
+    let onDisclosureToggle: () -> Void
     let onDismissKeyboard: () -> Void
     let onScrollToBottom: (ScrollViewProxy) -> Void
     let onScrollToLatestTranscriptMessage: (ScrollViewProxy) -> Void
@@ -207,24 +206,9 @@ struct ChatTranscriptView: View {
     }
 
     /// Follow-driven scrolls run only while the latch is on and no disclosure
-    /// toggle is mid-animation; the latch itself is untouched, so the next
-    /// streaming trigger catches up once the toggle has settled.
+    /// toggle is mid-animation.
     private var isFollowingLatestContent: Bool {
         shouldFollowLatestMessage && !isDisclosureSettling
-    }
-
-    /// Holds the current offset through a disclosure animation so the tapped
-    /// row stays under the finger.
-    private func suspendBottomAnchorForDisclosure() {
-        disclosureSettleGeneration += 1
-        let generation = disclosureSettleGeneration
-        isDisclosureSettling = true
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(ChatScrollPolicy.disclosureAnchorSuspension))
-            guard generation == disclosureSettleGeneration else { return }
-            isDisclosureSettling = false
-        }
     }
 
     private func transcriptScrollContent(
@@ -312,7 +296,7 @@ struct ChatTranscriptView: View {
         .padding(.horizontal, transcriptHorizontalPadding)
         .frame(width: viewportWidth, alignment: .leading)
         .clipped()
-        .environment(\.chatDisclosureToggled, suspendBottomAnchorForDisclosure)
+        .environment(\.chatDisclosureToggled, onDisclosureToggle)
         .background {
             ZStack {
                 ChatScrollObserver(
