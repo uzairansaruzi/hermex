@@ -221,7 +221,10 @@ struct ChatTranscriptView: View {
         viewportWidth: CGFloat,
         contentWidth: CGFloat
     ) -> some View {
-        VStack(spacing: transcriptSpacing) {
+        // One clock read per body pass; each row compares its timestamp to it.
+        let now = Date()
+
+        return VStack(spacing: transcriptSpacing) {
             olderMessagesButton(proxy: proxy)
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
@@ -282,6 +285,7 @@ struct ChatTranscriptView: View {
                     onCopy: onCopy
                 )
                 .equatable()
+                .transition(rowEntryTransition(for: transcriptMessage.message, now: now))
                 .id(transcriptMessage.renderID)
 
                 if let compressionReferenceCard,
@@ -322,6 +326,17 @@ struct ChatTranscriptView: View {
             }
             .accessibilityHidden(true)
         }
+    }
+
+    /// Only rows created moments ago animate in. Cached history, reloads, and
+    /// reattached transcripts carry old timestamps and keep `.identity`, so
+    /// they never replay an entrance.
+    private func rowEntryTransition(for message: ChatMessage, now: Date) -> AnyTransition {
+        guard ChatTranscriptRowFreshness.isFresh(timestamp: message.timestamp, now: now) else {
+            return .identity
+        }
+
+        return ChatMotion.freshRowTransition(isUserRow: message.role == "user", reduceMotion: reduceMotion)
     }
 
     private func compressionReferenceCardView(_ card: CompressionReferenceCard) -> some View {
@@ -845,5 +860,20 @@ private struct LoadOlderMessagesButton: View {
         .disabled(isLoading)
         .frame(maxWidth: .infinity)
         .accessibilityLabel(isLoading ? String(localized: "Loading older messages") : String(localized: "Load older messages"))
+    }
+}
+
+/// Decides whether a transcript row is new enough to earn an entrance.
+enum ChatTranscriptRowFreshness {
+    /// Rows younger than this animate in; older ones render in place.
+    static let window: TimeInterval = 3
+
+    /// `timestamp` is epoch seconds, as `ChatMessage.timestamp` is. Missing or
+    /// non-finite values are never fresh. The check is symmetric so a server
+    /// clock running ahead cannot make reconciled history look freshly born;
+    /// rows the app creates itself use the phone clock and always pass.
+    static func isFresh(timestamp: Double?, now: Date) -> Bool {
+        guard let timestamp, timestamp.isFinite else { return false }
+        return abs(now.timeIntervalSince1970 - timestamp) < window
     }
 }

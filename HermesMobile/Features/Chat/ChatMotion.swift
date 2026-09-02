@@ -36,4 +36,17 @@ enum ChatMotion {
     static func disclosureTransition(reduceMotion: Bool) -> AnyTransition {
         reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
     }
+
+    /// Entrance for a transcript row born moments ago: user rows fade up,
+    /// assistant rows fade. The animation rides on the transition itself, so
+    /// the row animates without wrapping the message append in `withAnimation`
+    /// and without animating layout (the bottom anchor still snaps). Removal
+    /// stays instant so an optimistic rollback never lingers. Reduce Motion
+    /// disables the entrance entirely.
+    static func freshRowTransition(isUserRow: Bool, reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        let insertion: AnyTransition = isUserRow ? .opacity.combined(with: .offset(y: 8)) : .opacity
+        return .asymmetric(insertion: insertion, removal: .identity)
+            .animation(.smooth(duration: 0.22, extraBounce: 0))
+    }
 }
