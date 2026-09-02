@@ -400,6 +400,10 @@ final class ChatScrollPositionController {
 
     private weak var scrollView: UIScrollView?
     private var mode = Mode.prepend
+    /// Set by `capture()`, cleared by anything that replaces the baseline, so
+    /// a hold armed while the older-message request is in flight cannot be
+    /// mistaken for the prepend capture when the request lands.
+    private var hasPrependCapture = false
     private var baselineContentHeight: CGFloat?
     private var baselineOffsetY: CGFloat?
     private var contentSizeObservation: NSKeyValueObservation?
@@ -442,16 +446,19 @@ final class ChatScrollPositionController {
 
         baselineContentHeight = scrollView.contentSize.height
         baselineOffsetY = scrollView.contentOffset.y
+        hasPrependCapture = true
         return true
     }
 
     /// Arms compensation before SwiftUI performs the prepend layout. Returns
-    /// false when the user moved the scroll view while the request was in flight,
-    /// leaving the caller free to use its coarse fallback instead of overriding
-    /// user-owned movement.
+    /// false when the user moved the scroll view while the request was in
+    /// flight, or a disclosure hold replaced the capture meanwhile, leaving the
+    /// caller free to use its coarse fallback instead of overriding movement it
+    /// does not own.
     @discardableResult
     func restoreAfterPrepend() -> Bool {
-        guard let scrollView,
+        guard hasPrependCapture,
+              let scrollView,
               let baselineOffsetY,
               baselineContentHeight != nil,
               !scrollView.isDragging,
@@ -537,6 +544,8 @@ final class ChatScrollPositionController {
 
     private func beginPreservation(mode: Mode, scrollView: UIScrollView, window: TimeInterval) {
         self.mode = mode
+        completionTask?.cancel()
+        quietReleaseTask?.cancel()
         contentSizeObservation = scrollView.observe(\.contentSize, options: [.new]) { [weak self] scrollView, _ in
             Self.handleObservedContentSizeChange(for: self, scrollView: scrollView)
         }
@@ -557,6 +566,8 @@ final class ChatScrollPositionController {
     }
 
     func cancelPreservation() {
+        mode = .prepend
+        hasPrependCapture = false
         contentSizeObservation = nil
         contentOffsetObservation = nil
         completionTask?.cancel()

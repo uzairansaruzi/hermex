@@ -250,6 +250,38 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         ))
     }
 
+    func testFinishedHoldDoesNotFlagTheNextPrependCaptureAsAHold() {
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 240)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        controller.holdPosition {}
+        controller.releaseHold()
+        XCTAssertTrue(controller.capture())
+
+        XCTAssertFalse(controller.isHoldingPosition)
+        XCTAssertTrue(controller.restoreAfterPrepend())
+    }
+
+    func testHoldArmedDuringAnInFlightPrependInvalidatesTheCapture() {
+        // Load Older is awaiting the server when the reader toggles a row. The
+        // hold's baseline must not be mistaken for the prepend capture once the
+        // rows land, or the row's growth would be compensated as prepended
+        // content.
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 240)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        XCTAssertTrue(controller.capture())
+        controller.holdPosition {}
+
+        XCTAssertFalse(controller.restoreAfterPrepend())
+        scrollView.contentSize.height += 640
+        XCTAssertEqual(scrollView.contentOffset.y, 240, accuracy: 0.001)
+    }
+
     func testReleaseHoldLeavesPrependPreservationAlone() {
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 240)
