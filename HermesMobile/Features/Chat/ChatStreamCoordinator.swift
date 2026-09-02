@@ -110,6 +110,9 @@ final class ChatStreamCoordinator {
         didSet {
             guard activeStreamID != oldValue else { return }
             activeRunStartedAt = activeStreamID == nil ? nil : Date()
+            if activeStreamID != nil {
+                latestRunEnding = nil
+            }
         }
     }
     /// When the current stream first became known here. Keyed to stream
@@ -117,8 +120,9 @@ final class ChatStreamCoordinator {
     /// on session load counts from discovery, since the server does not report
     /// when it started.
     private(set) var activeRunStartedAt: Date?
-    /// The last run's span and how it ended, set by `finishStream` before the
-    /// active stream clears so the delegate can key it to a turn.
+    /// The last run's span and how it ended, recorded the moment the run stops
+    /// counting (`done` or teardown) so the delegate can key it to a turn.
+    /// Cleared when the next run starts, so a stale ending never outlives it.
     private(set) var latestRunEnding: ChatRunEnding?
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
@@ -868,6 +872,7 @@ final class ChatStreamCoordinator {
         liveActivityManager.end(status: .complete, activity: String(localized: "Response complete"), errorSummary: nil)
         delegate?.streamCoordinatorRemoveSnapshot(streamID: activeStreamID)
         delegate?.streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: true)
+        recordRunEndingIfRunning(.completed)
         activeStreamID = nil
         hasInMemorySnapshotForActiveStream = false
         lastEventID = nil
@@ -923,9 +928,7 @@ final class ChatStreamCoordinator {
         invalidateReconnectTask()
         let completedNormally = hasCompletedCurrentResponse
         let finishedStreamID = activeStreamID
-        if let activeRunStartedAt {
-            latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt, endedAt: Date(), ending: ending)
-        }
+        recordRunEndingIfRunning(ending)
         streamClient.stop()
         delegate?.streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: true)
         delegate?.streamCoordinatorFlushPinnedLocalNoticesToTranscript()
@@ -943,6 +946,14 @@ final class ChatStreamCoordinator {
         if completedNormally {
             delegate?.streamCoordinatorRefreshCompletedResponseTitleIfNeeded()
         }
+    }
+
+    /// Records the run's span once. `completeCurrentResponse` already cleared
+    /// the run start for a normal completion, so a later teardown event (a
+    /// `streamEnd` or `cancelled` after `done`) cannot overwrite that ending.
+    private func recordRunEndingIfRunning(_ ending: TranscriptTurnRunOutcome.Ending) {
+        guard let activeRunStartedAt else { return }
+        latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt, endedAt: Date(), ending: ending)
     }
 
     private func markConnectionStarted(

@@ -1382,6 +1382,38 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testRunEndingRecordsEachRunAndNeverLeaksAStopIntoTheNextCompletion() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            liveActivityManager: liveActivityManager,
+            delegate: delegate
+        ) { request in
+            apiTestJSONResponse(#"{"ok": true}"#, for: request)
+        }
+
+        coordinator.start(streamID: "stream-cancel")
+        _ = try await coordinator.cancelActiveStream()
+        XCTAssertEqual(coordinator.latestRunEnding?.ending, .cancelled)
+
+        // A normal completion clears the run start on `done`, before the
+        // trailing `streamEnd` teardown; the ending must still be recorded as
+        // completed rather than inheriting the previous stop.
+        coordinator.start(streamID: "stream-complete")
+        XCTAssertNil(coordinator.latestRunEnding, "A new run clears the previous ending")
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(coordinator.latestRunEnding?.ending, .completed)
+        streamClient.emit(.streamEnd)
+        XCTAssertEqual(coordinator.latestRunEnding?.ending, .completed)
+
+        coordinator.start(streamID: "stream-error")
+        streamClient.emit(.error("server failed"))
+        XCTAssertEqual(coordinator.latestRunEnding?.ending, .failed)
+    }
+
+    @MainActor
     func testLiveResponseSpeedAcceptsOnlyCurrentSessionExactReadingsAndClearsOnLifecycleChanges() {
         let streamClient = CoordinatorSpySSEStreamingClient()
         let delegate = CoordinatorDelegateSpy()
