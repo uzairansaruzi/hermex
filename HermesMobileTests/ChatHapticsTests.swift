@@ -78,6 +78,27 @@ final class ChatHapticsTests: XCTestCase {
         XCTAssertTrue(throttle.shouldPulse(at: 10.51), "reset makes the next token pulse again")
     }
 
+    /// The pulse trigger bumps on the first live token, stays quiet inside the
+    /// throttle window, and re-arms when the next connection starts so a fast
+    /// follow-up reply still ticks on its first token.
+    @MainActor
+    func testStreamingPulseTriggerReArmsPerConnection() {
+        let viewModel = ChatViewModel(
+            session: SessionSummary(sessionId: "session-1"),
+            server: URL(string: "https://example.test")!
+        )
+
+        viewModel.streamCoordinatorDidStartConnection(isReplay: false)
+        XCTAssertTrue(viewModel.streamCoordinatorAppendToken("Hello"))
+        XCTAssertEqual(viewModel.streamingHapticPulseTrigger, 1)
+        XCTAssertTrue(viewModel.streamCoordinatorAppendToken(" world"))
+        XCTAssertEqual(viewModel.streamingHapticPulseTrigger, 1, "second token inside the window stays quiet")
+
+        viewModel.streamCoordinatorDidStartConnection(isReplay: false)
+        XCTAssertTrue(viewModel.streamCoordinatorAppendToken("Again"))
+        XCTAssertEqual(viewModel.streamingHapticPulseTrigger, 2, "a new connection re-arms the first pulse")
+    }
+
     @MainActor
     func testConfigurationNoOpSelectionsDoNotReportSuccess() async {
         let viewModel = ChatViewModel(
