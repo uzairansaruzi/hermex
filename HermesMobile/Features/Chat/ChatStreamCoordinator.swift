@@ -41,6 +41,13 @@ struct ChatStreamSnapshotRestoreResult: Equatable {
     )
 }
 
+/// Span of a finished run and how it ended; the view model keys it to a turn.
+struct ChatRunEnding: Equatable {
+    let startedAt: Date
+    let endedAt: Date
+    let ending: TranscriptTurnRunOutcome.Ending
+}
+
 @MainActor
 protocol ChatStreamCoordinatorDelegate: AnyObject {
     var streamCoordinatorSessionID: String? { get }
@@ -110,6 +117,9 @@ final class ChatStreamCoordinator {
     /// on session load counts from discovery, since the server does not report
     /// when it started.
     private(set) var activeRunStartedAt: Date?
+    /// The last run's span and how it ended, set by `finishStream` before the
+    /// active stream clears so the delegate can key it to a turn.
+    private(set) var latestRunEnding: ChatRunEnding?
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false
@@ -234,7 +244,7 @@ final class ChatStreamCoordinator {
         guard response.ok != false else { return response }
 
         liveActivityManager.end(status: .cancelled, activity: String(localized: "Response cancelled"), errorSummary: nil)
-        finishStream()
+        finishStream(ending: .cancelled)
         return response
     }
 
@@ -718,13 +728,13 @@ final class ChatStreamCoordinator {
             finishStream()
         case .cancelled:
             liveActivityManager.end(status: .cancelled, activity: String(localized: "Response cancelled"), errorSummary: nil)
-            finishStream()
+            finishStream(ending: .cancelled)
         case .error(let message):
             if !hasCompletedCurrentResponse {
                 delegate?.streamCoordinatorDidReceiveErrorMessage(message)
             }
             liveActivityManager.end(status: .failed, activity: String(localized: "Response failed"), errorSummary: nil)
-            finishStream()
+            finishStream(ending: .failed)
         case .transportError(let message):
             handleTransportError(message)
         case .heartbeat:
@@ -747,7 +757,7 @@ final class ChatStreamCoordinator {
             if !hasCompletedCurrentResponse {
                 delegate?.streamCoordinatorDidReceiveErrorMessage(message)
             }
-            finishStream()
+            finishStream(ending: hasCompletedCurrentResponse ? .completed : .failed)
             return
         }
 
@@ -902,17 +912,20 @@ final class ChatStreamCoordinator {
             completeResponseFromRefreshedTranscriptAndFinishStream(streamID: streamID)
         } else {
             liveActivityManager.end(status: .failed, activity: String(localized: "Response failed"), errorSummary: nil)
-            finishStream()
+            finishStream(ending: .failed)
         }
     }
 
-    private func finishStream() {
+    private func finishStream(ending: TranscriptTurnRunOutcome.Ending = .completed) {
         guard !isTransportFinished else { return }
         isTransportFinished = true
         runGeneration &+= 1
         invalidateReconnectTask()
         let completedNormally = hasCompletedCurrentResponse
         let finishedStreamID = activeStreamID
+        if let activeRunStartedAt {
+            latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt, endedAt: Date(), ending: ending)
+        }
         streamClient.stop()
         delegate?.streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: true)
         delegate?.streamCoordinatorFlushPinnedLocalNoticesToTranscript()

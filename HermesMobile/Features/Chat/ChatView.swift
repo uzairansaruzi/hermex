@@ -270,6 +270,7 @@ struct ChatView: View {
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
+    @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
@@ -301,6 +302,9 @@ struct ChatView: View {
     /// scrolls are suspended so a disclosure toggle grows or shrinks in place.
     @State private var isDisclosureSettling = false
     @State private var disclosureSettleGeneration = 0
+    /// Settled turns the user has opened, plus failed or stopped turns, which
+    /// start open. Keyed by turn so paging older messages in does not shift them.
+    @State private var expandedTurnKeys: Set<String> = []
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
@@ -1153,13 +1157,14 @@ struct ChatView: View {
 
     @ViewBuilder
     private var messageContent: some View {
+        let reasoningGroups = viewModel.displayedReasoningGroups
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,
-            reasoningGroups: viewModel.displayedReasoningGroups,
+            reasoningGroups: reasoningGroups,
             completedToolCallGroupsForAnchor: { anchorMessageID in
                 viewModel.completedToolCallGroupsForAnchor(anchorMessageID)
             },
@@ -1222,6 +1227,9 @@ struct ChatView: View {
             onUpdateScrollMetrics: updateScrollMetrics,
             onFollowEvent: handleFollowEvent,
             onDisclosureToggle: handleDisclosureToggle,
+            turnFolds: turnFolds(reasoningGroups: reasoningGroups),
+            expandedTurnKeys: expandedTurnKeys,
+            onToggleTurnFold: toggleTurnFold,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
             onScrollToLatestTranscriptMessage: { proxy in
@@ -1273,6 +1281,10 @@ struct ChatView: View {
                 turnDiffPresentation = .file(file)
             }
         )
+        // Off the main body chain, which is at the type-checker's limit.
+        .onChange(of: viewModel.latestRunOutcome) {
+            handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
+        }
     }
 
     /// The chat-canvas layout direction. Driven by the manual Settings → Chat
@@ -1397,6 +1409,44 @@ struct ChatView: View {
 
     private var displayedTranscriptMessages: [TranscriptMessage] {
         transcriptMessages
+    }
+
+    /// Settled-turn folds for the current transcript. Activity anchors count
+    /// only while thinking and tool cards are shown, so a turn with nothing
+    /// visible to hide gets no row.
+    private func turnFolds(reasoningGroups: [ReasoningGroup]) -> TranscriptTurnFolds {
+        guard foldsSettledTurns else { return .none }
+
+        let activityAnchorIDs: Set<String> = showsThinkingAndToolCards
+            ? Set(reasoningGroups.compactMap(\.anchorMessageID))
+                .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
+            : []
+
+        return TranscriptTurnFolds.derive(
+            transcriptMessages: transcriptMessages,
+            messages: viewModel.messages,
+            messageOffset: viewModel.messagesOffset,
+            activityAnchorIDs: activityAnchorIDs,
+            rendersBubble: shouldRenderMessageRow,
+            isStreamActive: viewModel.activeStreamID != nil,
+            streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
+            latestRunOutcome: viewModel.latestRunOutcome
+        )
+    }
+
+    private func toggleTurnFold(_ turnKey: String) {
+        handleDisclosureToggle()
+        withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+            if !expandedTurnKeys.insert(turnKey).inserted {
+                expandedTurnKeys.remove(turnKey)
+            }
+        }
+    }
+
+    /// Failed or stopped turns start open so the work that went wrong is in view.
+    private func handleLatestRunOutcomeChange(_ outcome: TranscriptTurnRunOutcome?) {
+        guard let outcome, outcome.ending != .completed else { return }
+        expandedTurnKeys.insert(outcome.turnKey)
     }
 
     private var latestTranscriptMessageID: String? {
@@ -2276,6 +2326,12 @@ struct ChatView: View {
             // so it also detects a repo the agent just created (git init/clone) mid-turn.
             Task { await gitAvailabilityViewModel.refreshAfterExternalMutation() }
             return
+        }
+
+        // A new turn starting folds the previous one, even one that opened
+        // itself after failing or being stopped.
+        if let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
+            expandedTurnKeys.remove(previousTurnKey)
         }
 
         startActiveStreamStatusRefreshTask(streamID: activeStreamID)

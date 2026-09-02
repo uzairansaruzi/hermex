@@ -213,6 +213,9 @@ enum ChatTranscriptDisplaySettings {
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"
     static let showsResponseSpeedKey = "chatTranscript.showsResponseSpeed"
     static let wrapsCodeBlockLinesKey = "chatTranscript.wrapsCodeBlockLines"
+    /// Settings → Chat "Fold Finished Turns": settled turns collapse their
+    /// thinking, tool rows, and interim replies behind one elapsed-time row.
+    static let foldsSettledTurnsKey = "chatTranscript.foldsSettledTurns"
 
     /// Backs the Settings → Chat "Right-to-Left Chat Layout" toggle (issue #259).
     /// Local-only: there is no server settings object to mirror an `rtl` flag
@@ -429,18 +432,29 @@ enum ChatWorkingRowPolicy {
 enum ChatWorkingElapsedFormatter {
     /// Compact elapsed time for the tail row: `12s`, `1m 4s`, `1h 2m 3s`.
     static func label(startedAt: Date, now: Date) -> String {
-        Duration.seconds(elapsedSeconds(startedAt: startedAt, now: now))
-            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
+        label(seconds: now.timeIntervalSince(startedAt))
     }
 
     /// Spelled-out elapsed time for VoiceOver: `1 minute, 4 seconds`.
     static func spokenLabel(startedAt: Date, now: Date) -> String {
-        Duration.seconds(elapsedSeconds(startedAt: startedAt, now: now))
+        spokenLabel(seconds: now.timeIntervalSince(startedAt))
+    }
+
+    /// Compact form of a finished span, shared with the settled-turn fold row.
+    static func label(seconds: TimeInterval) -> String {
+        Duration.seconds(wholeSeconds(seconds))
+            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
+    }
+
+    /// Spelled-out form of a finished span, for VoiceOver.
+    static func spokenLabel(seconds: TimeInterval) -> String {
+        Duration.seconds(wholeSeconds(seconds))
             .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }
 
-    private static func elapsedSeconds(startedAt: Date, now: Date) -> Int {
-        max(0, Int(now.timeIntervalSince(startedAt).rounded(.down)))
+    private static func wholeSeconds(_ seconds: TimeInterval) -> Int {
+        guard seconds.isFinite else { return 0 }
+        return max(0, Int(seconds.rounded(.down)))
     }
 }
 

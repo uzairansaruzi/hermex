@@ -221,6 +221,9 @@ final class ChatViewModel {
     private(set) var isViewingCachedData = false
     var activeStreamID: String? { streamCoordinator.activeStreamID }
     var activeRunStartedAt: Date? { streamCoordinator.activeRunStartedAt }
+    /// How the latest run ended, keyed to the turn it answered. Drives the
+    /// settled-turn fold label and which turns start expanded.
+    private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
     var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
     private(set) var errorMessage: String?
@@ -5308,6 +5311,14 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         flushPendingStreamingContent()
         dismissSteeringConfirmation()
         responseCompletionNeedsTranscriptRefresh = false
+        if let ending = streamCoordinator.latestRunEnding {
+            latestRunOutcome = TranscriptTurnRunOutcome(
+                turnKey: TranscriptTurnClassifier.latestTurnKey(in: messages, messageOffset: messagesOffset),
+                startedAt: ending.startedAt,
+                endedAt: ending.endedAt,
+                ending: ending.ending
+            )
+        }
     }
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {

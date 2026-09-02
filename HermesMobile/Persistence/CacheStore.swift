@@ -358,7 +358,8 @@ private extension ChatMessage {
             contentParts: contentParts,
             reasoning: cachedMessage.reasoning,
             attachments: attachments,
-            turnTps: cachedMessage.turnTps
+            turnTps: cachedMessage.turnTps,
+            turnDuration: cachedMessage.turnDuration
         )
     }
 }

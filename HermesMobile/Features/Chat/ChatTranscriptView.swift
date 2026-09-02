@@ -61,6 +61,10 @@ struct ChatTranscriptView: View {
     let onUpdateScrollMetrics: (ChatScrollMetrics) -> Void
     let onFollowEvent: (ChatScrollPolicy.FollowEvent) -> Void
     let onDisclosureToggle: () -> Void
+    /// Settled-turn folds derived by the owner; `.none` when folding is off.
+    let turnFolds: TranscriptTurnFolds
+    let expandedTurnKeys: Set<String>
+    let onToggleTurnFold: (String) -> Void
     let onDismissKeyboard: () -> Void
     let onScrollToBottom: (ScrollViewProxy) -> Void
     let onScrollToLatestTranscriptMessage: (ScrollViewProxy) -> Void
@@ -234,11 +238,17 @@ struct ChatTranscriptView: View {
                 let isToolCallAnchor = toolCallAnchorMessageID == transcriptMessage.anchorID
                 let isStreamingRow = streamingAssistantMessageID != nil
                     && transcriptMessage.message.messageId == streamingAssistantMessageID
+                let foldState = turnFolds.rowState(
+                    for: transcriptMessage.renderID,
+                    expandedTurnKeys: expandedTurnKeys
+                )
 
                 ChatTranscriptMessageBlock(
                     transcriptMessage: transcriptMessage,
                     transcriptSpacing: transcriptSpacing,
                     showsThinkingAndToolCards: showsThinkingAndToolCards,
+                    foldState: foldState,
+                    onToggleTurnFold: onToggleTurnFold,
                     reasoningGroups: reasoningGroups,
                     toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
                     liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
@@ -472,9 +482,15 @@ struct ChatTranscriptView: View {
 }
 
 private struct ChatTranscriptMessageBlock: View, Equatable {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let transcriptMessage: TranscriptMessage
     let transcriptSpacing: CGFloat
     let showsThinkingAndToolCards: Bool
+    /// Nil outside a settled-turn fold. Otherwise says whether this row draws
+    /// the fold row and which of its parts are hidden right now.
+    let foldState: TranscriptTurnFoldRowState?
+    let onToggleTurnFold: (String) -> Void
     let reasoningGroups: [ReasoningGroup]
     let toolCallGroups: [ToolCallGroup]
     let liveReasoningText: String
@@ -516,6 +532,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
         lhs.transcriptMessage == rhs.transcriptMessage &&
             lhs.transcriptSpacing == rhs.transcriptSpacing &&
             lhs.showsThinkingAndToolCards == rhs.showsThinkingAndToolCards &&
+            lhs.foldState == rhs.foldState &&
             lhs.reasoningGroups == rhs.reasoningGroups &&
             lhs.toolCallGroups == rhs.toolCallGroups &&
             lhs.liveReasoningText == rhs.liveReasoningText &&
@@ -536,13 +553,62 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: transcriptSpacing) {
-            reasoningBlocks
-            liveReasoningBlock
-            toolActivityGroups
-            liveToolActivityGroup
+        // Yield nothing when every part is folded away, so the outer stack adds
+        // no spacing for an empty row.
+        if hasVisibleContent {
+            VStack(alignment: .leading, spacing: transcriptSpacing) {
+                if let fold = foldState?.fold {
+                    TranscriptTurnFoldRowView(
+                        fold: fold,
+                        isExpanded: foldState?.isExpanded == true,
+                        onToggle: { onToggleTurnFold(fold.turnKey) }
+                    )
+                }
 
-            if shouldRenderMessageRow(transcriptMessage.message) {
+                if showsActivity {
+                    Group {
+                        reasoningBlocks
+                        liveReasoningBlock
+                        toolActivityGroups
+                        liveToolActivityGroup
+                    }
+                    .transition(foldTransition)
+                }
+
+                if showsBubble {
+                    messageRow
+                        .transition(foldTransition)
+                }
+            }
+        }
+    }
+
+    /// Only folded rows animate in and out; ordinary rows keep no transition
+    /// so streaming appends stay instant.
+    private var foldTransition: AnyTransition {
+        foldState == nil ? .identity : ChatMotion.disclosureTransition(reduceMotion: reduceMotion)
+    }
+
+    private var showsActivity: Bool {
+        foldState?.hidesActivity != true
+    }
+
+    private var showsBubble: Bool {
+        foldState?.hidesBubble != true && shouldRenderMessageRow(transcriptMessage.message)
+    }
+
+    private var rendersActivity: Bool {
+        let hasArchivedActivity = showsThinkingAndToolCards
+            && (!toolCallGroups.isEmpty
+                || reasoningGroups.contains { $0.anchorMessageID == transcriptMessage.anchorID })
+        return hasArchivedActivity || shouldRenderLiveReasoningBlock || shouldRenderLiveToolActivityGroup
+    }
+
+    private var hasVisibleContent: Bool {
+        foldState?.fold != nil || (showsActivity && rendersActivity) || showsBubble
+    }
+
+    private var messageRow: some View {
                 ChatTranscriptMessageRow(
                     message: transcriptMessage.message,
                     visibleIndex: transcriptMessage.loadedIndex,
@@ -575,8 +641,6 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     onFork: onFork,
                     onCopy: onCopy
                 )
-            }
-        }
     }
 
     @ViewBuilder

@@ -17,6 +17,9 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     let reasoning: String?
     let attachments: [MessageAttachment]?
     let turnTps: Double?
+    /// Server-measured wall-clock seconds for the whole turn, set on its final
+    /// assistant message (`_turnDuration`). Absent on older transcripts.
+    let turnDuration: Double?
 
     init(
         role: String?,
@@ -30,7 +33,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         contentParts: [JSONValue]? = nil,
         reasoning: String? = nil,
         attachments: [MessageAttachment]? = nil,
-        turnTps: Double? = nil
+        turnTps: Double? = nil,
+        turnDuration: Double? = nil
     ) {
         self.role = role
         self.content = content
@@ -44,6 +48,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         self.reasoning = reasoning
         self.attachments = attachments
         self.turnTps = turnTps
+        self.turnDuration = turnDuration
     }
 
     enum CodingKeys: String, CodingKey {
@@ -58,6 +63,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         case reasoning
         case attachments
         case turnTps = "_turnTps"
+        case turnDuration = "_turnDuration"
         case underscoredTimestamp = "_ts"
     }
 
@@ -78,6 +84,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         let decodedAttachments = Self.decodeAttachmentsTolerantly(from: container)
         attachments = Self.attachments(decodedAttachments, enrichedByMarkerIn: content)
         turnTps = container.decodeLossyDoubleIfPresent(forKey: .turnTps)
+        turnDuration = container.decodeLossyDoubleIfPresent(forKey: .turnDuration)
     }
 
     private static func attachments(
@@ -218,13 +225,29 @@ enum TranscriptTurnClassifier {
         message.role == "user" && !hasVisibleUserContent(message)
     }
 
+    /// Turn key for messages before the first user boundary of the loaded page.
+    static let initialTurnKey = "turn:start"
+
+    /// Key shared by every assistant message answering the user message at
+    /// `absoluteIndex` (loaded index plus page offset), so turn-scoped state
+    /// survives paging older messages in.
+    static func userTurnKey(absoluteIndex: Int) -> String {
+        "turn:user:\(absoluteIndex)"
+    }
+
+    /// Key of the latest turn: the last user boundary's, or `initialTurnKey`.
+    static func latestTurnKey(in messages: [ChatMessage], messageOffset: Int? = nil) -> String {
+        guard let index = messages.lastIndex(where: isUserTurnBoundary) else { return initialTurnKey }
+        return userTurnKey(absoluteIndex: max(0, messageOffset ?? 0) + index)
+    }
+
     static func assistantTurnKeysByAnchorID(_ messages: [ChatMessage], messageOffset: Int? = nil) -> [String: String] {
         var keysByMessageID: [String: String] = [:]
-        var currentTurnKey = "turn:start"
+        var currentTurnKey = initialTurnKey
 
         for (messageIndex, message) in messages.enumerated() {
             if isUserTurnBoundary(message) {
-                currentTurnKey = "turn:user:\(max(0, messageOffset ?? 0) + messageIndex)"
+                currentTurnKey = userTurnKey(absoluteIndex: max(0, messageOffset ?? 0) + messageIndex)
             }
 
             if message.role == "assistant" {
