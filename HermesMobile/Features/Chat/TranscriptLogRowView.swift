@@ -108,7 +108,12 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
                         .padding(.leading, TranscriptLogRowMetrics.bodyIndent)
                         .padding(.top, 2)
                         .padding(.bottom, 6)
-                        .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity,
+                                removal: ChatMotion.disclosureTransition(reduceMotion: reduceMotion)
+                            )
+                        )
                 }
             }
             .clipped()
