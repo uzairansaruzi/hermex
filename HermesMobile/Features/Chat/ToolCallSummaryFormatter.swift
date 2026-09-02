@@ -61,7 +61,7 @@ enum ToolCallSummaryFormatter {
         let name = nonEmpty(toolCall.name)
         let toolKind = kind(forToolNamed: name)
         let resultText = resultText(for: toolCall)
-        let rowStatus = status(for: toolCall, resultText: resultText)
+        let rowStatus = status(for: toolCall, kind: toolKind, resultText: resultText)
         let detail = targetDetail(kind: toolKind, name: name, args: toolCall.args)
             ?? resultText.flatMap(firstLine)
 
@@ -302,13 +302,23 @@ enum ToolCallSummaryFormatter {
 
     // MARK: - Status
 
-    private static func status(for toolCall: ToolCall, resultText: String?) -> ToolCallLogRow.Status {
-        if toolCall.isError == true { return .failure }
-        if let resultText {
-            if let exitCode = strippingTrailingExitCode(resultText).exitCode, exitCode != 0 {
+    /// The server's `is_error` verdict wins whenever the call carries one
+    /// (every live completion, and persisted transcripts that store it). A call
+    /// with no verdict falls back to its result: the JSON envelope's `error` /
+    /// `exit_code` first, then the text heuristics. Search and web results are
+    /// never judged by text, since their output is whatever the query matched.
+    private static func status(for toolCall: ToolCall, kind: Kind, resultText: String?) -> ToolCallLogRow.Status {
+        switch toolCall.isError {
+        case true?:
+            return .failure
+        case false?:
+            break
+        case nil:
+            if let envelopeFailure = ToolCallDisplayFormatter.envelopeReportsFailure(preview: toolCall.preview) {
+                if envelopeFailure { return .failure }
+            } else if let resultText, kind != .search, kind != .web, looksLikeFailure(resultText) {
                 return .failure
             }
-            if looksLikeFailure(resultText) { return .failure }
         }
         return toolCall.isCompleted ? .success : .interrupted
     }
@@ -329,30 +339,38 @@ enum ToolCallSummaryFormatter {
         return (nonEmpty(output), Int(trimmed[codeRange]))
     }
 
-    /// Text-only failure signals for tools that report success but printed an
-    /// error. Covers the formatter's own `Error:` / `Exit code:` envelope lines
-    /// (a denied command reports exit code -1) and the upstream text heuristics.
+    /// Text-only failure signals for a call with no server verdict and no JSON
+    /// envelope. A trailing `<exited with exit code N>` marker is decisive either
+    /// way. Otherwise only the first line of output is read, which is where
+    /// shells and file tools put their error, so a call that merely mentions
+    /// "not found" further down its output stays green.
     static func looksLikeFailure(_ text: String) -> Bool {
-        let normalized = text.lowercased()
-        if normalized.hasPrefix("error:") { return true }
+        let stripped = strippingTrailingExitCode(text)
+        if let exitCode = stripped.exitCode {
+            return exitCode != 0
+        }
+
+        guard let firstLine = (stripped.output ?? "")
+            .split(whereSeparator: \.isNewline)
+            .first?
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+        else {
+            return false
+        }
+
+        if firstLine.hasPrefix("error:") { return true }
+
         let phrases = [
             "file not found", "no files found", "enoent", "no such file or directory", "no such file",
             "commandnotfoundexception", "command not found",
             "is not recognized as the name of a cmdlet",
             "a parameter cannot be found that matches parameter name"
         ]
-        if phrases.contains(where: { normalized.contains($0) }) { return true }
-        if normalized.contains("cannot find path"), normalized.contains("because it does not exist") { return true }
-        if normalized.contains("is not recognized"), normalized.contains("the term '") { return true }
-
-        let patterns = [
-            #"<exited with exit code\s+[1-9]\d*\s*>"#,
-            #"exit(?:ed)? with exit code\s+[1-9]\d*"#,
-            #"exit code\s*[:\s]\s*-?[1-9]\d*\b"#
-        ]
-        return patterns.contains { pattern in
-            text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
-        }
+        if phrases.contains(where: { firstLine.contains($0) }) { return true }
+        if firstLine.contains("cannot find path"), firstLine.contains("because it does not exist") { return true }
+        if firstLine.contains("is not recognized"), firstLine.contains("the term '") { return true }
+        return false
     }
 
     // MARK: - Helpers

@@ -26,6 +26,25 @@ enum ToolCallDisplayFormatter {
         )
     }
 
+    /// Whether a JSON result envelope reports failure: an `error` value, or a
+    /// non-zero `exit_code`. `false` when the envelope has neither signal or a
+    /// zero exit code; `nil` when the preview is not an object envelope at all.
+    static func envelopeReportsFailure(preview: String?) -> Bool? {
+        guard let preview = nonEmpty(preview),
+              case .object(let object)? = parsedJSONValue(from: preview)
+        else {
+            return nil
+        }
+
+        if errorText(from: object["error"]) != nil {
+            return true
+        }
+        if let exitCode = exitCode(from: object["exit_code"] ?? object["exitCode"]) {
+            return exitCode != 0
+        }
+        return false
+    }
+
     static func argumentRows(from args: [String: JSONValue]?) -> [ToolCallArgumentDisplay] {
         (args ?? [:])
             .sorted { $0.key < $1.key }

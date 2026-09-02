@@ -45,6 +45,10 @@ struct PersistedToolCall: Decodable, Equatable {
     let tid: String?
     let assistantMsgIdx: Int?
     let args: [String: JSONValue]?
+    /// The server's verdict for the call, when the transcript carries one.
+    /// `nil` on older transcripts; the settled log then falls back to the result text.
+    let isError: Bool?
+    let duration: Double?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -53,6 +57,8 @@ struct PersistedToolCall: Decodable, Equatable {
         case assistantMsgIdx
         case assistantMsgIdxSnake = "assistant_msg_idx"
         case args
+        case isError = "is_error"
+        case duration
     }
 
     init(
@@ -60,13 +66,17 @@ struct PersistedToolCall: Decodable, Equatable {
         snippet: String?,
         tid: String?,
         assistantMsgIdx: Int?,
-        args: [String: JSONValue]?
+        args: [String: JSONValue]?,
+        isError: Bool? = nil,
+        duration: Double? = nil
     ) {
         self.name = name
         self.snippet = snippet
         self.tid = tid
         self.assistantMsgIdx = assistantMsgIdx
         self.args = args
+        self.isError = isError
+        self.duration = duration
     }
 
     init(from decoder: Decoder) throws {
@@ -77,6 +87,8 @@ struct PersistedToolCall: Decodable, Equatable {
         assistantMsgIdx = container.decodeLossyIntIfPresent(forKey: .assistantMsgIdx)
             ?? container.decodeLossyIntIfPresent(forKey: .assistantMsgIdxSnake)
         args = try? container.decodeIfPresent([String: JSONValue].self, forKey: .args)
+        isError = container.decodeLossyBoolIfPresent(forKey: .isError)
+        duration = container.decodeLossyDoubleIfPresent(forKey: .duration)
     }
 
     func toolCall(fallbackIndex: Int) -> ToolCall {
@@ -93,6 +105,8 @@ struct PersistedToolCall: Decodable, Equatable {
             name: name,
             preview: snippet,
             args: args,
+            duration: duration,
+            isError: isError,
             isCompleted: true
         )
     }

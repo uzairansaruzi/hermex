@@ -94,14 +94,67 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
 
     // MARK: - Failure heuristics
 
-    func testFailureTextHeuristics() {
+    func testFailureTextHeuristicsReadTheFirstLineAndTheExitMarker() {
         XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("zsh: command not found: foo"))
         XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("Error: ENOENT: no such file"))
-        XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("Exit code: 3"))
-        XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("Exit code: -1"))
         XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("Error: BLOCKED: Command denied by user."))
-        XCTAssertFalse(ToolCallSummaryFormatter.looksLikeFailure("Exit code: 0"))
+        XCTAssertTrue(ToolCallSummaryFormatter.looksLikeFailure("make: *** No rule\n<exited with exit code 2>"))
+        XCTAssertFalse(ToolCallSummaryFormatter.looksLikeFailure("grep: 3 lines mention 'file not found'\n<exited with exit code 0>"))
         XCTAssertFalse(ToolCallSummaryFormatter.looksLikeFailure("Successfully wrote 3 files"))
+        XCTAssertFalse(ToolCallSummaryFormatter.looksLikeFailure("ok\nlater output says no such file"))
+    }
+
+    func testServerVerdictBeatsResultText() {
+        let succeeded = ToolCall(
+            name: "terminal",
+            preview: "zsh: command not found: foo",
+            args: ["command": .string("foo")],
+            isError: false,
+            isCompleted: true
+        )
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: succeeded)?.status, .success)
+
+        let failed = ToolCall(
+            name: "terminal",
+            preview: "all good",
+            args: ["command": .string("foo")],
+            isError: true,
+            isCompleted: true
+        )
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: failed)?.status, .failure)
+    }
+
+    func testEnvelopeExitCodeZeroKeepsScaryOutputGreen() {
+        let toolCall = ToolCall(
+            name: "terminal",
+            preview: #"{"output":"grep: file not found handler matched 3 lines","exit_code":0}"#,
+            args: ["command": .string("grep -rn 'file not found' src")],
+            isCompleted: true
+        )
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .success)
+    }
+
+    func testSearchResultsAreNeverJudgedByText() {
+        let toolCall = ToolCall(
+            name: "search_files",
+            preview: "src/errors.swift:12: throw FileError(\"file not found\")\nsrc/io.swift:4: // ENOENT",
+            args: ["pattern": .string("file not found")],
+            isCompleted: true
+        )
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .success)
+    }
+
+    func testPersistedToolCallCarriesTheServerVerdict() throws {
+        let json = #"{"name":"terminal","snippet":"boom","tid":"t1","assistant_msg_idx":2,"args":{"command":"x"},"is_error":true,"duration":1.5}"#
+        let persisted = try JSONDecoder().decode(PersistedToolCall.self, from: Data(json.utf8))
+        let toolCall = persisted.toolCall(fallbackIndex: 0)
+
+        XCTAssertEqual(toolCall.isError, true)
+        XCTAssertEqual(toolCall.duration, 1.5)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .failure)
+
+        let legacy = try JSONDecoder().decode(PersistedToolCall.self, from: Data(#"{"name":"terminal","snippet":"ok","tid":"t2"}"#.utf8))
+        XCTAssertNil(legacy.isError)
     }
 
     func testDeniedCommandEnvelopeFailsTheRow() {
