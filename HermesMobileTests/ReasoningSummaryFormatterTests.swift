@@ -25,4 +25,9 @@ final class ReasoningSummaryFormatterTests: XCTestCase {
     func testTrimsSurroundingWhitespace() {
         XCTAssertEqual(ReasoningSummaryFormatter.summary(for: "  \nplan  \n"), "plan")
     }
+
+    func testStopsReadingAtTheScanLimitEvenAcrossNewlines() {
+        let text = "a" + String(repeating: "\n", count: ReasoningSummaryFormatter.scanLimit) + "b"
+        XCTAssertEqual(ReasoningSummaryFormatter.summary(for: text), "a")
+    }
 }

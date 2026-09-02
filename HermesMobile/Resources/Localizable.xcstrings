@@ -117646,6 +117646,112 @@
           }
         }
       }
+    },
+    "Double tap to hide details. Long press to copy." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انقر مرتين لإخفاء التفاصيل. اضغط مطولًا للنسخ."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Doppeltippen, um Details auszublenden. Gedrückt halten, um zu kopieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Toca dos veces para ocultar los detalles. Mantén pulsado para copiar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Touchez deux fois pour masquer les détails. Appuyez longuement pour copier."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הקש פעמיים להסתרת פרטים. לחיצה ארוכה להעתקה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tocca due volte per nascondere i dettagli. Tieni premuto per copiare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ダブルタップで詳細を隠します。長押しでコピーします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "두 번 탭하여 세부 정보를 숨깁니다. 길게 눌러 복사합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dubbeltik om details te verbergen. Houd ingedrukt om te kopiëren."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Stuknij dwukrotnie, aby ukryć szczegóły. Przytrzymaj, aby skopiować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Toque duas vezes para ocultar os detalhes. Toque e segure para copiar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Дважды коснитесь, чтобы скрыть детали. Удерживайте, чтобы скопировать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ayrıntıları gizlemek için iki kez dokunun. Kopyalamak için basılı tutun."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تفصیلات چھپانے کے لیے دو بار ٹیپ کریں۔ کاپی کرنے کے لیے دیر تک دبائیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "點兩下隱藏詳細資料。長按以複製。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "轻点两下隐藏详情。长按以复制。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "點兩下隱藏詳細資訊。長按以拷貝。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

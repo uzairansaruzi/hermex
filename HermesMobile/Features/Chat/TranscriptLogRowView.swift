@@ -97,7 +97,11 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Double tap to show details. Long press to copy.")
+        .accessibilityHint(
+            isExpanded
+                ? "Double tap to hide details. Long press to copy."
+                : "Double tap to show details. Long press to copy."
+        )
         .accessibilityAction { toggle() }
         .accessibilityAction(named: Text("Copy")) { copy() }
     }
