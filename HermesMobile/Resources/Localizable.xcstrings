@@ -64167,108 +64167,108 @@
         }
       }
     },
-    "Response Timestamps" : {
+    "Message Timestamps" : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "الطوابع الزمنية للردّ"
+            "value" : "الطوابع الزمنية للرسائل"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Antwort-Zeitstempel"
+            "value" : "Nachrichten-Zeitstempel"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Marcas de tiempo de respuesta"
+            "value" : "Marcas de tiempo de mensajes"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Horodatages des réponses"
+            "value" : "Horodatages des messages"
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "חותמות זמן של תשובות"
+            "value" : "חותמות זמן של הודעות"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Timestamp risposta"
+            "value" : "Timestamp messaggi"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "応答のタイムスタンプ"
+            "value" : "メッセージのタイムスタンプ"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "응답 타임스탬프"
+            "value" : "메시지 타임스탬프"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Tijdstempels van antwoorden"
+            "value" : "Tijdstempels van berichten"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Znaczniki czasu odpowiedzi"
+            "value" : "Znaczniki czasu wiadomości"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Carimbos de data/hora das respostas"
+            "value" : "Carimbos de data/hora das mensagens"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Метки времени ответа"
+            "value" : "Метки времени сообщений"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Yanıt Zaman Damgaları"
+            "value" : "Mesaj Zaman Damgaları"
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "جواب کے ٹائم اسٹیمپس"
+            "value" : "پیغام کے ٹائم اسٹیمپس"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "回應時間戳記"
+            "value" : "訊息時間戳記"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "回复时间戳"
+            "value" : "消息时间戳"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "回覆時間戳記"
+            "value" : "訊息時間戳記"
           }
         }
       }

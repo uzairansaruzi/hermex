@@ -210,7 +210,7 @@ enum ChatTranscriptDisplaySettings {
     static let thinkingCardsStartExpandedKey = "chatTranscript.thinkingCardsStartExpanded"
     static let toolCardsStartExpandedKey = "chatTranscript.toolCardsStartExpanded"
     static let hidesAttachmentPathsKey = "chatTranscript.hidesAttachmentPaths"
-    /// Settings → Chat "Response Timestamps": the time under each user message
+    /// Settings → Chat "Message Timestamps": the time under each user message
     /// and each finished reply. The key name predates the move under the
     /// message and stays so a stored choice keeps working.
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"

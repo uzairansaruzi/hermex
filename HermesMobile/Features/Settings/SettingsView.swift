@@ -259,7 +259,7 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
-                        title: String(localized: "Response Timestamps"),
+                        title: String(localized: "Message Timestamps"),
                         systemImage: "clock",
                         isOn: $showsAssistantTurnTimestamps
                     )
