@@ -137,8 +137,71 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertTrue(follow(true, .contentScrolled(isAtBottom: false, isUserScrolling: false)))
     }
 
-    func testNonGestureScrollThatLandsAtBottomReArms() {
-        XCTAssertTrue(follow(false, .contentScrolled(isAtBottom: true, isUserScrolling: false)))
+    func testNonGestureScrollThatLandsAtBottomFromNearbyReArms() {
+        // A collapse near the end clamps the offset to the bottom.
+        XCTAssertTrue(follow(false, .contentScrolled(isAtBottom: true, isUserScrolling: false, wasNearBottom: true)))
+    }
+
+    func testTransientBottomFromFarAboveDoesNotReArm() {
+        // A relayout that momentarily reads "at bottom" while the reader was parked
+        // thousands of points up must not switch follow on.
+        XCTAssertFalse(follow(false, .contentScrolled(isAtBottom: true, isUserScrolling: false, wasNearBottom: false)))
+    }
+
+    func testScrollAwayFromBottomWithoutGestureTurnsFollowOff() {
+        // Status-bar tap, VoiceOver, or a hardware-keyboard scroll: no pan gesture,
+        // but the reader is being carried away from the bottom.
+        XCTAssertFalse(follow(true, .contentScrolled(isAtBottom: false, isUserScrolling: false, movedAwayFromBottom: true)))
+    }
+
+    func testExplicitResetSurvivesCoastingMomentumAwayFromBottom() {
+        // Momentum ticks after a reset carry the away flag too; they still belong
+        // to the gesture that predates the reset.
+        let latch = reduce(
+            Latch(),
+            .userScrollBegin,
+            .reset,
+            .contentScrolled(isAtBottom: false, isUserScrolling: true, movedAwayFromBottom: true)
+        )
+        XCTAssertTrue(latch.isFollowing)
+    }
+
+    // MARK: Scroll-away detection
+
+    private typealias Geometry = ChatScrollPolicy.ScrollGeometry
+
+    func testDistanceGrowingPastStreamingThresholdIsAScrollAway() {
+        let atBottom = Geometry(offsetY: 4300, contentHeight: 5000, visibleHeight: 700)
+        // Status-bar scroll: the lazy stack may re-measure on the way, so the
+        // content height is allowed to move as long as the distance grows.
+        let carriedAway = Geometry(offsetY: 3200, contentHeight: 5200, visibleHeight: 700)
+        XCTAssertTrue(ChatScrollPolicy.isScrollingAwayFromBottom(previous: atBottom, current: carriedAway))
+        XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(previous: nil, current: carriedAway))
+    }
+
+    func testJitterViewportAndFollowScrollsAreNotScrollAways() {
+        let atBottom = Geometry(offsetY: 4300, contentHeight: 5000, visibleHeight: 700)
+        // Streaming jitter under the loose threshold.
+        XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
+            previous: atBottom,
+            current: Geometry(offsetY: 4300, contentHeight: 5150, visibleHeight: 700)
+        ))
+        // Keyboard inset change: viewport changes.
+        XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
+            previous: atBottom,
+            current: Geometry(offsetY: 4300, contentHeight: 5000, visibleHeight: 400)
+        ))
+        // Follow scroll heading back to the bottom from far away.
+        let farAway = Geometry(offsetY: 1000, contentHeight: 5000, visibleHeight: 700)
+        XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
+            previous: farAway,
+            current: Geometry(offsetY: 2000, contentHeight: 5000, visibleHeight: 700)
+        ))
+        // Size change snapped back to the bottom by the anchor.
+        XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
+            previous: atBottom,
+            current: Geometry(offsetY: 4700, contentHeight: 5400, visibleHeight: 700)
+        ))
     }
 
     func testLiveGestureWinsEvenAtBottom() {

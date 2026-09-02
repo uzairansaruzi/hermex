@@ -2619,9 +2619,10 @@ struct ChatView: View {
         }
     }
 
-    /// Holds the transcript offset through a disclosure animation so the tapped
-    /// row stays under the finger. The latch itself is untouched, so the next
-    /// streaming trigger catches up once the toggle has settled.
+    /// Suspends follow scrolls and the bottom anchor through a disclosure
+    /// animation; the transcript view pins the offset itself. The latch is
+    /// untouched, so the next streaming trigger catches up once the toggle has
+    /// settled.
     private func handleDisclosureToggle() {
         ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
         suspendBottomAnchorForDisclosure()
@@ -2650,10 +2651,13 @@ struct ChatView: View {
             distanceFromBottom: metrics.distanceFromBottom,
             isStreaming: isStreaming
         )
+        let wasNearBottom = isScrolledNearBottom
         isScrolledNearBottom = isNearBottom
         handleFollowEvent(.contentScrolled(
             isAtBottom: ChatScrollPolicy.isAtBottom(distanceFromBottom: metrics.distanceFromBottom),
-            isUserScrolling: metrics.isUserInteracting
+            isUserScrolling: metrics.isUserInteracting,
+            movedAwayFromBottom: metrics.movedAwayFromBottom,
+            wasNearBottom: wasNearBottom
         ))
 
         if isNearBottom {

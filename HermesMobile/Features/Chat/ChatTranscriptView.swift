@@ -4,7 +4,7 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var prependScrollPositionController = ChatPrependScrollPositionController()
+    @State private var scrollPositionController = ChatScrollPositionController()
 
     let isLoading: Bool
     let errorMessage: String?
@@ -168,7 +168,7 @@ struct ChatTranscriptView: View {
                         ChatScrollToBottomButton(
                             bottomPadding: scrollToBottomButtonBottomPadding,
                             onTap: {
-                                onScrollToBottom(proxy)
+                                releasingHold { onScrollToBottom(proxy) }
                             }
                         )
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
@@ -180,14 +180,14 @@ struct ChatTranscriptView: View {
                     guard isFollowingLatestContent else { return }
 
                     if latestTranscriptMessageRole == "user" {
-                        onScrollToLatestTranscriptMessage(proxy)
+                        releasingHold { onScrollToLatestTranscriptMessage(proxy) }
                     } else {
-                        onScrollToLatestContent(proxy, true)
+                        releasingHold { onScrollToLatestContent(proxy, true) }
                     }
                 }
                 .onChange(of: streamingScrollTrigger) {
                     if isFollowingLatestContent {
-                        onScrollToLatestContent(proxy, true)
+                        releasingHold { onScrollToLatestContent(proxy, true) }
                     }
                 }
                 .onChange(of: cacheFirstReconcileScrollToken) {
@@ -195,17 +195,17 @@ struct ChatTranscriptView: View {
                     // the lighter cached render, so snap back to the bottom (no
                     // animation) unless the reader has scrolled away in the meantime.
                     guard isFollowingLatestContent else { return }
-                    onScrollToLatestContent(proxy, false)
+                    releasingHold { onScrollToLatestContent(proxy, false) }
                 }
                 .onChange(of: clarificationPromptID) {
                     // The bar above the composer just grew the bottom inset; keep
                     // the latest content above it for a reader who was following.
                     guard clarificationPromptID != nil, isFollowingLatestContent else { return }
-                    onScrollToBottom(proxy)
+                    releasingHold { onScrollToBottom(proxy) }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                     if isScrolledNearBottom {
-                        onScrollToBottom(proxy)
+                        releasingHold { onScrollToBottom(proxy) }
                     }
                 }
             }
@@ -216,6 +216,28 @@ struct ChatTranscriptView: View {
     /// toggle is mid-animation.
     private var isFollowingLatestContent: Bool {
         shouldFollowLatestMessage && !isDisclosureSettling
+    }
+
+    /// Identifies the whole transcript content so a scroll to its top can be
+    /// expressed through SwiftUI.
+    private let transcriptContentID = "chat-transcript-content"
+
+    /// A tapped row is about to grow or shrink below the reader. Pin the offset
+    /// so a default anchor SwiftUI re-applies on the size change (seen at the
+    /// exact top after a status-bar scroll) cannot move them. If the pin had to
+    /// undo SwiftUI, finish with a SwiftUI-driven scroll to the same place so
+    /// its own offset model, and hit-testing of the visible rows, catch up.
+    private func pinReader(proxy: ScrollViewProxy) {
+        scrollPositionController.holdPosition {
+            proxy.scrollTo(transcriptContentID, anchor: .top)
+        }
+    }
+
+    /// Deliberate scrolls end a disclosure pin first. The pin exists only to
+    /// stop SwiftUI moving the reader on its own after a toggle.
+    private func releasingHold(_ scroll: () -> Void) {
+        scrollPositionController.releaseHold()
+        scroll()
     }
 
     private func transcriptScrollContent(
@@ -254,7 +276,11 @@ struct ChatTranscriptView: View {
                     showsThinkingAndToolCards: showsThinkingAndToolCards,
                     foldState: foldState,
                     isTerminalReply: terminalReplyRenderIDs.contains(transcriptMessage.renderID),
-                    onToggleTurnFold: onToggleTurnFold,
+                    onToggleTurnFold: { turnKey in
+                        // Turn folds toggle in ChatView, so arm the pin here.
+                        pinReader(proxy: proxy)
+                        onToggleTurnFold(turnKey)
+                    },
                     reasoningGroups: reasoningGroups,
                     toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
                     liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
@@ -313,12 +339,16 @@ struct ChatTranscriptView: View {
         .padding(.horizontal, transcriptHorizontalPadding)
         .frame(width: viewportWidth, alignment: .leading)
         .clipped()
-        .environment(\.chatDisclosureToggled, onDisclosureToggle)
+        .environment(\.chatDisclosureToggled) {
+            pinReader(proxy: proxy)
+            onDisclosureToggle()
+        }
+        .id(transcriptContentID)
         .background {
             ZStack {
                 ChatScrollObserver(
                     isStreaming: activeStreamID != nil,
-                    prependScrollPositionController: prependScrollPositionController,
+                    scrollPositionController: scrollPositionController,
                     onFollowEvent: onFollowEvent
                 ) { metrics in
                     onUpdateScrollMetrics(metrics)
@@ -363,16 +393,16 @@ struct ChatTranscriptView: View {
     }
 
     private func loadOlderMessagesPreservingPosition(proxy: ScrollViewProxy) async {
-        let capturedExactPosition = prependScrollPositionController.capture()
+        let capturedExactPosition = scrollPositionController.capture()
         let renderID = displayedTranscriptMessages.first?.renderID
         let didLoad = await onLoadOlderMessages()
         guard didLoad else {
-            prependScrollPositionController.cancelPreservation()
+            scrollPositionController.cancelPreservation()
             return
         }
 
         if capturedExactPosition,
-           prependScrollPositionController.restoreAfterPrepend() {
+           scrollPositionController.restoreAfterPrepend() {
             return
         }
 

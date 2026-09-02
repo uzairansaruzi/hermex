@@ -134,11 +134,11 @@ final class ChatVerticalScrollAxisGuardTests: XCTestCase {
 }
 
 @MainActor
-final class ChatPrependScrollPositionControllerTests: XCTestCase {
+final class ChatScrollPositionControllerTests: XCTestCase {
     func testPrependCompensatesByExactContentHeightGrowth() {
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 240)
-        let controller = ChatPrependScrollPositionController()
+        let controller = ChatScrollPositionController()
         controller.attach(to: scrollView)
 
         XCTAssertTrue(controller.capture())
@@ -149,10 +149,125 @@ final class ChatPrependScrollPositionControllerTests: XCTestCase {
         XCTAssertEqual(scrollView.contentOffset.y, 880, accuracy: 0.001)
     }
 
+    func testHoldPutsBackAnAnchorSwiftUIReappliesOnSizeChange() {
+        // Reader parked at the exact top; a disclosure grows a row below them and
+        // SwiftUI re-applies the bottom anchor. The hold restores the top.
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        controller.holdPosition {}
+        scrollView.contentSize.height += 640
+        scrollView.contentOffset.y = scrollView.contentSize.height - scrollView.bounds.height
+
+        XCTAssertEqual(scrollView.contentOffset.y, 0, accuracy: 0.001)
+    }
+
+    func testHoldClampsWhenARowBelowCollapses() {
+        // Reader at the bottom collapses a row: the content shrinks under them, so
+        // the held offset can only clamp to the new maximum.
+        let scrollView = makeScrollView()
+        let bottom = scrollView.contentSize.height - scrollView.bounds.height
+        scrollView.contentOffset = CGPoint(x: 0, y: bottom)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        controller.holdPosition {}
+        scrollView.contentSize.height -= 200
+
+        XCTAssertEqual(scrollView.contentOffset.y, bottom - 200, accuracy: 0.001)
+    }
+
+    func testReleasedHoldLetsOffsetChangesThrough() {
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        controller.holdPosition {}
+        controller.releaseHold()
+        scrollView.contentOffset.y = 300
+
+        XCTAssertEqual(scrollView.contentOffset.y, 300, accuracy: 0.001)
+    }
+
+    func testHoldKeepsRevertingAcrossALongRelayout() {
+        // 28 lazy rows settle over many frames; each frame SwiftUI re-applies the
+        // bottom anchor and each time the pin puts the reader back.
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        controller.holdPosition {}
+        for growth in [640, 400, 220, 90, 40] as [CGFloat] {
+            scrollView.contentSize.height += growth
+            scrollView.contentOffset.y = scrollView.contentSize.height - scrollView.bounds.height
+            XCTAssertEqual(scrollView.contentOffset.y, 0, accuracy: 0.001)
+        }
+    }
+
+    func testHoldResyncsSwiftUIOnlyAfterItHadToRevert() {
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        let resynced = expectation(description: "resync after revert")
+        controller.holdPosition { resynced.fulfill() }
+        scrollView.contentSize.height += 640
+        scrollView.contentOffset.y = scrollView.contentSize.height - scrollView.bounds.height
+
+        wait(for: [resynced], timeout: 2)
+        XCTAssertEqual(scrollView.contentOffset.y, 0, accuracy: 0.001)
+    }
+
+    func testDeliberateScrollDuringHoldReleasesItInsteadOfReverting() {
+        // VoiceOver or a hardware keyboard moves the offset with no size change in
+        // the same turn: that is a real scroll, and the hold must let it stand.
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        controller.holdPosition {}
+        scrollView.contentOffset.y = 300
+
+        XCTAssertEqual(scrollView.contentOffset.y, 300, accuracy: 0.001)
+        XCTAssertFalse(controller.isHoldingPosition)
+    }
+
+    func testResyncOnlyDescribesAHeldTop() {
+        XCTAssertTrue(ChatScrollPositionController.shouldResync(
+            didRevertSwiftUIOffset: true, heldOffsetY: -116, minimumOffsetY: -116
+        ))
+        XCTAssertFalse(ChatScrollPositionController.shouldResync(
+            didRevertSwiftUIOffset: true, heldOffsetY: 240, minimumOffsetY: -116
+        ))
+        XCTAssertFalse(ChatScrollPositionController.shouldResync(
+            didRevertSwiftUIOffset: false, heldOffsetY: -116, minimumOffsetY: -116
+        ))
+    }
+
+    func testReleaseHoldLeavesPrependPreservationAlone() {
+        let scrollView = makeScrollView()
+        scrollView.contentOffset = CGPoint(x: 0, y: 240)
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+
+        XCTAssertTrue(controller.capture())
+        XCTAssertTrue(controller.restoreAfterPrepend())
+        controller.releaseHold()
+        scrollView.contentSize.height += 640
+
+        XCTAssertEqual(scrollView.contentOffset.y, 880, accuracy: 0.001)
+    }
+
     func testCancelledPrependDoesNotMoveScrollPosition() {
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 240)
-        let controller = ChatPrependScrollPositionController()
+        let controller = ChatScrollPositionController()
         controller.attach(to: scrollView)
 
         XCTAssertTrue(controller.capture())
@@ -165,7 +280,7 @@ final class ChatPrependScrollPositionControllerTests: XCTestCase {
     func testPrependDoesNotOverrideMovementWhileRequestIsInFlight() {
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 240)
-        let controller = ChatPrependScrollPositionController()
+        let controller = ChatScrollPositionController()
         controller.attach(to: scrollView)
 
         XCTAssertTrue(controller.capture())
@@ -180,7 +295,7 @@ final class ChatPrependScrollPositionControllerTests: XCTestCase {
         let inset = UIEdgeInsets(top: 12, left: 0, bottom: 20, right: 0)
 
         XCTAssertEqual(
-            ChatPrependScrollPositionController.compensatedOffsetY(
+            ChatScrollPositionController.compensatedOffsetY(
                 baselineOffsetY: -12,
                 contentHeightDelta: -100,
                 adjustedInset: inset,
@@ -191,7 +306,7 @@ final class ChatPrependScrollPositionControllerTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(
-            ChatPrependScrollPositionController.compensatedOffsetY(
+            ChatScrollPositionController.compensatedOffsetY(
                 baselineOffsetY: 700,
                 contentHeightDelta: 500,
                 adjustedInset: inset,
