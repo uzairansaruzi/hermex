@@ -96,19 +96,22 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
         VStack(alignment: .leading, spacing: 0) {
             rowLine
 
-            if isExpanded {
-                TranscriptLogRowBodyWindow(content: expandedBody)
-                    .padding(.leading, 12)
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(.quaternary)
-                            .frame(width: 1)
-                    }
-                    .padding(.leading, TranscriptLogRowMetrics.bodyIndent)
-                    .padding(.top, 2)
-                    .padding(.bottom, 6)
-                    .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+            VStack(alignment: .leading, spacing: 0) {
+                if isExpanded {
+                    TranscriptLogRowBodyWindow(content: expandedBody)
+                        .padding(.leading, 12)
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(.quaternary)
+                                .frame(width: 1)
+                        }
+                        .padding(.leading, TranscriptLogRowMetrics.bodyIndent)
+                        .padding(.top, 2)
+                        .padding(.bottom, 6)
+                        .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                }
             }
+            .clipped()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear { copiedResetTask?.cancel() }
