@@ -3,6 +3,7 @@ import AVFoundation
 import ImageIO
 import SwiftData
 import UIKit
+import SwiftUI
 import UniformTypeIdentifiers
 @testable import HermesMobile
 
@@ -625,5 +626,21 @@ final class ResponseSpeedFormatterTests: XCTestCase {
         XCTAssertNil(ResponseSpeedFormatter.compactText(-1))
         XCTAssertNil(ResponseSpeedFormatter.compactText(.infinity))
         XCTAssertNil(ResponseSpeedFormatter.compactText(.nan))
+    }
+}
+
+final class ClarificationRequestPresentationTests: XCTestCase {
+    func testBarSummaryIsFirstNonEmptyLineOfQuestion() {
+        XCTAssertEqual(ClarificationRequestBar.summary(for: "Which branch?"), "Which branch?")
+        XCTAssertEqual(
+            ClarificationRequestBar.summary(for: "\n  Which branch should I use?  \n1. main\n2. release"),
+            "Which branch should I use?"
+        )
+        XCTAssertEqual(ClarificationRequestBar.summary(for: "   "), "")
+    }
+
+    func testToggleCurveIsOneEaseOutClockAndSnapsUnderReduceMotion() {
+        XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
+        XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
     }
 }

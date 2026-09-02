@@ -329,6 +329,9 @@ struct ChatView: View {
     @State private var gitToastState = GitActionToastState()
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
+    /// Measured height of the collapsed clarification bar, the request's only
+    /// layout footprint; the expanded card overlays the transcript instead.
+    @State private var clarificationBarHeight: CGFloat = 0
     @State private var composerIsFocused = false
     @State private var didHydrateDraft = false
     /// True from the moment hydration finds persisted attachment records until
@@ -610,6 +613,8 @@ struct ChatView: View {
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
             composerAccessoryStack
+
+            clarificationInset
 
             messageComposer
 
@@ -1125,6 +1130,43 @@ struct ChatView: View {
         }
     }
 
+    /// The pending clarification, pinned above the composer. Sits in the same
+    /// bottom stack as the composer so it rides the keyboard with it.
+    private var clarificationInset: some View {
+        ZStack(alignment: .bottom) {
+            if let clarificationPrompt = viewModel.clarificationPrompt {
+                ClarificationRequestInset(
+                    prompt: clarificationPrompt,
+                    isResponding: viewModel.isRespondingToClarification,
+                    isStopping: viewModel.isCancellingStream,
+                    errorMessage: viewModel.clarificationErrorMessage,
+                    isHapticsEnabled: isHapticsEnabled,
+                    onSubmit: { response in
+                        Task {
+                            let didRespond = await viewModel.respondToClarification(response)
+                            if didRespond {
+                                ChatHaptics.clarificationSubmitted(isEnabled: isHapticsEnabled)
+                            }
+                        }
+                    },
+                    onStop: {
+                        Task { await cancelStream() }
+                    },
+                    onDismissKeyboard: dismissKeyboard,
+                    onFootprintChange: { height in
+                        clarificationBarHeight = height
+                    }
+                )
+                .id(clarificationPrompt.id)
+                .padding(.horizontal, 16)
+                .padding(.bottom, composerHeight + 8)
+                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+        }
+        .zIndex(9)
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.clarificationPrompt?.id)
+    }
+
     @ViewBuilder
     private var composerAccessoryStack: some View {
         if composerAccessoryVisibleItemCount > 0 {
@@ -1145,7 +1187,7 @@ struct ChatView: View {
                 }
             }
             .padding(.horizontal)
-            .padding(.bottom, composerHeight + 8)
+            .padding(.bottom, composerHeight + 8 + clarificationFootprintHeight)
             .allowsHitTesting(false)
             .zIndex(8)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerAccessoryVisibleItemCount)
@@ -1175,9 +1217,7 @@ struct ChatView: View {
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
             liveTokensPerSecond: viewModel.liveTokensPerSecond,
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
-            clarificationPrompt: viewModel.clarificationPrompt,
-            isRespondingToClarification: viewModel.isRespondingToClarification,
-            clarificationErrorMessage: viewModel.clarificationErrorMessage,
+            clarificationPromptID: viewModel.clarificationPrompt?.id,
             hidesRunStatusAccessibility: activeRunStatusPresentation != nil,
             showsThinkingAndToolCards: showsThinkingAndToolCards,
             workingRowStartedAt: workingRowStartedAt,
@@ -1250,14 +1290,6 @@ struct ChatView: View {
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
             },
-            onSubmitClarification: { response in
-                Task {
-                    let didRespond = await viewModel.respondToClarification(response)
-                    if didRespond {
-                        ChatHaptics.clarificationSubmitted(isEnabled: isHapticsEnabled)
-                    }
-                }
-            },
             onSelectText: { context in
                 selectableResponseText = SelectableTextPresentation(context: context)
             },
@@ -1322,11 +1354,18 @@ struct ChatView: View {
     }
 
     private var transcriptBottomInsetHeight: CGFloat {
-        max(96, composerHeight + 44 + composerAccessorySpacerHeight)
+        max(96, composerHeight + 44 + composerAccessorySpacerHeight + clarificationFootprintHeight)
     }
 
     private var scrollToBottomButtonBottomPadding: CGFloat {
-        composerHeight + 12 + composerAccessorySpacerHeight
+        composerHeight + 12 + composerAccessorySpacerHeight + clarificationFootprintHeight
+    }
+
+    /// Bar height plus its gap above the composer while a clarification is
+    /// pending. Constant across expand and collapse, so the transcript never
+    /// moves while the card animates.
+    private var clarificationFootprintHeight: CGFloat {
+        viewModel.clarificationPrompt == nil ? 0 : clarificationBarHeight + 8
     }
 
     private var pinnedNoticeSpacerHeight: CGFloat {

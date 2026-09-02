@@ -20,9 +20,9 @@ struct ChatTranscriptView: View {
     let streamingAssistantMessageID: String?
     let liveTokensPerSecond: Double?
     let activeStreamRecoveryState: ActiveStreamRecoveryState
-    let clarificationPrompt: ClarificationPromptState?
-    let isRespondingToClarification: Bool
-    let clarificationErrorMessage: String?
+    /// The pending clarification's id. The card itself is pinned above the
+    /// composer by `ChatView`; the transcript only follows its arrival.
+    let clarificationPromptID: String?
     let hidesRunStatusAccessibility: Bool
     let showsThinkingAndToolCards: Bool
     /// Start date for the "Working for" tail row; nil hides the row.
@@ -74,7 +74,6 @@ struct ChatTranscriptView: View {
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onToggleListening: (MessageActionContext) -> Void
-    let onSubmitClarification: (String) -> Void
     let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
@@ -91,10 +90,10 @@ struct ChatTranscriptView: View {
     var onOpenTurnFileDiff: (GitFile) -> Void = { _ in }
 
     var body: some View {
-        if isLoading && messages.isEmpty && clarificationPrompt == nil {
+        if isLoading && messages.isEmpty {
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
+        } else if let errorMessage, messages.isEmpty {
             ContentUnavailableView {
                 Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
             } description: {
@@ -104,7 +103,7 @@ struct ChatTranscriptView: View {
                     Task { await onLoadMessages() }
                 }
             }
-        } else if messages.isEmpty && clarificationPrompt == nil {
+        } else if messages.isEmpty {
             ContentUnavailableView {
                 Image(systemName: "bubble.left.and.bubble.right")
             } description: {
@@ -161,7 +160,6 @@ struct ChatTranscriptView: View {
                     .adaptiveSoftScrollEdges()
                     .simultaneousGesture(
                         TapGesture().onEnded {
-                            guard clarificationPrompt == nil else { return }
                             onDismissKeyboard()
                         }
                     )
@@ -199,8 +197,10 @@ struct ChatTranscriptView: View {
                     guard isFollowingLatestContent else { return }
                     onScrollToLatestContent(proxy, false)
                 }
-                .onChange(of: clarificationPrompt?.id) {
-                    guard clarificationPrompt != nil, isFollowingLatestContent else { return }
+                .onChange(of: clarificationPromptID) {
+                    // The bar above the composer just grew the bottom inset; keep
+                    // the latest content above it for a reader who was following.
+                    guard clarificationPromptID != nil, isFollowingLatestContent else { return }
                     onScrollToBottom(proxy)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -299,7 +299,6 @@ struct ChatTranscriptView: View {
 
             transcriptLooseBlocks
             liveResponseBlocks
-            inlineClarificationCard
             workingRow
             turnChangesCard
             inlineCommitButton
@@ -419,21 +418,6 @@ struct ChatTranscriptView: View {
                     .accessibilityHidden(hidesRunStatusAccessibility)
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
             }
-        }
-    }
-
-    @ViewBuilder
-    private var inlineClarificationCard: some View {
-        if let clarificationPrompt {
-            ClarificationRequestCard(
-                prompt: clarificationPrompt,
-                isResponding: isRespondingToClarification,
-                errorMessage: clarificationErrorMessage,
-                onSubmit: onSubmitClarification
-            )
-            .id(clarificationPrompt.id)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
         }
     }
 

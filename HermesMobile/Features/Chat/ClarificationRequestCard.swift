@@ -1,30 +1,156 @@
 import SwiftUI
+import UIKit
 
-struct ClarificationRequestOverlay: View {
+/// The clarification request pinned above the composer while the agent waits
+/// for an answer. The collapsed bar is the permanent footprint: its measured
+/// height feeds the transcript's bottom inset. The expanded card is an overlay
+/// that rises from the bar's bottom edge, so opening or closing it never moves
+/// the transcript. A new request always arrives expanded.
+struct ClarificationRequestInset: View {
     let prompt: ClarificationPromptState
     let isResponding: Bool
+    let isStopping: Bool
     let errorMessage: String?
-    let bottomPadding: CGFloat
+    let isHapticsEnabled: Bool
     let onSubmit: (String) -> Void
+    let onStop: () -> Void
+    /// Collapsing hides the response field, so the keyboard goes with it.
+    let onDismissKeyboard: () -> Void
+    /// The bar's height, the only part of this view that takes layout space.
+    let onFootprintChange: (CGFloat) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var isExpanded = true
+    // Lives here rather than in the card so a typed answer survives collapse.
+    @State private var draftResponse = ""
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(colorScheme == .dark ? 0.24 : 0.18)
-                .ignoresSafeArea()
-
-            ClarificationRequestCard(
-                prompt: prompt,
-                isResponding: isResponding,
-                errorMessage: errorMessage,
-                onSubmit: onSubmit
-            )
-                .padding(.horizontal, 16)
-                .padding(.bottom, bottomPadding)
-                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+        ClarificationRequestBar(
+            prompt: prompt,
+            isStopping: isStopping,
+            onExpand: { setExpanded(true) },
+            onStop: onStop
+        )
+        .accessibilityHidden(isExpanded)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            onFootprintChange(height)
         }
+        .overlay(alignment: .bottom) {
+            // Clip window with its bottom edge on the bar's bottom edge: the
+            // opaque card slides its own height down through it, revealing the
+            // transcript and then the bar only where it has physically left.
+            // No crossfade, and nothing is drawn over the composer below.
+            ZStack(alignment: .bottom) {
+                if isExpanded {
+                    ClarificationRequestCard(
+                        prompt: prompt,
+                        isResponding: isResponding,
+                        errorMessage: errorMessage,
+                        draftResponse: $draftResponse,
+                        onSubmit: onSubmit,
+                        onCollapse: { setExpanded(false) }
+                    )
+                    .transition(.move(edge: .bottom))
+                }
+            }
+            .clipped()
+        }
+        .onChange(of: prompt.id, initial: true) {
+            announceRequest()
+        }
+    }
+
+    private func setExpanded(_ expanded: Bool) {
+        guard expanded != isExpanded else { return }
+        if !expanded {
+            onDismissKeyboard()
+        }
+        ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
+        withAnimation(ChatMotion.clarificationToggle(reduceMotion: reduceMotion)) {
+            isExpanded = expanded
+        }
+    }
+
+    /// One announcement per request; re-renders and toggles stay silent.
+    private func announceRequest() {
+        guard UIAccessibility.isVoiceOverRunning else { return }
+        let announcement = String(localized: "Input needed: \(ClarificationRequestBar.summary(for: prompt.question))")
+        AccessibilityNotification.Announcement(announcement).post()
+    }
+}
+
+/// One-line footprint of a pending clarification: what is being asked, a way
+/// back into the card, and Stop for when the run should end instead.
+struct ClarificationRequestBar: View {
+    let prompt: ClarificationPromptState
+    let isStopping: Bool
+    let onExpand: () -> Void
+    let onStop: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @ScaledMetric(relativeTo: .body) private var stopButtonSize: CGFloat = 32
+
+    /// The first non-empty line of a question, so a multi-line prompt reads
+    /// as one line on the bar.
+    static func summary(for question: String) -> String {
+        question
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onExpand) {
+                HStack(spacing: 10) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Input needed")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Text(Self.summary(for: prompt.question))
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.up")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Expand clarification")
+            .accessibilityValue(Self.summary(for: prompt.question))
+
+            Button(action: onStop) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: stopButtonSize, height: stopButtonSize)
+                    .background(Color.red.opacity(colorScheme == .dark ? 0.22 : 0.12))
+                    .foregroundStyle(.red)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.chatTactile(.icon))
+            .disabled(isStopping)
+            .accessibilityLabel("Stop response")
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 560)
+        .clarificationSurface(cornerRadius: 22)
         .accessibilityElement(children: .contain)
     }
 }
@@ -33,42 +159,28 @@ struct ClarificationRequestCard: View {
     let prompt: ClarificationPromptState
     let isResponding: Bool
     let errorMessage: String?
+    @Binding var draftResponse: String
     let onSubmit: (String) -> Void
+    let onCollapse: () -> Void
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var submitButtonSize: CGFloat = 40
-    @State private var draftResponse = ""
+    @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
+    @State private var bodyContentHeight: CGFloat?
+
+    /// Beyond this the question and choices scroll inside the card, so a long
+    /// prompt cannot push the response field off screen. Sized to fit a short
+    /// question with four choices without scrolling.
+    private let bodyHeightCap: CGFloat = 300
 
     var body: some View {
-        card
+        cardContent
+            .frame(maxWidth: 560, alignment: .leading)
+            .clarificationSurface(cornerRadius: 24)
+            // Ideal height regardless of what the bar-sized overlay proposes.
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .contain)
-    }
-
-    private var card: some View {
-        cardSurface
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 18, x: 0, y: 12)
-    }
-
-    @ViewBuilder
-    private var cardSurface: some View {
-        if reduceTransparency {
-            cardContent
-                .background(
-                    Color(.secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-                )
-                .overlay(cardBorder)
-        } else if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 14) {
-                cardContent
-                    .glassEffect(.regular.tint(cardTint), in: .rect(cornerRadius: cardCornerRadius))
-            }
-        } else {
-            cardContent
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
-                .overlay(cardBorder)
-        }
     }
 
     private var header: some View {
@@ -92,7 +204,22 @@ struct ClarificationRequestCard: View {
             Spacer(minLength: 8)
 
             expirationView
+
+            collapseButton
         }
+    }
+
+    private var collapseButton: some View {
+        Button(action: onCollapse) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: collapseButtonSize, height: collapseButtonSize)
+                .background(.primary.opacity(0.08))
+                .foregroundStyle(.secondary)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .accessibilityLabel("Collapse clarification")
     }
 
     private var question: some View {
@@ -114,6 +241,32 @@ struct ClarificationRequestCard: View {
             ForEach(prompt.choices, id: \.self) { choice in
                 choiceButton(choice)
             }
+        }
+    }
+
+    /// Question plus choices, scrolling only once they outgrow the cap.
+    @ViewBuilder
+    private var scrollableBody: some View {
+        let content = VStack(alignment: .leading, spacing: 14) {
+            question
+
+            if !prompt.choices.isEmpty {
+                choicesList
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            bodyContentHeight = height
+        }
+
+        if let bodyContentHeight, bodyContentHeight > bodyHeightCap {
+            ScrollView {
+                content
+            }
+            .frame(height: bodyHeightCap)
+        } else {
+            content
         }
     }
 
@@ -194,17 +347,11 @@ struct ClarificationRequestCard: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            question
-
-            if !prompt.choices.isEmpty {
-                choicesList
-            }
-
+            scrollableBody
             responseField
             footer
         }
         .padding(16)
-        .frame(maxWidth: 560, alignment: .leading)
     }
 
     @ViewBuilder
@@ -271,19 +418,6 @@ struct ClarificationRequestCard: View {
         colorScheme == .dark ? Color.white.opacity(0.72) : Color.black.opacity(0.58)
     }
 
-    private var cardTint: Color {
-        colorScheme == .dark ? Color.white.opacity(0.035) : Color.white.opacity(0.16)
-    }
-
-    private var cardCornerRadius: CGFloat {
-        24
-    }
-
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-            .stroke(.primary.opacity(0.10), lineWidth: 1)
-    }
-
     private func submitDraft() {
         let value = trimmedDraft
         guard !value.isEmpty else { return }
@@ -338,6 +472,20 @@ struct ClarificationRequestCard: View {
 }
 
 private extension View {
+    /// Opaque on purpose: the bar and card float over live transcript text,
+    /// and a translucent surface would render the question on top of whatever
+    /// message happens to sit underneath.
+    func clarificationSurface(cornerRadius: CGFloat) -> some View {
+        background(
+            Color(.secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(.primary.opacity(0.10), lineWidth: 1)
+        )
+    }
+
     @ViewBuilder
     func choiceButtonSurface(reduceTransparency: Bool) -> some View {
         if reduceTransparency {
