@@ -4,10 +4,10 @@ import XCTest
 final class TranscriptLogRowBodyWindowTests: XCTestCase {
     private let cap = TranscriptLogRowMetrics.bodyWindowHeight
 
-    func testUnmeasuredContentLeavesTheWindowFreeAndStill() {
+    func testUnmeasuredContentStartsClosed() {
         let layout = TranscriptLogRowBodyWindowLayout.resolve(contentHeight: nil, cap: cap)
 
-        XCTAssertNil(layout.frameHeight)
+        XCTAssertEqual(layout.frameHeight, 0)
         XCTAssertFalse(layout.scrolls)
     }
 

@@ -257,7 +257,7 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
         if uiView.isScrollEnabled != layout.scrolls {
             uiView.isScrollEnabled = layout.scrolls
         }
-        return CGSize(width: width, height: layout.frameHeight ?? 0)
+        return CGSize(width: width, height: layout.frameHeight)
     }
 
     /// A text view that stays scrolled to its last line whenever it scrolls,

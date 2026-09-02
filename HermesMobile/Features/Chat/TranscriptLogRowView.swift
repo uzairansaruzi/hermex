@@ -16,14 +16,15 @@ enum TranscriptLogRowMetrics {
 /// whether it scrolls, from the measured content height. Shared by the
 /// SwiftUI window and the live thinking text view so both cap alike.
 struct TranscriptLogRowBodyWindowLayout: Equatable {
-    /// `nil` until the content has been measured; the window then sizes to
-    /// whatever the content asks for.
-    let frameHeight: CGFloat?
+    /// Zero until the content has been measured, then the lesser of its
+    /// natural height and the cap. Starting closed prevents one unbounded
+    /// layout pass from moving the transcript before the cap takes effect.
+    let frameHeight: CGFloat
     let scrolls: Bool
 
     static func resolve(contentHeight: CGFloat?, cap: CGFloat) -> Self {
         guard let contentHeight else {
-            return Self(frameHeight: nil, scrolls: false)
+            return Self(frameHeight: 0, scrolls: false)
         }
         return Self(frameHeight: min(contentHeight, cap), scrolls: contentHeight > cap)
     }
@@ -36,6 +37,7 @@ struct TranscriptLogRowBodyWindowLayout: Equatable {
 struct TranscriptLogRowBodyWindow<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat?
 
     var body: some View {
@@ -49,12 +51,20 @@ struct TranscriptLogRowBodyWindow<Content: View>: View {
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
                 } action: { height in
-                    // The window resizes to its content outside the disclosure
-                    // animation, so a tall body opens straight at the cap.
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        contentHeight = height
+                    if contentHeight == nil {
+                        // The first bounded measurement opens the body from
+                        // zero, so rows below only move down toward their final
+                        // positions. Later content changes keep their existing
+                        // non-animated sizing behavior.
+                        withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                            contentHeight = height
+                        }
+                    } else {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            contentHeight = height
+                        }
                     }
                 }
         }
