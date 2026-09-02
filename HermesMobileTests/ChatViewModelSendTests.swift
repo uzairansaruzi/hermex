@@ -1914,7 +1914,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.messageId, liveAssistantID)
         XCTAssertEqual(viewModel.messages.last?.content, "")
         XCTAssertEqual(viewModel.reasoningAnchorMessageID, liveAssistantID)
-        XCTAssertFalse(viewModel.hasStreamingAssistantMessageContent)
 
         streamClient.emit(.toolStarted(ToolStreamEvent(
             eventType: "tool.started",
@@ -1936,7 +1935,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.streamingAssistantMessageID, liveAssistantID)
         XCTAssertEqual(viewModel.messages.last?.messageId, liveAssistantID)
         XCTAssertEqual(viewModel.messages.last?.content, "Live answer starts now.")
-        XCTAssertTrue(viewModel.hasStreamingAssistantMessageContent)
     }
 
     @MainActor

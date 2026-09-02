@@ -701,41 +701,41 @@ final class ChatVerticalScrollAxisGuardView: UIView {
     }
 }
 
-struct AssistantTypingIndicatorView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var isBreathing = false
+/// Transcript tail row for the active run: three static dots and a
+/// "Working for" counter that ticks once a second from the run's start date.
+/// The `TimelineView` scopes each tick to this row, so message rows above it
+/// are not re-evaluated.
+struct ChatWorkingRowView: View {
+    let startedAt: Date
 
     var body: some View {
-        Circle()
-            .fill(dotColor)
-            .frame(width: 16, height: 16)
-            .scaleEffect(reduceMotion ? 1 : (isBreathing ? 1.16 : 0.86))
-            .opacity(reduceMotion ? 0.75 : (isBreathing ? 0.95 : 0.55))
-            .padding(.leading, 4)
-            .padding(.vertical, 8)
-            .accessibilityLabel("Hermex is preparing a response")
-            .onAppear {
-                updateBreathingAnimation()
-            }
-            .onChange(of: reduceMotion) {
-                updateBreathingAnimation()
-            }
-    }
+        TimelineView(.periodic(from: startedAt, by: 1)) { context in
+            HStack(spacing: 8) {
+                dots
 
-    private var dotColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.92) : Color.black.opacity(0.78)
-    }
-
-    private func updateBreathingAnimation() {
-        guard let animation = ChatMotion.typingIndicator(reduceMotion: reduceMotion) else {
-            isBreathing = false
-            return
+                Text("Working for \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: context.date))")
+                    .font(.caption.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                String(
+                    localized: "Hermes has been working for \(ChatWorkingElapsedFormatter.spokenLabel(startedAt: startedAt, now: context.date))"
+                )
+            )
         }
+        .padding(.leading, 4)
+        .padding(.vertical, 6)
+    }
 
-        isBreathing = false
-        withAnimation(animation) {
-            isBreathing = true
+    private var dots: some View {
+        HStack(spacing: 4) {
+            ForEach([1.0, 0.8, 0.6], id: \.self) { opacity in
+                Circle()
+                    .fill(.secondary)
+                    .opacity(opacity)
+                    .frame(width: 4, height: 4)
+            }
         }
     }
 }

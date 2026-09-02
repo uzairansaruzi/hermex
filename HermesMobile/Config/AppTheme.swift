@@ -254,27 +254,6 @@ enum ChatTranscriptDisplaySettings {
         userToggled ?? startsExpanded
     }
 
-    static func shouldShowAssistantTypingIndicator(
-        hasActiveStream: Bool,
-        isCancellingStream: Bool,
-        hasStreamingAssistantMessage: Bool,
-        hasPendingClarificationPrompt: Bool = false,
-        liveReasoningText: String,
-        hasLiveToolCalls: Bool,
-        showsThinkingAndToolCards: Bool
-    ) -> Bool {
-        guard hasActiveStream, !isCancellingStream else { return false }
-        guard !hasStreamingAssistantMessage else { return false }
-        guard !hasPendingClarificationPrompt else { return false }
-
-        guard showsThinkingAndToolCards else {
-            return true
-        }
-
-        guard liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return !hasLiveToolCalls
-    }
-
     static func shouldUseStreamingBubbleRendering(
         hasActiveStream: Bool,
         messageRole: String?,
@@ -428,6 +407,40 @@ enum ChatActiveRunStatusPolicy {
 
         guard hasActiveStream else { return nil }
         return ChatActiveRunStatusPresentation(kind: .active)
+    }
+}
+
+enum ChatWorkingRowPolicy {
+    /// Start date for the transcript's "Working for" tail row, or nil when the
+    /// row stays hidden: no active run, the run is being stopped, or the agent
+    /// is waiting on a clarification answer rather than working.
+    static func startedAt(
+        activeRunStartedAt: Date?,
+        isCancellingStream: Bool,
+        hasPendingClarificationPrompt: Bool
+    ) -> Date? {
+        guard let activeRunStartedAt, !isCancellingStream, !hasPendingClarificationPrompt else {
+            return nil
+        }
+        return activeRunStartedAt
+    }
+}
+
+enum ChatWorkingElapsedFormatter {
+    /// Compact elapsed time for the tail row: `12s`, `1m 4s`, `1h 2m 3s`.
+    static func label(startedAt: Date, now: Date) -> String {
+        Duration.seconds(elapsedSeconds(startedAt: startedAt, now: now))
+            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
+    }
+
+    /// Spelled-out elapsed time for VoiceOver: `1 minute, 4 seconds`.
+    static func spokenLabel(startedAt: Date, now: Date) -> String {
+        Duration.seconds(elapsedSeconds(startedAt: startedAt, now: now))
+            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
+    }
+
+    private static func elapsedSeconds(startedAt: Date, now: Date) -> Int {
+        max(0, Int(now.timeIntervalSince(startedAt).rounded(.down)))
     }
 }
 

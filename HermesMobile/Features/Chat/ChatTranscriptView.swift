@@ -25,7 +25,8 @@ struct ChatTranscriptView: View {
     let clarificationErrorMessage: String?
     let hidesRunStatusAccessibility: Bool
     let showsThinkingAndToolCards: Bool
-    let showsAssistantTypingIndicator: Bool
+    /// Start date for the "Working for" tail row; nil hides the row.
+    let workingRowStartedAt: Date?
     let showsScrollToBottomButton: Bool
     let shouldFollowLatestMessage: Bool
     /// True while a disclosure toggle animates; suspends the bottom size-change
@@ -282,7 +283,7 @@ struct ChatTranscriptView: View {
             transcriptLooseBlocks
             liveResponseBlocks
             inlineClarificationCard
-            typingIndicator
+            workingRow
             turnChangesCard
             inlineCommitButton
 
@@ -408,9 +409,9 @@ struct ChatTranscriptView: View {
     }
 
     @ViewBuilder
-    private var typingIndicator: some View {
-        if showsAssistantTypingIndicator {
-            AssistantTypingIndicatorView()
+    private var workingRow: some View {
+        if let workingRowStartedAt {
+            ChatWorkingRowView(startedAt: workingRowStartedAt)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityHidden(hidesRunStatusAccessibility)
         }

@@ -220,6 +220,7 @@ final class ChatViewModel {
     private(set) var isCancellingStream = false
     private(set) var isViewingCachedData = false
     var activeStreamID: String? { streamCoordinator.activeStreamID }
+    var activeRunStartedAt: Date? { streamCoordinator.activeRunStartedAt }
     var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
     var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
     private(set) var errorMessage: String?
@@ -632,14 +633,6 @@ final class ChatViewModel {
     func isSelectedProfile(_ profile: ProfileSummary) -> Bool {
         guard let profileName = profile.normalizedName else { return false }
         return profileName == (Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile))
-    }
-
-    var hasStreamingAssistantMessageContent: Bool {
-        guard let streamingAssistantMessageID,
-              let message = messages.first(where: { $0.messageId == streamingAssistantMessageID })
-        else { return false }
-
-        return message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     private func scheduleStreamingScrollTrigger() {

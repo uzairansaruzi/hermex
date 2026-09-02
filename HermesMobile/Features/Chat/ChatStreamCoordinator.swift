@@ -99,7 +99,17 @@ final class ChatStreamCoordinator {
     private let timing: ChatStreamCoordinatorTiming
     private var showsLiveActivityResponseExcerpts: Bool
 
-    private(set) var activeStreamID: String?
+    private(set) var activeStreamID: String? {
+        didSet {
+            guard activeStreamID != oldValue else { return }
+            activeRunStartedAt = activeStreamID == nil ? nil : Date()
+        }
+    }
+    /// When the current stream first became known here. Keyed to stream
+    /// identity, so a same-stream reattach keeps the date; a stream discovered
+    /// on session load counts from discovery, since the server does not report
+    /// when it started.
+    private(set) var activeRunStartedAt: Date?
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false

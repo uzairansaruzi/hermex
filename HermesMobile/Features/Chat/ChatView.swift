@@ -1175,7 +1175,7 @@ struct ChatView: View {
             clarificationErrorMessage: viewModel.clarificationErrorMessage,
             hidesRunStatusAccessibility: activeRunStatusPresentation != nil,
             showsThinkingAndToolCards: showsThinkingAndToolCards,
-            showsAssistantTypingIndicator: showsAssistantTypingIndicator,
+            workingRowStartedAt: workingRowStartedAt,
             showsScrollToBottomButton: showsScrollToBottomButton,
             shouldFollowLatestMessage: shouldFollowLatestMessage,
             isDisclosureSettling: isDisclosureSettling,
@@ -1296,15 +1296,11 @@ struct ChatView: View {
         !isScrolledNearBottom && (viewModel.activeStreamID == nil || !shouldFollowLatestMessage)
     }
 
-    private var showsAssistantTypingIndicator: Bool {
-        ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
-            hasActiveStream: viewModel.activeStreamID != nil,
+    private var workingRowStartedAt: Date? {
+        ChatWorkingRowPolicy.startedAt(
+            activeRunStartedAt: viewModel.activeRunStartedAt,
             isCancellingStream: viewModel.isCancellingStream,
-            hasStreamingAssistantMessage: viewModel.hasStreamingAssistantMessageContent,
-            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil,
-            liveReasoningText: viewModel.liveReasoningText,
-            hasLiveToolCalls: !viewModel.liveToolCalls.isEmpty,
-            showsThinkingAndToolCards: showsThinkingAndToolCards
+            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil
         )
     }
 

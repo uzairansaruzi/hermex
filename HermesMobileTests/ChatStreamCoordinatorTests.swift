@@ -37,6 +37,31 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testActiveRunStartDateSurvivesSameStreamRestartAndClearsOnFinish() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+        XCTAssertNil(coordinator.activeRunStartedAt)
+
+        coordinator.start(streamID: "stream-123")
+        let startedAt = try XCTUnwrap(coordinator.activeRunStartedAt)
+
+        // A foreground reattach restarts the same stream; the counter must not reset.
+        coordinator.suspendActiveStreamConnection()
+        coordinator.start(streamID: "stream-123", replayAfterSeq: 4, recoveryState: .reconnecting)
+        XCTAssertEqual(coordinator.activeRunStartedAt, startedAt)
+
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertNil(coordinator.activeRunStartedAt)
+
+        // A replacement stream is a new run with its own start date.
+        coordinator.start(streamID: "stream-new")
+        XCTAssertNotNil(coordinator.activeRunStartedAt)
+        XCTAssertNotEqual(coordinator.activeRunStartedAt, startedAt)
+    }
+
+    @MainActor
     func testSessionLoadPreparationBelongsOnlyToCapturedStreamRun() {
         let coordinator = makeCoordinator()
 
