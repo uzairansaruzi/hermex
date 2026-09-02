@@ -773,28 +773,7 @@ private struct ChatTranscriptMessageRow: View {
             MarkerMessageCardView(kind: markerKind, content: message.content)
         } else {
             VStack(alignment: isUserMessage ? .trailing : .leading, spacing: 4) {
-                if let actionContext {
-                    bubble
-                        .chatMessageContextMenu(
-                            ChatMessageActionMenu(
-                                context: actionContext,
-                                listeningMessageID: listeningMessageID,
-                                isViewingCachedData: isViewingCachedData,
-                                hasActiveStream: hasActiveStream,
-                                isRegeneratingMessage: isRegeneratingMessage,
-                                isEditingMessage: isEditingMessage,
-                                isForkingMessage: isForkingMessage,
-                                onToggleListening: onToggleListening,
-                                onSelectText: onSelectText,
-                                onRegenerate: onRegenerate,
-                                onEdit: onEdit,
-                                onFork: onFork,
-                                onCopy: onCopy
-                            )
-                        )
-                } else {
-                    bubble
-                }
+                bubble
 
                 if showsMetaRow {
                     ChatMessageMetaRow(
@@ -837,7 +816,27 @@ private struct ChatTranscriptMessageRow: View {
             onPreviewAttachment: onPreviewAttachment,
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,
             isStreaming: isStreaming,
-            liveTokensPerSecond: liveTokensPerSecond
+            liveTokensPerSecond: liveTokensPerSecond,
+            contextMenu: actionMenu
+        )
+    }
+
+    private var actionMenu: ChatMessageActionMenu? {
+        guard let actionContext else { return nil }
+        return ChatMessageActionMenu(
+            context: actionContext,
+            listeningMessageID: listeningMessageID,
+            isViewingCachedData: isViewingCachedData,
+            hasActiveStream: hasActiveStream,
+            isRegeneratingMessage: isRegeneratingMessage,
+            isEditingMessage: isEditingMessage,
+            isForkingMessage: isForkingMessage,
+            onToggleListening: onToggleListening,
+            onSelectText: onSelectText,
+            onRegenerate: onRegenerate,
+            onEdit: onEdit,
+            onFork: onFork,
+            onCopy: onCopy
         )
     }
 }

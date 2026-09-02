@@ -10,15 +10,23 @@ import UIKit
 /// makes room. Here nothing is lifted: the transcript dims and the menu opens
 /// beside the press in one motion, whatever the reply's length (issue #208).
 extension View {
-    func chatMessageContextMenu(_ menu: ChatMessageActionMenu) -> some View {
-        background(ChatMessageContextMenuHost(menu: menu))
-            .accessibilityActions {
-                ForEach(menu.items.filter(\.isEnabled)) { item in
-                    Button(item.title) {
-                        item.perform()
+    /// Attach to the message content itself, not the full-width row, so the
+    /// menu opens only where there is something to act on. A nil menu leaves
+    /// the view untouched.
+    @ViewBuilder
+    func chatMessageContextMenu(_ menu: ChatMessageActionMenu?) -> some View {
+        if let menu {
+            background(ChatMessageContextMenuHost(menu: menu))
+                .accessibilityActions {
+                    ForEach(menu.items.filter(\.isEnabled)) { item in
+                        Button(item.title) {
+                            item.perform()
+                        }
                     }
                 }
-            }
+        } else {
+            self
+        }
     }
 }
 

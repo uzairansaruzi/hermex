@@ -18,6 +18,9 @@ struct MessageBubbleView: View {
     let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
     let liveTokensPerSecond: Double?
+    /// Long-press actions, attached to the message content only so the empty
+    /// gutter beside a user bubble does not open its menu.
+    let contextMenu: ChatMessageActionMenu?
 
     init(
         message: ChatMessage,
@@ -30,7 +33,8 @@ struct MessageBubbleView: View {
         onPreviewAttachment: ((MessageAttachment, Data?) -> Void)? = nil,
         onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
         isStreaming: Bool = false,
-        liveTokensPerSecond: Double? = nil
+        liveTokensPerSecond: Double? = nil,
+        contextMenu: ChatMessageActionMenu? = nil
     ) {
         self.message = message
         self.loadAttachmentImage = loadAttachmentImage
@@ -43,6 +47,7 @@ struct MessageBubbleView: View {
         self.onPreviewTranscriptMedia = onPreviewTranscriptMedia
         self.isStreaming = isStreaming
         self.liveTokensPerSecond = liveTokensPerSecond
+        self.contextMenu = contextMenu
     }
 
     var body: some View {
@@ -61,6 +66,7 @@ struct MessageBubbleView: View {
         VStack(alignment: .trailing, spacing: 8) {
             if let attachments = message.attachments, !attachments.isEmpty {
                 attachmentPreviews
+                    .chatMessageContextMenu(contextMenu)
             }
 
             // When the attachment-path line is hidden, an attachment-only
@@ -75,6 +81,7 @@ struct MessageBubbleView: View {
                         }
                         linkPreview
                     }
+                    .chatMessageContextMenu(contextMenu)
                 }
             }
         }
@@ -104,6 +111,7 @@ struct MessageBubbleView: View {
 
             linkPreview
         }
+        .chatMessageContextMenu(contextMenu)
         .frame(maxWidth: .infinity, alignment: .leading)
         // While this row is the active streaming message, animate its height
         // growth at the same curve as the bottom-follow scroll so the streaming
