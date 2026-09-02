@@ -49,6 +49,55 @@ enum ChatHaptics {
         emit(.warning, isEnabled: isEnabled, performer: performer)
     }
 
+    /// Any transcript disclosure: tool cards, tool groups, reasoning, marker cards.
+    static func disclosureToggled(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.selection, isEnabled: isEnabled, performer: performer)
+    }
+
+    /// The scroll-to-latest button, a deliberate jump rather than a follow scroll.
+    static func scrolledToLatest(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.selection, isEnabled: isEnabled, performer: performer)
+    }
+
+    /// Every pasteboard write the user asks for: messages, code blocks, files, titles, links.
+    static func copied(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.lightImpact, isEnabled: isEnabled, performer: performer)
+    }
+
+    /// The `running → finished` edge of a Git action shown in the toast overlay.
+    /// Call it once per action outcome, never from a view body.
+    static func gitActionFinished(succeeded: Bool, isEnabled: Bool, performer: Performer? = nil) {
+        emit(succeeded ? .success : .warning, isEnabled: isEnabled, performer: performer)
+    }
+
+    /// One tick of the opt-in pulse while assistant text streams. Callers throttle
+    /// with `StreamingPulseThrottle`; this only honors the enabled flag.
+    static func streamingPulse(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.selection, isEnabled: isEnabled, performer: performer)
+    }
+
+    /// Rate limit for the streaming pulse: at most one tick per `interval`, so a
+    /// fast token stream feels like a faint ticker instead of a buzz.
+    struct StreamingPulseThrottle: Equatable {
+        static let defaultInterval: TimeInterval = 0.32
+
+        var interval: TimeInterval = StreamingPulseThrottle.defaultInterval
+        private var lastPulseAt: TimeInterval?
+
+        /// Records a token arrival. Returns `true` when enough time has passed for a pulse.
+        mutating func shouldPulse(at now: TimeInterval) -> Bool {
+            if let lastPulseAt, now - lastPulseAt < interval {
+                return false
+            }
+            lastPulseAt = now
+            return true
+        }
+
+        mutating func reset() {
+            lastPulseAt = nil
+        }
+    }
+
     private static func emit(_ feedback: ChatHapticFeedback, isEnabled: Bool, performer: Performer?) {
         guard isEnabled else { return }
         (performer ?? Self.perform)(feedback)

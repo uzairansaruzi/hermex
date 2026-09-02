@@ -736,6 +736,8 @@ struct ScheduledSessionsView: View {
 }
 
 struct SessionRowContextMenu: View {
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
     let session: SessionSummary
     let projects: [ProjectSummary]
     let isViewingCachedData: Bool
@@ -754,6 +756,7 @@ struct SessionRowContextMenu: View {
 
             Button {
                 UIPasteboard.general.string = fullTitle
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
             } label: {
                 Label("Copy Full Title", systemImage: "doc.on.doc")
             }
@@ -820,6 +823,7 @@ struct SessionRowContextMenu: View {
             ) {
                 Button {
                     UIPasteboard.general.string = deepLinkURL.absoluteString
+                    ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 } label: {
                     Label("Copy Deeplink", systemImage: "doc.on.doc")
                 }

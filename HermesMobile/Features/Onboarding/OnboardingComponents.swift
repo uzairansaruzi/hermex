@@ -56,6 +56,7 @@ struct OnboardingCommandPill: View {
     var prefix: String? = "$"
     var copyValue: String?
     @State private var didCopy = false
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     var body: some View {
         HStack(spacing: 10) {
@@ -76,6 +77,7 @@ struct OnboardingCommandPill: View {
                 Button {
                     UIPasteboard.general.string = copyValue
                     didCopy = true
+                    ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 13, weight: .semibold))
@@ -249,7 +251,7 @@ struct OnboardingAgentPromptCard: View {
             Button {
                 UIPasteboard.general.string = prompt
                 hasCopied = true
-                HapticButtonHaptics.tap(style: .light, isEnabled: isHapticsEnabled)
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 withAnimation(.easeInOut(duration: 0.2)) {
                     didCopyRecently = true
                 }

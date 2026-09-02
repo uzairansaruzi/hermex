@@ -265,6 +265,7 @@ struct ChatView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
@@ -699,6 +700,7 @@ struct ChatView: View {
                 guard viewModel.responseCompletionHapticTrigger > 0 else { return }
                 handleResponseCompletionSideEffects()
             }
+            .onChange(of: viewModel.streamingHapticPulseTrigger, handleStreamingHapticPulse)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     ChatToolbarTitleLabel(
@@ -1023,8 +1025,10 @@ struct ChatView: View {
                 subtitle: result.branch,
                 detailLines: detailLines
             ))
+            ChatHaptics.gitActionFinished(succeeded: result.pushFailureMessage == nil, isEnabled: isHapticsEnabled)
         case .nothingToCommit:
             gitToastState.dismissProgress()
+            ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             gitAlert = .error(String(localized: "There are no changes to commit."))
         case .tooManyChanges:
             // Status was truncated (>500 files): the commit was blocked to avoid silently
@@ -1034,10 +1038,12 @@ struct ChatView: View {
             // against. (Kept separate from .failure, which intentionally stays quiet when its
             // busy/no-session guard returns with no message.) No success toast/SHA.
             gitToastState.dismissProgress()
+            ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             gitAlert = .error(gitAvailabilityViewModel.actionErrorMessage
                 ?? String(localized: "Too many changes to quick-commit. Commit in smaller batches, or use git directly."))
         case .failure:
             gitToastState.dismissProgress()
+            ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             if let message = gitAvailabilityViewModel.actionErrorMessage {
                 gitAlert = .error(message)
             }
@@ -1072,8 +1078,10 @@ struct ChatView: View {
                     .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             ))
+            ChatHaptics.gitActionFinished(succeeded: true, isEnabled: isHapticsEnabled)
         } else {
             gitToastState.dismissProgress()
+            ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             if let message = gitAvailabilityViewModel.actionErrorMessage {
                 gitAlert = .error(message)
             }
@@ -1213,7 +1221,7 @@ struct ChatView: View {
             },
             onUpdateScrollMetrics: updateScrollMetrics,
             onFollowEvent: handleFollowEvent,
-            onDisclosureToggle: suspendBottomAnchorForDisclosure,
+            onDisclosureToggle: handleDisclosureToggle,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
             onScrollToLatestTranscriptMessage: { proxy in
@@ -1251,6 +1259,7 @@ struct ChatView: View {
             },
             onCopy: { context in
                 UIPasteboard.general.string = context.copyText
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
             },
             inlineCommitContext: inlineCommitContext,
             onInlineCommit: {
@@ -2352,6 +2361,7 @@ struct ChatView: View {
         // Deliberate jump to the latest content. Snap without animation while a
         // response is streaming so the tap lands immediately instead of racing
         // the short follow animations already chasing incoming tokens.
+        ChatHaptics.scrolledToLatest(isEnabled: isHapticsEnabled)
         scrollToLatestContent(
             proxy,
             animated: viewModel.activeStreamID == nil,
@@ -2508,6 +2518,16 @@ struct ChatView: View {
     /// Holds the transcript offset through a disclosure animation so the tapped
     /// row stays under the finger. The latch itself is untouched, so the next
     /// streaming trigger catches up once the toggle has settled.
+    private func handleDisclosureToggle() {
+        ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
+        suspendBottomAnchorForDisclosure()
+    }
+
+    /// One tick per view-model bump; the view model already throttles and skips replay.
+    private func handleStreamingHapticPulse() {
+        ChatHaptics.streamingPulse(isEnabled: isHapticsEnabled && isStreamingPulseEnabled)
+    }
+
     private func suspendBottomAnchorForDisclosure() {
         disclosureSettleGeneration += 1
         let generation = disclosureSettleGeneration

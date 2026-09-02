@@ -13,6 +13,11 @@ final class ChatHapticsTests: XCTestCase {
         ChatHaptics.clarificationSubmitted(isEnabled: false) { feedback.append($0) }
         ChatHaptics.configurationSelected(isEnabled: false) { feedback.append($0) }
         ChatHaptics.destructiveConfirmationAccepted(isEnabled: false) { feedback.append($0) }
+        ChatHaptics.disclosureToggled(isEnabled: false) { feedback.append($0) }
+        ChatHaptics.scrolledToLatest(isEnabled: false) { feedback.append($0) }
+        ChatHaptics.copied(isEnabled: false) { feedback.append($0) }
+        ChatHaptics.gitActionFinished(succeeded: true, isEnabled: false) { feedback.append($0) }
+        ChatHaptics.streamingPulse(isEnabled: false) { feedback.append($0) }
 
         XCTAssertTrue(feedback.isEmpty)
     }
@@ -32,6 +37,12 @@ final class ChatHapticsTests: XCTestCase {
         ChatHaptics.clarificationSubmitted(isEnabled: true) { feedback.append($0) }
         ChatHaptics.configurationSelected(isEnabled: true) { feedback.append($0) }
         ChatHaptics.destructiveConfirmationAccepted(isEnabled: true) { feedback.append($0) }
+        ChatHaptics.disclosureToggled(isEnabled: true) { feedback.append($0) }
+        ChatHaptics.scrolledToLatest(isEnabled: true) { feedback.append($0) }
+        ChatHaptics.copied(isEnabled: true) { feedback.append($0) }
+        ChatHaptics.gitActionFinished(succeeded: true, isEnabled: true) { feedback.append($0) }
+        ChatHaptics.gitActionFinished(succeeded: false, isEnabled: true) { feedback.append($0) }
+        ChatHaptics.streamingPulse(isEnabled: true) { feedback.append($0) }
 
         XCTAssertEqual(feedback, [
             .lightImpact,
@@ -44,8 +55,27 @@ final class ChatHapticsTests: XCTestCase {
             .warning,
             .selection,
             .selection,
-            .warning
+            .warning,
+            .selection,
+            .selection,
+            .lightImpact,
+            .success,
+            .warning,
+            .selection
         ])
+    }
+
+    func testStreamingPulseThrottleAllowsOneTickPerInterval() {
+        var throttle = ChatHaptics.StreamingPulseThrottle()
+
+        XCTAssertTrue(throttle.shouldPulse(at: 10.0), "first token pulses immediately")
+        XCTAssertFalse(throttle.shouldPulse(at: 10.1))
+        XCTAssertFalse(throttle.shouldPulse(at: 10.31), "just under the 320 ms window stays quiet")
+        XCTAssertTrue(throttle.shouldPulse(at: 10.32))
+        XCTAssertFalse(throttle.shouldPulse(at: 10.5), "the window restarts from the last pulse, not the last token")
+
+        throttle.reset()
+        XCTAssertTrue(throttle.shouldPulse(at: 10.51), "reset makes the next token pulse again")
     }
 
     @MainActor

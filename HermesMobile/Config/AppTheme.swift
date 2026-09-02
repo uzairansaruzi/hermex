@@ -174,6 +174,9 @@ enum PrimaryActionTintSettings {
 
 enum AppHaptics {
     static let isEnabledKey = "appHaptics.isEnabled"
+    /// Opt-in selection tick while assistant text streams. Off by default and
+    /// only honored when `isEnabledKey` is also on.
+    static let streamingPulseIsEnabledKey = "appHaptics.streamingPulse.isEnabled"
 }
 
 enum ResponseCompletionNotifications {

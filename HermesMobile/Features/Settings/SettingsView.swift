@@ -59,6 +59,7 @@ struct SettingsView: View {
     @State private var notificationStatusMessage: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(ResponseCompletionNotifications.hasRequestedPermissionKey) private var hasRequestedResponseCompletionNotificationPermission = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
@@ -157,6 +158,18 @@ struct SettingsView: View {
                         systemImage: "iphone.radiowaves.left.and.right",
                         isOn: $isHapticsEnabled
                     )
+
+                    if isHapticsEnabled {
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Pulse While Streaming"),
+                            systemImage: "waveform",
+                            isOn: $isStreamingPulseEnabled
+                        )
+
+                        SettingsFootnote(String(localized: "A light tick as each reply streams in."))
+                    }
 
                     SettingsDivider()
 

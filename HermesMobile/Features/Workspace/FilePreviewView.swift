@@ -15,6 +15,7 @@ struct FilePreviewView: View {
     @State private var exportErrorMessage: String?
     @State private var saveConfirmationMessage: String?
     @State private var isSavingToPhotos = false
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     init(session: SessionSummary, server: URL, entry: WorkspaceEntry, onAPIError: @escaping (Error) -> Void) {
         self.entry = entry
@@ -188,6 +189,7 @@ struct FilePreviewView: View {
 
             Button {
                 UIPasteboard.general.string = content
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }

@@ -415,6 +415,7 @@ private struct ChatCodeBlock: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var didCopy = false
     @State private var highlightedCode: NSAttributedString?
 
@@ -443,6 +444,7 @@ private struct ChatCodeBlock: View {
                 Button {
                     UIPasteboard.general.string = content
                     didCopy = true
+                    ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "square.on.square")
                         .font(.system(size: 18, weight: .semibold))
