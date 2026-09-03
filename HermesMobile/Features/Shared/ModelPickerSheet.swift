@@ -384,7 +384,41 @@ struct ModelPickerSheet: View {
         .buttonStyle(.plain)
     }
 
+    /// One catalog row. The favorites star and the favorites context menu
+    /// action are gated together on `showsModelFavoriteStars`: a surface that
+    /// passes no `onToggleFavorite` would otherwise render both against the
+    /// default no-op closure, which is a control that does nothing.
+    @ViewBuilder
     private func modelOptionRow(_ option: ModelCatalogOption, allowsDelete: Bool) -> some View {
+        let row = modelOptionRowContent(option)
+
+        if configuration.showsModelFavoriteStars || allowsDelete {
+            row.contextMenu {
+                if configuration.showsModelFavoriteStars {
+                    Button {
+                        onToggleFavorite(option)
+                    } label: {
+                        Label(
+                            isFavorite(option) ? "Remove from Favorites" : "Add to Favorites",
+                            systemImage: isFavorite(option) ? "star.slash" : "star"
+                        )
+                    }
+                }
+
+                if allowsDelete {
+                    Button(role: .destructive) {
+                        onDeleteSavedCustom(option)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+        } else {
+            row
+        }
+    }
+
+    private func modelOptionRowContent(_ option: ModelCatalogOption) -> some View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
 
@@ -417,34 +451,18 @@ struct ModelPickerSheet: View {
             .accessibilityLabel(Text(verbatim: option.displayName))
             .accessibilityAddTraits(selected ? .isSelected : [])
 
-            favoriteStar(
-                isFavorite: isFavorite(option),
-                isInverted: selected,
-                removeLabel: Text("Remove \(option.displayName) from favorites"),
-                addLabel: Text("Add \(option.displayName) to favorites")
-            ) {
-                onToggleFavorite(option)
-            }
-        }
-        .pickerSelectionPill(isSelected: selected)
-        .contextMenu {
-            Button {
-                onToggleFavorite(option)
-            } label: {
-                Label(
-                    isFavorite(option) ? "Remove from Favorites" : "Add to Favorites",
-                    systemImage: isFavorite(option) ? "star.slash" : "star"
-                )
-            }
-
-            if allowsDelete {
-                Button(role: .destructive) {
-                    onDeleteSavedCustom(option)
-                } label: {
-                    Label("Delete", systemImage: "trash")
+            if configuration.showsModelFavoriteStars {
+                favoriteStar(
+                    isFavorite: isFavorite(option),
+                    isInverted: selected,
+                    removeLabel: Text("Remove \(option.displayName) from favorites"),
+                    addLabel: Text("Add \(option.displayName) to favorites")
+                ) {
+                    onToggleFavorite(option)
                 }
             }
         }
+        .pickerSelectionPill(isSelected: selected)
     }
 
     private func commit(_ option: ModelCatalogOption) {

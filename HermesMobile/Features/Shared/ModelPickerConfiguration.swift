@@ -20,6 +20,10 @@ struct ModelPickerConfiguration {
     /// default, where a custom model can never gain a `Saved Custom` group to
     /// be shown in.
     let showsCustomFavoriteStar: Bool
+    /// Whether the catalog rows carry a favorites star and a favorites context
+    /// menu action. Off wherever the surface passes no `onToggleFavorite`, so
+    /// the rows never offer a control that does nothing.
+    let showsModelFavoriteStars: Bool
     /// Whether a `Current Custom` group renders above the catalog when the
     /// current selection has no row of its own. Surfaces that must always be
     /// able to answer "which one am I on" keep it, so a model the catalog
@@ -40,6 +44,7 @@ struct ModelPickerConfiguration {
         customActionTitle: "Use Custom",
         requiresCustomProviderID: true,
         showsCustomFavoriteStar: true,
+        showsModelFavoriteStars: true,
         showsCurrentCustomModelGroup: true,
         showsSavedCustomModelGroup: true,
         dismissesOnCommit: true
@@ -52,6 +57,7 @@ struct ModelPickerConfiguration {
         customActionTitle: "Save Custom Model",
         requiresCustomProviderID: false,
         showsCustomFavoriteStar: false,
+        showsModelFavoriteStars: true,
         showsCurrentCustomModelGroup: false,
         showsSavedCustomModelGroup: false,
         dismissesOnCommit: false
@@ -60,12 +66,14 @@ struct ModelPickerConfiguration {
     /// The Task editor's model picker. It edits a draft, so committing is
     /// instant and closes the sheet.
     ///
-    /// Nothing here reads or writes `ModelFavoritesStore`: starring a model
-    /// while editing a scheduled task would silently change what the chat
-    /// composer offers, and the favorites-backed `Saved Custom` group would
-    /// list models this task was never configured with. The `Current Custom`
-    /// group stays, because a task configured last month against a model the
-    /// catalog has since dropped must still show which model that was.
+    /// Nothing here reads or writes `ModelFavoritesStore` — no stars on the
+    /// rows, none on the custom entry, and no favorites context menu action:
+    /// starring a model while editing a scheduled task would silently change
+    /// what the chat composer offers, and the favorites-backed `Saved Custom`
+    /// group would list models this task was never configured with. The
+    /// `Current Custom` group stays, because a task configured last month
+    /// against a model the catalog has since dropped must still show which
+    /// model that was.
     static let cronJob = ModelPickerConfiguration(
         navigationTitle: "Task Model",
         dismissTitle: "Cancel",
@@ -73,6 +81,7 @@ struct ModelPickerConfiguration {
         customActionTitle: "Use Custom",
         requiresCustomProviderID: true,
         showsCustomFavoriteStar: false,
+        showsModelFavoriteStars: false,
         showsCurrentCustomModelGroup: true,
         showsSavedCustomModelGroup: false,
         dismissesOnCommit: true

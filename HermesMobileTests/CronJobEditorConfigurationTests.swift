@@ -135,11 +135,22 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
     // MARK: The .cronJob picker preset
 
     func testTheTasksPickerNeitherShowsNorWritesFavorites() {
+        // The catalog rows' star and their favorites context menu action are
+        // gated together: the Tasks picker passes no `onToggleFavorite`, so
+        // either one would render a control that does nothing.
+        XCTAssertFalse(ModelPickerConfiguration.cronJob.showsModelFavoriteStars)
         XCTAssertFalse(ModelPickerConfiguration.cronJob.showsCustomFavoriteStar)
         XCTAssertFalse(ModelPickerConfiguration.cronJob.showsSavedCustomModelGroup)
         // The current selection still gets a row, so an off-catalog model is
         // visible and checked.
         XCTAssertTrue(ModelPickerConfiguration.cronJob.showsCurrentCustomModelGroup)
+    }
+
+    func testTheComposerAndServerDefaultPickersKeepTheirCatalogRowStars() {
+        // Both pass a real `onToggleFavorite`; only the Tasks picker loses the
+        // stars.
+        XCTAssertTrue(ModelPickerConfiguration.composer.showsModelFavoriteStars)
+        XCTAssertTrue(ModelPickerConfiguration.serverDefault.showsModelFavoriteStars)
     }
 
     func testTheTasksPickersCustomEntryNeedsBothAModelAndAProviderID() {
