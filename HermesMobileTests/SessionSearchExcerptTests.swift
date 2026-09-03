@@ -59,6 +59,31 @@ final class SessionSearchExcerptTests: XCTestCase {
         XCTAssertEqual(plainText(excerpt), excerpt.text)
     }
 
+    /// Excerpts windowed out of a serialized tool result arrive with that
+    /// JSON's escapes still in them; the row must not print them.
+    func testTurnsEscapedWhitespaceIntoSpaces() {
+        let excerpt = SessionSearchExcerpt(
+            text: #"...459k 419M 0% /\n---\nRAM: 8.0 GB", "exit_code": 0,..."#,
+            query: "RAM"
+        )
+
+        XCTAssertEqual(excerpt.text, #"...459k 419M 0% / --- RAM: 8.0 GB", "exit_code": 0,..."#)
+        XCTAssertEqual(boldRuns(excerpt), ["RAM"])
+    }
+
+    func testCollapsesRunsOfWhitespaceAndTrims() {
+        let excerpt = SessionSearchExcerpt(text: "  deploy\tthe\t\tworker  ", query: "deploy")
+
+        XCTAssertEqual(excerpt.text, "deploy the worker")
+    }
+
+    func testLeavesAnOrdinaryExcerptAlone() {
+        let text = "...decided to move the billing plan tiers behind a flag..."
+        let excerpt = SessionSearchExcerpt(text: text, query: "billing")
+
+        XCTAssertEqual(excerpt.text, text)
+    }
+
     func testHighlightsAMatchAtEitherEdge() {
         let excerpt = SessionSearchExcerpt(text: "deploy the deploy", query: "deploy")
 

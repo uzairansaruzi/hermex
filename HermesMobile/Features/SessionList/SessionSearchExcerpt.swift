@@ -11,6 +11,30 @@ struct SessionSearchExcerpt: Equatable {
     let text: String
     let query: String
 
+    init(text: String, query: String) {
+        self.text = Self.displayText(text)
+        self.query = query
+    }
+
+    /// The server previews the raw stored message text, so an excerpt taken
+    /// from a serialized tool result arrives carrying that JSON's escapes:
+    /// `...0% /\n---\nRAM: 8.0 GB", "exit_code": 0,...`. Those two-character
+    /// escapes become spaces and runs of whitespace collapse, so the one line
+    /// reads instead of showing its own punctuation.
+    ///
+    /// A Windows path (`C:\new`) is the false positive this accepts. It is
+    /// worth it for a truncated preview line that is never used as data, and
+    /// the alternative — guessing whether the excerpt "is JSON" — misfires in
+    /// both directions.
+    private static func displayText(_ raw: String) -> String {
+        var text = raw
+        for escape in ["\\r\\n", "\\n", "\\r", "\\t"] {
+            text = text.replacingOccurrences(of: escape, with: " ")
+        }
+
+        return text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
     /// The excerpt with every occurrence of the query bolded.
     ///
     /// Matching is case-insensitive and runs over `String` ranges, so composed
