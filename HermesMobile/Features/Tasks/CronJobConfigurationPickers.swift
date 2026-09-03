@@ -30,6 +30,12 @@ enum CronJobModelSelection {
 
 /// The Task editor's Model row: the current model and provider, or "Server
 /// default" when the draft leaves both blank.
+///
+/// No provider glyph here, unlike the picker's own rows. A Form row gives the
+/// value whatever width the label leaves it, and a glyph in front of a long
+/// model name is the difference between "Muse Spark 1.3 Contributor Free"
+/// fitting and clipping. The glyphs stay inside the picker, where the rows are
+/// full-width.
 struct CronJobModelRow: View {
     let selection: ModelCatalogOption?
     let action: () -> Void
@@ -38,11 +44,6 @@ struct CronJobModelRow: View {
         Button(action: action) {
             LabeledContent {
                 HStack(spacing: 6) {
-                    if ProviderGlyphKind.resolve(providerID: selection?.providerID) != nil {
-                        ProviderGlyph(providerID: selection?.providerID)
-                            .frame(width: 16, height: 16)
-                    }
-
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(title)
                             .foregroundStyle(.primary)
