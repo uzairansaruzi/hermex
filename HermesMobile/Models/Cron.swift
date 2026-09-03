@@ -485,6 +485,28 @@ struct CronJobEditorDraft: Equatable {
         profile = profileName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
+    /// Applies a skill selection from the picker.
+    ///
+    /// `skillsText` stays the storage, so a job created before the picker
+    /// existed keeps round-tripping through the same comma-separated form the
+    /// server has always received.
+    mutating func applySkillSelection(_ names: [String]) {
+        skillsText = names.joined(separator: ", ")
+    }
+
+    /// `selection` with `name` added if absent, removed if present.
+    ///
+    /// Order is the user's: a newly selected skill goes on the end rather than
+    /// re-sorting a list they just read. Matching is exact, because the server
+    /// stores back whatever spelling it was sent.
+    static func togglingSkill(_ name: String, in selection: [String]) -> [String] {
+        guard let index = selection.firstIndex(of: name) else { return selection + [name] }
+
+        var next = selection
+        next.remove(at: index)
+        return next
+    }
+
     private static func nonEmpty(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed

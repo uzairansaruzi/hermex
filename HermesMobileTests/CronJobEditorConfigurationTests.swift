@@ -3,8 +3,8 @@ import XCTest
 
 /// Pins the rules behind the Task editor's Model and Profile rows: model and
 /// provider always move together, "Server default" is a real value, a selection
-/// the server no longer offers stays visible, and neither load failure is
-/// allowed to disturb the rest of the draft.
+/// the server no longer offers stays visible, and no load failure is allowed to
+/// disturb the rest of the draft. The Skills row has its own suite below.
 final class CronJobEditorConfigurationTests: APIClientTestCase {
     private func option(_ id: String, provider: String?) -> ModelCatalogOption {
         ModelCatalogOption(id: id, displayName: id, providerID: provider)
@@ -186,6 +186,8 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
                     #"{"active": "default", "profiles": [{"name": "work", "model": "gpt-5", "provider": "openai"}]}"#,
                     for: request
                 )
+            case "/api/skills":
+                return apiTestJSONResponse(#"{"skills": [{"name": "writing"}]}"#, for: request)
             default:
                 XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
                 throw URLError(.badURL)
@@ -197,8 +199,10 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
 
         XCTAssertEqual(loader.modelGroups.flatMap(\.allModels).map(\.id), ["gpt-5"])
         XCTAssertEqual(loader.profiles.map(\.normalizedName), ["work"])
+        XCTAssertEqual(loader.skills.compactMap(\.name), ["writing"])
         XCTAssertNil(loader.modelsErrorMessage)
         XCTAssertNil(loader.profilesErrorMessage)
+        XCTAssertNil(loader.skillsErrorMessage)
     }
 
     @MainActor
@@ -210,7 +214,7 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
             case "/api/profiles":
                 return apiTestJSONResponse(#"{"profiles": [{"name": "work"}]}"#, for: request)
             default:
-                throw URLError(.badURL)
+                return apiTestJSONResponse("{}", for: request)
             }
         }
 
@@ -247,7 +251,7 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
                 if shouldFailProfiles { throw URLError(.notConnectedToInternet) }
                 return apiTestJSONResponse(#"{"profiles": [{"name": "work"}]}"#, for: request)
             default:
-                throw URLError(.badURL)
+                return apiTestJSONResponse("{}", for: request)
             }
         }
 
@@ -282,5 +286,124 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
 
         XCTAssertNil(loader.modelsErrorMessage)
         XCTAssertNil(loader.profilesErrorMessage)
+    }
+}
+
+/// Pins the Task editor's Skills picker: the selection round-trips through the
+/// draft's comma-separated storage, a saved skill the server no longer lists
+/// stays removable, and a failed list still allows a name to be added by hand.
+final class CronJobSkillsPickerTests: APIClientTestCase {
+    func testTogglingASkillAddsItToTheEndAndRemovesItAgain() {
+        // Newly selected goes on the end rather than re-sorting a list the user
+        // just read.
+        let added = CronJobEditorDraft.togglingSkill("research", in: ["writing"])
+        XCTAssertEqual(added, ["writing", "research"])
+
+        XCTAssertEqual(CronJobEditorDraft.togglingSkill("writing", in: added), ["research"])
+    }
+
+    func testASkillSelectionRoundTripsThroughSkillsText() {
+        var draft = CronJobEditorDraft()
+
+        draft.applySkillSelection(["writing", "research"])
+
+        XCTAssertEqual(draft.skillsText, "writing, research")
+        XCTAssertEqual(draft.skills, ["writing", "research"])
+    }
+
+    func testClearingSkillsEmptiesTheSelection() {
+        var draft = CronJobEditorDraft(skillsText: "writing, research")
+        XCTAssertEqual(draft.skills, ["writing", "research"])
+
+        draft.applySkillSelection([])
+
+        XCTAssertEqual(draft.skillsText, "")
+        XCTAssertTrue(draft.skills.isEmpty)
+    }
+
+    func testASkillMissingFromTheListStillGetsARow() {
+        // Otherwise a saved skill the server no longer offers could not be
+        // removed, which is a one-way door.
+        let listed = CronJobSkillsPickerSheet.skillsIncludingSelection([], selection: ["retired"])
+
+        XCTAssertEqual(listed.compactMap(\.name), ["retired"])
+    }
+
+    func testASkillAlreadyInTheListIsNotDuplicated() {
+        let writing = SkillSummary(name: "writing", category: "docs", description: nil, path: nil)
+
+        let listed = CronJobSkillsPickerSheet.skillsIncludingSelection([writing], selection: ["writing"])
+
+        XCTAssertEqual(listed.compactMap(\.name), ["writing"])
+    }
+
+    func testSkillSearchMatchesNameCategoryAndDescription() {
+        let skills = [
+            SkillSummary(name: "writing", category: "docs", description: "Drafts prose", path: nil),
+            SkillSummary(name: "research", category: "web", description: "Reads sources", path: nil),
+        ]
+
+        XCTAssertEqual(CronJobSkillsPickerSheet.filteredSkills(skills, query: "docs").compactMap(\.name), ["writing"])
+        XCTAssertEqual(CronJobSkillsPickerSheet.filteredSkills(skills, query: "sources").compactMap(\.name), ["research"])
+        XCTAssertEqual(CronJobSkillsPickerSheet.filteredSkills(skills, query: "  ").count, 2)
+    }
+
+    @MainActor
+    func testTheEditorLoadsSkillsAndSkipsDisabledOnes() async {
+        let client = makeClient { request in
+            guard request.url?.path == "/api/skills" else {
+                return apiTestJSONResponse("{}", for: request)
+            }
+
+            return apiTestJSONResponse(
+                #"{"skills": [{"name": "writing", "category": "docs"}, {"name": "retired", "disabled": true}]}"#,
+                for: request
+            )
+        }
+
+        let loader = CronJobEditorConfigurationLoader(server: URL(string: "https://example.test")!, client: client)
+        await loader.loadSkills()
+
+        // A disabled skill would be ignored by the run, so the picker does not
+        // offer it.
+        XCTAssertEqual(loader.skills.compactMap(\.name), ["writing"])
+        XCTAssertNil(loader.skillsErrorMessage)
+    }
+
+    @MainActor
+    func testAFailedSkillListKeepsTheSavedSkillsAndRetriesSuccessfully() async {
+        var shouldFailSkills = true
+        let client = makeClient { request in
+            guard request.url?.path == "/api/skills" else {
+                return apiTestJSONResponse("{}", for: request)
+            }
+            if shouldFailSkills { throw URLError(.notConnectedToInternet) }
+            return apiTestJSONResponse(#"{"skills": [{"name": "writing"}]}"#, for: request)
+        }
+
+        var draft = CronJobEditorDraft(skillsText: "writing")
+        let loader = CronJobEditorConfigurationLoader(server: URL(string: "https://example.test")!, client: client)
+        await loader.loadSkills()
+
+        XCTAssertNotNil(loader.skillsErrorMessage)
+        XCTAssertTrue(loader.skills.isEmpty)
+        XCTAssertEqual(draft.skills, ["writing"])
+        XCTAssertEqual(
+            CronJobSkillsPickerSheet
+                .skillsIncludingSelection(loader.skills, selection: draft.skills)
+                .compactMap(\.name),
+            ["writing"]
+        )
+
+        // Upstream does not validate `skills`, so a name can still be added by
+        // hand while the list is unavailable.
+        draft.applySkillSelection(CronJobEditorDraft.togglingSkill("research", in: draft.skills))
+        XCTAssertEqual(draft.skills, ["writing", "research"])
+
+        shouldFailSkills = false
+        await loader.loadSkills()
+
+        XCTAssertNil(loader.skillsErrorMessage)
+        XCTAssertEqual(loader.skills.compactMap(\.name), ["writing"])
     }
 }

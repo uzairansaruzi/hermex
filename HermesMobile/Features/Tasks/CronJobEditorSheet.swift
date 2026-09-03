@@ -17,6 +17,7 @@ struct CronJobEditorSheet: View {
     @State private var configuration: CronJobEditorConfigurationLoader
     @State private var isPresentingModelPicker = false
     @State private var isPresentingProfilePicker = false
+    @State private var isPresentingSkillsPicker = false
     @Environment(\.dismiss) private var dismiss
 
     /// Server-provided deliver targets. A plain `let` so a re-init while the
@@ -98,10 +99,13 @@ struct CronJobEditorSheet: View {
                 }
 
                 Section {
-                    TextField("Skills", text: $draft.skillsText, axis: .vertical)
-                        .lineLimit(1...4)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    CronJobSkillsRow(
+                        selection: draft.skills,
+                        errorMessage: configuration.skillsErrorMessage,
+                        isLoading: configuration.isLoadingSkills,
+                        action: { isPresentingSkillsPicker = true },
+                        onRetry: { Task { await configuration.loadSkills() } }
+                    )
 
                     CronJobModelRow(selection: modelSelection) {
                         isPresentingModelPicker = true
@@ -159,6 +163,21 @@ struct CronJobEditorSheet: View {
                     onSelect: { option in
                         draft.applyModelSelection(option)
                     }
+                )
+            }
+            .sheet(isPresented: $isPresentingSkillsPicker) {
+                CronJobSkillsPickerSheet(
+                    skills: configuration.skills,
+                    selection: draft.skills,
+                    isLoading: configuration.isLoadingSkills,
+                    errorMessage: configuration.skillsErrorMessage,
+                    onRetry: { Task { await configuration.loadSkills() } },
+                    onToggle: { name in
+                        draft.applySkillSelection(
+                            CronJobEditorDraft.togglingSkill(name, in: draft.skills)
+                        )
+                    },
+                    onClear: { draft.applySkillSelection([]) }
                 )
             }
             .sheet(isPresented: $isPresentingProfilePicker) {

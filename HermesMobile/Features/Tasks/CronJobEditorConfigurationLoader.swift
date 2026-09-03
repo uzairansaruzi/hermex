@@ -1,19 +1,19 @@
 import Foundation
 import Observation
 
-/// The model catalog and profile list behind the Task editor's Configuration
-/// section.
+/// The model catalog, profile list, and skill list behind the Task editor's
+/// Configuration section.
 ///
-/// Owned by `CronJobEditorSheet` and driven from its `.task`, so the two
-/// requests happen when the editor opens rather than when the Tasks list
-/// appears — a user scrolling their tasks should not pay for a catalog fetch.
+/// Owned by `CronJobEditorSheet` and driven from its `.task`, so the requests
+/// happen when the editor opens rather than when the Tasks list appears — a
+/// user scrolling their tasks should not pay for a catalog fetch.
 /// The create sheet and the edit sheet are the same sheet, so they share this
 /// one loader instead of each view model growing its own copy.
 ///
-/// Both loads are independent and non-fatal. A failed catalog leaves the model
-/// picker with only its custom entry; a failed profile list leaves the profile
-/// row showing an error with a retry. Neither disturbs any other field in the
-/// sheet.
+/// The three loads are independent and non-fatal. A failed catalog leaves the
+/// model picker with only its custom entry; a failed profile or skill list
+/// leaves its row showing an error with a retry. None of them disturbs any
+/// other field in the sheet.
 @MainActor
 @Observable
 final class CronJobEditorConfigurationLoader {
@@ -25,18 +25,23 @@ final class CronJobEditorConfigurationLoader {
     private(set) var isLoadingProfiles = false
     private(set) var profilesErrorMessage: String?
 
+    private(set) var skills: [SkillSummary] = []
+    private(set) var isLoadingSkills = false
+    private(set) var skillsErrorMessage: String?
+
     private let client: APIClient
 
     init(server: URL, client: APIClient? = nil) {
         self.client = client ?? APIClient(baseURL: server)
     }
 
-    /// Runs both loads concurrently. Re-entrant calls are dropped, so the
+    /// Runs all three loads concurrently. Re-entrant calls are dropped, so the
     /// sheet's `.task` restarting does not stack requests.
     func load() async {
         async let models: Void = loadModels()
         async let profiles: Void = loadProfiles()
-        _ = await (models, profiles)
+        async let skills: Void = loadSkills()
+        _ = await (models, profiles, skills)
     }
 
     func loadModels() async {
@@ -67,6 +72,23 @@ final class CronJobEditorConfigurationLoader {
         } catch {
             guard !Self.isCancellation(error) else { return }
             profilesErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// Also the skills row's retry.
+    func loadSkills() async {
+        guard !isLoadingSkills else { return }
+        isLoadingSkills = true
+        skillsErrorMessage = nil
+        defer { isLoadingSkills = false }
+
+        do {
+            // Disabled skills are filtered out: the picker offers what a run
+            // could actually use, and the server would ignore the rest.
+            skills = (try await client.skills().skills ?? []).filter { $0.disabled != true }
+        } catch {
+            guard !Self.isCancellation(error) else { return }
+            skillsErrorMessage = error.localizedDescription
         }
     }
 
