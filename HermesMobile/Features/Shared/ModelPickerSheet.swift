@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// The model picker shared by the chat composer and Settings > Default Model.
+/// The model picker shared by the chat composer, Settings > Default Model, and
+/// the Task editor.
 ///
-/// The two surfaces differ only in a `ModelPickerConfiguration` preset and in
-/// who owns the commit: the composer selects instantly, while Settings writes
-/// to the server and drives `inFlightKey`, `isSelectionDisabled`, and
-/// `errorMessage` from that request.
+/// The surfaces differ only in a `ModelPickerConfiguration` preset and in who
+/// owns the commit: the composer selects instantly, the Task editor writes to a
+/// local draft, and Settings writes to the server and drives `inFlightKey`,
+/// `isSelectionDisabled`, and `errorMessage` from that request.
 struct ModelPickerSheet: View {
     let configuration: ModelPickerConfiguration
     let modelGroups: [ModelCatalogGroup]
@@ -30,6 +31,9 @@ struct ModelPickerSheet: View {
     /// A failed commit, rendered at the top of the list. This is the save
     /// error; a failed catalog *load* travels in `loadStatus`.
     var errorMessage: String?
+    /// The row that clears the selection, for surfaces where "no model" is a
+    /// value the server acts on. Nil leaves the list starting at the catalog.
+    var clearAction: ModelPickerClearAction?
     let onSelect: (ModelCatalogOption) -> Void
     /// Commit for the custom entry, when it differs from picking a catalog row.
     /// Defaults to `onSelect`.
@@ -57,6 +61,12 @@ struct ModelPickerSheet: View {
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
+                        .listRowSeparator(.hidden)
+                }
+
+                if let clearAction, trimmedSearchQuery.isEmpty {
+                    clearSelectionRow(clearAction)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 12))
                         .listRowSeparator(.hidden)
                 }
 
@@ -131,6 +141,39 @@ struct ModelPickerSheet: View {
         } else if filteredModelGroups.isEmpty, !trimmedSearchQuery.isEmpty {
             ContentUnavailableView.search(text: searchText)
         }
+    }
+
+    /// The clear row wears the same pill and checkmark as a model row, because
+    /// "let the server choose" is one of the choices rather than an escape from
+    /// the list. Hidden while searching, where it would answer a query about
+    /// model names with a row that has none.
+    private func clearSelectionRow(_ clearAction: ModelPickerClearAction) -> some View {
+        Button {
+            clearAction.action()
+            if configuration.dismissesOnCommit {
+                dismiss()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Text(clearAction.title)
+                    .font(.body)
+                    .lineLimit(2)
+
+                Spacer(minLength: 0)
+
+                if clearAction.isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isSelectionDisabled)
+        .pickerSelectionPill(isSelected: clearAction.isSelected)
+        .accessibilityAddTraits(clearAction.isSelected ? .isSelected : [])
     }
 
     /// Custom entry uses the same type scale and row geometry as the model
@@ -473,11 +516,10 @@ struct ModelPickerSheet: View {
     }
 
     private var customModelGroups: [ModelCatalogGroup] {
-        guard configuration.showsCustomModelGroups else { return [] }
-
         var groups: [ModelCatalogGroup] = []
 
-        if let selectedCustomOption,
+        if configuration.showsCurrentCustomModelGroup,
+           let selectedCustomOption,
            !storedCustomOptions.contains(where: { $0.favoriteKey == selectedCustomOption.favoriteKey }) {
             groups.append(
                 ModelCatalogGroup(
@@ -504,6 +546,8 @@ struct ModelPickerSheet: View {
     }
 
     private var storedCustomOptions: [ModelCatalogOption] {
+        guard configuration.showsSavedCustomModelGroup else { return [] }
+
         let catalogKeys = Set(modelGroups.flatMap(\.allModels).map(\.favoriteKey))
         let query = trimmedSearchQuery
         var seen = Set<ModelFavoriteKey>()

@@ -327,6 +327,9 @@
 		3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01011 /* Cron.swift */; };
 		3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01012 /* TasksView.swift */; };
 		3F91D2A54B9A4F66A2C01003 /* TasksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01013 /* TasksViewModel.swift */; };
+		C0369000000000000000001 /* CronJobEditorConfigurationLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */; };
+		C0369000000000000000007 /* CronJobEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000008 /* CronJobEditorSheet.swift */; };
+		C0369000000000000000003 /* CronJobConfigurationPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000004 /* CronJobConfigurationPickers.swift */; };
 		3F91D2A54B9A4F66A2C01004 /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */; };
 		3F91D2A54B9A4F66A2C01005 /* TaskDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */; };
 		8618A9261B8047CEA6084798 /* SlashCommandAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2A37872AC842629FBDDFA4 /* SlashCommandAutocompleteView.swift */; };
@@ -343,6 +346,7 @@
 		105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */; };
 		1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */; };
 		C0366000000000000000005 /* ModelPickerSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0366000000000000000006 /* ModelPickerSheetTests.swift */; };
+		C0369000000000000000005 /* CronJobEditorConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000006 /* CronJobEditorConfigurationTests.swift */; };
 		1050500000000000000000B1 /* OnboardingViewModelIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -647,6 +651,9 @@
 		3F91D2A54B9A4F66A2C01011 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01012 /* TasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksView.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01013 /* TasksViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksViewModel.swift; sourceTree = "<group>"; };
+		C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorConfigurationLoader.swift; sourceTree = "<group>"; };
+		C0369000000000000000008 /* CronJobEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorSheet.swift; sourceTree = "<group>"; };
+		C0369000000000000000004 /* CronJobConfigurationPickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobConfigurationPickers.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailViewModel.swift; sourceTree = "<group>"; };
 		57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
@@ -718,6 +725,7 @@
 		105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSectionExpansionStateTests.swift; sourceTree = "<group>"; };
 		1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModelPickerSelectionClassificationTests.swift; sourceTree = "<group>"; };
 		C0366000000000000000006 /* ModelPickerSheetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheetTests.swift; sourceTree = "<group>"; };
+		C0369000000000000000006 /* CronJobEditorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorConfigurationTests.swift; sourceTree = "<group>"; };
 		1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModelIdentityTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -906,6 +914,7 @@
 				105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */,
 				1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */,
 				C0366000000000000000006 /* ModelPickerSheetTests.swift */,
+				C0369000000000000000006 /* CronJobEditorConfigurationTests.swift */,
 				1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */,
 				0485E1E1FFB64A24BB729CD4 /* SlashCommandTests.swift */,
 				6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */,
@@ -1308,6 +1317,9 @@
 				3F91D2A54B9A4F66A2C01013 /* TasksViewModel.swift */,
 				3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */,
 				3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */,
+				C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */,
+				C0369000000000000000008 /* CronJobEditorSheet.swift */,
+				C0369000000000000000004 /* CronJobConfigurationPickers.swift */,
 			);
 			path = Tasks;
 			sourceTree = "<group>";
@@ -1701,6 +1713,9 @@
 				3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */,
 				3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */,
 				3F91D2A54B9A4F66A2C01003 /* TasksViewModel.swift in Sources */,
+				C0369000000000000000001 /* CronJobEditorConfigurationLoader.swift in Sources */,
+				C0369000000000000000007 /* CronJobEditorSheet.swift in Sources */,
+				C0369000000000000000003 /* CronJobConfigurationPickers.swift in Sources */,
 				3F91D2A54B9A4F66A2C01004 /* TaskDetailView.swift in Sources */,
 				3F91D2A54B9A4F66A2C01005 /* TaskDetailViewModel.swift in Sources */,
 				1A2B3C4D5E6F70000000200 /* Memory.swift in Sources */,
@@ -1814,6 +1829,7 @@
 					105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */,
 					1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */,
 					C0366000000000000000005 /* ModelPickerSheetTests.swift in Sources */,
+					C0369000000000000000005 /* CronJobEditorConfigurationTests.swift in Sources */,
 					1050500000000000000000B1 /* OnboardingViewModelIdentityTests.swift in Sources */,
 					8F63EE9A9B344C4FA579D5A8 /* SlashCommandTests.swift in Sources */,
 				0D82B28493C6401D98DA9C0E /* SlashCommandExecutorTests.swift in Sources */,

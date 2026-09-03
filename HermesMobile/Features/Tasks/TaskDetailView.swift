@@ -112,6 +112,7 @@ struct TaskDetailView: View {
         .sheet(isPresented: $isPresentingEditTask) {
             CronJobEditorSheet(
                 title: String(localized: "Edit Task"),
+                server: server,
                 draft: CronJobEditorDraft(job: viewModel.job),
                 saveTitle: String(localized: "Save"),
                 isSaving: viewModel.isMutating,

@@ -463,6 +463,28 @@ struct CronJobEditorDraft: Equatable {
         return nil
     }
 
+    /// Applies a model picked in the editor, or `nil` for "Server default".
+    ///
+    /// Model and provider always move together, because every picker option
+    /// names both: writing one without the other is how a job ends up asking a
+    /// provider for a model it does not serve. Clearing writes both back to
+    /// empty, which is the server's cue to fall back to the selected profile.
+    mutating func applyModelSelection(_ option: ModelCatalogOption?) {
+        model = option?.id ?? ""
+        provider = option?.providerID ?? ""
+    }
+
+    /// Applies a profile picked in the editor, or `nil` for "Server default".
+    ///
+    /// Deliberately leaves `model` and `provider` alone. Upstream computes both
+    /// from the profile's environment only when at least one of them is blank
+    /// (`_selected_profile_snapshot_updates`), so prefilling the model here
+    /// would suppress the server's own snapshot and move a server decision into
+    /// the app.
+    mutating func applyProfileSelection(_ profileName: String?) {
+        profile = profileName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
     private static func nonEmpty(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
