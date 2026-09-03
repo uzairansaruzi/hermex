@@ -39,7 +39,9 @@ struct ComposerTextInputView: View {
                 onPasteImageProviders: onPasteImageProviders,
                 onPasteImages: onPasteImages
             )
-            .frame(height: isCollapsed ? collapsedLineHeight : inputHeight)
+            // The card editor is at least 72 pt of real text view, so a tap
+            // anywhere in it lands on the editor rather than dead space.
+            .frame(height: isCollapsed ? collapsedLineHeight : max(expandedMinimumHeight, inputHeight))
             .padding(.vertical, isCollapsed ? 0 : verticalPadding)
             .padding(.horizontal, 16)
             .opacity(isCollapsed ? 0 : 1)
@@ -67,7 +69,7 @@ struct ComposerTextInputView: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(minHeight: isCollapsed ? 44 : expandedMinimumHeight + verticalPadding * 2, alignment: isCollapsed ? .leading : .topLeading)
+        .frame(minHeight: isCollapsed ? 44 : nil, alignment: isCollapsed ? .leading : .topLeading)
     }
 
     private func updateMeasuredHeight(_ newHeight: CGFloat) {

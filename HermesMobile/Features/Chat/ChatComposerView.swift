@@ -317,6 +317,9 @@ struct MessageComposerView: View {
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
             }
+            // Focus flips arrive from UIKit outside any withAnimation, so the
+            // morph and the row's insertion take their animation from here.
+            .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
         }
         .background(
             GeometryReader { proxy in
@@ -580,7 +583,6 @@ struct MessageComposerView: View {
         )
         .clipShape(composerSurfaceShape)
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.12), radius: 14, y: 6)
-        .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
     }
 
     /// Card-state row under the surface: a scroller of secondary controls plus
