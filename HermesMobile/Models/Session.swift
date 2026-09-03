@@ -222,6 +222,11 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let readOnly: Bool?
     let isReadOnly: Bool?
     let matchType: String?
+    /// Server-built excerpt of the matched message text on a content-search row
+    /// (`match_preview`, upstream `_session_search_preview`, <=124 chars and
+    /// redacted like the title). Absent on title matches, on every non-search
+    /// response, and on servers older than the commit that added it.
+    let matchPreview: String?
 
     init(
         sessionId: String? = nil,
@@ -255,7 +260,8 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         relationshipType: String? = nil,
         readOnly: Bool? = nil,
         isReadOnly: Bool? = nil,
-        matchType: String? = nil
+        matchType: String? = nil,
+        matchPreview: String? = nil
     ) {
         self.sessionId = sessionId
         self.title = title
@@ -289,6 +295,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.readOnly = readOnly
         self.isReadOnly = isReadOnly
         self.matchType = matchType
+        self.matchPreview = matchPreview
     }
 
     enum CodingKeys: String, CodingKey {
@@ -299,7 +306,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         case activeStreamId, isStreaming, isCliSession
         case userMessageCount, hasPendingUserMessage, pendingStartedAt, worktreePath
         case sourceTag, rawSource, sessionSource, sourceLabel
-        case parentSessionId, relationshipType, readOnly, isReadOnly, matchType
+        case parentSessionId, relationshipType, readOnly, isReadOnly, matchType, matchPreview
     }
 
     /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already
@@ -346,6 +353,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
         isReadOnly = container.decodeLossyBoolIfPresent(forKey: .isReadOnly)
         matchType = container.decodeLossyStringIfPresent(forKey: .matchType)
+        matchPreview = container.decodeLossyStringIfPresent(forKey: .matchPreview)
     }
 
     /// Decodes a session array a row at a time, so one unreadable row costs that
@@ -408,6 +416,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         readOnly = detail.readOnly
         isReadOnly = detail.isReadOnly
         matchType = nil
+        matchPreview = nil
     }
 
     /// Applies the import response without dropping list metadata that the
@@ -446,7 +455,8 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             relationshipType: imported.relationshipType ?? relationshipType,
             readOnly: imported.readOnly ?? readOnly,
             isReadOnly: imported.isReadOnly ?? isReadOnly,
-            matchType: imported.matchType ?? matchType
+            matchType: imported.matchType ?? matchType,
+            matchPreview: imported.matchPreview ?? matchPreview
         )
     }
 
@@ -485,7 +495,8 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             relationshipType: relationshipType,
             readOnly: readOnly,
             isReadOnly: isReadOnly,
-            matchType: matchType
+            matchType: matchType,
+            matchPreview: matchPreview
         )
     }
 }

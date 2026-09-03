@@ -184,6 +184,7 @@ final class APIClientSessionListTests: APIClientTestCase {
                   "session_id": "content-123",
                   "title": "Planning",
                   "match_type": "content",
+                  "match_preview": "...we compared the billing plan tiers...",
                   "unexpected": "ignored"
                 }
               ],
@@ -199,6 +200,7 @@ final class APIClientSessionListTests: APIClientTestCase {
         XCTAssertEqual(response.count, 1)
         XCTAssertEqual(response.sessions?.first?.sessionId, "content-123")
         XCTAssertEqual(response.sessions?.first?.matchType, "content")
+        XCTAssertEqual(response.sessions?.first?.matchPreview, "...we compared the billing plan tiers...")
     }
 
     func testSessionSearchDecodesEmptyQueryResponseWithoutQueryOrCount() async throws {
@@ -227,6 +229,8 @@ final class APIClientSessionListTests: APIClientTestCase {
 
         XCTAssertEqual(response.sessions?.first?.sessionId, "abc123")
         XCTAssertNil(response.sessions?.first?.matchType)
+        // A server older than `_session_search_preview` omits match_preview.
+        XCTAssertNil(response.sessions?.first?.matchPreview)
         XCTAssertNil(response.query)
         XCTAssertNil(response.count)
     }

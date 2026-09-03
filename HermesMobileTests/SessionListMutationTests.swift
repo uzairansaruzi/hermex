@@ -2190,6 +2190,68 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    /// The excerpt has to reach the row that displays it, which comes from the
+    /// local session list, not the search response — so it is looked up by
+    /// session ID and paired with the query that produced it.
+    @MainActor
+    func testRemoteSessionSearchExposesMatchPreviewPerSession() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {"session_id": "with-preview", "title": "Budget", "archived": false},
+                    {"session_id": "no-preview", "title": "Roadmap", "archived": false},
+                    {"session_id": "title-match", "title": "Needle plan", "archived": false}
+                  ]
+                }
+                """, for: request)
+            case "/api/sessions/search":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {
+                      "session_id": "with-preview",
+                      "title": "Budget",
+                      "match_type": "content",
+                      "match_preview": "...found the needle in the haystack..."
+                    },
+                    {"session_id": "no-preview", "title": "Roadmap", "match_type": "content"},
+                    {
+                      "session_id": "title-match",
+                      "title": "Needle plan",
+                      "match_type": "title",
+                      "match_preview": "ignored on a title match"
+                    }
+                  ],
+                  "query": "needle",
+                  "count": 3
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        await viewModel.searchSessions(query: "Needle", debounceNanoseconds: 0)
+
+        let excerpt = viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"))
+        XCTAssertEqual(excerpt?.text, "...found the needle in the haystack...")
+        // The query is normalized, so the row bolds case-insensitively either way.
+        XCTAssertEqual(excerpt?.query, "needle")
+
+        // An older server sends the row without a preview: no excerpt, no crash.
+        XCTAssertNil(viewModel.searchExcerpt(for: SessionSummary(sessionId: "no-preview")))
+        // A title match never gets an excerpt, even if the server sent one.
+        XCTAssertNil(viewModel.searchExcerpt(for: SessionSummary(sessionId: "title-match")))
+
+        viewModel.clearSearchResults()
+        XCTAssertNil(viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview")))
+    }
+
     // MARK: - Cron/CLI session classification (#256)
 
     func testCronSessionDetectedBySessionIdPrefix() {

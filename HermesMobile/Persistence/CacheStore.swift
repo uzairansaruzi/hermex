@@ -323,6 +323,7 @@ private extension SessionSummary {
         readOnly = cachedSession.readOnly
         isReadOnly = cachedSession.isReadOnly
         matchType = nil
+        matchPreview = nil
     }
 }
 

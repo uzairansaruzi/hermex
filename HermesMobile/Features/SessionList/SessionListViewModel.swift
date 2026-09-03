@@ -80,6 +80,9 @@ final class SessionListViewModel {
     private(set) var archivedCount: Int?
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
+    /// `match_preview` per content-matched session from the last search, so a
+    /// row can show why it matched. Empty against servers that omit the field.
+    private(set) var remoteContentSearchExcerpts: [String: String] = [:]
     private var activeRemoteSearchQuery: String?
     private var sessionOpenGeneration = 0
 
@@ -347,6 +350,7 @@ final class SessionListViewModel {
         let query = Self.normalizedSearchQuery(rawQuery)
         activeRemoteSearchQuery = query
         remoteContentSearchSessionIDs = []
+        remoteContentSearchExcerpts = [:]
         searchErrorMessage = nil
 
         guard !query.isEmpty, !isViewingCachedData else {
@@ -366,7 +370,9 @@ final class SessionListViewModel {
 
             guard !Task.isCancelled, activeRemoteSearchQuery == query else { return }
 
-            remoteContentSearchSessionIDs = contentMatchIDs(from: response.sessions ?? [])
+            let matches = contentMatches(from: response.sessions ?? [])
+            remoteContentSearchSessionIDs = matches.sessionIDs
+            remoteContentSearchExcerpts = matches.excerpts
             isSearchingRemoteSessions = false
         } catch {
             guard activeRemoteSearchQuery == query else { return }
@@ -375,14 +381,30 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return }
 
             remoteContentSearchSessionIDs = []
+            remoteContentSearchExcerpts = [:]
             searchErrorMessage = error.localizedDescription
             lastError = error
         }
     }
 
+    /// The excerpt to show under a row, paired with the query that produced it.
+    /// nil when the row did not match on content, when the search was cleared,
+    /// or when the server is older than `match_preview`.
+    func searchExcerpt(for session: SessionSummary) -> SessionSearchExcerpt? {
+        guard let query = activeRemoteSearchQuery, !query.isEmpty,
+              let sessionID = session.sessionId,
+              let text = remoteContentSearchExcerpts[sessionID]
+        else {
+            return nil
+        }
+
+        return SessionSearchExcerpt(text: text, query: query)
+    }
+
     func clearSearchResults() {
         activeRemoteSearchQuery = nil
         remoteContentSearchSessionIDs = []
+        remoteContentSearchExcerpts = [:]
         searchErrorMessage = nil
         isSearchingRemoteSessions = false
     }
@@ -1128,7 +1150,11 @@ final class SessionListViewModel {
         }
     }
 
-    private func contentMatchIDs(from sessions: [SessionSummary]) -> [String] {
+    /// Content-match rows narrowed to sessions the list can actually show, in
+    /// server order, plus each row's excerpt when the server sent one.
+    private func contentMatches(
+        from sessions: [SessionSummary]
+    ) -> (sessionIDs: [String], excerpts: [String: String]) {
         let locallyVisibleSessionIDs = Set(self.sessions.compactMap { session -> String? in
             guard session.archived != true, let sessionID = session.sessionId, !sessionID.isEmpty else {
                 return nil
@@ -1137,19 +1163,28 @@ final class SessionListViewModel {
             return sessionID
         })
         var seenSessionIDs = Set<String>()
+        var sessionIDs: [String] = []
+        var excerpts: [String: String] = [:]
 
-        return sessions.compactMap { session in
+        for session in sessions {
             guard session.matchType?.lowercased() == "content",
                   let sessionID = session.sessionId,
                   locallyVisibleSessionIDs.contains(sessionID),
                   !seenSessionIDs.contains(sessionID)
             else {
-                return nil
+                continue
             }
 
             seenSessionIDs.insert(sessionID)
-            return sessionID
+            sessionIDs.append(sessionID)
+
+            if let preview = session.matchPreview?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !preview.isEmpty {
+                excerpts[sessionID] = preview
+            }
         }
+
+        return (sessionIDs, excerpts)
     }
 
     private func timestamp(for session: SessionSummary) -> Double {

@@ -526,7 +526,8 @@ struct SessionInteractiveRow: View {
                 session: session,
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
-                isViewingCachedData: viewModel.isViewingCachedData
+                isViewingCachedData: viewModel.isViewingCachedData,
+                searchExcerpt: viewModel.searchExcerpt(for: session)
             )
         }
         .buttonStyle(.plain)

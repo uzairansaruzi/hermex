@@ -9,6 +9,9 @@ struct SessionRowView: View {
     var showsMessageCount = true
     var showsWorkspace = true
     var isViewingCachedData = false
+    /// Set only while a remote content search is showing this row, so the row
+    /// can say why it matched.
+    var searchExcerpt: SessionSearchExcerpt?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -115,6 +118,10 @@ struct SessionRowView: View {
         VStack(alignment: .leading, spacing: rowContentSpacing) {
             titleArea
 
+            if let searchExcerpt {
+                excerptText(searchExcerpt)
+            }
+
             if showsSupplementalContent {
                 supplementalArea
             }
@@ -170,6 +177,18 @@ struct SessionRowView: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHidden(true)
+    }
+
+    /// One-line "why this row matched", with the query bolded. Hidden from
+    /// VoiceOver because `accessibilitySummary` already reads it in order.
+    private func excerptText(_ excerpt: SessionSearchExcerpt) -> some View {
+        Text(excerpt.highlighted)
+            .font(AppFont.caption())
+            .foregroundStyle(.secondary)
+            .lineLimit(excerptLineLimit)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityHidden(true)
     }
 
@@ -260,7 +279,8 @@ struct SessionRowView: View {
     }
 
     private var rowMinimumHeight: CGFloat {
-        showsSupplementalContent ? 54 : 46
+        let base: CGFloat = showsSupplementalContent ? 54 : 46
+        return searchExcerpt == nil ? base : base + 16
     }
 
     private var titleLineLimit: Int {
@@ -268,6 +288,10 @@ struct SessionRowView: View {
     }
 
     private var metadataLineLimit: Int {
+        dynamicTypeSize.isAccessibilitySize ? 3 : 1
+    }
+
+    private var excerptLineLimit: Int {
         dynamicTypeSize.isAccessibilitySize ? 3 : 1
     }
 
@@ -287,6 +311,10 @@ struct SessionRowView: View {
 
     private var accessibilitySummary: String {
         var parts = [displayTitle]
+
+        if let searchExcerpt {
+            parts.append(String(localized: "Matched: \(searchExcerpt.text)"))
+        }
 
         parts.append(contentsOf: Self.accessibilityStateLabels(for: session, isViewingCachedData: isViewingCachedData))
 

@@ -64,6 +64,7 @@
 		1A2B3C4D5E6F7000000000AC /* APIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000BC /* APIClientTests.swift */; };
 		C0FF000000000000000000C1 /* CustomHeaderInjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FF000000000000000000C2 /* CustomHeaderInjectionTests.swift */; };
 		C03910000000000000000001 /* APIClientSessionListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000001 /* APIClientSessionListTests.swift */; };
+		B23000000000000000000003 /* SessionSearchExcerptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23000000000000000000004 /* SessionSearchExcerptTests.swift */; };
 		C03910000000000000000002 /* APIClientInsightsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000002 /* APIClientInsightsTests.swift */; };
 		C03910000000000000000017 /* APIClientUpdatesCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000017 /* APIClientUpdatesCheckTests.swift */; };
 		C03910000000000000000018 /* APIClientUpdatesApplyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000018 /* APIClientUpdatesApplyTests.swift */; };
@@ -121,6 +122,7 @@
 		C05100000000000000000003 /* ChatGoalControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000013 /* ChatGoalControls.swift */; };
 		C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */; };
 		1A2B3C4D5E6F7000000000D0 /* SessionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */; };
+		B23000000000000000000001 /* SessionSearchExcerpt.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23000000000000000000002 /* SessionSearchExcerpt.swift */; };
 		1A2B3C4D5E6F7000000000D1 /* SessionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */; };
 		A04300000000000000000001 /* SessionListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04300000000000000000011 /* SessionListComponents.swift */; };
 		A10900000000000000000001 /* SessionNavigationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10900000000000000000011 /* SessionNavigationState.swift */; };
@@ -439,6 +441,7 @@
 		1A2B3C4D5E6F7000000000BC /* APIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientTests.swift; sourceTree = "<group>"; };
 		C0FF000000000000000000C2 /* CustomHeaderInjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomHeaderInjectionTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000001 /* APIClientSessionListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientSessionListTests.swift; sourceTree = "<group>"; };
+		B23000000000000000000004 /* SessionSearchExcerptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchExcerptTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000002 /* APIClientInsightsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientInsightsTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000017 /* APIClientUpdatesCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientUpdatesCheckTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000018 /* APIClientUpdatesApplyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientUpdatesApplyTests.swift; sourceTree = "<group>"; };
@@ -496,6 +499,7 @@
 		C05100000000000000000013 /* ChatGoalControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGoalControls.swift; sourceTree = "<group>"; };
 		C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptSupportingViews.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
+		B23000000000000000000002 /* SessionSearchExcerpt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchExcerpt.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
 		A04300000000000000000011 /* SessionListComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListComponents.swift; sourceTree = "<group>"; };
 		A10900000000000000000011 /* SessionNavigationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionNavigationState.swift; sourceTree = "<group>"; };
@@ -844,6 +848,7 @@
 				B5A1000000000000000000A1 /* ServerRegistryTests.swift */,
 				C0FF000000000000000000C2 /* CustomHeaderInjectionTests.swift */,
 				C03900000000000000000001 /* APIClientSessionListTests.swift */,
+				B23000000000000000000004 /* SessionSearchExcerptTests.swift */,
 				C03900000000000000000002 /* APIClientInsightsTests.swift */,
 				C03900000000000000000017 /* APIClientUpdatesCheckTests.swift */,
 				C03900000000000000000018 /* APIClientUpdatesApplyTests.swift */,
@@ -1084,6 +1089,7 @@
 			children = (
 				1A2B3C4D5E6F7000000000B7 /* SessionListView.swift */,
 				1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */,
+				B23000000000000000000002 /* SessionSearchExcerpt.swift */,
 				1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */,
 				A04300000000000000000011 /* SessionListComponents.swift */,
 				A10900000000000000000011 /* SessionNavigationState.swift */,
@@ -1709,6 +1715,7 @@
 				1A2B3C4D5E6F7000000000D6 /* SSEClient.swift in Sources */,
 				C0FF000000000000000000A1 /* CustomHeader.swift in Sources */,
 				1A2B3C4D5E6F7000000000D0 /* SessionRowView.swift in Sources */,
+				B23000000000000000000001 /* SessionSearchExcerpt.swift in Sources */,
 				1A2B3C4D5E6F7000000000D1 /* SessionListViewModel.swift in Sources */,
 				A04300000000000000000001 /* SessionListComponents.swift in Sources */,
 				A10900000000000000000001 /* SessionNavigationState.swift in Sources */,
@@ -1769,6 +1776,7 @@
 				B5A1000000000000000000A0 /* ServerRegistryTests.swift in Sources */,
 				C0FF000000000000000000C1 /* CustomHeaderInjectionTests.swift in Sources */,
 				C03910000000000000000001 /* APIClientSessionListTests.swift in Sources */,
+				B23000000000000000000003 /* SessionSearchExcerptTests.swift in Sources */,
 				C03910000000000000000002 /* APIClientInsightsTests.swift in Sources */,
 				C03910000000000000000017 /* APIClientUpdatesCheckTests.swift in Sources */,
 				C03910000000000000000018 /* APIClientUpdatesApplyTests.swift in Sources */,
