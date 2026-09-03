@@ -1,11 +1,13 @@
 import Foundation
 
-/// One settled tool call reduced to a log line: icon, bold verb, dim one-line
+/// One tool call reduced to a log line: icon, bold verb, dim one-line
 /// detail, and a status glyph. Built by `ToolCallSummaryFormatter`.
 struct ToolCallLogRow: Equatable {
     enum Status: Equatable {
         case success
         case failure
+        /// The call is still in flight.
+        case running
         /// The group settled before the call ever reported completion.
         case interrupted
     }
@@ -24,6 +26,7 @@ struct ToolCallLogRow: Equatable {
         switch status {
         case .success: String(localized: "Completed")
         case .failure: String(localized: "Failed")
+        case .running: String(localized: "Running")
         case .interrupted: String(localized: "Interrupted")
         }
     }
@@ -48,20 +51,20 @@ enum ToolCallSummaryFormatter {
 
     private static let detailLimit = 160
 
-    /// Rows for a settled group, in call order. Calls with nothing to say (no
+    /// Rows for a group, in call order. Calls with nothing to say (no
     /// name, target, or result) are dropped; failures are never dropped.
-    static func entries(for toolCalls: [ToolCall]) -> [ToolCallLogEntry] {
+    static func entries(for toolCalls: [ToolCall], isLive: Bool) -> [ToolCallLogEntry] {
         toolCalls.compactMap { toolCall in
-            row(for: toolCall).map { ToolCallLogEntry(toolCall: toolCall, row: $0) }
+            row(for: toolCall, isLive: isLive).map { ToolCallLogEntry(toolCall: toolCall, row: $0) }
         }
     }
 
     /// The log row for one call, or `nil` when the call carries no signal.
-    static func row(for toolCall: ToolCall) -> ToolCallLogRow? {
+    static func row(for toolCall: ToolCall, isLive: Bool) -> ToolCallLogRow? {
         let name = nonEmpty(toolCall.name)
         let toolKind = kind(forToolNamed: name)
         let resultText = resultText(for: toolCall)
-        let rowStatus = status(for: toolCall, kind: toolKind, resultText: resultText)
+        let rowStatus = status(for: toolCall, kind: toolKind, resultText: resultText, isLive: isLive)
         let detail = targetDetail(kind: toolKind, name: name, args: toolCall.args)
             ?? resultText.flatMap(firstLine)
 
@@ -81,7 +84,7 @@ enum ToolCallSummaryFormatter {
     /// same arguments and result the expanded body shows.
     static func copyText(for toolCall: ToolCall) -> String {
         var lines: [String] = []
-        if let row = row(for: toolCall) {
+        if let row = row(for: toolCall, isLive: false) {
             lines.append([row.summary, row.detail].compactMap { $0 }.joined(separator: " "))
         }
 
@@ -307,7 +310,12 @@ enum ToolCallSummaryFormatter {
     /// with no verdict falls back to its result: the JSON envelope's `error` /
     /// `exit_code` first, then the text heuristics. Search and web results are
     /// never judged by text, since their output is whatever the query matched.
-    private static func status(for toolCall: ToolCall, kind: Kind, resultText: String?) -> ToolCallLogRow.Status {
+    private static func status(
+        for toolCall: ToolCall,
+        kind: Kind,
+        resultText: String?,
+        isLive: Bool
+    ) -> ToolCallLogRow.Status {
         switch toolCall.isError {
         case true?:
             return .failure
@@ -320,7 +328,8 @@ enum ToolCallSummaryFormatter {
                 return .failure
             }
         }
-        return toolCall.isCompleted ? .success : .interrupted
+        guard !toolCall.isCompleted else { return .success }
+        return isLive ? .running : .interrupted
     }
 
     /// Splits a trailing `<exited with exit code N>` marker off tool output.

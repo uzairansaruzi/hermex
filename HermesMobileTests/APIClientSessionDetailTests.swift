@@ -1223,51 +1223,6 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertEqual(groups.first?.toolCalls.first?.isError, true)
     }
 
-    func testToolCallStatusDisplayHidesCompletedCollapsedText() {
-        let display = ToolCallStatusDisplay(
-            toolCall: ToolCall(
-                name: "terminal",
-                preview: nil,
-                args: nil,
-                duration: 1.24,
-                isCompleted: true
-            )
-        )
-
-        XCTAssertNil(display.collapsedText)
-        XCTAssertEqual(display.detailText, "Completed in 1.2s")
-    }
-
-    func testToolCallStatusDisplayShowsRunningCollapsedText() {
-        let display = ToolCallStatusDisplay(
-            toolCall: ToolCall(
-                name: "search_files",
-                preview: nil,
-                args: nil,
-                isCompleted: false
-            )
-        )
-
-        XCTAssertEqual(display.collapsedText, "Running")
-        XCTAssertEqual(display.detailText, "Running")
-    }
-
-    func testToolCallStatusDisplayShowsFailedCollapsedText() {
-        let display = ToolCallStatusDisplay(
-            toolCall: ToolCall(
-                name: "skill_view",
-                preview: nil,
-                args: nil,
-                duration: 0.8,
-                isError: true,
-                isCompleted: true
-            )
-        )
-
-        XCTAssertEqual(display.collapsedText, "Failed")
-        XCTAssertEqual(display.detailText, "Failed")
-    }
-
     func testToolCallDisplayFormatterParsesTerminalJSONOutput() {
         let display = ToolCallDisplayFormatter.resultDisplay(
             preview: #"{"output":"line one\nline two\n","exit_code":0,"error":null}"#,

@@ -42,7 +42,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             isCompleted: true
         )
 
-        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall))
+        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall, isLive: false))
         XCTAssertEqual(row.icon, "terminal")
         XCTAssertEqual(row.summary, "Ran")
         XCTAssertEqual(row.detail, "make test")
@@ -64,7 +64,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             ],
             isCompleted: true
         )
-        let patchRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: patch))
+        let patchRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: patch, isLive: false))
         XCTAssertEqual(patchRow.summary, "Updated")
         XCTAssertEqual(patchRow.detail, "One.swift +2 more")
 
@@ -74,7 +74,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             args: ["path": .string("~/project/Notes.md"), "content": .string("secret body")],
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: write)?.detail, "Notes.md")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: write, isLive: false)?.detail, "Notes.md")
     }
 
     func testReadRowShowsLineRangeAndBasename() throws {
@@ -85,7 +85,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             isCompleted: true
         )
 
-        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall))
+        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall, isLive: false))
         XCTAssertEqual(row.icon, "doc.text")
         XCTAssertEqual(row.summary, "Read")
         XCTAssertEqual(row.detail, "L12-31 · File.swift")
@@ -112,7 +112,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             isError: false,
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: succeeded)?.status, .success)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: succeeded, isLive: false)?.status, .success)
 
         let failed = ToolCall(
             name: "terminal",
@@ -121,7 +121,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             isError: true,
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: failed)?.status, .failure)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: failed, isLive: false)?.status, .failure)
     }
 
     func testEnvelopeExitCodeZeroKeepsScaryOutputGreen() {
@@ -131,7 +131,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             args: ["command": .string("grep -rn 'file not found' src")],
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .success)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .success)
     }
 
     func testSearchResultsAreNeverJudgedByText() {
@@ -141,7 +141,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             args: ["pattern": .string("file not found")],
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .success)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .success)
     }
 
     func testPersistedToolCallCarriesTheServerVerdict() throws {
@@ -151,7 +151,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
 
         XCTAssertEqual(toolCall.isError, true)
         XCTAssertEqual(toolCall.duration, 1.5)
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .failure)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
 
         let legacy = try JSONDecoder().decode(PersistedToolCall.self, from: Data(#"{"name":"terminal","snippet":"ok","tid":"t2"}"#.utf8))
         XCTAssertNil(legacy.isError)
@@ -164,7 +164,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             args: ["command": .string("rm -rf /tmp/x")],
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .failure)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
     }
 
     func testResultTextCanFailACompletedCall() {
@@ -174,12 +174,36 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             args: ["path": .string("missing.txt")],
             isCompleted: true
         )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .failure)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
     }
 
     func testNeverCompletedCallIsInterrupted() {
         let toolCall = ToolCall(name: "terminal", preview: nil, args: ["command": .string("sleep 60")])
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall)?.status, .interrupted)
+        XCTAssertEqual(
+            ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status,
+            .interrupted
+        )
+    }
+
+    func testIncompleteLiveCallIsRunning() throws {
+        let toolCall = ToolCall(name: "terminal", preview: nil, args: ["command": .string("sleep 60")])
+        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall, isLive: true))
+
+        XCTAssertEqual(row.status, .running)
+        XCTAssertEqual(row.statusText, "Running")
+    }
+
+    func testFailureWinsOverGroupLiveness() {
+        let toolCall = ToolCall(
+            name: "terminal",
+            preview: nil,
+            args: ["command": .string("exit 1")],
+            isError: true,
+            isCompleted: false
+        )
+
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: true)?.status, .failure)
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
     }
 
     // MARK: - Drop rule and fallbacks
@@ -189,7 +213,7 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         let failed = ToolCall(name: nil, preview: nil, args: nil, isError: true, isCompleted: true)
         let named = ToolCall(name: "terminal", preview: nil, args: nil, isCompleted: true)
 
-        let entries = ToolCallSummaryFormatter.entries(for: [empty, failed, named])
+        let entries = ToolCallSummaryFormatter.entries(for: [empty, failed, named], isLive: false)
         XCTAssertEqual(entries.map(\.toolCall.id), [failed.id, named.id])
         XCTAssertEqual(entries.first?.row.status, .failure)
     }
@@ -202,31 +226,31 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
             isCompleted: true
         )
 
-        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall))
+        let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall, isLive: false))
         XCTAssertEqual(row.detail, "12 files changed")
         XCTAssertEqual(row.status, .success)
     }
 
     func testUnknownToolsUseTheirShortName() throws {
         let mcp = ToolCall(name: "mcp__slack__post", preview: nil, args: ["channel": .string("#ops")], isCompleted: true)
-        let mcpRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: mcp))
+        let mcpRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: mcp, isLive: false))
         XCTAssertEqual(mcpRow.summary, "slack/post")
         XCTAssertEqual(mcpRow.icon, "powerplug")
         XCTAssertNil(mcpRow.detail)
 
         let clarify = ToolCall(name: "clarify", preview: nil, args: ["question": .string("Which?")], isCompleted: true)
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: clarify)?.summary, "clarify")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: clarify, isLive: false)?.summary, "clarify")
     }
 
     func testSearchAndWebRowsShowTheQuery() {
         let search = ToolCall(name: "search_files", preview: nil, args: ["pattern": .string("TODO")], isCompleted: true)
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: search)?.summary, "Searched")
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: search)?.detail, "TODO")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: search, isLive: false)?.summary, "Searched")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: search, isLive: false)?.detail, "TODO")
 
         let web = ToolCall(name: "web_search", preview: nil, args: ["query": .string("swift  regex")], isCompleted: true)
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web)?.summary, "Checked")
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web)?.detail, "swift regex")
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web)?.icon, "globe")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web, isLive: false)?.summary, "Checked")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web, isLive: false)?.detail, "swift regex")
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web, isLive: false)?.icon, "globe")
     }
 
     func testCopyTextIncludesRowArgumentsAndResult() {
