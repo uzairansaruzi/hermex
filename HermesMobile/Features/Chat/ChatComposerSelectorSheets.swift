@@ -59,6 +59,13 @@ struct ComposerModelPickerSheet: View {
             .onChange(of: searchText) { _, newValue in
                 sectionExpansion.updateSearchText(newValue)
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
         }
         .adaptiveFormPresentation()
         .transaction { transaction in
@@ -121,8 +128,8 @@ struct ComposerModelPickerSheet: View {
                         isFavorite: isCustomOptionFavorite,
                         isInverted: customOption != nil,
                         isEnabled: customOption != nil,
-                        removeLabel: "Remove custom model from favorites",
-                        addLabel: "Add custom model to favorites"
+                        removeLabel: Text("Remove custom model from favorites"),
+                        addLabel: Text("Add custom model to favorites")
                     ) {
                         guard let customOption else { return }
                         onToggleFavorite(customOption)
@@ -149,8 +156,8 @@ struct ComposerModelPickerSheet: View {
         isFavorite: Bool,
         isInverted: Bool,
         isEnabled: Bool = true,
-        removeLabel: LocalizedStringKey = "Remove from Favorites",
-        addLabel: LocalizedStringKey = "Add to Favorites",
+        removeLabel: Text,
+        addLabel: Text,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -291,7 +298,12 @@ struct ComposerModelPickerSheet: View {
             .accessibilityLabel(Text(verbatim: option.displayName))
             .accessibilityAddTraits(selected ? .isSelected : [])
 
-            favoriteStar(isFavorite: isFavorite(option), isInverted: selected) {
+            favoriteStar(
+                isFavorite: isFavorite(option),
+                isInverted: selected,
+                removeLabel: Text("Remove \(option.displayName) from favorites"),
+                addLabel: Text("Add \(option.displayName) to favorites")
+            ) {
                 onToggleFavorite(option)
             }
         }

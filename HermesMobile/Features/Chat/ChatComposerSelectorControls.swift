@@ -155,7 +155,10 @@ struct ComposerModelEffortMenu: View {
         if !recentOptions.isEmpty {
             children.append(modelSection(title: String(localized: "Recent"), options: recentOptions))
         }
-        if favoriteOptions.isEmpty && recentOptions.isEmpty {
+        // The active model always has a checked row, even when it is neither a
+        // favorite nor a recent, so the submenu never opens with nothing selected.
+        let listedKeys = Set((favoriteOptions + recentOptions).map(\.favoriteKey))
+        if !listedKeys.contains(selection.model.favoriteKey) {
             children.append(modelSection(title: "", options: [selection.model]))
         }
 
