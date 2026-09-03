@@ -40,6 +40,7 @@ struct ToolActivityGroupView: View {
                 }
 
                 ToolCallLogRowView(entry: lastEntry)
+                    .id(lastEntry.id)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
