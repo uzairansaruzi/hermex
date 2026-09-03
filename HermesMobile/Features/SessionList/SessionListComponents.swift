@@ -392,7 +392,8 @@ struct SessionSidebarUtilityRows: View {
 
 struct SessionListRowsSection: View {
     let viewModel: SessionListViewModel
-
+    /// The sidebar's current query, forwarded to rows for match excerpts.
+    var searchText: String = ""
     let sessions: [SessionSummary]
     let emptyTitle: String
     let emptyDescription: String?
@@ -429,7 +430,8 @@ struct SessionListRowsSection: View {
                     showsMessageCount: showsMessageCount,
                     showsWorkspace: showsWorkspace,
                     selectedSessionID: selectedSessionID,
-                    actions: actions
+                    actions: actions,
+                    searchText: searchText
                 )
             }
         }
@@ -517,6 +519,9 @@ struct SessionInteractiveRow: View {
     let showsWorkspace: Bool
     let selectedSessionID: String?
     let actions: SessionListRowActions
+    /// The query of the screen showing this row, so a screen with its own search
+    /// field never shows another screen's excerpts.
+    var searchText: String = ""
 
     var body: some View {
         Button {
@@ -527,7 +532,7 @@ struct SessionInteractiveRow: View {
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
                 isViewingCachedData: viewModel.isViewingCachedData,
-                searchExcerpt: viewModel.searchExcerpt(for: session)
+                searchExcerpt: viewModel.searchExcerpt(for: session, searchText: searchText)
             )
         }
         .buttonStyle(.plain)
@@ -605,6 +610,8 @@ struct SessionInteractiveRow: View {
 struct ScheduledSessionsDisclosure: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let viewModel: SessionListViewModel
+    /// The sidebar's current query, forwarded to rows for match excerpts.
+    var searchText: String = ""
     let sessions: [SessionSummary]
     let totalCount: Int
     let isSearchActive: Bool
@@ -655,7 +662,8 @@ struct ScheduledSessionsDisclosure: View {
                     showsMessageCount: showsMessageCount,
                     showsWorkspace: showsWorkspace,
                     selectedSessionID: selectedSessionID,
-                    actions: actions
+                    actions: actions,
+                    searchText: searchText
                 )
                 .transition(SessionListMotion.disclosureContentTransition(reduceMotion: reduceMotion))
             }
@@ -716,7 +724,8 @@ struct ScheduledSessionsView: View {
                         showsMessageCount: showsMessageCount,
                         showsWorkspace: showsWorkspace,
                         selectedSessionID: selectedSessionID,
-                        actions: actions
+                        actions: actions,
+                        searchText: searchText
                     )
                 }
             }

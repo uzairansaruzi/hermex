@@ -390,8 +390,15 @@ final class SessionListViewModel {
     /// The excerpt to show under a row, paired with the query that produced it.
     /// nil when the row did not match on content, when the search was cleared,
     /// or when the server is older than `match_preview`.
-    func searchExcerpt(for session: SessionSummary) -> SessionSearchExcerpt? {
-        guard let query = activeRemoteSearchQuery, !query.isEmpty,
+    ///
+    /// `searchText` is the query of the *screen* asking, not the view model's:
+    /// screens with their own search field (Scheduled sessions) share this view
+    /// model, and they must not inherit the sidebar's last excerpts. Same guard
+    /// `visibleSessions(searchText:selectedProjectID:)` applies to remote rows.
+    func searchExcerpt(for session: SessionSummary, searchText: String) -> SessionSearchExcerpt? {
+        let query = Self.normalizedSearchQuery(searchText)
+
+        guard !query.isEmpty, activeRemoteSearchQuery == query,
               let sessionID = session.sessionId,
               let text = remoteContentSearchExcerpts[sessionID]
         else {

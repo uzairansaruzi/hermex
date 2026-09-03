@@ -2238,18 +2238,37 @@ final class SessionListMutationTests: XCTestCase {
         await viewModel.load()
         await viewModel.searchSessions(query: "Needle", debounceNanoseconds: 0)
 
-        let excerpt = viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"))
+        let excerpt = viewModel.searchExcerpt(
+            for: SessionSummary(sessionId: "with-preview"),
+            searchText: "Needle"
+        )
         XCTAssertEqual(excerpt?.text, "...found the needle in the haystack...")
         // The query is normalized, so the row bolds case-insensitively either way.
         XCTAssertEqual(excerpt?.query, "needle")
 
         // An older server sends the row without a preview: no excerpt, no crash.
-        XCTAssertNil(viewModel.searchExcerpt(for: SessionSummary(sessionId: "no-preview")))
+        XCTAssertNil(
+            viewModel.searchExcerpt(for: SessionSummary(sessionId: "no-preview"), searchText: "needle")
+        )
         // A title match never gets an excerpt, even if the server sent one.
-        XCTAssertNil(viewModel.searchExcerpt(for: SessionSummary(sessionId: "title-match")))
+        XCTAssertNil(
+            viewModel.searchExcerpt(for: SessionSummary(sessionId: "title-match"), searchText: "needle")
+        )
+
+        // Scheduled sessions has its own search field and shares this view
+        // model. Its empty query must not inherit the sidebar's excerpts.
+        XCTAssertNil(
+            viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"), searchText: "")
+        )
+        // Nor may a different query on another screen borrow them.
+        XCTAssertNil(
+            viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"), searchText: "haystack")
+        )
 
         viewModel.clearSearchResults()
-        XCTAssertNil(viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview")))
+        XCTAssertNil(
+            viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"), searchText: "needle")
+        )
     }
 
     // MARK: - Cron/CLI session classification (#256)

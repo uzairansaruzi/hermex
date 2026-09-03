@@ -491,6 +491,7 @@ struct SessionListView: View {
             if scheduledSessionGroups.showsDisclosure(isSearchActive: isSearchingSessions) {
                 ScheduledSessionsDisclosure(
                     viewModel: viewModel,
+                    searchText: searchText,
                     sessions: scheduledSessionGroups.scheduled,
                     totalCount: scheduledSessionGroups.totalScheduledCount,
                     isSearchActive: isSearchingSessions,
@@ -507,6 +508,7 @@ struct SessionListView: View {
 
             SessionListRowsSection(
                 viewModel: viewModel,
+                searchText: searchText,
                 sessions: scheduledSessionGroups.ordinary,
                 emptyTitle: emptySessionsTitle,
                 emptyDescription: emptySessionsDescription,
