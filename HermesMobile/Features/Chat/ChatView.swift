@@ -427,9 +427,9 @@ struct ChatView: View {
             isSingleProfileMode: viewModel.isSingleProfileMode,
             selectedProfileName: viewModel.selectedProfileName,
             selectedProfileTitle: viewModel.selectedProfileTitle,
-            isLoadingModels: viewModel.isLoadingComposerConfiguration,
             selectedReasoningEffort: viewModel.selectedReasoningEffort,
             supportedReasoningEfforts: viewModel.supportedReasoningEfforts,
+            supportsReasoningEffort: viewModel.supportsReasoningEffort,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration,
             pendingAttachments: viewModel.pendingAttachments,
@@ -463,6 +463,14 @@ struct ChatView: View {
             onModelPickerOpen: {
                 await viewModel.refreshModelCatalogForPickerOpen()
             },
+            onSelectReasoningEffort: { effort in
+                Task {
+                    let didSelect = await viewModel.selectReasoningEffort(effort)
+                    if didSelect {
+                        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
             onLoadWorkspaceSuggestions: { prefix in
                 await viewModel.loadWorkspaceSuggestions(prefix: prefix)
             },
@@ -483,14 +491,6 @@ struct ChatView: View {
             },
             onSelectProfile: { profile in
                 handleProfileSelection(profile)
-            },
-            onSelectReasoningEffort: { effort in
-                Task {
-                    let didSelect = await viewModel.selectReasoningEffort(effort)
-                    if didSelect {
-                        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
-                    }
-                }
             },
             onHeightChange: { height in
                 composerHeight = height

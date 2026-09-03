@@ -100,6 +100,8 @@
 		C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */; };
 		C05000000000000000000001 /* ChatComposerAttachmentStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */; };
 		C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000002 /* ChatComposerSelectorControls.swift */; };
+		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
+		C040F000000000000000003 /* ProviderLogos.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000004 /* ProviderLogos.bundle */; };
 		C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */; };
 		C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000004 /* ChatComposerSelectorSheets.swift */; };
 		C04900000000000000000001 /* ChatComposerTextInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04900000000000000000002 /* ChatComposerTextInputView.swift */; };
@@ -288,6 +290,7 @@
 		C21300000000000000000005 /* StreamingTextFadeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21300000000000000000006 /* StreamingTextFadeTests.swift */; };
 		C23400000000000000000001 /* StreamingLabReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000002 /* StreamingLabReplay.swift */; };
 		C23400000000000000000003 /* StreamingLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000004 /* StreamingLabView.swift */; };
+		C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000012 /* ProviderGlyphGalleryView.swift */; };
 		C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000006 /* StreamingLabReplayTests.swift */; };
 		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
 		C14900000000000000000003 /* APIClient+Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000004 /* APIClient+Kanban.swift */; };
@@ -465,6 +468,8 @@
 		C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerConfigLoaderTests.swift; sourceTree = "<group>"; };
 		C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerAttachmentStripView.swift; sourceTree = "<group>"; };
 		C042A000000000000000002 /* ChatComposerSelectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorControls.swift; sourceTree = "<group>"; };
+		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
+		C040F000000000000000004 /* ProviderLogos.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = ProviderLogos.bundle; sourceTree = "<group>"; };
 		C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerToolbarScroller.swift; sourceTree = "<group>"; };
 		C042A000000000000000004 /* ChatComposerSelectorSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorSheets.swift; sourceTree = "<group>"; };
 		C04900000000000000000002 /* ChatComposerTextInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerTextInputView.swift; sourceTree = "<group>"; };
@@ -676,6 +681,7 @@
 		C21300000000000000000006 /* StreamingTextFadeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTextFadeTests.swift; sourceTree = "<group>"; };
 		C23400000000000000000002 /* StreamingLabReplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplay.swift; sourceTree = "<group>"; };
 		C23400000000000000000004 /* StreamingLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabView.swift; sourceTree = "<group>"; };
+		C23400000000000000000012 /* ProviderGlyphGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyphGalleryView.swift; sourceTree = "<group>"; };
 		C23400000000000000000006 /* StreamingLabReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplayTests.swift; sourceTree = "<group>"; };
 		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
 		C14900000000000000000004 /* APIClient+Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Kanban.swift"; sourceTree = "<group>"; };
@@ -795,6 +801,7 @@
 			isa = PBXGroup;
 			children = (
 				1A2B3C4D5E6F700000000014 /* Assets.xcassets */,
+				C040F000000000000000004 /* ProviderLogos.bundle */,
 				10CA110C0DE000000000B002 /* Localizable.xcstrings */,
 				10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */,
 				1A2B3C4D5E6F700000000013 /* Info.plist */,
@@ -1077,6 +1084,7 @@
 				C04900000000000000000002 /* ChatComposerTextInputView.swift */,
 				C04900000000000000000004 /* ChatComposerVoiceControls.swift */,
 				C042A000000000000000002 /* ChatComposerSelectorControls.swift */,
+				C040F000000000000000002 /* ProviderGlyph.swift */,
 				C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */,
 				C042A000000000000000004 /* ChatComposerSelectorSheets.swift */,
 				C0DE20000000000000000002 /* ChatTactileButtonStyle.swift */,
@@ -1185,6 +1193,7 @@
 				1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */,
 				C23400000000000000000002 /* StreamingLabReplay.swift */,
 				C23400000000000000000004 /* StreamingLabView.swift */,
+				C23400000000000000000012 /* ProviderGlyphGalleryView.swift */,
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				19C1150000000000000000A2 /* CliSessionsSyncModel.swift */,
 				26AB000000000000000000F2 /* ProvidersView.swift */,
@@ -1470,6 +1479,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A2B3C4D5E6F700000000003 /* Assets.xcassets in Resources */,
+				C040F000000000000000003 /* ProviderLogos.bundle in Resources */,
 				10CA110C0DE000000000B001 /* Localizable.xcstrings in Resources */,
 				10CA110C0DE000000000B004 /* AppShortcuts.xcstrings in Resources */,
 				1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */,
@@ -1581,6 +1591,7 @@
 				1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */,
 				C23400000000000000000001 /* StreamingLabReplay.swift in Sources */,
 				C23400000000000000000003 /* StreamingLabView.swift in Sources */,
+				C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */,
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
@@ -1603,6 +1614,7 @@
 					C04900000000000000000001 /* ChatComposerTextInputView.swift in Sources */,
 					C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */,
 					C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */,
+					C040F000000000000000001 /* ProviderGlyph.swift in Sources */,
 					C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */,
 					C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */,
 					105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */,

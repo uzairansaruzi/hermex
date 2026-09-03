@@ -11,6 +11,7 @@ struct ComposerModelPickerSheet: View {
     let onDeleteSavedCustom: (ModelCatalogOption) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchText = ""
     @State private var customModelID = ""
     @State private var customProviderID = ""
@@ -23,15 +24,15 @@ struct ComposerModelPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                customModelEntry
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
-                    .listRowSeparator(.hidden)
-
                 ForEach(filteredModelGroups) { group in
                     modelGroupDisclosure(group)
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 12))
                         .listRowSeparator(.hidden)
                 }
+
+                customModelEntry
+                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 12))
+                    .listRowSeparator(.hidden)
 
                 if filteredModelGroups.isEmpty && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     ContentUnavailableView.search(text: searchText)
@@ -49,45 +50,39 @@ struct ComposerModelPickerSheet: View {
             )
             .onAppear {
                 initializeCustomProviderIfNeeded()
+                expandPrimaryProviderSections()
                 sectionExpansion.updateSearchText(searchText)
+            }
+            .onChange(of: modelGroups) {
+                expandPrimaryProviderSections()
             }
             .onChange(of: searchText) { _, newValue in
                 sectionExpansion.updateSearchText(newValue)
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
         }
         .adaptiveFormPresentation()
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+            }
+        }
     }
 
+    /// Custom entry uses the same type scale and row geometry as the model
+    /// rows above it (body text, 48pt rows, 12pt radius) so it reads as part
+    /// of the same list rather than a separate form.
     private var customModelEntry: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Custom Model")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            VStack(spacing: 7) {
+        DisclosureGroup("Custom Model") {
+            VStack(spacing: 6) {
                 TextField("Exact model ID", text: $customModelID)
-                    .font(.system(size: 14, weight: .regular))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .modifier(CustomModelFieldStyle())
 
                 HStack(spacing: 8) {
                     TextField("Provider ID", text: $customProviderID)
-                        .font(.system(size: 14, weight: .regular))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                     if !providerChoices.isEmpty {
                         Menu {
@@ -97,46 +92,82 @@ struct ComposerModelPickerSheet: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "chevron.down.circle")
-                                .font(.system(size: 18, weight: .regular))
-                                .frame(width: 34, height: 34)
+                            Image(systemName: "chevron.down")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                         .accessibilityLabel("Choose provider ID")
                     }
                 }
-            }
+                .modifier(CustomModelFieldStyle())
 
-            HStack(spacing: 8) {
-                Button {
-                    guard let customOption else { return }
-                    onSelect(customOption)
-                    dismiss()
-                } label: {
-                    Label("Use Custom", systemImage: "plus.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                HStack(spacing: 12) {
+                    Button {
+                        guard let customOption else { return }
+                        selectAndDismiss(customOption)
+                    } label: {
+                        HStack {
+                            Label("Use Custom", systemImage: "plus")
+                                .font(.body.weight(.semibold))
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    favoriteStar(
+                        isFavorite: isCustomOptionFavorite,
+                        isInverted: customOption != nil,
+                        isEnabled: customOption != nil,
+                        removeLabel: "Remove custom model from favorites",
+                        addLabel: "Add custom model to favorites"
+                    ) {
+                        guard let customOption else { return }
+                        onToggleFavorite(customOption)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .foregroundStyle(customOption == nil ? Color(.tertiaryLabel) : Color(.systemBackground))
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .background(
+                    customOption == nil ? Color.clear : Color.primary,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
                 .disabled(customOption == nil)
-
-                Button {
-                    guard let customOption else { return }
-                    onToggleFavorite(customOption)
-                } label: {
-                    Image(systemName: isCustomOptionFavorite ? "star.fill" : "star")
-                        .font(.system(size: 15, weight: .regular))
-                        .frame(width: 30, height: 30)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(isCustomOptionFavorite ? Color.yellow : Color(.tertiaryLabel))
-                .disabled(customOption == nil)
-                .accessibilityLabel(isCustomOptionFavorite ? "Remove custom model from favorites" : "Add custom model to favorites")
-
-                Spacer(minLength: 0)
+                .padding(.top, 2)
             }
+            .padding(.top, 4)
         }
         .padding(.vertical, 2)
+    }
+
+    /// Trailing star shared by model rows and the custom entry. Monochrome:
+    /// it follows the row's foreground instead of the system yellow.
+    private func favoriteStar(
+        isFavorite: Bool,
+        isInverted: Bool,
+        isEnabled: Bool = true,
+        removeLabel: LocalizedStringKey = "Remove from Favorites",
+        addLabel: LocalizedStringKey = "Add to Favorites",
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: isFavorite ? "star.fill" : "star")
+                .font(.body)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(starColor(isFavorite: isFavorite, isInverted: isInverted, isEnabled: isEnabled))
+        .accessibilityLabel(isFavorite ? removeLabel : addLabel)
+    }
+
+    private func starColor(isFavorite: Bool, isInverted: Bool, isEnabled: Bool) -> Color {
+        guard isEnabled else { return Color(.tertiaryLabel) }
+        if isInverted { return Color(.systemBackground) }
+        return isFavorite ? Color.primary : Color(.tertiaryLabel)
     }
 
     private func modelGroupDisclosure(_ group: ModelCatalogGroup) -> some View {
@@ -171,10 +202,16 @@ struct ComposerModelPickerSheet: View {
             .padding(.top, 4)
         } label: {
             HStack(spacing: 8) {
+                if ProviderGlyphKind.resolve(providerID: group.providerID) != nil {
+                    ProviderGlyph(providerID: group.providerID)
+                        .frame(width: 17, height: 17)
+                }
+
                 Text(group.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .textCase(.uppercase)
 
                 Text(
                     totalModelCount > group.models.count
@@ -228,73 +265,65 @@ struct ComposerModelPickerSheet: View {
     }
 
     private func modelOptionRow(_ option: ModelCatalogOption, allowsDelete: Bool) -> some View {
-        HStack(spacing: 8) {
+        let selected = isSelected(option)
+
+        return HStack(spacing: 12) {
             Button {
-                onSelect(option)
-                dismiss()
+                selectAndDismiss(option)
             } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: isSelected(option) ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(isSelected(option) ? Color.accentColor : Color(.tertiaryLabel))
-                        .frame(width: 18)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(option.displayName)
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        if option.id != option.displayName {
-                            Text(option.id)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-
-                        if let providerID = option.providerID, !providerID.isEmpty {
-                            Text(providerID)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
+                HStack(spacing: 12) {
+                    Text(option.displayName)
+                        .font(.body)
+                        .lineLimit(2)
 
                     Spacer(minLength: 0)
+
+                    if selected {
+                        Image(systemName: "checkmark")
+                            .font(.body.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: option.displayName))
+            .accessibilityAddTraits(selected ? .isSelected : [])
 
+            favoriteStar(isFavorite: isFavorite(option), isInverted: selected) {
+                onToggleFavorite(option)
+            }
+        }
+        .foregroundStyle(selected ? Color(.systemBackground) : Color.primary)
+        .padding(.horizontal, 12)
+        .background(
+            selected ? Color.primary : Color.clear,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .contextMenu {
             Button {
                 onToggleFavorite(option)
             } label: {
-                Image(systemName: isFavorite(option) ? "star.fill" : "star")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(isFavorite(option) ? Color.yellow : Color(.tertiaryLabel))
-                    .frame(width: 30, height: 30)
+                Label(
+                    isFavorite(option) ? "Remove from Favorites" : "Add to Favorites",
+                    systemImage: isFavorite(option) ? "star.slash" : "star"
+                )
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isFavorite(option) ? "Remove \(option.displayName) from favorites" : "Add \(option.displayName) to favorites")
 
             if allowsDelete {
-                Button {
+                Button(role: .destructive) {
                     onDeleteSavedCustom(option)
                 } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Color.red)
-                        .frame(width: 30, height: 30)
+                    Label("Delete", systemImage: "trash")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Delete saved custom model \(option.displayName)")
             }
         }
-        .padding(.leading, 2)
-        .padding(.vertical, 3)
+    }
+
+    private func selectAndDismiss(_ option: ModelCatalogOption) {
+        onSelect(option)
+        dismiss()
     }
 
     private func isFavorite(_ option: ModelCatalogOption) -> Bool {
@@ -306,7 +335,10 @@ struct ComposerModelPickerSheet: View {
     }
 
     private func isSelected(_ option: ModelCatalogOption) -> Bool {
-        option.matchesSelection(modelID: selectedModelID, providerID: selectedModelProviderID)
+        option.matchesSelection(
+            modelID: selectedModelID,
+            providerID: selectedModelProviderID
+        )
     }
 
     private var filteredModelGroups: [ModelCatalogGroup] {
@@ -400,12 +432,7 @@ struct ComposerModelPickerSheet: View {
     }
 
     private var selectedCustomOption: ModelCatalogOption? {
-        guard let selectedModelID, !selectedModelID.isEmpty else { return nil }
-        let option = ModelCatalogOption(
-            id: selectedModelID,
-            displayName: selectedModelID,
-            providerID: selectedModelProviderID
-        )
+        guard let option = selectedModelOption else { return nil }
         let isRendered = Self.isRenderedByCurrentPicker(
             option: option,
             modelGroups: modelGroups,
@@ -468,6 +495,31 @@ struct ComposerModelPickerSheet: View {
     private func initializeCustomProviderIfNeeded() {
         guard customProviderID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         customProviderID = selectedModelProviderID ?? providerChoices.first?.id ?? ""
+    }
+
+    private func expandPrimaryProviderSections() {
+        for group in modelGroups {
+            let isPrimary = ProviderGlyphKind.resolve(providerID: group.providerID)?.isPrimaryCatalog == true
+            let containsSelection = group.allModels.firstMatchingSelection(
+                modelID: selectedModelID,
+                providerID: selectedModelProviderID
+            ) != nil
+            if isPrimary || containsSelection {
+                sectionExpansion.setExpanded(true, groupID: group.id)
+            }
+        }
+    }
+
+    private var selectedModelOption: ModelCatalogOption? {
+        guard let selectedModelID, !selectedModelID.isEmpty else { return nil }
+        return modelGroups.flatMap(\.allModels).firstMatchingSelection(
+            modelID: selectedModelID,
+            providerID: selectedModelProviderID
+        ) ?? ModelCatalogOption(
+            id: selectedModelID,
+            displayName: selectedModelID,
+            providerID: selectedModelProviderID
+        )
     }
 
     private func matches(_ option: ModelCatalogOption, query: String) -> Bool {
@@ -652,5 +704,16 @@ extension String {
     var lastPathComponentFallback: String {
         let component = (self as NSString).lastPathComponent
         return component.isEmpty ? self : component
+    }
+}
+
+/// Field chrome for the custom-model entry, matching the model rows' geometry.
+private struct CustomModelFieldStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.body)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

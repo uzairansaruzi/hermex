@@ -579,6 +579,13 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
 
+                    NavigationLink {
+                        ProviderGlyphGalleryView()
+                    } label: {
+                        SettingsAccessoryRow(title: "Provider Glyphs", systemImage: "square.grid.2x2")
+                    }
+                    .buttonStyle(.plain)
+
                     SettingsFootnote(String(localized: "Debug builds only. Replay a canned reply and tune the streamed-text fade feel live."))
                 }
                 #endif

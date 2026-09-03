@@ -97,11 +97,11 @@ struct MessageComposerView: View {
     let isSingleProfileMode: Bool
     let selectedProfileName: String?
     let selectedProfileTitle: String
-    let isLoadingModels: Bool
     let selectedReasoningEffort: String?
     /// Model-aware effort vocabulary; `nil` → full static list (issue #18).
     let supportedReasoningEfforts: [String]?
-    /// When false the model has no effort control — hide the reasoning menu.
+    let supportsReasoningEffort: Bool?
+    /// When false the model has no effort setting, so the combined title omits it.
     let showsReasoningControl: Bool
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
@@ -119,13 +119,13 @@ struct MessageComposerView: View {
     let onCancel: () -> Void
     let onSelectModel: (ModelCatalogOption) -> Void
     let onModelPickerOpen: () async -> Void
+    let onSelectReasoningEffort: (String) -> Void
     let onLoadWorkspaceSuggestions: (String) async -> Void
     let onWorkspaceRegistryChanged: () async -> Void
     let onLoadPersonalitySuggestions: () async -> Void
     let onLoadSkillSuggestions: () async -> Void
     let onSelectWorkspace: (String) async -> Void
     let onSelectProfile: (ProfileSummary) -> Void
-    let onSelectReasoningEffort: (String) -> Void
     let onHeightChange: (CGFloat) -> Void
     let onPhotoItemSelected: (PhotosPickerItem) -> Void
     let onFileURLsSelected: ([URL]) -> Void
@@ -390,7 +390,6 @@ struct MessageComposerView: View {
                 recentModelKeys: recentModelKeys,
                 onSelect: { option in
                     selectModel(option)
-                    showsAllModelsSheet = false
                 },
                 onToggleFavorite: { option in
                     favoriteModelKeys = ModelFavoritesStore.shared.toggleFavorite(for: option)
@@ -592,11 +591,7 @@ struct MessageComposerView: View {
             ComposerToolbarScroller {
                 composerPlusMenu
 
-                modelMenu
-
-                if showsReasoningControl {
-                    reasoningMenu
-                }
+                modelEffortControl
 
                 workspaceSelector
 
@@ -775,12 +770,6 @@ struct MessageComposerView: View {
         AppFont.caption2()
     }
 
-    /// Soft cap so a very long model id still leaves room to see the row scrolls;
-    /// the scroller, not truncation, absorbs the rest.
-    private var modelControlMaxWidth: CGFloat {
-        usesAccessibilityLayout ? 260 : 200
-    }
-
     private var workspaceSelector: some View {
         ComposerWorkspaceSelectorButton(
             title: workspaceTitle,
@@ -808,43 +797,56 @@ struct MessageComposerView: View {
         )
     }
 
-    private var modelMenu: some View {
-        ComposerModelMenu(
+    private var modelEffortControl: some View {
+        ComposerModelEffortMenu(
+            selection: currentModelEffortSelection,
             modelGroups: modelGroups,
-            selectedModelID: selectedModelID,
-            selectedModelProviderID: selectedModelProviderID,
-            selectedModelTitle: selectedModelTitle,
-            isLoadingModels: isLoadingModels,
             favoriteModelKeys: favoriteModelKeys,
             recentModelKeys: recentModelKeys,
             isDisabled: isConfigurationControlDisabled,
-            maxWidth: modelControlMaxWidth,
             color: metaControlColor,
             controlFont: metaControlFont,
             chevronFont: metaChevronFont,
-            onSelectModel: selectModel
-        ) {
-            prepareForComposerPresentation()
-            showsAllModelsSheet = true
-        }
+            onSelectModel: selectModel,
+            onSelectEffort: onSelectReasoningEffort,
+            onShowAllModels: showAllModels
+        )
     }
 
-    private var reasoningMenu: some View {
-        ComposerReasoningMenu(
-            selectedReasoningEffort: selectedReasoningEffort,
+    private var currentModelEffortSelection: ComposerModelEffortSelection {
+        ComposerModelEffortSelection(
+            model: selectedModelOption,
+            effort: selectedReasoningEffort,
             supportedEfforts: supportedReasoningEfforts,
-            reasoningTitle: reasoningTitle,
-            isDisabled: isConfigurationControlDisabled,
-            color: metaControlColor,
-            controlFont: metaControlFont,
-            chevronFont: metaChevronFont,
-            onSelectReasoningEffort: onSelectReasoningEffort
+            supportsEffort: showsReasoningControl ? supportsReasoningEffort : false
+        )
+    }
+
+    private var selectedModelOption: ModelCatalogOption {
+        let allModels = modelGroups.flatMap(\.allModels)
+        if let selectedModelID,
+           let match = allModels.firstMatchingSelection(
+               modelID: selectedModelID,
+               providerID: selectedModelProviderID
+           ) {
+            return match
+        }
+
+        return ModelCatalogOption(
+            id: selectedModelID ?? selectedModelTitle,
+            displayName: selectedModelTitle,
+            providerID: selectedModelProviderID
         )
     }
 
     private func selectModel(_ option: ModelCatalogOption) {
         recentModelKeys = ModelRecentsStore.shared.recordRecent(option)
         onSelectModel(option)
+    }
+
+    private func showAllModels() {
+        prepareForComposerPresentation()
+        showsAllModelsSheet = true
     }
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool)? {
@@ -1013,14 +1015,6 @@ struct MessageComposerView: View {
         }
 
         return colorScheme == .dark ? .black : .white
-    }
-
-    private var reasoningTitle: String {
-        guard let selectedReasoningEffort else {
-            return String(localized: "Reasoning")
-        }
-
-        return ReasoningEffortOption.title(for: selectedReasoningEffort)
     }
 
     private var trimmedDraftMessage: String {
