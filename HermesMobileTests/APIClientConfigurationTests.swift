@@ -706,6 +706,56 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertFalse(DefaultProfilePickerView.isCancellationError(APIError.unauthorized))
     }
 
+    func testProfilePickerSearchMatchesNameModelAndProvider() {
+        let profiles = [
+            ProfileSummary(
+                name: "default",
+                path: nil,
+                isDefault: true,
+                isActive: true,
+                gatewayRunning: nil,
+                model: "gpt-5.4",
+                provider: "openai",
+                hasEnv: nil,
+                skillCount: nil
+            ),
+            ProfileSummary(
+                name: "research",
+                path: nil,
+                isDefault: false,
+                isActive: false,
+                gatewayRunning: nil,
+                model: "claude-opus-5",
+                provider: "anthropic",
+                hasEnv: nil,
+                skillCount: 3
+            )
+        ]
+
+        func names(_ query: String) -> [String?] {
+            DefaultProfilePickerView.filteredProfiles(profiles, query: query).map(\.name)
+        }
+
+        // "default" is the one profile whose display name differs from its
+        // saved name, so both spellings have to find it.
+        XCTAssertEqual(names("Default"), ["default"])
+        XCTAssertEqual(names("defau"), ["default"])
+        XCTAssertEqual(names("research"), ["research"])
+        XCTAssertEqual(names("OPUS"), ["research"])
+        XCTAssertEqual(names("anthropic"), ["research"])
+        XCTAssertEqual(names("  "), ["default", "research"])
+        XCTAssertEqual(names("nonesuch"), [])
+    }
+
+    func testProfileRowGlyphResolvesOnlyForKnownProviders() {
+        XCTAssertNotNil(ProviderGlyphKind.resolve(providerID: "anthropic"))
+        XCTAssertNotNil(ProviderGlyphKind.resolve(providerID: "OpenAI"))
+        // A nil or unrecognized provider renders no glyph at all, so the
+        // profile row reserves no leading slot for it.
+        XCTAssertNil(ProviderGlyphKind.resolve(providerID: nil))
+        XCTAssertNil(ProviderGlyphKind.resolve(providerID: "acme-internal"))
+    }
+
     func testProfileNameRulesMirrorUpstreamPattern() {
         XCTAssertTrue(ProfileNameRules.isValid("work"))
         XCTAssertTrue(ProfileNameRules.isValid("a"))

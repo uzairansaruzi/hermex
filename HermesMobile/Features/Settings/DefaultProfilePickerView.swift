@@ -13,6 +13,7 @@ struct DefaultProfilePickerView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isLoading = false
     @State private var profiles: [ProfileSummary] = []
@@ -27,29 +28,42 @@ struct DefaultProfilePickerView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    ProfilePickerSearchField(text: $searchText)
-
-                    if let saveError {
-                        Text(saveError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    profileListContent
-
-                    // The server 403s profile creation in single-profile mode,
-                    // so the affordance is hidden there (#24).
-                    if !isSingleProfileMode {
-                        newProfileButton
-                    }
+            List {
+                if let saveError {
+                    Text(verbatim: saveError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
+                        .listRowSeparator(.hidden)
                 }
-                .padding()
+
+                ForEach(filteredProfiles, id: \.self) { profile in
+                    profileRow(profile)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
+                        .listRowSeparator(.hidden)
+                }
+
+                // The server 403s profile creation in single-profile mode,
+                // so the affordance is hidden there (#24).
+                if !isSingleProfileMode {
+                    newProfileRow
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 12))
+                        .listRowSeparator(.hidden)
+                }
+
+                statusPlaceholder
+                    .listRowSeparator(.hidden)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .navigationTitle("Default Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search profiles"
+            )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -72,136 +86,146 @@ struct DefaultProfilePickerView: View {
             }
         }
         .adaptiveFormPresentation()
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+            }
+        }
     }
 
-    private var newProfileButton: some View {
+    /// Loading, load-failure, empty, and no-match states. Each only stands in
+    /// for an empty list, so an already-loaded list keeps rendering across a
+    /// refresh.
+    @ViewBuilder
+    private var statusPlaceholder: some View {
+        if profiles.isEmpty, isLoading {
+            ContentUnavailableView {
+                ProgressView()
+            } description: {
+                Text("Loading profiles...")
+            }
+        } else if profiles.isEmpty, let errorMessage {
+            ContentUnavailableView {
+                Label("Could Not Load Profiles", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(verbatim: errorMessage)
+            }
+        } else if filteredProfiles.isEmpty, !trimmedSearchQuery.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+        } else if profiles.isEmpty {
+            ContentUnavailableView("No profiles available", systemImage: "person.crop.circle")
+        }
+    }
+
+    /// "New Profile" is the last row of the list, on the shared picker's row
+    /// geometry, so it reads as part of the list rather than as its own card.
+    /// It keeps the entry chrome rather than the filled pill: a second filled
+    /// pill would compete with the selected profile.
+    private var newProfileRow: some View {
         Button {
             showsCreateProfile = true
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.circle")
-                    .font(.subheadline)
-                    .accessibilityHidden(true)
-
-                Text("New Profile")
-                    .font(.subheadline.weight(.medium))
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            Label("New Profile", systemImage: "plus")
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .disabled(isLoading)
+        .foregroundStyle(Color.primary)
+        .padding(.horizontal, 12)
+        .background(
+            Color(.tertiarySystemFill),
+            in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
+        )
+        .disabled(isLoading || isSaving)
         .accessibilityHint("Opens the new profile form.")
     }
 
-    @ViewBuilder
-    private var profileListContent: some View {
-        if isLoading && profiles.isEmpty {
-            ProfilePickerCard(title: String(localized: "Profiles")) {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Loading profiles...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } else if let errorMessage, profiles.isEmpty {
-            ProfilePickerCard(title: String(localized: "Profiles")) {
-                Label("Could Not Load Profiles", systemImage: "exclamationmark.triangle")
-                    .font(.subheadline.weight(.semibold))
-
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else if filteredProfiles.isEmpty {
-            ProfilePickerCard(title: String(localized: "Profiles")) {
-                Label("No Matching Profiles", systemImage: "magnifyingglass")
-                    .font(.subheadline.weight(.semibold))
-
-                Text("Try a different profile name.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            ProfilePickerCard(title: String(localized: "Profiles")) {
-                VStack(spacing: 0) {
-                    ForEach(Array(filteredProfiles.enumerated()), id: \.element) { index, profile in
-                        profileRow(profile)
-
-                        if index < filteredProfiles.count - 1 {
-                            Divider()
-                        }
-                    }
-                }
-            }
-        }
+    private var trimmedSearchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var filteredProfiles: [ProfileSummary] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        Self.filteredProfiles(profiles, query: trimmedSearchQuery)
+    }
+
+    /// `profiles` narrowed to `query`. Static so tests can pin the predicate
+    /// without driving SwiftUI.
+    static func filteredProfiles(_ profiles: [ProfileSummary], query: String) -> [ProfileSummary] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return profiles }
 
-        return profiles.filter { profile in
-            profile.displayName.lowercased().contains(query)
-                || (profile.normalizedName?.lowercased().contains(query) ?? false)
-                || (profile.model?.lowercased().contains(query) ?? false)
-                || (profile.provider?.lowercased().contains(query) ?? false)
-        }
+        return profiles.filter { matches($0, query: query) }
+    }
+
+    /// A profile is findable by every string the row can show: the name the
+    /// picker prints, the name it saves, its model, and its provider.
+    static func matches(_ profile: ProfileSummary, query: String) -> Bool {
+        profile.displayName.localizedCaseInsensitiveContains(query)
+            || (profile.normalizedName?.localizedCaseInsensitiveContains(query) ?? false)
+            || (profile.model?.localizedCaseInsensitiveContains(query) ?? false)
+            || (profile.provider?.localizedCaseInsensitiveContains(query) ?? false)
     }
 
     private func profileRow(_ profile: ProfileSummary) -> some View {
-        Button {
+        let selected = isSelected(profile)
+        let inFlight = isSaving && selectedProfileName == profile.normalizedName
+
+        return Button {
             Task { await save(profile) }
         } label: {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
+                // Same rule as the model picker: an unknown provider renders
+                // nothing at all rather than reserving an empty glyph slot.
+                if ProviderGlyphKind.resolve(providerID: profile.provider) != nil {
+                    ProviderGlyph(providerID: profile.provider)
+                        .frame(width: 17, height: 17)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(profile.displayName)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
+                            .font(.body)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
-                        if isSelected(profile) {
-                            ProfileStatusBadge(title: String(localized: "Selected"))
+                        if selected {
+                            ProfileStatusBadge(title: String(localized: "Selected"), isInverted: true)
                         } else if profile.isDefault == true {
-                            ProfileStatusBadge(title: String(localized: "Server Default"))
+                            ProfileStatusBadge(title: String(localized: "Server Default"), isInverted: false)
                         }
                     }
 
                     if let details = profileDetails(profile) {
                         Text(details)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(
+                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                            )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 0)
 
-                if isSaving && selectedProfileName == profile.normalizedName {
+                if inFlight {
                     ProgressView()
-                } else if isSelected(profile) {
+                        .controlSize(.small)
+                        .tint(selected ? Color(.systemBackground) : Color.primary)
+                } else if selected {
                     Image(systemName: "checkmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .font(.body.weight(.semibold))
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.vertical, 9)
-            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pickerSelectionPill(isSelected: selected)
         .disabled(isSaving || profile.normalizedName == nil)
         .accessibilityLabel(profileAccessibilityLabel(for: profile))
         .accessibilityValue(profileAccessibilityValue(for: profile))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func profileAccessibilityLabel(for profile: ProfileSummary) -> String {
@@ -494,74 +518,23 @@ private struct CreateProfileSheet: View {
     }
 }
 
-private struct ProfilePickerSearchField: View {
-    @Binding var text: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            TextField("Search profiles", text: $text)
-                .font(.subheadline)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear profile search")
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 44)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-private struct ProfilePickerCard<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .textCase(.uppercase)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
-
-            VStack(alignment: .leading, spacing: 12) {
-                content
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-}
-
+/// "Selected" and "Server Default" are different facts — the current default
+/// versus what the server would pick on its own — so the row shows both. On
+/// the filled selection pill the accent capsule stops reading, so the badge
+/// inverts onto the pill instead.
 private struct ProfileStatusBadge: View {
     let title: String
+    let isInverted: Bool
 
     var body: some View {
         Text(title)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(isInverted ? Color(.systemBackground) : Color.accentColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(Color.accentColor.opacity(0.12), in: Capsule(style: .continuous))
+            .background(
+                isInverted ? Color(.systemBackground).opacity(0.22) : Color.accentColor.opacity(0.12),
+                in: Capsule(style: .continuous)
+            )
     }
 }

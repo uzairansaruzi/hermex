@@ -204,10 +204,10 @@ struct ModelPickerSheet: View {
                 }
                 .foregroundStyle(customEntryForeground)
                 .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .background(
                     customOption == nil ? Color.clear : Color.primary,
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
                 )
                 .disabled(customOption == nil || isSelectionDisabled)
                 .padding(.top, 2)
@@ -366,7 +366,7 @@ struct ModelPickerSheet: View {
                             .accessibilityHidden(true)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -383,12 +383,7 @@ struct ModelPickerSheet: View {
                 onToggleFavorite(option)
             }
         }
-        .foregroundStyle(selected ? Color(.systemBackground) : Color.primary)
-        .padding(.horizontal, 12)
-        .background(
-            selected ? Color.primary : Color.clear,
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
+        .pickerSelectionPill(isSelected: selected)
         .contextMenu {
             Button {
                 onToggleFavorite(option)
@@ -675,7 +670,34 @@ private struct CustomModelFieldStyle: ViewModifier {
         content
             .font(.body)
             .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
+            .background(
+                Color(.tertiarySystemFill),
+                in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
+            )
+    }
+}
+
+/// Row geometry shared by every picker row in Settings, so Default Model and
+/// Default Profile stay visually identical: the model rows and custom entry
+/// here, and the profile rows in `DefaultProfilePickerView`.
+enum PickerRowMetrics {
+    static let minHeight: CGFloat = 48
+    static let cornerRadius: CGFloat = 12
+}
+
+extension View {
+    /// The selected-row treatment shared by the model rows and the profile
+    /// rows: a filled `Color.primary` pill with the inverted foreground that
+    /// fill needs. The caller owns the row's frame, because the pill can wrap
+    /// content that sits outside the row's own button — the model rows'
+    /// favorite star does.
+    func pickerSelectionPill(isSelected: Bool) -> some View {
+        foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
+            .padding(.horizontal, 12)
+            .background(
+                isSelected ? Color.primary : Color.clear,
+                in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
+            )
     }
 }
