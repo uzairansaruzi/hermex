@@ -49,10 +49,22 @@ struct UsageBucket: Identifiable, Equatable {
         }
     }
 
-    var totalTokens: Int {
+    /// Input plus output, matching the server's `total_tokens`. Cache reads are
+    /// deliberately not folded in: the server keeps them out of that field, and
+    /// the chart stacks them as their own layer, so the two must not be conflated.
+    var processedTokens: Int {
         switch detail {
         case let .day(input, output, _, _, _):
             input + output
+        case .hour:
+            0
+        }
+    }
+
+    var cacheReadTokens: Int {
+        switch detail {
+        case let .day(_, _, cacheRead, _, _):
+            cacheRead
         case .hour:
             0
         }
@@ -71,7 +83,7 @@ struct UsageBucket: Identifiable, Equatable {
     /// excluded on purpose: a server that prices everything at zero still has
     /// activity worth charting.
     var hasActivity: Bool {
-        totalTokens > 0 || sessions > 0
+        processedTokens > 0 || cacheReadTokens > 0 || sessions > 0
     }
 }
 
@@ -256,22 +268,34 @@ extension UsageHeroFigure {
     /// figures, not the window total.
     static func selection(_ bucket: UsageBucket, metric: UsageMetric) -> UsageHeroFigure {
         switch bucket.detail {
-        case let .day(_, _, _, sessions, cost):
+        case let .day(_, _, cacheRead, sessions, cost):
+            // A token bar stacks cache reads on top of processed tokens, so the
+            // readout names both. Letting the bar's height stand for one figure
+            // that excludes the other is how a chart starts lying.
             let sessionsText = String(localized: "\(sessions) sessions")
+            let cachedText = cacheRead > 0
+                ? String(localized: "\(usageFormattedTokens(cacheRead)) cached")
+                : nil
+
             switch metric {
             case .tokens:
-                let caption = cost > 0 ? "\(usageFormattedCost(cost)) · \(sessionsText)" : sessionsText
+                let caption = [cost > 0 ? usageFormattedCost(cost) : nil, cachedText, sessionsText]
+                    .compactMap { $0 }
+                    .joined(separator: " · ")
                 return UsageHeroFigure(
                     label: bucket.label,
-                    value: usageFormattedTokens(bucket.totalTokens),
+                    value: usageFormattedTokens(bucket.processedTokens),
                     caption: caption
                 )
             case .cost:
-                let tokensText = String(localized: "\(usageFormattedTokens(bucket.totalTokens)) tokens")
+                let tokensText = String(localized: "\(usageFormattedTokens(bucket.processedTokens)) tokens")
+                let caption = [tokensText, cachedText, sessionsText]
+                    .compactMap { $0 }
+                    .joined(separator: " · ")
                 return UsageHeroFigure(
                     label: bucket.label,
                     value: usageFormattedCost(cost),
-                    caption: "\(tokensText) · \(sessionsText)"
+                    caption: caption
                 )
             }
         case let .hour(sessions):
@@ -289,11 +313,12 @@ extension UsageBucket {
     /// a sighted user is dragging. The bar's accessibility label is its `label`.
     var accessibilityValue: String {
         switch detail {
-        case let .day(_, _, _, sessions, cost):
-            var parts = [
-                String(localized: "\(usageFormattedTokens(totalTokens)) tokens"),
-                String(localized: "\(sessions) sessions")
-            ]
+        case let .day(_, _, cacheRead, sessions, cost):
+            var parts = [String(localized: "\(usageFormattedTokens(processedTokens)) tokens")]
+            if cacheRead > 0 {
+                parts.append(String(localized: "\(usageFormattedTokens(cacheRead)) cached"))
+            }
+            parts.append(String(localized: "\(sessions) sessions"))
             if cost > 0 {
                 parts.append(usageFormattedCost(cost))
             }

@@ -244,13 +244,13 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(buckets.count, 7)
         XCTAssertEqual(buckets.map(\.label).first, "Aug 25")
         XCTAssertEqual(buckets.map(\.label).last, "Aug 31")
-        XCTAssertEqual(buckets[3].totalTokens, 120)
+        XCTAssertEqual(buckets[3].processedTokens, 120)
         XCTAssertEqual(buckets[3].sessions, 2)
         // The two days the server skipped, plus the padded lead-in, are real zeros.
-        XCTAssertEqual(buckets[4].totalTokens, 0)
-        XCTAssertEqual(buckets[5].totalTokens, 0)
+        XCTAssertEqual(buckets[4].processedTokens, 0)
+        XCTAssertEqual(buckets[5].processedTokens, 0)
         XCTAssertFalse(buckets[0].hasActivity)
-        XCTAssertEqual(buckets[6].totalTokens, 50)
+        XCTAssertEqual(buckets[6].processedTokens, 50)
     }
 
     @MainActor
@@ -265,7 +265,7 @@ final class InsightsViewModelTests: XCTestCase {
         """)
 
         XCTAssertEqual(viewModel.chartBuckets.count, 90)
-        XCTAssertEqual(viewModel.chartBuckets.last?.totalTokens, 15)
+        XCTAssertEqual(viewModel.chartBuckets.last?.processedTokens, 15)
     }
 
     @MainActor
@@ -285,7 +285,7 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(buckets.count, 24)
         XCTAssertEqual(buckets[9].sessions, 4)
         // Hour buckets carry sessions and nothing else, so nothing may be stacked.
-        XCTAssertEqual(buckets[9].totalTokens, 0)
+        XCTAssertEqual(buckets[9].processedTokens, 0)
         XCTAssertEqual(buckets[9].segments(for: .tokens).map(\.segment), [.sessions])
         XCTAssertFalse(viewModel.showsMetricToggle)
         XCTAssertEqual(viewModel.heroFigure.label, "Sessions")
@@ -315,11 +315,47 @@ final class InsightsViewModelTests: XCTestCase {
 
         viewModel.metric = .tokens
 
-        XCTAssertEqual(viewModel.heroFigure.label, "Total tokens")
+        XCTAssertEqual(viewModel.heroFigure.label, "Processed tokens")
         XCTAssertEqual(viewModel.heroFigure.value, "350")
         XCTAssertEqual(bucket.segments(for: .tokens).map(\.segment), [.input, .output, .cacheRead])
         XCTAssertEqual(bucket.segments(for: .tokens).map(\.value), [100, 250, 60])
         XCTAssertTrue(viewModel.showsMetricToggle)
+    }
+
+    @MainActor
+    func testBucketReadoutNamesEveryQuantityTheBarStacks() async throws {
+        let viewModel = try await loadedViewModel(timeframe: .last7Days, json: """
+        {
+          "period_days": 7,
+          "total_sessions": 3,
+          "total_tokens": 350,
+          "total_cost": 0.42,
+          "daily_tokens": [
+            {"date": "2026-09-01", "input_tokens": 100, "output_tokens": 250, "cache_read_tokens": 900, "sessions": 3, "cost": 0.42}
+          ]
+        }
+        """)
+
+        let bucket = try XCTUnwrap(viewModel.chartBuckets.last)
+
+        // The bar is 1,250 tall; the figure beside it is 350. Both numbers have
+        // to be spoken, or the chart contradicts its own readout.
+        XCTAssertEqual(bucket.processedTokens, 350)
+        XCTAssertEqual(bucket.cacheReadTokens, 900)
+        XCTAssertEqual(bucket.segments(for: .tokens).map(\.value).reduce(0, +), 1250)
+
+        let selection = UsageHeroFigure.selection(bucket, metric: .tokens)
+        XCTAssertEqual(selection.value, "350")
+        XCTAssertTrue(selection.caption.contains("900 cached"), selection.caption)
+        XCTAssertTrue(selection.caption.contains("3 sessions"), selection.caption)
+
+        XCTAssertTrue(bucket.accessibilityValue.contains("350 tokens"), bucket.accessibilityValue)
+        XCTAssertTrue(bucket.accessibilityValue.contains("900 cached"), bucket.accessibilityValue)
+
+        // A window with no cache reads says nothing about them.
+        let plain = UsageBucket(id: 0, label: "Sep 1", detail: .day(input: 10, output: 5, cacheRead: 0, sessions: 1, cost: 0))
+        XCTAssertFalse(UsageHeroFigure.selection(plain, metric: .tokens).caption.contains("cached"))
+        XCTAssertFalse(plain.accessibilityValue.contains("cached"))
     }
 
     @MainActor

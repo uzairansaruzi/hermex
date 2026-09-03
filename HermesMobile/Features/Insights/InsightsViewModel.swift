@@ -347,8 +347,11 @@ final class InsightsViewModel {
                 caption: String(localized: "Estimated by the server from session metadata.")
             )
         case .tokens:
+            // "Processed", not "total": this is the server's `total_tokens`,
+            // which excludes cache reads. The chart stacks those separately and
+            // the totals grid names them, so the two labels have to agree.
             return UsageHeroFigure(
-                label: String(localized: "Total tokens"),
+                label: String(localized: "Processed tokens"),
                 value: usageFormattedTokens(totalTokens),
                 caption: String(localized: "Across \(String(localized: "\(sessionCount) sessions")).")
             )
