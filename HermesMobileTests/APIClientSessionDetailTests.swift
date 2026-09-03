@@ -1153,6 +1153,7 @@ final class APIClientSessionDetailTests: APIClientTestCase {
             anchorMessageID: "assistant-skills",
             toolCalls: [
                 ToolCall(
+                    id: "live-tool-skill-xurl",
                     name: "skill_view",
                     preview: "xurl",
                     args: ["name": .string("xurl")],
@@ -1179,6 +1180,7 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertEqual(groups.first?.activityTitle, "Activity: 2 tools")
         XCTAssertEqual(groups.first?.toolCalls.map(\.name), ["skill_view", "terminal"])
         XCTAssertEqual(groups.first?.toolCalls.first?.id, "toolu-skill-xurl")
+        XCTAssertEqual(groups.first?.toolCalls.first?.presentationID, "live-tool-skill-xurl")
         XCTAssertEqual(groups.first?.toolCalls.first?.preview, "X/Twitter via xurl CLI")
         XCTAssertEqual(groups.first?.toolCalls.last?.preview, "xurl not installed")
     }
