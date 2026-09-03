@@ -395,12 +395,19 @@ struct MessageComposerView: View {
             }
         }
         .sheet(isPresented: $showsAllModelsSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
-            ComposerModelPickerSheet(
+            ModelPickerSheet(
+                configuration: .composer,
                 modelGroups: modelGroups,
                 selectedModelID: selectedModelID,
                 selectedModelProviderID: selectedModelProviderID,
                 favoriteModelKeys: favoriteModelKeys,
                 recentModelKeys: recentModelKeys,
+                isSelected: { option in
+                    option.matchesSelection(
+                        modelID: selectedModelID,
+                        providerID: selectedModelProviderID
+                    )
+                },
                 onSelect: { option in
                     selectModel(option)
                 },

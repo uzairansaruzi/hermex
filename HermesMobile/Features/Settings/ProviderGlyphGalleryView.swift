@@ -116,12 +116,19 @@ struct ProviderGlyphGalleryView: View {
         .navigationTitle("Provider Glyphs")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsPicker) {
-            ComposerModelPickerSheet(
+            ModelPickerSheet(
+                configuration: .composer,
                 modelGroups: Self.sampleGroups,
                 selectedModelID: "openai-codex-sample-1",
                 selectedModelProviderID: "openai-codex",
                 favoriteModelKeys: [],
                 recentModelKeys: [],
+                isSelected: { option in
+                    option.matchesSelection(
+                        modelID: "openai-codex-sample-1",
+                        providerID: "openai-codex"
+                    )
+                },
                 onSelect: { _ in },
                 onToggleFavorite: { _ in },
                 onDeleteSavedCustom: { _ in }
