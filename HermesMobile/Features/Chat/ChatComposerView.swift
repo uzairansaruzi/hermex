@@ -314,6 +314,19 @@ struct MessageComposerView: View {
                     toolbarRow
                         .padding(.horizontal)
                         .padding(.top, 8)
+                        .frame(maxWidth: .infinity)
+                        // Solid chat background behind the controls: the card
+                        // above is glass on purpose, but transcript text
+                        // scrolling under the row made the pills unreadable.
+                        // Bleeds up into the gap under the card and down past
+                        // the keyboard gap and the bottom safe area, so no strip
+                        // of transcript shows around the row.
+                        .background(
+                            Color(.systemBackground)
+                                .padding(.top, -10)
+                                .padding(.bottom, -12)
+                                .ignoresSafeArea(edges: .bottom)
+                        )
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
             }
