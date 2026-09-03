@@ -330,6 +330,7 @@
 		C0369000000000000000001 /* CronJobEditorConfigurationLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */; };
 		C0369000000000000000007 /* CronJobEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000008 /* CronJobEditorSheet.swift */; };
 		C0369000000000000000003 /* CronJobConfigurationPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000004 /* CronJobConfigurationPickers.swift */; };
+		C0369000000000000000009 /* CronJobSkillsPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C036900000000000000000A /* CronJobSkillsPicker.swift */; };
 		3F91D2A54B9A4F66A2C01004 /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */; };
 		3F91D2A54B9A4F66A2C01005 /* TaskDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */; };
 		8618A9261B8047CEA6084798 /* SlashCommandAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2A37872AC842629FBDDFA4 /* SlashCommandAutocompleteView.swift */; };
@@ -654,6 +655,7 @@
 		C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorConfigurationLoader.swift; sourceTree = "<group>"; };
 		C0369000000000000000008 /* CronJobEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorSheet.swift; sourceTree = "<group>"; };
 		C0369000000000000000004 /* CronJobConfigurationPickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobConfigurationPickers.swift; sourceTree = "<group>"; };
+		C036900000000000000000A /* CronJobSkillsPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobSkillsPicker.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailViewModel.swift; sourceTree = "<group>"; };
 		57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
@@ -1320,6 +1322,7 @@
 				C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */,
 				C0369000000000000000008 /* CronJobEditorSheet.swift */,
 				C0369000000000000000004 /* CronJobConfigurationPickers.swift */,
+				C036900000000000000000A /* CronJobSkillsPicker.swift */,
 			);
 			path = Tasks;
 			sourceTree = "<group>";
@@ -1716,6 +1719,7 @@
 				C0369000000000000000001 /* CronJobEditorConfigurationLoader.swift in Sources */,
 				C0369000000000000000007 /* CronJobEditorSheet.swift in Sources */,
 				C0369000000000000000003 /* CronJobConfigurationPickers.swift in Sources */,
+				C0369000000000000000009 /* CronJobSkillsPicker.swift in Sources */,
 				3F91D2A54B9A4F66A2C01004 /* TaskDetailView.swift in Sources */,
 				3F91D2A54B9A4F66A2C01005 /* TaskDetailViewModel.swift in Sources */,
 				1A2B3C4D5E6F70000000200 /* Memory.swift in Sources */,
