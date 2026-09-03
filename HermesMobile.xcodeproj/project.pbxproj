@@ -15,7 +15,11 @@
 		1A2B3C4D5E6F700000000300 /* ServerAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000301 /* ServerAccount.swift */; };
 		B5A1000000000000000000A0 /* ServerRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A1000000000000000000A1 /* ServerRegistryTests.swift */; };
 		C0DE512E0000000000000202 /* InsightsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000201 /* InsightsModels.swift */; };
-		C0DE512E0000000000000204 /* InsightsRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000203 /* InsightsRows.swift */; };
+		C0DE512E0000000000000204 /* UsageCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000203 /* UsageCard.swift */; };
+		C0DE512E00000000000002206 /* UsageChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002205 /* UsageChartData.swift */; };
+		C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002207 /* UsageChartCard.swift */; };
+		C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002209 /* UsageTotalsGrid.swift */; };
+		C0DE512E0000000000000220C /* UsageModelRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000220B /* UsageModelRows.swift */; };
 		0D82B28493C6401D98DA9C0E /* SlashCommandExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */; };
 		1A2B3C4D5E6F700000000001 /* HermesMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000011 /* HermesMobileApp.swift */; };
 		1A2B3C4D5E6F700000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000012 /* ContentView.swift */; };
@@ -660,7 +664,11 @@
 		3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailViewModel.swift; sourceTree = "<group>"; };
 		57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
 		C0DE512E0000000000000201 /* InsightsModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsModels.swift; sourceTree = "<group>"; };
-		C0DE512E0000000000000203 /* InsightsRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsRows.swift; sourceTree = "<group>"; };
+		C0DE512E0000000000000203 /* UsageCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageCard.swift; sourceTree = "<group>"; };
+		C0DE512E00000000000002205 /* UsageChartData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartData.swift; sourceTree = "<group>"; };
+		C0DE512E00000000000002207 /* UsageChartCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartCard.swift; sourceTree = "<group>"; };
+		C0DE512E00000000000002209 /* UsageTotalsGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageTotalsGrid.swift; sourceTree = "<group>"; };
+		C0DE512E0000000000000220B /* UsageModelRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageModelRows.swift; sourceTree = "<group>"; };
 		5DA59130ED4141049177576C /* SlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommand.swift; sourceTree = "<group>"; };
 		6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandExecutorTests.swift; sourceTree = "<group>"; };
 		931EC010A2D940B0E42287A4 /* InsightsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsViewModel.swift; sourceTree = "<group>"; };
@@ -1332,7 +1340,11 @@
 			children = (
 				57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */,
 				C0DE512E0000000000000201 /* InsightsModels.swift */,
-				C0DE512E0000000000000203 /* InsightsRows.swift */,
+				C0DE512E0000000000000203 /* UsageCard.swift */,
+				C0DE512E00000000000002205 /* UsageChartData.swift */,
+				C0DE512E00000000000002207 /* UsageChartCard.swift */,
+				C0DE512E00000000000002209 /* UsageTotalsGrid.swift */,
+				C0DE512E0000000000000220B /* UsageModelRows.swift */,
 				931EC010A2D940B0E42287A4 /* InsightsViewModel.swift */,
 			);
 			path = Insights;
@@ -1735,7 +1747,11 @@
 				A710739233F64F4FA4C2B700 /* ComposerVoiceInputController.swift in Sources */,
 				8B71DA2AAC521382F54A841C /* InsightsView.swift in Sources */,
 				C0DE512E0000000000000202 /* InsightsModels.swift in Sources */,
-				C0DE512E0000000000000204 /* InsightsRows.swift in Sources */,
+				C0DE512E0000000000000204 /* UsageCard.swift in Sources */,
+				C0DE512E00000000000002206 /* UsageChartData.swift in Sources */,
+				C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */,
+				C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */,
+				C0DE512E0000000000000220C /* UsageModelRows.swift in Sources */,
 				05814DEA5DE4690F730B1E15 /* InsightsViewModel.swift in Sources */,
 				26AB000000000000000000B1 /* ProvidersViewModel.swift in Sources */,
 				26AB000000000000000000B2 /* ProvidersView.swift in Sources */,

@@ -54,6 +54,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
     let sessions: Int?
     let inputTokens: Int?
     let outputTokens: Int?
+    let cacheReadTokens: Int?
     let totalTokens: Int?
     let cost: Double?
     let cacheHitPercent: Double?
@@ -66,6 +67,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
         case sessions
         case inputTokens
         case outputTokens
+        case cacheReadTokens
         case totalTokens
         case cost
         case cacheHitPercent
@@ -80,6 +82,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
         sessions = container.decodeLossyIntIfPresent(forKey: .sessions)
         inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
         outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
+        cacheReadTokens = container.decodeLossyIntIfPresent(forKey: .cacheReadTokens)
         totalTokens = container.decodeLossyIntIfPresent(forKey: .totalTokens)
         cost = container.decodeLossyCurrencyDoubleIfPresent(forKey: .cost)
         cacheHitPercent = container.decodeLossyCurrencyDoubleIfPresent(forKey: .cacheHitPercent)
@@ -98,6 +101,7 @@ struct InsightsDailyToken: Decodable, Equatable {
     let date: String?
     let inputTokens: Int?
     let outputTokens: Int?
+    let cacheReadTokens: Int?
     let sessions: Int?
     let cost: Double?
 
@@ -105,6 +109,7 @@ struct InsightsDailyToken: Decodable, Equatable {
         case date
         case inputTokens
         case outputTokens
+        case cacheReadTokens
         case sessions
         case cost
     }
@@ -114,6 +119,7 @@ struct InsightsDailyToken: Decodable, Equatable {
         date = container.decodeLossyStringIfPresent(forKey: .date)
         inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
         outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
+        cacheReadTokens = container.decodeLossyIntIfPresent(forKey: .cacheReadTokens)
         sessions = container.decodeLossyIntIfPresent(forKey: .sessions)
         cost = container.decodeLossyCurrencyDoubleIfPresent(forKey: .cost)
     }
