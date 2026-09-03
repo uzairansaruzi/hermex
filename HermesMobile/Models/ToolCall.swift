@@ -2,6 +2,8 @@ import Foundation
 
 struct ToolCall: Identifiable, Equatable {
     let id: String
+    /// Keeps disclosure state attached while a later event replaces a generated server ID.
+    let presentationID: String
     var name: String?
     var preview: String?
     var args: [String: JSONValue]?
@@ -12,6 +14,7 @@ struct ToolCall: Identifiable, Equatable {
 
     init(
         id: String = "live-tool-\(UUID().uuidString)",
+        presentationID: String? = nil,
         name: String?,
         preview: String?,
         args: [String: JSONValue]?,
@@ -21,6 +24,7 @@ struct ToolCall: Identifiable, Equatable {
         startedAt: Double = Date().timeIntervalSince1970
     ) {
         self.id = id
+        self.presentationID = presentationID ?? id
         self.name = name
         self.preview = preview
         self.args = args
@@ -681,6 +685,7 @@ struct ToolCallGroup: Identifiable, Equatable {
 
         return ToolCall(
             id: id,
+            presentationID: existing.presentationID,
             name: existing.name ?? fallback.name,
             preview: existing.preview ?? fallback.preview,
             args: existing.args ?? fallback.args,

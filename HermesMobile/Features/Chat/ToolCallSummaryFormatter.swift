@@ -37,7 +37,7 @@ struct ToolCallLogEntry: Identifiable, Equatable {
     let toolCall: ToolCall
     let row: ToolCallLogRow
 
-    var id: String { toolCall.id }
+    var id: String { toolCall.presentationID }
 }
 
 /// Turns settled tool calls into one-line log rows. The rules mirror the upstream

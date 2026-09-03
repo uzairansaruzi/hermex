@@ -5969,6 +5969,7 @@ private extension ToolCall {
     func applyingCompletionPayload(_ payload: ToolStreamEvent) -> ToolCall {
         ToolCall(
             id: id.nonEmptyStableToolID == nil ? payload.stableID ?? id : id,
+            presentationID: presentationID,
             name: payload.name ?? name,
             preview: payload.preview ?? preview,
             args: payload.args ?? args,

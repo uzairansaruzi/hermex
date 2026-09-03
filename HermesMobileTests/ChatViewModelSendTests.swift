@@ -1871,18 +1871,28 @@ final class ChatViewModelSendTests: XCTestCase {
             duration: nil,
             isError: nil
         )))
+        let presentationID = try XCTUnwrap(viewModel.liveToolCalls.first?.presentationID)
+        XCTAssertTrue(viewModel.liveToolCalls.first?.id.hasPrefix("live-tool-") == true)
+
         streamClient.emit(.toolCompleted(ToolStreamEvent(
             eventType: "tool.completed",
             name: "read_file",
             preview: "Read PROJECT_SPEC.md",
             args: ["path": .string("PROJECT_SPEC.md")],
             duration: 0.25,
-            isError: false
+            isError: false,
+            stableID: "call-read-file"
         )))
         streamClient.emit(.token("First live token."))
 
         XCTAssertEqual(viewModel.liveReasoningText, "I need to inspect the workspace.")
         XCTAssertEqual(viewModel.liveToolCalls.count, 1)
+        XCTAssertEqual(viewModel.liveToolCalls.first?.id, "call-read-file")
+        XCTAssertEqual(viewModel.liveToolCalls.first?.presentationID, presentationID)
+        XCTAssertEqual(
+            ToolCallSummaryFormatter.entries(for: viewModel.liveToolCalls, isLive: true).first?.id,
+            presentationID
+        )
         XCTAssertEqual(viewModel.liveToolCalls.first?.name, "read_file")
         XCTAssertEqual(viewModel.liveToolCalls.first?.isCompleted, true)
         XCTAssertEqual(viewModel.messages.compactMap(\.role), ["user", "assistant"])
