@@ -367,7 +367,7 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
-                        title: String(localized: "Insights"),
+                        title: String(localized: "Usage"),
                         systemImage: "chart.bar",
                         isOn: $showsInsightsSection
                     )

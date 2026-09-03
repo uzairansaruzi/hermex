@@ -209,7 +209,7 @@ struct SessionSidebarUtilityRows: View {
             }
 
             if sectionVisibility.insights {
-                SidebarNavButton(title: String(localized: "Insights"), assetImage: "LucideChartColumnIncreasing") {
+                SidebarNavButton(title: String(localized: "Usage"), assetImage: "LucideChartColumnIncreasing") {
                     openDestination(.insights)
                 }
             }

@@ -22,7 +22,9 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today:
-            String(localized: "Past 24h")
+            // "Today", not "24h": the handler's days=1 means midnight-to-now,
+            // and the local fallback filters on the same calendar day to match.
+            String(localized: "Today")
         case .last7Days:
             String(localized: "7 days")
         case .last30Days:
