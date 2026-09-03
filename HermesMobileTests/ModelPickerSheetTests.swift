@@ -36,6 +36,40 @@ final class ModelPickerSheetTests: XCTestCase {
         )
     }
 
+    // MARK: Search
+
+    private var codexGroup: ModelCatalogGroup {
+        ModelCatalogGroup(
+            id: "openai-codex",
+            name: "OpenAI Codex",
+            providerID: "openai-codex",
+            models: [option("gpt-5", provider: "openai-codex"), option("o3", provider: "openai-codex")]
+        )
+    }
+
+    func testSearchingAGroupsDisplayNameKeepsAllOfItsModels() {
+        // The header reads "OpenAI Codex" while the id is "openai-codex", so
+        // matching ids alone would answer "no models" to the visible name.
+        let filtered = ModelPickerSheet.filteredGroups([codexGroup], query: "OpenAI Codex")
+
+        XCTAssertEqual(filtered.count, 1)
+        XCTAssertEqual(filtered.first?.allModels.count, 2)
+    }
+
+    func testSearchingAModelNameKeepsOnlyThatModel() {
+        let filtered = ModelPickerSheet.filteredGroups([codexGroup], query: "o3")
+
+        XCTAssertEqual(filtered.first?.allModels.map(\.id), ["o3"])
+    }
+
+    func testSearchingSomethingAbsentDropsTheGroup() {
+        XCTAssertTrue(ModelPickerSheet.filteredGroups([codexGroup], query: "claude").isEmpty)
+    }
+
+    func testAnEmptyQueryKeepsEveryGroupUntouched() {
+        XCTAssertEqual(ModelPickerSheet.filteredGroups([codexGroup], query: "   ").count, 1)
+    }
+
     // MARK: Custom entry
 
     func testServerDefaultCommitsABareModelIDWithNoProvider() {

@@ -447,29 +447,34 @@ struct ModelPickerSheet: View {
     }
 
     private var filteredModelGroups: [ModelCatalogGroup] {
-        let query = trimmedSearchQuery
-        let baseGroups: [ModelCatalogGroup]
+        customModelGroups + Self.filteredGroups(modelGroups, query: trimmedSearchQuery)
+    }
 
-        if query.isEmpty {
-            baseGroups = modelGroups
-        } else {
-            baseGroups = modelGroups.compactMap { group in
-                let filteredModels = group.allModels.filter { option in
-                    matches(option, query: query)
-                }
+    /// `groups` narrowed to `query`.
+    ///
+    /// A group whose display name matches keeps all of its models, so a
+    /// provider stays findable by the name the picker actually shows it under:
+    /// the id is spelled `openai-codex` where the header reads "OpenAI Codex",
+    /// and matching only ids would answer "no models" to the visible name.
+    static func filteredGroups(_ groups: [ModelCatalogGroup], query: String) -> [ModelCatalogGroup] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return groups }
 
-                guard !filteredModels.isEmpty else { return nil }
-
-                return ModelCatalogGroup(
-                    id: group.id,
-                    name: group.name,
-                    providerID: group.providerID,
-                    models: filteredModels
-                )
+        return groups.compactMap { group in
+            let groupMatches = group.name.localizedCaseInsensitiveContains(query)
+            let filteredModels = group.allModels.filter { option in
+                groupMatches || matches(option, query: query)
             }
-        }
 
-        return customModelGroups + baseGroups
+            guard !filteredModels.isEmpty else { return nil }
+
+            return ModelCatalogGroup(
+                id: group.id,
+                name: group.name,
+                providerID: group.providerID,
+                models: filteredModels
+            )
+        }
     }
 
     private var customModelGroups: [ModelCatalogGroup] {
@@ -513,7 +518,7 @@ struct ModelPickerSheet: View {
             guard let option,
                   !catalogKeys.contains(option.favoriteKey),
                   seen.insert(option.favoriteKey).inserted,
-                  query.isEmpty || matches(option, query: query) else { return }
+                  query.isEmpty || Self.matches(option, query: query) else { return }
             result.append(option)
         }
 
@@ -572,7 +577,7 @@ struct ModelPickerSheet: View {
         guard !isRendered else { return nil }
 
         let query = trimmedSearchQuery
-        guard query.isEmpty || matches(option, query: query) else { return nil }
+        guard query.isEmpty || Self.matches(option, query: query) else { return nil }
         return option
     }
 
@@ -652,7 +657,7 @@ struct ModelPickerSheet: View {
         )
     }
 
-    private func matches(_ option: ModelCatalogOption, query: String) -> Bool {
+    static func matches(_ option: ModelCatalogOption, query: String) -> Bool {
         option.displayName.localizedCaseInsensitiveContains(query)
             || option.id.localizedCaseInsensitiveContains(query)
             || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
