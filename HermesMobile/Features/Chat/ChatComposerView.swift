@@ -699,10 +699,12 @@ struct MessageComposerView: View {
                 .font(.system(size: plusIconSize, weight: .medium))
                 .foregroundStyle(metaControlColor)
                 .frame(width: circleSize, height: circleSize)
+                // Inside the masked toolbar scroller, like the context ring.
                 .adaptiveGlass(
                     .regular,
                     isInteractive: true,
                     fallbackMaterial: .ultraThinMaterial,
+                    inheritsClipping: true,
                     in: Circle()
                 )
                 .clipShape(Circle())

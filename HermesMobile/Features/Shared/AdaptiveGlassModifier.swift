@@ -140,6 +140,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     let isInteractive: Bool
     let tint: Color?
     let fallbackMaterial: Material
+    let inheritsClipping: Bool
     let shape: S
 
     @ViewBuilder
@@ -160,7 +161,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 
     private var resolvedSurface: AdaptiveGlassSurface {
         AdaptiveGlassSurface.resolve(
-            liquidGlassAvailable: GlassPreference.isLiquidGlassSupported,
+            liquidGlassAvailable: GlassPreference.isLiquidGlassSupported && !inheritsClipping,
             isGlassEnabled: isGlassEnabled,
             reduceTransparency: reduceTransparency
         )
@@ -283,11 +284,16 @@ private extension View {
 }
 
 extension View {
+    /// `inheritsClipping` keeps the surface on the material path even when
+    /// Liquid Glass is available. Glass is composited outside the SwiftUI
+    /// layer tree, so it ignores an ancestor's clip or mask and draws over
+    /// neighbouring views; controls inside a masked scroller need this.
     func adaptiveGlass(
         _ style: AdaptiveGlassStyle = .regular,
         isInteractive: Bool = false,
         tint: Color? = nil,
         fallbackMaterial: Material = .regularMaterial,
+        inheritsClipping: Bool = false,
         in shape: some Shape
     ) -> some View {
         modifier(AdaptiveGlassModifier(
@@ -295,6 +301,7 @@ extension View {
             isInteractive: isInteractive,
             tint: tint,
             fallbackMaterial: fallbackMaterial,
+            inheritsClipping: inheritsClipping,
             shape: shape
         ))
     }
