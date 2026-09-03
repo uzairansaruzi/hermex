@@ -9,6 +9,10 @@ struct ComposerTextInputView: View {
     @Binding var measuredHeight: CGFloat
 
     let isDisabled: Bool
+    /// Pill mode: a single truncated line stands in for the editor and a tap
+    /// focuses it. The text view stays in the hierarchy (invisible) so focus and
+    /// the draft survive the pill-to-card morph without recreating it.
+    let isCollapsed: Bool
     let isKeyboardSendEnabled: Bool
     let verticalPadding: CGFloat
     let onKeyboardSend: () -> Void
@@ -17,8 +21,12 @@ struct ComposerTextInputView: View {
     let onPasteImageProviders: ([NSItemProvider]) -> Void
     let onPasteImages: ([UIImage]) -> Void
 
+    private let placeholder = String(localized: "Ask anything... /commands")
+    private let collapsedLineHeight: CGFloat = 22
+    private let expandedMinimumHeight: CGFloat = 72
+
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: isCollapsed ? .leading : .topLeading) {
             ComposerTextView(
                 text: $text,
                 isFocused: $isFocused,
@@ -31,19 +39,35 @@ struct ComposerTextInputView: View {
                 onPasteImageProviders: onPasteImageProviders,
                 onPasteImages: onPasteImages
             )
-            .frame(height: inputHeight)
-            .padding(.vertical, verticalPadding)
+            .frame(height: isCollapsed ? collapsedLineHeight : inputHeight)
+            .padding(.vertical, isCollapsed ? 0 : verticalPadding)
             .padding(.horizontal, 16)
+            .opacity(isCollapsed ? 0 : 1)
+            .allowsHitTesting(!isCollapsed)
+            .accessibilityHidden(isCollapsed)
 
-            if text.isEmpty {
-                Text("Ask anything... /commands")
+            if isCollapsed {
+                Text(text.isEmpty ? placeholder : text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundStyle(text.isEmpty ? Color(.placeholderText) : Color(.label))
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if !isDisabled { isFocused = true }
+                    }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(Text("Edit message"))
+            } else if text.isEmpty {
+                Text(placeholder)
                     .foregroundStyle(Color(.placeholderText))
                     .padding(.horizontal, 16)
                     .padding(.vertical, verticalPadding)
                     .allowsHitTesting(false)
             }
         }
-        .frame(minHeight: 42, alignment: .topLeading)
+        .frame(minHeight: isCollapsed ? 44 : expandedMinimumHeight + verticalPadding * 2, alignment: isCollapsed ? .leading : .topLeading)
     }
 
     private func updateMeasuredHeight(_ newHeight: CGFloat) {
@@ -199,7 +223,7 @@ private struct ComposerTextView: UIViewRepresentable {
 
             let fittingSize = CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
             let height = ceil(textView.sizeThatFits(fittingSize).height)
-            onHeightChange(min(96, max(22, height)))
+            onHeightChange(min(160, max(22, height)))
         }
     }
 

@@ -295,7 +295,6 @@ struct ChatView: View {
     @State private var draftMessage = ""
     @State private var draftRevision = 0
     @State private var isScrolledNearBottom = true
-    @State private var isReadingOlderTranscript = false
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var followScrollGeneration = 0
     /// While true the transcript's bottom size-change anchor and follow-driven
@@ -409,7 +408,6 @@ struct ChatView: View {
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
             readOnlyMessage: composerReadOnlyMessage,
-            isChromeCompact: isComposerChromeCompact,
             errorMessage: viewModel.sendErrorMessage,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage,
             contextWindowSnapshot: viewModel.contextWindowSnapshot,
@@ -1349,10 +1347,6 @@ struct ChatView: View {
         )
     }
 
-    private var isComposerChromeCompact: Bool {
-        isReadingOlderTranscript && !viewModel.messages.isEmpty
-    }
-
     private var transcriptBottomInsetHeight: CGFloat {
         max(96, composerHeight + 44 + composerAccessorySpacerHeight + clarificationFootprintHeight)
     }
@@ -1603,11 +1597,6 @@ struct ChatView: View {
 
     private func loadOlderMessages() async -> Bool {
         followLatch.isFollowing = false
-        if !isReadingOlderTranscript {
-            withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
-                isReadingOlderTranscript = true
-            }
-        }
 
         let didLoad = await viewModel.loadOlderMessages(modelContext: modelContext)
         if let lastError = viewModel.lastError {
@@ -2521,7 +2510,6 @@ struct ChatView: View {
             return
         }
 
-        isReadingOlderTranscript = false
         followScrollGeneration += 1
         let generation = followScrollGeneration
 
@@ -2659,33 +2647,10 @@ struct ChatView: View {
             movedAwayFromBottom: metrics.movedAwayFromBottom,
             wasNearBottom: wasNearBottom
         ))
-
-        if isNearBottom {
-            if isReadingOlderTranscript {
-                withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
-                    isReadingOlderTranscript = false
-                }
-            }
-        } else if metrics.isUserInteracting {
-            if !isReadingOlderTranscript,
-               ChatScrollPolicy.shouldEnterReadingOlder(
-                   distanceFromBottom: metrics.distanceFromBottom,
-                   isStreaming: isStreaming
-               ) {
-                withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
-                    isReadingOlderTranscript = true
-                }
-            }
-        }
     }
 
     private func prepareTranscriptForExplicitSend() {
         handleFollowEvent(.reset)
-        if isReadingOlderTranscript {
-            withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
-                isReadingOlderTranscript = false
-            }
-        }
     }
 
     private func beginEditMessage(_ context: MessageActionContext) {

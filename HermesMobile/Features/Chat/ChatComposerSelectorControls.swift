@@ -4,9 +4,6 @@ import UIKit
 struct ComposerWorkspaceSelectorButton: View {
     let title: String
     let isDisabled: Bool
-    let lineLimit: Int
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
     let color: Color
     let controlFont: Font
     let chevronFont: Font
@@ -14,18 +11,15 @@ struct ComposerWorkspaceSelectorButton: View {
 
     var body: some View {
         Button(action: onTap) {
-            ComposerSecondaryBarLabel(
+            ComposerInlineControlLabel(
                 title: title,
                 systemImage: "folder",
-                lineLimit: lineLimit,
-                verticalPadding: verticalPadding,
-                horizontalPadding: horizontalPadding,
                 color: color,
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
         }
-        .buttonStyle(.chatTactile(.capsule))
+        .buttonStyle(.chatTactile(.compactControl))
         .disabled(isDisabled)
         .accessibilityLabel("Choose workspace path")
     }
@@ -35,16 +29,33 @@ struct ComposerProfileSelectorMenu: View {
     let profileOptions: [ProfileSummary]
     let selectedProfileName: String?
     let selectedProfileTitle: String
+    /// Single-profile servers reject switches (#24), so the control is a plain
+    /// label: no chevron, no menu, no button trait.
+    let isStatic: Bool
     let isDisabled: Bool
-    let lineLimit: Int
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
     let color: Color
     let controlFont: Font
     let chevronFont: Font
     let onSelectProfile: (ProfileSummary) -> Void
 
     var body: some View {
+        if isStatic {
+            ComposerInlineControlLabel(
+                title: selectedProfileTitle,
+                systemImage: "person.crop.circle",
+                showsChevron: false,
+                color: color,
+                controlFont: controlFont,
+                chevronFont: chevronFont
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Profile: \(selectedProfileTitle)"))
+        } else {
+            profileMenu
+        }
+    }
+
+    private var profileMenu: some View {
         Menu {
             if profileOptions.isEmpty {
                 Text("No profiles available")
@@ -64,18 +75,15 @@ struct ComposerProfileSelectorMenu: View {
                 }
             }
         } label: {
-            ComposerSecondaryBarLabel(
+            ComposerInlineControlLabel(
                 title: selectedProfileTitle,
                 systemImage: "person.crop.circle",
-                lineLimit: lineLimit,
-                verticalPadding: verticalPadding,
-                horizontalPadding: horizontalPadding,
                 color: color,
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
         }
-        .buttonStyle(.chatTactile(.capsule))
+        .buttonStyle(.chatTactile(.compactControl))
         .tint(color)
         .disabled(isDisabled)
         .accessibilityLabel("Choose profile")
@@ -99,7 +107,7 @@ struct ComposerModelMenu: View {
     let onShowAllModels: () -> Void
 
     var body: some View {
-        ChatUIKitMenuButton(horizontalPadding: 0, verticalPadding: 14) {
+        ChatUIKitMenuButton {
             ComposerMetaControlLabel(
                 title: selectedModelTitle,
                 systemImage: nil,
@@ -246,29 +254,42 @@ struct ComposerReasoningMenu: View {
     let supportedEfforts: [String]?
     let reasoningTitle: String
     let isDisabled: Bool
-    let width: CGFloat
     let color: Color
     let controlFont: Font
     let chevronFont: Font
     let onSelectReasoningEffort: (String) -> Void
 
     var body: some View {
-        ChatUIKitMenuButton(horizontalPadding: 0, verticalPadding: 14) {
+        if let onlyOption = ReasoningEffortOption.singleOption(forSupportedEfforts: supportedEfforts) {
+            // One effort means nothing to choose: a plain label, not a disabled menu.
             ComposerMetaControlLabel(
-                title: reasoningTitle,
+                title: onlyOption.title,
                 systemImage: "lucide.brain",
-                minWidth: width,
-                maxWidth: width,
+                maxWidth: nil,
+                showsChevron: false,
                 color: color,
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
-        } menu: {
-            makeReasoningMenu()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Reasoning effort: \(onlyOption.title)"))
+        } else {
+            ChatUIKitMenuButton {
+                ComposerMetaControlLabel(
+                    title: reasoningTitle,
+                    systemImage: "lucide.brain",
+                    maxWidth: nil,
+                    color: color,
+                    controlFont: controlFont,
+                    chevronFont: chevronFont
+                )
+            } menu: {
+                makeReasoningMenu()
+            }
+            .tint(color)
+            .disabled(isDisabled)
+            .accessibilityLabel("Select reasoning effort")
         }
-        .tint(color)
-        .disabled(isDisabled)
-        .accessibilityLabel("Select reasoning effort")
     }
 
     private func makeReasoningMenu() -> UIMenu {
@@ -294,8 +315,8 @@ private struct ComposerMetaControlLabel: View {
 
     let title: String
     let systemImage: String?
-    var minWidth: CGFloat?
-    let maxWidth: CGFloat
+    let maxWidth: CGFloat?
+    var showsChevron = true
     let color: Color
     let controlFont: Font
     let chevronFont: Font
@@ -318,24 +339,31 @@ private struct ComposerMetaControlLabel: View {
                 .font(controlFont)
                 .layoutPriority(1)
 
-            Image(systemName: "chevron.down")
-                .font(chevronFont)
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(chevronFont)
+            }
         }
         .foregroundStyle(color)
-        .frame(minWidth: minWidth, maxWidth: maxWidth, alignment: .leading)
+        .frame(maxWidth: maxWidth, alignment: .leading)
+        .padding(.horizontal, ComposerInlineControlLabel.horizontalPadding)
+        .frame(minHeight: ComposerInlineControlLabel.minimumHeight)
+        .contentShape(Rectangle())
         .transaction { transaction in
             transaction.animation = nil
         }
-        .chatMinimumHitTarget(horizontalPadding: 0, verticalPadding: 14, in: Rectangle())
     }
 }
 
-private struct ComposerSecondaryBarLabel: View {
+/// Quiet toolbar-row control: icon, one-line title, optional chevron, no pill
+/// background, so the row reads as one surface. 44 pt tall for the hit target.
+private struct ComposerInlineControlLabel: View {
+    static let minimumHeight: CGFloat = 44
+    static let horizontalPadding: CGFloat = 6
+
     let title: String
     let systemImage: String
-    let lineLimit: Int
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
+    var showsChevron = true
     let color: Color
     let controlFont: Font
     let chevronFont: Font
@@ -346,24 +374,19 @@ private struct ComposerSecondaryBarLabel: View {
                 .font(controlFont)
 
             Text(title)
-                .lineLimit(lineLimit)
+                .lineLimit(1)
                 .truncationMode(.middle)
                 .font(controlFont)
 
-            Image(systemName: "chevron.down")
-                .font(chevronFont)
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(chevronFont)
+            }
         }
         .foregroundStyle(color)
-        .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, verticalPadding)
-        .adaptiveGlass(
-            .regular,
-            isInteractive: true,
-            fallbackMaterial: .ultraThinMaterial,
-            in: Capsule()
-        )
-        .clipShape(Capsule())
-        .chatMinimumHitTarget(in: Capsule())
+        .padding(.horizontal, Self.horizontalPadding)
+        .frame(minHeight: Self.minimumHeight)
+        .contentShape(Rectangle())
     }
 }
 
@@ -466,6 +489,13 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
                 allCases.first(where: { $0.id == id })
                     ?? ReasoningEffortOption(id: id, title: id.capitalized)
             }
+    }
+
+    /// The lone effort when the server vocabulary leaves nothing to choose, so the
+    /// composer can render a static label instead of a one-item menu.
+    static func singleOption(forSupportedEfforts supportedEfforts: [String]?) -> ReasoningEffortOption? {
+        let options = options(forSupportedEfforts: supportedEfforts)
+        return options.count == 1 ? options[0] : nil
     }
 
     /// Whether the composer should show the effort control at all (issue #18).

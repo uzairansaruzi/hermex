@@ -60,10 +60,14 @@ struct MessageComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
-    @ScaledMetric(relativeTo: .footnote) private var actionIconSize: CGFloat = 13
-    @ScaledMetric(relativeTo: .footnote) private var actionButtonSize: CGFloat = 30
-    @ScaledMetric(relativeTo: .title3) private var plusIconSize: CGFloat = 24
-    @ScaledMetric(relativeTo: .title3) private var plusButtonSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var plusIconSize: CGFloat = 20
+
+    /// t3code sizing: every circle in the composer is 44 pt, which is also the
+    /// minimum hit target, so no invisible hit padding is needed.
+    private let circleSize: CGFloat = 44
+    private let cardCornerRadius: CGFloat = 26
+    private let pillInset: CGFloat = 5
 
     @Binding var draftMessage: String
     @Binding var isFocused: Bool
@@ -72,7 +76,6 @@ struct MessageComposerView: View {
     let isWaitingForStream: Bool
     let isCancellingStream: Bool
     let readOnlyMessage: String?
-    let isChromeCompact: Bool
     let errorMessage: String?
     let configurationErrorMessage: String?
     let contextWindowSnapshot: ContextWindowSnapshot?
@@ -304,84 +307,15 @@ struct MessageComposerView: View {
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
 
-                VStack(spacing: 0) {
-                    ComposerAttachmentStripView(
-                        attachments: pendingAttachments,
-                        onRemove: onRemoveAttachment,
-                        onPreview: onPreviewAttachment
-                    )
-
-                    ComposerTextInputView(
-                        text: $draftMessage,
-                        isFocused: $isFocused,
-                        inputHeight: $textInputHeight,
-                        measuredHeight: $textFieldHeight,
-                        isDisabled: isReadOnly,
-                        isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
-                        verticalPadding: textFieldVerticalPadding,
-                        onKeyboardSend: actionButtonTapped,
-                        onPasteFileProviders: onPasteFileProviders,
-                        onPasteFileURLs: onPasteFileURLs,
-                        onPasteImageProviders: onPasteImageProviders,
-                        onPasteImages: onPasteImages
-                    )
-
-                    HStack(alignment: .center, spacing: 12) {
-                        composerPlusMenu
-
-                        modelMenu
-
-                        if showsReasoningControl {
-                            reasoningMenu
-                        }
-
-                        Spacer(minLength: 0)
-
-                        ComposerVoiceControlButton(
-                            isListening: voiceInput.isListening,
-                            isDisabled: isVoiceInputDisabled,
-                            color: metaControlColor,
-                            isRecordingVoiceNote: voiceNoteRecorder.isRecording,
-                            onTap: toggleVoiceInput,
-                            onRecordingStart: startVoiceNoteRecording,
-                            onRecordingDragChanged: { height in
-                                voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
-                            },
-                            onRecordingEnd: { height in
-                                finishVoiceNote(translationHeight: height)
-                            }
-                        )
-
-                        Button(action: actionButtonTapped) {
-                            actionButtonLabel
-                                .frame(width: actionButtonSize, height: actionButtonSize)
-                                .background(actionButtonBackground)
-                                .foregroundStyle(actionButtonForeground)
-                                .clipShape(Circle())
-                                .chatMinimumHitTarget(in: Circle())
-                        }
-                        .buttonStyle(.chatTactile(.icon))
-                        .disabled(isActionButtonDisabled)
-                        .accessibilityLabel(showsStopButton ? "Stop response" : "Send")
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 2)
-                    .padding(.bottom, 8)
-                }
-                .adaptiveGlass(
-                    .regular,
-                    isInteractive: true,
-                    fallbackMaterial: .ultraThinMaterial,
-                    in: RoundedRectangle(cornerRadius: composerCornerRadius, style: .continuous)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: composerCornerRadius, style: .continuous))
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.12), radius: 14, y: 6)
-                .padding(.horizontal)
-
-                secondaryBar
+                composerSurface
                     .padding(.horizontal)
-                    .padding(.bottom, 7)
-                    .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: showsSecondaryChrome)
+
+                if isExpanded {
+                    toolbarRow
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
             }
         }
         .background(
@@ -420,6 +354,28 @@ struct MessageComposerView: View {
             // the clip hits the limit, mirroring a finger release.
             if voiceNoteRecorder.isRecording, elapsed >= ComposerVoiceNoteRecorder.maximumDuration {
                 finishVoiceNote(translationHeight: 0)
+            }
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItems, matching: .images)
+        .onChange(of: selectedPhotoItems) {
+            let items = selectedPhotoItems
+            guard !items.isEmpty else { return }
+            deferFocusRestoreUntilUploadCompletes()
+            selectedPhotoItems.removeAll()
+            for item in items {
+                onPhotoItemSelected(item)
+            }
+        }
+        .fullScreenCover(isPresented: $showCameraPicker) {
+            CameraPickerView { image in
+                deferFocusRestoreUntilUploadCompletes()
+                onPasteImages([image])
+            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: showCameraPicker) { _, isPresented in
+            if !isPresented {
+                restoreFocusAfterPresentationDismissalSettles()
             }
         }
         .sheet(isPresented: $showsAllModelsSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
@@ -552,12 +508,148 @@ struct MessageComposerView: View {
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
     }
 
+    /// Pill while the editor is idle; card while it is focused or a composer
+    /// sheet is up (so a picker never snaps it shut). `shouldRestoreFocus…`
+    /// bridges the gap between a sheet dismissing and focus coming back.
+    private var isExpanded: Bool {
+        isFocused
+            || shouldRestoreFocusAfterPresentation
+            || showsAllModelsSheet
+            || showsWorkspaceSheet
+            || showPhotoPicker
+            || showCameraPicker
+            || showFileImporter
+    }
+
+    private var composerSurfaceShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: isExpanded ? cardCornerRadius : (circleSize + pillInset * 2) / 2, style: .continuous)
+    }
+
+    /// The glass surface: one text view in both states so focus and the draft
+    /// survive the morph. Pill: text, thumbnails, mic, Stop/Send in a row.
+    /// Card: strip above the editor, controls move to `toolbarRow` below.
+    private var composerSurface: some View {
+        VStack(spacing: 0) {
+            if isExpanded {
+                ComposerAttachmentStripView(
+                    attachments: pendingAttachments,
+                    onRemove: onRemoveAttachment,
+                    onPreview: onPreviewAttachment
+                )
+                .transition(.opacity)
+            }
+
+            HStack(alignment: .center, spacing: 4) {
+                ComposerTextInputView(
+                    text: $draftMessage,
+                    isFocused: $isFocused,
+                    inputHeight: $textInputHeight,
+                    measuredHeight: $textFieldHeight,
+                    isDisabled: isReadOnly,
+                    isCollapsed: !isExpanded,
+                    isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
+                    verticalPadding: 12,
+                    onKeyboardSend: actionButtonTapped,
+                    onPasteFileProviders: onPasteFileProviders,
+                    onPasteFileURLs: onPasteFileURLs,
+                    onPasteImageProviders: onPasteImageProviders,
+                    onPasteImages: onPasteImages
+                )
+
+                if !isExpanded {
+                    ComposerAttachmentPillPreview(
+                        attachments: pendingAttachments,
+                        onPreview: onPreviewAttachment
+                    )
+
+                    voiceControlButton
+
+                    actionButton
+                }
+            }
+            .padding(.trailing, isExpanded ? 0 : pillInset)
+            .padding(.vertical, isExpanded ? 0 : pillInset)
+        }
+        .padding(.top, isExpanded ? 2 : 0)
+        .padding(.bottom, isExpanded ? 4 : 0)
+        .adaptiveGlass(
+            .regular,
+            isInteractive: true,
+            fallbackMaterial: .ultraThinMaterial,
+            in: composerSurfaceShape
+        )
+        .clipShape(composerSurfaceShape)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.12), radius: 14, y: 6)
+        .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
+    }
+
+    /// Card-state row under the surface: a scroller of secondary controls plus
+    /// the pinned Stop/Send circle. Visual order is VoiceOver order.
+    private var toolbarRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            ComposerToolbarScroller {
+                composerPlusMenu
+
+                modelMenu
+
+                if showsReasoningControl {
+                    reasoningMenu
+                }
+
+                workspaceSelector
+
+                profileSelector
+
+                gitBranchPicker
+
+                voiceControlButton
+
+                ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
+                    .padding(.horizontal, 4)
+            }
+
+            actionButton
+        }
+    }
+
+    private var voiceControlButton: some View {
+        ComposerVoiceControlButton(
+            isListening: voiceInput.isListening,
+            isDisabled: isVoiceInputDisabled,
+            color: metaControlColor,
+            isRecordingVoiceNote: voiceNoteRecorder.isRecording,
+            onTap: toggleVoiceInput,
+            onRecordingStart: startVoiceNoteRecording,
+            onRecordingDragChanged: { height in
+                voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
+            },
+            onRecordingEnd: { height in
+                finishVoiceNote(translationHeight: height)
+            }
+        )
+    }
+
+    /// One trailing circle in both states. Stop while a response streams and the
+    /// draft is empty; Send (which queues mid-run) as soon as there is text.
+    private var actionButton: some View {
+        Button(action: actionButtonTapped) {
+            actionButtonLabel
+                .frame(width: circleSize, height: circleSize)
+                .background(actionButtonBackground)
+                .foregroundStyle(actionButtonForeground)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .disabled(isActionButtonDisabled)
+        .accessibilityLabel(showsStopButton ? "Stop response" : "Send")
+    }
+
     @ViewBuilder
     private var actionButtonLabel: some View {
         if isSending || isCancellingStream || isCompressingSession {
             ProgressView()
                 .tint(actionButtonForeground)
-                .scaleEffect(0.82)
+                .scaleEffect(0.9)
         } else if showsStopButton {
             Image(systemName: "stop.fill")
                 .font(.system(size: actionIconSize, weight: .semibold))
@@ -592,40 +684,24 @@ struct MessageComposerView: View {
     }
 
     private var composerPlusMenu: some View {
-        ChatUIKitMenuButton(horizontalPadding: 8, verticalPadding: 8) {
+        ChatUIKitMenuButton {
             Image(systemName: "plus")
-                .font(.system(size: plusIconSize, weight: .regular))
+                .font(.system(size: plusIconSize, weight: .medium))
                 .foregroundStyle(metaControlColor)
-                .frame(width: plusButtonSize, height: plusButtonSize)
-                .chatMinimumHitTarget(in: Circle())
+                .frame(width: circleSize, height: circleSize)
+                .adaptiveGlass(
+                    .regular,
+                    isInteractive: true,
+                    fallbackMaterial: .ultraThinMaterial,
+                    in: Circle()
+                )
+                .clipShape(Circle())
         } menu: {
             composerOptionsMenu()
         }
         .tint(metaControlColor)
         .disabled(isConfigurationControlDisabled)
         .accessibilityLabel("Composer options")
-        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItems, matching: .images)
-        .onChange(of: selectedPhotoItems) {
-            let items = selectedPhotoItems
-            guard !items.isEmpty else { return }
-            deferFocusRestoreUntilUploadCompletes()
-            selectedPhotoItems.removeAll()
-            for item in items {
-                onPhotoItemSelected(item)
-            }
-        }
-        .fullScreenCover(isPresented: $showCameraPicker) {
-            CameraPickerView { image in
-                deferFocusRestoreUntilUploadCompletes()
-                onPasteImages([image])
-            }
-            .ignoresSafeArea()
-        }
-        .onChange(of: showCameraPicker) { _, isPresented in
-            if !isPresented {
-                restoreFocusAfterPresentationDismissalSettles()
-            }
-        }
     }
 
     private func composerOptionsMenu() -> UIMenu {
@@ -668,48 +744,6 @@ struct MessageComposerView: View {
     }
 
     @ViewBuilder
-    private var secondaryBar: some View {
-        if showsSecondaryChrome {
-            if usesAccessibilityLayout {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        workspaceSelector
-
-                        // Single-profile mode: the server rejects profile switches,
-                        // so the selector could only no-op or error (#24).
-                        if !isSingleProfileMode {
-                            profileSelector
-                        }
-
-                        gitBranchPicker
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-            } else {
-                HStack(spacing: 8) {
-                    workspaceSelector
-
-                    if !isSingleProfileMode {
-                        profileSelector
-                    }
-
-                    gitBranchPicker
-
-                    Spacer(minLength: 0)
-
-                    ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-            }
-        }
-    }
-
-    @ViewBuilder
     private var gitBranchPicker: some View {
         // One "Git Actions" toggle covers every git control in chat (#189), so the
         // branch chip goes with the toolbar menu rather than lingering alone.
@@ -727,49 +761,28 @@ struct MessageComposerView: View {
         }
     }
 
-    private var showsSecondaryChrome: Bool {
-        !keyboardIsVisible && !isChromeCompact
-    }
-
     private var usesAccessibilityLayout: Bool {
         dynamicTypeSize.isAccessibilitySize
     }
 
     private var metaControlFont: Font {
-        AppFont.footnote()
+        AppFont.subheadline()
     }
 
     private var metaChevronFont: Font {
         AppFont.caption2()
     }
 
+    /// Soft cap so a very long model id still leaves room to see the row scrolls;
+    /// the scroller, not truncation, absorbs the rest.
     private var modelControlMaxWidth: CGFloat {
-        usesAccessibilityLayout ? 156 : 132
-    }
-
-    private var reasoningControlWidth: CGFloat {
-        usesAccessibilityLayout ? 126 : 104
-    }
-
-    private var secondaryBarLineLimit: Int {
-        usesAccessibilityLayout ? 2 : 1
-    }
-
-    private var secondaryBarVerticalPadding: CGFloat {
-        usesAccessibilityLayout ? 10 : 8
-    }
-
-    private var secondaryBarHorizontalPadding: CGFloat {
-        usesAccessibilityLayout ? 16 : 14
+        usesAccessibilityLayout ? 260 : 200
     }
 
     private var workspaceSelector: some View {
         ComposerWorkspaceSelectorButton(
             title: workspaceTitle,
             isDisabled: isConfigurationControlDisabled,
-            lineLimit: secondaryBarLineLimit,
-            verticalPadding: secondaryBarVerticalPadding,
-            horizontalPadding: secondaryBarHorizontalPadding,
             color: metaControlColor,
             controlFont: metaControlFont,
             chevronFont: metaChevronFont
@@ -784,10 +797,8 @@ struct MessageComposerView: View {
             profileOptions: profileOptions,
             selectedProfileName: selectedProfileName,
             selectedProfileTitle: selectedProfileTitle,
+            isStatic: isSingleProfileMode,
             isDisabled: isConfigurationControlDisabled,
-            lineLimit: secondaryBarLineLimit,
-            verticalPadding: secondaryBarVerticalPadding,
-            horizontalPadding: secondaryBarHorizontalPadding,
             color: metaControlColor,
             controlFont: metaControlFont,
             chevronFont: metaChevronFont,
@@ -822,7 +833,6 @@ struct MessageComposerView: View {
             supportedEfforts: supportedReasoningEfforts,
             reasoningTitle: reasoningTitle,
             isDisabled: isConfigurationControlDisabled,
-            width: reasoningControlWidth,
             color: metaControlColor,
             controlFont: metaControlFont,
             chevronFont: metaChevronFont,
@@ -966,6 +976,10 @@ struct MessageComposerView: View {
     }
 
     private var actionButtonBackground: Color {
+        if showsStopButton {
+            return Color.red.opacity(colorScheme == .dark ? 0.22 : 0.14)
+        }
+
         if PrimaryActionTintSettings.usesThemeColor(
             isEnabled: tintsPrimaryActions,
             controlIsEnabled: !isActionButtonDisabled
@@ -981,6 +995,10 @@ struct MessageComposerView: View {
     }
 
     private var actionButtonForeground: Color {
+        if showsStopButton {
+            return Color.red
+        }
+
         if PrimaryActionTintSettings.usesThemeColor(
             isEnabled: tintsPrimaryActions,
             controlIsEnabled: !isActionButtonDisabled
@@ -993,18 +1011,6 @@ struct MessageComposerView: View {
         }
 
         return colorScheme == .dark ? .black : .white
-    }
-
-    private var isComposerExpanded: Bool {
-        draftMessage.contains("\n") || textFieldHeight > 44
-    }
-
-    private var composerCornerRadius: CGFloat {
-        isComposerExpanded ? 26 : 22
-    }
-
-    private var textFieldVerticalPadding: CGFloat {
-        isComposerExpanded ? 12 : 14
     }
 
     private var reasoningTitle: String {

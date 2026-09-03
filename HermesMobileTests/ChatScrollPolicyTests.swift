@@ -46,24 +46,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertFalse(ChatScrollPolicy.isNearBottom(distanceFromBottom: 161, isStreaming: true))
     }
 
-    func testShouldEnterReadingOlderRequiresHysteresisPastThreshold() {
-        let threshold = ChatScrollPolicy.bottomThreshold(isStreaming: false)
-        let hysteresis = ChatScrollPolicy.readingOlderHysteresis
-
-        XCTAssertFalse(
-            ChatScrollPolicy.shouldEnterReadingOlder(
-                distanceFromBottom: threshold + hysteresis,
-                isStreaming: false
-            )
-        )
-        XCTAssertTrue(
-            ChatScrollPolicy.shouldEnterReadingOlder(
-                distanceFromBottom: threshold + hysteresis + 1,
-                isStreaming: false
-            )
-        )
-    }
-
     // MARK: Follow latch
 
     private typealias Latch = ChatScrollPolicy.FollowLatch

@@ -41,8 +41,7 @@ struct ComposerVoiceControlButton: View {
     var body: some View {
         Image(systemName: symbolName)
             .font(.system(size: 18, weight: .regular))
-            .frame(width: 28, height: 28)
-            .chatMinimumHitTarget(in: Circle())
+            .frame(width: 44, height: 44)
             .foregroundStyle(isListening || isRecordingVoiceNote ? Color.red : color)
             .scaleEffect(isRecordingVoiceNote ? 1.3 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)

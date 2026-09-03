@@ -45,10 +45,6 @@ enum ChatScrollPolicy {
     /// jitter from incoming tokens does not flash the scroll-to-bottom button.
     static let streamingBottomDetectionThreshold: CGFloat = 160
 
-    /// Extra distance past the bottom threshold required before the composer
-    /// chrome collapses into its compact "reading older" presentation.
-    static let readingOlderHysteresis: CGFloat = 64
-
     /// Strict bottom tolerance (pt) that re-arms follow when a gesture ends there.
     static let followReArmThreshold: CGFloat = 12
 
@@ -171,13 +167,6 @@ enum ChatScrollPolicy {
 
     static func isNearBottom(distanceFromBottom: CGFloat, isStreaming: Bool) -> Bool {
         distanceFromBottom <= bottomThreshold(isStreaming: isStreaming)
-    }
-
-    /// True once the user has scrolled far enough above the bottom that the
-    /// composer chrome should collapse. The hysteresis keeps the chrome stable
-    /// when hovering right around the bottom threshold.
-    static func shouldEnterReadingOlder(distanceFromBottom: CGFloat, isStreaming: Bool) -> Bool {
-        distanceFromBottom > bottomThreshold(isStreaming: isStreaming) + readingOlderHysteresis
     }
 }
 

@@ -284,9 +284,6 @@ struct SessionListView: View {
                     refreshSessions: refreshAfterReturningIfNeeded
                 )
             }
-            .refreshable {
-                await refreshSessionsAndActiveProfile()
-            }
             .modifier(
                 SessionActionConfirmations(
                     viewModel: viewModel,
@@ -534,6 +531,12 @@ struct SessionListView: View {
                 .accessibilityHidden(true)
         }
         .listStyle(.plain)
+        // On the List itself, not the navigation container: a refresh action
+        // set higher up is inherited by every ScrollView in pushed chats, which
+        // made the composer's attachment strip pullable.
+        .refreshable {
+            await refreshSessionsAndActiveProfile()
+        }
         // Let rows hug their content instead of the 44pt default minimum, so the
         // single-line utility/disclosure rows aren't padded out and stay aligned
         // with the tightly-packed navigation rows.
