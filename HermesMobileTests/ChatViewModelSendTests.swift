@@ -8547,6 +8547,51 @@ final class ChatViewModelSendTests: XCTestCase {
 
     /// A `503 {"error": ...}` for `/api/tts` — the canonical "server TTS refused,
     /// use the on-device fallback" stimulus for Listen tests (#15).
+    // MARK: - Skill slash suggestions
+
+    /// The composer asks for the skill list from `.task` modifiers that SwiftUI
+    /// cancels on an unrelated view update — the chip warm-up for a restored
+    /// draft is keyed on the draft itself, so hydrating one cancels it. The
+    /// request used to run inside the caller, so that cancellation threw it away
+    /// and left a draft's `/skill` references drawn as plain text.
+    @MainActor
+    func testCancellingACallerDoesNotAbortTheSkillLoad() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/skills")
+            return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+        }
+
+        let caller = Task { await viewModel.loadSkillSlashSuggestions() }
+        caller.cancel()
+        await caller.value
+
+        XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
+    }
+
+    /// A load that fails leaves nothing behind, so the next caller retries
+    /// rather than being told the list is already loaded.
+    @MainActor
+    func testAFailedSkillLoadIsRetriedByTheNextCaller() async throws {
+        var attempts = 0
+        let viewModel = try makeViewModel { request in
+            attempts += 1
+            guard attempts > 1 else {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                    Data()
+                )
+            }
+            return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+        }
+
+        await viewModel.loadSkillSlashSuggestions()
+        XCTAssertTrue(viewModel.skillSlashSuggestions.isEmpty)
+
+        await viewModel.loadSkillSlashSuggestions()
+        XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
+        XCTAssertEqual(attempts, 2)
+    }
+
     private static func ttsUnavailableResponse(for request: URLRequest) -> (HTTPURLResponse, Data) {
         let response = HTTPURLResponse(
             url: request.url!,

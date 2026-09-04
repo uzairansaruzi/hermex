@@ -457,7 +457,9 @@ final class ChatViewModel {
     private var hasLoadedPersonalitySuggestions = false
     private var isLoadingPersonalitySuggestions = false
     private var hasLoadedSkillSlashSuggestions = false
-    private var isLoadingSkillSlashSuggestions = false
+    /// The in-flight skill list request, shared by every caller of
+    /// `loadSkillSlashSuggestions()` so no view's cancellation can orphan it.
+    private var skillSlashSuggestionsLoad: Task<Void, Never>?
     private var queuedSlashMessages: [QueuedSlashMessage] = []
     private var isDrainingQueuedSlashMessage = false
     private var activeBtwStreamID: String?
@@ -984,20 +986,37 @@ final class ChatViewModel {
         }
     }
 
+    /// Loads the skill list once, sharing a single request between callers.
+    ///
+    /// The composer asks for this from two `.task` modifiers — the chip warm-up
+    /// for a restored draft and the autocomplete panel — and either can be
+    /// cancelled by an unrelated view update. So the request lives on a task
+    /// this view model owns: a cancelled caller cannot take the fetch down with
+    /// it, and a caller arriving mid-flight waits for that same result instead
+    /// of racing past an "already loading" flag and finding an empty list. A
+    /// failed load clears the handle, so the next caller retries.
     func loadSkillSlashSuggestions() async {
         guard !hasLoadedSkillSlashSuggestions else { return }
-        guard !isLoadingSkillSlashSuggestions else { return }
 
-        isLoadingSkillSlashSuggestions = true
-        defer { isLoadingSkillSlashSuggestions = false }
-
-        do {
-            let response = try await client.skills()
-            skillSlashSuggestions = SlashSkillFormatter.suggestions(from: response.skills ?? [])
-            hasLoadedSkillSlashSuggestions = true
-        } catch {
-            lastError = error
+        let load: Task<Void, Never>
+        if let existing = skillSlashSuggestionsLoad {
+            load = existing
+        } else {
+            load = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let response = try await self.client.skills()
+                    self.skillSlashSuggestions = SlashSkillFormatter.suggestions(from: response.skills ?? [])
+                    self.hasLoadedSkillSlashSuggestions = true
+                } catch {
+                    self.lastError = error
+                }
+                self.skillSlashSuggestionsLoad = nil
+            }
+            skillSlashSuggestionsLoad = load
         }
+
+        await load.value
     }
 
     @discardableResult
