@@ -1723,7 +1723,10 @@ struct ChatView: View {
             let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
             // `/clear` wipes the conversation on the server, so it always asks
             // first. The draft stays in the composer until the user confirms.
-            if parsedCommand?.handler == .clientSide(.clear) {
+            // A refusal the app already knows about (cached view, CLI session,
+            // live stream) skips the alert and falls through to the normal
+            // slash path, which surfaces it.
+            if parsedCommand?.handler == .clientSide(.clear), viewModel.clearConversationRefusal == nil {
                 pendingClearConfirmation = PendingClearConfirmation(
                     draft: submittedDraft,
                     draftRevision: submittedDraftRevision

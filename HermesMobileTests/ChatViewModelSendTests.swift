@@ -8156,6 +8156,66 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testSendIsRefusedWhileClearIsInFlight() async throws {
+        let clearRequestStarted = expectation(description: "clear request reached the server")
+        let releaseClearResponse = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session/clear":
+                clearRequestStarted.fulfill()
+                releaseClearResponse.wait()
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "session": {"session_id": "session-abc", "title": "Untitled"}
+                }
+                """, for: request)
+            default:
+                XCTFail("A send during a clear must not reach \(request.url?.path ?? "unknown path").")
+                throw URLError(.badURL)
+            }
+        }
+
+        let clearTask = Task { await viewModel.clearConversationFromSlashCommand(modelContext: nil) }
+        await fulfillment(of: [clearRequestStarted], timeout: 5)
+
+        XCTAssertTrue(viewModel.isClearingConversation)
+        let didSend = await viewModel.sendMessage("Sneak this in")
+        XCTAssertFalse(didSend)
+        XCTAssertEqual(viewModel.sendErrorMessage, "Wait for the conversation to finish clearing.")
+
+        let secondClear = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+        XCTAssertEqual(secondClear, .unsupported(friendlyMessage: "Wait for the conversation to finish clearing."))
+
+        releaseClearResponse.signal()
+        let result = await clearTask.value
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertFalse(viewModel.isClearingConversation)
+    }
+
+    @MainActor
+    func testClearRefusalIsKnownBeforeConfirmingForCLISessions() async throws {
+        let webUIViewModel = try makeViewModel { request in
+            XCTFail("Reading the refusal must not call \(request.url?.path ?? "unknown path").")
+            throw URLError(.badURL)
+        }
+        XCTAssertNil(webUIViewModel.clearConversationRefusal)
+
+        let cliViewModel = try makeViewModel(
+            sessionSummary: SessionSummary(sessionId: "session-abc", title: "Planning", isCliSession: true)
+        ) { request in
+            XCTFail("Reading the refusal must not call \(request.url?.path ?? "unknown path").")
+            throw URLError(.badURL)
+        }
+
+        XCTAssertEqual(
+            cliViewModel.clearConversationRefusal,
+            "Clearing the conversation is available for WebUI sessions only."
+        )
+    }
+
+    @MainActor
     func testClearSlashCommandLeavesTranscriptIntactOnServerError() async throws {
         let viewModel = try makeViewModel { request in
             switch request.url?.path {

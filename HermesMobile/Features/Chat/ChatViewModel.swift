@@ -233,6 +233,11 @@ final class ChatViewModel {
     @ObservationIgnored private var sendErrorIsFromStreamRecovery = false
     private(set) var messageActionErrorMessage: String?
     private(set) var cacheErrorMessage: String?
+
+    /// Set while `POST /api/session/clear` is in flight. A send or a second
+    /// `/clear` refuses while it is set, so the clear response cannot wipe a
+    /// message the user started inside that window (#389).
+    private(set) var isClearingConversation = false
     private(set) var lastError: Error?
     private(set) var displayTitle: String
     private(set) var listeningMessageID: String?
@@ -2223,6 +2228,11 @@ final class ChatViewModel {
             return false
         }
 
+        guard !isClearingConversation else {
+            sendErrorMessage = String(localized: "Wait for the conversation to finish clearing.")
+            return false
+        }
+
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return false }
 
@@ -3304,22 +3314,41 @@ final class ChatViewModel {
         }
     }
 
+    /// Why `/clear` cannot run right now, or `nil` when it can. These are the
+    /// same refusals `/undo` uses, and they never touch the network. `ChatView`
+    /// reads this before showing the destructive confirmation so a refusal is
+    /// never hidden behind an alert the user has to answer first.
+    var clearConversationRefusal: String? {
+        if isViewingCachedData {
+            return String(localized: "Reconnect to the server to clear the conversation.")
+        }
+
+        if isCLISession {
+            return String(localized: "Clearing the conversation is available for WebUI sessions only.")
+        }
+
+        if activeStreamID != nil {
+            return String(localized: "Wait for the current response to finish before clearing the conversation.")
+        }
+
+        if isClearingConversation {
+            return String(localized: "Wait for the conversation to finish clearing.")
+        }
+
+        if sessionID == nil {
+            return String(localized: "The server did not provide a session ID.")
+        }
+
+        return nil
+    }
+
     /// Clears the conversation on the server, then locally. Destructive and
-    /// irreversible, so `ChatView` confirms before calling this; the guards
-    /// below mirror `/undo` and refuse before any network call. Pass the
+    /// irreversible, so `ChatView` confirms before calling this. Pass the
     /// `ModelContext` so the offline cache is emptied too — otherwise a cold
     /// open would repaint the history this just deleted.
     func clearConversationFromSlashCommand(modelContext: ModelContext?) async -> SlashCommandExecutionResult {
-        guard !isViewingCachedData else {
-            return .unsupported(friendlyMessage: String(localized: "Reconnect to the server to clear the conversation."))
-        }
-
-        guard !isCLISession else {
-            return .unsupported(friendlyMessage: String(localized: "Clearing the conversation is available for WebUI sessions only."))
-        }
-
-        guard activeStreamID == nil else {
-            return .unsupported(friendlyMessage: String(localized: "Wait for the current response to finish before clearing the conversation."))
+        if let refusal = clearConversationRefusal {
+            return .unsupported(friendlyMessage: refusal)
         }
 
         guard let sessionID else {
@@ -3328,6 +3357,8 @@ final class ChatViewModel {
 
         lastError = nil
         sendErrorMessage = nil
+        isClearingConversation = true
+        defer { isClearingConversation = false }
 
         do {
             let response = try await client.clearSession(id: sessionID)
@@ -3343,7 +3374,11 @@ final class ChatViewModel {
                 do {
                     try CacheStore.cacheMessages([], serverURL: server, sessionID: sessionID, in: modelContext)
                 } catch {
+                    // The server history is gone but the offline copy still
+                    // holds it, so a later cold open would repaint messages the
+                    // user just deleted. Say so where they will see it.
                     cacheErrorMessage = error.localizedDescription
+                    sendErrorMessage = String(localized: "Cleared on the server, but the offline copy of this conversation could not be updated.")
                 }
             }
 
