@@ -67,6 +67,12 @@ extension APIClient {
         try await send(endpoint: .cronDeliveryOptions, method: "GET")
     }
 
+    /// Each job's most recent completion. Unordered on the wire; see
+    /// `CronRecentCompletionsResponse.completions`.
+    func cronRecent() async throws -> CronRecentCompletionsResponse {
+        try await send(endpoint: .cronRecent, method: "GET")
+    }
+
     func deleteCron(jobID: String) async throws -> CronMutationResponse {
         try await send(
             endpoint: .cronDelete,

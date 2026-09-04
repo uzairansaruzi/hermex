@@ -14,6 +14,12 @@ final class TasksViewModel {
     /// Server-provided deliver targets; `nil` while unknown or when the
     /// endpoint is unavailable (the editor then falls back to free text).
     private(set) var deliveryOptions: [CronDeliveryOption]?
+    /// Newest-first recent completions across every job. Empty until the feed
+    /// answers, and stays empty on any feed failure; never gates `isLoading`.
+    private(set) var recentRuns: [CronRecentCompletion] = []
+    /// The in-flight feed request, so a reload cancels the one before it and
+    /// tests can wait for the feed without polling.
+    private(set) var recentRunsTask: Task<Void, Never>?
     private(set) var isLoading = false
     private(set) var isMutating = false
     private(set) var errorMessage: String?
@@ -42,6 +48,8 @@ final class TasksViewModel {
         lastError = nil
         defer { isLoading = false }
 
+        refreshRecentRuns()
+
         do {
             async let jobsResponse = client.crons()
             async let statusResponse = client.cronStatus()
@@ -57,6 +65,29 @@ final class TasksViewModel {
             lastError = error
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Fetches the recent-runs feed on its own task so a slow or missing
+    /// endpoint never holds the task list in its loading state. A reload
+    /// cancels the previous fetch, so a late answer cannot overwrite a newer one.
+    private func refreshRecentRuns() {
+        recentRunsTask?.cancel()
+        recentRunsTask = Task { [client] in
+            let response = try? await client.cronRecent()
+            guard !Task.isCancelled, let response else { return }
+            recentRuns = CronRecentCompletion.newestFirst(response.completions ?? [])
+        }
+    }
+
+    /// The loaded job a recent run belongs to, or `nil` when the feed names a
+    /// job the list does not have. Matches on id first; `/api/crons` has shipped
+    /// with `id` null before, in which case the name is all there is.
+    func job(for completion: CronRecentCompletion) -> CronJob? {
+        if let jobID = completion.jobId, let job = jobs.first(where: { $0.jobId == jobID }) {
+            return job
+        }
+        guard let name = completion.name, !name.isEmpty else { return nil }
+        return jobs.first { $0.name == name }
     }
 
     func runningElapsed(for job: CronJob) -> Double? {

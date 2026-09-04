@@ -102,6 +102,9 @@ enum Endpoint {
     case cronStatus(jobID: String?)
     case cronOutput(jobID: String, limit: Int?)
     case cronDeliveryOptions
+    /// GET: every job's latest completion, for the Tasks list's recent-runs
+    /// group. Upstream also accepts `since` for polling; this app does not poll.
+    case cronRecent
     case kanbanConfig
     case kanbanBoards
     case kanbanCreateBoard
@@ -326,6 +329,8 @@ enum Endpoint {
             return "/api/crons/output"
         case .cronDeliveryOptions:
             return "/api/crons/delivery-options"
+        case .cronRecent:
+            return "/api/crons/recent"
         case .kanbanConfig:
             return "/api/kanban/config"
         case .kanbanBoards, .kanbanCreateBoard:

@@ -118,6 +118,8 @@ struct TasksView: View {
                 }
             } else {
                 List {
+                    recentRunsSection
+
                     ForEach(sections) { section in
                         Section(section.group.title) {
                             ForEach(section.jobs) { job in
@@ -148,17 +150,44 @@ struct TasksView: View {
         .background(.bar)
     }
 
+    /// Cross-task recent completions, above the agenda and outside the filter.
+    /// Absent until the feed answers and whenever it is empty or failed.
+    @ViewBuilder
+    private var recentRunsSection: some View {
+        if !viewModel.recentRuns.isEmpty {
+            Section("Ran Recently") {
+                ForEach(viewModel.recentRuns) { completion in
+                    if let job = viewModel.job(for: completion) {
+                        NavigationLink {
+                            detail(for: job)
+                        } label: {
+                            TaskRecentRunRowView(completion: completion)
+                        }
+                    } else {
+                        // The feed named a job the list does not have: no link,
+                        // no chevron, and nothing that reads as a button.
+                        TaskRecentRunRowView(completion: completion)
+                    }
+                }
+            }
+        }
+    }
+
+    private func detail(for job: CronJob) -> some View {
+        TaskDetailView(
+            job: job,
+            runningElapsed: viewModel.runningElapsed(for: job),
+            server: server,
+            onAPIError: onAPIError,
+            onMutation: { mutation in
+                viewModel.apply(mutation)
+            }
+        )
+    }
+
     private func row(for job: CronJob, in group: TaskAgendaGroup) -> some View {
         NavigationLink {
-            TaskDetailView(
-                job: job,
-                runningElapsed: viewModel.runningElapsed(for: job),
-                server: server,
-                onAPIError: onAPIError,
-                onMutation: { mutation in
-                    viewModel.apply(mutation)
-                }
-            )
+            detail(for: job)
         } label: {
             CronJobRowView(
                 job: job,

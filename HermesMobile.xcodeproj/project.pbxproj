@@ -334,8 +334,10 @@
 		36CD9EF0B0734E5F8C28BB92 /* SlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA59130ED4141049177576C /* SlashCommand.swift */; };
 		D600000000000000000022 /* TaskConfigurationFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600000000000000000021 /* TaskConfigurationFields.swift */; };
 		D600000000000000000002 /* CronRunHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600000000000000000001 /* CronRunHistory.swift */; };
+		D6000000000000000000A2 /* CronRecentCompletion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6000000000000000000A1 /* CronRecentCompletion.swift */; };
 		D500000000000000000012 /* TaskDetailHeaderCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000011 /* TaskDetailHeaderCard.swift */; };
 		D500000000000000000022 /* TaskRunHistorySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000021 /* TaskRunHistorySection.swift */; };
+		D5000000000000000000A2 /* TaskRecentRunRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5000000000000000000A1 /* TaskRecentRunRowView.swift */; };
 		D500000000000000000032 /* TaskRunOutputSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000031 /* TaskRunOutputSheet.swift */; };
 		3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01011 /* Cron.swift */; };
 		D100000000000000000002 /* ANSIEscapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000000000001 /* ANSIEscapes.swift */; };
@@ -685,8 +687,10 @@
 		A82A2A58F08883E396B94B1C /* SlashAutocompleteRanking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashAutocompleteRanking.swift; sourceTree = "<group>"; };
 		D600000000000000000021 /* TaskConfigurationFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskConfigurationFields.swift; sourceTree = "<group>"; };
 		D600000000000000000001 /* CronRunHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronRunHistory.swift; sourceTree = "<group>"; };
+		D6000000000000000000A1 /* CronRecentCompletion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronRecentCompletion.swift; sourceTree = "<group>"; };
 		D500000000000000000011 /* TaskDetailHeaderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailHeaderCard.swift; sourceTree = "<group>"; };
 		D500000000000000000021 /* TaskRunHistorySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRunHistorySection.swift; sourceTree = "<group>"; };
+		D5000000000000000000A1 /* TaskRecentRunRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRecentRunRowView.swift; sourceTree = "<group>"; };
 		D500000000000000000031 /* TaskRunOutputSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRunOutputSheet.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01011 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
 		D100000000000000000001 /* ANSIEscapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ANSIEscapes.swift; sourceTree = "<group>"; };
@@ -1061,6 +1065,7 @@
 				A02400000000000000000002 /* Goal.swift */,
 				3F91D2A54B9A4F66A2C01011 /* Cron.swift */,
 				D600000000000000000001 /* CronRunHistory.swift */,
+				D6000000000000000000A1 /* CronRecentCompletion.swift */,
 				D100000000000000000001 /* ANSIEscapes.swift */,
 				1A2B3C4D5E6F70000000201 /* Memory.swift */,
 				1A2B3C4D5E6F70000000211 /* Skills.swift */,
@@ -1393,6 +1398,7 @@
 				D500000000000000000031 /* TaskRunOutputSheet.swift */,
 				D600000000000000000021 /* TaskConfigurationFields.swift */,
 				D500000000000000000021 /* TaskRunHistorySection.swift */,
+				D5000000000000000000A1 /* TaskRecentRunRowView.swift */,
 				D500000000000000000011 /* TaskDetailHeaderCard.swift */,
 				C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */,
 				C0369000000000000000008 /* CronJobEditorSheet.swift */,
@@ -1798,9 +1804,11 @@
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
 				A02400000000000000000001 /* Goal.swift in Sources */,
 				D600000000000000000002 /* CronRunHistory.swift in Sources */,
+				D6000000000000000000A2 /* CronRecentCompletion.swift in Sources */,
 				D600000000000000000022 /* TaskConfigurationFields.swift in Sources */,
 				D500000000000000000012 /* TaskDetailHeaderCard.swift in Sources */,
 				D500000000000000000022 /* TaskRunHistorySection.swift in Sources */,
+				D5000000000000000000A2 /* TaskRecentRunRowView.swift in Sources */,
 				D500000000000000000032 /* TaskRunOutputSheet.swift in Sources */,
 				3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */,
 				D100000000000000000002 /* ANSIEscapes.swift in Sources */,

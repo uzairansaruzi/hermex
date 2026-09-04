@@ -248,6 +248,8 @@ final class CronManagementViewModelTests: XCTestCase {
                     #"{"platforms": [{"value": "local", "label": "Local (save output only)"}]}"#,
                     for: request
                 )
+            case "/api/crons/recent":
+                return apiTestJSONResponse(#"{"completions": []}"#, for: request)
             default:
                 XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
                 return apiTestJSONResponse("{}", for: request)
@@ -278,6 +280,8 @@ final class CronManagementViewModelTests: XCTestCase {
                     headerFields: ["Content-Type": "application/json"]
                 )!
                 return (response, Data(#"{"error": "not found"}"#.utf8))
+            case "/api/crons/recent":
+                return apiTestJSONResponse(#"{"completions": []}"#, for: request)
             default:
                 XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
                 return apiTestJSONResponse("{}", for: request)
@@ -290,6 +294,114 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.deliveryOptions, "Endpoint failure must fall back to free-text deliver entry.")
         XCTAssertEqual(viewModel.jobs.map(\.jobId), ["job123"], "Jobs must still load when delivery options fail.")
         XCTAssertNil(viewModel.errorMessage)
+    }
+
+    // MARK: - Recent runs feed
+
+    private static let jobsJSON = #"{"jobs": [{"id": "job-a", "name": "Digest"}, {"id": null, "name": "Backup"}]}"#
+
+    @MainActor
+    func testTasksViewModelLoadsRecentRunsNewestFirstAndMatchesJobs() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/crons":
+                return apiTestJSONResponse(Self.jobsJSON, for: request)
+            case "/api/crons/status":
+                return apiTestJSONResponse(#"{"running": {}}"#, for: request)
+            case "/api/crons/delivery-options":
+                return apiTestJSONResponse(#"{"platforms": []}"#, for: request)
+            case "/api/crons/recent":
+                return apiTestJSONResponse("""
+                {
+                  "completions": [
+                    {"job_id": "job-a", "name": "Renamed", "status": "ok", "completed_at": 100.5},
+                    {"job_id": "job-gone", "name": "Deleted", "status": "error", "completed_at": 300, "message_count": 1e30},
+                    {"job_id": "b-id", "name": "Backup", "status": "ok", "completed_at": "200", "message_count": "4"},
+                    {"job_id": "no-time", "name": "Broken", "status": "ok", "completed_at": "soon"}
+                  ],
+                  "since": 0
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+        await viewModel.recentRunsTask?.value
+
+        XCTAssertEqual(viewModel.recentRuns.map(\.jobId), ["job-gone", "b-id", "job-a"], "Newest first; the entry without a usable time is dropped.")
+        XCTAssertEqual(viewModel.recentRuns.map(\.didFail), [true, false, false])
+        XCTAssertEqual(viewModel.recentRuns.map(\.messageCount), [nil, 4, nil], "Out-of-range and string counts decode without trapping.")
+
+        XCTAssertEqual(viewModel.job(for: viewModel.recentRuns[2])?.name, "Digest", "Id wins over a stale name.")
+        XCTAssertEqual(viewModel.job(for: viewModel.recentRuns[1])?.name, "Backup", "Name is the fallback when the list has no id.")
+        XCTAssertNil(viewModel.job(for: viewModel.recentRuns[0]), "A job missing from the list stays display-only.")
+    }
+
+    @MainActor
+    func testTasksViewModelLoadFinishesWhileRecentRunsAreStillInFlight() async throws {
+        let releaseFeed = DispatchSemaphore(value: 0)
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/crons":
+                return apiTestJSONResponse(Self.jobsJSON, for: request)
+            case "/api/crons/status":
+                return apiTestJSONResponse(#"{"running": {}}"#, for: request)
+            case "/api/crons/delivery-options":
+                return apiTestJSONResponse(#"{"platforms": []}"#, for: request)
+            case "/api/crons/recent":
+                releaseFeed.wait()
+                return apiTestJSONResponse(
+                    #"{"completions": [{"job_id": "job-a", "name": "Digest", "status": "ok", "completed_at": 1}]}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.isLoading, "A pending feed must not hold the list in its loading state.")
+        XCTAssertEqual(viewModel.jobs.map(\.name), ["Digest", "Backup"])
+        XCTAssertTrue(viewModel.recentRuns.isEmpty, "The group stays absent until the feed answers.")
+
+        releaseFeed.signal()
+        await viewModel.recentRunsTask?.value
+
+        XCTAssertEqual(viewModel.recentRuns.map(\.jobId), ["job-a"])
+    }
+
+    @MainActor
+    func testTasksViewModelLoadToleratesRecentRunsFailure() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/crons":
+                return apiTestJSONResponse(Self.jobsJSON, for: request)
+            case "/api/crons/status":
+                return apiTestJSONResponse(#"{"running": {}}"#, for: request)
+            case "/api/crons/delivery-options":
+                return apiTestJSONResponse(#"{"platforms": []}"#, for: request)
+            case "/api/crons/recent":
+                return apiTestJSONResponse(#"{"error": "not found"}"#, for: request, status: 404)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "nil")")
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+        await viewModel.recentRunsTask?.value
+
+        XCTAssertTrue(viewModel.recentRuns.isEmpty, "An older server without the endpoint leaves the group absent.")
+        XCTAssertEqual(viewModel.jobs.count, 2, "The task list is untouched by a feed failure.")
+        XCTAssertNil(viewModel.errorMessage, "No error surfaces for the optional feed.")
     }
 
     @MainActor
