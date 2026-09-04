@@ -189,7 +189,7 @@ struct MessageComposerView: View {
     /// `ComposerSlashTrigger` ends at the space after a command that takes no
     /// sub-argument — so besides the trigger itself, three things close the
     /// panel: a settled `/skills` invocation, a settled goal action, and a
-    /// mid-sentence word no skill matches.
+    /// mid-sentence word no loaded skill matches.
     private var slashQuery: String? {
         guard let query = slashTrigger?.text else { return nil }
 
@@ -208,9 +208,13 @@ struct MessageComposerView: View {
             return nil
         }
 
-        // Mid-sentence the panel's only content is skills, so when none match
-        // the typed word it closes rather than holding an empty box up.
+        // Mid-sentence the panel's only content is skills, so once the catalog
+        // is loaded and none of them match the typed word, close rather than
+        // hold an empty box up. An empty catalog has not loaded yet — keep the
+        // panel open so its load task can fetch the list, and judge the word
+        // against real data when it lands.
         if slashTrigger?.startsDraft == false,
+           !skillSuggestions.isEmpty,
            SlashSkillFormatter.matching(parsed.commandName, in: skillSuggestions).isEmpty {
             return nil
         }
