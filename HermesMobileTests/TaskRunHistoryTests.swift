@@ -128,6 +128,46 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(viewModel.runs.map(\.filename), ["run-1.md", "run-2.md", "run-3.md", "run-4.md"])
     }
 
+    /// A page fetched before a refresh describes a list that no longer exists.
+    /// Splicing it onto the refreshed list would leave the pages between them
+    /// loaded nowhere and unreachable, and push the cursor past both.
+    @MainActor
+    func testAPageInFlightWhenARefreshLandsIsDiscarded() async {
+        let recorder = RequestRecorder()
+        let pageSize = TaskDetailViewModel.historyPageSize
+        let secondPageStarted = expectation(description: "second page request started")
+        let releaseSecondPage = DispatchSemaphore(value: 0)
+
+        let viewModel = makeViewModel { request in
+            recorder.record(request)
+            let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "offset" }?.value.flatMap(Int.init) ?? 0
+
+            // Hold only the first "Load more", so the refresh can overtake it.
+            if recorder.offsets.count == 2 {
+                secondPageStarted.fulfill()
+                releaseSecondPage.wait()
+            }
+
+            let page = offset == pageSize ? "page-2.md" : "page-1.md"
+            return apiTestJSONResponse(Self.historyJSON(total: 200, filenames: [page]), for: request)
+        }
+
+        await viewModel.loadHistory()
+        let loadMore = Task { await viewModel.loadMoreRuns() }
+        await fulfillment(of: [secondPageStarted], timeout: 5)
+
+        // The user pulls to refresh while the page is still in flight.
+        await viewModel.loadHistory()
+        releaseSecondPage.signal()
+        await loadMore.value
+
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["page-1.md"])
+        // The cursor still points at the page after the one on screen.
+        await viewModel.loadMoreRuns()
+        XCTAssertEqual(recorder.offsets.last, pageSize)
+    }
+
     // MARK: - Failure containment
 
     @MainActor

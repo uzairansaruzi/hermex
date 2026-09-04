@@ -44,6 +44,11 @@ final class TaskDetailViewModel {
     /// How far the next page starts. Advances by `historyPageSize`, never by
     /// the number of rows a page returned.
     private var historyOffset = 0
+    /// Bumped by every first-page load, so `runs` and `historyOffset` always
+    /// describe the same list. A page fetched before a refresh belongs to a
+    /// list that no longer exists: splicing it on would leave the pages between
+    /// them loaded nowhere and unreachable.
+    private var historyGeneration = 0
     private var runOutputToken = 0
 
     private let client: APIClient
@@ -71,8 +76,7 @@ final class TaskDetailViewModel {
         async let deliveryOptionsResponse = try? client.cronDeliveryOptions()
         async let historyResult = Self.fetchHistory(client: client, jobID: jobID, offset: 0)
 
-        isLoadingHistory = true
-        historyErrorMessage = nil
+        let generation = beginHistoryReload()
 
         do {
             let response = try await client.cronOutput(jobID: jobID, limit: 5)
@@ -83,8 +87,7 @@ final class TaskDetailViewModel {
         }
 
         deliveryOptions = await deliveryOptionsResponse?.platforms
-        applyFirstHistoryPage(await historyResult)
-        isLoadingHistory = false
+        applyFirstHistoryPage(await historyResult, generation: generation)
     }
 
     /// Loads the first page of run history, replacing what is on screen.
@@ -94,11 +97,21 @@ final class TaskDetailViewModel {
     func loadHistory() async {
         guard let jobID = job.jobId else { return }
 
+        let generation = beginHistoryReload()
+        applyFirstHistoryPage(
+            await Self.fetchHistory(client: client, jobID: jobID, offset: 0),
+            generation: generation
+        )
+    }
+
+    /// Opens a new history generation and returns it. Every first-page load
+    /// goes through here so overlapping reloads cannot be mistaken for one
+    /// another.
+    private func beginHistoryReload() -> Int {
+        historyGeneration += 1
         isLoadingHistory = true
         historyErrorMessage = nil
-        defer { isLoadingHistory = false }
-
-        applyFirstHistoryPage(await Self.fetchHistory(client: client, jobID: jobID, offset: 0))
+        return historyGeneration
     }
 
     /// `true` while the server still holds runs past the ones on screen.
@@ -129,11 +142,19 @@ final class TaskDetailViewModel {
         guard let jobID = job.jobId, canLoadMoreRuns, !isLoadingMoreRuns else { return }
 
         let offset = historyOffset
+        let generation = historyGeneration
         isLoadingMoreRuns = true
         historyErrorMessage = nil
         defer { isLoadingMoreRuns = false }
 
-        switch await Self.fetchHistory(client: client, jobID: jobID, offset: offset) {
+        let result = await Self.fetchHistory(client: client, jobID: jobID, offset: offset)
+
+        // A refresh landed while this page was in flight. The page describes a
+        // list that no longer exists, so it is dropped rather than spliced onto
+        // the new one.
+        guard generation == historyGeneration else { return }
+
+        switch result {
         case let .success(response):
             // The requested window is consumed whether or not every file in it
             // could be read, so the cursor moves by `limit`.
@@ -191,7 +212,17 @@ final class TaskDetailViewModel {
     /// Applies a first page, or its failure. A 404 retires the section for this
     /// server; any other error is transient and reports beside the runs already
     /// on screen.
-    private func applyFirstHistoryPage(_ result: Result<CronRunHistoryResponse, Error>) {
+    ///
+    /// A page from a superseded generation is dropped, so a slow reload cannot
+    /// replace — or, on a stale 404, erase — a list that a newer one has since
+    /// loaded.
+    private func applyFirstHistoryPage(
+        _ result: Result<CronRunHistoryResponse, Error>,
+        generation: Int
+    ) {
+        guard generation == historyGeneration else { return }
+        isLoadingHistory = false
+
         switch result {
         case let .success(response):
             runs = response.runs
