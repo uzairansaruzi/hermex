@@ -39,7 +39,11 @@ struct TasksView: View {
                     .disabled(viewModel.isLoading)
                 }
             }
-            .sheet(isPresented: $isPresentingCreateTask) {
+            .sheet(isPresented: $isPresentingCreateTask, onDismiss: {
+                // A failed create leaves its message behind; without this the
+                // list's own alert would fire the moment the sheet closes.
+                viewModel.clearActionError()
+            }) {
                 CronJobEditorSheet(
                     title: String(localized: "New Task"),
                     server: server,
@@ -58,7 +62,7 @@ struct TasksView: View {
             }
             .alert("Delete Task?", isPresented: deletionConfirmationBinding, presenting: jobPendingDeletion) { job in
                 Button("Delete", role: .destructive) {
-                    Task { await viewModel.delete(job) }
+                    Task { await performAction { await viewModel.delete(job) } }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { job in
