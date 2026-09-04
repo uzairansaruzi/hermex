@@ -23,20 +23,22 @@ struct SlashCommandAutocompleteView: View {
     let onSelectSubArg: (String) -> Void
     let onDismiss: () -> Void
 
-    /// `nil` until the first ranking pass lands, so the panel stays blank for a
-    /// frame instead of flashing an empty state it is about to replace.
-    @State private var results: SlashAutocompleteResults?
+    /// The last completed background ranking pass, or `nil` before the first one lands.
+    @State private var cachedResults: SlashAutocompleteResults?
 
     private var parsed: ParsedSlashQuery {
         ParsedSlashQuery(query: query)
     }
 
     var body: some View {
+        let parsed = parsed
+        let results = currentResults
+
         VStack(spacing: 0) {
             if parsed.isSubArgMode, let command = parsed.command {
-                subArgList(for: command)
+                subArgList(for: command, results: results)
             } else {
-                commandList
+                commandList(results)
             }
         }
         .adaptiveGlass(
@@ -46,10 +48,26 @@ struct SlashCommandAutocompleteView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: panelHeight)
+        .frame(height: panelHeight(for: results, parsed: parsed))
         .task(id: rankingInput) {
-            results = await rankingInput.rankedResults()
+            let ranked = await rankingInput.rankedResults()
+            // A background pass does not inherit this task's cancellation, so
+            // one started for an older query can still finish last. Drop it
+            // rather than let it overwrite newer rows.
+            guard !Task.isCancelled else { return }
+            cachedResults = ranked
         }
+    }
+
+    /// The results to draw. A pass ranked for a different trigger is never read
+    /// back, and on the first frame there is no pass yet; both cases rank inline
+    /// so the panel opens at its real height instead of popping out of an empty
+    /// box. Every keystroke after that stays on the same trigger and reads what
+    /// the background pass left here.
+    private var currentResults: SlashAutocompleteResults {
+        let input = rankingInput
+        if let cachedResults, cachedResults.mode == input.mode { return cachedResults }
+        return input.results()
     }
 
     private var rankingInput: SlashAutocompleteRanking {
@@ -75,74 +93,59 @@ struct SlashCommandAutocompleteView: View {
         )
     }
 
-    private var panelHeight: CGFloat {
-        let rowCount = visibleRowCount
+    private func panelHeight(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> CGFloat {
+        let rowCount = visibleRowCount(for: results, parsed: parsed)
         guard rowCount > 0 else { return emptyPanelHeight }
         return min(maxPanelHeight, CGFloat(rowCount) * rowHeight)
     }
 
-    private var visibleRowCount: Int {
+    private func visibleRowCount(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> Int {
         if parsed.isSubArgMode, let command = parsed.command {
             if command.subArgs == .skills {
-                return skillSubArgResults?.count ?? 0
+                return results.skillSubArgs.count
             }
             return filteredSubArgs(for: command).count
         }
 
-        return commandResults?.commandRowCount ?? 0
-    }
-
-    /// Ranking lands a beat after the query changes, so results are only read
-    /// back in the mode that produced them. A mismatch draws nothing rather than
-    /// the wrong list or the wrong empty state.
-    private var commandResults: SlashAutocompleteResults? {
-        guard let results, results.mode == .commands else { return nil }
-        return results
-    }
-
-    private var skillSubArgResults: [SkillSlashSuggestion]? {
-        guard let results, results.mode == .skillSubArgs else { return nil }
-        return results.skillSubArgs
+        return results.commandRowCount
     }
 
     @ViewBuilder
-    private var commandList: some View {
-        if let results = commandResults {
-            if results.hasNoCommandRows {
-                Text("No commands or skills match \"\(parsed.commandName)\"")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 20)
-                    .frame(maxWidth: .infinity)
-            } else {
-                let commands = results.commands
-                let skills = results.skills
-                let agentCommands = results.agentCommands
+    private func commandList(_ results: SlashAutocompleteResults) -> some View {
+        if results.hasNoCommandRows {
+            Text("No commands or skills match \"\(parsed.commandName)\"")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+        } else {
+            let commands = results.commands
+            let skills = results.skills
+            let agentCommands = results.agentCommands
 
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(commands.enumerated()), id: \.element.id) { index, command in
-                            commandRow(command)
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(commands.enumerated()), id: \.element.id) { index, command in
+                        commandRow(command)
 
-                            if index < commands.count - 1 || !skills.isEmpty || !agentCommands.isEmpty {
-                                rowDivider
-                            }
+                        if index < commands.count - 1 || !skills.isEmpty || !agentCommands.isEmpty {
+                            rowDivider
                         }
+                    }
 
-                        ForEach(Array(skills.enumerated()), id: \.element.id) { index, skill in
-                            skillRow(skill)
+                    ForEach(Array(skills.enumerated()), id: \.element.id) { index, skill in
+                        skillRow(skill)
 
-                            if index < skills.count - 1 || !agentCommands.isEmpty {
-                                rowDivider
-                            }
+                        if index < skills.count - 1 || !agentCommands.isEmpty {
+                            rowDivider
                         }
+                    }
 
-                        ForEach(Array(agentCommands.enumerated()), id: \.element.id) { index, command in
-                            agentCommandRow(command)
+                    ForEach(Array(agentCommands.enumerated()), id: \.element.id) { index, command in
+                        agentCommandRow(command)
 
-                            if index < agentCommands.count - 1 {
-                                rowDivider
-                            }
+                        if index < agentCommands.count - 1 {
+                            rowDivider
                         }
                     }
                 }
@@ -283,32 +286,30 @@ struct SlashCommandAutocompleteView: View {
     }
 
     @ViewBuilder
-    private func subArgList(for command: SlashCommand) -> some View {
+    private func subArgList(for command: SlashCommand, results: SlashAutocompleteResults) -> some View {
         if command.subArgs == .skills {
-            skillSubArgList
+            skillSubArgList(results.skillSubArgs)
         } else {
             standardSubArgList(for: command)
         }
     }
 
     @ViewBuilder
-    private var skillSubArgList: some View {
-        if let filtered = skillSubArgResults {
-            if filtered.isEmpty {
-                skillSubArgEmptyText
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 20)
-                    .frame(maxWidth: .infinity)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(filtered.enumerated()), id: \.element.id) { index, skill in
-                            skillSubArgRow(skill)
+    private func skillSubArgList(_ filtered: [SkillSlashSuggestion]) -> some View {
+        if filtered.isEmpty {
+            skillSubArgEmptyText
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+        } else {
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, skill in
+                        skillSubArgRow(skill)
 
-                            if index < filtered.count - 1 {
-                                rowDivider
-                            }
+                        if index < filtered.count - 1 {
+                            rowDivider
                         }
                     }
                 }

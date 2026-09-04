@@ -65,28 +65,30 @@ enum SlashCommandRanker {
         guard !needle.isEmpty else { return items }
         guard limit > 0 else { return [] }
 
-        var ranked: [RankedItem<Item>] = []
-        ranked.reserveCapacity(min(limit, items.count))
+        var matches: [RankedItem<Item>] = []
+        matches.reserveCapacity(items.count)
 
         for item in items {
             let itemFields = fields(item)
             guard let score = score(itemFields, normalizedQuery: needle) else { continue }
 
-            let entry = RankedItem(
-                item: item,
-                score: score,
-                label: normalized(itemFields.label ?? itemFields.name),
-                name: normalized(itemFields.name)
+            matches.append(
+                RankedItem(
+                    item: item,
+                    score: score,
+                    label: normalized(itemFields.label ?? itemFields.name),
+                    name: normalized(itemFields.name)
+                )
             )
-
-            if ranked.count == limit, !entry.sorts(before: ranked[limit - 1]) { continue }
-
-            let insertionIndex = ranked.firstIndex { entry.sorts(before: $0) } ?? ranked.count
-            ranked.insert(entry, at: insertionIndex)
-            if ranked.count > limit { ranked.removeLast() }
         }
 
-        return ranked.map(\.item)
+        // `sorted` is unstable, which is fine: two entries only compare equal
+        // when their score, label, and name all match, and then their order is
+        // not something the user can tell apart.
+        return matches
+            .sorted { $0.sorts(before: $1) }
+            .prefix(limit)
+            .map(\.item)
     }
 
     // MARK: - Scoring
