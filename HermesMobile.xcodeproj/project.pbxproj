@@ -354,6 +354,7 @@
 		8B71DA2AAC521382F54A841C /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */; };
 		8F63EE9A9B344C4FA579D5A8 /* SlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0485E1E1FFB64A24BB729CD4 /* SlashCommandTests.swift */; };
 		941A67322EB54169A55D7A64 /* SlashCommandCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB43F55AB4F4262963E6A6E /* SlashCommandCatalog.swift */; };
+		75D7C575386EE8C6D442A967 /* SlashCommandRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19468599B2A57CAFAF8A3357 /* SlashCommandRanker.swift */; };
 		A710739233F64F4FA4C2B700 /* ComposerVoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A710739233F64F4FA4C2B710 /* ComposerVoiceInputController.swift */; };
 		A710739233F64F4FA4C2B701 /* ComposerVoiceDraftComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A710739233F64F4FA4C2B711 /* ComposerVoiceDraftComposerTests.swift */; };
 		B53F3F24A5C24D9E8E54A810 /* SlashCommandExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1CE5F12B9E4D4D9E5A01C1 /* SlashCommandExecutor.swift */; };
@@ -670,6 +671,7 @@
 		2BE8F2B38F094C4C9EB18300 /* SkillsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsViewModelTests.swift; sourceTree = "<group>"; };
 		22AB000000000000000000F3 /* WorkspaceRegistryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceRegistryViewModelTests.swift; sourceTree = "<group>"; };
 		1AB43F55AB4F4262963E6A6E /* SlashCommandCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandCatalog.swift; sourceTree = "<group>"; };
+		19468599B2A57CAFAF8A3357 /* SlashCommandRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandRanker.swift; sourceTree = "<group>"; };
 		D600000000000000000021 /* TaskConfigurationFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskConfigurationFields.swift; sourceTree = "<group>"; };
 		D600000000000000000001 /* CronRunHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronRunHistory.swift; sourceTree = "<group>"; };
 		D500000000000000000011 /* TaskDetailHeaderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailHeaderCard.swift; sourceTree = "<group>"; };
@@ -1200,6 +1202,7 @@
 				1A2B3C4D5E6F70000000121 /* ContextWindowIndicatorView.swift */,
 				5DA59130ED4141049177576C /* SlashCommand.swift */,
 				1AB43F55AB4F4262963E6A6E /* SlashCommandCatalog.swift */,
+				19468599B2A57CAFAF8A3357 /* SlashCommandRanker.swift */,
 				0D1CE5F12B9E4D4D9E5A01C1 /* SlashCommandExecutor.swift */,
 				FC2A37872AC842629FBDDFA4 /* SlashCommandAutocompleteView.swift */,
 			);
@@ -1791,6 +1794,7 @@
 				1A2B3C4D5E6F70000000214 /* SkillsViewModel.swift in Sources */,
 				36CD9EF0B0734E5F8C28BB92 /* SlashCommand.swift in Sources */,
 				941A67322EB54169A55D7A64 /* SlashCommandCatalog.swift in Sources */,
+				75D7C575386EE8C6D442A967 /* SlashCommandRanker.swift in Sources */,
 				B53F3F24A5C24D9E8E54A810 /* SlashCommandExecutor.swift in Sources */,
 				8618A9261B8047CEA6084798 /* SlashCommandAutocompleteView.swift in Sources */,
 				A710739233F64F4FA4C2B700 /* ComposerVoiceInputController.swift in Sources */,

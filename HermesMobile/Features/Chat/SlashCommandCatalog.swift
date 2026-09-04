@@ -171,15 +171,17 @@ enum SlashCommandCatalog {
         )
     ]
 
-    static func matching(_ query: String) -> [SlashCommand] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return allCommands }
-        let lower = trimmed.lowercased()
-        return allCommands.filter {
-            $0.name.lowercased().hasPrefix(lower) ||
-            $0.description.lowercased().contains(lower)
+    /// The commands worth showing for `query`, best first. An empty query keeps
+    /// the curated order above.
+    static func matching(_ query: String, limit: Int = SlashCommandRanker.resultLimit) -> [SlashCommand] {
+        SlashCommandRanker.rank(allCommands, matching: query, limit: limit) { command in
+            SlashRankableFields(name: command.name, description: command.description)
         }
     }
+
+    /// Every built-in command name, lowercased. Used to keep an agent command
+    /// that shadows a built-in out of the popover.
+    static let builtinNames: Set<String> = Set(allCommands.map { $0.name.lowercased() })
 
     static func command(named name: String) -> SlashCommand? {
         allCommands.first { $0.name.lowercased() == name.lowercased() }

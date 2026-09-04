@@ -47,7 +47,7 @@ struct ToggleSkillResponse: Decodable, Equatable {
     let enabled: Bool?
 }
 
-struct SkillSlashSuggestion: Identifiable, Equatable {
+struct SkillSlashSuggestion: Identifiable, Equatable, Sendable {
     let name: String
     let category: String?
     let description: String?
@@ -169,15 +169,20 @@ enum SlashSkillFormatter {
         return lines.joined(separator: "\n")
     }
 
-    static func matching(_ query: String, in suggestions: [SkillSlashSuggestion]) -> [SkillSlashSuggestion] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return suggestions }
-
-        return suggestions.filter { suggestion in
-            suggestion.slashName.localizedCaseInsensitiveContains(trimmed) ||
-            suggestion.name.localizedCaseInsensitiveContains(trimmed) ||
-            (suggestion.category?.localizedCaseInsensitiveContains(trimmed) ?? false) ||
-            (suggestion.description?.localizedCaseInsensitiveContains(trimmed) ?? false)
+    /// The skills worth showing for `query`, best first. Pass a larger `limit`
+    /// when the result is a written list rather than a popover.
+    static func matching(
+        _ query: String,
+        in suggestions: [SkillSlashSuggestion],
+        limit: Int = SlashCommandRanker.resultLimit
+    ) -> [SkillSlashSuggestion] {
+        SlashCommandRanker.rank(suggestions, matching: query, limit: limit) { suggestion in
+            SlashRankableFields(
+                name: suggestion.slashName,
+                label: suggestion.name,
+                shortDescription: suggestion.category,
+                description: suggestion.description
+            )
         }
     }
 
@@ -188,7 +193,8 @@ enum SlashSkillFormatter {
             return String(localized: "No skills are configured on the server.")
         }
 
-        let matches = matching(trimmed, in: suggestions)
+        // A chat message lists everything that matched; only the popover is bounded.
+        let matches = matching(trimmed, in: suggestions, limit: .max)
         guard !matches.isEmpty else {
             return String(localized: "No skills match `\(trimmed)`.")
         }
