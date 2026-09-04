@@ -248,61 +248,6 @@ struct TasksView: View {
     }
 }
 
-struct CronJobMetadataRow: View {
-    let title: String
-    let value: String
-    /// A dimmer second line under the value, for the raw form of something the
-    /// value states in English (a cron expression under its sentence).
-    let detail: String?
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    init(title: String, value: String, detail: String? = nil) {
-        self.title = title
-        self.value = value
-        self.detail = detail
-    }
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 2) {
-                    titleText
-                    valueText
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    titleText
-                        .frame(width: 64, alignment: .leading)
-                    valueText
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var titleText: some View {
-        Text(title)
-            .foregroundStyle(.secondary)
-    }
-
-    private var valueText: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(value)
-                .foregroundStyle(.primary)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-
-            if let detail, detail != value {
-                Text(detail)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
 struct StatusBadge: View {
     let text: String
     let color: Color

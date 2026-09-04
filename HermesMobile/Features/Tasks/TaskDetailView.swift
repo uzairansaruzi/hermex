@@ -14,6 +14,7 @@ struct TaskDetailView: View {
     /// tapped; the view model only fetches its text.
     @State private var selectedRun: CronRunHistoryItem?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(
         job: CronJob,
@@ -159,48 +160,66 @@ struct TaskDetailView: View {
         }
     }
 
-    /// Everything the list row deliberately stopped showing. A field the server
-    /// did not send is absent, not rendered as "Not available".
+    /// Everything the list row deliberately stopped showing.
+    ///
+    /// Laid out as a grid so the label column takes the width of its widest
+    /// label. A fixed column has to guess, and guesses low: "Notifications"
+    /// wrapped onto three lines against the 64pt the old rows used.
     private var configurationCard: some View {
-        let job = viewModel.job
+        let fields = TaskConfigurationField.fields(for: viewModel.job)
 
         return SectionCard(title: String(localized: "Configuration")) {
-            VStack(alignment: .leading, spacing: 8) {
-                CronJobMetadataRow(
-                    title: String(localized: "Schedule"),
-                    value: job.scheduleDescription?.sentence ?? job.scheduleText ?? String(localized: "Not available"),
-                    detail: job.editableScheduleText
-                )
-
-                if let deliver = job.deliver, !deliver.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Deliver"), value: deliver)
-                }
-
-                if let model = job.model, !model.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Model"), value: model)
-                }
-
-                if let provider = job.provider, !provider.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
-                }
-
-                if let profile = job.profile, !profile.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Profile"), value: profile)
-                }
-
-                if let skills = job.skills, !skills.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Skills"), value: skills.joined(separator: ", "))
-                }
-
-                if let toastNotifications = job.toastNotifications {
-                    CronJobMetadataRow(
-                        title: String(localized: "Toast Notifications"),
-                        value: toastNotifications ? String(localized: "On") : String(localized: "Off")
-                    )
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    // At accessibility sizes two columns leave no room for
+                    // either, so the label sits above its value instead.
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(fields) { field in
+                            VStack(alignment: .leading, spacing: 1) {
+                                configurationLabel(field)
+                                configurationValue(field)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                } else {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                        ForEach(fields) { field in
+                            GridRow {
+                                configurationLabel(field)
+                                    .gridColumnAlignment(.leading)
+                                configurationValue(field)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
                 }
             }
             .font(.footnote)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func configurationLabel(_ field: TaskConfigurationField) -> some View {
+        Text(field.title)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func configurationValue(_ field: TaskConfigurationField) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(field.value)
+                .foregroundStyle(.primary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+
+            if let detail = field.detail {
+                Text(detail)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ToolbarContentBuilder
