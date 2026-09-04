@@ -107,6 +107,33 @@ enum ComposerChipTokenizer {
         return tokens
     }
 
+    /// `draft` with every chip reference replaced by the chip's label, which is
+    /// what VoiceOver should read: the editor's attachments carry the same
+    /// label, so both composer states are heard the same way.
+    static func spokenText(in draft: String, tokens: [ComposerChipToken]) -> String {
+        guard !tokens.isEmpty else { return draft }
+
+        let text = draft as NSString
+        let spoken = NSMutableString()
+        var cursor = 0
+
+        for token in tokens where token.range.location >= cursor {
+            if token.range.location > cursor {
+                spoken.append(
+                    text.substring(with: NSRange(location: cursor, length: token.range.location - cursor))
+                )
+            }
+            spoken.append(token.label)
+            cursor = token.range.upperBound
+        }
+
+        if cursor < text.length {
+            spoken.append(text.substring(from: cursor))
+        }
+
+        return spoken as String
+    }
+
     /// Whether `draft` holds anything that could become a chip once the skill
     /// list arrives. The composer uses it to warm that list for a restored
     /// draft instead of fetching skills every time a chat opens.

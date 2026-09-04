@@ -99,6 +99,36 @@ final class ComposerChipTokenizerTests: XCTestCase {
     }
 }
 
+extension ComposerChipTokenizerTests {
+    // MARK: - Spoken form (the collapsed composer's VoiceOver label)
+
+    func testSpokenTextReadsChipsByTheirLabel() {
+        let draft = "Hello /ask-matt test"
+        let tokens = ComposerChipTokenizer.tokens(in: draft, catalog: catalog)
+
+        XCTAssertEqual(tokens.count, 1)
+        XCTAssertEqual(ComposerChipTokenizer.spokenText(in: draft, tokens: tokens), "Hello ask-matt test")
+    }
+
+    func testSpokenTextLeavesADraftWithoutChipsAlone() {
+        XCTAssertEqual(
+            ComposerChipTokenizer.spokenText(in: "check the /tmp folder", tokens: []),
+            "check the /tmp folder"
+        )
+    }
+
+    func testSpokenTextKeepsTextOnBothSidesOfEveryChip() {
+        let draft = "/ask-matt then /babysit-pr now"
+        let tokens = ComposerChipTokenizer.tokens(in: draft, catalog: catalog)
+
+        XCTAssertEqual(tokens.count, 2)
+        XCTAssertEqual(
+            ComposerChipTokenizer.spokenText(in: draft, tokens: tokens),
+            "ask-matt then babysit-pr now"
+        )
+    }
+}
+
 final class ComposerChipDocumentTests: XCTestCase {
     /// `run [/ask-matt] now`: 4 characters, one chip, 4 characters.
     private func document() -> NSAttributedString {

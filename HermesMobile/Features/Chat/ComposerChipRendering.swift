@@ -58,7 +58,37 @@ enum ComposerChipRenderer {
     /// the rest of the app calls a skill.
     private static let iconName = "hammer"
 
+    /// Baked chips, keyed by everything that changes one. The editor redraws
+    /// only when its chips or its style move, but the collapsed composer draws
+    /// from `body`, which runs again on every parent update — including each
+    /// token of a live stream. Baking there uncached would burn a render pass
+    /// per frame for a picture that never changed.
+    private static let cache = NSCache<NSString, UIImage>()
+
     static func image(
+        label: String,
+        metrics: ComposerChipMetrics,
+        traits: UITraitCollection,
+        isRightToLeft: Bool
+    ) -> UIImage {
+        let key = [
+            label,
+            String(describing: metrics.labelFont.pointSize),
+            String(describing: metrics.height),
+            String(traits.userInterfaceStyle.rawValue),
+            isRightToLeft ? "rtl" : "ltr"
+        ].joined(separator: "|") as NSString
+
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+
+        let image = draw(label: label, metrics: metrics, traits: traits, isRightToLeft: isRightToLeft)
+        cache.setObject(image, forKey: key)
+        return image
+    }
+
+    private static func draw(
         label: String,
         metrics: ComposerChipMetrics,
         traits: UITraitCollection,

@@ -55,10 +55,11 @@ struct ComposerTextInputView: View {
             .accessibilityHidden(isCollapsed)
 
             if isCollapsed {
-                Text(text.isEmpty ? placeholder : text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(text.isEmpty ? Color(.placeholderText) : Color(.label))
+                ComposerCollapsedDraft(
+                    draft: text,
+                    chipSkills: chipSkills,
+                    placeholder: placeholder
+                )
                     .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
@@ -86,6 +87,92 @@ struct ComposerTextInputView: View {
             inputHeight = newHeight
             measuredHeight = newHeight
         }
+    }
+}
+
+/// The draft as the collapsed pill draws it: one truncating line, with the same
+/// chips the editor bakes.
+///
+/// The pill is a stand-in rather than the editor itself — the real text view is
+/// still mounted but at `opacity(0)` — so it has to draw the references a second
+/// time. Both go through `ComposerChipRenderer`, so the collapsed and expanded
+/// composer cannot drift apart, and the renderer caches the picture so drawing
+/// it from `body` costs nothing on a re-render.
+private struct ComposerCollapsedDraft: View {
+    let draft: String
+    let chipSkills: [SkillSlashSuggestion]
+    let placeholder: String
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        line
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .foregroundStyle(draft.isEmpty ? Color(.placeholderText) : Color(.label))
+            .accessibilityLabel(Text(spokenDraft))
+    }
+
+    private var tokens: [ComposerChipToken] {
+        // The cheap scan first: most drafts hold no reference at all, and this
+        // way they never pay for building the catalog.
+        guard !draft.isEmpty, ComposerChipTokenizer.mayContainReference(draft) else { return [] }
+        return ComposerChipTokenizer.tokens(in: draft, catalog: ComposerChipCatalog(skills: chipSkills))
+    }
+
+    private var line: Text {
+        guard !draft.isEmpty else { return Text(placeholder) }
+
+        let tokens = tokens
+        guard !tokens.isEmpty else { return Text(draft) }
+
+        let metrics = ComposerChipMetrics(editorFont: editorFont)
+        let traits = UITraitCollection { traits in
+            traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
+        }
+        let isRightToLeft = layoutDirection == .rightToLeft
+        let text = draft as NSString
+
+        var line = Text(verbatim: "")
+        var cursor = 0
+
+        for token in tokens where token.range.location >= cursor {
+            if token.range.location > cursor {
+                let plain = text.substring(with: NSRange(location: cursor, length: token.range.location - cursor))
+                line = line + Text(verbatim: plain)
+            }
+
+            let chip = ComposerChipRenderer.image(
+                label: token.label,
+                metrics: metrics,
+                traits: traits,
+                isRightToLeft: isRightToLeft
+            )
+            line = line + Text(Image(uiImage: chip))
+            cursor = token.range.upperBound
+        }
+
+        if cursor < text.length {
+            line = line + Text(verbatim: text.substring(from: cursor))
+        }
+
+        return line
+    }
+
+    /// VoiceOver reads a chip by its label, the way the editor's attachment does,
+    /// rather than announcing an image.
+    private var spokenDraft: String {
+        draft.isEmpty ? placeholder : ComposerChipTokenizer.spokenText(in: draft, tokens: tokens)
+    }
+
+    /// Reading `dynamicTypeSize` is what makes SwiftUI re-evaluate — and so
+    /// re-measure the chips — when the user changes their text size; the size
+    /// itself comes from the same body font the editor uses.
+    private var editorFont: UIFont {
+        _ = dynamicTypeSize
+        return .preferredFont(forTextStyle: .body)
     }
 }
 
