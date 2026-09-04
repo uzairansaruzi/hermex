@@ -118,6 +118,10 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.textContentType = .none
+        // The editor draws its own attachments and reads them back as draft
+        // text. Rich-text editing would let UIKit insert one it cannot read,
+        // which would reach the server as an object-replacement character.
+        textView.allowsEditingTextAttributes = false
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
         textView.onKeyboardSend = onKeyboardSend
         textView.pasteConfiguration = UIPasteConfiguration(
@@ -399,13 +403,16 @@ private struct ComposerTextView: UIViewRepresentable {
         // MARK: - Drops
 
         /// Claims a drop only when the composer can route every item through the
-        /// attachment pipeline, so UIKit never inserts an attachment the draft
-        /// cannot represent. Anything mixed or unrecognised is left to UIKit.
+        /// attachment pipeline, so UIKit never inserts something the draft
+        /// cannot represent. Anything else is left to UIKit, which drops it in
+        /// as plain text.
         func textDroppableView(
             _ textDroppableView: UIView & UITextDroppable,
             proposalForDrop drop: UITextDropRequest
         ) -> UITextDropProposal {
-            guard claimedDrop(in: drop) != nil else { return drop.suggestedProposal }
+            guard ComposerDropRoute(providers: drop.dropSession.items.map(\.itemProvider)) != nil else {
+                return drop.suggestedProposal
+            }
 
             let proposal = UITextDropProposal(operation: .copy)
             proposal.dropAction = .insert
@@ -417,34 +424,16 @@ private struct ComposerTextView: UIViewRepresentable {
             _ textDroppableView: UIView & UITextDroppable,
             willPerformDrop drop: UITextDropRequest
         ) {
-            switch claimedDrop(in: drop) {
-            case let .files(providers):
-                onDropFileProviders(providers)
-            case let .images(providers):
-                onDropImageProviders(providers)
-            case nil:
-                break
+            guard let route = ComposerDropRoute(providers: drop.dropSession.items.map(\.itemProvider)) else {
+                return
             }
-        }
 
-        private enum ClaimedDrop {
-            case files([NSItemProvider])
-            case images([NSItemProvider])
-        }
-
-        /// File URLs win over images, the same order `paste` uses: a dropped
-        /// PNG file is a file the user picked, not a screenshot on the clipboard.
-        private func claimedDrop(in drop: UITextDropRequest) -> ClaimedDrop? {
-            let providers = drop.dropSession.items.map(\.itemProvider)
-            guard !providers.isEmpty else { return nil }
-
-            if providers.allSatisfy({ $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) {
-                return .files(providers)
+            if !route.files.isEmpty {
+                onDropFileProviders(route.files)
             }
-            if providers.allSatisfy({ $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) {
-                return .images(providers)
+            if !route.images.isEmpty {
+                onDropImageProviders(route.images)
             }
-            return nil
         }
 
         func reportHeight(for textView: UITextView) {
@@ -454,6 +443,40 @@ private struct ComposerTextView: UIViewRepresentable {
             let height = ceil(textView.sizeThatFits(fittingSize).height)
             onHeightChange(min(160, max(22, height)))
         }
+    }
+}
+
+/// How the composer routes a dropped set of items into the attachment pipeline.
+///
+/// All or nothing: an item the pipeline cannot take means UIKit keeps the whole
+/// drop, because a half-handled drop would leave the user with some of what they
+/// dragged and no way to tell which half went missing.
+struct ComposerDropRoute {
+    let files: [NSItemProvider]
+    let images: [NSItemProvider]
+
+    /// `nil` when any provider is neither a file nor an image.
+    ///
+    /// A provider that is both counts as a file, the same order `paste` uses: a
+    /// dropped PNG is a file the user picked, not a screenshot on the clipboard.
+    init?(providers: [NSItemProvider]) {
+        guard !providers.isEmpty else { return nil }
+
+        var files: [NSItemProvider] = []
+        var images: [NSItemProvider] = []
+
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                files.append(provider)
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                images.append(provider)
+            } else {
+                return nil
+            }
+        }
+
+        self.files = files
+        self.images = images
     }
 }
 
