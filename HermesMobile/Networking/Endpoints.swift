@@ -20,6 +20,9 @@ enum Endpoint {
     /// fork lineage. `branchSession` means "fork a child from here" (#25).
     case duplicateSession
     case compressSession
+    /// Truncates the session to empty on the server, resetting the title.
+    /// Destructive and irreversible: always confirm before calling it (#389).
+    case clearSession
     case undoSession
     case retrySession
     case truncateSession
@@ -173,6 +176,8 @@ enum Endpoint {
             return "/api/session/duplicate"
         case .compressSession:
             return "/api/session/compress"
+        case .clearSession:
+            return "/api/session/clear"
         case .undoSession:
             return "/api/session/undo"
         case .retrySession:

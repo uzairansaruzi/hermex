@@ -131,6 +131,17 @@ extension APIClient {
         )
     }
 
+    /// Truncates the session to empty on the server and resets its title to
+    /// Untitled. Destructive and irreversible — only call it behind a
+    /// confirmation. Answers the same compact session shape as rename (#389).
+    func clearSession(id: String) async throws -> SessionMutationResponse {
+        try await send(
+            endpoint: .clearSession,
+            method: "POST",
+            body: SessionIDRequest(sessionId: id)
+        )
+    }
+
     func undoSession(id: String) async throws -> SessionUndoResponse {
         try await send(
             endpoint: .undoSession,

@@ -319,6 +319,10 @@ struct ChatView: View {
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     @State private var pendingProfileSelection: ProfileSummary?
     @State private var showProfileNewSessionConfirmation = false
+    /// Set while the destructive `/clear` confirmation is on screen. Holds the
+    /// submitted draft so a confirmed clear consumes it and a cancel leaves it
+    /// in the composer (#389).
+    @State private var pendingClearConfirmation: PendingClearConfirmation?
     @State private var goalDraft = ""
     @State private var showsGoalSheet = false
     @State private var activeGitSheet: ActiveGitSheet?
@@ -597,7 +601,39 @@ struct ChatView: View {
         "\(server.absoluteString)|\(transcriptMediaSessionID ?? "local:\(session.id)")"
     }
 
-    var body: some View {
+    /// Extracted from `body` so the view's single chained expression stays
+    /// inside the compiler's type-checking budget.
+    @ViewBuilder
+    private var approvalOverlay: some View {
+        if let approvalPrompt = viewModel.approvalPrompt {
+            ApprovalRequestOverlay(
+                prompt: approvalPrompt,
+                isResponding: viewModel.isRespondingToApproval,
+                errorMessage: viewModel.approvalErrorMessage,
+                onChoice: { choice in
+                    Task {
+                        let didRespond = await viewModel.respondToApproval(choice)
+                        if didRespond {
+                            ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
+                        }
+                    }
+                },
+                onSkipAll: {
+                    Task {
+                        let didSkip = await viewModel.skipApprovalsForCurrentSession()
+                        if didSkip {
+                            ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
+                        }
+                    }
+                }
+            )
+            .zIndex(10)
+        }
+    }
+
+    /// The chat scaffold. Split from `body` so the confirmation-alert chain
+    /// below stays inside the compiler's type-checking budget.
+    private var chatContent: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
                 if viewModel.isViewingCachedData {
@@ -621,30 +657,7 @@ struct ChatView: View {
 
             messageComposer
 
-            if let approvalPrompt = viewModel.approvalPrompt {
-                ApprovalRequestOverlay(
-                    prompt: approvalPrompt,
-                    isResponding: viewModel.isRespondingToApproval,
-                    errorMessage: viewModel.approvalErrorMessage,
-                    onChoice: { choice in
-                        Task {
-                            let didRespond = await viewModel.respondToApproval(choice)
-                            if didRespond {
-                                ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
-                            }
-                        }
-                    },
-                    onSkipAll: {
-                        Task {
-                            let didSkip = await viewModel.skipApprovalsForCurrentSession()
-                            if didSkip {
-                                ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
-                            }
-                        }
-                    }
-                )
-                .zIndex(10)
-            }
+            approvalOverlay
         }
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
@@ -792,6 +805,10 @@ struct ChatView: View {
                     }
                 )
             }
+    }
+
+    var body: some View {
+        chatContent
             .alert(
                 "Discard Later Messages?",
                 isPresented: $showEditDiscardConfirmation
@@ -838,6 +855,13 @@ struct ChatView: View {
             } message: {
                 Text(profileSwitchWarningMessage)
             }
+            .modifier(
+                ClearConversationAlertModifier(
+                    pending: $pendingClearConfirmation,
+                    isHapticsEnabled: isHapticsEnabled,
+                    onConfirm: confirmClearConversation
+                )
+            )
             .alert(
                 "Message Action Failed",
                 isPresented: Binding(
@@ -1672,6 +1696,24 @@ struct ChatView: View {
         }
     }
 
+    private func confirmClearConversation(_ pending: PendingClearConfirmation) {
+        Task { await clearConversation(pending) }
+    }
+
+    private func clearConversation(_ pending: PendingClearConfirmation) async {
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: modelContext)
+        handleSlashExecutionResult(
+            result,
+            parsedCommand: SlashCommandCatalog.command(named: "clear"),
+            submittedDraft: pending.draft,
+            submittedDraftRevision: pending.draftRevision
+        )
+
+        if let lastError = viewModel.lastError {
+            onAPIError(lastError)
+        }
+    }
+
     private func sendDraftMessage() async {
         let submittedDraft = draftMessage
         let submittedDraftRevision = draftRevision
@@ -1679,7 +1721,20 @@ struct ChatView: View {
 
         if submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
             let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
-            let result = await SlashCommandExecutor.execute(text: submittedDraft, viewModel: viewModel)
+            // `/clear` wipes the conversation on the server, so it always asks
+            // first. The draft stays in the composer until the user confirms.
+            if parsedCommand?.handler == .clientSide(.clear) {
+                pendingClearConfirmation = PendingClearConfirmation(
+                    draft: submittedDraft,
+                    draftRevision: submittedDraftRevision
+                )
+                return
+            }
+            let result = await SlashCommandExecutor.execute(
+                text: submittedDraft,
+                viewModel: viewModel,
+                modelContext: modelContext
+            )
             handleSlashExecutionResult(
                 result,
                 parsedCommand: parsedCommand,
@@ -2896,6 +2951,47 @@ enum ChatToolbarSubtitleResolver {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// The draft that raised the destructive `/clear` confirmation, so confirming
+/// consumes exactly the text that was sent and cancelling leaves it alone.
+private struct PendingClearConfirmation: Equatable {
+    let draft: String
+    let draftRevision: Int
+}
+
+/// The `/clear` confirmation, in its own modifier so `ChatView.body`'s alert
+/// chain stays inside the compiler's type-checking budget.
+private struct ClearConversationAlertModifier: ViewModifier {
+    @Binding var pending: PendingClearConfirmation?
+    let isHapticsEnabled: Bool
+    let onConfirm: (PendingClearConfirmation) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "Clear Conversation?",
+            isPresented: Binding(
+                get: { pending != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pending = nil
+                    }
+                }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                pending = nil
+            }
+            Button("Clear", role: .destructive) {
+                guard let confirmed = pending else { return }
+                ChatHaptics.destructiveConfirmationAccepted(isEnabled: isHapticsEnabled)
+                pending = nil
+                onConfirm(confirmed)
+            }
+        } message: {
+            Text("This deletes every message in this conversation on the server. It cannot be undone.")
+        }
     }
 }
 

@@ -71,7 +71,6 @@ sub-paths of a group. Do not reorder casually.
 | `/api/rollback/` | roadmap | P3 | write | Git Info & Rollback — checkpoint list/diff/restore |
 | `/api/crons/history` | roadmap | P2 | read | Cron History / Recent Runs |
 | `/api/session/usage` | roadmap | P2 | read | Session Token Usage — mostly covered by the context ring |
-| `/api/session/clear` | roadmap | P2 | write | Session Clear — destructive; needs confirmation |
 | `/api/session/import` | roadmap | P3 | — | Session Import (JSON / CLI) |
 | `/api/session/duplicate` | roadmap | P4 | — | Session Duplicate — branch-based duplicate already covers the need |
 | `/api/session/toolsets` | roadmap | P4 | write | Advanced Session Maintenance |

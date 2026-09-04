@@ -8096,6 +8096,213 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testClearSlashCommandEmptiesTranscriptTitleAndCacheAfterServerClear() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        try CacheStore.cacheMessages(
+            [
+                ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user"),
+                ChatMessage(role: "assistant", content: "Cached answer", timestamp: 1_770_000_002, messageId: "cached-assistant")
+            ],
+            serverURL: serverURL,
+            sessionID: "session-abc",
+            in: context
+        )
+
+        var requestPaths: [String] = []
+        let viewModel = try makeViewModel { request in
+            requestPaths.append(request.url?.path ?? "")
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/clear":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Untitled"
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertFalse(viewModel.messages.isEmpty)
+
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: context)
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(requestPaths, ["/api/session", "/api/session/clear"])
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(viewModel.displayTitle, "Untitled")
+        XCTAssertTrue(try CacheStore.cachedMessages(serverURL: serverURL, sessionID: "session-abc", in: context).isEmpty)
+    }
+
+    @MainActor
+    func testClearSlashCommandLeavesTranscriptIntactOnServerError() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/clear":
+                return apiTestJSONResponse("""
+                {
+                  "error": "Session not found"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+
+        XCTAssertEqual(result, .unsupported(friendlyMessage: "Session not found"))
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Old question"])
+        XCTAssertEqual(viewModel.displayTitle, "Planning")
+    }
+
+    @MainActor
+    func testClearSlashCommandLeavesTranscriptIntactWhenRequestThrows() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/clear":
+                throw URLError(.timedOut)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+
+        guard case .unsupported = result else {
+            return XCTFail("Expected a thrown request to surface as .unsupported, got \(result).")
+        }
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Old question"])
+        XCTAssertNotNil(viewModel.lastError)
+    }
+
+    @MainActor
+    func testClearSlashCommandRefusesWhileViewingCachedData() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user")],
+            serverURL: serverURL,
+            sessionID: "session-abc",
+            in: context
+        )
+
+        let viewModel = try makeViewModel { request in
+            guard request.url?.path == "/api/session" else {
+                XCTFail("Clear should not call the server while viewing cached data.")
+                throw URLError(.badURL)
+            }
+            throw URLError(.timedOut)
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertTrue(viewModel.isViewingCachedData)
+
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: context)
+
+        XCTAssertEqual(result, .unsupported(friendlyMessage: "Reconnect to the server to clear the conversation."))
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question"])
+    }
+
+    @MainActor
+    func testClearSlashCommandRefusesForCLISessions() async throws {
+        let viewModel = try makeViewModel(
+            sessionSummary: SessionSummary(sessionId: "session-abc", title: "Planning", isCliSession: true)
+        ) { request in
+            XCTFail("Clear should not call the server for a CLI session: \(request.url?.path ?? "nil")")
+            throw URLError(.badURL)
+        }
+
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+
+        XCTAssertEqual(
+            result,
+            .unsupported(friendlyMessage: "Clearing the conversation is available for WebUI sessions only.")
+        )
+    }
+
+    @MainActor
+    func testClearSlashCommandIsBlockedWhileStreaming() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/session/clear":
+                XCTFail("Clear should not call the server while streaming.")
+                throw URLError(.badURL)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+
+        let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "clear")))
+
+        XCTAssertEqual(
+            result,
+            .unsupported(friendlyMessage: "Wait for the current response to finish before clearing the conversation.")
+        )
+    }
+
+    @MainActor
     func testUndoSlashCommandCallsServerThenReloadsMessages() async throws {
         var requestPaths: [String] = []
         let viewModel = try makeViewModel { request in
@@ -8277,38 +8484,6 @@ final class ChatViewModelSendTests: XCTestCase {
         )
         XCTAssertEqual(startCount, 1)
         XCTAssertNil(viewModel.activeStreamID)
-    }
-
-    @MainActor
-    func testClearSlashCommandClearsLocalTranscriptWithoutServerRequest() async throws {
-        var requestCount = 0
-        let viewModel = try makeViewModel { request in
-            requestCount += 1
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {"role": "user", "content": "Question", "timestamp": 1, "message_id": "u-1"},
-                      {"role": "assistant", "content": "Answer", "timestamp": 2, "message_id": "a-2"}
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Clear should not call \(request.url?.path ?? "unknown path").")
-                throw URLError(.badURL)
-            }
-        }
-
-        await viewModel.loadMessages()
-        let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "clear")))
-
-        XCTAssertEqual(result, .executed(message: nil))
-        XCTAssertTrue(viewModel.messages.isEmpty)
-        XCTAssertEqual(requestCount, 1)
     }
 
     @MainActor

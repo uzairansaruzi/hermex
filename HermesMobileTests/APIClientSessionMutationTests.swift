@@ -146,6 +146,53 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(asciiSummary.compressedTokenEstimate, 320)
     }
 
+    func testClearSessionBuildsExpectedBodyAndDecodesResponse() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/session/clear")
+
+            let body = try XCTUnwrap(apiTestBodyData(from: request))
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+            XCTAssertEqual(json?["session_id"] as? String, "abc123")
+            XCTAssertNil(json?["sessionId"])
+
+            return apiTestJSONResponse("""
+            {
+              "ok": true,
+              "session": {
+                "session_id": "abc123",
+                "title": "Untitled"
+              }
+            }
+            """, for: request)
+        }
+
+        let response = try await client.clearSession(id: "abc123")
+
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.session?.title, "Untitled")
+    }
+
+    /// Upstream answers a view-only subagent with 400 and a not-found session
+    /// with 404, so those surface as a thrown `APIError.http`, not a decoded
+    /// `error` field.
+    func testClearSessionThrowsOnUpstreamRejection() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse("""
+            {
+              "error": "Subagent sessions are view-only and cannot be modified from WebUI"
+            }
+            """, for: request, status: 400)
+        }
+
+        do {
+            _ = try await client.clearSession(id: "abc123")
+            XCTFail("Expected the 400 to throw.")
+        } catch let APIError.http(statusCode, body) {
+            XCTAssertEqual(statusCode, 400)
+            XCTAssertEqual(body?.contains("view-only"), true)
+        }
+    }
+
     func testUndoSessionBuildsExpectedBodyAndDecodesResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/undo")

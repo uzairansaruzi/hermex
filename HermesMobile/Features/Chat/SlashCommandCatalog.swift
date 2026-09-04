@@ -10,7 +10,7 @@ enum SlashCommandCatalog {
         ),
         SlashCommand(
             name: "clear",
-            description: String(localized: "Clear the current conversation"),
+            description: String(localized: "Clear this conversation on the server"),
             noEcho: true,
             handler: .clientSide(.clear)
         ),

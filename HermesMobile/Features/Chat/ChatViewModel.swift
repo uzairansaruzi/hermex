@@ -2578,13 +2578,18 @@ final class ChatViewModel {
         sendErrorMessage = nil
     }
 
-    func executeSlashCommand(_ command: SlashCommand, args: String = "") async -> SlashCommandExecutionResult {
+    /// `modelContext` is only needed by commands that rewrite the offline cache
+    /// (`/clear`); every other command ignores it.
+    func executeSlashCommand(
+        _ command: SlashCommand,
+        args: String = "",
+        modelContext: ModelContext? = nil
+    ) async -> SlashCommandExecutionResult {
         switch command.handler {
         case .clientSide(let action):
             switch action {
             case .clear:
-                clearTranscript()
-                return .executed(message: nil)
+                return await clearConversationFromSlashCommand(modelContext: modelContext)
             case .stop:
                 await cancelActiveStream()
                 return .executed(message: nil)
@@ -3293,6 +3298,56 @@ final class ChatViewModel {
             }
 
             return .executed(message: String(localized: "Context compressed.\n\n\(details)"))
+        } catch {
+            lastError = error
+            return .unsupported(friendlyMessage: error.localizedDescription)
+        }
+    }
+
+    /// Clears the conversation on the server, then locally. Destructive and
+    /// irreversible, so `ChatView` confirms before calling this; the guards
+    /// below mirror `/undo` and refuse before any network call. Pass the
+    /// `ModelContext` so the offline cache is emptied too — otherwise a cold
+    /// open would repaint the history this just deleted.
+    func clearConversationFromSlashCommand(modelContext: ModelContext?) async -> SlashCommandExecutionResult {
+        guard !isViewingCachedData else {
+            return .unsupported(friendlyMessage: String(localized: "Reconnect to the server to clear the conversation."))
+        }
+
+        guard !isCLISession else {
+            return .unsupported(friendlyMessage: String(localized: "Clearing the conversation is available for WebUI sessions only."))
+        }
+
+        guard activeStreamID == nil else {
+            return .unsupported(friendlyMessage: String(localized: "Wait for the current response to finish before clearing the conversation."))
+        }
+
+        guard let sessionID else {
+            return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
+        }
+
+        lastError = nil
+        sendErrorMessage = nil
+
+        do {
+            let response = try await client.clearSession(id: sessionID)
+            if let error = response.error {
+                return .unsupported(friendlyMessage: error)
+            }
+
+            clearTranscript()
+            displayTitle = Self.displayTitle(from: response.session?.title)
+            liveActivityManager.update(.sessionTitle(displayTitle))
+
+            if let modelContext {
+                do {
+                    try CacheStore.cacheMessages([], serverURL: server, sessionID: sessionID, in: modelContext)
+                } catch {
+                    cacheErrorMessage = error.localizedDescription
+                }
+            }
+
+            return .executed(message: nil)
         } catch {
             lastError = error
             return .unsupported(friendlyMessage: error.localizedDescription)
@@ -5253,7 +5308,7 @@ final class ChatViewModel {
     Available mobile commands:
 
     `/help` - Show this command list.
-    `/clear` - Clear the local transcript.
+    `/clear` - Clear this conversation on the server. Asks first.
     `/stop` - Stop the current response.
     `/new` - Open a fresh session.
     `/model <id>` - Switch this session's model.
