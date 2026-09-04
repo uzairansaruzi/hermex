@@ -16,6 +16,9 @@ struct ComposerTextInputView: View {
     let isCollapsed: Bool
     let isKeyboardSendEnabled: Bool
     let verticalPadding: CGFloat
+    /// The skills whose references the editor draws as chips. Empty until the
+    /// server's skill list has loaded, which leaves the draft as plain text.
+    let chipSkills: [SkillSlashSuggestion]
     let onKeyboardSend: () -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
     let onPasteFileURLs: ([URL]) -> Void
@@ -34,6 +37,7 @@ struct ComposerTextInputView: View {
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
                 isKeyboardSendEnabled: isKeyboardSendEnabled,
+                chipSkills: chipSkills,
                 onKeyboardSend: onKeyboardSend,
                 onHeightChange: updateMeasuredHeight,
                 onPasteFileProviders: onPasteFileProviders,
@@ -91,6 +95,7 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     let isDisabled: Bool
     let isKeyboardSendEnabled: Bool
+    let chipSkills: [SkillSlashSuggestion]
     let onKeyboardSend: () -> Void
     let onHeightChange: (CGFloat) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
@@ -102,9 +107,10 @@ private struct ComposerTextView: UIViewRepresentable {
         Coordinator(text: $text, selection: $selection, isFocused: $isFocused, onHeightChange: onHeightChange)
     }
 
-    func makeUIView(context: Context) -> PastingTextView {
-        let textView = PastingTextView()
+    func makeUIView(context: Context) -> ComposerChipTextView {
+        let textView = ComposerChipTextView()
         textView.delegate = context.coordinator
+        textView.textDropDelegate = context.coordinator
         textView.backgroundColor = .clear
         textView.font = .preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
@@ -129,9 +135,8 @@ private struct ComposerTextView: UIViewRepresentable {
         return textView
     }
 
-    func updateUIView(_ textView: PastingTextView, context: Context) {
+    func updateUIView(_ textView: ComposerChipTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
-        context.coordinator.applyBoundText(text, generation: selection.publishGeneration, to: textView)
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
         // layoutDirection environment does not propagate into a wrapped UITextView,
         // so set the base direction directly so the cursor/empty-field rests on the
@@ -149,17 +154,26 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
         textView.onPasteImages = onPasteImages
+        textView.chipSkills = chipSkills
+        context.coordinator.onDropFileProviders = onPasteFileProviders
+        context.coordinator.onDropImageProviders = onPasteImageProviders
+        context.coordinator.applyBoundText(text, generation: selection.publishGeneration, to: textView)
         context.coordinator.syncSelection(selection, to: textView, expecting: text)
+        // Chips are redrawn last so they settle around the caret the composer
+        // just asked for rather than the one the edit happened to leave behind.
+        context.coordinator.applyingBoundValue { textView.refreshChipsIfNeeded() }
         context.coordinator.syncFocus(for: textView, shouldFocus: isFocused, isDisabled: isDisabled)
         context.coordinator.reportHeight(for: textView)
     }
 
     @MainActor
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UITextDropDelegate {
         @Binding var text: String
         @Binding var selection: ComposerSelection
         @Binding var isFocused: Bool
         var onHeightChange: (CGFloat) -> Void
+        var onDropFileProviders: ([NSItemProvider]) -> Void = { _ in }
+        var onDropImageProviders: ([NSItemProvider]) -> Void = { _ in }
         private var pendingFocusTarget: Bool?
         /// Set while we push a bound value into the editor, so the delegate
         /// callbacks it provokes do not write the bindings back mid-update.
@@ -192,20 +206,21 @@ private struct ComposerTextView: UIViewRepresentable {
         /// change, so it is ignored; a deliberate clear or replacement still
         /// applies. `generation` is the publish count the bound value was built
         /// from, which is what tells those two apart when the value is empty.
-        func applyBoundText(_ text: String, generation: Int, to textView: UITextView) {
-            guard textView.text != text else { return }
+        func applyBoundText(_ text: String, generation: Int, to textView: ComposerChipTextView) {
+            let current = textView.sourceText
+            guard current != text else { return }
 
             if let marked = textView.markedTextRange {
                 guard ComposerMarkedText.isDeliberateReplacement(
                     text,
-                    editorText: textView.text,
+                    editorText: current,
                     marked: markedRange(of: textView, marked: marked),
                     isCurrent: generation >= publishGeneration
                 ) else {
                     return
                 }
 
-                applyingBoundValue { textView.text = text }
+                applyingBoundValue { textView.replaceDocument(with: text) }
                 return
             }
 
@@ -214,18 +229,19 @@ private struct ComposerTextView: UIViewRepresentable {
                 // filling or emptying one stays a plain assignment; everything
                 // in between goes through the input system for its undo stack.
                 if textView.isEditable,
-                   !textView.text.isEmpty,
+                   !current.isEmpty,
                    !text.isEmpty,
-                   let edit = ComposerTextEdit.between(current: textView.text, target: text),
-                   let range = textView.textRange(from: edit.range) {
+                   let edit = ComposerTextEdit.between(current: current, target: text),
+                   let range = textView.displayTextRange(forSourceRange: edit.range) {
                     textView.replace(range, withText: edit.replacement)
                 }
 
                 // `replace` goes through the input system, which can normalize
-                // what it inserts; fall back rather than leave the editor out
-                // of sync.
-                if textView.text != text {
-                    textView.text = text
+                // what it inserts, and a range that straddles a chip cannot be
+                // edited in place at all; rebuild rather than leave the editor
+                // out of sync.
+                if textView.sourceText != text {
+                    textView.replaceDocument(with: text)
                 }
             }
         }
@@ -236,17 +252,21 @@ private struct ComposerTextView: UIViewRepresentable {
         /// revision, so a later update replaying the same value cannot yank the
         /// caret away from where the user has since put it. Every other pass
         /// leaves the editor's own caret alone and reports it back.
-        func syncSelection(_ selection: ComposerSelection, to textView: UITextView, expecting expectedText: String) {
-            guard textView.markedTextRange == nil, textView.text == expectedText else { return }
+        func syncSelection(
+            _ selection: ComposerSelection,
+            to textView: ComposerChipTextView,
+            expecting expectedText: String
+        ) {
+            guard textView.markedTextRange == nil, textView.sourceText == expectedText else { return }
 
             guard selection.revision == appliedSelectionRevision else {
                 appliedSelectionRevision = selection.revision
 
-                let clamped = Self.clamp(selection.range, toLengthOf: textView.text)
+                let clamped = Self.clamp(selection.range, toLengthOf: expectedText)
                 // Assigning `selectedRange` resets predictive text, so never
                 // assign a range the editor already holds.
-                if textView.selectedRange != clamped {
-                    applyingBoundValue { textView.selectedRange = clamped }
+                if textView.sourceSelection != clamped {
+                    applyingBoundValue { textView.sourceSelection = clamped }
                 }
                 return
             }
@@ -256,13 +276,13 @@ private struct ComposerTextView: UIViewRepresentable {
 
         /// Reports the caret the editor settled on. Deferred, because a binding
         /// cannot be written during a view update.
-        private func publishSelection(of textView: UITextView) {
-            let range = textView.selectedRange
+        private func publishSelection(of textView: ComposerChipTextView) {
+            let range = textView.sourceSelection
             guard selection.range != range else { return }
 
             DispatchQueue.main.async { [weak self, weak textView] in
                 guard let self, let textView,
-                      textView.selectedRange == range,
+                      textView.sourceSelection == range,
                       self.selection.range != range
                 else {
                     return
@@ -284,10 +304,11 @@ private struct ComposerTextView: UIViewRepresentable {
             )
         }
 
-        private func applyingBoundValue(_ body: () -> Void) {
+        func applyingBoundValue(_ body: () -> Void) {
+            let wasApplying = isApplyingBoundValue
             isApplyingBoundValue = true
             body()
-            isApplyingBoundValue = false
+            isApplyingBoundValue = wasApplying
         }
 
         func syncFocus(for textView: UITextView, shouldFocus: Bool, isDisabled: Bool) {
@@ -337,15 +358,15 @@ private struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            guard !isApplyingBoundValue else { return }
+            guard !isApplyingBoundValue, let textView = textView as? ComposerChipTextView else { return }
 
             // Text and caret travel together: publishing them in one update is
             // what keeps the two consistent when the composer maps the caret
             // back onto the draft to find the slash trigger. The generation
             // rides along so a later update can be dated against this one.
             publishGeneration &+= 1
-            text = textView.text
-            selection.range = textView.selectedRange
+            text = textView.sourceText
+            selection.range = textView.sourceSelection
             selection.publishGeneration = publishGeneration
             reportHeight(for: textView)
         }
@@ -355,9 +376,75 @@ private struct ComposerTextView: UIViewRepresentable {
         /// a live IME composition is left alone entirely.
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard !isApplyingBoundValue, textView.markedTextRange == nil else { return }
-            guard textView.text == text, selection.range != textView.selectedRange else { return }
+            guard let textView = textView as? ComposerChipTextView else { return }
+            textView.restoreTypingAttributes()
 
-            selection.range = textView.selectedRange
+            let range = textView.sourceSelection
+            guard textView.sourceText == text, selection.range != range else { return }
+
+            selection.range = range
+        }
+
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText text: String
+        ) -> Bool {
+            // Typing right after a chip would otherwise inherit the attachment's
+            // attributes and swallow the new characters into the image.
+            (textView as? ComposerChipTextView)?.restoreTypingAttributes()
+            return true
+        }
+
+        // MARK: - Drops
+
+        /// Claims a drop only when the composer can route every item through the
+        /// attachment pipeline, so UIKit never inserts an attachment the draft
+        /// cannot represent. Anything mixed or unrecognised is left to UIKit.
+        func textDroppableView(
+            _ textDroppableView: UIView & UITextDroppable,
+            proposalForDrop drop: UITextDropRequest
+        ) -> UITextDropProposal {
+            guard claimedDrop(in: drop) != nil else { return drop.suggestedProposal }
+
+            let proposal = UITextDropProposal(operation: .copy)
+            proposal.dropAction = .insert
+            proposal.dropPerformer = .delegate
+            return proposal
+        }
+
+        func textDroppableView(
+            _ textDroppableView: UIView & UITextDroppable,
+            willPerformDrop drop: UITextDropRequest
+        ) {
+            switch claimedDrop(in: drop) {
+            case let .files(providers):
+                onDropFileProviders(providers)
+            case let .images(providers):
+                onDropImageProviders(providers)
+            case nil:
+                break
+            }
+        }
+
+        private enum ClaimedDrop {
+            case files([NSItemProvider])
+            case images([NSItemProvider])
+        }
+
+        /// File URLs win over images, the same order `paste` uses: a dropped
+        /// PNG file is a file the user picked, not a screenshot on the clipboard.
+        private func claimedDrop(in drop: UITextDropRequest) -> ClaimedDrop? {
+            let providers = drop.dropSession.items.map(\.itemProvider)
+            guard !providers.isEmpty else { return nil }
+
+            if providers.allSatisfy({ $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) {
+                return .files(providers)
+            }
+            if providers.allSatisfy({ $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) {
+                return .images(providers)
+            }
+            return nil
         }
 
         func reportHeight(for textView: UITextView) {
@@ -366,125 +453,6 @@ private struct ComposerTextView: UIViewRepresentable {
             let fittingSize = CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
             let height = ceil(textView.sizeThatFits(fittingSize).height)
             onHeightChange(min(160, max(22, height)))
-        }
-    }
-
-    final class PastingTextView: UITextView {
-        var isKeyboardSendEnabled = false
-        var onKeyboardSend: () -> Void = {}
-        var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
-        var onPasteFileURLs: ([URL]) -> Void = { _ in }
-        var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
-        var onPasteImages: ([UIImage]) -> Void = { _ in }
-
-        func canPasteItemProviders(_ itemProviders: [NSItemProvider]) -> Bool {
-            itemProviders.contains {
-                $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-                    || $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
-                    || $0.hasItemConformingToTypeIdentifier(UTType.text.identifier)
-            }
-        }
-
-        func pasteItemProviders(_ itemProviders: [NSItemProvider]) {
-            let fileProviders = itemProviders.filter {
-                $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-            }
-
-            if fileProviders.isEmpty {
-                let imageProviders = itemProviders.filter {
-                    $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
-                }
-
-                if imageProviders.isEmpty {
-                    paste(nil)
-                } else {
-                    onPasteImageProviders(imageProviders)
-                }
-                return
-            }
-
-            onPasteFileProviders(fileProviders)
-        }
-
-        override var keyCommands: [UIKeyCommand]? {
-            let sendCommand = UIKeyCommand(
-                title: ComposerKeyboardCommand.title,
-                action: #selector(sendMessageFromKeyboard),
-                input: ComposerKeyboardCommand.input,
-                modifierFlags: ComposerKeyboardCommand.modifierFlags
-            )
-            return (super.keyCommands ?? []) + [sendCommand]
-        }
-
-        override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-            if action == #selector(sendMessageFromKeyboard) {
-                return isKeyboardSendEnabled
-            }
-
-            if action == #selector(paste(_:)), hasPasteboardContent {
-                return true
-            }
-
-            return super.canPerformAction(action, withSender: sender)
-        }
-
-        @objc private func sendMessageFromKeyboard() {
-            guard isKeyboardSendEnabled else { return }
-            onKeyboardSend()
-        }
-
-        override func paste(_ sender: Any?) {
-            let fileProviders = pasteboardFileProviders
-
-            if !fileProviders.isEmpty {
-                onPasteFileProviders(fileProviders)
-                return
-            }
-
-            let fileURLs = pasteboardFileURLs
-            if !fileURLs.isEmpty {
-                onPasteFileURLs(fileURLs)
-                return
-            }
-
-            let imageProviders = pasteboardImageProviders
-            if !imageProviders.isEmpty {
-                onPasteImageProviders(imageProviders)
-                return
-            }
-
-            let images = UIPasteboard.general.images ?? []
-            if !images.isEmpty {
-                onPasteImages(images)
-                return
-            }
-
-            super.paste(sender)
-        }
-
-        private var hasPasteboardContent: Bool {
-            let pasteboard = UIPasteboard.general
-            return pasteboard.hasStrings
-                || !pasteboardFileProviders.isEmpty
-                || !pasteboardFileURLs.isEmpty
-                || !pasteboardImageProviders.isEmpty
-                || !(pasteboard.images?.isEmpty ?? true)
-        }
-
-        private var pasteboardFileProviders: [NSItemProvider] {
-            UIPasteboard.general.itemProviders.filter {
-                $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-            }
-        }
-
-        private var pasteboardFileURLs: [URL] {
-            UIPasteboard.general.urls?.filter(\.isFileURL) ?? []
-        }
-
-        private var pasteboardImageProviders: [NSItemProvider] {
-            UIPasteboard.general.itemProviders.filter {
-                $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
-            }
         }
     }
 }
