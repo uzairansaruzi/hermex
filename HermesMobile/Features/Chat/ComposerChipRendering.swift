@@ -76,6 +76,7 @@ enum ComposerChipRenderer {
             String(describing: metrics.labelFont.pointSize),
             String(describing: metrics.height),
             String(traits.userInterfaceStyle.rawValue),
+            String(traits.accessibilityContrast.rawValue),
             isRightToLeft ? "rtl" : "ltr"
         ].joined(separator: "|") as NSString
 

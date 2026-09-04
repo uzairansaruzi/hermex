@@ -20,7 +20,11 @@ final class ComposerChipTextView: UITextView {
     }
 
     private var chipCatalog = ComposerChipCatalog.empty
-    private var renderedTokens: [ComposerChipToken] = []
+    /// The chips currently on screen. The collapsed pill reads this rather than
+    /// re-deriving it, because `preservingTrailing` makes the set depend on what
+    /// was drawn before — a trailing chip whose space was deleted stays a chip,
+    /// and nothing but this editor knows that.
+    private(set) var renderedTokens: [ComposerChipToken] = []
     private var renderedStyle: ChipRenderStyle?
 
     /// What the chips were drawn against. A chip is a baked image, so a change
@@ -29,6 +33,7 @@ final class ComposerChipTextView: UITextView {
     private struct ChipRenderStyle: Equatable {
         let fontPointSize: CGFloat
         let userInterfaceStyle: UIUserInterfaceStyle
+        let accessibilityContrast: UIAccessibilityContrast
         let isRightToLeft: Bool
     }
 
@@ -36,7 +41,7 @@ final class ComposerChipTextView: UITextView {
         super.init(frame: frame, textContainer: textContainer)
 
         registerForTraitChanges(
-            [UITraitUserInterfaceStyle.self, UITraitPreferredContentSizeCategory.self]
+            [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
         ) { (view: ComposerChipTextView, _) in
             // Deferred: `adjustsFontForContentSizeCategory` updates `font` from
             // the same trait change, and the chips have to be sized against the
@@ -129,6 +134,7 @@ final class ComposerChipTextView: UITextView {
         ChipRenderStyle(
             fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
+            accessibilityContrast: traitCollection.accessibilityContrast,
             isRightToLeft: isRightToLeft
         )
     }

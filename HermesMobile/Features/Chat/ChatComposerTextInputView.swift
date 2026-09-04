@@ -9,6 +9,11 @@ struct ComposerTextInputView: View {
     @Binding var inputHeight: CGFloat
     @Binding var measuredHeight: CGFloat
 
+    /// The chips the editor has drawn. The collapsed pill draws this same set
+    /// rather than deriving its own, because a trailing chip whose space was
+    /// deleted stays a chip only in the editor's history.
+    @State private var renderedChips: [ComposerChipToken] = []
+
     let isDisabled: Bool
     /// Pill mode: a single truncated line stands in for the editor and a tap
     /// focuses it. The text view stays in the hierarchy (invisible) so focus and
@@ -38,6 +43,7 @@ struct ComposerTextInputView: View {
                 isDisabled: isDisabled,
                 isKeyboardSendEnabled: isKeyboardSendEnabled,
                 chipSkills: chipSkills,
+                renderedChips: $renderedChips,
                 onKeyboardSend: onKeyboardSend,
                 onHeightChange: updateMeasuredHeight,
                 onPasteFileProviders: onPasteFileProviders,
@@ -57,7 +63,7 @@ struct ComposerTextInputView: View {
             if isCollapsed {
                 ComposerCollapsedDraft(
                     draft: text,
-                    chipSkills: chipSkills,
+                    chips: renderedChips,
                     placeholder: placeholder
                 )
                     .padding(.horizontal, 16)
@@ -100,7 +106,7 @@ struct ComposerTextInputView: View {
 /// it from `body` costs nothing on a re-render.
 private struct ComposerCollapsedDraft: View {
     let draft: String
-    let chipSkills: [SkillSlashSuggestion]
+    let chips: [ComposerChipToken]
     let placeholder: String
 
     @Environment(\.colorScheme) private var colorScheme
@@ -115,11 +121,17 @@ private struct ComposerCollapsedDraft: View {
             .accessibilityLabel(Text(spokenDraft))
     }
 
+    /// The chips still inside this draft. The editor reports them a beat after
+    /// it draws, so a set that no longer fits the text the pill was handed is
+    /// dropped rather than drawn in the wrong place.
     private var tokens: [ComposerChipToken] {
-        // The cheap scan first: most drafts hold no reference at all, and this
-        // way they never pay for building the catalog.
-        guard !draft.isEmpty, ComposerChipTokenizer.mayContainReference(draft) else { return [] }
-        return ComposerChipTokenizer.tokens(in: draft, catalog: ComposerChipCatalog(skills: chipSkills))
+        let text = draft as NSString
+        guard chips.allSatisfy({
+            $0.range.upperBound <= text.length && text.substring(with: $0.range) == $0.source
+        }) else {
+            return []
+        }
+        return chips
     }
 
     private var line: Text {
@@ -127,6 +139,7 @@ private struct ComposerCollapsedDraft: View {
 
         let tokens = tokens
         guard !tokens.isEmpty else { return Text(draft) }
+
 
         let metrics = ComposerChipMetrics(editorFont: editorFont)
         let traits = UITraitCollection { traits in
@@ -183,6 +196,7 @@ private struct ComposerTextView: UIViewRepresentable {
     let isDisabled: Bool
     let isKeyboardSendEnabled: Bool
     let chipSkills: [SkillSlashSuggestion]
+    @Binding var renderedChips: [ComposerChipToken]
     let onKeyboardSend: () -> Void
     let onHeightChange: (CGFloat) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
@@ -191,7 +205,13 @@ private struct ComposerTextView: UIViewRepresentable {
     let onPasteImages: ([UIImage]) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, selection: $selection, isFocused: $isFocused, onHeightChange: onHeightChange)
+        Coordinator(
+            text: $text,
+            selection: $selection,
+            isFocused: $isFocused,
+            renderedChips: $renderedChips,
+            onHeightChange: onHeightChange
+        )
     }
 
     func makeUIView(context: Context) -> ComposerChipTextView {
@@ -253,6 +273,7 @@ private struct ComposerTextView: UIViewRepresentable {
         // Chips are redrawn last so they settle around the caret the composer
         // just asked for rather than the one the edit happened to leave behind.
         context.coordinator.applyingBoundValue { textView.refreshChipsIfNeeded() }
+        context.coordinator.publishRenderedChips(of: textView)
         context.coordinator.syncFocus(for: textView, shouldFocus: isFocused, isDisabled: isDisabled)
         context.coordinator.reportHeight(for: textView)
     }
@@ -262,6 +283,7 @@ private struct ComposerTextView: UIViewRepresentable {
         @Binding var text: String
         @Binding var selection: ComposerSelection
         @Binding var isFocused: Bool
+        @Binding var renderedChips: [ComposerChipToken]
         var onHeightChange: (CGFloat) -> Void
         var onDropFileProviders: ([NSItemProvider]) -> Void = { _ in }
         var onDropImageProviders: ([NSItemProvider]) -> Void = { _ in }
@@ -278,12 +300,32 @@ private struct ComposerTextView: UIViewRepresentable {
             text: Binding<String>,
             selection: Binding<ComposerSelection>,
             isFocused: Binding<Bool>,
+            renderedChips: Binding<[ComposerChipToken]>,
             onHeightChange: @escaping (CGFloat) -> Void
         ) {
             _text = text
             _selection = selection
             _isFocused = isFocused
+            _renderedChips = renderedChips
             self.onHeightChange = onHeightChange
+        }
+
+        /// Reports the chips the editor settled on, so the collapsed pill draws
+        /// exactly what the expanded editor drew. Deferred, because a binding
+        /// cannot be written during a view update.
+        func publishRenderedChips(of textView: ComposerChipTextView) {
+            let chips = textView.renderedTokens
+            guard renderedChips != chips else { return }
+
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView,
+                      textView.renderedTokens == chips,
+                      self.renderedChips != chips
+                else {
+                    return
+                }
+                self.renderedChips = chips
+            }
         }
 
         /// Pushes a parent-side draft change into the editor as an *edit* rather
