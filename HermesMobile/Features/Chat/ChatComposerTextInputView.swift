@@ -128,7 +128,19 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: PastingTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
-        if textView.text != text {
+        var markedNSRange: NSRange?
+        if let markedRange = textView.markedTextRange {
+            let start = textView.offset(from: textView.beginningOfDocument, to: markedRange.start)
+            let end = textView.offset(from: textView.beginningOfDocument, to: markedRange.end)
+            if start >= 0, start <= end {
+                markedNSRange = NSRange(location: start, length: end - start)
+            }
+        }
+        if ComposerTextSynchronizationPolicy.shouldApplyBoundText(
+            viewText: textView.text,
+            boundText: text,
+            markedRange: markedNSRange
+        ) {
             textView.text = text
         }
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
@@ -346,6 +358,30 @@ private struct ComposerTextView: UIViewRepresentable {
                 $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
             }
         }
+    }
+}
+
+/// Keeps external draft updates flowing without committing an active IME marked range.
+enum ComposerTextSynchronizationPolicy {
+    static func shouldApplyBoundText(
+        viewText: String,
+        boundText: String,
+        markedRange: NSRange?
+    ) -> Bool {
+        var shouldApply = viewText != boundText
+        guard let markedRange, !boundText.isEmpty else { return shouldApply }
+
+        let nsViewText = viewText as NSString
+        guard markedRange.location <= nsViewText.length,
+              markedRange.length <= nsViewText.length - markedRange.location else {
+            return shouldApply
+        }
+
+        let committedText = nsViewText.replacingCharacters(in: markedRange, with: "")
+        if committedText == boundText {
+            shouldApply = false
+        }
+        return shouldApply
     }
 }
 
