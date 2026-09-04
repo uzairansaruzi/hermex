@@ -350,6 +350,9 @@ struct MessageComposerView: View {
                     }
             }
         )
+        .task(id: draftMayReferenceSkill) {
+            await loadSkillSuggestionsForChipsIfNeeded()
+        }
         .task(id: slashAutocompleteLoadKey) {
             await loadSlashAutocompleteSubArgsIfNeeded()
         }
@@ -577,6 +580,7 @@ struct MessageComposerView: View {
                     isCollapsed: !isExpanded,
                     isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
                     verticalPadding: 12,
+                    chipSkills: skillSuggestions,
                     onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
                     onPasteFileURLs: onPasteFileURLs,
@@ -680,6 +684,20 @@ struct MessageComposerView: View {
             Image(systemName: "arrow.up")
                 .font(.system(size: actionIconSize, weight: .semibold))
         }
+    }
+
+    /// Whether the draft holds anything that could be drawn as a skill chip.
+    private var draftMayReferenceSkill: Bool {
+        ComposerChipTokenizer.mayContainReference(draftMessage)
+    }
+
+    /// A draft restored from the store can already name a skill, and chips are
+    /// only drawn for skills the app has heard of. Fetching the list the moment
+    /// the draft looks like it needs one keeps a reopened chat from showing raw
+    /// `/skill` text, without a skills request on every chat that never uses one.
+    private func loadSkillSuggestionsForChipsIfNeeded() async {
+        guard draftMayReferenceSkill, skillSuggestions.isEmpty else { return }
+        await onLoadSkillSuggestions()
     }
 
     private func loadSlashAutocompleteSubArgsIfNeeded() async {
