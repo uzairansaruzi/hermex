@@ -194,7 +194,7 @@ struct TaskDetailView: View {
 
                 if let toastNotifications = job.toastNotifications {
                     CronJobMetadataRow(
-                        title: String(localized: "Notifications"),
+                        title: String(localized: "Toast Notifications"),
                         value: toastNotifications ? String(localized: "On") : String(localized: "Off")
                     )
                 }

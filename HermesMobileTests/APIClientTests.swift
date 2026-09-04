@@ -40,8 +40,19 @@ class APIClientTestCase: XCTestCase {
     }
 }
 
-final class MockURLProtocol: URLProtocol {
+final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    /// Handlers run here rather than on the caller's thread. URLSession drives
+    /// every protocol instance from a single loading thread, so a handler that
+    /// waits on that thread stalls every other in-flight request — and no test
+    /// could express a race between two of them.
+    private static let queue = DispatchQueue(label: "MockURLProtocol", attributes: .concurrent)
+
+    private let lock = NSLock()
+    private var cancelled = false
+
+    private var isCancelled: Bool { lock.withLock { cancelled } }
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -57,17 +68,24 @@ final class MockURLProtocol: URLProtocol {
             return
         }
 
-        do {
-            let (response, data) = try requestHandler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
+        let request = request
+        Self.queue.async { [self] in
+            do {
+                let (response, data) = try requestHandler(request)
+                guard !isCancelled else { return }
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            } catch {
+                guard !isCancelled else { return }
+                client?.urlProtocol(self, didFailWithError: error)
+            }
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        lock.withLock { cancelled = true }
+    }
 }
 
 final class InMemoryKeychainStore: KeychainStoring {
