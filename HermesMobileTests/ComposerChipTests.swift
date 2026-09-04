@@ -169,3 +169,38 @@ final class ComposerChipDocumentTests: XCTestCase {
         XCTAssertEqual(document.composerDisplayOffset(forSourceOffset: 99), 9)
     }
 }
+
+final class ComposerDropRouteTests: XCTestCase {
+    func testRoutesAMixOfFilesAndImages() throws {
+        let route = try XCTUnwrap(
+            ComposerDropRoute(providers: [fileProvider(), imageProvider(), fileProvider()])
+        )
+
+        XCTAssertEqual(route.files.count, 2)
+        XCTAssertEqual(route.images.count, 1)
+    }
+
+    func testRoutesAnImageOnlyDrop() throws {
+        let route = try XCTUnwrap(ComposerDropRoute(providers: [imageProvider()]))
+
+        XCTAssertTrue(route.files.isEmpty)
+        XCTAssertEqual(route.images.count, 1)
+    }
+
+    func testLeavesADropWithAnythingUnroutableToUIKit() {
+        XCTAssertNil(ComposerDropRoute(providers: [imageProvider(), NSItemProvider(object: "hello" as NSString)]))
+        XCTAssertNil(ComposerDropRoute(providers: []))
+    }
+
+    private func imageProvider() -> NSItemProvider {
+        NSItemProvider(object: UIImage(systemName: "star") ?? UIImage())
+    }
+
+    private func fileProvider() -> NSItemProvider {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).txt")
+        FileManager.default.createFile(atPath: url.path, contents: Data("hi".utf8))
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return NSItemProvider(contentsOf: url) ?? NSItemProvider()
+    }
+}
