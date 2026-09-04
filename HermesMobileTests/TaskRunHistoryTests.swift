@@ -168,6 +168,51 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(recorder.offsets.last, pageSize)
     }
 
+    /// While a reload is in flight the cursor still points into the list being
+    /// replaced, so "Load more" must not fetch against it — a page taken from
+    /// the old cursor would land on the new list.
+    @MainActor
+    func testLoadMoreIsRefusedWhileAReloadIsInFlight() async {
+        let recorder = RequestRecorder()
+        let pageSize = TaskDetailViewModel.historyPageSize
+        let reloadStarted = expectation(description: "reload request started")
+        let releaseReload = DispatchSemaphore(value: 0)
+
+        let viewModel = makeViewModel { request in
+            recorder.record(request)
+            let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "offset" }?.value.flatMap(Int.init) ?? 0
+
+            // Hold the reload — the third request — open.
+            if recorder.offsets.count == 3 {
+                reloadStarted.fulfill()
+                releaseReload.wait()
+            }
+
+            let page = offset == 0 ? "page-1.md" : "page-2.md"
+            return apiTestJSONResponse(Self.historyJSON(total: 200, filenames: [page]), for: request)
+        }
+
+        await viewModel.loadHistory()
+        await viewModel.loadMoreRuns()
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["page-1.md", "page-2.md"])
+
+        let reload = Task { await viewModel.loadHistory() }
+        await fulfillment(of: [reloadStarted], timeout: 5)
+
+        // The cursor still reads 100 here, but it belongs to the list being
+        // replaced, so no request may be made against it.
+        await viewModel.loadMoreRuns()
+        XCTAssertEqual(recorder.offsets, [0, pageSize, 0])
+
+        releaseReload.signal()
+        await reload.value
+
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["page-1.md"])
+        await viewModel.loadMoreRuns()
+        XCTAssertEqual(recorder.offsets.last, pageSize)
+    }
+
     // MARK: - Failure containment
 
     @MainActor

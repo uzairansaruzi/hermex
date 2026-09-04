@@ -139,7 +139,10 @@ final class TaskDetailViewModel {
     }
 
     func loadMoreRuns() async {
-        guard let jobID = job.jobId, canLoadMoreRuns, !isLoadingMoreRuns else { return }
+        // Nothing is paged while a reload is in flight: until its first page
+        // lands, `historyOffset` still points into the list being replaced, so
+        // any page fetched now would be a page of the wrong list.
+        guard let jobID = job.jobId, canLoadMoreRuns, !isLoadingMoreRuns, !isLoadingHistory else { return }
 
         let offset = historyOffset
         let generation = historyGeneration
@@ -151,8 +154,11 @@ final class TaskDetailViewModel {
 
         // A refresh landed while this page was in flight. The page describes a
         // list that no longer exists, so it is dropped rather than spliced onto
-        // the new one.
-        guard generation == historyGeneration else { return }
+        // the new one, which would leave the pages between them unreachable.
+        // The cursor is checked as well as the generation: a reload that began
+        // before this request bumped the generation ahead of it, so matching
+        // generations alone would not prove the two describe the same list.
+        guard generation == historyGeneration, offset == historyOffset else { return }
 
         switch result {
         case let .success(response):
