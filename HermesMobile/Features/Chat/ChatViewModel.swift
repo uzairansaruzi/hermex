@@ -3092,14 +3092,15 @@ final class ChatViewModel {
     /// The one way the skill list changes, so the chip catalog can never fall
     /// out of step with it.
     private func applySkillSlashSuggestions(_ suggestions: [SkillSlashSuggestion]) {
-        let wasEmpty = skillChipCatalog.isEmpty
+        let previousCatalog = skillChipCatalog
         skillSlashSuggestions = suggestions
         skillChipCatalog = ComposerChipCatalog(skills: suggestions)
 
-        // The first catalog turns sent `/slug` text into chips, and a chip is
-        // not the size of the text it replaces. Signal the relayout so a reader
-        // pinned to the bottom stays there.
-        if wasEmpty, !skillChipCatalog.isEmpty {
+        // A catalog that draws differently redraws the transcript: sent `/slug`
+        // text becomes a chip, or an existing chip changes size or goes away.
+        // Signal the relayout so a reader pinned to the bottom stays there. A
+        // list that came back the same changes nothing and says nothing.
+        if skillChipCatalog != previousCatalog {
             transcriptRelayoutScrollToken += 1
         }
     }

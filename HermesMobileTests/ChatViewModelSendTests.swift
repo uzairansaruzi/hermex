@@ -8612,13 +8612,15 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     /// A server with no skills leaves the transcript exactly as it was drawn, so
-    /// it must not claim a relayout.
+    /// it must not claim a relayout. Covers the general rule too: a catalog that
+    /// came back unchanged says nothing.
     @MainActor
     func testAnEmptySkillListDoesNotSignalARelayout() async throws {
         let viewModel = try makeViewModel { request in
             apiTestJSONResponse(#"{"skills": []}"#, for: request)
         }
 
+        await viewModel.loadSkillSlashSuggestions()
         await viewModel.loadSkillSlashSuggestions()
 
         XCTAssertTrue(viewModel.skillChipCatalog.isEmpty)
