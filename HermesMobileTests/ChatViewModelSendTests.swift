@@ -8636,6 +8636,39 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
+    /// The point of the shared handle: a caller arriving mid-flight joins the
+    /// request already running instead of firing its own and returning early
+    /// with an empty list. The mock holds the response open until the second
+    /// caller has arrived, so it really does land on the in-flight branch.
+    @MainActor
+    func testAConcurrentCallerJoinsTheInFlightPersonalityLoad() async throws {
+        let requestStarted = XCTestExpectation(description: "personality request started")
+        let releaseResponse = DispatchSemaphore(value: 0)
+        var attempts = 0
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/personalities")
+            attempts += 1
+            requestStarted.fulfill()
+            // Bounded so a second, unshared request fails the count assertion
+            // below instead of hanging the test.
+            _ = releaseResponse.wait(timeout: .now() + 5)
+            return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+        }
+
+        let first = Task { await viewModel.loadPersonalitySuggestions() }
+        await fulfillment(of: [requestStarted], timeout: 5)
+
+        let second = Task { await viewModel.loadPersonalitySuggestions() }
+        await Task.yield()
+        releaseResponse.signal()
+
+        await first.value
+        await second.value
+
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+        XCTAssertEqual(attempts, 1)
+    }
+
     /// Sent references become chips the moment the catalog lands, and a chip is
     /// not the size of the `/slug` it replaces, so the transcript has to be told
     /// it just re-laid out under the reader (#388).
