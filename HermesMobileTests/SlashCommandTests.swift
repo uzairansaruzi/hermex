@@ -358,6 +358,137 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertEqual(suggestions.first?.description, "Agent command")
     }
 
+    // MARK: - Ranking
+
+    private func fields(
+        name: String,
+        label: String? = nil,
+        shortDescription: String? = nil,
+        description: String? = nil
+    ) -> SlashRankableFields {
+        SlashRankableFields(
+            name: name,
+            label: label,
+            shortDescription: shortDescription,
+            description: description
+        )
+    }
+
+    func testScoreRanksNameMatchTiers() {
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "claude-code"), matching: "claude-code"), 0)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "claude-code"), matching: "clau"), 2)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "claude-code"), matching: "code"), 4)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "claude-code"), matching: "ode"), 6)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "claude-code"), matching: "cdc"), 100)
+        XCTAssertNil(SlashCommandRanker.score(fields(name: "claude-code"), matching: "zzz"))
+    }
+
+    func testScoreStaggersLabelAndDescriptionFields() {
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", label: "review"), matching: "review"), 1)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", label: "review"), matching: "rev"), 3)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", label: "code-review"), matching: "review"), 5)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", label: "code review"), matching: "eview"), 7)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", label: "review"), matching: "rvw"), 110)
+
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", shortDescription: "coding"), matching: "coding"), 20)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", shortDescription: "coding"), matching: "cod"), 22)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", shortDescription: "fast-coding"), matching: "coding"), 24)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", shortDescription: "coding"), matching: "oding"), 26)
+
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", description: "refactor"), matching: "refactor"), 30)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", description: "refactor"), matching: "ref"), 32)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", description: "swift/refactor"), matching: "refactor"), 34)
+        XCTAssertEqual(SlashCommandRanker.score(fields(name: "n", description: "refactor"), matching: "efactor"), 36)
+    }
+
+    func testScoreDoesNotFuzzyMatchDescriptions() {
+        XCTAssertNil(SlashCommandRanker.score(fields(name: "n", shortDescription: "coding"), matching: "cdg"))
+        XCTAssertNil(SlashCommandRanker.score(fields(name: "n", description: "refactor swift"), matching: "rfs"))
+    }
+
+    func testScoreKeepsTheBestFieldMatch() {
+        // A weak name hit still beats a perfect description hit.
+        let value = fields(name: "swift-refactor", description: "refactor")
+        XCTAssertEqual(SlashCommandRanker.score(value, matching: "refactor"), 4)
+    }
+
+    func testRankOrdersByScoreThenLabelThenName() {
+        let items = [
+            fields(name: "zeta", label: "review notes"),
+            fields(name: "review", label: "Review"),
+            fields(name: "alpha", label: "review notes"),
+            fields(name: "beta", label: "Review board"),
+            fields(name: "code-review", label: "Code Review")
+        ]
+
+        let ranked = SlashCommandRanker.rank(items, matching: "review") { $0 }
+
+        // Exact name (0) beats label prefix (3), which beats a name boundary
+        // hit (4). The three label-prefix ties break by label, then by name.
+        XCTAssertEqual(ranked.map(\.name), ["review", "beta", "alpha", "zeta", "code-review"])
+    }
+
+    func testRankKeepsCallerOrderForAnEmptyQuery() {
+        let items = [fields(name: "zeta"), fields(name: "alpha")]
+        XCTAssertEqual(SlashCommandRanker.rank(items, matching: "  ") { $0 }.map(\.name), ["zeta", "alpha"])
+    }
+
+    func testRankBoundsResultsToTheBestCandidates() {
+        let items = (0..<50).map { fields(name: "skill-\(String(format: "%02d", $0))") }
+
+        let ranked = SlashCommandRanker.rank(items, matching: "skill") { $0 }
+
+        XCTAssertEqual(ranked.count, SlashCommandRanker.resultLimit)
+        XCTAssertEqual(ranked.first?.name, "skill-00")
+        XCTAssertEqual(ranked.last?.name, "skill-19")
+    }
+
+    func testCatalogMatchingPutsTheExactCommandFirst() {
+        let results = SlashCommandCatalog.matching("compact")
+        XCTAssertEqual(results.first?.name, "compact")
+    }
+
+    func testCatalogMatchingPrefersNamesOverDescriptions() {
+        let results = SlashCommandCatalog.matching("stop")
+        XCTAssertEqual(results.first?.name, "stop")
+        // `/interrupt` only mentions "Stop" in its description, so it ranks below.
+        XCTAssertTrue(results.contains { $0.name == "interrupt" })
+    }
+
+    func testCatalogMatchingIsBounded() {
+        XCTAssertLessThanOrEqual(SlashCommandCatalog.matching("s").count, SlashCommandRanker.resultLimit)
+    }
+
+    func testSkillMatchingRanksSlugHitsAboveDescriptionHits() {
+        let suggestions = SlashSkillFormatter.suggestions(from: [
+            SkillSummary(name: "Deploy Notes", category: "ops", description: "Write the release notes", path: nil),
+            SkillSummary(name: "Release", category: "ops", description: "Ship a build", path: nil)
+        ])
+
+        XCTAssertEqual(
+            SlashSkillFormatter.matching("release", in: suggestions).map(\.name),
+            ["Release", "Deploy Notes"]
+        )
+    }
+
+    func testSkillMatchingIsBoundedButTheWrittenListIsNot() {
+        let suggestions = SlashSkillFormatter.suggestions(from: (0..<40).map {
+            SkillSummary(name: "skill-\(String(format: "%02d", $0))", category: nil, description: nil, path: nil)
+        })
+
+        XCTAssertEqual(SlashSkillFormatter.matching("skill", in: suggestions).count, SlashCommandRanker.resultLimit)
+        XCTAssertEqual(SlashSkillFormatter.matching("skill", in: suggestions, limit: .max).count, 40)
+    }
+
+    func testAgentCommandRankingIgnoresTheDescriptionPlaceholder() {
+        let suggestions = AgentSlashCommandSuggestion.matching("agent", in: [
+            AgentCommand(name: "resume", description: nil),
+            AgentCommand(name: "agents", description: "List sub-agents")
+        ])
+
+        XCTAssertEqual(suggestions.map(\.name), ["agents"])
+    }
+
     func testAgentCommandLookupRecognizesVisibleMetadataCommand() {
         let commands = [
             AgentCommand(name: "resume", description: "Resume a previously-named session"),
