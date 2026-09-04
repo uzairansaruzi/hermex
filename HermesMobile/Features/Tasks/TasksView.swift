@@ -7,6 +7,12 @@ struct TasksView: View {
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
     @State private var jobPendingDeletion: CronJob?
+    /// "Ran Recently" shows a few rows until the user asks for the rest. View
+    /// state only: every fresh visit starts compact.
+    @State private var isShowingAllRecentRuns = false
+
+    /// Rows "Ran Recently" shows before it needs a "Show all" row.
+    private static let compactRecentRunCount = 3
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.server = server
@@ -167,9 +173,13 @@ struct TasksView: View {
     /// Absent until the feed answers and whenever it is empty or failed.
     @ViewBuilder
     private var recentRunsSection: some View {
-        if !viewModel.recentRuns.isEmpty {
+        let recentRuns = viewModel.recentRuns
+        if !recentRuns.isEmpty {
+            let isTruncated = recentRuns.count > Self.compactRecentRunCount && !isShowingAllRecentRuns
+            let visibleRuns = isTruncated ? Array(recentRuns.prefix(Self.compactRecentRunCount)) : recentRuns
+
             Section("Ran Recently") {
-                ForEach(viewModel.recentRuns) { completion in
+                ForEach(visibleRuns) { completion in
                     if let job = viewModel.job(for: completion) {
                         NavigationLink {
                             detail(for: job)
@@ -180,6 +190,15 @@ struct TasksView: View {
                         // The feed named a job the list does not have: no link,
                         // no chevron, and nothing that reads as a button.
                         TaskRecentRunRowView(completion: completion)
+                    }
+                }
+
+                if recentRuns.count > Self.compactRecentRunCount {
+                    Button {
+                        isShowingAllRecentRuns.toggle()
+                    } label: {
+                        Text(isTruncated ? "Show All (\(recentRuns.count))" : "Show Less")
+                            .font(.subheadline)
                     }
                 }
             }
