@@ -534,6 +534,22 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertTrue(results.hasNoCommandRows)
     }
 
+    func testSkillsOnlyPassOffersSkillsAndNoCommands() {
+        let input = SlashAutocompleteRanking(
+            mode: .skillsOnly,
+            query: "skill-002",
+            skills: skills(5),
+            agentCommands: [AgentCommand(name: "resume", description: "Resume a session")]
+        )
+
+        let results = input.results()
+
+        XCTAssertEqual(results.skills.map(\.name), ["skill-002"])
+        XCTAssertTrue(results.commands.isEmpty)
+        XCTAssertTrue(results.agentCommands.isEmpty)
+        XCTAssertTrue(results.skillSubArgs.isEmpty)
+    }
+
     func testAgentCommandLookupRecognizesVisibleMetadataCommand() {
         let commands = [
             AgentCommand(name: "resume", description: "Resume a previously-named session"),

@@ -214,6 +214,13 @@ struct MessageComposerView: View {
         slashQuery != nil
     }
 
+    /// Whether the panel may only offer skills. The send path runs a command
+    /// only when the trimmed draft starts with `/`, so past other text a
+    /// command row would be inserted text nothing executes.
+    private var showsSlashAutocompleteSkillsOnly: Bool {
+        !(slashTrigger?.startsDraft ?? true)
+    }
+
     /// Swaps the `/…` at the caret for `replacement` and leaves the caret just
     /// after it, so the rest of the draft survives accepting a row.
     private func applyCompletion(_ replacement: String) {
@@ -286,6 +293,7 @@ struct MessageComposerView: View {
                             personalitySuggestions: personalitySuggestions,
                             skillSuggestions: skillSuggestions,
                             agentCommands: agentCommands,
+                            skillsOnly: showsSlashAutocompleteSkillsOnly,
                             selectedReasoningEffort: selectedReasoningEffort,
                             onSelectCommand: { command in
                                 applyCompletion("/\(command.name) ")

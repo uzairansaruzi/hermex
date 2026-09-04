@@ -20,6 +20,49 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.range, NSRange(location: 11, length: 4))
     }
 
+    // MARK: - Draft-start reporting (#390)
+
+    func testATriggerAtTheStartOfTheDraftReportsItStartsTheDraft() {
+        let trigger = ComposerSlashTrigger.detect(in: "/mod", selection: caret(4))
+
+        XCTAssertEqual(trigger?.startsDraft, true)
+    }
+
+    func testLeadingWhitespaceStillCountsAsTheStartOfTheDraft() {
+        // The send path trims the whole draft, so this one can still run.
+        let trigger = ComposerSlashTrigger.detect(in: "  /mod", selection: caret(6))
+
+        XCTAssertEqual(trigger?.text, "/mod")
+        XCTAssertEqual(trigger?.startsDraft, true)
+    }
+
+    func testALeadingNewlineStillCountsAsTheStartOfTheDraft() {
+        let trigger = ComposerSlashTrigger.detect(in: "\n/mod", selection: caret(5))
+
+        XCTAssertEqual(trigger?.startsDraft, true)
+    }
+
+    func testATriggerMidSentenceReportsItDoesNotStartTheDraft() {
+        let trigger = ComposerSlashTrigger.detect(in: "please run /mod", selection: caret(15))
+
+        XCTAssertEqual(trigger?.startsDraft, false)
+    }
+
+    func testATriggerOnASecondLineIsNotTheStartOfTheDraft() {
+        let trigger = ComposerSlashTrigger.detect(in: "hello\n/model", selection: caret(12))
+
+        XCTAssertEqual(trigger?.text, "/model")
+        XCTAssertEqual(trigger?.startsDraft, false)
+    }
+
+    func testAMidSentenceSubArgumentCommandClosesAtItsFirstSpace() {
+        // A sub-argument list mid-sentence would serve a command the send path
+        // cannot run, so the trigger ends with its word.
+        XCTAssertNil(
+            ComposerSlashTrigger.detect(in: "check /workspace ~/proj", selection: caret(23))
+        )
+    }
+
     func testTriggerStopsAtTheCaretRatherThanTheEndOfTheDraft() {
         let trigger = ComposerSlashTrigger.detect(in: "/model gpt", selection: caret(3))
 

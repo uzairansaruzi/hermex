@@ -15,6 +15,9 @@ struct SlashCommandAutocompleteView: View {
     let personalitySuggestions: [String]
     let skillSuggestions: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
+    /// Whether the trigger is mid-sentence, where only a skill can run on send,
+    /// so command and agent-command rows would insert text nothing executes.
+    let skillsOnly: Bool
     let selectedReasoningEffort: String?
     let onSelectCommand: (SlashCommand) -> Void
     let onSelectSkillCommand: (SkillSlashSuggestion) -> Void
@@ -81,6 +84,19 @@ struct SlashCommandAutocompleteView: View {
 
     private var rankingInput: SlashAutocompleteRanking {
         let parsed = parsed
+
+        // Mid-sentence a skill is the only thing that works, so the panel ranks
+        // skills against the whole trigger word and never enters a sub-argument
+        // list — a command there would be inserted text nothing executes.
+        if skillsOnly {
+            return SlashAutocompleteRanking(
+                mode: .skillsOnly,
+                query: parsed.commandName,
+                skills: skillSuggestions,
+                agentCommands: []
+            )
+        }
+
         guard parsed.isSubArgMode, let command = parsed.command else {
             return SlashAutocompleteRanking(
                 mode: .commands,
@@ -122,7 +138,7 @@ struct SlashCommandAutocompleteView: View {
     @ViewBuilder
     private func commandList(_ results: SlashAutocompleteResults) -> some View {
         if results.hasNoCommandRows {
-            Text("No commands or skills match \"\(parsed.commandName)\"")
+            emptyCommandListText
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
@@ -159,6 +175,16 @@ struct SlashCommandAutocompleteView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Mid-sentence no commands were offered, so the empty state says what was.
+    @ViewBuilder
+    private var emptyCommandListText: some View {
+        if skillsOnly {
+            Text("No skills match \"\(parsed.commandName)\"")
+        } else {
+            Text("No commands or skills match \"\(parsed.commandName)\"")
         }
     }
 

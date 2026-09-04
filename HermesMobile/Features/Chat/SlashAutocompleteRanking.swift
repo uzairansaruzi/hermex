@@ -23,8 +23,11 @@ struct SlashAutocompleteResults: Equatable, Sendable {
 /// `.task(id:)` and, for a large catalog, to a background task.
 struct SlashAutocompleteRanking: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
-        /// The `/` trigger: built-in commands, skills, and agent commands.
+        /// The `/` trigger at the start of the draft: built-in commands, skills,
+        /// and agent commands.
         case commands
+        /// The `/` trigger mid-sentence, where only a skill can work.
+        case skillsOnly
         /// The `/skills <query>` trigger.
         case skillSubArgs
         /// A sub-argument list that filters synchronously and needs no ranking.
@@ -61,6 +64,11 @@ struct SlashAutocompleteRanking: Equatable, Sendable {
             return SlashAutocompleteResults(
                 input: self,
                 skillSubArgs: SlashSkillFormatter.matching(query, in: skills)
+            )
+        case .skillsOnly:
+            return SlashAutocompleteResults(
+                input: self,
+                skills: SlashSkillFormatter.matching(query, in: skills)
             )
         case .commands:
             let skillNames = Set(skills.map { $0.slashName.lowercased() })

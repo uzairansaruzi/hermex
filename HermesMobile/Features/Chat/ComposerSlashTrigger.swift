@@ -6,11 +6,17 @@ import Foundation
 /// started with `/`, so `/` halfway through a sentence did nothing and accepting
 /// a row threw the rest of the draft away. This finds the trigger at the caret
 /// and reports the range it occupies, so accepting a row replaces only that much.
+/// It also reports whether the trigger opens the draft: only then can the send
+/// path run a command, so mid-sentence the panel offers skills only.
 struct ComposerSlashTrigger: Equatable {
     /// UTF-16 range of the trigger inside the draft: the `/` up to the caret.
     let range: NSRange
     /// The trigger's text, `/` included. This is what the panel filters on.
     let text: String
+    /// Whether only whitespace precedes the trigger, which is the same gate the
+    /// send path uses: a command row mid-sentence would be inserted text that
+    /// nothing executes.
+    let startsDraft: Bool
 
     private static let slash: UInt16 = 0x2F
 
@@ -47,8 +53,9 @@ struct ComposerSlashTrigger: Equatable {
         for start in starts.reversed() {
             let range = NSRange(location: start, length: caret - start)
             let text = draft.substring(with: range)
-            if isTrigger(text) {
-                return ComposerSlashTrigger(range: range, text: text)
+            let atDraftStart = isAtDraftStart(draft, before: start)
+            if isTrigger(text, atDraftStart: atDraftStart) {
+                return ComposerSlashTrigger(range: range, text: text, startsDraft: atDraftStart)
             }
         }
 
@@ -83,18 +90,35 @@ struct ComposerSlashTrigger: Equatable {
         )
     }
 
+    /// Whether only whitespace precedes `start`, matching the send path's gate:
+    /// `SlashCommandExecutor` trims the whole draft with
+    /// `.whitespacesAndNewlines` and requires a leading `/`.
+    private static func isAtDraftStart(_ draft: NSString, before start: Int) -> Bool {
+        var index = start - 1
+        while index >= 0 {
+            guard isWhitespaceOrNewline(draft.character(at: index)) else { return false }
+            index -= 1
+        }
+        return true
+    }
+
     /// Whether `text` can still be a command being typed.
     ///
     /// One word is always a candidate. Past the first space, the word has to be
-    /// a command that takes a sub-argument. Where that argument is one of a
-    /// fixed list the trigger ends as soon as the user types past it, so prose
-    /// such as "check the /tmp folder" or "use /reasoning high for this task"
-    /// does not hold an empty panel open for the rest of the sentence. Where it
-    /// is free-form — a workspace path, a personality name, a skill query — the
-    /// spaces are part of the value, so the trigger runs to the caret.
-    private static func isTrigger(_ text: String) -> Bool {
+    /// a command that takes a sub-argument, and only at the start of the draft
+    /// where that command could actually run — mid-sentence the panel offers
+    /// skills only, so the trigger ends with its word instead of chasing a
+    /// sub-argument through the rest of the sentence. Where the argument is one
+    /// of a fixed list the trigger ends as soon as the user types past it, so
+    /// prose such as "check the /tmp folder" or "use /reasoning high for this
+    /// task" does not hold an empty panel open for the rest of the sentence.
+    /// Where it is free-form — a workspace path, a personality name, a skill
+    /// query — the spaces are part of the value, so the trigger runs to the
+    /// caret.
+    private static func isTrigger(_ text: String, atDraftStart: Bool) -> Bool {
         let body = text.dropFirst()
         guard let space = body.firstIndex(where: { $0.isWhitespace }) else { return true }
+        guard atDraftStart else { return false }
         guard let command = SlashCommandCatalog.command(named: String(body[body.startIndex..<space])),
               command.subArgs != .none
         else {
