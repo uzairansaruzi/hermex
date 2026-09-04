@@ -65,6 +65,27 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.text, "/workspace ")
     }
 
+    func testAWorkspacePathContainingASpaceKeepsTheTriggerOpen() {
+        let draft = "/workspace /Users/me/My App"
+        let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret((draft as NSString).length))
+
+        XCTAssertEqual(trigger?.text, draft)
+    }
+
+    func testAMultiWordSkillQueryKeepsTheTriggerOpen() {
+        let draft = "/skills read files"
+        let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret((draft as NSString).length))
+
+        XCTAssertEqual(trigger?.text, draft)
+    }
+
+    func testAPersonalityNameContainingASpaceKeepsTheTriggerOpen() {
+        let draft = "/personality Terse Reviewer"
+        let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret((draft as NSString).length))
+
+        XCTAssertEqual(trigger?.text, draft)
+    }
+
     func testTriggerNeverCrossesALineBreak() {
         XCTAssertNil(ComposerSlashTrigger.detect(in: "/model\nnow", selection: caret(10)))
     }
@@ -159,7 +180,8 @@ final class ComposerSlashTriggerTests: XCTestCase {
             ComposerMarkedText.isDeliberateReplacement(
                 "안녕 ",
                 editorText: "안녕 ㅈ",
-                marked: NSRange(location: 3, length: 1)
+                marked: NSRange(location: 3, length: 1),
+                isCurrent: false
             )
         )
     }
@@ -169,7 +191,8 @@ final class ComposerSlashTriggerTests: XCTestCase {
             ComposerMarkedText.isDeliberateReplacement(
                 "안녕 ㅈ",
                 editorText: "안녕 ㅈ",
-                marked: NSRange(location: 3, length: 1)
+                marked: NSRange(location: 3, length: 1),
+                isCurrent: true
             )
         )
     }
@@ -179,19 +202,43 @@ final class ComposerSlashTriggerTests: XCTestCase {
             ComposerMarkedText.isDeliberateReplacement(
                 "",
                 editorText: "안녕 ㅈ",
-                marked: NSRange(location: 3, length: 1)
+                marked: NSRange(location: 3, length: 1),
+                isCurrent: true
             )
         )
     }
 
     func testClearingTheDraftAppliesEvenWhenTheCompositionIsTheWholeDraft() {
+        // Sending while the whole draft is one composition: the parent has seen
+        // the composition and is emptying the composer on purpose.
         XCTAssertTrue(
             ComposerMarkedText.isDeliberateReplacement(
                 "",
                 editorText: "\u{3148}",
-                marked: NSRange(location: 0, length: 1)
+                marked: NSRange(location: 0, length: 1),
+                isCurrent: true
             )
         )
+    }
+
+    func testAStaleEmptyBindingNeverErasesAWholeDraftComposition() {
+        // The same two strings as the send above, but the parent is still on the
+        // empty composer it rendered before the user started composing, so this
+        // is an echo rather than a clear.
+        XCTAssertFalse(
+            ComposerMarkedText.isDeliberateReplacement(
+                "",
+                editorText: "\u{3148}",
+                marked: NSRange(location: 0, length: 1),
+                isCurrent: false
+            )
+        )
+    }
+
+    func testADeliberateCaretMoveKeepsThePublishGeneration() {
+        let published = ComposerSelection(range: NSRange(location: 3, length: 0), publishGeneration: 7)
+
+        XCTAssertEqual(published.moved(to: NSRange(location: 5, length: 0)).publishGeneration, 7)
     }
 
     // MARK: - Undo

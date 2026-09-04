@@ -72,3 +72,21 @@ enum SlashCommandSubArgs: Equatable, Sendable {
     case skills
     case goalActions
 }
+
+extension SlashCommandSubArgs {
+    /// Whether the argument is free-form and so may contain spaces.
+    ///
+    /// A path, a personality name, and a skill query are all things the user
+    /// types spaces into, and `ParsedSlashQuery` splits them off with
+    /// `maxSplits: 1` so the whole rest of the line is the argument. The other
+    /// lists are fixed single tokens, so a space after one means the user has
+    /// stopped naming a value and gone back to writing prose.
+    var allowsSpaces: Bool {
+        switch self {
+        case .workspaces, .personalities, .skills:
+            return true
+        case .models, .reasoningLevels, .goalActions, .none:
+            return false
+        }
+    }
+}

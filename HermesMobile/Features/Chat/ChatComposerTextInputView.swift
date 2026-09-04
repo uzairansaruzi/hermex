@@ -131,7 +131,7 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: PastingTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
-        context.coordinator.applyBoundText(text, to: textView)
+        context.coordinator.applyBoundText(text, generation: selection.publishGeneration, to: textView)
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
         // layoutDirection environment does not propagate into a wrapped UITextView,
         // so set the base direction directly so the cursor/empty-field rests on the
@@ -165,6 +165,9 @@ private struct ComposerTextView: UIViewRepresentable {
         /// callbacks it provokes do not write the bindings back mid-update.
         private var isApplyingBoundValue = false
         private var appliedSelectionRevision = 0
+        /// Publishes made to the bindings, matched against the generation the
+        /// bound value carries to spot one the parent has not caught up with.
+        private var publishGeneration = 0
 
         init(
             text: Binding<String>,
@@ -187,15 +190,17 @@ private struct ComposerTextView: UIViewRepresentable {
         /// half-formed and splits characters such as 자 into ㅈㅏ (#312). A
         /// binding that simply has not seen the marked text yet is not a real
         /// change, so it is ignored; a deliberate clear or replacement still
-        /// applies.
-        func applyBoundText(_ text: String, to textView: UITextView) {
+        /// applies. `generation` is the publish count the bound value was built
+        /// from, which is what tells those two apart when the value is empty.
+        func applyBoundText(_ text: String, generation: Int, to textView: UITextView) {
             guard textView.text != text else { return }
 
             if let marked = textView.markedTextRange {
                 guard ComposerMarkedText.isDeliberateReplacement(
                     text,
                     editorText: textView.text,
-                    marked: markedRange(of: textView, marked: marked)
+                    marked: markedRange(of: textView, marked: marked),
+                    isCurrent: generation >= publishGeneration
                 ) else {
                     return
                 }
@@ -336,9 +341,12 @@ private struct ComposerTextView: UIViewRepresentable {
 
             // Text and caret travel together: publishing them in one update is
             // what keeps the two consistent when the composer maps the caret
-            // back onto the draft to find the slash trigger.
+            // back onto the draft to find the slash trigger. The generation
+            // rides along so a later update can be dated against this one.
+            publishGeneration &+= 1
             text = textView.text
             selection.range = textView.selectedRange
+            selection.publishGeneration = publishGeneration
             reportHeight(for: textView)
         }
 

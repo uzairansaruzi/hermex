@@ -86,10 +86,12 @@ struct ComposerSlashTrigger: Equatable {
     /// Whether `text` can still be a command being typed.
     ///
     /// One word is always a candidate. Past the first space, the word has to be
-    /// a command that takes a sub-argument, and the trigger ends as soon as the
-    /// user types past that argument — otherwise prose such as "check the /tmp
-    /// folder" or "use /reasoning high for this task" would hold an empty panel
-    /// open for the rest of the sentence.
+    /// a command that takes a sub-argument. Where that argument is one of a
+    /// fixed list the trigger ends as soon as the user types past it, so prose
+    /// such as "check the /tmp folder" or "use /reasoning high for this task"
+    /// does not hold an empty panel open for the rest of the sentence. Where it
+    /// is free-form — a workspace path, a personality name, a skill query — the
+    /// spaces are part of the value, so the trigger runs to the caret.
     private static func isTrigger(_ text: String) -> Bool {
         let body = text.dropFirst()
         guard let space = body.firstIndex(where: { $0.isWhitespace }) else { return true }
@@ -98,6 +100,7 @@ struct ComposerSlashTrigger: Equatable {
         else {
             return false
         }
+        guard !command.subArgs.allowsSpaces else { return true }
 
         let argument = body[body.index(after: space)...].drop(while: { $0.isWhitespace })
         return !argument.contains(where: { $0.isWhitespace })

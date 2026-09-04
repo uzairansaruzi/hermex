@@ -9,10 +9,17 @@ import UIKit
 struct ComposerSelection: Equatable {
     var range = NSRange(location: 0, length: 0)
     var revision = 0
+    /// How many editor-to-composer publishes this value was built from.
+    ///
+    /// The editor bumps it every time it pushes an edit up. Because text and
+    /// caret are published together, it dates the draft as well, which lets the
+    /// bridge tell a binding that has caught up from one still carrying the
+    /// draft from before the user's last keystroke.
+    var publishGeneration = 0
 
     /// A caret the composer is moving on purpose.
     func moved(to range: NSRange) -> ComposerSelection {
-        ComposerSelection(range: range, revision: revision &+ 1)
+        ComposerSelection(range: range, revision: revision &+ 1, publishGeneration: publishGeneration)
     }
 }
 
@@ -26,12 +33,22 @@ enum ComposerMarkedText {
     /// simply not seen the marked text yet is echoing the committed draft back,
     /// which is not a change worth breaking a composition for. A deliberate
     /// clear or replacement still is.
-    static func isDeliberateReplacement(_ boundText: String, editorText: String, marked: NSRange) -> Bool {
+    ///
+    /// Two questions decide it. Is this value the editor's own committed text
+    /// coming back — the comparison against the draft with the marked range
+    /// removed? And has the parent seen the composition at all — `isCurrent`,
+    /// from the publish generation the binding carries. They agree everywhere
+    /// but on an empty value, where a send that cleared a whole-draft
+    /// composition and a binding that predates that composition are the same
+    /// two strings, and only the generation can break the tie.
+    static func isDeliberateReplacement(
+        _ boundText: String,
+        editorText: String,
+        marked: NSRange,
+        isCurrent: Bool
+    ) -> Bool {
         guard boundText != editorText else { return false }
-        // Emptying the composer is always meant: sending is the case, and when
-        // the composition is the whole draft its committed text is empty too,
-        // so the echo test alone would leave the sent text sitting there.
-        guard !boundText.isEmpty else { return true }
+        guard !boundText.isEmpty else { return isCurrent }
 
         let editor = editorText as NSString
         guard marked.location >= 0, marked.length >= 0, marked.upperBound <= editor.length else {
