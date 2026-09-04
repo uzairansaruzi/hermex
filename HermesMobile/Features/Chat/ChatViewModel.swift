@@ -456,7 +456,10 @@ final class ChatViewModel {
     var isActiveStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
     private var hasLoadedPersonalitySuggestions = false
     private var isLoadingPersonalitySuggestions = false
-    private var hasLoadedSkillSlashSuggestions = false
+    /// Whether a skills list request has succeeded for this session, even when
+    /// it returned no skills. Lets the composer tell "still loading" from
+    /// "loaded, and the server has none".
+    private(set) var hasLoadedSkillSlashSuggestions = false
     /// The in-flight skill list request, shared by every caller of
     /// `loadSkillSlashSuggestions()` so no view's cancellation can orphan it.
     private var skillSlashSuggestionsLoad: Task<Void, Never>?

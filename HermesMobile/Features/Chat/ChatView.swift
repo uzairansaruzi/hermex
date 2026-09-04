@@ -422,6 +422,7 @@ struct ChatView: View {
             workspaceManagementServer: server,
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.skillSlashSuggestions,
+            hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
             agentCommands: viewModel.agentCommands,
             profileOptions: viewModel.profileOptions,
             isSingleProfileMode: viewModel.isSingleProfileMode,

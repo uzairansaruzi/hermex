@@ -92,6 +92,9 @@ struct MessageComposerView: View {
     let workspaceManagementServer: URL?
     let personalitySuggestions: [String]
     let skillSuggestions: [SkillSlashSuggestion]
+    /// Whether a skills request has succeeded, even an empty one. Lets the
+    /// mid-sentence close rule tell "still loading" from "loaded, none match".
+    let hasLoadedSkillSuggestions: Bool
     let agentCommands: [AgentCommand]
     let profileOptions: [ProfileSummary]
     let isSingleProfileMode: Bool
@@ -209,12 +212,12 @@ struct MessageComposerView: View {
         }
 
         // Mid-sentence the panel's only content is skills, so once the catalog
-        // is loaded and none of them match the typed word, close rather than
-        // hold an empty box up. An empty catalog has not loaded yet — keep the
-        // panel open so its load task can fetch the list, and judge the word
-        // against real data when it lands.
+        // question is settled — a request has succeeded, even one that found
+        // no skills — and nothing matches the typed word, close rather than
+        // hold an empty box up. Before that, keep the panel open so its load
+        // task can fetch the list and judge the word against real data.
         if slashTrigger?.startsDraft == false,
-           !skillSuggestions.isEmpty,
+           hasLoadedSkillSuggestions,
            SlashSkillFormatter.matching(parsed.commandName, in: skillSuggestions).isEmpty {
             return nil
         }
