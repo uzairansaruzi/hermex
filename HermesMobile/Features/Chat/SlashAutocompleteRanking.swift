@@ -2,8 +2,9 @@ import Foundation
 
 /// Everything the popover draws for one query.
 struct SlashAutocompleteResults: Equatable, Sendable {
-    /// The trigger these results were ranked for.
-    var mode: SlashAutocompleteRanking.Mode = .inactive
+    /// The pass that produced these rows. Comparing it against the current pass
+    /// is how the view knows whether they still describe what the user typed.
+    var input: SlashAutocompleteRanking
     var commands: [SlashCommand] = []
     var skills: [SkillSlashSuggestion] = []
     var agentCommands: [AgentSlashCommandSuggestion] = []
@@ -30,21 +31,24 @@ struct SlashAutocompleteRanking: Equatable, Sendable {
         case inactive
     }
 
-    /// Above this many candidates, ranking is worth a hop off the main actor;
-    /// below it the hop would cost more than the work.
-    private static let offMainActorThreshold = 128
+    /// Up to this many candidates, ranking costs microseconds and belongs
+    /// inline; past it the work is worth a hop off the main actor.
+    private static let inlineRankingLimit = 128
 
     let mode: Mode
     let query: String
     let skills: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
 
+    /// True when this pass is cheap enough to run wherever it is asked for.
+    var ranksInline: Bool {
+        skills.count + agentCommands.count <= Self.inlineRankingLimit
+    }
+
     /// Ranks off the main actor once the catalog is big enough for the work to
     /// show up as typing lag.
     func rankedResults() async -> SlashAutocompleteResults {
-        guard skills.count + agentCommands.count > Self.offMainActorThreshold else {
-            return results()
-        }
+        guard !ranksInline else { return results() }
 
         return await Task.detached(priority: .userInitiated) { results() }.value
     }
@@ -52,16 +56,16 @@ struct SlashAutocompleteRanking: Equatable, Sendable {
     func results() -> SlashAutocompleteResults {
         switch mode {
         case .inactive:
-            return SlashAutocompleteResults()
+            return SlashAutocompleteResults(input: self)
         case .skillSubArgs:
             return SlashAutocompleteResults(
-                mode: mode,
+                input: self,
                 skillSubArgs: SlashSkillFormatter.matching(query, in: skills)
             )
         case .commands:
             let skillNames = Set(skills.map { $0.slashName.lowercased() })
             return SlashAutocompleteResults(
-                mode: mode,
+                input: self,
                 commands: SlashCommandCatalog.matching(query),
                 skills: SlashSkillFormatter.matching(query, in: skills),
                 agentCommands: AgentSlashCommandSuggestion.matching(

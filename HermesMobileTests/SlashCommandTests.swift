@@ -489,6 +489,51 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertEqual(suggestions.map(\.name), ["agents"])
     }
 
+    // MARK: - Autocomplete ranking passes
+
+    private func skills(_ count: Int) -> [SkillSlashSuggestion] {
+        SlashSkillFormatter.suggestions(from: (0..<count).map {
+            SkillSummary(name: "skill-\(String(format: "%03d", $0))", category: nil, description: nil, path: nil)
+        })
+    }
+
+    func testRankingResultsCarryThePassThatProducedThem() {
+        let input = SlashAutocompleteRanking(
+            mode: .commands,
+            query: "mod",
+            skills: skills(2),
+            agentCommands: []
+        )
+
+        let results = input.results()
+
+        XCTAssertEqual(results.input, input)
+        XCTAssertEqual(results.commands.first?.name, "model")
+    }
+
+    func testSmallCatalogsRankInlineAndLargeOnesDoNot() {
+        XCTAssertTrue(
+            SlashAutocompleteRanking(mode: .commands, query: "s", skills: skills(10), agentCommands: []).ranksInline
+        )
+        XCTAssertFalse(
+            SlashAutocompleteRanking(mode: .commands, query: "s", skills: skills(200), agentCommands: []).ranksInline
+        )
+    }
+
+    func testSkillSubArgPassOnlyRanksSkills() {
+        let input = SlashAutocompleteRanking(
+            mode: .skillSubArgs,
+            query: "skill-001",
+            skills: skills(5),
+            agentCommands: []
+        )
+
+        let results = input.results()
+
+        XCTAssertEqual(results.skillSubArgs.map(\.name), ["skill-001"])
+        XCTAssertTrue(results.hasNoCommandRows)
+    }
+
     func testAgentCommandLookupRecognizesVisibleMetadataCommand() {
         let commands = [
             AgentCommand(name: "resume", description: "Resume a previously-named session"),

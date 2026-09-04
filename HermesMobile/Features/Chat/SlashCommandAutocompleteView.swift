@@ -59,14 +59,23 @@ struct SlashCommandAutocompleteView: View {
         }
     }
 
-    /// The results to draw. A pass ranked for a different trigger is never read
-    /// back, and on the first frame there is no pass yet; both cases rank inline
-    /// so the panel opens at its real height instead of popping out of an empty
-    /// box. Every keystroke after that stays on the same trigger and reads what
-    /// the background pass left here.
+    /// The results to draw, which always describe what the user has typed unless
+    /// the catalog is large enough that re-ranking here would cost a frame.
+    ///
+    /// The background pass usually lands first and its results are used as they
+    /// are. When they do not match — the first frame, a trigger change, a
+    /// keystroke the pass has not caught up with — a small catalog simply ranks
+    /// again, because at that size it costs microseconds. Only a large catalog
+    /// holds the previous rows for the same trigger, and only because the
+    /// alternative is collapsing the panel to an empty box mid-sentence.
     private var currentResults: SlashAutocompleteResults {
         let input = rankingInput
-        if let cachedResults, cachedResults.mode == input.mode { return cachedResults }
+
+        if let cachedResults {
+            if cachedResults.input == input { return cachedResults }
+            if !input.ranksInline, cachedResults.input.mode == input.mode { return cachedResults }
+        }
+
         return input.results()
     }
 
