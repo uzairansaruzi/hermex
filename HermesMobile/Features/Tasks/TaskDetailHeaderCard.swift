@@ -24,9 +24,9 @@ struct TaskDetailHeaderCard: View {
                 if let failure = job.failureSummary {
                     failureBlock(failure)
                 }
-
-                actionRow
             }
+        } footer: {
+            actionFooter
         }
     }
 
@@ -117,29 +117,64 @@ struct TaskDetailHeaderCard: View {
         .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    /// The card's two controls, as its bottom edge rather than as objects
+    /// sitting on it.
+    ///
+    /// Neither action is the primary one — you press whichever matches what you
+    /// want — so they carry equal weight, and no fill competes with the error
+    /// box above them for the one colour on this card that means something.
     @ViewBuilder
-    private var actionRow: some View {
-        let buttons = Group {
-            Button(action: runNow) {
-                Label("Run now", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
+    private var actionFooter: some View {
+        let runButton = footerButton(
+            title: String(localized: "Run now"),
+            systemImage: "play.fill",
+            action: runNow
+        )
+        let pauseButton = footerButton(
+            title: pauseResumeTitle,
+            systemImage: pauseResumeSystemImage,
+            action: togglePauseResume
+        )
 
-            Button(action: togglePauseResume) {
-                Label(pauseResumeTitle, systemImage: pauseResumeSystemImage)
-                    .frame(maxWidth: .infinity)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Two labels will not sit side by side at these sizes, so the
+                // divider turns with them.
+                VStack(spacing: 0) {
+                    runButton
+                    Divider()
+                    pauseButton
+                }
+            } else {
+                HStack(spacing: 0) {
+                    runButton
+                    Divider()
+                    pauseButton
+                }
             }
-            .buttonStyle(.bordered)
         }
-        .controlSize(.regular)
         .disabled(isBusy)
+    }
 
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(spacing: 8) { buttons }
-        } else {
-            HStack(spacing: 8) { buttons }
+    private func footerButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .contentShape(Rectangle())
         }
+        // Plain keeps the label as the whole control, so the row reads as part
+        // of the card; the style's press dimming is the tap confirmation.
+        .buttonStyle(.plain)
     }
 
     // MARK: - Presentation
@@ -177,7 +212,9 @@ struct TaskDetailHeaderCard: View {
         shouldResume ? String(localized: "Resume") : String(localized: "Pause")
     }
 
+    /// Resume is a circled triangle, never `play.fill`: beside "Run now" the
+    /// same solid triangle twice would say the two buttons do the same thing.
     private var pauseResumeSystemImage: String {
-        shouldResume ? "play.circle" : "pause.circle"
+        shouldResume ? "play.circle" : "pause.fill"
     }
 }

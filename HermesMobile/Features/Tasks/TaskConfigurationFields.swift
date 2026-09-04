@@ -21,13 +21,13 @@ struct TaskConfigurationField: Identifiable, Equatable {
 extension TaskConfigurationField {
     /// The Configuration card's rows, in reading order.
     ///
-    /// How a job runs is a fixed set of questions, so the answers to them are
-    /// always shown: a missing model means "Server default", not a row that
-    /// silently disappears. The two exceptions earn their absence —
-    /// **Provider** only qualifies an explicitly chosen model, and
-    /// **Notifications** is omitted when the server did not say, because
-    /// printing "On" for a value we do not have would be a guess rather than
-    /// a stand-in for absence.
+    /// A field the job does not have does not get a row. A job that leaves the
+    /// model, profile or skills to the server has nothing to say about them,
+    /// and a row saying so is a line of card the reader has to discount.
+    ///
+    /// Schedule and Deliver are the exceptions, because every job has both:
+    /// Deliver falls back to `local`, which is the server's own default rather
+    /// than a stand-in for a missing value.
     static func fields(for job: CronJob) -> [TaskConfigurationField] {
         var fields: [TaskConfigurationField] = []
 
@@ -50,32 +50,27 @@ extension TaskConfigurationField {
             )
         )
 
-        let model = trimmed(job.model)
-        fields.append(
-            TaskConfigurationField(
-                title: String(localized: "Model"),
-                value: model ?? String(localized: "Server default")
-            )
-        )
+        if let model = trimmed(job.model) {
+            fields.append(TaskConfigurationField(title: String(localized: "Model"), value: model))
+        }
 
-        if model != nil, let provider = trimmed(job.provider) {
+        if let provider = trimmed(job.provider) {
             fields.append(TaskConfigurationField(title: String(localized: "Provider"), value: provider))
         }
 
-        fields.append(
-            TaskConfigurationField(
-                title: String(localized: "Profile"),
-                value: trimmed(job.profile) ?? String(localized: "Server default")
-            )
-        )
+        if let profile = trimmed(job.profile) {
+            fields.append(TaskConfigurationField(title: String(localized: "Profile"), value: profile))
+        }
 
         let skills = (job.skills ?? []).compactMap(trimmed)
-        fields.append(
-            TaskConfigurationField(
-                title: String(localized: "Skills"),
-                value: skills.isEmpty ? String(localized: "None") : skills.joined(separator: ", ")
+        if !skills.isEmpty {
+            fields.append(
+                TaskConfigurationField(
+                    title: String(localized: "Skills"),
+                    value: skills.joined(separator: ", ")
+                )
             )
-        )
+        }
 
         if let toastNotifications = job.toastNotifications {
             fields.append(

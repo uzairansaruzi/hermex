@@ -417,54 +417,45 @@ private final class RequestRecorder: @unchecked Sendable {
     var lastOffset: Int? { lock.withLock { recorded.last?.offset } }
 }
 
-/// The Configuration card answers a fixed set of questions about how a job
-/// runs, so the answers do not come and go with the server's payload.
+/// A field the job does not have does not get a row: a job that leaves the
+/// model, profile or skills to the server has nothing to say about them.
 final class TaskConfigurationFieldTests: XCTestCase {
-    func testOmittedModelProfileAndSkillsStillGetRows() {
+    func testFieldsTheJobDoesNotHaveAreAbsent() {
         let fields = TaskConfigurationField.fields(for: Self.decodeJob("""
         {"job_id": "job-123", "name": "Reddit Trending Scanner",
          "schedule": {"kind": "cron", "expr": "0 7 * * *"},
-         "deliver": "discord:#social-posts", "toast_notifications": true}
+         "deliver": "discord:#social-posts", "model": "  ", "skills": [],
+         "toast_notifications": true}
         """))
 
-        XCTAssertEqual(
-            fields.map(\.title),
-            ["Schedule", "Deliver", "Model", "Profile", "Skills", "Notifications"]
-        )
-        XCTAssertEqual(fields.first { $0.title == "Model" }?.value, "Server default")
-        XCTAssertEqual(fields.first { $0.title == "Profile" }?.value, "Server default")
-        XCTAssertEqual(fields.first { $0.title == "Skills" }?.value, "None")
-        XCTAssertEqual(fields.first { $0.title == "Notifications" }?.value, "On")
+        XCTAssertEqual(fields.map(\.title), ["Schedule", "Deliver", "Notifications"])
         // The humanised schedule leads; the raw expression is the second line.
         // The clock format is the locale's, so only the sentence is asserted.
         XCTAssertTrue(fields.first?.value.hasPrefix("Daily at ") == true, "got \(fields.first?.value ?? "nil")")
         XCTAssertEqual(fields.first?.detail, "0 7 * * *")
+        XCTAssertEqual(fields.first { $0.title == "Notifications" }?.value, "On")
     }
 
-    func testProviderAppearsOnlyBesideAnExplicitModel() {
-        let withModel = TaskConfigurationField.fields(for: Self.decodeJob("""
-        {"job_id": "job-1", "model": "sonnet-5", "provider": "anthropic", "skills": ["summarize", " "]}
+    func testFieldsTheJobHasAreShownAndTrimmed() {
+        let fields = TaskConfigurationField.fields(for: Self.decodeJob("""
+        {"job_id": "job-1", "model": " sonnet-5 ", "provider": "anthropic",
+         "profile": "work", "skills": ["summarize", " ", " notify "]}
         """))
-        XCTAssertEqual(withModel.first { $0.title == "Model" }?.value, "sonnet-5")
-        XCTAssertEqual(withModel.first { $0.title == "Provider" }?.value, "anthropic")
-        XCTAssertEqual(withModel.first { $0.title == "Skills" }?.value, "summarize")
 
-        // A provider without a model describes nothing the user chose.
-        let withoutModel = TaskConfigurationField.fields(for: Self.decodeJob("""
-        {"job_id": "job-2", "model": "   ", "provider": "anthropic"}
-        """))
-        XCTAssertNil(withoutModel.first { $0.title == "Provider" })
-        XCTAssertEqual(withoutModel.first { $0.title == "Model" }?.value, "Server default")
+        XCTAssertEqual(fields.map(\.title), ["Schedule", "Deliver", "Model", "Provider", "Profile", "Skills"])
+        XCTAssertEqual(fields.first { $0.title == "Model" }?.value, "sonnet-5")
+        XCTAssertEqual(fields.first { $0.title == "Skills" }?.value, "summarize, notify")
+        // Nothing said about notifications, so nothing claimed about them.
+        XCTAssertNil(fields.first { $0.title == "Notifications" })
     }
 
-    /// "On" for a value the server never sent would be a guess, not a stand-in
-    /// for absence — unlike "Server default", which is true either way.
-    func testNotificationsRowIsAbsentWhenTheServerDidNotSay() {
+    /// Every job delivers somewhere, and `local` is the server's own default
+    /// rather than a stand-in for a value it failed to send.
+    func testDeliverFallsBackToTheServerDefault() {
         let fields = TaskConfigurationField.fields(for: Self.decodeJob("""
         {"job_id": "job-3"}
         """))
 
-        XCTAssertNil(fields.first { $0.title == "Notifications" })
         XCTAssertEqual(fields.first { $0.title == "Deliver" }?.value, "local")
     }
 
