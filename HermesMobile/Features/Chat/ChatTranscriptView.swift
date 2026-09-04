@@ -36,7 +36,7 @@ struct ChatTranscriptView: View {
     let isScrolledNearBottom: Bool
     let activeStreamID: String?
     let streamingScrollTrigger: Int
-    let cacheFirstReconcileScrollToken: Int
+    let transcriptRelayoutScrollToken: Int
     let bottomAnchorID: String
     let transcriptSpacing: CGFloat
     let transcriptBottomInsetHeight: CGFloat
@@ -190,9 +190,10 @@ struct ChatTranscriptView: View {
                         releasingHold { onScrollToLatestContent(proxy, true) }
                     }
                 }
-                .onChange(of: cacheFirstReconcileScrollToken) {
-                    // Cache-first reconcile (#289): the server transcript just replaced
-                    // the lighter cached render, so snap back to the bottom (no
+                .onChange(of: transcriptRelayoutScrollToken) {
+                    // The transcript just changed height without gaining a message —
+                    // the server render replacing the cache-first one (#289), or sent
+                    // references becoming chips (#388). Snap back to the bottom (no
                     // animation) unless the reader has scrolled away in the meantime.
                     guard isFollowingLatestContent else { return }
                     releasingHold { onScrollToLatestContent(proxy, false) }

@@ -3700,12 +3700,12 @@ final class ChatViewModelSendTests: XCTestCase {
             """, for: request)
         }
 
-        XCTAssertEqual(viewModel.cacheFirstReconcileScrollToken, 0)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
         await viewModel.loadMessages(modelContext: context)
 
         // The cache-first reconcile fired exactly once so the view can snap back to the
         // bottom as the taller server transcript replaces the lighter cached render.
-        XCTAssertEqual(viewModel.cacheFirstReconcileScrollToken, 1)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
     }
 
     @MainActor
@@ -3734,7 +3734,7 @@ final class ChatViewModelSendTests: XCTestCase {
         await viewModel.loadMessages(modelContext: context)
 
         // No cache was rendered first, so there is nothing to re-pin and the token stays put.
-        XCTAssertEqual(viewModel.cacheFirstReconcileScrollToken, 0)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
     }
 
     @MainActor
@@ -8590,6 +8590,39 @@ final class ChatViewModelSendTests: XCTestCase {
         await viewModel.loadSkillSlashSuggestions()
         XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
         XCTAssertEqual(attempts, 2)
+    }
+
+    /// Sent references become chips the moment the catalog lands, and a chip is
+    /// not the size of the `/slug` it replaces, so the transcript has to be told
+    /// it just re-laid out under the reader (#388).
+    @MainActor
+    func testTheFirstSkillCatalogSignalsATranscriptRelayout() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/skills")
+            return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+        }
+
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
+        XCTAssertTrue(viewModel.skillChipCatalog.isEmpty)
+
+        await viewModel.loadSkillSlashSuggestions()
+
+        XCTAssertEqual(viewModel.skillChipCatalog.label(forSlug: "handoff"), "handoff")
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
+    }
+
+    /// A server with no skills leaves the transcript exactly as it was drawn, so
+    /// it must not claim a relayout.
+    @MainActor
+    func testAnEmptySkillListDoesNotSignalARelayout() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(#"{"skills": []}"#, for: request)
+        }
+
+        await viewModel.loadSkillSlashSuggestions()
+
+        XCTAssertTrue(viewModel.skillChipCatalog.isEmpty)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
     }
 
     private static func ttsUnavailableResponse(for request: URLRequest) -> (HTTPURLResponse, Data) {

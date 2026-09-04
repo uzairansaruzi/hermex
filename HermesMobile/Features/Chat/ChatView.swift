@@ -333,6 +333,10 @@ struct ChatView: View {
     @State private var clarificationBarHeight: CGFloat = 0
     @State private var composerIsFocused = false
     @State private var didHydrateDraft = false
+    /// Whether this chat has already asked the server for its skills on the
+    /// transcript's behalf, so a request that failed does not repeat with every
+    /// later transcript update.
+    @State private var hasRequestedSkillsForTranscriptChips = false
     /// True from the moment hydration finds persisted attachment records until
     /// their restore pass finishes. It gates `syncDraftAttachments` across the
     /// whole window, so the not-yet-rebuilt composer strip can never overwrite
@@ -657,7 +661,7 @@ struct ChatView: View {
             .onChange(of: viewModel.activeStreamID) {
                 handleActiveStreamChange()
             }
-            .onChange(of: viewModel.cacheFirstReconcileScrollToken) {
+            .onChange(of: viewModel.transcriptRelayoutScrollToken) {
                 // Open a brief snap window so the cache-first reconcile re-pin (and any
                 // message-count auto-follow racing it) lands without an animated jump (#289).
                 cacheFirstSnapUntil = Date().addingTimeInterval(0.35)
@@ -1227,7 +1231,7 @@ struct ChatView: View {
             isScrolledNearBottom: isScrolledNearBottom,
             activeStreamID: viewModel.activeStreamID,
             streamingScrollTrigger: viewModel.streamingScrollTrigger,
-            cacheFirstReconcileScrollToken: viewModel.cacheFirstReconcileScrollToken,
+            transcriptRelayoutScrollToken: viewModel.transcriptRelayoutScrollToken,
             bottomAnchorID: bottomAnchorID,
             transcriptSpacing: transcriptSpacing,
             transcriptBottomInsetHeight: transcriptBottomInsetHeight,
@@ -1318,8 +1322,28 @@ struct ChatView: View {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
         .environment(\.skillChipCatalog, viewModel.skillChipCatalog)
-        .task(id: viewModel.messages.count) {
+        .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
+        }
+    }
+
+    /// How many sent messages look like they name a skill.
+    ///
+    /// It is both the trigger and the task's identity, so a cache-first
+    /// transcript that swaps in the server's messages still warms the list when
+    /// the count of messages did not change but their text did. Zero once the
+    /// list has loaded or this chat has already asked, which is what keeps the
+    /// scan off the streaming path.
+    private var transcriptSkillReferenceCount: Int {
+        guard !hasRequestedSkillsForTranscriptChips, !viewModel.hasLoadedSkillSlashSuggestions else {
+            return 0
+        }
+
+        return viewModel.messages.reduce(into: 0) { count, message in
+            guard message.role == "user",
+                  ComposerChipTokenizer.mayContainReference(message.content ?? "")
+            else { return }
+            count += 1
         }
     }
 
@@ -1328,13 +1352,15 @@ struct ChatView: View {
     /// way a restored draft does — and a chat that never mentions a skill still
     /// costs no skills request.
     private func loadSkillSuggestionsForTranscriptChipsIfNeeded() async {
-        guard !viewModel.hasLoadedSkillSlashSuggestions,
-              viewModel.messages.contains(where: {
-                  $0.role == "user" && ComposerChipTokenizer.mayContainReference($0.content ?? "")
-              })
-        else { return }
+        guard transcriptSkillReferenceCount > 0 else { return }
 
         await viewModel.loadSkillSlashSuggestions()
+
+        // One ask per chat. A skills request that failed must not turn every
+        // later transcript update into another one; typing `/` in the composer
+        // still retries on the reader's behalf. Set after the wait so a
+        // cancelled task leaves the chat free to ask again.
+        hasRequestedSkillsForTranscriptChips = true
     }
 
     /// The chat-canvas layout direction. Driven by the manual Settings → Chat

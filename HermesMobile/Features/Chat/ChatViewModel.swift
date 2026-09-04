@@ -242,7 +242,11 @@ final class ChatViewModel {
     /// (tool-call / reasoning cards, content parts) is taller than the lighter cached
     /// render, so the view re-pins to the bottom on this token *without* animation —
     /// otherwise the height growth produces a visible scroll jump.
-    private(set) var cacheFirstReconcileScrollToken = 0
+    /// Bumped whenever something re-lays out the transcript under the reader
+    /// without adding a message: the server transcript replacing the lighter
+    /// cache-first render, or the skill catalog turning sent `/slug` text into
+    /// chips. A reader who was pinned to the bottom is put back there.
+    private(set) var transcriptRelayoutScrollToken = 0
     private var hasPrimedInitialCachedMessages = false
     @ObservationIgnored private var pendingStreamingScrollTriggerTask: Task<Void, Never>?
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
@@ -1407,7 +1411,7 @@ final class ChatViewModel {
             if renderedCacheFirst {
                 // The taller server transcript has now replaced the lighter cache-first
                 // render; signal the view to re-pin to the bottom without a visible jump.
-                cacheFirstReconcileScrollToken += 1
+                transcriptRelayoutScrollToken += 1
             }
             latestServerLoadHadAssistantResponseAfterLatestUser = Self.hasAssistantResponseAfterLatestUser(
                 in: messages
@@ -3088,8 +3092,16 @@ final class ChatViewModel {
     /// The one way the skill list changes, so the chip catalog can never fall
     /// out of step with it.
     private func applySkillSlashSuggestions(_ suggestions: [SkillSlashSuggestion]) {
+        let wasEmpty = skillChipCatalog.isEmpty
         skillSlashSuggestions = suggestions
         skillChipCatalog = ComposerChipCatalog(skills: suggestions)
+
+        // The first catalog turns sent `/slug` text into chips, and a chip is
+        // not the size of the text it replaces. Signal the relayout so a reader
+        // pinned to the bottom stays there.
+        if wasEmpty, !skillChipCatalog.isEmpty {
+            transcriptRelayoutScrollToken += 1
+        }
     }
 
     private func branchSessionFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
