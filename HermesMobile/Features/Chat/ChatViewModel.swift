@@ -463,7 +463,9 @@ final class ChatViewModel {
     private var isStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
     var isActiveStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
     private var hasLoadedPersonalitySuggestions = false
-    private var isLoadingPersonalitySuggestions = false
+    /// The in-flight personality list request, shared by every caller of
+    /// `loadPersonalitySuggestions()` so no view's cancellation can orphan it.
+    private var personalitySuggestionsLoad: Task<Void, Never>?
     /// Whether a skills list request has succeeded for this session, even when
     /// it returned no skills. Lets the composer tell "still loading" from
     /// "loaded, and the server has none".
@@ -978,23 +980,40 @@ final class ChatViewModel {
         }
     }
 
+    /// Loads the personality list once, sharing a single request between
+    /// callers.
+    ///
+    /// Same shape as `loadSkillSlashSuggestions()` and for the same reason: the
+    /// request lives on a task this view model owns, so a cancelled caller
+    /// cannot take the fetch down with it, and a caller arriving mid-flight
+    /// waits for that same result instead of racing past an "already loading"
+    /// flag and finding an empty list. A failed load clears the handle, so the
+    /// next caller retries.
     func loadPersonalitySuggestions() async {
         guard !hasLoadedPersonalitySuggestions else { return }
-        guard !isLoadingPersonalitySuggestions else { return }
 
-        isLoadingPersonalitySuggestions = true
-        defer { isLoadingPersonalitySuggestions = false }
-
-        do {
-            personalitySuggestions = (try await client.personalities()).slashAutocompleteNames
-            hasLoadedPersonalitySuggestions = true
-        } catch {
-            lastError = error
-            composerConfigurationErrorMessage = error.localizedDescription
-            if personalitySuggestions.isEmpty {
-                personalitySuggestions = ["none"]
+        let load: Task<Void, Never>
+        if let existing = personalitySuggestionsLoad {
+            load = existing
+        } else {
+            load = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    self.personalitySuggestions = (try await self.client.personalities()).slashAutocompleteNames
+                    self.hasLoadedPersonalitySuggestions = true
+                } catch {
+                    self.lastError = error
+                    self.composerConfigurationErrorMessage = error.localizedDescription
+                    if self.personalitySuggestions.isEmpty {
+                        self.personalitySuggestions = ["none"]
+                    }
+                }
+                self.personalitySuggestionsLoad = nil
             }
+            personalitySuggestionsLoad = load
         }
+
+        await load.value
     }
 
     /// Loads the skill list once, sharing a single request between callers.

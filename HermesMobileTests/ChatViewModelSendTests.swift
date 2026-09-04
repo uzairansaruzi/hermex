@@ -8592,6 +8592,50 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
+    // MARK: - Personality slash suggestions
+
+    /// The personality list is loaded from the same kind of `.task` modifier as
+    /// the skill list, so it needs the same protection (#387): a caller SwiftUI
+    /// cancels must not take the shared fetch down with it and leave the
+    /// personality picker permanently empty.
+    @MainActor
+    func testCancellingACallerDoesNotAbortThePersonalityLoad() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/personalities")
+            return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+        }
+
+        let caller = Task { await viewModel.loadPersonalitySuggestions() }
+        caller.cancel()
+        await caller.value
+
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+    }
+
+    /// A load that fails leaves nothing behind, so the next caller retries
+    /// rather than awaiting the finished, empty-handed task.
+    @MainActor
+    func testAFailedPersonalityLoadIsRetriedByTheNextCaller() async throws {
+        var attempts = 0
+        let viewModel = try makeViewModel { request in
+            attempts += 1
+            guard attempts > 1 else {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                    Data()
+                )
+            }
+            return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+        }
+
+        await viewModel.loadPersonalitySuggestions()
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none"])
+
+        await viewModel.loadPersonalitySuggestions()
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+        XCTAssertEqual(attempts, 2)
+    }
+
     /// Sent references become chips the moment the catalog lands, and a chip is
     /// not the size of the `/slug` it replaces, so the transcript has to be told
     /// it just re-laid out under the reader (#388).
