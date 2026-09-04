@@ -183,28 +183,16 @@ struct MessageComposerView: View {
         ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
-    /// What the panel filters on, or `nil` when it should be closed because the
-    /// trigger has already resolved to something the user finished typing.
+    /// What the panel filters on, or `nil` when it should be closed.
+    ///
+    /// A command the user has typed past no longer produces a trigger at all —
+    /// `ComposerSlashTrigger` ends at the space after a command that takes no
+    /// sub-argument — so the only cases left here are the two sub-argument lists
+    /// that go quiet once their argument is settled.
     private var slashQuery: String? {
         guard let query = slashTrigger?.text else { return nil }
 
         let parsed = ParsedSlashQuery(query: query)
-        if let command = parsed.command,
-           command.subArgs == .none,
-           hasWhitespaceAfterSlashCommand(command.name, in: query) {
-            return nil
-        }
-
-        if SlashSkillFormatter.skill(named: parsed.commandName, in: skillSuggestions) != nil,
-           hasWhitespaceAfterSlashCommand(parsed.commandName, in: query) {
-            return nil
-        }
-
-        if AgentSlashCommandSuggestion.command(named: parsed.commandName, in: agentCommands) != nil,
-           hasWhitespaceAfterSlashCommand(parsed.commandName, in: query) {
-            return nil
-        }
-
         if parsed.commandName.lowercased() == "skills",
            SlashSkillFormatter.invocation(from: parsed.argQuery, suggestions: skillSuggestions) != nil {
             return nil
@@ -234,13 +222,6 @@ struct MessageComposerView: View {
         let completed = trigger.applying(replacement, to: draftMessage)
         draftMessage = completed.draft
         composerSelection = composerSelection.moved(to: completed.selection)
-    }
-
-    private func hasWhitespaceAfterSlashCommand(_ commandName: String, in query: String) -> Bool {
-        let prefix = "/\(commandName)"
-        guard query.lowercased().hasPrefix(prefix.lowercased()) else { return false }
-        let afterCommand = query.dropFirst(prefix.count)
-        return afterCommand.first?.isWhitespace == true
     }
 
     private var parsedSlashQuery: ParsedSlashQuery {
