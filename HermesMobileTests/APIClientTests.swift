@@ -165,10 +165,10 @@ final class MockAuthAPIClient: AuthAPIClient, @unchecked Sendable {
     }
 }
 
-func apiTestJSONResponse(_ json: String, for request: URLRequest) -> (HTTPURLResponse, Data) {
+func apiTestJSONResponse(_ json: String, for request: URLRequest, status: Int = 200) -> (HTTPURLResponse, Data) {
     let response = HTTPURLResponse(
         url: request.url!,
-        statusCode: 200,
+        statusCode: status,
         httpVersion: nil,
         headerFields: ["Content-Type": "application/json"]
     )!

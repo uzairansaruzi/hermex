@@ -10,7 +10,7 @@ struct UsageModelsCard: View {
     let hasCost: Bool
 
     var body: some View {
-        UsageCard(title: String(localized: "By model")) {
+        SectionCard(title: String(localized: "By model")) {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(Array(models.enumerated()), id: \.offset) { _, model in
                     UsageModelRow(model: model, hasCost: hasCost)
@@ -76,7 +76,7 @@ struct UsageTopSessionsCard: View {
     let sessions: [SessionSummary]
 
     var body: some View {
-        UsageCard(title: String(localized: "Top Sessions")) {
+        SectionCard(title: String(localized: "Top Sessions")) {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(sessions.prefix(10)) { session in
                     VStack(alignment: .leading, spacing: 2) {

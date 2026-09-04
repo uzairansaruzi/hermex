@@ -15,7 +15,7 @@
 		1A2B3C4D5E6F700000000300 /* ServerAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000301 /* ServerAccount.swift */; };
 		B5A1000000000000000000A0 /* ServerRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A1000000000000000000A1 /* ServerRegistryTests.swift */; };
 		C0DE512E0000000000000202 /* InsightsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000201 /* InsightsModels.swift */; };
-		C0DE512E0000000000000204 /* UsageCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000203 /* UsageCard.swift */; };
+		C0DE512E0000000000000204 /* SectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000203 /* SectionCard.swift */; };
 		C0DE512E00000000000002206 /* UsageChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002205 /* UsageChartData.swift */; };
 		C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002207 /* UsageChartCard.swift */; };
 		C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002209 /* UsageTotalsGrid.swift */; };
@@ -94,6 +94,7 @@
 		19C1150000000000000000A3 /* CliSessionsSyncModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C1150000000000000000A4 /* CliSessionsSyncModelTests.swift */; };
 		C03910000000000000000010 /* APIEndpointContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000010 /* APIEndpointContractTests.swift */; };
 		C03910000000000000000011 /* CronManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000011 /* CronManagementTests.swift */; };
+		D600000000000000000012 /* TaskRunHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600000000000000000011 /* TaskRunHistoryTests.swift */; };
 		D500000000000000000002 /* TaskAgendaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000001 /* TaskAgendaTests.swift */; };
 		C03910000000000000000012 /* MemoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000012 /* MemoryViewModelTests.swift */; };
 		C03910000000000000000013 /* ModelCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000013 /* ModelCatalogTests.swift */; };
@@ -331,6 +332,10 @@
 		2BE8F2B38F094C4C9EB18301 /* SkillsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE8F2B38F094C4C9EB18300 /* SkillsViewModelTests.swift */; };
 		22AB000000000000000000B3 /* WorkspaceRegistryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AB000000000000000000F3 /* WorkspaceRegistryViewModelTests.swift */; };
 		36CD9EF0B0734E5F8C28BB92 /* SlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA59130ED4141049177576C /* SlashCommand.swift */; };
+		D600000000000000000002 /* CronRunHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600000000000000000001 /* CronRunHistory.swift */; };
+		D500000000000000000012 /* TaskDetailHeaderCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000011 /* TaskDetailHeaderCard.swift */; };
+		D500000000000000000022 /* TaskRunHistorySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000021 /* TaskRunHistorySection.swift */; };
+		D500000000000000000032 /* TaskRunOutputSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000031 /* TaskRunOutputSheet.swift */; };
 		3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01011 /* Cron.swift */; };
 		D100000000000000000002 /* ANSIEscapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000000000001 /* ANSIEscapes.swift */; };
 		3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01012 /* TasksView.swift */; };
@@ -476,6 +481,7 @@
 		19C1150000000000000000A4 /* CliSessionsSyncModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliSessionsSyncModelTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000010 /* APIEndpointContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIEndpointContractTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000011 /* CronManagementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronManagementTests.swift; sourceTree = "<group>"; };
+		D600000000000000000011 /* TaskRunHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRunHistoryTests.swift; sourceTree = "<group>"; };
 		D500000000000000000001 /* TaskAgendaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskAgendaTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000012 /* MemoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryViewModelTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000013 /* ModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogTests.swift; sourceTree = "<group>"; };
@@ -663,6 +669,10 @@
 		2BE8F2B38F094C4C9EB18300 /* SkillsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsViewModelTests.swift; sourceTree = "<group>"; };
 		22AB000000000000000000F3 /* WorkspaceRegistryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceRegistryViewModelTests.swift; sourceTree = "<group>"; };
 		1AB43F55AB4F4262963E6A6E /* SlashCommandCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandCatalog.swift; sourceTree = "<group>"; };
+		D600000000000000000001 /* CronRunHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronRunHistory.swift; sourceTree = "<group>"; };
+		D500000000000000000011 /* TaskDetailHeaderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailHeaderCard.swift; sourceTree = "<group>"; };
+		D500000000000000000021 /* TaskRunHistorySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRunHistorySection.swift; sourceTree = "<group>"; };
+		D500000000000000000031 /* TaskRunOutputSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRunOutputSheet.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01011 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
 		D100000000000000000001 /* ANSIEscapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ANSIEscapes.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01012 /* TasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksView.swift; sourceTree = "<group>"; };
@@ -678,7 +688,7 @@
 		3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailViewModel.swift; sourceTree = "<group>"; };
 		57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
 		C0DE512E0000000000000201 /* InsightsModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsModels.swift; sourceTree = "<group>"; };
-		C0DE512E0000000000000203 /* UsageCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageCard.swift; sourceTree = "<group>"; };
+		C0DE512E0000000000000203 /* SectionCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SectionCard.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002205 /* UsageChartData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartData.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002207 /* UsageChartCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartCard.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002209 /* UsageTotalsGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageTotalsGrid.swift; sourceTree = "<group>"; };
@@ -891,6 +901,7 @@
 				C03900000000000000000010 /* APIEndpointContractTests.swift */,
 				C03900000000000000000011 /* CronManagementTests.swift */,
 				D500000000000000000001 /* TaskAgendaTests.swift */,
+				D600000000000000000011 /* TaskRunHistoryTests.swift */,
 				C03900000000000000000012 /* MemoryViewModelTests.swift */,
 				C03900000000000000000013 /* ModelCatalogTests.swift */,
 				C03900000000000000000014 /* MessageActionContextTests.swift */,
@@ -1027,6 +1038,7 @@
 				C1A042000000000000000002 /* Clarification.swift */,
 				A02400000000000000000002 /* Goal.swift */,
 				3F91D2A54B9A4F66A2C01011 /* Cron.swift */,
+				D600000000000000000001 /* CronRunHistory.swift */,
 				D100000000000000000001 /* ANSIEscapes.swift */,
 				1A2B3C4D5E6F70000000201 /* Memory.swift */,
 				1A2B3C4D5E6F70000000211 /* Skills.swift */,
@@ -1092,6 +1104,7 @@
 				C0FF000000000000000000B2 /* CustomHeadersEditor.swift */,
 				C0366000000000000000002 /* ModelPickerSheet.swift */,
 				C0366000000000000000004 /* ModelPickerConfiguration.swift */,
+				C0DE512E0000000000000203 /* SectionCard.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -1348,6 +1361,9 @@
 				D200000000000000000001 /* CronScheduleHumanizer.swift */,
 				3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */,
 				3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */,
+				D500000000000000000031 /* TaskRunOutputSheet.swift */,
+				D500000000000000000021 /* TaskRunHistorySection.swift */,
+				D500000000000000000011 /* TaskDetailHeaderCard.swift */,
 				C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */,
 				C0369000000000000000008 /* CronJobEditorSheet.swift */,
 				C0369000000000000000004 /* CronJobConfigurationPickers.swift */,
@@ -1361,7 +1377,6 @@
 			children = (
 				57B5FD09B6B5937573B5F9A4 /* InsightsView.swift */,
 				C0DE512E0000000000000201 /* InsightsModels.swift */,
-				C0DE512E0000000000000203 /* UsageCard.swift */,
 				C0DE512E00000000000002205 /* UsageChartData.swift */,
 				C0DE512E00000000000002207 /* UsageChartCard.swift */,
 				C0DE512E00000000000002209 /* UsageTotalsGrid.swift */,
@@ -1747,6 +1762,10 @@
 				C1A042000000000000000001 /* Clarification.swift in Sources */,
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
 				A02400000000000000000001 /* Goal.swift in Sources */,
+				D600000000000000000002 /* CronRunHistory.swift in Sources */,
+				D500000000000000000012 /* TaskDetailHeaderCard.swift in Sources */,
+				D500000000000000000022 /* TaskRunHistorySection.swift in Sources */,
+				D500000000000000000032 /* TaskRunOutputSheet.swift in Sources */,
 				3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */,
 				D100000000000000000002 /* ANSIEscapes.swift in Sources */,
 				3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */,
@@ -1773,7 +1792,7 @@
 				A710739233F64F4FA4C2B700 /* ComposerVoiceInputController.swift in Sources */,
 				8B71DA2AAC521382F54A841C /* InsightsView.swift in Sources */,
 				C0DE512E0000000000000202 /* InsightsModels.swift in Sources */,
-				C0DE512E0000000000000204 /* UsageCard.swift in Sources */,
+				C0DE512E0000000000000204 /* SectionCard.swift in Sources */,
 				C0DE512E00000000000002206 /* UsageChartData.swift in Sources */,
 				C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */,
 				C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */,
@@ -1828,6 +1847,7 @@
 				C03910000000000000000010 /* APIEndpointContractTests.swift in Sources */,
 				C03910000000000000000011 /* CronManagementTests.swift in Sources */,
 				D500000000000000000002 /* TaskAgendaTests.swift in Sources */,
+				D600000000000000000012 /* TaskRunHistoryTests.swift in Sources */,
 				C03910000000000000000012 /* MemoryViewModelTests.swift in Sources */,
 				C03910000000000000000013 /* ModelCatalogTests.swift in Sources */,
 				C03910000000000000000014 /* MessageActionContextTests.swift in Sources */,

@@ -13,7 +13,7 @@ struct UsageTotalsGrid: View {
     }
 
     var body: some View {
-        UsageCard(title: String(localized: "Totals")) {
+        SectionCard(title: String(localized: "Totals")) {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                 ForEach(cells) { cell in
                     UsageMetricCell(cell: cell)

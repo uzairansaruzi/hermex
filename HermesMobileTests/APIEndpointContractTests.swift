@@ -222,6 +222,22 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "cron update", method: "POST", endpoint: .cronUpdate, path: "/api/crons/update"),
             .init(name: "cron delete", method: "POST", endpoint: .cronDelete, path: "/api/crons/delete"),
             .init(name: "cron run", method: "POST", endpoint: .cronRun, path: "/api/crons/run"),
+            // Same path as the POST above, different operation: GET reads one
+            // past run's output.
+            .init(
+                name: "cron run detail",
+                method: "GET",
+                endpoint: .cronRunDetail(jobID: "job-123", filename: "2026-09-03T07-00-00.md"),
+                path: "/api/crons/run",
+                query: ["job_id": "job-123", "filename": "2026-09-03T07-00-00.md"]
+            ),
+            .init(
+                name: "cron history",
+                method: "GET",
+                endpoint: .cronHistory(jobID: "job-123", offset: 50, limit: 50),
+                path: "/api/crons/history",
+                query: ["job_id": "job-123", "offset": "50", "limit": "50"]
+            ),
             .init(name: "cron pause", method: "POST", endpoint: .cronPause, path: "/api/crons/pause"),
             .init(name: "cron resume", method: "POST", endpoint: .cronResume, path: "/api/crons/resume"),
             .init(name: "cron status all", method: "GET", endpoint: .cronStatus(jobID: nil), path: "/api/crons/status"),

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The Usage screen's card container: an optional uppercase title over a glass
-/// panel. Matches the Settings card chrome so the two screens read as one app.
-struct UsageCard<Content: View>: View {
+/// A card container: an optional uppercase title over a glass panel. Shared by
+/// Usage and Task Detail, and matched to the Settings card chrome, so the
+/// screens read as one app.
+struct SectionCard<Content: View>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
@@ -42,10 +43,4 @@ struct UsageCard<Content: View>: View {
                 }
         }
     }
-}
-
-/// Formats a server-reported 0–100 percentage (e.g. `cache_hit_percent`) with a
-/// localized percent symbol and at most one fraction digit ("87.5%", "12%").
-func insightsFormattedPercent(_ value: Double, locale: Locale = .current) -> String {
-    (value / 100).formatted(.percent.precision(.fractionLength(0...1)).locale(locale))
 }

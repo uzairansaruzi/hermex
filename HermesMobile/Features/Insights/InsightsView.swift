@@ -76,7 +76,7 @@ struct InsightsView: View {
                 .pickerStyle(.segmented)
 
                 if viewModel.dataSource != .server {
-                    UsageCard {
+                    SectionCard {
                         Label {
                             Text(viewModel.sourceDescription)
                                 .font(AppFont.caption())

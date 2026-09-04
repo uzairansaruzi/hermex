@@ -192,6 +192,36 @@ enum CronScheduleHumanizer {
 
     /// Foundation owns the plural rules here, so "15 minutes" is correct in
     /// every language without a plural entry per interval in the catalog.
+    /// The wait until `date` as one compact figure — "in 6m", "in 12h 21m",
+    /// "in 3d 4h" — for the number Task Detail leads with.
+    ///
+    /// Deliberately computed on demand instead of ticked by a timer: a
+    /// self-updating label repaints its whole card every second for a figure
+    /// nobody watches count down, and Refresh already brings it current.
+    static func countdown(
+        to date: Date,
+        from now: Date = .now,
+        locale: Locale = .current
+    ) -> String {
+        let interval = date.timeIntervalSince(now)
+        guard interval >= 60 else {
+            return interval > 0 ? String(localized: "Due now") : String(localized: "Overdue")
+        }
+
+        let allowed: Set<Duration.UnitsFormatStyle.Unit>
+        if interval < 3_600 {
+            allowed = [.minutes]
+        } else if interval < 86_400 {
+            allowed = [.hours, .minutes]
+        } else {
+            allowed = [.days, .hours]
+        }
+
+        let duration = Duration.seconds(interval)
+            .formatted(.units(allowed: allowed, width: .narrow, maximumUnitCount: 2).locale(locale))
+        return String(localized: "in \(duration)", comment: "Countdown to a task's next run, e.g. 'in 12h 21m'")
+    }
+
     private static func durationText(minutes: Int, locale: Locale) -> String {
         Duration.seconds(minutes * 60)
             .formatted(.units(allowed: [.minutes], width: .wide).locale(locale))

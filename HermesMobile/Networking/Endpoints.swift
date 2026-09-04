@@ -91,7 +91,12 @@ enum Endpoint {
     case cronCreate
     case cronUpdate
     case cronDelete
+    /// POST: triggers a run. `/api/crons/run` also serves a GET that reads one
+    /// past run's output — that is `cronRunDetail`, a separate case.
     case cronRun
+    /// GET on `/api/crons/run`: one past run's full output.
+    case cronRunDetail(jobID: String, filename: String)
+    case cronHistory(jobID: String, offset: Int, limit: Int)
     case cronPause
     case cronResume
     case cronStatus(jobID: String?)
@@ -307,8 +312,10 @@ enum Endpoint {
             return "/api/crons/update"
         case .cronDelete:
             return "/api/crons/delete"
-        case .cronRun:
+        case .cronRun, .cronRunDetail:
             return "/api/crons/run"
+        case .cronHistory:
+            return "/api/crons/history"
         case .cronPause:
             return "/api/crons/pause"
         case .cronResume:
@@ -477,6 +484,17 @@ enum Endpoint {
         case let .cronStatus(jobID):
             guard let jobID else { return [] }
             return [URLQueryItem(name: "job_id", value: jobID)]
+        case let .cronRunDetail(jobID, filename):
+            return [
+                URLQueryItem(name: "job_id", value: jobID),
+                URLQueryItem(name: "filename", value: filename)
+            ]
+        case let .cronHistory(jobID, offset, limit):
+            return [
+                URLQueryItem(name: "job_id", value: jobID),
+                URLQueryItem(name: "offset", value: "\(offset)"),
+                URLQueryItem(name: "limit", value: "\(limit)")
+            ]
         case let .cronOutput(jobID, limit):
             var items = [URLQueryItem(name: "job_id", value: jobID)]
             if let limit {

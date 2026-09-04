@@ -22,7 +22,7 @@ struct UsageChartCard: View {
     private static let chartHeight: CGFloat = 180
 
     var body: some View {
-        UsageCard {
+        SectionCard {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 chart

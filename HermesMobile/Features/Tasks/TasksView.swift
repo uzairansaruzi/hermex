@@ -251,8 +251,17 @@ struct TasksView: View {
 struct CronJobMetadataRow: View {
     let title: String
     let value: String
+    /// A dimmer second line under the value, for the raw form of something the
+    /// value states in English (a cron expression under its sentence).
+    let detail: String?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(title: String, value: String, detail: String? = nil) {
+        self.title = title
+        self.value = value
+        self.detail = detail
+    }
 
     var body: some View {
         Group {
@@ -278,9 +287,19 @@ struct CronJobMetadataRow: View {
     }
 
     private var valueText: some View {
-        Text(value)
-            .foregroundStyle(.primary)
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .foregroundStyle(.primary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+
+            if let detail, detail != value {
+                Text(detail)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
