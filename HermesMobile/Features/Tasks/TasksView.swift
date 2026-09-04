@@ -110,15 +110,20 @@ struct TasksView: View {
     @ViewBuilder
     private var agenda: some View {
         Group {
-            if sections.isEmpty {
-                ContentUnavailableView {
-                    Label("No Matching Tasks", systemImage: "line.3.horizontal.decrease.circle")
-                } description: {
-                    Text("No tasks match this filter.")
-                }
+            if sections.isEmpty && viewModel.recentRuns.isEmpty {
+                noMatchingTasks
             } else {
+                // The list stays mounted while the feed has rows, so switching
+                // to a filter with no tasks does not take "Ran Recently" away.
                 List {
                     recentRunsSection
+
+                    if sections.isEmpty {
+                        Section {
+                            noMatchingTasks
+                                .listRowBackground(Color.clear)
+                        }
+                    }
 
                     ForEach(sections) { section in
                         Section(section.group.title) {
@@ -135,6 +140,14 @@ struct TasksView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             filterPicker
+        }
+    }
+
+    private var noMatchingTasks: some View {
+        ContentUnavailableView {
+            Label("No Matching Tasks", systemImage: "line.3.horizontal.decrease.circle")
+        } description: {
+            Text("No tasks match this filter.")
         }
     }
 

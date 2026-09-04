@@ -69,12 +69,16 @@ final class TasksViewModel {
 
     /// Fetches the recent-runs feed on its own task so a slow or missing
     /// endpoint never holds the task list in its loading state. A reload
-    /// cancels the previous fetch, so a late answer cannot overwrite a newer one.
+    /// cancels the previous fetch, so a late answer cannot overwrite a newer
+    /// one, and a failed refresh keeps the last good feed, the same way the
+    /// task list keeps its jobs when its own reload fails. The task holds
+    /// `self` weakly, so a screen that is gone by the time the feed answers
+    /// is never written to.
     private func refreshRecentRuns() {
         recentRunsTask?.cancel()
-        recentRunsTask = Task { [client] in
+        recentRunsTask = Task { [weak self, client] in
             let response = try? await client.cronRecent()
-            guard !Task.isCancelled, let response else { return }
+            guard let self, !Task.isCancelled, let response else { return }
             recentRuns = CronRecentCompletion.newestFirst(response.completions ?? [])
         }
     }
