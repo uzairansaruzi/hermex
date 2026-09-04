@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ComposerTextInputView: View {
     @Binding var text: String
+    @Binding var selection: ComposerSelection
     @Binding var isFocused: Bool
     @Binding var inputHeight: CGFloat
     @Binding var measuredHeight: CGFloat
@@ -29,6 +30,7 @@ struct ComposerTextInputView: View {
         ZStack(alignment: isCollapsed ? .leading : .topLeading) {
             ComposerTextView(
                 text: $text,
+                selection: $selection,
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
                 isKeyboardSendEnabled: isKeyboardSendEnabled,
@@ -85,6 +87,7 @@ struct ComposerTextInputView: View {
 
 private struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
+    @Binding var selection: ComposerSelection
     @Binding var isFocused: Bool
     let isDisabled: Bool
     let isKeyboardSendEnabled: Bool
@@ -96,7 +99,7 @@ private struct ComposerTextView: UIViewRepresentable {
     let onPasteImages: ([UIImage]) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, isFocused: $isFocused, onHeightChange: onHeightChange)
+        Coordinator(text: $text, selection: $selection, isFocused: $isFocused, onHeightChange: onHeightChange)
     }
 
     func makeUIView(context: Context) -> PastingTextView {
@@ -128,9 +131,7 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: PastingTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
-        if textView.text != text {
-            textView.text = text
-        }
+        context.coordinator.applyBoundText(text, to: textView)
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
         // layoutDirection environment does not propagate into a wrapped UITextView,
         // so set the base direction directly so the cursor/empty-field rests on the
@@ -148,6 +149,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
         textView.onPasteImages = onPasteImages
+        context.coordinator.syncSelection(selection, to: textView, expecting: text)
         context.coordinator.syncFocus(for: textView, shouldFocus: isFocused, isDisabled: isDisabled)
         context.coordinator.reportHeight(for: textView)
     }
@@ -155,18 +157,132 @@ private struct ComposerTextView: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
         @Binding var text: String
+        @Binding var selection: ComposerSelection
         @Binding var isFocused: Bool
         var onHeightChange: (CGFloat) -> Void
         private var pendingFocusTarget: Bool?
+        /// Set while we push a bound value into the editor, so the delegate
+        /// callbacks it provokes do not write the bindings back mid-update.
+        private var isApplyingBoundValue = false
+        private var appliedSelectionRevision = 0
 
         init(
             text: Binding<String>,
+            selection: Binding<ComposerSelection>,
             isFocused: Binding<Bool>,
             onHeightChange: @escaping (CGFloat) -> Void
         ) {
             _text = text
+            _selection = selection
             _isFocused = isFocused
             self.onHeightChange = onHeightChange
+        }
+
+        /// Pushes a parent-side draft change into the editor as an *edit* rather
+        /// than a wholesale assignment, so the change lands on the editor's undo
+        /// stack and the caret follows the insertion. Accepting a slash
+        /// completion is the case that matters: undo puts back what was typed.
+        ///
+        /// While an IME composition is marked, assigning text commits it
+        /// half-formed and splits characters such as 자 into ㅈㅏ (#312). A
+        /// binding that simply has not seen the marked text yet is not a real
+        /// change, so it is ignored; a deliberate clear or replacement still
+        /// applies.
+        func applyBoundText(_ text: String, to textView: UITextView) {
+            guard textView.text != text else { return }
+
+            if let marked = textView.markedTextRange {
+                guard ComposerMarkedText.isDeliberateReplacement(
+                    text,
+                    editorText: textView.text,
+                    marked: markedRange(of: textView, marked: marked)
+                ) else {
+                    return
+                }
+
+                applyingBoundValue { textView.text = text }
+                return
+            }
+
+            applyingBoundValue {
+                // An empty editor has no typing attributes to insert with, so
+                // filling or emptying one stays a plain assignment; everything
+                // in between goes through the input system for its undo stack.
+                if textView.isEditable,
+                   !textView.text.isEmpty,
+                   !text.isEmpty,
+                   let edit = ComposerTextEdit.between(current: textView.text, target: text),
+                   let range = textView.textRange(from: edit.range) {
+                    textView.replace(range, withText: edit.replacement)
+                }
+
+                // `replace` goes through the input system, which can normalize
+                // what it inserts; fall back rather than leave the editor out
+                // of sync.
+                if textView.text != text {
+                    textView.text = text
+                }
+            }
+        }
+
+        /// Keeps the editor's caret and the composer's idea of it in step.
+        ///
+        /// A caret the composer asked for is applied once, keyed on its
+        /// revision, so a later update replaying the same value cannot yank the
+        /// caret away from where the user has since put it. Every other pass
+        /// leaves the editor's own caret alone and reports it back.
+        func syncSelection(_ selection: ComposerSelection, to textView: UITextView, expecting expectedText: String) {
+            guard textView.markedTextRange == nil, textView.text == expectedText else { return }
+
+            guard selection.revision == appliedSelectionRevision else {
+                appliedSelectionRevision = selection.revision
+
+                let clamped = Self.clamp(selection.range, toLengthOf: textView.text)
+                // Assigning `selectedRange` resets predictive text, so never
+                // assign a range the editor already holds.
+                if textView.selectedRange != clamped {
+                    applyingBoundValue { textView.selectedRange = clamped }
+                }
+                return
+            }
+
+            publishSelection(of: textView)
+        }
+
+        /// Reports the caret the editor settled on. Deferred, because a binding
+        /// cannot be written during a view update.
+        private func publishSelection(of textView: UITextView) {
+            let range = textView.selectedRange
+            guard selection.range != range else { return }
+
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView,
+                      textView.selectedRange == range,
+                      self.selection.range != range
+                else {
+                    return
+                }
+                self.selection.range = range
+            }
+        }
+
+        static func clamp(_ selection: NSRange, toLengthOf text: String) -> NSRange {
+            let length = (text as NSString).length
+            let location = min(max(0, selection.location), length)
+            return NSRange(location: location, length: min(max(0, selection.length), length - location))
+        }
+
+        private func markedRange(of textView: UITextView, marked: UITextRange) -> NSRange {
+            NSRange(
+                location: textView.offset(from: textView.beginningOfDocument, to: marked.start),
+                length: textView.offset(from: marked.start, to: marked.end)
+            )
+        }
+
+        private func applyingBoundValue(_ body: () -> Void) {
+            isApplyingBoundValue = true
+            body()
+            isApplyingBoundValue = false
         }
 
         func syncFocus(for textView: UITextView, shouldFocus: Bool, isDisabled: Bool) {
@@ -216,8 +332,24 @@ private struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
+            guard !isApplyingBoundValue else { return }
+
+            // Text and caret travel together: publishing them in one update is
+            // what keeps the two consistent when the composer maps the caret
+            // back onto the draft to find the slash trigger.
             text = textView.text
+            selection.range = textView.selectedRange
             reportHeight(for: textView)
+        }
+
+        /// Publishes pure caret moves — a tap, an arrow key, a selection drag.
+        /// Edits are left to `textViewDidChange`, which carries both halves, and
+        /// a live IME composition is left alone entirely.
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard !isApplyingBoundValue, textView.markedTextRange == nil else { return }
+            guard textView.text == text, selection.range != textView.selectedRange else { return }
+
+            selection.range = textView.selectedRange
         }
 
         func reportHeight(for textView: UITextView) {
