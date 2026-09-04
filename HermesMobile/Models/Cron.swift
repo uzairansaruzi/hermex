@@ -36,8 +36,11 @@ struct CronStatusResponse: Decodable, Equatable {
 }
 
 struct CronJob: Decodable, Equatable, Identifiable {
+    /// Stable across refreshes. Never a fresh `UUID` — `id` is computed, so a
+    /// UUID fallback would hand SwiftUI a different identity on every read and
+    /// rebuild every row of the list on every poll.
     var id: String {
-        jobId ?? name ?? UUID().uuidString
+        jobId ?? name ?? ""
     }
 
     let jobId: String?

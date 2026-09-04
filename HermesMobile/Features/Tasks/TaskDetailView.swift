@@ -229,7 +229,9 @@ struct TaskDetailView: View {
             }
 
             if let error = viewModel.job.lastError ?? viewModel.job.lastDeliveryError, !error.isEmpty {
-                CronJobMetadataRow(title: String(localized: "Error"), value: error)
+                // Run text arrives with the shell's escape codes intact; showing
+                // them raw renders as garbage.
+                CronJobMetadataRow(title: String(localized: "Error"), value: error.strippingANSIEscapes())
                     .foregroundStyle(.red)
             }
         }
@@ -249,7 +251,7 @@ struct TaskDetailView: View {
                         .foregroundStyle(.secondary)
 
                     if let content = output.content, !content.isEmpty {
-                        Text(content)
+                        Text(content.strippingANSIEscapes())
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                             .padding(12)

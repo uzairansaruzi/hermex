@@ -94,6 +94,7 @@
 		19C1150000000000000000A3 /* CliSessionsSyncModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C1150000000000000000A4 /* CliSessionsSyncModelTests.swift */; };
 		C03910000000000000000010 /* APIEndpointContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000010 /* APIEndpointContractTests.swift */; };
 		C03910000000000000000011 /* CronManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000011 /* CronManagementTests.swift */; };
+		D500000000000000000002 /* TaskAgendaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000000000000000001 /* TaskAgendaTests.swift */; };
 		C03910000000000000000012 /* MemoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000012 /* MemoryViewModelTests.swift */; };
 		C03910000000000000000013 /* ModelCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000013 /* ModelCatalogTests.swift */; };
 		C03910000000000000000014 /* MessageActionContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000014 /* MessageActionContextTests.swift */; };
@@ -331,8 +332,12 @@
 		22AB000000000000000000B3 /* WorkspaceRegistryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AB000000000000000000F3 /* WorkspaceRegistryViewModelTests.swift */; };
 		36CD9EF0B0734E5F8C28BB92 /* SlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA59130ED4141049177576C /* SlashCommand.swift */; };
 		3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01011 /* Cron.swift */; };
+		D100000000000000000002 /* ANSIEscapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000000000001 /* ANSIEscapes.swift */; };
 		3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01012 /* TasksView.swift */; };
+		D400000000000000000002 /* CronJobRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D400000000000000000001 /* CronJobRowView.swift */; };
 		3F91D2A54B9A4F66A2C01003 /* TasksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F91D2A54B9A4F66A2C01013 /* TasksViewModel.swift */; };
+		D300000000000000000002 /* TaskAgenda.swift in Sources */ = {isa = PBXBuildFile; fileRef = D300000000000000000001 /* TaskAgenda.swift */; };
+		D200000000000000000002 /* CronScheduleHumanizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000001 /* CronScheduleHumanizer.swift */; };
 		C0369000000000000000001 /* CronJobEditorConfigurationLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */; };
 		C0369000000000000000007 /* CronJobEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000008 /* CronJobEditorSheet.swift */; };
 		C0369000000000000000003 /* CronJobConfigurationPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000004 /* CronJobConfigurationPickers.swift */; };
@@ -471,6 +476,7 @@
 		19C1150000000000000000A4 /* CliSessionsSyncModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliSessionsSyncModelTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000010 /* APIEndpointContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIEndpointContractTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000011 /* CronManagementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronManagementTests.swift; sourceTree = "<group>"; };
+		D500000000000000000001 /* TaskAgendaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskAgendaTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000012 /* MemoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryViewModelTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000013 /* ModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000014 /* MessageActionContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageActionContextTests.swift; sourceTree = "<group>"; };
@@ -658,8 +664,12 @@
 		22AB000000000000000000F3 /* WorkspaceRegistryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceRegistryViewModelTests.swift; sourceTree = "<group>"; };
 		1AB43F55AB4F4262963E6A6E /* SlashCommandCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandCatalog.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01011 /* Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cron.swift; sourceTree = "<group>"; };
+		D100000000000000000001 /* ANSIEscapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ANSIEscapes.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01012 /* TasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksView.swift; sourceTree = "<group>"; };
+		D400000000000000000001 /* CronJobRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobRowView.swift; sourceTree = "<group>"; };
 		3F91D2A54B9A4F66A2C01013 /* TasksViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksViewModel.swift; sourceTree = "<group>"; };
+		D300000000000000000001 /* TaskAgenda.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskAgenda.swift; sourceTree = "<group>"; };
+		D200000000000000000001 /* CronScheduleHumanizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronScheduleHumanizer.swift; sourceTree = "<group>"; };
 		C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorConfigurationLoader.swift; sourceTree = "<group>"; };
 		C0369000000000000000008 /* CronJobEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorSheet.swift; sourceTree = "<group>"; };
 		C0369000000000000000004 /* CronJobConfigurationPickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobConfigurationPickers.swift; sourceTree = "<group>"; };
@@ -880,6 +890,7 @@
 				19C1150000000000000000A4 /* CliSessionsSyncModelTests.swift */,
 				C03900000000000000000010 /* APIEndpointContractTests.swift */,
 				C03900000000000000000011 /* CronManagementTests.swift */,
+				D500000000000000000001 /* TaskAgendaTests.swift */,
 				C03900000000000000000012 /* MemoryViewModelTests.swift */,
 				C03900000000000000000013 /* ModelCatalogTests.swift */,
 				C03900000000000000000014 /* MessageActionContextTests.swift */,
@@ -1016,6 +1027,7 @@
 				C1A042000000000000000002 /* Clarification.swift */,
 				A02400000000000000000002 /* Goal.swift */,
 				3F91D2A54B9A4F66A2C01011 /* Cron.swift */,
+				D100000000000000000001 /* ANSIEscapes.swift */,
 				1A2B3C4D5E6F70000000201 /* Memory.swift */,
 				1A2B3C4D5E6F70000000211 /* Skills.swift */,
 				C14900000000000000000002 /* Kanban.swift */,
@@ -1330,7 +1342,10 @@
 			isa = PBXGroup;
 			children = (
 				3F91D2A54B9A4F66A2C01012 /* TasksView.swift */,
+				D400000000000000000001 /* CronJobRowView.swift */,
 				3F91D2A54B9A4F66A2C01013 /* TasksViewModel.swift */,
+				D300000000000000000001 /* TaskAgenda.swift */,
+				D200000000000000000001 /* CronScheduleHumanizer.swift */,
 				3F91D2A54B9A4F66A2C01014 /* TaskDetailView.swift */,
 				3F91D2A54B9A4F66A2C01015 /* TaskDetailViewModel.swift */,
 				C0369000000000000000002 /* CronJobEditorConfigurationLoader.swift */,
@@ -1733,8 +1748,12 @@
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
 				A02400000000000000000001 /* Goal.swift in Sources */,
 				3F91D2A54B9A4F66A2C01001 /* Cron.swift in Sources */,
+				D100000000000000000002 /* ANSIEscapes.swift in Sources */,
 				3F91D2A54B9A4F66A2C01002 /* TasksView.swift in Sources */,
+				D400000000000000000002 /* CronJobRowView.swift in Sources */,
 				3F91D2A54B9A4F66A2C01003 /* TasksViewModel.swift in Sources */,
+				D300000000000000000002 /* TaskAgenda.swift in Sources */,
+				D200000000000000000002 /* CronScheduleHumanizer.swift in Sources */,
 				C0369000000000000000001 /* CronJobEditorConfigurationLoader.swift in Sources */,
 				C0369000000000000000007 /* CronJobEditorSheet.swift in Sources */,
 				C0369000000000000000003 /* CronJobConfigurationPickers.swift in Sources */,
@@ -1808,6 +1827,7 @@
 				19C1150000000000000000A3 /* CliSessionsSyncModelTests.swift in Sources */,
 				C03910000000000000000010 /* APIEndpointContractTests.swift in Sources */,
 				C03910000000000000000011 /* CronManagementTests.swift in Sources */,
+				D500000000000000000002 /* TaskAgendaTests.swift in Sources */,
 				C03910000000000000000012 /* MemoryViewModelTests.swift in Sources */,
 				C03910000000000000000013 /* ModelCatalogTests.swift in Sources */,
 				C03910000000000000000014 /* MessageActionContextTests.swift in Sources */,
