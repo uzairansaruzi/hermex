@@ -100,6 +100,42 @@ final class ComposerChipTokenizerTests: XCTestCase {
 }
 
 extension ComposerChipTokenizerTests {
+    // MARK: - Sent messages (the transcript bubble, issue #388)
+
+    func testSentMessageEndingInAReferenceDrawsAChip() {
+        let tokens = ComposerChipTokenizer.tokens(in: "please run /ask-matt", catalog: catalog, isComplete: true)
+
+        XCTAssertEqual(tokens.map(\.source), ["/ask-matt"])
+        XCTAssertEqual(tokens.first?.range, NSRange(location: 11, length: 9))
+    }
+
+    func testSentMessageStillNeedsAKnownSlug() {
+        XCTAssertTrue(
+            ComposerChipTokenizer.tokens(in: "please run /ask-mat", catalog: catalog, isComplete: true).isEmpty
+        )
+        XCTAssertTrue(
+            ComposerChipTokenizer.tokens(in: "please run /ask-matt", catalog: .empty, isComplete: true).isEmpty
+        )
+    }
+
+    func testSentMessageKeepsTheMidSentenceRules() {
+        XCTAssertTrue(
+            ComposerChipTokenizer.tokens(in: "see docs/ask-matt", catalog: catalog, isComplete: true).isEmpty
+        )
+    }
+
+    // MARK: - Drawing the line (shared by the collapsed pill and the bubble)
+
+    func testStaleChipsAreDroppedRatherThanDrawnInTheWrongPlace() {
+        let tokens = ComposerChipTokenizer.tokens(in: "/ask-matt now", catalog: catalog)
+
+        XCTAssertEqual(ComposerChipTextLine.validTokens(tokens, in: "/ask-matt now"), tokens)
+        XCTAssertTrue(ComposerChipTextLine.validTokens(tokens, in: "hi").isEmpty)
+        XCTAssertTrue(ComposerChipTextLine.validTokens(tokens, in: "/babysit-pr now").isEmpty)
+    }
+}
+
+extension ComposerChipTokenizerTests {
     // MARK: - Spoken form (the collapsed composer's VoiceOver label)
 
     func testSpokenTextReadsChipsByTheirLabel() {

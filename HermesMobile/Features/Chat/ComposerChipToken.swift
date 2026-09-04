@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// A skill reference in the draft that the composer draws as one atomic chip.
 ///
@@ -61,10 +62,16 @@ enum ComposerChipTokenizer {
     /// stays ordinary editable text. `previous` keeps a chip at the very end of
     /// the draft drawn after its trailing space is deleted, so backspacing the
     /// space a completion added does not flicker the chip back into text.
+    ///
+    /// `isComplete` says the text is finished rather than being typed, which is
+    /// what a sent message is: a reference that ends the message is a whole
+    /// reference, so the transcript draws the chip the composer was still
+    /// waiting for a space to confirm.
     static func tokens(
         in draft: String,
         catalog: ComposerChipCatalog,
-        preservingTrailing previous: [ComposerChipToken] = []
+        preservingTrailing previous: [ComposerChipToken] = [],
+        isComplete: Bool = false
     ) -> [ComposerChipToken] {
         guard !catalog.isEmpty else { return [] }
 
@@ -98,7 +105,7 @@ enum ComposerChipTokenizer {
 
             let isClosed = end < text.length && isWhitespaceOrNewline(text.character(at: end))
             let isPreservedTail = end == text.length
-                && previous.contains { $0.range == range && $0.source == source }
+                && (isComplete || previous.contains { $0.range == range && $0.source == source })
             guard isClosed || isPreservedTail else { continue }
 
             tokens.append(ComposerChipToken(range: range, source: source, label: label))
@@ -167,5 +174,23 @@ enum ComposerChipTokenizer {
     private static func isWhitespaceOrNewline(_ unit: UInt16) -> Bool {
         guard let scalar = Unicode.Scalar(UInt32(unit)) else { return false }
         return CharacterSet.whitespacesAndNewlines.contains(scalar)
+    }
+}
+
+private struct SkillChipCatalogKey: EnvironmentKey {
+    static let defaultValue = ComposerChipCatalog.empty
+}
+
+extension EnvironmentValues {
+    /// The skills a transcript may draw as chips.
+    ///
+    /// Sent messages carry no marker for a reference, so the bubble has to look
+    /// the slug up the same way the composer does. It travels in the
+    /// environment because it belongs to the chat, not to any one bubble, and
+    /// the rows in between are `Equatable` blocks that should not have to
+    /// forward it.
+    var skillChipCatalog: ComposerChipCatalog {
+        get { self[SkillChipCatalogKey.self] }
+        set { self[SkillChipCatalogKey.self] = newValue }
     }
 }

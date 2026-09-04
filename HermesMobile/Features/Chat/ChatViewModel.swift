@@ -348,6 +348,10 @@ final class ChatViewModel {
     private(set) var workspaceSuggestions: [String] = []
     private(set) var personalitySuggestions: [String] = ["none"]
     private(set) var skillSlashSuggestions: [SkillSlashSuggestion] = []
+    /// The same skills in the shape the chip tokenizer needs, kept beside the
+    /// list so the transcript's `body` never rebuilds it. Always assigned
+    /// through `applySkillSlashSuggestions(_:)`.
+    private(set) var skillChipCatalog: ComposerChipCatalog = .empty
     private(set) var profileOptions: [ProfileSummary] = []
     private(set) var isSingleProfileMode = false
     private(set) var selectedProfileName: String?
@@ -1009,7 +1013,9 @@ final class ChatViewModel {
                 guard let self else { return }
                 do {
                     let response = try await self.client.skills()
-                    self.skillSlashSuggestions = SlashSkillFormatter.suggestions(from: response.skills ?? [])
+                    self.applySkillSlashSuggestions(
+                        SlashSkillFormatter.suggestions(from: response.skills ?? [])
+                    )
                     self.hasLoadedSkillSlashSuggestions = true
                 } catch {
                     self.lastError = error
@@ -3074,9 +3080,16 @@ final class ChatViewModel {
 
         let response = try await client.skills()
         let suggestions = SlashSkillFormatter.suggestions(from: response.skills ?? [])
-        skillSlashSuggestions = suggestions
+        applySkillSlashSuggestions(suggestions)
         hasLoadedSkillSlashSuggestions = true
         return suggestions
+    }
+
+    /// The one way the skill list changes, so the chip catalog can never fall
+    /// out of step with it.
+    private func applySkillSlashSuggestions(_ suggestions: [SkillSlashSuggestion]) {
+        skillSlashSuggestions = suggestions
+        skillChipCatalog = ComposerChipCatalog(skills: suggestions)
     }
 
     private func branchSessionFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {

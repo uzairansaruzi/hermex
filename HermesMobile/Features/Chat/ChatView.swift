@@ -1317,6 +1317,24 @@ struct ChatView: View {
         .onChange(of: viewModel.latestRunOutcome) {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
+        .environment(\.skillChipCatalog, viewModel.skillChipCatalog)
+        .task(id: viewModel.messages.count) {
+            await loadSkillSuggestionsForTranscriptChipsIfNeeded()
+        }
+    }
+
+    /// A sent message draws its skill reference as a chip only for skills the
+    /// app has heard of, so a transcript that names one warms the skill list the
+    /// way a restored draft does — and a chat that never mentions a skill still
+    /// costs no skills request.
+    private func loadSkillSuggestionsForTranscriptChipsIfNeeded() async {
+        guard !viewModel.hasLoadedSkillSlashSuggestions,
+              viewModel.messages.contains(where: {
+                  $0.role == "user" && ComposerChipTokenizer.mayContainReference($0.content ?? "")
+              })
+        else { return }
+
+        await viewModel.loadSkillSlashSuggestions()
     }
 
     /// The chat-canvas layout direction. Driven by the manual Settings → Chat

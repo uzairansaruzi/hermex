@@ -2,8 +2,12 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The skills this chat can draw as chips, published by `ChatView`.
+    @Environment(\.skillChipCatalog) private var skillChipCatalog
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
@@ -212,8 +216,17 @@ struct MessageBubbleView: View {
         .padding(.vertical, 4)
     }
 
+    /// The sent message, with any skill reference drawn as the same chip the
+    /// composer showed before the send.
+    ///
+    /// A chip is a picture, so dragging a selection across one leaves its
+    /// `/slug` out of what is copied; the message's own Copy and Select Text
+    /// actions read `message.content`, which is always the exact text.
     private var userBubble: some View {
-        Text(verbatim: userBubbleText)
+        let text = userBubbleText
+        let chips = userBubbleChips(in: text)
+
+        return ComposerChipTextLine.text(text, tokens: chips, style: chipStyle)
             .font(.body)
             .textSelection(.enabled)
             .padding(.horizontal, 14)
@@ -224,6 +237,32 @@ struct MessageBubbleView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(userBubbleBorder, lineWidth: 0.5)
             )
+            // VoiceOver reads a chip by its skill's name rather than announcing
+            // an image, the way both composer states already do.
+            .accessibilityLabel(
+                chips.isEmpty
+                    ? Text(verbatim: text)
+                    : Text(verbatim: ComposerChipTokenizer.spokenText(in: text, tokens: chips))
+            )
+    }
+
+    /// The references in a sent message. `isComplete` is what a send means: the
+    /// text will not grow, so a reference that ends the message is finished and
+    /// draws as a chip even though the composer was still waiting for a space.
+    /// A slug the server no longer knows resolves to nothing and stays plain
+    /// text, which is the same rule the composer follows.
+    private func userBubbleChips(in text: String) -> [ComposerChipToken] {
+        guard !skillChipCatalog.isEmpty else { return [] }
+        return ComposerChipTokenizer.tokens(in: text, catalog: skillChipCatalog, isComplete: true)
+    }
+
+    private var chipStyle: ComposerChipTextStyle {
+        ComposerChipTextStyle(
+            colorScheme: colorScheme,
+            contrast: colorSchemeContrast,
+            layoutDirection: layoutDirection,
+            dynamicTypeSize: dynamicTypeSize
+        )
     }
 
     @ViewBuilder

@@ -126,56 +126,12 @@ private struct ComposerCollapsedDraft: View {
     /// it draws, so a set that no longer fits the text the pill was handed is
     /// dropped rather than drawn in the wrong place.
     private var tokens: [ComposerChipToken] {
-        let text = draft as NSString
-        guard chips.allSatisfy({
-            $0.range.upperBound <= text.length && text.substring(with: $0.range) == $0.source
-        }) else {
-            return []
-        }
-        return chips
+        ComposerChipTextLine.validTokens(chips, in: draft)
     }
 
     private var line: Text {
         guard !draft.isEmpty else { return Text(placeholder) }
-
-        let tokens = tokens
-        guard !tokens.isEmpty else { return Text(draft) }
-
-
-        let metrics = ComposerChipMetrics(editorFont: editorFont)
-        // Every trait the chip resolves a colour from, or the pill asks the
-        // cache for a picture drawn for someone else's settings.
-        let traits = UITraitCollection { traits in
-            traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
-            traits.accessibilityContrast = colorSchemeContrast == .increased ? .high : .normal
-        }
-        let isRightToLeft = layoutDirection == .rightToLeft
-        let text = draft as NSString
-
-        var line = Text(verbatim: "")
-        var cursor = 0
-
-        for token in tokens where token.range.location >= cursor {
-            if token.range.location > cursor {
-                let plain = text.substring(with: NSRange(location: cursor, length: token.range.location - cursor))
-                line = line + Text(verbatim: plain)
-            }
-
-            let chip = ComposerChipRenderer.image(
-                label: token.label,
-                metrics: metrics,
-                traits: traits,
-                isRightToLeft: isRightToLeft
-            )
-            line = line + Text(Image(uiImage: chip))
-            cursor = token.range.upperBound
-        }
-
-        if cursor < text.length {
-            line = line + Text(verbatim: text.substring(from: cursor))
-        }
-
-        return line
+        return ComposerChipTextLine.text(draft, tokens: tokens, style: chipStyle)
     }
 
     /// VoiceOver reads a chip by its label, the way the editor's attachment does,
@@ -184,12 +140,15 @@ private struct ComposerCollapsedDraft: View {
         draft.isEmpty ? placeholder : ComposerChipTokenizer.spokenText(in: draft, tokens: tokens)
     }
 
-    /// Reading `dynamicTypeSize` is what makes SwiftUI re-evaluate — and so
-    /// re-measure the chips — when the user changes their text size; the size
-    /// itself comes from the same body font the editor uses.
-    private var editorFont: UIFont {
-        _ = dynamicTypeSize
-        return .preferredFont(forTextStyle: .body)
+    /// Every trait a chip resolves a colour or a size from, or the pill asks the
+    /// cache for a picture drawn for someone else's settings.
+    private var chipStyle: ComposerChipTextStyle {
+        ComposerChipTextStyle(
+            colorScheme: colorScheme,
+            contrast: colorSchemeContrast,
+            layoutDirection: layoutDirection,
+            dynamicTypeSize: dynamicTypeSize
+        )
     }
 }
 

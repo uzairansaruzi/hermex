@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// The chip a skill reference is drawn as: one attachment glyph that stands for
@@ -164,6 +165,89 @@ enum ComposerChipRenderer {
                 withAttributes: attributes
             )
         }
+    }
+}
+
+/// Everything about the current environment that changes a chip's picture.
+///
+/// Built inside a view's `body` so SwiftUI re-evaluates — and the chips
+/// re-measure — when appearance, contrast, direction, or text size moves.
+struct ComposerChipTextStyle {
+    let metrics: ComposerChipMetrics
+    let traits: UITraitCollection
+    let isRightToLeft: Bool
+
+    init(
+        colorScheme: ColorScheme,
+        contrast: ColorSchemeContrast,
+        layoutDirection: LayoutDirection,
+        dynamicTypeSize: DynamicTypeSize
+    ) {
+        // Reading the size is what ties this value to Dynamic Type; the font
+        // itself comes from the same body style the editor uses.
+        _ = dynamicTypeSize
+        metrics = ComposerChipMetrics(editorFont: .preferredFont(forTextStyle: .body))
+        traits = UITraitCollection { traits in
+            traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
+            traits.accessibilityContrast = contrast == .increased ? .high : .normal
+        }
+        isRightToLeft = layoutDirection == .rightToLeft
+    }
+}
+
+/// A run of text with its skill references drawn as chips, for the two places
+/// SwiftUI does the drawing: the collapsed composer pill and the sent user
+/// bubble. The expanded editor is a `UITextView` with real attachments instead,
+/// but every chip is the same picture, so one reference cannot look like two
+/// different things on either side of the send.
+enum ComposerChipTextLine {
+    /// The tokens that still describe `text`. A caller whose chips were
+    /// computed a beat earlier can hand over a set the text has since outgrown;
+    /// drawing none is better than drawing one in the wrong place.
+    static func validTokens(_ tokens: [ComposerChipToken], in text: String) -> [ComposerChipToken] {
+        let string = text as NSString
+        guard tokens.allSatisfy({
+            $0.range.upperBound <= string.length && string.substring(with: $0.range) == $0.source
+        }) else {
+            return []
+        }
+        return tokens
+    }
+
+    /// `text` with every token replaced by its chip picture and the rest left
+    /// verbatim, so nothing in a message is read as markdown or a format string.
+    static func text(
+        _ text: String,
+        tokens: [ComposerChipToken],
+        style: ComposerChipTextStyle
+    ) -> Text {
+        guard !tokens.isEmpty else { return Text(verbatim: text) }
+
+        let string = text as NSString
+        var line = Text(verbatim: "")
+        var cursor = 0
+
+        for token in tokens where token.range.location >= cursor {
+            if token.range.location > cursor {
+                let plain = string.substring(with: NSRange(location: cursor, length: token.range.location - cursor))
+                line = line + Text(verbatim: plain)
+            }
+
+            let chip = ComposerChipRenderer.image(
+                label: token.label,
+                metrics: style.metrics,
+                traits: style.traits,
+                isRightToLeft: style.isRightToLeft
+            )
+            line = line + Text(Image(uiImage: chip))
+            cursor = token.range.upperBound
+        }
+
+        if cursor < string.length {
+            line = line + Text(verbatim: string.substring(from: cursor))
+        }
+
+        return line
     }
 }
 
