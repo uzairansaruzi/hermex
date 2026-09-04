@@ -187,8 +187,9 @@ struct MessageComposerView: View {
     ///
     /// A command the user has typed past no longer produces a trigger at all —
     /// `ComposerSlashTrigger` ends at the space after a command that takes no
-    /// sub-argument — so the only cases left here are the two sub-argument lists
-    /// that go quiet once their argument is settled.
+    /// sub-argument — so besides the trigger itself, three things close the
+    /// panel: a settled `/skills` invocation, a settled goal action, and a
+    /// mid-sentence word no skill matches.
     private var slashQuery: String? {
         guard let query = slashTrigger?.text else { return nil }
 
@@ -204,6 +205,13 @@ struct MessageComposerView: View {
            !SlashCommandCatalog.goalActions.contains(where: {
                $0.hasPrefix(parsed.argQuery.lowercased())
            }) {
+            return nil
+        }
+
+        // Mid-sentence the panel's only content is skills, so when none match
+        // the typed word it closes rather than holding an empty box up.
+        if slashTrigger?.startsDraft == false,
+           SlashSkillFormatter.matching(parsed.commandName, in: skillSuggestions).isEmpty {
             return nil
         }
 

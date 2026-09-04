@@ -138,7 +138,10 @@ struct SlashCommandAutocompleteView: View {
     @ViewBuilder
     private func commandList(_ results: SlashAutocompleteResults) -> some View {
         if results.hasNoCommandRows {
-            emptyCommandListText
+            // Unreachable while open mid-sentence: the composer closes the
+            // panel when no skill matches, so an empty pass here only means a
+            // stale frame before the newer rows land.
+            Text("No commands or skills match \"\(parsed.commandName)\"")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
@@ -175,16 +178,6 @@ struct SlashCommandAutocompleteView: View {
                     }
                 }
             }
-        }
-    }
-
-    /// Mid-sentence no commands were offered, so the empty state says what was.
-    @ViewBuilder
-    private var emptyCommandListText: some View {
-        if skillsOnly {
-            Text("No skills match \"\(parsed.commandName)\"")
-        } else {
-            Text("No commands or skills match \"\(parsed.commandName)\"")
         }
     }
 
