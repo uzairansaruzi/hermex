@@ -27,12 +27,18 @@ enum ComposerMarkedText {
     /// which is not a change worth breaking a composition for. A deliberate
     /// clear or replacement still is.
     static func isDeliberateReplacement(_ boundText: String, editorText: String, marked: NSRange) -> Bool {
+        guard boundText != editorText else { return false }
+        // Emptying the composer is always meant: sending is the case, and when
+        // the composition is the whole draft its committed text is empty too,
+        // so the echo test alone would leave the sent text sitting there.
+        guard !boundText.isEmpty else { return true }
+
         let editor = editorText as NSString
         guard marked.location >= 0, marked.length >= 0, marked.upperBound <= editor.length else {
-            return boundText != editorText
+            return true
         }
 
-        return boundText != editorText && boundText != editor.replacingCharacters(in: marked, with: "")
+        return boundText != editor.replacingCharacters(in: marked, with: "")
     }
 }
 

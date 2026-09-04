@@ -27,20 +27,29 @@ struct ComposerSlashTrigger: Equatable {
         let caret = selection.location
         guard caret >= 0, caret <= draft.length else { return nil }
 
+        // Every `/` on the caret's line that could open a trigger, then the
+        // outermost one that holds up. A path argument such as
+        // `/workspace /Users/me/app` belongs to the command in front of it, so
+        // the inner slash must never win.
+        var starts: [Int] = []
         var index = caret - 1
         while index >= 0 {
             let unit = draft.character(at: index)
-            if isNewline(unit) { return nil }
+            if isNewline(unit) { break }
 
             if unit == slash, index == 0 || isWhitespaceOrNewline(draft.character(at: index - 1)) {
-                let range = NSRange(location: index, length: caret - index)
-                let text = draft.substring(with: range)
-                if isTrigger(text) {
-                    return ComposerSlashTrigger(range: range, text: text)
-                }
+                starts.append(index)
             }
 
             index -= 1
+        }
+
+        for start in starts.reversed() {
+            let range = NSRange(location: start, length: caret - start)
+            let text = draft.substring(with: range)
+            if isTrigger(text) {
+                return ComposerSlashTrigger(range: range, text: text)
+            }
         }
 
         return nil
@@ -49,10 +58,10 @@ struct ComposerSlashTrigger: Equatable {
     /// What the draft and caret become when the user accepts `replacement`.
     ///
     /// Only the trigger's own range changes. When the completion wants a
-    /// trailing space and the draft already has whitespace waiting there, the
-    /// space is dropped and the caret steps over the existing one instead, so
-    /// accepting a command mid-sentence leaves neither a double space nor a
-    /// caret stranded in front of one.
+    /// trailing space and the draft already has one waiting there, the space is
+    /// dropped and the caret steps over the existing one instead, so accepting a
+    /// command mid-sentence leaves neither a double space nor a caret stranded in
+    /// front of one. A line break is not a separator, so it keeps the space.
     func applying(_ replacement: String, to draft: String) -> (draft: String, selection: NSRange) {
         let draft = draft as NSString
         let location = min(max(0, range.location), draft.length)
@@ -62,7 +71,7 @@ struct ComposerSlashTrigger: Equatable {
         var caretOffset = 0
         if inserted.hasSuffix(" "),
            range.upperBound < draft.length,
-           Self.isWhitespaceOrNewline(draft.character(at: range.upperBound)) {
+           Self.isSpace(draft.character(at: range.upperBound)) {
             inserted.removeLast()
             caretOffset = 1
         }
@@ -76,21 +85,32 @@ struct ComposerSlashTrigger: Equatable {
 
     /// Whether `text` can still be a command being typed.
     ///
-    /// Everything up to the first space has to be a command that takes a
-    /// sub-argument, otherwise ordinary prose such as "check the /tmp folder for
-    /// it" would hold the panel open for the rest of the sentence.
+    /// One word is always a candidate. Past the first space, the word has to be
+    /// a command that takes a sub-argument, and the trigger ends as soon as the
+    /// user types past that argument — otherwise prose such as "check the /tmp
+    /// folder" or "use /reasoning high for this task" would hold an empty panel
+    /// open for the rest of the sentence.
     private static func isTrigger(_ text: String) -> Bool {
         let body = text.dropFirst()
         guard let space = body.firstIndex(where: { $0.isWhitespace }) else { return true }
-        guard let command = SlashCommandCatalog.command(named: String(body[body.startIndex..<space])) else {
+        guard let command = SlashCommandCatalog.command(named: String(body[body.startIndex..<space])),
+              command.subArgs != .none
+        else {
             return false
         }
-        return command.subArgs != .none
+
+        let argument = body[body.index(after: space)...].drop(while: { $0.isWhitespace })
+        return !argument.contains(where: { $0.isWhitespace })
     }
 
     private static func isWhitespaceOrNewline(_ unit: UInt16) -> Bool {
         guard let scalar = Unicode.Scalar(UInt32(unit)) else { return false }
         return CharacterSet.whitespacesAndNewlines.contains(scalar)
+    }
+
+    private static func isSpace(_ unit: UInt16) -> Bool {
+        guard let scalar = Unicode.Scalar(UInt32(unit)) else { return false }
+        return CharacterSet.whitespaces.contains(scalar)
     }
 
     private static func isNewline(_ unit: UInt16) -> Bool {

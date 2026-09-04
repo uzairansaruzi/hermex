@@ -38,6 +38,33 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.range, NSRange(location: 0, length: 17))
     }
 
+    func testAnAbsolutePathArgumentBelongsToTheCommandInFrontOfIt() {
+        let draft = "/workspace /Users/me/app"
+        let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret(24))
+
+        XCTAssertEqual(trigger?.text, draft)
+        XCTAssertEqual(trigger?.range, NSRange(location: 0, length: 24))
+    }
+
+    func testTheOutermostTriggerWinsOnlyWhenItHoldsUp() {
+        let trigger = ComposerSlashTrigger.detect(in: "notes /rough draft /mod", selection: caret(23))
+
+        XCTAssertEqual(trigger?.text, "/mod")
+        XCTAssertEqual(trigger?.range, NSRange(location: 19, length: 4))
+    }
+
+    func testTypingPastASubArgumentClosesTheTrigger() {
+        XCTAssertNil(
+            ComposerSlashTrigger.detect(in: "use /reasoning high for this task", selection: caret(33))
+        )
+    }
+
+    func testAnEmptySubArgumentKeepsTheTriggerOpen() {
+        let trigger = ComposerSlashTrigger.detect(in: "/workspace ", selection: caret(11))
+
+        XCTAssertEqual(trigger?.text, "/workspace ")
+    }
+
     func testTriggerNeverCrossesALineBreak() {
         XCTAssertNil(ComposerSlashTrigger.detect(in: "/model\nnow", selection: caret(10)))
     }
@@ -81,6 +108,16 @@ final class ComposerSlashTriggerTests: XCTestCase {
         let completed = trigger?.applying("/model ", to: draft)
 
         XCTAssertEqual(completed?.draft, "/model gpt-5")
+        XCTAssertEqual(completed?.selection, caret(7))
+    }
+
+    func testAcceptingBeforeALineBreakKeepsTheCompletionsSpace() {
+        let draft = "/mod\nnext line"
+        let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret(4))
+
+        let completed = trigger?.applying("/model ", to: draft)
+
+        XCTAssertEqual(completed?.draft, "/model \nnext line")
         XCTAssertEqual(completed?.selection, caret(7))
     }
 
@@ -143,6 +180,16 @@ final class ComposerSlashTriggerTests: XCTestCase {
                 "",
                 editorText: "안녕 ㅈ",
                 marked: NSRange(location: 3, length: 1)
+            )
+        )
+    }
+
+    func testClearingTheDraftAppliesEvenWhenTheCompositionIsTheWholeDraft() {
+        XCTAssertTrue(
+            ComposerMarkedText.isDeliberateReplacement(
+                "",
+                editorText: "\u{3148}",
+                marked: NSRange(location: 0, length: 1)
             )
         )
     }
