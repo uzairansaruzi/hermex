@@ -110,6 +110,7 @@ private struct ComposerCollapsedDraft: View {
     let placeholder: String
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -142,8 +143,11 @@ private struct ComposerCollapsedDraft: View {
 
 
         let metrics = ComposerChipMetrics(editorFont: editorFont)
+        // Every trait the chip resolves a colour from, or the pill asks the
+        // cache for a picture drawn for someone else's settings.
         let traits = UITraitCollection { traits in
             traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
+            traits.accessibilityContrast = colorSchemeContrast == .increased ? .high : .normal
         }
         let isRightToLeft = layoutDirection == .rightToLeft
         let text = draft as NSString
