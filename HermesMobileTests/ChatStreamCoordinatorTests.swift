@@ -62,6 +62,139 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testSessionLoadSeedsRunStartFromServerAndReEntryKeepsIt() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient)
+        // The server says this run has been going for 95s (`pending_started_at`).
+        let serverStart = Date().addingTimeInterval(-95)
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false,
+            runStartedAt: serverStart
+        )
+
+        XCTAssertEqual(coordinator.activeStreamID, "stream-123")
+        XCTAssertEqual(coordinator.activeRunStartedAt, serverStart)
+
+        // Reattaching to the same run, then leaving and re-entering the session,
+        // both keep counting from the server's start instead of restarting at 0s.
+        coordinator.start(streamID: "stream-123")
+        XCTAssertEqual(coordinator.activeRunStartedAt, serverStart)
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false,
+            runStartedAt: serverStart
+        )
+        XCTAssertEqual(coordinator.activeRunStartedAt, serverStart)
+    }
+
+    @MainActor
+    func testLiveActivityStartsFromTheSeededRunStartRatherThanNow() throws {
+        let liveActivityManager = CoordinatorSpyLiveActivityManager()
+        // The coordinator holds its delegate weakly, so the spy has to outlive
+        // `makeCoordinator` for `startLiveActivity` to see a session ID.
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(liveActivityManager: liveActivityManager, delegate: delegate)
+        let serverStart = Date().addingTimeInterval(-95)
+
+        coordinator.start(streamID: "stream-123", runStartedAt: serverStart)
+
+        // The widget's system elapsed timer counts the run, not the moment this
+        // process attached to it, so it agrees with the in-app "Working for".
+        XCTAssertEqual(liveActivityManager.startedAts, [serverStart])
+
+        // Without a seed the widget still starts counting from discovery time.
+        let beforeUnseeded = Date()
+        coordinator.start(streamID: "stream-456")
+        let unseeded = try XCTUnwrap(liveActivityManager.startedAts.last)
+        XCTAssertGreaterThanOrEqual(unseeded, beforeUnseeded)
+        XCTAssertLessThanOrEqual(unseeded, Date())
+    }
+
+    @MainActor
+    func testRunStartFallsBackToDiscoveryAndNeverCountsFromTheFuture() throws {
+        let coordinator = makeCoordinator()
+
+        // No server start for the adopted run: fall back to discovery time.
+        let beforeLoad = Date()
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false
+        )
+        let discovered = try XCTUnwrap(coordinator.activeRunStartedAt)
+        XCTAssertGreaterThanOrEqual(discovered, beforeLoad)
+        XCTAssertLessThanOrEqual(discovered, Date())
+
+        // A nil seed on re-entry leaves that discovery stamp alone.
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false
+        )
+        XCTAssertEqual(coordinator.activeRunStartedAt, discovered)
+
+        // Clock skew can date a server start in the future; clamp it so the
+        // "Working for" label can never show a negative elapsed time.
+        coordinator.start(streamID: "stream-456", runStartedAt: Date().addingTimeInterval(600))
+        let clamped = try XCTUnwrap(coordinator.activeRunStartedAt)
+        XCTAssertLessThanOrEqual(clamped, Date())
+    }
+
+    @MainActor
+    func testRecordedRunEndingSpansFromTheServerSeededStart() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: streamClient)
+        let serverStart = Date().addingTimeInterval(-90)
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: "stream-123",
+            preparation: coordinator.prepareForSessionLoad(),
+            usedCacheFallback: false,
+            runStartedAt: serverStart
+        )
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.streamEnd)
+
+        // "Worked for" lands on the server's span immediately, without waiting
+        // for the post-completion transcript refresh to carry `_turnDuration`.
+        let ending = try XCTUnwrap(coordinator.latestRunEnding)
+        XCTAssertEqual(ending.startedAt, serverStart)
+        XCTAssertEqual(ending.ending, .completed)
+        XCTAssertGreaterThanOrEqual(ending.endedAt.timeIntervalSince(ending.startedAt), 90)
+    }
+
+    @MainActor
+    func testFreshSendSeedsRunStartFromChatStartResponse() throws {
+        let coordinator = makeCoordinator()
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let sentAt = Date()
+
+        let response = try decoder.decode(ChatStartResponse.self, from: Data(#"""
+        {"stream_id": "stream-123", "session_id": "session-abc", "pending_started_at": 1700000000.5}
+        """#.utf8))
+        XCTAssertEqual(response.pendingStartedAt, 1_700_000_000.5)
+
+        coordinator.start(streamID: "stream-123", runStartedAt: response.runStartedAt(sentAt: sentAt))
+        XCTAssertEqual(coordinator.activeRunStartedAt, Date(timeIntervalSince1970: 1_700_000_000.5))
+
+        // A server that omits the field leaves the run counting from the send.
+        let withoutStart = try decoder.decode(
+            ChatStartResponse.self,
+            from: Data(#"{"stream_id": "stream-456"}"#.utf8)
+        )
+        XCTAssertNil(withoutStart.pendingStartedAt)
+
+        coordinator.start(streamID: "stream-456", runStartedAt: withoutStart.runStartedAt(sentAt: sentAt))
+        XCTAssertEqual(coordinator.activeRunStartedAt, sentAt)
+    }
+
+    @MainActor
     func testSessionLoadPreparationBelongsOnlyToCapturedStreamRun() {
         let coordinator = makeCoordinator()
 
@@ -2225,12 +2358,16 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
     }
 
     private(set) var starts: [Start] = []
+    /// Run starts handed to the widget, recorded alongside `starts` so the
+    /// existing `Start` equality assertions stay independent of timing (#406).
+    private(set) var startedAts: [Date] = []
     private(set) var updates: [AgentLiveActivityEvent] = []
     private(set) var markStaleCount = 0
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {
+    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date) {
         starts.append(Start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID))
+        startedAts.append(startedAt)
     }
 
     func update(_ event: AgentLiveActivityEvent) {

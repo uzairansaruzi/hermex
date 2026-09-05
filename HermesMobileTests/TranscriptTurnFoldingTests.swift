@@ -135,6 +135,29 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.folds.first?.label, .worked(elapsed: "1m"))
     }
 
+    func testClientRunSeededFromTheServerStartOutlastsTheUserMessageGap() {
+        // A run adopted on session load and settled while the user watched: the
+        // transcript carries no `_turnDuration` yet, and its last loaded row
+        // predates the reply. The ending the coordinator recorded from the
+        // server's `pending_started_at` still labels the whole run, so "Worked
+        // for" does not shrink to the part of it this client saw.
+        let messages = [
+            user("u1", timestamp: 100),
+            assistantWithTools("a1", timestamp: 105),
+            assistant("a2", text: "Done.", timestamp: 160)
+        ]
+        let outcome = TranscriptTurnRunOutcome(
+            turnKey: firstTurnKey,
+            startedAt: Date(timeIntervalSince1970: 100),
+            endedAt: Date(timeIntervalSince1970: 192),
+            ending: .completed
+        )
+
+        let folds = derive(messages, activityAnchorIDs: ["a1"], outcome: outcome)
+
+        XCTAssertEqual(folds.folds.first?.label, .worked(elapsed: "1m 32s"))
+    }
+
     func testServerTurnDurationWinsOverTheClientMeasuredRun() {
         let messages = [
             user("u1", timestamp: 100),

@@ -31,7 +31,11 @@ struct OrphanedLiveActivity: Equatable {
 
 @MainActor
 protocol AgentLiveActivityManaging: AnyObject {
-    func start(sessionID: String, sessionTitle: String, streamID: String?)
+    /// `startedAt` is when the *run* began, not when the widget was created: the
+    /// coordinator passes the server-seeded run start so the widget's system
+    /// elapsed timer counts the same span as the in-app "Working for" label
+    /// (#406). Callers without a seeded start pass `Date()`.
+    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date)
     func update(_ event: AgentLiveActivityEvent)
     func markStale()
     func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?)
@@ -82,7 +86,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         self.minimumUpdateInterval = minimumUpdateInterval
     }
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {
+    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date = Date()) {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else { return }
         let normalizedStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
@@ -114,7 +118,6 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         rawResponseText = ""
         currentSessionID = normalizedSessionID
         currentStreamID = normalizedStreamID
-        let startedAt = Date()
         let state = AgentRunActivityStateReducer.initialState(
             sessionID: normalizedSessionID,
             sessionTitle: sessionTitle,
