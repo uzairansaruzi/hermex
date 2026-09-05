@@ -60,6 +60,22 @@ final class FileReferenceTests: XCTestCase {
         XCTAssertEqual(parse("./a.swift:5:0"), FileReference(path: "a.swift", line: 5, column: nil))
     }
 
+    /// The transcript renderer builds a `URL` from the link destination and the chat
+    /// handler reads back `absoluteString`, which percent-encodes spaces and keeps
+    /// positions and fragments; the parser must accept what comes out of that trip.
+    func testSurvivesTheURLRoundTripTheTranscriptRendererApplies() throws {
+        let cases: [(destination: String, expected: FileReference)] = [
+            ("./docs/release notes.md:3", FileReference(path: "docs/release notes.md", line: 3, column: nil)),
+            ("~/projects/app/docs/guide.md#L4C2", FileReference(path: "docs/guide.md", line: 4, column: 2)),
+            ("/Users/hermes/projects/app/Sources/Main.swift:40:7", FileReference(path: "Sources/Main.swift", line: 40, column: 7)),
+            ("file:///Users/hermes/projects/app/a%20b.txt#L9", FileReference(path: "a b.txt", line: 9, column: nil)),
+        ]
+        for (destination, expected) in cases {
+            let url = try XCTUnwrap(URL(string: destination), destination)
+            XCTAssertEqual(parse(url.absoluteString), expected, destination)
+        }
+    }
+
     // MARK: - Rejections
 
     func testRejectsTraversalOutOfTheWorkspace() {
