@@ -1177,6 +1177,41 @@ final class LiveActivityTests: XCTestCase {
         manager.end(status: .complete, activity: "Response complete")
         XCTAssertNil(manager.activeConnectedStreamID)
     }
+
+    // Reusing an activity for the same session and stream keeps the earliest start
+    // it has been told about, so a widget first started from a discovery stamp
+    // adopts the server's earlier turn start once the coordinator learns it.
+    @MainActor
+    func testReusingAnActivityAdoptsTheEarliestKnownStart() throws {
+        let manager = AgentLiveActivityManager()
+        let discoveredAt = Date(timeIntervalSince1970: 1_000)
+        let serverStart = discoveredAt.addingTimeInterval(-95)
+
+        manager.start(
+            sessionID: "session-1",
+            sessionTitle: "Title",
+            streamID: "stream-abc",
+            startedAt: discoveredAt
+        )
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, discoveredAt)
+
+        manager.start(
+            sessionID: "session-1",
+            sessionTitle: "Title",
+            streamID: "stream-abc",
+            startedAt: serverStart
+        )
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
+
+        // A later stamp for the same run never pushes the widget timer forward.
+        manager.start(
+            sessionID: "session-1",
+            sessionTitle: "Title",
+            streamID: "stream-abc",
+            startedAt: discoveredAt.addingTimeInterval(30)
+        )
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
+    }
 }
 
 @MainActor

@@ -93,6 +93,24 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testFutureDatedSeedDoesNotMoveTheRunStartForwardOnReSeed() throws {
+        let coordinator = makeCoordinator()
+        // A server clock running ahead of the phone reports a start in the future.
+        let t0 = Date()
+        let skewedServerStart = t0.addingTimeInterval(600)
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.seedActiveRunStartForTesting(skewedServerStart, now: t0)
+        XCTAssertEqual(coordinator.activeRunStartedAt, t0)
+
+        // Reloading the same running session re-seeds the same skewed stamp later
+        // on. Clamping alone would pin the start to the new `now` and restart
+        // "Working for"; the earliest known start has to win instead.
+        coordinator.seedActiveRunStartForTesting(skewedServerStart, now: t0.addingTimeInterval(30))
+        XCTAssertEqual(coordinator.activeRunStartedAt, t0)
+    }
+
+    @MainActor
     func testLiveActivityStartsFromTheSeededRunStartRatherThanNow() throws {
         let liveActivityManager = CoordinatorSpyLiveActivityManager()
         // The coordinator holds its delegate weakly, so the spy has to outlive

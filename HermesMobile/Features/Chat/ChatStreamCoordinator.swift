@@ -208,6 +208,12 @@ final class ChatStreamCoordinator {
         isTransportFinished
     }
 
+    /// Test seam for the clock-skew clamp: production callers always seed with
+    /// the current instant, which tests cannot advance.
+    func seedActiveRunStartForTesting(_ startedAt: Date?, now: Date) {
+        seedActiveRunStart(startedAt, now: now)
+    }
+
     /// `runStartedAt` is the run's real start when the caller knows it — the
     /// server's `pending_started_at` from `/api/chat/start`, else the local send
     /// time. Reconnects and replays pass nil: they rejoin the same stream, whose
@@ -968,10 +974,14 @@ final class ChatStreamCoordinator {
     /// supply is stable across re-entry, so applying one on a same-stream
     /// reattach sharpens the counter rather than restarting it; a nil seed leaves
     /// the discovery stamp alone. A future-dated seed (clock skew between phone
-    /// and server) is clamped to `now` so the label never counts backwards.
+    /// and server) is clamped to `now` so the label never counts backwards, and
+    /// the earliest start known for this stream wins: a re-seed can only move the
+    /// start earlier, never forward onto a fresh `now`, which would restart
+    /// "Working for" on every reload of a session a skewed server is running.
     private func seedActiveRunStart(_ startedAt: Date?, now: Date = Date()) {
         guard activeStreamID != nil, let startedAt else { return }
-        activeRunStartedAt = min(startedAt, now)
+        let clamped = min(startedAt, now)
+        activeRunStartedAt = min(activeRunStartedAt ?? clamped, clamped)
     }
 
     /// Records the run's span once. `completeCurrentResponse` already cleared
