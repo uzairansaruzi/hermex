@@ -170,6 +170,13 @@ extension PendingAttachment {
             return draft
         }
 
+        // Attachment-only sends synthesize the message the web UI sends
+        // (`static/messages.js`), since the server requires non-empty text.
+        let base = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.isEmpty {
+            return "I've uploaded \(references.count) file(s): \(references.joined(separator: ", "))"
+        }
+
         return "\(draft)\n\n[Attached files: \(references.joined(separator: ", "))]"
     }
 }

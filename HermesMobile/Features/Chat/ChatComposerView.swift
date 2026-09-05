@@ -1183,11 +1183,14 @@ struct MessageComposerView: View {
             return isCancellingStream
         }
 
-        return trimmedDraftMessage.isEmpty
-            || isSending
-            || isCompressingSession
-            || isUploadingAttachment
-            || isUpdatingConfiguration
+        return ChatComposerSendGate.isDisabled(
+            hasText: !trimmedDraftMessage.isEmpty,
+            hasStagedAttachments: !pendingAttachments.isEmpty,
+            isSending: isSending,
+            isCompressingSession: isCompressingSession,
+            isUploadingAttachment: isUploadingAttachment,
+            isUpdatingConfiguration: isUpdatingConfiguration
+        )
     }
 
     private func actionButtonTapped() {
