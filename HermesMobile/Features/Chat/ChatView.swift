@@ -1470,17 +1470,22 @@ struct ChatView: View {
         }
     }
 
-    /// Changes whenever there is new text that could name a workspace file: the
-    /// transcript grew or was swapped for the server's copy, or the draft gained
-    /// or lost a finished `@…`. Everything here is O(1) or bounded by the
-    /// draft, because it runs on every transcript update, including each token
-    /// of a live stream. The scan of the transcript itself is the view model's,
-    /// and it skips candidates the server has already answered for.
+    /// Changes whenever there is new text that could name a workspace file, or
+    /// whenever the answers already given have been thrown away: the transcript
+    /// grew, was swapped for the server's copy (which can rewrite a message in
+    /// the middle without changing the count or the last id), the workspace
+    /// moved, or the draft gained or lost a finished `@…`.
+    ///
+    /// Everything here is O(1) or bounded by the draft, because it runs on every
+    /// transcript update, including each token of a live stream. The scan of the
+    /// transcript itself is the view model's, and it skips candidates the server
+    /// has already answered for.
     private var fileChipReferenceScanToken: String {
         let draftCandidates = ComposerChipTokenizer.fileReferenceCandidates(in: draftMessage)
         return [
             String(viewModel.messages.count),
-            viewModel.messages.last?.messageId ?? "",
+            String(viewModel.transcriptRevision),
+            String(viewModel.fileChipScopeRevision),
             draftCandidates.joined(separator: " ")
         ].joined(separator: "|")
     }

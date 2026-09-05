@@ -33,7 +33,7 @@ final class FilePathSearchTests: APIClientTestCase {
         case ".":
             return #"{"path": ".", "entries": [\#(entryJSON("..", path: "..", type: "dir")), \#(entryJSON("escape", path: "escape", type: "symlink", extra: #", "target_outside_workspace": true"#)), \#(entryJSON("src", path: "src", type: "dir")), \#(entryJSON("README.md", path: "README.md", type: "file"))]}"#
         case "src":
-            return #"{"path": "src", "entries": [\#(entryJSON("Chat", path: "src/Chat", type: "dir")), \#(entryJSON("chores.md", path: "src/chores.md", type: "file")), \#(entryJSON("Main.swift", path: "src/Main.swift", type: "file"))]}"#
+            return #"{"path": "src", "entries": [\#(entryJSON("Chat", path: "src/Chat", type: "dir")), \#(entryJSON("chores.md", path: "src/chores.md", type: "file")), \#(entryJSON("Main.swift", path: "src/Main.swift", type: "file")), \#(entryJSON("My File.swift", path: "src/My File.swift", type: "file"))]}"#
         default:
             return nil
         }
@@ -112,6 +112,20 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertFalse(search.matches.contains { $0.name == "escape" })
     }
 
+    /// A reference ends at whitespace, so `@src/My File.swift` would insert and
+    /// then never read back as one. The panel does not offer what it cannot
+    /// finish.
+    @MainActor
+    func testAnEntryWhoseNameHoldsASpaceIsNeverOffered() async {
+        let log = RequestLog()
+        let search = ComposerFilePathSearch()
+
+        await search.search("src/", sessionID: "s1", apiClient: makeListingClient(log: log))
+
+        XCTAssertEqual(search.matches.map(\.path), ["src/Chat", "src/chores.md", "src/Main.swift"])
+        XCTAssertFalse(search.matches.contains { $0.name == "My File.swift" })
+    }
+
     @MainActor
     func testAQueryThatClimbsOutOfTheWorkspaceIsNeverRequested() async {
         let log = RequestLog()
@@ -174,6 +188,26 @@ final class FilePathSearchTests: APIClientTestCase {
     }
 
     // MARK: - Session isolation
+
+    /// The workspace can move under a session without its id changing, so the
+    /// view model resets the cache by hand; a folder listed against the old root
+    /// says nothing about the new one.
+    @MainActor
+    func testResettingDropsTheCachedListings() async {
+        let log = RequestLog()
+        let search = ComposerFilePathSearch()
+        let client = makeListingClient(log: log)
+
+        await search.search("", sessionID: "s1", apiClient: client)
+        XCTAssertFalse(search.matches.isEmpty)
+
+        search.reset()
+        XCTAssertTrue(search.matches.isEmpty)
+
+        await search.search("", sessionID: "s1", apiClient: client)
+
+        XCTAssertEqual(log.listedPaths, [".", "."])
+    }
 
     @MainActor
     func testSwitchingSessionDropsTheCachedListings() async {

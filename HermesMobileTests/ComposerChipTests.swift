@@ -111,6 +111,25 @@ final class ComposerChipTokenizerTests: XCTestCase {
         )
     }
 
+    /// A candidate ends at whitespace by construction, so a path holding a space
+    /// can never be produced as one — which is why the panel does not offer such
+    /// a path in the first place.
+    func testAPathWithASpaceIsNeverOneCandidate() {
+        let candidates = ComposerChipTokenizer.fileReferenceCandidates(
+            in: "open @src/My File.swift now",
+            isComplete: true
+        )
+
+        XCTAssertEqual(candidates, ["src/My"])
+        XCTAssertFalse(candidates.contains { $0.contains(where: \.isWhitespace) })
+        XCTAssertTrue(
+            ComposerChipTokenizer.tokens(
+                in: "open @src/My File.swift now",
+                catalog: ComposerChipCatalog(skills: [], filePaths: ["src/My File.swift"])
+            ).isEmpty
+        )
+    }
+
     func testMayContainReferenceSpotsACandidateWithoutTheCatalog() {
         XCTAssertTrue(ComposerChipTokenizer.mayContainReference("/ask-matt hello"))
         XCTAssertTrue(ComposerChipTokenizer.mayContainReference("please run /x"))

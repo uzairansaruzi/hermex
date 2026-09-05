@@ -9124,6 +9124,120 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(listed.values.isEmpty)
     }
 
+    /// A path is only a file inside the workspace it was found in, so switching
+    /// the session's workspace has to take every confirmed chip with it —
+    /// including one accepted straight from the panel — and ask again.
+    @MainActor
+    func testAWorkspaceChangeDropsConfirmedFileChipsAndAsksAgain() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            guard request.url?.path == "/api/list" else {
+                return apiTestJSONResponse(#"""
+                {"session": {"session_id": "session-abc", "workspace": "/tmp/other", "model": "gpt-5.4"}}
+                """#, for: request)
+            }
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+        viewModel.recordFileChipReference("a/c.md")
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
+        let scopeBefore = viewModel.fileChipScopeRevision
+
+        await viewModel.selectWorkspacePath("/tmp/other")
+
+        XCTAssertTrue(viewModel.fileChipPaths.isEmpty)
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
+        XCTAssertGreaterThan(viewModel.fileChipScopeRevision, scopeBefore)
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        // The folder is listed again rather than answered from a cache filled
+        // against the old root.
+        XCTAssertEqual(listed.values, ["a", "a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// Every folder the candidates name is answered, a batch at a time, rather
+    /// than the first batch and silence for the rest.
+    @MainActor
+    func testEveryFolderIsAnsweredBeyondOneBatch() async throws {
+        let folders = (0..<25).map { "d\($0)" }
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(
+                #"{"path": "\#(path)", "entries": [{"name": "f.md", "path": "\#(path)/f.md", "type": "file"}]}"#,
+                for: request
+            )
+        }
+
+        let draft = folders.map { "@\($0)/f.md" }.joined(separator: " ") + " done"
+        await viewModel.loadFileChipReferences(draft: draft)
+
+        XCTAssertEqual(listed.values, folders)
+        for folder in folders {
+            XCTAssertTrue(
+                viewModel.composerChipCatalog.containsFile(path: "\(folder)/f.md"),
+                "\(folder)/f.md was never confirmed"
+            )
+        }
+    }
+
+    /// A cache-first transcript swapped for the server's copy can rewrite a
+    /// message in the middle of the list without changing the count or the last
+    /// id, so the swap itself has to be the signal.
+    @MainActor
+    func testReplacingAMiddleUserMessageIsRescanned() async throws {
+        let loads = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            switch request.url?.path {
+            case "/api/session":
+                loads.append("session")
+                let firstUserContent = loads.values.count == 1 ? "hello" : "look at @a/b.md"
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "\(firstUserContent)", "timestamp": 1770000100, "message_id": "user-1"},
+                      {"role": "assistant", "content": "sure", "timestamp": 1770000101, "message_id": "assistant-1"},
+                      {"role": "user", "content": "thanks", "timestamp": 1770000102, "message_id": "user-2"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/list":
+                let path = listedPath(in: request)
+                return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadFileChipReferences(draft: "")
+        let revisionBefore = viewModel.transcriptRevision
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(viewModel.messages.count, 3)
+        XCTAssertEqual(viewModel.messages.last?.messageId, "user-2")
+        XCTAssertGreaterThan(viewModel.transcriptRevision, revisionBefore)
+
+        await viewModel.loadFileChipReferences(draft: "")
+
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
     private static func ttsUnavailableResponse(for request: URLRequest) -> (HTTPURLResponse, Data) {
         let response = HTTPURLResponse(
             url: request.url!,

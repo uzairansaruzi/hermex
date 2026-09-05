@@ -99,7 +99,23 @@ final class ComposerFilePathSearch {
         return nodes
     }
 
-    /// A path only means anything inside the workspace it came from.
+    /// Forgets every listing.
+    ///
+    /// The session's workspace can be switched underneath a chat (`/workspace`,
+    /// or the composer's workspace picker) without the session id changing, and
+    /// a folder listed against the old root says nothing about the new one. The
+    /// view model calls this the moment the workspace moves.
+    func reset() {
+        // A listing already in flight belongs to the old workspace; bumping the
+        // generation is what stops it landing in the new one's rows.
+        generation &+= 1
+        listings.removeAll()
+        loadedSessionID = nil
+        matches = []
+        isLoading = false
+    }
+
+    /// A path only means anything inside the session it came from.
     private func dropCacheIfSessionChanged(_ sessionID: String) {
         guard sessionID != loadedSessionID else { return }
         listings.removeAll()
@@ -123,14 +139,20 @@ final class ComposerFilePathSearch {
         }
     }
 
-    /// Drops anything the workspace does not contain: an entry the server marked
-    /// as a symlink pointing outside it, and any path with a `..` component,
-    /// which no listing of a workspace folder should ever produce.
+    /// Drops anything a reference cannot name: an entry the server marked as a
+    /// symlink pointing outside the workspace, any path with a `..` component,
+    /// and any path containing whitespace.
+    ///
+    /// The whitespace rule is the reference syntax's, not the filesystem's. The
+    /// only form verified against upstream is `@` plus the plain path followed
+    /// by a space, which means the space inside `My File.swift` ends the
+    /// reference: the path would insert and then never read back as one. Better
+    /// not to offer it than to offer something that quietly does not work.
     private static func nodes(from entries: [WorkspaceEntry], in directory: String) -> [FileTreeNode] {
         entries
             .filter { $0.targetOutsideWorkspace != true }
             .compactMap { FileTreeNode(entry: $0, parentPath: directory) }
-            .filter { !climbsOutOfWorkspace($0.path) }
+            .filter { !climbsOutOfWorkspace($0.path) && !$0.path.contains(where: \.isWhitespace) }
     }
 
     private static func climbsOutOfWorkspace(_ path: String) -> Bool {

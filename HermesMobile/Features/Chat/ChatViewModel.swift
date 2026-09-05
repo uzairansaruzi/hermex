@@ -377,8 +377,19 @@ final class ChatViewModel {
     /// Candidates the server has already answered for, so a `@word` that is not
     /// a file is not re-checked on every transcript update.
     @ObservationIgnored private var checkedFileChipCandidates: Set<String> = []
-    /// Most distinct folders one confirmation pass will list. A message can name
-    /// files all over a workspace; the panel is a convenience, not a crawler.
+    /// Bumped whenever the confirmed paths are thrown away because the
+    /// workspace moved. The chat re-runs its confirmation pass on the change, so
+    /// a file that exists in the new workspace too comes back as a chip.
+    private(set) var fileChipScopeRevision = 0
+    /// Bumped whenever the transcript is replaced rather than extended: a
+    /// cache-first paint, the server's reconcile, a page of older messages. A
+    /// reconcile can rewrite a message in the middle of the list without
+    /// changing the count or the last id, so nothing cheaper than "the
+    /// transcript was swapped" can be trusted to notice a reference arriving.
+    private(set) var transcriptRevision = 0
+    /// Most folders one batch of a confirmation pass lists. The pass works
+    /// through every folder its candidates name, a batch at a time, so a long
+    /// transcript is answered in full without one burst of requests.
     private static let fileChipDirectoryLimit = 20
     private(set) var profileOptions: [ProfileSummary] = []
     private(set) var isSingleProfileMode = false
@@ -422,7 +433,15 @@ final class ChatViewModel {
     private(set) var hasActivatedGoalCommand = false
 
     private let sessionID: String?
-    private var currentWorkspace: String?
+    /// The workspace this chat's session is pointed at. `/workspace` and the
+    /// composer's picker move it without the session id changing, and every
+    /// `@path` the chat has confirmed was confirmed against the old root.
+    private var currentWorkspace: String? {
+        didSet {
+            guard currentWorkspace != oldValue else { return }
+            resetFileChipReferences()
+        }
+    }
     private var currentModel: String?
     private var currentModelProvider: String?
     private var currentProfile: String?
@@ -1510,6 +1529,7 @@ final class ChatViewModel {
                     if !cachedMessages.isEmpty {
                         clearCompressionAnchorMetadata()
                         messages = cachedMessages
+                        transcriptRevision &+= 1
                         latestServerLoadHadAssistantResponseAfterLatestUser = Self.hasAssistantResponseAfterLatestUser(
                             in: messages
                         )
@@ -1616,6 +1636,7 @@ final class ChatViewModel {
         guard !cachedMessages.isEmpty else { return [] }
 
         messages = cachedMessages
+        transcriptRevision &+= 1
         messagesOffset = 0
         hasOlderMessages = false
         isViewingCachedData = false
@@ -1635,6 +1656,7 @@ final class ChatViewModel {
         // in-flight local content while its send/stream is still running.
         guard messages == placeholder else { return }
         messages = previousMessages
+        transcriptRevision &+= 1
         messagesOffset = previousMessagesOffset
         hasOlderMessages = previousMessagesOffset > 0
     }
@@ -1680,6 +1702,7 @@ final class ChatViewModel {
             let didAddMessages = mergedMessages.count > messages.count
             applyCompressionAnchorMetadata(from: session)
             messages = mergedMessages
+            transcriptRevision &+= 1
             latestServerLoadHadAssistantResponseAfterLatestUser = Self.hasAssistantResponseAfterLatestUser(
                 in: messages
             )
@@ -1813,6 +1836,7 @@ final class ChatViewModel {
             reloadedMessagesOffset: reloadedMessagesOffset
         ) {
             messages = expandedMessages
+            transcriptRevision &+= 1
             messagesOffset = previousMessagesOffset
             hasOlderMessages = previousMessagesOffset > 0
             return
@@ -1825,12 +1849,14 @@ final class ChatViewModel {
             reloadedMessagesOffset: reloadedMessagesOffset
         ) {
             messages = trimmedMessages
+            transcriptRevision &+= 1
             messagesOffset = previousMessagesOffset
             hasOlderMessages = previousMessagesOffset > 0 || session?.messagesTruncated == true
             return
         }
 
         messages = reloadedMessages
+        transcriptRevision &+= 1
         updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
     }
 
@@ -2592,6 +2618,7 @@ final class ChatViewModel {
         resetPendingStreamingContentBuffers()
         clearCompressionAnchorMetadata()
         messages = []
+        transcriptRevision &+= 1
         messagesOffset = 0
         hasOlderMessages = false
         setCompletedToolCallGroups([])
@@ -3203,13 +3230,34 @@ final class ChatViewModel {
         let candidates = fileChipReferenceCandidates(draft: draft)
         guard !candidates.isEmpty else { return }
 
+        let workspace = currentWorkspace
         let load = Task { [weak self] in
             guard let self else { return }
-            await self.confirmFileChipReferences(candidates, sessionID: sessionID)
+            await self.confirmFileChipReferences(candidates, sessionID: sessionID, workspace: workspace)
             self.fileChipReferenceLoad = nil
         }
         fileChipReferenceLoad = load
         await load.value
+    }
+
+    /// Forgets every confirmed `@path` because the workspace moved.
+    ///
+    /// A path is only a file inside the workspace it was found in, so switching
+    /// one has to take the chips with it — including the ones accepted from the
+    /// panel, which were never checked against anything else. The revision bump
+    /// is what asks the chat for a fresh pass, so a file that exists under the
+    /// new root as well comes straight back.
+    private func resetFileChipReferences() {
+        filePathSearch.reset()
+        checkedFileChipCandidates.removeAll()
+        fileChipReferenceLoad = nil
+
+        fileChipScopeRevision &+= 1
+        guard !fileChipPaths.isEmpty else { return }
+
+        fileChipPaths.removeAll()
+        composerChipCatalog = skillChipCatalog.withFilePaths(fileChipPaths)
+        transcriptRelayoutScrollToken += 1
     }
 
     /// Every `@…` the chat still has no answer for, draft first: what the user
@@ -3243,7 +3291,11 @@ final class ChatViewModel {
     /// than answered "no", so the next pass retries them; a folder that answered
     /// marks its candidates settled, which is what keeps a `@word` that is not a
     /// file from costing a request on every transcript update.
-    private func confirmFileChipReferences(_ candidates: [String], sessionID: String) async {
+    private func confirmFileChipReferences(
+        _ candidates: [String],
+        sessionID: String,
+        workspace: String?
+    ) async {
         var wantedByDirectory: [String: Set<String>] = [:]
         var directories: [String] = []
         for candidate in candidates {
@@ -3252,28 +3304,55 @@ final class ChatViewModel {
             wantedByDirectory[directory, default: []].insert(candidate)
         }
 
-        var confirmed: Set<String> = []
-        var settled: Set<String> = []
+        var start = directories.startIndex
+        while start < directories.endIndex {
+            let end = directories.index(
+                start,
+                offsetBy: Self.fileChipDirectoryLimit,
+                limitedBy: directories.endIndex
+            ) ?? directories.endIndex
+            let batch = directories[start..<end]
+            start = end
 
-        for directory in directories.prefix(Self.fileChipDirectoryLimit) {
-            guard let wanted = wantedByDirectory[directory] else { continue }
-            guard let entries = try? await filePathSearch.entries(
-                in: directory,
-                sessionID: sessionID,
-                apiClient: client
-            ) else {
-                continue
+            var confirmed: Set<String> = []
+            var settled: Set<String> = []
+
+            for directory in batch {
+                guard let wanted = wantedByDirectory[directory] else { continue }
+                guard let entries = try? await filePathSearch.entries(
+                    in: directory,
+                    sessionID: sessionID,
+                    apiClient: client
+                ) else {
+                    // A listing that failed is not an answer. Leaving the
+                    // candidates open is what lets the next pass retry them.
+                    continue
+                }
+
+                confirmed.formUnion(wanted.intersection(Set(entries.map(\.path))))
+                settled.formUnion(wanted)
             }
 
-            confirmed.formUnion(wanted.intersection(Set(entries.map(\.path))))
-            settled.formUnion(wanted)
+            // Checked between batches as well as at the end: the chat can be
+            // left, or its workspace switched, part-way through a long pass, and
+            // a listing taken against the old root must never widen the new
+            // one's catalog.
+            guard !Task.isCancelled,
+                  sessionID == self.sessionID,
+                  workspace == currentWorkspace
+            else {
+                return
+            }
+
+            apply(confirmed: confirmed, settled: settled)
         }
+    }
 
-        // The view model is built per session, but a listing that outlived its
-        // chat must never widen another one's catalog.
-        guard sessionID == self.sessionID else { return }
-
+    /// Folds one batch's answers into the catalog, drawing whatever it confirmed
+    /// straight away rather than making the reader wait for the last folder.
+    private func apply(confirmed: Set<String>, settled: Set<String>) {
         checkedFileChipCandidates.formUnion(settled)
+
         let recovered = confirmed.subtracting(fileChipPaths)
         guard !recovered.isEmpty else { return }
 
@@ -3403,6 +3482,7 @@ final class ChatViewModel {
 
             applyCompressionAnchorMetadata(from: session)
             messages = session.messages ?? []
+            transcriptRevision &+= 1
             updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
             isViewingCachedData = false
             let snapshot = ContextWindowSnapshot(
