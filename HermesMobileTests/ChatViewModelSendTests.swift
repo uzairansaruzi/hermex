@@ -1068,6 +1068,116 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(text, "Summarize this\n\n[Attached files: /tmp/workspace/report.pdf]")
     }
 
+    func testChatMessageTextSynthesizesUploadedFormForEmptyDraft() {
+        // Attachment-only send (#403): with no typed draft the message text is
+        // synthesized exactly like the web UI (`static/messages.js`), since the
+        // server requires non-empty text.
+        let image = PendingAttachment(
+            name: "photo.jpg",
+            path: "/tmp/workspace/photo.jpg",
+            mime: "image/jpeg",
+            size: 45_678,
+            isImage: true,
+            thumbnailData: nil
+        )
+        let file = PendingAttachment(
+            name: "report.pdf",
+            path: "/tmp/workspace/report.pdf",
+            mime: "application/pdf",
+            size: 1234,
+            isImage: false,
+            thumbnailData: nil
+        )
+
+        XCTAssertEqual(
+            PendingAttachment.chatMessageText(draft: "", attachments: [image, file]),
+            "I've uploaded 2 file(s): /tmp/workspace/photo.jpg, /tmp/workspace/report.pdf"
+        )
+        XCTAssertEqual(
+            PendingAttachment.chatMessageText(draft: "   ", attachments: [file]),
+            "I've uploaded 1 file(s): /tmp/workspace/report.pdf",
+            "Whitespace-only draft counts as attachment-only"
+        )
+        XCTAssertEqual(
+            PendingAttachment.chatMessageText(draft: "", attachments: []),
+            "",
+            "No attachments: the empty draft passes through unchanged"
+        )
+    }
+
+    @MainActor
+    func testSendMessageWithEmptyDraftAndStagedAttachmentSendsSynthesizedMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startMessage: String?
+        var startAttachments: [[String: Any]]?
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/upload":
+                return apiTestJSONResponse("""
+                {
+                  "filename": "photo.jpg",
+                  "path": "/tmp/workspace/photo.jpg",
+                  "size": 45678,
+                  "mime": "image/jpeg",
+                  "is_image": true
+                }
+                """, for: request)
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startMessage = body["message"] as? String
+                startAttachments = body["attachments"] as? [[String: Any]]
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-403"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        // Stage one attachment through the real coordinator (mocked upload).
+        let staged = await viewModel.uploadAttachment(
+            data: Data("fake-jpeg".utf8),
+            filename: "photo.jpg"
+        )
+        try XCTUnwrap(staged)
+        XCTAssertEqual(viewModel.pendingAttachments.count, 1)
+
+        // Empty draft + staged attachment: previously rejected, now sends.
+        let didStart = await viewModel.sendMessage("")
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(startMessage, "I've uploaded 1 file(s): /tmp/workspace/photo.jpg")
+        XCTAssertEqual(viewModel.activeStreamID, "stream-403")
+
+        // Optimistic bubble shows the synthesized text plus the attachment.
+        let optimistic = try XCTUnwrap(viewModel.messages.first)
+        XCTAssertEqual(optimistic.role, "user")
+        XCTAssertEqual(optimistic.content, "I've uploaded 1 file(s): /tmp/workspace/photo.jpg")
+        XCTAssertEqual(optimistic.attachments?.count, 1)
+        XCTAssertEqual(optimistic.attachments?.first?.path, "/tmp/workspace/photo.jpg")
+        XCTAssertEqual(try XCTUnwrap(startAttachments)?.count, 1)
+
+        // The composer strip is empty after a successful send.
+        XCTAssertTrue(viewModel.pendingAttachments.isEmpty)
+    }
+
+    @MainActor
+    func testSendMessageWithEmptyDraftAndNoAttachmentsStillReturnsFalse() async {
+        let viewModel = try? makeViewModel { _ in
+            XCTFail("No request should be made for an empty draft with no attachments")
+            throw URLError(.badURL)
+        }
+
+        let didStart = await viewModel?.sendMessage("") ?? false
+
+        XCTAssertFalse(didStart)
+    }
+
     @MainActor
     func testSubmitGoalAttachesToServerStartedKickoffStream() async throws {
         let streamClient = SpySSEStreamingClient()

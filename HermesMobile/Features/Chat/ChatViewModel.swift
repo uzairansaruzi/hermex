@@ -2234,7 +2234,9 @@ final class ChatViewModel {
         }
 
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { return false }
+        // Attachment-only sends (empty text, staged attachments) synthesize
+        // their message text in `PendingAttachment.chatMessageText` below.
+        guard !message.isEmpty || !attachmentCoordinator.pendingAttachments.isEmpty else { return false }
 
         guard let sessionID else {
             sendErrorMessage = String(localized: "The server did not provide a session ID.")
@@ -2243,12 +2245,16 @@ final class ChatViewModel {
 
         let localMessageID = "local-\(UUID().uuidString)"
         let attachmentPreparation = attachmentCoordinator.prepareForSend(localMessageID: localMessageID)
+        let messageForAPI = attachmentPreparation.chatMessageText(draft: message)
+        // Attachment-only sends show the synthesized text in the bubble, matching
+        // what a reload from the server displays; text sends keep the bare draft.
+        let displayText = message.isEmpty ? messageForAPI : message
 
         let didStart = await performChatSend(
             sessionID: sessionID,
             localMessageID: localMessageID,
-            displayContent: message,
-            messageForAPI: attachmentPreparation.chatMessageText(draft: message),
+            displayContent: displayText,
+            messageForAPI: messageForAPI,
             messageAttachments: attachmentPreparation.messageAttachments,
             apiPayloads: attachmentPreparation.apiPayloads,
             attachmentsToRestoreOnFailure: attachmentPreparation.attachments,

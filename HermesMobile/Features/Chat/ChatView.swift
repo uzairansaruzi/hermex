@@ -1919,7 +1919,11 @@ struct ChatView: View {
         _ submittedDraft: String,
         submittedDraftRevision: Int
     ) async -> Bool {
-        guard !submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        // Attachment-only sends (empty text) flow through; the view model
+        // synthesize the message text. `draftStore.setDraft("")` below is the
+        // correct end state for them: the draft is empty after sending.
+        let hasStagedAttachments = !viewModel.pendingAttachments.isEmpty
+        guard !submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasStagedAttachments else {
             return false
         }
 
