@@ -57,6 +57,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     private(set) var layout: ReviewDiffLayout
     private(set) var style: ReviewDiffStyle
     let theme = ReviewDiffTheme()
+    let presentation: ReviewDiffPresentation
 
     var viewedFileIDs: Set<String> = [] {
         didSet { setNeedsDisplay() }
@@ -66,9 +67,26 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     }
     var viewportWidth: CGFloat = 0 {
         didSet {
-            clampHorizontalOffsets()
-            setNeedsDisplay()
+            guard viewportWidth != oldValue else { return }
+            if wrapsLines {
+                rebuildLayout(rows: layout.rows, collapsedFileIDs: layout.collapsedFileIDs)
+            } else {
+                clampHorizontalOffsets()
+                setNeedsDisplay()
+            }
         }
+    }
+    /// Wrap long lines on the character grid instead of panning them horizontally.
+    var wrapsLines = false {
+        didSet {
+            guard wrapsLines != oldValue else { return }
+            rebuildLayout(rows: layout.rows, collapsedFileIDs: layout.collapsedFileIDs)
+        }
+    }
+    /// Syntax colour runs by row id, filled in for visible rows as the highlighter
+    /// answers; rows without an entry draw in the plain text colour.
+    var tokensByRowID: [String: [SourceHighlightRun]] = [:] {
+        didSet { setNeedsDisplay() }
     }
     /// Scroll offset of the host; row `y` in canvas coordinates is `offset - verticalOffset`.
     var verticalOffset: CGFloat = 0
@@ -120,9 +138,10 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         return gesture
     }()
 
-    override init(frame: CGRect) {
-        let style = ReviewDiffStyle.resolve(for: UITraitCollection.current)
+    init(frame: CGRect, presentation: ReviewDiffPresentation = .diff) {
+        let style = ReviewDiffStyle.resolve(for: UITraitCollection.current, presentation: presentation)
         self.style = style
+        self.presentation = presentation
         layout = ReviewDiffLayout(rows: [], collapsedFileIDs: [], metrics: style.metrics)
         super.init(frame: frame)
         isOpaque = true
@@ -135,7 +154,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
 
         // Dynamic Type resizes every row; appearance changes only need a repaint.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: Self, _) in
-            view.style = ReviewDiffStyle.resolve(for: view.traitCollection)
+            view.style = ReviewDiffStyle.resolve(for: view.traitCollection, presentation: view.presentation)
             view.rebuildLayout(rows: view.layout.rows, collapsedFileIDs: view.layout.collapsedFileIDs)
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) { (view: Self, _) in
@@ -170,7 +189,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
 
     private func rebuildLayout(rows: [ReviewDiffRow], collapsedFileIDs: Set<String>) {
         let state = reviewDiffSignposter.beginInterval("RebuildLayout")
-        layout = ReviewDiffLayout(rows: rows, collapsedFileIDs: collapsedFileIDs, metrics: style.metrics)
+        layout = ReviewDiffLayout(rows: rows, collapsedFileIDs: collapsedFileIDs, metrics: style.metrics, wrapColumns: wrapColumns)
         contentWidthsByFileID = layout.maxColumnCountsByFileID.mapValues { columns in
             let measured = ceil(CGFloat(columns) * style.codeCharacterWidth) + style.codePadding * 2
             return max(0, min(style.maxContentWidth, measured))
@@ -181,6 +200,13 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         onContentHeightChange?()
         setNeedsDisplay()
         UIAccessibility.post(notification: .layoutChanged, argument: nil)
+    }
+
+    /// Characters that fit between the gutter and the viewport edge, when wrapping.
+    private var wrapColumns: Int? {
+        guard wrapsLines else { return nil }
+        let available = viewportWidth - style.codeStartX - style.codePadding
+        return max(8, Int(available / max(style.codeCharacterWidth, 1)))
     }
 
     // MARK: - Geometry

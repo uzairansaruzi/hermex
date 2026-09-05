@@ -80,3 +80,28 @@ final class ReviewDiffLayoutTests: XCTestCase {
         XCTAssertNil(ReviewDiffLayout(rows: [], collapsedFileIDs: [], metrics: metrics).visibleFileID(atVerticalOffset: 0))
     }
 }
+
+extension ReviewDiffLayoutTests {
+    func testWrappedRowsGrowByVisualLineAndCapTheContentWidth() {
+        let metrics = ReviewDiffMetrics(rowHeight: 20, fileHeaderHeight: 50, noticeHeight: 44, wrappedLineHeight: 14)
+        let rows = [
+            ReviewDiffRow(id: "s:0", fileID: "s", kind: .line(ReviewDiffLine(content: String(repeating: "x", count: 25), change: .context, oldLineNumber: nil, newLineNumber: 1))),
+            ReviewDiffRow(id: "s:1", fileID: "s", kind: .line(ReviewDiffLine(content: "short", change: .context, oldLineNumber: nil, newLineNumber: 2))),
+            ReviewDiffRow(id: "s:2", fileID: "s", kind: .line(ReviewDiffLine(content: String(repeating: "y", count: 20), change: .context, oldLineNumber: nil, newLineNumber: 3)))
+        ]
+
+        let wrapped = ReviewDiffLayout(rows: rows, collapsedFileIDs: [], metrics: metrics, wrapColumns: 10)
+        XCTAssertEqual(wrapped.visualLineCount(forRowAt: 0), 3)
+        XCTAssertEqual(wrapped.visualLineCount(forRowAt: 1), 1)
+        XCTAssertEqual(wrapped.visualLineCount(forRowAt: 2), 2, "An exact multiple does not add an empty visual line.")
+        XCTAssertEqual(wrapped.rowOffsets, [0, 48, 68])
+        XCTAssertEqual(wrapped.contentHeight, 102)
+        XCTAssertEqual(wrapped.maxColumnCountsByFileID, ["s": 10], "Wrapped files never pan wider than one visual line.")
+        XCTAssertEqual(wrapped.rowIndex(at: 47), 0)
+        XCTAssertEqual(wrapped.rowIndex(at: 48), 1)
+
+        let unwrapped = ReviewDiffLayout(rows: rows, collapsedFileIDs: [], metrics: metrics)
+        XCTAssertEqual(unwrapped.rowOffsets, [0, 20, 40])
+        XCTAssertEqual(unwrapped.maxColumnCountsByFileID, ["s": 25])
+    }
+}

@@ -26,6 +26,20 @@ struct ReviewDiffTheme {
     }
 }
 
+/// What the surface is showing. A diff keeps the change bar beside the gutter; a
+/// source file drops it so every row reads as plain context.
+enum ReviewDiffPresentation: Equatable {
+    case diff
+    case source
+
+    var changeBarWidth: CGFloat {
+        switch self {
+        case .diff: return 4
+        case .source: return 0
+        }
+    }
+}
+
 /// Fonts and fixed geometry, resolved once per trait collection. Row heights follow
 /// the scaled code font so Dynamic Type grows rows instead of clipping them.
 struct ReviewDiffStyle {
@@ -39,7 +53,7 @@ struct ReviewDiffStyle {
     /// Advance of one character in `codeFont`; the word highlights sit on this grid.
     let codeCharacterWidth: CGFloat
     let gutterWidth: CGFloat
-    let changeBarWidth: CGFloat = 4
+    let changeBarWidth: CGFloat
     let codePadding: CGFloat = 8
     let maxContentWidth: CGFloat = 2800
     let fileHeaderHorizontalPadding: CGFloat = 12
@@ -48,7 +62,7 @@ struct ReviewDiffStyle {
     var stickyWidth: CGFloat { changeBarWidth + gutterWidth }
     var codeStartX: CGFloat { stickyWidth + codePadding }
 
-    static func resolve(for traits: UITraitCollection) -> ReviewDiffStyle {
+    static func resolve(for traits: UITraitCollection, presentation: ReviewDiffPresentation = .diff) -> ReviewDiffStyle {
         let metrics = UIFontMetrics(forTextStyle: .body)
         func mono(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
             metrics.scaledFont(
@@ -76,10 +90,12 @@ struct ReviewDiffStyle {
             metrics: ReviewDiffMetrics(
                 rowHeight: ceil(codeFont.lineHeight) + 6,
                 fileHeaderHeight: ceil(fileHeaderFont.lineHeight) + 30,
-                noticeHeight: max(44, ceil(noticeFont.lineHeight) + 24)
+                noticeHeight: max(44, ceil(noticeFont.lineHeight) + 24),
+                wrappedLineHeight: ceil(codeFont.lineHeight)
             ),
             codeCharacterWidth: characterWidth,
-            gutterWidth: ceil(gutterSample) + 14
+            gutterWidth: ceil(gutterSample) + 14,
+            changeBarWidth: presentation.changeBarWidth
         )
     }
 }

@@ -7,6 +7,8 @@ struct ReviewDiffMetrics: Equatable {
     var rowHeight: CGFloat
     var fileHeaderHeight: CGFloat
     var noticeHeight: CGFloat
+    /// Height of each extra visual line when a wrapped row spans more than one.
+    var wrappedLineHeight: CGFloat = 0
 }
 
 /// Vertical geometry of the row list: prefix-sum offsets, binary-search hit testing,
@@ -23,6 +25,8 @@ struct ReviewDiffLayout {
     let rows: [ReviewDiffRow]
     let collapsedFileIDs: Set<String>
     let metrics: ReviewDiffMetrics
+    /// Characters per visual line when lines wrap; nil scrolls horizontally instead.
+    let wrapColumns: Int?
     private(set) var rowOffsets: [CGFloat] = []
     private(set) var fileHeaderRowIndices: [Int] = []
     /// Rows with a non-zero height, in order; the accessibility element list.
@@ -31,10 +35,11 @@ struct ReviewDiffLayout {
     /// Longest line per file, in characters; the canvas turns it into a content width.
     private(set) var maxColumnCountsByFileID: [String: Int] = [:]
 
-    init(rows: [ReviewDiffRow], collapsedFileIDs: Set<String>, metrics: ReviewDiffMetrics) {
+    init(rows: [ReviewDiffRow], collapsedFileIDs: Set<String>, metrics: ReviewDiffMetrics, wrapColumns: Int? = nil) {
         self.rows = rows
         self.collapsedFileIDs = collapsedFileIDs
         self.metrics = metrics
+        self.wrapColumns = wrapColumns.map { max(1, $0) }
 
         rowOffsets.reserveCapacity(rows.count)
         var offset: CGFloat = 0
@@ -44,7 +49,7 @@ struct ReviewDiffLayout {
             let height = height(forRowAt: index)
             if height > 0 { visibleRowIndices.append(index) }
             offset += height
-            let columns = row.columnCount
+            let columns = min(row.columnCount, self.wrapColumns ?? Int.max)
             if columns > 0 {
                 maxColumnCountsByFileID[row.fileID] = max(maxColumnCountsByFileID[row.fileID] ?? 0, columns)
             }
@@ -57,11 +62,21 @@ struct ReviewDiffLayout {
         switch row.kind {
         case .file:
             return metrics.fileHeaderHeight
-        case .hunk, .line:
+        case .hunk:
             return collapsedFileIDs.contains(row.fileID) ? 0 : metrics.rowHeight
+        case .line:
+            guard !collapsedFileIDs.contains(row.fileID) else { return 0 }
+            return metrics.rowHeight + CGFloat(visualLineCount(forRowAt: index) - 1) * metrics.wrappedLineHeight
         case .notice:
             return collapsedFileIDs.contains(row.fileID) ? 0 : metrics.noticeHeight
         }
+    }
+
+    /// How many visual lines a line row occupies: one unless wrapping splits it.
+    func visualLineCount(forRowAt index: Int) -> Int {
+        guard let wrapColumns else { return 1 }
+        let columns = rows[index].columnCount
+        return max(1, (columns + wrapColumns - 1) / wrapColumns)
     }
 
     /// Vertical extent of a row in content coordinates.

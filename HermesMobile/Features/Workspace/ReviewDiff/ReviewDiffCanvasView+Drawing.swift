@@ -258,13 +258,48 @@ extension ReviewDiffCanvasView {
         context.saveGState()
         context.clip(to: CGRect(x: style.stickyWidth, y: rect.minY, width: max(0, viewportWidth - style.stickyWidth), height: rect.height))
         drawWordDiffRanges(line, rowRect: rect, horizontalOffset: horizontalOffset)
-        drawText(
+        drawCodeText(
             line.content,
-            at: CGPoint(x: style.codeStartX - horizontalOffset, y: rect.midY - style.codeFont.lineHeight / 2),
-            color: line.change == .context ? theme.text.withAlphaComponent(0.85) : theme.text,
-            font: style.codeFont
+            runs: tokensByRowID[row.id] ?? [],
+            origin: CGPoint(x: style.codeStartX - horizontalOffset, y: rect.minY + (style.metrics.rowHeight - style.codeFont.lineHeight) / 2),
+            color: line.change == .context ? theme.text.withAlphaComponent(0.85) : theme.text
         )
         context.restoreGState()
+    }
+
+    /// Code text with optional syntax colour runs, split into visual lines of
+    /// `wrapColumns` characters when the layout wraps. The plain, unwrapped case stays
+    /// a single string draw so diff rows cost what they did before.
+    private func drawCodeText(_ text: String, runs: [SourceHighlightRun], origin: CGPoint, color: UIColor) {
+        let wrapColumns = layout.wrapColumns
+        if runs.isEmpty, wrapColumns == nil || text.count <= wrapColumns! {
+            drawText(text, at: origin, color: color, font: style.codeFont)
+            return
+        }
+
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: [.font: style.codeFont, .foregroundColor: color, .ligature: 0]
+        )
+        let bounds = NSRange(location: 0, length: attributed.length)
+        for run in runs {
+            let clamped = NSIntersectionRange(run.range, bounds)
+            guard clamped.length > 0 else { continue }
+            attributed.addAttribute(.foregroundColor, value: run.color, range: clamped)
+        }
+
+        guard let wrapColumns, text.count > wrapColumns else {
+            attributed.draw(at: origin)
+            return
+        }
+        var y = origin.y
+        var start = text.startIndex
+        while start < text.endIndex {
+            let end = text.index(start, offsetBy: wrapColumns, limitedBy: text.endIndex) ?? text.endIndex
+            attributed.attributedSubstring(from: NSRange(start..<end, in: text)).draw(at: CGPoint(x: origin.x, y: y))
+            y += style.metrics.wrappedLineHeight
+            start = end
+        }
     }
 
     private func drawWordDiffRanges(_ line: ReviewDiffLine, rowRect: CGRect, horizontalOffset: CGFloat) {

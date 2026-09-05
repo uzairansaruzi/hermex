@@ -876,7 +876,7 @@ enum MarkdownHighlightPolicy {
         "text",
         "txt"
     ]
-    private static let highlightrLanguages: Set<String> = [
+    static let highlightrLanguages: Set<String> = [
         "bash",
         "c",
         "cpp",

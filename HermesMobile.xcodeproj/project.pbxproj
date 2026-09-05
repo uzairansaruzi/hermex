@@ -250,6 +250,13 @@
 		1D1FF0000000000000000B0B /* ReviewDiffLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */; };
 		1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */; };
 		1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */; };
+		1D1FF0000000000000000B30 /* SourceHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F30 /* SourceHighlighter.swift */; };
+		1D1FF0000000000000000B31 /* SourceFileRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F31 /* SourceFileRows.swift */; };
+		1D1FF0000000000000000B32 /* SourceFileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F32 /* SourceFileViewModel.swift */; };
+		1D1FF0000000000000000B33 /* SourceFileSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F33 /* SourceFileSurface.swift */; };
+		1D1FF0000000000000000B34 /* SourceFileRowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */; };
+		1D1FF0000000000000000B35 /* SourceHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F35 /* SourceHighlighterTests.swift */; };
+		1D1FF0000000000000000B36 /* SourceFileViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */; };
 		C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */; };
 		C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */; };
 		C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */; };
@@ -666,6 +673,13 @@
 		1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffLayoutTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelectionTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasViewTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F30 /* SourceHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceHighlighter.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F31 /* SourceFileRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileRows.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F32 /* SourceFileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileViewModel.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F33 /* SourceFileSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileSurface.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileRowsTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F35 /* SourceHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceHighlighterTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileViewModelTests.swift; sourceTree = "<group>"; };
 		C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeAggregatorTests.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatterTests.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFoldingTests.swift; sourceTree = "<group>"; };
@@ -991,6 +1005,9 @@
 				1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */,
 				1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */,
 				1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */,
+				1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */,
+				1D1FF0000000000000000F35 /* SourceHighlighterTests.swift */,
+				1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */,
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
@@ -1273,6 +1290,17 @@
 			path = Chat;
 			sourceTree = "<group>";
 		};
+		1D1FF00000000000000000C1 /* SourceViewer */ = {
+			isa = PBXGroup;
+			children = (
+				1D1FF0000000000000000F30 /* SourceHighlighter.swift */,
+				1D1FF0000000000000000F31 /* SourceFileRows.swift */,
+				1D1FF0000000000000000F32 /* SourceFileViewModel.swift */,
+				1D1FF0000000000000000F33 /* SourceFileSurface.swift */,
+			);
+			path = SourceViewer;
+			sourceTree = "<group>";
+		};
 		1D1FF00000000000000000C0 /* ReviewDiff */ = {
 			isa = PBXGroup;
 			children = (
@@ -1307,6 +1335,7 @@
 				C03180000000000000F004 /* GitCommitView.swift */,
 				C03180000000000000F007 /* GitTurnChangesCard.swift */,
 				1D1FF00000000000000000C0 /* ReviewDiff */,
+				1D1FF00000000000000000C1 /* SourceViewer */,
 				C03140000000000000F001 /* GitBranchPickerView.swift */,
 				22AB000000000000000000F1 /* WorkspaceRegistryViewModel.swift */,
 				22AB000000000000000000F2 /* WorkspaceManagerView.swift */,
@@ -1705,6 +1734,10 @@
 				1D1FF0000000000000000B20 /* ReviewDiffCanvasView+Accessibility.swift in Sources */,
 				1D1FF0000000000000000B07 /* ReviewDiffSurfaceView.swift in Sources */,
 				1D1FF0000000000000000B08 /* ReviewDiffSurface.swift in Sources */,
+				1D1FF0000000000000000B30 /* SourceHighlighter.swift in Sources */,
+				1D1FF0000000000000000B31 /* SourceFileRows.swift in Sources */,
+				1D1FF0000000000000000B32 /* SourceFileViewModel.swift in Sources */,
+				1D1FF0000000000000000B33 /* SourceFileSurface.swift in Sources */,
 				C03140000000000000B001 /* GitBranchPickerView.swift in Sources */,
 				C04000000000000000000005 /* APIClient+ServerPanels.swift in Sources */,
 				C04000000000000000000006 /* APIClient+Cron.swift in Sources */,
@@ -1992,6 +2025,9 @@
 				1D1FF0000000000000000B0B /* ReviewDiffLayoutTests.swift in Sources */,
 				1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */,
 				1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */,
+				1D1FF0000000000000000B34 /* SourceFileRowsTests.swift in Sources */,
+				1D1FF0000000000000000B35 /* SourceHighlighterTests.swift in Sources */,
+				1D1FF0000000000000000B36 /* SourceFileViewModelTests.swift in Sources */,
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,

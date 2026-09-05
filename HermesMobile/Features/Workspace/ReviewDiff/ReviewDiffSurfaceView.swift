@@ -6,12 +6,16 @@ import UIKit
 /// keeps the file under the reader still when rows above it change height.
 final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     private let scrollView = UIScrollView()
-    private let canvas = ReviewDiffCanvasView()
+    private let canvas: ReviewDiffCanvasView
     private let refreshControl = UIRefreshControl()
-    private var pendingScrollFileID: String?
+    private var pendingScroll: ReviewDiffScrollTarget.Anchor?
     private var pendingScrollAnimated = false
+    private var reportedVisibleRowRange: ClosedRange<Int>?
 
     var onPullToRefresh: (() -> Void)?
+    /// Rows intersecting the viewport changed; the host uses it to highlight only
+    /// what is on screen.
+    var onVisibleRowRangeChange: ((ClosedRange<Int>?) -> Void)?
     var onToggleFile: ((String) -> Void)? {
         get { canvas.onToggleFile }
         set { canvas.onToggleFile = newValue }
@@ -35,9 +39,18 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         get { canvas.selectedRowIDs }
         set { canvas.selectedRowIDs = newValue }
     }
+    var wrapsLines: Bool {
+        get { canvas.wrapsLines }
+        set { canvas.wrapsLines = newValue }
+    }
+    var tokensByRowID: [String: [SourceHighlightRun]] {
+        get { canvas.tokensByRowID }
+        set { canvas.tokensByRowID = newValue }
+    }
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(presentation: ReviewDiffPresentation = .diff) {
+        canvas = ReviewDiffCanvasView(frame: .zero, presentation: presentation)
+        super.init(frame: .zero)
         clipsToBounds = true
         backgroundColor = canvas.theme.background
 
@@ -93,10 +106,16 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         restore(anchor)
     }
 
-    func scrollToFile(_ fileID: String, animated: Bool) {
-        pendingScrollFileID = fileID
+    /// A file header lands at the top; a row lands 30 % down the viewport so the
+    /// reader sees what leads into it. Applied once the layout can place it.
+    func scroll(to anchor: ReviewDiffScrollTarget.Anchor, animated: Bool) {
+        pendingScroll = anchor
         pendingScrollAnimated = animated
         applyPendingScrollIfNeeded()
+    }
+
+    func scrollToFile(_ fileID: String, animated: Bool) {
+        scroll(to: .fileHeader(fileID), animated: animated)
     }
 
     /// The host owns the spinner: it stays until the reload finishes, not until the
@@ -135,13 +154,22 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     }
 
     private func applyPendingScrollIfNeeded() {
-        guard let fileID = pendingScrollFileID, bounds.height > 0 else { return }
-        guard let headerOffset = canvas.layout.fileHeaderOffset(forFileID: fileID) else {
-            if !rows.isEmpty { pendingScrollFileID = nil }
+        guard let anchor = pendingScroll, bounds.height > 0 else { return }
+        let target: CGFloat?
+        switch anchor {
+        case .fileHeader(let fileID):
+            target = canvas.layout.fileHeaderOffset(forFileID: fileID)
+        case .row(let rowID):
+            target = rows.firstIndex { $0.id == rowID }
+                .flatMap { canvas.layout.frame(forRowAt: $0) }
+                .map { $0.minY - max(0, (bounds.height - $0.height) * 0.3) }
+        }
+        guard let target else {
+            if !rows.isEmpty { pendingScroll = nil }
             return
         }
-        pendingScrollFileID = nil
-        setVerticalOffset(headerOffset, animated: pendingScrollAnimated)
+        pendingScroll = nil
+        setVerticalOffset(target, animated: pendingScrollAnimated)
     }
 
     private func setVerticalOffset(_ target: CGFloat, animated: Bool) {
@@ -175,6 +203,15 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         )
         canvas.verticalOffset = scrollView.contentOffset.y
         canvas.setNeedsDisplay()
+        reportVisibleRowRangeIfChanged()
+    }
+
+    private func reportVisibleRowRangeIfChanged() {
+        let offset = scrollView.contentOffset.y
+        let range = canvas.layout.rowRange(intersecting: max(0, offset), offset + bounds.height)
+        guard range != reportedVisibleRowRange else { return }
+        reportedVisibleRowRange = range
+        onVisibleRowRangeChange?(range)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
