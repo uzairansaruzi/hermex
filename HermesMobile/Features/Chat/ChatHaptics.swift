@@ -70,6 +70,16 @@ enum ChatHaptics {
         emit(succeeded ? .success : .warning, isEnabled: isEnabled, performer: performer)
     }
 
+    /// A line tapped or long-pressed on the review diff surface.
+    static func diffLineSelected(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.selection, isEnabled: isEnabled, performer: performer)
+    }
+
+    /// Selected diff lines dropped into the composer draft.
+    static func addedToPrompt(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.lightImpact, isEnabled: isEnabled, performer: performer)
+    }
+
     /// One tick of the opt-in pulse while assistant text streams. Callers throttle
     /// with `StreamingPulseThrottle`; this only honors the enabled flag.
     static func streamingPulse(isEnabled: Bool, performer: Performer? = nil) {

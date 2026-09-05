@@ -25,16 +25,15 @@ private enum ActiveGitSheet: Identifiable {
     var id: Self { self }
 }
 
-/// What the per-turn diff sheet shows (issue #316): every changed file in the turn, or a
-/// single file's diff (a recap-card row tap).
+/// What the per-turn diff sheet shows (issue #316): every changed file in the turn,
+/// opened at one of them for a recap-card row tap.
 private enum TurnDiffPresentation: Identifiable {
-    case turnFiles([GitFile])
-    case file(GitFile)
+    case turnFiles([GitFile], initial: GitFile?)
 
     var id: String {
         switch self {
-        case .turnFiles(let files): return "turn:" + files.map(\.id).joined(separator: "|")
-        case .file(let file): return "file:" + file.id
+        case .turnFiles(let files, let initial):
+            return "turn:" + files.map(\.id).joined(separator: "|") + ":" + (initial?.id ?? "")
         }
     }
 }
@@ -920,7 +919,12 @@ struct ChatView: View {
     private func gitSheet(_ sheet: ActiveGitSheet) -> some View {
         switch sheet {
         case .changes:
-            GitWorkspaceView(session: session, server: server, onAPIError: onAPIError)
+            GitWorkspaceView(
+                session: session,
+                server: server,
+                onAPIError: onAPIError,
+                onAddToPrompt: addDiffSelectionToDraft
+            )
         case .commit:
             GitCommitView(
                 session: session,
@@ -937,11 +941,24 @@ struct ChatView: View {
     @ViewBuilder
     private func turnDiffSheet(_ presentation: TurnDiffPresentation) -> some View {
         switch presentation {
-        case .turnFiles(let files):
-            GitTurnDiffSheet(session: session, server: server, files: files, onAPIError: onAPIError)
-        case .file(let file):
-            GitDiffView(session: session, server: server, file: file, onAPIError: onAPIError)
+        case .turnFiles(let files, let initial):
+            GitDiffView(
+                session: session,
+                server: server,
+                files: files,
+                initialFile: initial,
+                onAPIError: onAPIError,
+                onAddToPrompt: addDiffSelectionToDraft
+            )
         }
+    }
+
+    /// Drops a diff selection from a Git sheet into the composer and closes the sheet.
+    private func addDiffSelectionToDraft(_ snippet: String) {
+        let separator = draftMessage.isEmpty ? "" : (draftMessage.hasSuffix("\n") ? "\n" : "\n\n")
+        persistedDraftBinding.wrappedValue = draftMessage + separator + snippet + "\n"
+        activeGitSheet = nil
+        turnDiffPresentation = nil
     }
 
     private var gitActionsMenu: some View {
@@ -1024,7 +1041,7 @@ struct ChatView: View {
     private func presentTurnDiff(for summary: TurnFileChangeSummary?) {
         let files = summary?.diffFiles ?? []
         guard !files.isEmpty else { return }
-        turnDiffPresentation = .turnFiles(files)
+        turnDiffPresentation = .turnFiles(files, initial: nil)
     }
 
     @MainActor
@@ -1338,7 +1355,7 @@ struct ChatView: View {
                 presentTurnDiff(for: turnChangesRecapSummary)
             },
             onOpenTurnFileDiff: { file in
-                turnDiffPresentation = .file(file)
+                turnDiffPresentation = .turnFiles(turnChangesRecapSummary?.diffFiles ?? [file], initial: file)
             }
         )
         // Off the main body chain, which is at the type-checker's limit.

@@ -235,6 +235,20 @@
 		C03180000000000000B004 /* GitCommitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F004 /* GitCommitView.swift */; };
 		C03180000000000000B005 /* TurnFileChangeSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F005 /* TurnFileChangeSummary.swift */; };
 		C03180000000000000B007 /* GitTurnChangesCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F007 /* GitTurnChangesCard.swift */; };
+		1D1FF0000000000000000B00 /* ReviewDiffRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F00 /* ReviewDiffRow.swift */; };
+		1D1FF0000000000000000B01 /* ReviewWordDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F01 /* ReviewWordDiff.swift */; };
+		1D1FF0000000000000000B02 /* ReviewDiffLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */; };
+		1D1FF0000000000000000B03 /* ReviewDiffSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */; };
+		1D1FF0000000000000000B04 /* ReviewDiffStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */; };
+		1D1FF0000000000000000B05 /* ReviewDiffCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */; };
+		1D1FF0000000000000000B06 /* ReviewDiffCanvasView+Drawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */; };
+		1D1FF0000000000000000B20 /* ReviewDiffCanvasView+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F20 /* ReviewDiffCanvasView+Accessibility.swift */; };
+		1D1FF0000000000000000B07 /* ReviewDiffSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F07 /* ReviewDiffSurfaceView.swift */; };
+		1D1FF0000000000000000B08 /* ReviewDiffSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F08 /* ReviewDiffSurface.swift */; };
+		1D1FF0000000000000000B09 /* ReviewDiffRowBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F09 /* ReviewDiffRowBuilderTests.swift */; };
+		1D1FF0000000000000000B0A /* ReviewWordDiffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0A /* ReviewWordDiffTests.swift */; };
+		1D1FF0000000000000000B0B /* ReviewDiffLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */; };
+		1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */; };
 		C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */; };
 		C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */; };
 		C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */; };
@@ -636,6 +650,20 @@
 		C03180000000000000F004 /* GitCommitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitCommitView.swift; sourceTree = "<group>"; };
 		C03180000000000000F005 /* TurnFileChangeSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeSummary.swift; sourceTree = "<group>"; };
 		C03180000000000000F007 /* GitTurnChangesCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTurnChangesCard.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F00 /* ReviewDiffRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffRow.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F01 /* ReviewWordDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWordDiff.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffLayout.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelection.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffStyle.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasView.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewDiffCanvasView+Drawing.swift"; sourceTree = "<group>"; };
+		1D1FF0000000000000000F20 /* ReviewDiffCanvasView+Accessibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewDiffCanvasView+Accessibility.swift"; sourceTree = "<group>"; };
+		1D1FF0000000000000000F07 /* ReviewDiffSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSurfaceView.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F08 /* ReviewDiffSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSurface.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F09 /* ReviewDiffRowBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffRowBuilderTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F0A /* ReviewWordDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWordDiffTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffLayoutTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelectionTests.swift; sourceTree = "<group>"; };
 		C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeAggregatorTests.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatterTests.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFoldingTests.swift; sourceTree = "<group>"; };
@@ -956,6 +984,10 @@
 				C012400000000000000005 /* AppIconChoiceTests.swift */,
 				C03120000000000000F006 /* APIClientGitTests.swift */,
 				C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */,
+				1D1FF0000000000000000F09 /* ReviewDiffRowBuilderTests.swift */,
+				1D1FF0000000000000000F0A /* ReviewWordDiffTests.swift */,
+				1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */,
+				1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */,
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
@@ -1238,6 +1270,23 @@
 			path = Chat;
 			sourceTree = "<group>";
 		};
+		1D1FF00000000000000000C0 /* ReviewDiff */ = {
+			isa = PBXGroup;
+			children = (
+				1D1FF0000000000000000F00 /* ReviewDiffRow.swift */,
+				1D1FF0000000000000000F01 /* ReviewWordDiff.swift */,
+				1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */,
+				1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */,
+				1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */,
+				1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */,
+				1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */,
+				1D1FF0000000000000000F20 /* ReviewDiffCanvasView+Accessibility.swift */,
+				1D1FF0000000000000000F07 /* ReviewDiffSurfaceView.swift */,
+				1D1FF0000000000000000F08 /* ReviewDiffSurface.swift */,
+			);
+			path = ReviewDiff;
+			sourceTree = "<group>";
+		};
 		1A2B3C4D5E6F7000000000C7 /* Workspace */ = {
 			isa = PBXGroup;
 			children = (
@@ -1254,6 +1303,7 @@
 				C03180000000000000F003 /* GitInlineCommitButton.swift */,
 				C03180000000000000F004 /* GitCommitView.swift */,
 				C03180000000000000F007 /* GitTurnChangesCard.swift */,
+				1D1FF00000000000000000C0 /* ReviewDiff */,
 				C03140000000000000F001 /* GitBranchPickerView.swift */,
 				22AB000000000000000000F1 /* WorkspaceRegistryViewModel.swift */,
 				22AB000000000000000000F2 /* WorkspaceManagerView.swift */,
@@ -1642,6 +1692,16 @@
 				C03180000000000000B004 /* GitCommitView.swift in Sources */,
 				C03180000000000000B005 /* TurnFileChangeSummary.swift in Sources */,
 				C03180000000000000B007 /* GitTurnChangesCard.swift in Sources */,
+				1D1FF0000000000000000B00 /* ReviewDiffRow.swift in Sources */,
+				1D1FF0000000000000000B01 /* ReviewWordDiff.swift in Sources */,
+				1D1FF0000000000000000B02 /* ReviewDiffLayout.swift in Sources */,
+				1D1FF0000000000000000B03 /* ReviewDiffSelection.swift in Sources */,
+				1D1FF0000000000000000B04 /* ReviewDiffStyle.swift in Sources */,
+				1D1FF0000000000000000B05 /* ReviewDiffCanvasView.swift in Sources */,
+				1D1FF0000000000000000B06 /* ReviewDiffCanvasView+Drawing.swift in Sources */,
+				1D1FF0000000000000000B20 /* ReviewDiffCanvasView+Accessibility.swift in Sources */,
+				1D1FF0000000000000000B07 /* ReviewDiffSurfaceView.swift in Sources */,
+				1D1FF0000000000000000B08 /* ReviewDiffSurface.swift in Sources */,
 				C03140000000000000B001 /* GitBranchPickerView.swift in Sources */,
 				C04000000000000000000005 /* APIClient+ServerPanels.swift in Sources */,
 				C04000000000000000000006 /* APIClient+Cron.swift in Sources */,
@@ -1924,6 +1984,10 @@
 				C012400000000000000006 /* AppIconChoiceTests.swift in Sources */,
 				C03120000000000000B006 /* APIClientGitTests.swift in Sources */,
 				C03120000000000000B007 /* GitWorkspaceViewModelTests.swift in Sources */,
+				1D1FF0000000000000000B09 /* ReviewDiffRowBuilderTests.swift in Sources */,
+				1D1FF0000000000000000B0A /* ReviewWordDiffTests.swift in Sources */,
+				1D1FF0000000000000000B0B /* ReviewDiffLayoutTests.swift in Sources */,
+				1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */,
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,
