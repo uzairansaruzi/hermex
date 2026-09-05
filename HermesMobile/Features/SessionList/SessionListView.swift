@@ -277,7 +277,7 @@ struct SessionListView: View {
                 selectedProjectID = nil
             }
             .onChange(of: navigationState.destination) { oldValue, newValue in
-                SessionListNewChatReturn.run(
+                SessionListDestinationReturn.run(
                     from: oldValue,
                     to: newValue,
                     suppressEmptyPlaceholders: viewModel.removeEmptySidebarPlaceholders,
@@ -1363,20 +1363,31 @@ enum SessionListInitialLoad {
     }
 }
 
-enum SessionListNewChatReturn {
+/// Refreshes the session list whenever the user leaves one destination for
+/// another, so a row reflects whatever just happened in the chat it opened
+/// (a rename, a `/clear`, new messages). Driven from the `destination`
+/// `onChange` in `SessionListView`.
+enum SessionListDestinationReturn {
     static func run(
         from oldValue: SessionNavigationDestination?,
         to newValue: SessionNavigationDestination?,
         suppressEmptyPlaceholders: () -> Void,
         refreshSessions: () -> Void
     ) {
-        guard case .newChat = oldValue else { return }
-        if case .newChat = newValue { return }
+        // Nothing to refresh against before the first destination, and a
+        // destination that re-emits itself has no new server state to adopt.
+        guard let oldValue, oldValue != newValue else { return }
+        // Replacing one pending new-chat route with another stays on the same
+        // screen, so it is not a return.
+        if case .newChat = oldValue, case .newChat = newValue { return }
 
-        // Keep this synchronous so an empty Untitled placeholder cannot flash
-        // during the navigation transition. The refresh then adopts the server's
-        // latest metadata for a new chat that has become contentful.
-        suppressEmptyPlaceholders()
+        if case .newChat = oldValue {
+            // Keep this synchronous so an empty Untitled placeholder cannot
+            // flash during the navigation transition. The refresh then adopts
+            // the server's latest metadata for a new chat that became
+            // contentful.
+            suppressEmptyPlaceholders()
+        }
         refreshSessions()
     }
 }
