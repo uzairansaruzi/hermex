@@ -12,7 +12,8 @@ final class FileBrowserViewModel {
 
     private(set) var tree = FileTree()
     private(set) var expandedPaths: Set<String> = []
-    private(set) var loadingPaths: Set<String> = []
+    /// Directory path → generation of the listing that owns its spinner.
+    private(set) var loadingPaths: [String: Int] = [:]
     /// Directory path → message for listings that failed; tapping the row retries.
     private(set) var failedPaths: [String: String] = [:]
     private(set) var selectedPath: String?
@@ -45,7 +46,7 @@ final class FileBrowserViewModel {
     }
 
     func isLoading(_ path: String) -> Bool {
-        loadingPaths.contains(path)
+        loadingPaths[path] != nil
     }
 
     func loadFailure(for path: String) -> String? {
@@ -162,9 +163,15 @@ final class FileBrowserViewModel {
         guard let sessionID = session.sessionId else { return }
 
         let generation = bumpGeneration(for: path)
-        loadingPaths.insert(path)
+        loadingPaths[path] = generation
         failedPaths[path] = nil
         lastError = nil
+        // Clear the spinner on every exit, but only if a newer listing has not taken it over.
+        defer {
+            if loadingPaths[path] == generation {
+                loadingPaths[path] = nil
+            }
+        }
 
         do {
             let response = try await apiClient.directoryList(sessionID: sessionID, path: path)
@@ -181,8 +188,6 @@ final class FileBrowserViewModel {
                 failedPaths[path] = error.localizedDescription
             }
         }
-
-        loadingPaths.remove(path)
     }
 
     /// Stores a listing and invalidates in-flight requests for every folder the listing

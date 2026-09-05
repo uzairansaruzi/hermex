@@ -212,6 +212,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         await slowOpen.value
 
         XCTAssertFalse(viewModel.tree.isLoaded("src"), "The folder vanished from the root while its listing was in flight")
+        XCTAssertFalse(viewModel.isLoading("src"), "A dropped listing must not leave its spinner behind")
 
         await viewModel.retryRoot()
 
@@ -256,6 +257,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         await slowOpen.value
 
         XCTAssertFalse(viewModel.tree.isLoaded("src"), "The listing from before the folder was recreated is stale and must not be stored")
+        XCTAssertFalse(viewModel.isLoading("src"), "The recreated folder must not show a spinner with no listing in flight")
     }
 
     @MainActor
