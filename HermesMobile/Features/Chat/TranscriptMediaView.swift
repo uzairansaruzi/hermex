@@ -12,6 +12,20 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
     }
 }
 
+/// The active session's workspace root, read by the transcript when it parses
+/// `![alt](path)` images: an image only becomes media when its path is contained by
+/// this root, so a message can never point the media loader outside the workspace.
+extension EnvironmentValues {
+    var chatWorkspaceRoot: String? {
+        get { self[ChatWorkspaceRootKey.self] }
+        set { self[ChatWorkspaceRootKey.self] = newValue }
+    }
+}
+
+private struct ChatWorkspaceRootKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 struct TranscriptMediaContentView: View {
     let segments: [TranscriptMediaSegment]
     let cacheNamespace: String
@@ -158,7 +172,7 @@ private struct TranscriptMediaThumbnailView: View {
             return String(localized: "Open media video \(reference.displayName)")
         }
 
-        return String(localized: "Open media image \(reference.displayName)")
+        return String(localized: "Open media image \(reference.accessibilityName)")
     }
 
     @ViewBuilder

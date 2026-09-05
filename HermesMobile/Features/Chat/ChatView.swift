@@ -316,6 +316,8 @@ struct ChatView: View {
     @State private var selectableResponseText: SelectableTextPresentation?
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
+    @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
+    @State private var attachmentImageItem: ChatAttachmentPreviewItem?
     /// A workspace file a chat link named; presented on the source viewer at its line.
     @State private var openedFileReference: FileReference?
     @State private var pendingProfileSelection: ProfileSummary?
@@ -533,9 +535,7 @@ struct ChatView: View {
                 }
             },
             onPreviewAttachment: { attachment in
-                presentPreviewRestoringComposerFocusIfNeeded {
-                    attachmentPreviewItem = ChatAttachmentPreviewItem(pending: attachment)
-                }
+                presentAttachmentPreview(ChatAttachmentPreviewItem(pending: attachment))
             },
             onDismissUploadAttachmentError: {
                 viewModel.setUploadAttachmentError(nil)
@@ -578,6 +578,39 @@ struct ChatView: View {
             return String(localized: "Read-only")
         }
         return nil
+    }
+
+    /// An image is known to be an image before it is fetched, so it opens in the
+    /// full-bleed lightbox. Everything else keeps the preview sheet, which still has to
+    /// decide between audio, video, and an unsupported file once the bytes arrive.
+    private func presentTranscriptMediaPreview(_ reference: TranscriptMediaReference) {
+        presentPreviewRestoringComposerFocusIfNeeded {
+            let item = TranscriptMediaPreviewItem(reference: reference)
+            if reference.isRasterImageCandidate, !reference.isExtensionlessRemoteMediaCandidate {
+                transcriptMediaImageItem = item
+            } else {
+                transcriptMediaPreviewItem = item
+            }
+        }
+    }
+
+    private func presentAttachmentPreview(_ item: ChatAttachmentPreviewItem) {
+        presentPreviewRestoringComposerFocusIfNeeded {
+            if item.inferredIsImage {
+                attachmentImageItem = item
+            } else {
+                attachmentPreviewItem = item
+            }
+        }
+    }
+
+    private func transcriptMediaImageLightbox(for item: TranscriptMediaPreviewItem) -> some View {
+        TranscriptMediaImageLightbox(
+            server: server,
+            sessionID: transcriptMediaSessionID,
+            item: item,
+            onAPIError: onAPIError
+        )
     }
 
     private func transcriptMediaPreviewView(for item: TranscriptMediaPreviewItem) -> some View {
@@ -811,6 +844,30 @@ struct ChatView: View {
                 }
             }
             .sheet(item: $transcriptMediaPreviewItem, content: transcriptMediaPreviewView)
+            .fullScreenCover(item: $attachmentImageItem) { item in
+                ChatAttachmentImageLightbox(
+                    session: session,
+                    server: server,
+                    item: item,
+                    onAPIError: onAPIError
+                )
+            }
+            .onChange(of: attachmentImageItem == nil) { _, isDismissed in
+                if isDismissed {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
+            .fullScreenCover(item: $transcriptMediaImageItem, content: transcriptMediaImageLightbox)
+            .onChange(of: transcriptMediaImageItem == nil) { _, isDismissed in
+                if isDismissed {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
+            .onChange(of: transcriptMediaPreviewItem == nil) { _, isDismissed in
+                if isDismissed {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
             .sheet(item: $openedFileReference, content: fileReferenceSheet)
             .sheet(item: $activeGitSheet, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
@@ -1355,12 +1412,12 @@ struct ChatView: View {
                 scrollToLatestContent(proxy, animated: animated)
             },
             onPreviewAttachment: { attachment, localData in
-                presentPreviewRestoringComposerFocusIfNeeded {
-                    attachmentPreviewItem = ChatAttachmentPreviewItem(message: attachment, localData: localData)
-                }
+                presentAttachmentPreview(
+                    ChatAttachmentPreviewItem(message: attachment, localData: localData)
+                )
             },
             onPreviewTranscriptMedia: { reference in
-                transcriptMediaPreviewItem = TranscriptMediaPreviewItem(reference: reference)
+                presentTranscriptMediaPreview(reference)
             },
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
@@ -1395,6 +1452,7 @@ struct ChatView: View {
         }
         .environment(\.skillChipCatalog, viewModel.skillChipCatalog)
         .environment(\.openURL, OpenURLAction(handler: handleTranscriptLink))
+        .environment(\.chatWorkspaceRoot, session.workspace)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }

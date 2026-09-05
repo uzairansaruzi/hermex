@@ -15,8 +15,28 @@ enum TranscriptMediaKind: Equatable {
 struct TranscriptMediaReference: Equatable, Identifiable {
     let rawReference: String
 
+    /// The alt text of the `![alt](path)` this came from. `MEDIA:` tokens and bare
+    /// `file://` URLs have none, so they fall back to the file name.
+    let altText: String?
+
+    init(rawReference: String, altText: String? = nil) {
+        self.rawReference = rawReference
+        self.altText = altText
+    }
+
     var id: String {
         rawReference
+    }
+
+    /// What VoiceOver should call this image: the author's alt text when there is one,
+    /// otherwise the file name.
+    var accessibilityName: String {
+        guard let altText = altText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !altText.isEmpty
+        else {
+            return displayName
+        }
+        return altText
     }
 
     var source: TranscriptMediaSource {
@@ -113,7 +133,13 @@ enum TranscriptMediaSegment: Equatable {
 }
 
 enum TranscriptMediaParser {
-    static func segments(in markdown: String) -> [TranscriptMediaSegment] {
+    /// Splits an assistant message into text and media. `workspaceRoot` only resolves the
+    /// relative forms of `![alt](path)`; an absolute path or a `file:` URL needs no root,
+    /// and the server's `/api/media` allow-list decides what is actually served.
+    static func segments(
+        in markdown: String,
+        workspaceRoot: String? = nil
+    ) -> [TranscriptMediaSegment] {
         guard !markdown.isEmpty else { return [] }
 
         var segments: [TranscriptMediaSegment] = []
@@ -136,7 +162,7 @@ enum TranscriptMediaParser {
                 isInFence = true
                 fenceCharacter = marker
             } else {
-                appendMediaSegments(in: line, to: &segments)
+                appendMediaSegments(in: line, to: &segments, workspaceRoot: workspaceRoot)
             }
 
             index = lineRange.upperBound
@@ -145,12 +171,28 @@ enum TranscriptMediaParser {
         return segments
     }
 
-    private static func appendMediaSegments(in line: String, to segments: inout [TranscriptMediaSegment]) {
+    private static func appendMediaSegments(
+        in line: String,
+        to segments: inout [TranscriptMediaSegment],
+        workspaceRoot: String?
+    ) {
         var cursor = line.startIndex
         var textStart = cursor
         let inlineCodeRanges = inlineCodeRanges(in: line)
 
         while cursor < line.endIndex {
+            if line[cursor...].hasPrefix(markdownImageMarker),
+               !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
+               let image = markdownImage(in: line, from: cursor),
+               let reference = markdownImageReference(for: image, workspaceRoot: workspaceRoot) {
+                appendText(String(line[textStart..<cursor]), to: &segments)
+                segments.append(.media(reference))
+
+                cursor = image.end
+                textStart = cursor
+                continue
+            }
+
             if line[cursor...].hasPrefix("MEDIA:"),
                let referenceRange = referenceRange(
                    in: line,
@@ -194,6 +236,75 @@ enum TranscriptMediaParser {
         }
 
         appendText(String(line[textStart..<line.endIndex]), to: &segments)
+    }
+
+    /// One `![alt](destination "title")` occurrence, already split apart.
+    private struct MarkdownImage {
+        let alt: String
+        let destination: String
+        let end: String.Index
+    }
+
+    /// Reads a Markdown image starting at `![`. Only the flat form is recognized: the
+    /// first `]` ends the alt text and the first `)` ends the destination, so a nested
+    /// or reference-style image stays ordinary Markdown rather than being mis-split.
+    private static func markdownImage(in line: String, from start: String.Index) -> MarkdownImage? {
+        guard let altStart = line.index(
+            start,
+            offsetBy: markdownImageMarker.count,
+            limitedBy: line.endIndex
+        ) else { return nil }
+
+        guard let altEnd = line[altStart...].firstIndex(of: "]") else { return nil }
+        let openParenthesis = line.index(after: altEnd)
+        guard openParenthesis < line.endIndex, line[openParenthesis] == "(" else { return nil }
+
+        let destinationStart = line.index(after: openParenthesis)
+        guard let closeParenthesis = line[destinationStart...].firstIndex(of: ")") else { return nil }
+
+        let body = String(line[destinationStart..<closeParenthesis])
+        guard let destination = destination(inLinkBody: body) else { return nil }
+
+        return MarkdownImage(
+            alt: String(line[altStart..<altEnd]).trimmingCharacters(in: .whitespacesAndNewlines),
+            destination: destination,
+            end: line.index(after: closeParenthesis)
+        )
+    }
+
+    /// The destination out of a link body, dropping any `"title"`. An angle-bracketed
+    /// destination keeps its spaces; a bare one ends at the first space.
+    private static func destination(inLinkBody body: String) -> String? {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.hasPrefix("<") {
+            guard let close = trimmed.firstIndex(of: ">") else { return nil }
+            return String(trimmed[trimmed.index(after: trimmed.startIndex)..<close])
+        }
+
+        guard let space = trimmed.firstIndex(where: \.isWhitespace) else { return trimmed }
+        return String(trimmed[..<space])
+    }
+
+    /// A Markdown image becomes transcript media when its destination names a raster
+    /// image on the server's filesystem, which `/api/media` then decides whether to
+    /// serve. Remote URLs and bare relative paths keep whatever the Markdown renderer
+    /// already does with them.
+    private static func markdownImageReference(
+        for image: MarkdownImage,
+        workspaceRoot: String?
+    ) -> TranscriptMediaReference? {
+        guard let path = FileReference.absoluteMediaPath(
+            image.destination,
+            workspaceRoot: workspaceRoot
+        ) else { return nil }
+
+        let reference = TranscriptMediaReference(
+            rawReference: path,
+            altText: image.alt.isEmpty ? nil : image.alt
+        )
+        return reference.isRasterImageCandidate ? reference : nil
     }
 
     private static func appendText(_ text: String, to segments: inout [TranscriptMediaSegment]) {
@@ -355,6 +466,7 @@ enum TranscriptMediaParser {
     private static let trailingPunctuation: Set<Character> = [".", ",", ";", ":", "!", "?"]
     private static let fileURLTerminators: Set<Character> = ["<", ">", "\"", "'"]
     private static let fileURLMarker = "file://"
+    private static let markdownImageMarker = "!["
 
     private enum ReferenceSyntax {
         case mediaToken
