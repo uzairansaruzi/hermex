@@ -116,6 +116,17 @@ struct MessageComposerView: View {
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
     let autoStartsVoiceInput: Bool
     let apiClient: APIClient?
+    /// This chat's server-side session, which the `@` panel lists workspace
+    /// files for. Nil before the session exists, which keeps the panel closed.
+    let sessionID: String?
+    /// The workspace files already picked in this chat. The editor draws their
+    /// `@path` references as chips; the view model owns the set so the sent
+    /// transcript can draw the same ones.
+    let chipFilePaths: Set<String>
+    /// The `@` panel's rows and its directory listings. Owned by the view model
+    /// so a folder listed to confirm a restored draft's references is not listed
+    /// again the first time the panel opens.
+    let filePathSearch: ComposerFilePathSearch
     let uploadAttachmentErrorMessage: String?
     let onSend: () -> Void
     let onSendVoiceNote: (Data, String) -> Void
@@ -139,6 +150,10 @@ struct MessageComposerView: View {
     let onRemoveAttachment: (UUID) -> Void
     let onPreviewAttachment: (PendingAttachment) -> Void
     let onDismissUploadAttachmentError: () -> Void
+    /// A workspace file the user just picked, for the chip catalog.
+    let onSelectFileReference: (String) -> Void
+    /// A file chip the user tapped, by workspace-relative path.
+    let onOpenFileReference: (String) -> Void
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
@@ -186,7 +201,33 @@ struct MessageComposerView: View {
         ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
+    /// The `@…` the caret is sitting in, or `nil` when there is none.
+    ///
+    /// Needs a session to list, since every path the panel offers comes from
+    /// that session's workspace.
+    private var fileTrigger: ComposerFileTrigger? {
+        guard !isReadOnly, apiClient != nil, fileReferenceSessionID != nil else { return nil }
+        return ComposerFileTrigger.detect(in: draftMessage, selection: composerSelection.range)
+    }
+
+    private var showsFileAutocomplete: Bool {
+        fileTrigger != nil
+    }
+
+    private var fileReferenceSessionID: String? {
+        guard let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty
+        else {
+            return nil
+        }
+        return sessionID
+    }
+
     /// What the panel filters on, or `nil` when it should be closed.
+    ///
+    /// The `@` panel wins when both triggers match: a `/` inside a path never
+    /// triggers at all (it follows a non-space), but an `@` inside a command's
+    /// free-form argument is still a file reference.
     ///
     /// A command the user has typed past no longer produces a trigger at all —
     /// `ComposerSlashTrigger` ends at the space after a command that takes no
@@ -194,7 +235,7 @@ struct MessageComposerView: View {
     /// panel: a settled `/skills` invocation, a settled goal action, and a
     /// mid-sentence word no loaded skill matches.
     private var slashQuery: String? {
-        guard let query = slashTrigger?.text else { return nil }
+        guard fileTrigger == nil, let query = slashTrigger?.text else { return nil }
 
         let parsed = ParsedSlashQuery(query: query)
         if parsed.commandName.lowercased() == "skills",
@@ -244,6 +285,28 @@ struct MessageComposerView: View {
         let completed = trigger.applying(replacement, to: draftMessage)
         draftMessage = completed.draft
         composerSelection = composerSelection.moved(to: completed.selection)
+    }
+
+    /// Swaps the `@…` at the caret for the picked entry.
+    ///
+    /// A file finishes the reference: `@path` plus a space, recorded so the
+    /// editor draws it as a chip. A folder is a step on the way, so it inserts
+    /// with a trailing `/` and no space and the panel stays open listing what is
+    /// inside it. Only files are recorded, which is what keeps a folder
+    /// reference from becoming a chip that opens nothing.
+    private func applyFileCompletion(_ match: ComposerFilePathSearch.Match) {
+        guard let trigger = fileTrigger else { return }
+
+        let completed = trigger.applying(
+            match.isDirectory ? "@\(match.path)/" : "@\(match.path) ",
+            to: draftMessage
+        )
+        draftMessage = completed.draft
+        composerSelection = composerSelection.moved(to: completed.selection)
+
+        if !match.isDirectory {
+            onSelectFileReference(match.path)
+        }
     }
 
     private var parsedSlashQuery: ParsedSlashQuery {
@@ -298,7 +361,17 @@ struct MessageComposerView: View {
                 }
 
                 Group {
-                    if let slashQuery {
+                    if let fileTrigger, let sessionID = fileReferenceSessionID, let apiClient {
+                        FilePathAutocompleteView(
+                            query: fileTrigger.query,
+                            sessionID: sessionID,
+                            apiClient: apiClient,
+                            search: filePathSearch,
+                            onSelect: applyFileCompletion
+                        )
+                        .padding(.horizontal)
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                    } else if let slashQuery {
                         SlashCommandAutocompleteView(
                             query: slashQuery,
                             selectedModelID: selectedModelID,
@@ -334,6 +407,7 @@ struct MessageComposerView: View {
                     }
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
+                .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
 
                 composerSurface
                     .padding(.horizontal)
@@ -604,11 +678,17 @@ struct MessageComposerView: View {
                     isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
                     verticalPadding: 12,
                     chipSkills: skillSuggestions,
+                    chipFilePaths: chipFilePaths,
                     onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
                     onPasteFileURLs: onPasteFileURLs,
                     onPasteImageProviders: onPasteImageProviders,
-                    onPasteImages: onPasteImages
+                    onPasteImages: onPasteImages,
+                    onTapChip: { token in
+                        // A skill chip is inert; a file chip opens the file.
+                        guard let path = token.filePath else { return }
+                        onOpenFileReference(path)
+                    }
                 )
 
                 if !isExpanded {

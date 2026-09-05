@@ -454,6 +454,9 @@ struct ChatView: View {
             isSendingVoiceNote: viewModel.isSendingVoiceNote,
             autoStartsVoiceInput: autoStartsVoiceInput,
             apiClient: viewModel.client,
+            sessionID: session.sessionId,
+            chipFilePaths: viewModel.fileChipPaths,
+            filePathSearch: viewModel.filePathSearch,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
             onSend: {
                 Task { await sendDraftMessage() }
@@ -539,6 +542,12 @@ struct ChatView: View {
             },
             onDismissUploadAttachmentError: {
                 viewModel.setUploadAttachmentError(nil)
+            },
+            onSelectFileReference: { path in
+                viewModel.recordFileChipReference(path)
+            },
+            onOpenFileReference: { path in
+                openedFileReference = FileReference(path: path, line: nil, column: nil)
             },
             onSelectGitBranch: { target in
                 Task { await performGitCheckout(target) }
@@ -1450,12 +1459,30 @@ struct ChatView: View {
         .onChange(of: viewModel.latestRunOutcome) {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
-        .environment(\.skillChipCatalog, viewModel.skillChipCatalog)
+        .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .environment(\.openURL, OpenURLAction(handler: handleTranscriptLink))
         .environment(\.chatWorkspaceRoot, session.workspace)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }
+        .task(id: fileChipReferenceScanToken) {
+            await viewModel.loadFileChipReferences(draft: draftMessage)
+        }
+    }
+
+    /// Changes whenever there is new text that could name a workspace file: the
+    /// transcript grew or was swapped for the server's copy, or the draft gained
+    /// or lost a finished `@…`. Everything here is O(1) or bounded by the
+    /// draft, because it runs on every transcript update, including each token
+    /// of a live stream. The scan of the transcript itself is the view model's,
+    /// and it skips candidates the server has already answered for.
+    private var fileChipReferenceScanToken: String {
+        let draftCandidates = ComposerChipTokenizer.fileReferenceCandidates(in: draftMessage)
+        return [
+            String(viewModel.messages.count),
+            viewModel.messages.last?.messageId ?? "",
+            draftCandidates.joined(separator: " ")
+        ].joined(separator: "|")
     }
 
     /// How many sent messages look like they name a skill.

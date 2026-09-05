@@ -74,7 +74,8 @@ final class ComposerChipTokenizerTests: XCTestCase {
             ComposerChipToken(
                 range: NSRange(location: 0, length: 9),
                 source: "/ask-matt",
-                label: "ask-matt"
+                label: "ask-matt",
+                kind: .skill
             )
         ]
 
@@ -90,12 +91,103 @@ final class ComposerChipTokenizerTests: XCTestCase {
         XCTAssertTrue(ComposerChipTokenizer.tokens(in: "/ask-matt hi", catalog: .empty).isEmpty)
     }
 
+    func testFileReferenceCandidatesSkipTheOneStillBeingTyped() {
+        XCTAssertEqual(
+            ComposerChipTokenizer.fileReferenceCandidates(in: "read @a/b.md and @c.md now"),
+            ["a/b.md", "c.md"]
+        )
+        XCTAssertEqual(ComposerChipTokenizer.fileReferenceCandidates(in: "read @a/b"), [])
+        XCTAssertEqual(
+            ComposerChipTokenizer.fileReferenceCandidates(in: "read @a/b", isComplete: true),
+            ["a/b"]
+        )
+    }
+
+    func testFileReferenceCandidatesIgnoreAnEmailAddressAndRepeats() {
+        XCTAssertEqual(ComposerChipTokenizer.fileReferenceCandidates(in: "me@example.com now"), [])
+        XCTAssertEqual(
+            ComposerChipTokenizer.fileReferenceCandidates(in: "@a.md and @a.md again"),
+            ["a.md"]
+        )
+    }
+
     func testMayContainReferenceSpotsACandidateWithoutTheCatalog() {
         XCTAssertTrue(ComposerChipTokenizer.mayContainReference("/ask-matt hello"))
         XCTAssertTrue(ComposerChipTokenizer.mayContainReference("please run /x"))
+        XCTAssertTrue(ComposerChipTokenizer.mayContainReference("open @src/main.swift"))
         XCTAssertFalse(ComposerChipTokenizer.mayContainReference("no references here"))
         XCTAssertFalse(ComposerChipTokenizer.mayContainReference("docs/ask-matt"))
+        XCTAssertFalse(ComposerChipTokenizer.mayContainReference("mail me at me@example.com"))
         XCTAssertFalse(ComposerChipTokenizer.mayContainReference(""))
+    }
+}
+
+extension ComposerChipTokenizerTests {
+    // MARK: - Workspace file references
+
+    private var fileCatalog: ComposerChipCatalog {
+        ComposerChipCatalog(
+            skills: [SkillSlashSuggestion(name: "ask-matt", category: nil, description: nil)],
+            filePaths: ["src/Chat/ChatView.swift", "README.md"]
+        )
+    }
+
+    func testFileReferenceInTheCatalogBecomesAChipLabelledByItsFilename() {
+        let tokens = ComposerChipTokenizer.tokens(in: "read @src/Chat/ChatView.swift now", catalog: fileCatalog)
+
+        XCTAssertEqual(tokens.map(\.source), ["@src/Chat/ChatView.swift"])
+        XCTAssertEqual(tokens.first?.label, "ChatView.swift")
+        XCTAssertEqual(tokens.first?.kind, .file)
+        XCTAssertEqual(tokens.first?.filePath, "src/Chat/ChatView.swift")
+        XCTAssertEqual(tokens.first?.range, NSRange(location: 5, length: 24))
+    }
+
+    func testFilePathOutsideTheCatalogStaysPlainText() {
+        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@src/Other.swift now", catalog: fileCatalog).isEmpty)
+        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@README.md here", catalog: .empty).isEmpty)
+    }
+
+    func testHalfTypedFilePathStaysPlainText() {
+        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@src/Chat/ChatVie", catalog: fileCatalog).isEmpty)
+        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@README.md", catalog: fileCatalog).isEmpty)
+    }
+
+    func testAnEmailAddressIsNeverAFileChip() {
+        let catalog = ComposerChipCatalog(skills: [], filePaths: ["example.com"])
+
+        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "mail me@example.com now", catalog: catalog).isEmpty)
+    }
+
+    func testSkillAndFileReferencesCoexistInOneDraft() {
+        let draft = "/ask-matt about @README.md please"
+        let tokens = ComposerChipTokenizer.tokens(in: draft, catalog: fileCatalog)
+
+        XCTAssertEqual(tokens.map(\.source), ["/ask-matt", "@README.md"])
+        XCTAssertEqual(tokens.map(\.kind), [.skill, .file])
+        XCTAssertEqual(
+            ComposerChipTokenizer.spokenText(in: draft, tokens: tokens),
+            "ask-matt about README.md please"
+        )
+    }
+
+    func testSentMessageEndingInAFileReferenceDrawsAChip() {
+        let tokens = ComposerChipTokenizer.tokens(
+            in: "look at @README.md",
+            catalog: fileCatalog,
+            isComplete: true
+        )
+
+        XCTAssertEqual(tokens.map(\.source), ["@README.md"])
+    }
+
+    func testAFileChipDrawsItsOwnFileTypeGlyph() {
+        let tokens = ComposerChipTokenizer.tokens(in: "@src/Chat/ChatView.swift ", catalog: fileCatalog)
+
+        XCTAssertEqual(tokens.first?.icon, .asset(FileIcon.swift.assetName))
+        XCTAssertEqual(
+            ComposerChipTokenizer.tokens(in: "/ask-matt ", catalog: fileCatalog).first?.icon,
+            .symbol("hammer")
+        )
     }
 }
 
@@ -172,8 +264,12 @@ final class ComposerChipDocumentTests: XCTestCase {
         result.append(
             NSAttributedString(
                 attachment: ComposerChipAttachment(
-                    source: "/ask-matt",
-                    label: "ask-matt",
+                    token: ComposerChipToken(
+                        range: NSRange(location: 4, length: 9),
+                        source: "/ask-matt",
+                        label: "ask-matt",
+                        kind: .skill
+                    ),
                     image: UIImage(),
                     baselineOffset: 0
                 )
@@ -181,6 +277,36 @@ final class ComposerChipDocumentTests: XCTestCase {
         )
         result.append(NSAttributedString(string: " now"))
         return result
+    }
+
+    /// The draft is what gets sent, saved, and copied, so an attachment this
+    /// composer did not make contributes nothing at all — not the U+FFFC glyph
+    /// standing in for it, and so nothing that a later reader could take for
+    /// markup. Anything else travels to the server as a character the user
+    /// never typed.
+    func testAForeignAttachmentContributesNothingToTheDraft() {
+        let document = NSMutableAttributedString(string: "read ")
+        document.append(NSAttributedString(attachment: NSTextAttachment(image: UIImage())))
+        document.append(NSAttributedString(string: " @a/b.md "))
+
+        let source = document.composerSourceText
+
+        XCTAssertEqual(source, "read  @a/b.md ")
+        XCTAssertFalse(source.contains("\u{FFFC}"))
+        XCTAssertFalse(source.contains("]("))
+        XCTAssertFalse(source.contains("%3C"))
+    }
+
+    /// The caret mapping has to agree with the text: a glyph worth no draft
+    /// characters must not be counted as one either.
+    func testAForeignAttachmentIsWorthNoDraftOffsets() {
+        let document = NSMutableAttributedString(string: "ab")
+        document.append(NSAttributedString(attachment: NSTextAttachment(image: UIImage())))
+        document.append(NSAttributedString(string: "cd"))
+
+        XCTAssertEqual(document.composerSourceText, "abcd")
+        XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 5), 4)
+        XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 3), 2)
     }
 
     func testSerializesChipsBackToTheirSource() {

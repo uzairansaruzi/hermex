@@ -7,14 +7,19 @@ import UIKit
 /// Everything that leaves the editor - what is sent, copied, cut, or saved as a
 /// draft - reads `source` back out, so the chip never changes the message.
 final class ComposerChipAttachment: NSTextAttachment {
-    let source: String
+    /// The reference this glyph stands for. Carried whole so a tap on the chip
+    /// can report what was tapped without the caller re-deriving it from a
+    /// caret offset.
+    let token: ComposerChipToken
 
-    init(source: String, label: String, image: UIImage, baselineOffset: CGFloat) {
-        self.source = source
+    var source: String { token.source }
+
+    init(token: ComposerChipToken, image: UIImage, baselineOffset: CGFloat) {
+        self.token = token
         super.init(data: nil, ofType: nil)
-        image.accessibilityLabel = label
+        image.accessibilityLabel = token.label
         self.image = image
-        accessibilityLabel = label
+        accessibilityLabel = token.label
         bounds = CGRect(origin: CGPoint(x: 0, y: baselineOffset), size: image.size)
     }
 
@@ -55,10 +60,6 @@ struct ComposerChipMetrics: Equatable {
 /// Draws the chip. The image is baked against a trait collection, so the editor
 /// re-renders it when the appearance or the content size category changes.
 enum ComposerChipRenderer {
-    /// Matches the Skills screen's own glyph so a chip reads as the same thing
-    /// the rest of the app calls a skill.
-    private static let iconName = "hammer"
-
     /// Baked chips, keyed by everything that changes one. The editor redraws
     /// only when its chips or its style move, but the collapsed composer draws
     /// from `body`, which runs again on every parent update — including each
@@ -68,12 +69,14 @@ enum ComposerChipRenderer {
 
     static func image(
         label: String,
+        icon: ComposerChipIcon,
         metrics: ComposerChipMetrics,
         traits: UITraitCollection,
         isRightToLeft: Bool
     ) -> UIImage {
         let key = [
             label,
+            icon.cacheKey,
             String(describing: metrics.labelFont.pointSize),
             String(describing: metrics.height),
             String(traits.userInterfaceStyle.rawValue),
@@ -85,13 +88,42 @@ enum ComposerChipRenderer {
             return cached
         }
 
-        let image = draw(label: label, metrics: metrics, traits: traits, isRightToLeft: isRightToLeft)
+        let image = draw(
+            label: label,
+            icon: icon,
+            metrics: metrics,
+            traits: traits,
+            isRightToLeft: isRightToLeft
+        )
         cache.setObject(image, forKey: key)
         return image
     }
 
+    /// The chip's glyph: an SF Symbol takes the chip's muted tint, a file-type
+    /// asset keeps its own colours.
+    private static func iconImage(
+        _ icon: ComposerChipIcon,
+        metrics: ComposerChipMetrics,
+        traits: UITraitCollection
+    ) -> UIImage? {
+        switch icon {
+        case let .symbol(name):
+            let tint = UIColor.secondaryLabel.resolvedColor(with: traits)
+            return UIImage(
+                systemName: name,
+                withConfiguration: UIImage.SymbolConfiguration(
+                    pointSize: metrics.iconSize - 2,
+                    weight: .medium
+                )
+            )?.withTintColor(tint, renderingMode: .alwaysOriginal)
+        case let .asset(name):
+            return UIImage(named: name)
+        }
+    }
+
     private static func draw(
         label: String,
+        icon iconStyle: ComposerChipIcon,
         metrics: ComposerChipMetrics,
         traits: UITraitCollection,
         isRightToLeft: Bool
@@ -99,15 +131,8 @@ enum ComposerChipRenderer {
         let background = UIColor.secondarySystemFill.resolvedColor(with: traits)
         let border = UIColor.separator.resolvedColor(with: traits)
         let textColor = UIColor.label.resolvedColor(with: traits)
-        let tint = UIColor.secondaryLabel.resolvedColor(with: traits)
 
-        let icon = UIImage(
-            systemName: iconName,
-            withConfiguration: UIImage.SymbolConfiguration(
-                pointSize: metrics.iconSize - 2,
-                weight: .medium
-            )
-        )?.withTintColor(tint, renderingMode: .alwaysOriginal)
+        let icon = iconImage(iconStyle, metrics: metrics, traits: traits)
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: metrics.labelFont,
@@ -235,6 +260,7 @@ enum ComposerChipTextLine {
 
             let chip = ComposerChipRenderer.image(
                 label: token.label,
+                icon: token.icon,
                 metrics: style.metrics,
                 traits: style.traits,
                 isRightToLeft: style.isRightToLeft
@@ -258,6 +284,12 @@ enum ComposerChipTextLine {
 /// to be translated. The rendered document is the authority: reading the
 /// mapping off the attachments themselves means a caret can never be computed
 /// from a stale idea of where the chips are.
+///
+/// An attachment this file did not make contributes nothing at all — not even
+/// the U+FFFC placeholder standing in for it on screen. The draft is what gets
+/// sent, saved, and copied, so anything the editor cannot describe as text has
+/// no business reaching it: a stray glyph would travel to the server, come back
+/// in the transcript, and be rendered by whatever reads it next.
 extension NSAttributedString {
     /// The draft text this document stands for.
     var composerSourceText: String {
@@ -273,7 +305,7 @@ extension NSAttributedString {
         enumerateAttribute(.attachment, in: range) { value, attributeRange, _ in
             if let chip = value as? ComposerChipAttachment {
                 source.append(chip.source)
-            } else {
+            } else if value == nil {
                 source.append(display.substring(with: attributeRange))
             }
         }
@@ -290,7 +322,7 @@ extension NSAttributedString {
         enumerateAttribute(.attachment, in: NSRange(location: 0, length: bounded)) { value, range, _ in
             if let chip = value as? ComposerChipAttachment {
                 source += (chip.source as NSString).length
-            } else {
+            } else if value == nil {
                 source += range.length
             }
         }
@@ -317,7 +349,7 @@ extension NSAttributedString {
                     return
                 }
                 source += chipLength
-            } else {
+            } else if value == nil {
                 if sourceOffset < source + range.length {
                     display = range.location + (sourceOffset - source)
                     stop.pointee = true

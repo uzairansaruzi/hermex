@@ -361,6 +361,25 @@ final class ChatViewModel {
     /// list so the transcript's `body` never rebuilds it. Always assigned
     /// through `applySkillSlashSuggestions(_:)`.
     private(set) var skillChipCatalog: ComposerChipCatalog = .empty
+    /// Workspace files picked from the composer's `@` panel in this chat.
+    /// Held here rather than in the composer so the transcript draws the same
+    /// references the composer does, and so switching chats never carries one
+    /// session's paths into another.
+    private(set) var fileChipPaths: Set<String> = []
+    /// The catalog both the composer and the transcript draw from: this chat's
+    /// skills plus the files it has referenced.
+    private(set) var composerChipCatalog: ComposerChipCatalog = .empty
+    /// The workspace directory listings behind both the composer's `@` panel and
+    /// the confirmation of `@path` references in a restored draft or transcript,
+    /// so a folder either surface has already listed is never listed twice.
+    @ObservationIgnored let filePathSearch = ComposerFilePathSearch()
+    @ObservationIgnored private var fileChipReferenceLoad: Task<Void, Never>?
+    /// Candidates the server has already answered for, so a `@word` that is not
+    /// a file is not re-checked on every transcript update.
+    @ObservationIgnored private var checkedFileChipCandidates: Set<String> = []
+    /// Most distinct folders one confirmation pass will list. A message can name
+    /// files all over a workspace; the panel is a convenience, not a crawler.
+    private static let fileChipDirectoryLimit = 20
     private(set) var profileOptions: [ProfileSummary] = []
     private(set) var isSingleProfileMode = false
     private(set) var selectedProfileName: String?
@@ -3129,6 +3148,7 @@ final class ChatViewModel {
         let previousCatalog = skillChipCatalog
         skillSlashSuggestions = suggestions
         skillChipCatalog = ComposerChipCatalog(skills: suggestions)
+        composerChipCatalog = skillChipCatalog.withFilePaths(fileChipPaths)
 
         // A catalog that draws differently redraws the transcript: sent `/slug`
         // text becomes a chip, or an existing chip changes size or goes away.
@@ -3137,6 +3157,129 @@ final class ChatViewModel {
         if skillChipCatalog != previousCatalog {
             transcriptRelayoutScrollToken += 1
         }
+    }
+
+    /// Remembers a workspace file the user picked in the composer, so its
+    /// `@path` draws as a chip there and in the sent message.
+    ///
+    /// Recorded straight away rather than waiting on the server: the panel only
+    /// ever offers paths a listing just returned, so the chip appears with the
+    /// insertion instead of a beat later.
+    func recordFileChipReference(_ path: String) {
+        let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+
+        checkedFileChipCandidates.insert(path)
+        guard !fileChipPaths.contains(path) else { return }
+
+        fileChipPaths.insert(path)
+        composerChipCatalog = skillChipCatalog.withFilePaths(fileChipPaths)
+        // A wider catalog can turn sent `@path` text into a chip, which changes
+        // the height of a bubble already on screen.
+        transcriptRelayoutScrollToken += 1
+    }
+
+    /// Confirms the `@path` candidates in `draft` and in the transcript's user
+    /// messages against the session's workspace.
+    ///
+    /// What the composer picked lives in this view model, and this view model
+    /// dies when the chat is left — so on the way back in, and on any other
+    /// device, the only thing that knows a `@word` is a file is the server. Each
+    /// candidate's parent folder is listed once, through the same cache the `@`
+    /// panel fills, and every candidate the listing contains becomes a chip in
+    /// both the composer and the transcript.
+    ///
+    /// The work lives on a task this view model owns, like the skill loader: a
+    /// caller cancelled by an unrelated view update cannot take the listings
+    /// down with it, and a caller arriving mid-pass waits for that pass rather
+    /// than starting a second one over the same folders.
+    func loadFileChipReferences(draft: String) async {
+        guard let sessionID, !sessionID.isEmpty else { return }
+
+        while let existing = fileChipReferenceLoad {
+            await existing.value
+        }
+
+        let candidates = fileChipReferenceCandidates(draft: draft)
+        guard !candidates.isEmpty else { return }
+
+        let load = Task { [weak self] in
+            guard let self else { return }
+            await self.confirmFileChipReferences(candidates, sessionID: sessionID)
+            self.fileChipReferenceLoad = nil
+        }
+        fileChipReferenceLoad = load
+        await load.value
+    }
+
+    /// Every `@…` the chat still has no answer for, draft first: what the user
+    /// is looking at while typing is worth confirming before the backlog.
+    private func fileChipReferenceCandidates(draft: String) -> [String] {
+        var candidates: [String] = []
+        var seen: Set<String> = []
+
+        // The draft's own trailing reference counts as finished here: a chip
+        // whose trailing space was backspaced is still a reference, and by the
+        // time a pass runs the user has moved on to whatever changed the token.
+        for text in [draft] + messages.filter({ $0.role == "user" }).map({ $0.content ?? "" }) {
+            for candidate in ComposerChipTokenizer.fileReferenceCandidates(in: text, isComplete: true) {
+                guard !checkedFileChipCandidates.contains(candidate),
+                      !fileChipPaths.contains(candidate),
+                      seen.insert(candidate).inserted
+                else {
+                    continue
+                }
+                candidates.append(candidate)
+            }
+        }
+
+        return candidates
+    }
+
+    /// Lists each candidate's parent folder once and keeps the candidates that
+    /// folder actually holds.
+    ///
+    /// A folder whose listing failed leaves its candidates unanswered rather
+    /// than answered "no", so the next pass retries them; a folder that answered
+    /// marks its candidates settled, which is what keeps a `@word` that is not a
+    /// file from costing a request on every transcript update.
+    private func confirmFileChipReferences(_ candidates: [String], sessionID: String) async {
+        var wantedByDirectory: [String: Set<String>] = [:]
+        var directories: [String] = []
+        for candidate in candidates {
+            let directory = FileTree.parentPath(of: candidate)
+            if wantedByDirectory[directory] == nil { directories.append(directory) }
+            wantedByDirectory[directory, default: []].insert(candidate)
+        }
+
+        var confirmed: Set<String> = []
+        var settled: Set<String> = []
+
+        for directory in directories.prefix(Self.fileChipDirectoryLimit) {
+            guard let wanted = wantedByDirectory[directory] else { continue }
+            guard let entries = try? await filePathSearch.entries(
+                in: directory,
+                sessionID: sessionID,
+                apiClient: client
+            ) else {
+                continue
+            }
+
+            confirmed.formUnion(wanted.intersection(Set(entries.map(\.path))))
+            settled.formUnion(wanted)
+        }
+
+        // The view model is built per session, but a listing that outlived its
+        // chat must never widen another one's catalog.
+        guard sessionID == self.sessionID else { return }
+
+        checkedFileChipCandidates.formUnion(settled)
+        let recovered = confirmed.subtracting(fileChipPaths)
+        guard !recovered.isEmpty else { return }
+
+        fileChipPaths.formUnion(recovered)
+        composerChipCatalog = skillChipCatalog.withFilePaths(fileChipPaths)
+        transcriptRelayoutScrollToken += 1
     }
 
     private func branchSessionFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {

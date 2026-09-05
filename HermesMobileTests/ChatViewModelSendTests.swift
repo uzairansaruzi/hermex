@@ -8939,6 +8939,191 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
     }
 
+    // MARK: - Workspace file references (`@path`)
+
+    /// `.` holds `a/`; `a/` holds `b.md` and `c.md`.
+    private func fileListingJSON(for path: String) -> String? {
+        switch path {
+        case ".":
+            return #"{"path": ".", "entries": [{"name": "a", "path": "a", "type": "dir", "is_dir": true}]}"#
+        case "a":
+            return #"{"path": "a", "entries": [{"name": "b.md", "path": "a/b.md", "type": "file"}, {"name": "c.md", "path": "a/c.md", "type": "file"}]}"#
+        default:
+            return nil
+        }
+    }
+
+    private func listedPath(in request: URLRequest) -> String {
+        let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+        return components?.queryItems?.first { $0.name == "path" }?.value ?? "."
+    }
+
+    /// What the composer picked dies with the view model, so a chat re-entered
+    /// from the session list has to ask the server whether a `@word` in the
+    /// restored draft is really a file before it can draw the chip again.
+    @MainActor
+    func testARestoredDraftReferenceIsConfirmedAgainstTheWorkspace() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            XCTAssertEqual(request.url?.path, "/api/list")
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadFileChipReferences(draft: "read @a/b.md please")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.fileChipPaths.contains("a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
+    }
+
+    /// A `@word` the folder does not hold stays plain text, and the answer
+    /// sticks: it must not cost a listing on every later transcript update.
+    @MainActor
+    func testACandidateItsFolderDoesNotHoldIsNeverDrawnAsAChip() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "see @a/missing.md now")
+        await viewModel.loadFileChipReferences(draft: "see @a/missing.md now")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/missing.md"))
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
+    }
+
+    @MainActor
+    func testTwoReferencesInOneFolderCostOneListing() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md and @a/c.md together")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
+    }
+
+    /// The confirmation lives on a task the view model owns, so a caller
+    /// cancelled by an unrelated view update cannot take the listing down with
+    /// it — and the next caller finds the answer rather than asking again.
+    @MainActor
+    func testACancelledCallerDoesNotCancelTheConfirmation() async throws {
+        let listed = LockedStrings()
+        let listingStarted = expectation(description: "listing started")
+        let releaseListing = DispatchSemaphore(value: 0)
+
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            listingStarted.fulfill()
+            releaseListing.wait()
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        let cancelled = Task { await viewModel.loadFileChipReferences(draft: "@a/b.md here") }
+        await fulfillment(of: [listingStarted], timeout: 5)
+        cancelled.cancel()
+        releaseListing.signal()
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// A listing that failed is not an answer, so the candidate stays open and
+    /// the next pass asks again.
+    @MainActor
+    func testAFailedListingIsRetriedByTheNextCaller() async throws {
+        let attempts = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            attempts.append(path)
+            if attempts.values.count == 1 {
+                return apiTestJSONResponse(#"{"error": "boom"}"#, for: request, status: 500)
+            }
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        XCTAssertEqual(attempts.values, ["a", "a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// The sent bubble draws from the same catalog, so a reference that only
+    /// exists in the loaded transcript has to be confirmed too.
+    @MainActor
+    func testASentMessageReferenceIsConfirmedAfterTheTranscriptLoads() async throws {
+        let viewModel = try makeViewModel { [self] request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "look at @a/b.md",
+                        "timestamp": 1770000100,
+                        "message_id": "user-1"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/list":
+                let path = listedPath(in: request)
+                return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadFileChipReferences(draft: "")
+
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// A path the panel just offered is a chip immediately: the listing that
+    /// produced the row is the same answer a confirmation pass would get.
+    @MainActor
+    func testAPickedPathIsNeverRecheckedAgainstTheServer() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        viewModel.recordFileChipReference("a/b.md")
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        XCTAssertTrue(listed.values.isEmpty)
+    }
+
     private static func ttsUnavailableResponse(for request: URLRequest) -> (HTTPURLResponse, Data) {
         let response = HTTPURLResponse(
             url: request.url!,
@@ -9156,6 +9341,27 @@ final class ChatViewModelSendTests: XCTestCase {
             file: file,
             line: line
         )
+    }
+}
+
+/// Every `/api/list` path a handler was asked for, in call order. Handlers run
+/// off the test's thread, so the record needs its own lock.
+private final class LockedStrings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+
+    func append(_ value: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        stored.append(value)
+    }
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return stored
     }
 }
 

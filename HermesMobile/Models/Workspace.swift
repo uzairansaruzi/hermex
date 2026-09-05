@@ -97,14 +97,27 @@ struct WorkspaceEntry: Decodable, Hashable, Identifiable {
     let size: Int?
     let modified: Double?
     let isDirectory: Bool?
+    /// `target_outside_workspace` for a symlink: the server resolved it and the
+    /// target is not under the workspace root. Absent for everything else, and
+    /// on servers that predate the flag, so callers treat `nil` as "no claim".
+    let targetOutsideWorkspace: Bool?
 
-    init(name: String?, path: String?, type: String? = nil, size: Int? = nil, modified: Double? = nil, isDirectory: Bool? = nil) {
+    init(
+        name: String?,
+        path: String?,
+        type: String? = nil,
+        size: Int? = nil,
+        modified: Double? = nil,
+        isDirectory: Bool? = nil,
+        targetOutsideWorkspace: Bool? = nil
+    ) {
         self.name = name
         self.path = path
         self.type = type
         self.size = size
         self.modified = modified
         self.isDirectory = isDirectory
+        self.targetOutsideWorkspace = targetOutsideWorkspace
     }
 
     enum CodingKeys: String, CodingKey {
@@ -115,6 +128,7 @@ struct WorkspaceEntry: Decodable, Hashable, Identifiable {
         case modified
         case isDirectory
         case isDir
+        case targetOutsideWorkspace
     }
 
     init(from decoder: Decoder) throws {
@@ -126,6 +140,7 @@ struct WorkspaceEntry: Decodable, Hashable, Identifiable {
         modified = try container.decodeIfPresent(Double.self, forKey: .modified)
         isDirectory = try container.decodeIfPresent(Bool.self, forKey: .isDirectory)
             ?? container.decodeIfPresent(Bool.self, forKey: .isDir)
+        targetOutsideWorkspace = try container.decodeIfPresent(Bool.self, forKey: .targetOutsideWorkspace)
     }
 }
 

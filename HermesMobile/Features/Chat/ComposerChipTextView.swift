@@ -10,12 +10,24 @@ final class ComposerChipTextView: UITextView {
     var onPasteFileURLs: ([URL]) -> Void = { _ in }
     var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteImages: ([UIImage]) -> Void = { _ in }
+    /// Reports a tap that landed on a chip's glyph. Every chip reports; what a
+    /// tap means belongs to the composer.
+    var onTapChip: (ComposerChipToken) -> Void = { _ in }
 
     /// The skills whose references are drawn as chips.
     var chipSkills: [SkillSlashSuggestion] = [] {
         didSet {
             guard chipSkills != oldValue else { return }
-            chipCatalog = ComposerChipCatalog(skills: chipSkills)
+            rebuildChipCatalog()
+        }
+    }
+
+    /// The workspace files this composer has inserted, whose `@path` references
+    /// are drawn as chips.
+    var chipFilePaths: Set<String> = [] {
+        didSet {
+            guard chipFilePaths != oldValue else { return }
+            rebuildChipCatalog()
         }
     }
 
@@ -39,6 +51,13 @@ final class ComposerChipTextView: UITextView {
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
+
+        // Rides alongside the text view's own tap rather than replacing it, so
+        // the caret still lands where the finger did and only a tap that
+        // actually covers a chip's glyph reports one.
+        let chipTap = UITapGestureRecognizer(target: self, action: #selector(handleChipTap))
+        chipTap.cancelsTouchesInView = false
+        addGestureRecognizer(chipTap)
 
         registerForTraitChanges(
             [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
@@ -81,6 +100,46 @@ final class ComposerChipTextView: UITextView {
     }
 
     // MARK: - Chips
+
+    private func rebuildChipCatalog() {
+        chipCatalog = ComposerChipCatalog(skills: chipSkills, filePaths: chipFilePaths)
+    }
+
+    @objc private func handleChipTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended,
+              let token = chipToken(at: recognizer.location(in: self))
+        else {
+            return
+        }
+        onTapChip(token)
+    }
+
+    /// The chip whose glyph covers `point`, or `nil`.
+    ///
+    /// `closestPosition` answers with a caret boundary, so the characters on
+    /// both sides of it are candidates; the glyph's own rectangle is what
+    /// decides, which is what keeps a tap in the space beside a chip from
+    /// counting as a tap on it.
+    private func chipToken(at point: CGPoint) -> ComposerChipToken? {
+        guard let position = closestPosition(to: point) else { return nil }
+        let caret = offset(from: beginningOfDocument, to: position)
+
+        for index in [caret - 1, caret] where index >= 0 && index < textStorage.length {
+            guard let attachment = textStorage.attribute(
+                .attachment,
+                at: index,
+                effectiveRange: nil
+            ) as? ComposerChipAttachment,
+                let range = textRange(from: NSRange(location: index, length: 1)),
+                firstRect(for: range).contains(point)
+            else {
+                continue
+            }
+            return attachment.token
+        }
+
+        return nil
+    }
 
     /// Redraws the document when the chips the draft calls for, or the way they
     /// have to be drawn, no longer match what is on screen. Ordinary typing
@@ -201,14 +260,14 @@ final class ComposerChipTextView: UITextView {
     ) -> NSAttributedString {
         let image = ComposerChipRenderer.image(
             label: token.label,
+            icon: token.icon,
             metrics: metrics,
             traits: traitCollection,
             isRightToLeft: isRightToLeft
         )
         let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
         let attachment = ComposerChipAttachment(
-            source: token.source,
-            label: token.label,
+            token: token,
             image: image,
             baselineOffset: floor((font.capHeight - image.size.height) / 2)
         )
