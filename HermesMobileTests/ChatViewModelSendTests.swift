@@ -9162,6 +9162,55 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
+    /// A pass still listing the old workspace's folders when the workspace moves
+    /// is cancelled outright: it stops before the next folder, settles nothing,
+    /// and the candidates are asked again under the new root.
+    @MainActor
+    func testAWorkspaceChangeCancelsTheConfirmationPassInFlight() async throws {
+        let listed = LockedStrings()
+        let listingStarted = expectation(description: "first listing started")
+        let releaseListing = DispatchSemaphore(value: 0)
+
+        let viewModel = try makeViewModel { [self] request in
+            guard request.url?.path == "/api/list" else {
+                return apiTestJSONResponse(#"""
+                {"session": {"session_id": "session-abc", "workspace": "/tmp/other", "model": "gpt-5.4"}}
+                """#, for: request)
+            }
+
+            let path = listedPath(in: request)
+            listed.append(path)
+            if listed.values.count == 1 {
+                listingStarted.fulfill()
+                releaseListing.wait()
+            }
+            return apiTestJSONResponse(
+                #"{"path": "\#(path)", "entries": [{"name": "b.md", "path": "\#(path)/b.md", "type": "file"}]}"#,
+                for: request
+            )
+        }
+
+        let draft = "@a/b.md and @e/b.md here"
+        let stale = Task { await viewModel.loadFileChipReferences(draft: draft) }
+        await fulfillment(of: [listingStarted], timeout: 5)
+
+        // Moves `currentWorkspace` synchronously, before its own request goes out.
+        await viewModel.selectWorkspacePath("/tmp/other")
+        releaseListing.signal()
+        await stale.value
+
+        // Stopped between folders: `e` was never asked for, and `a`'s listing
+        // arrived after the reset so it settled nothing.
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.fileChipPaths.isEmpty)
+
+        await viewModel.loadFileChipReferences(draft: draft)
+
+        XCTAssertEqual(listed.values, ["a", "a", "e"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "e/b.md"))
+    }
+
     /// Every folder the candidates name is answered, a batch at a time, rather
     /// than the first batch and silence for the rest.
     @MainActor

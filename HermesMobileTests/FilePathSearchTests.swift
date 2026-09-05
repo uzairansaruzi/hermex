@@ -187,6 +187,70 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertEqual(search.matches.map(\.path), ["src/Chat", "src/chores.md"])
     }
 
+    /// A listing already on the wire when the workspace moves belongs to the old
+    /// root: it must not fill the new root's cache, so the next caller asks
+    /// again rather than being answered from it.
+    @MainActor
+    func testAListingThatResolvesAfterAResetIsNeverCached() async throws {
+        let log = RequestLog()
+        let listingStarted = expectation(description: "root listing started")
+        let releaseListing = DispatchSemaphore(value: 0)
+
+        let client = makeClient { [self] request in
+            let path = listedPath(in: request)
+            log.record(path)
+            if log.listedPaths.count == 1 {
+                listingStarted.fulfill()
+                // Held on the mock's own loading queue so the reset lands first.
+                releaseListing.wait()
+            }
+            return apiTestJSONResponse(listingJSON(for: path) ?? "{}", for: request)
+        }
+
+        let search = ComposerFilePathSearch()
+        let inFlight = Task { await search.search("", sessionID: "s1", apiClient: client) }
+        await fulfillment(of: [listingStarted], timeout: 5)
+
+        search.reset()
+        releaseListing.signal()
+        await inFlight.value
+
+        XCTAssertTrue(search.matches.isEmpty)
+
+        await search.search("", sessionID: "s1", apiClient: client)
+
+        XCTAssertEqual(log.listedPaths, [".", "."])
+        XCTAssertEqual(search.matches.map(\.path), ["src", "README.md"])
+    }
+
+    /// The confirmation pass reads this as "unanswered", the same as a failed
+    /// request, so the candidates it was about stay open for the next pass.
+    @MainActor
+    func testEntriesThrowsRatherThanAnsweringForAScopeThatMoved() async throws {
+        let listingStarted = expectation(description: "listing started")
+        let releaseListing = DispatchSemaphore(value: 0)
+
+        let client = makeClient { [self] request in
+            listingStarted.fulfill()
+            releaseListing.wait()
+            return apiTestJSONResponse(listingJSON(for: listedPath(in: request)) ?? "{}", for: request)
+        }
+
+        let search = ComposerFilePathSearch()
+        let entries = Task { try await search.entries(in: ".", sessionID: "s1", apiClient: client) }
+        await fulfillment(of: [listingStarted], timeout: 5)
+
+        search.reset()
+        releaseListing.signal()
+
+        do {
+            _ = try await entries.value
+            XCTFail("A listing taken against a scope that has moved must not answer")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
     // MARK: - Session isolation
 
     /// The workspace can move under a session without its id changing, so the

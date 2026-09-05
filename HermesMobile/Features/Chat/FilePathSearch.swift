@@ -42,8 +42,13 @@ final class ComposerFilePathSearch {
     private var listings: [String: [FileTreeNode]] = [:]
     private var loadedSessionID: String?
     /// Bumped per query so a listing that lands after a newer query never
-    /// overwrites it.
+    /// overwrites the rows on screen.
     private var generation = 0
+    /// Bumped whenever the cache stops meaning what it meant: another session,
+    /// or a workspace switch. A listing still in flight belongs to the scope it
+    /// was asked in, so it must neither be cached under the new one nor counted
+    /// as an answer about it.
+    private var cacheGeneration = 0
 
     /// Most rows one panel offers. Past this the panel is a scroll rather than
     /// a choice, and the ranking already put the best rows on top.
@@ -87,13 +92,21 @@ final class ComposerFilePathSearch {
     /// re-opening the panel over a directory a restored draft already had
     /// checked costs nothing. Never recurses, and a folder that climbs out of
     /// the workspace is answered empty without asking the server.
+    ///
+    /// Throws `CancellationError` when the session or workspace moved while the
+    /// listing was in flight. That is deliberately the same shape as a failed
+    /// request: the folder is *unanswered*, so its candidates stay open for the
+    /// next pass rather than being settled against a root they never described.
     func entries(in directory: String, sessionID: String, apiClient: APIClient) async throws -> [FileTreeNode] {
         dropCacheIfSessionChanged(sessionID)
 
         guard !Self.climbsOutOfWorkspace(directory) else { return [] }
         if let cached = listings[directory] { return cached }
 
+        let cacheGeneration = self.cacheGeneration
         let response = try await apiClient.directoryList(sessionID: sessionID, path: directory)
+        guard cacheGeneration == self.cacheGeneration else { throw CancellationError() }
+
         let nodes = Self.nodes(from: response.entries ?? [], in: directory)
         listings[directory] = nodes
         return nodes
@@ -106,9 +119,11 @@ final class ComposerFilePathSearch {
     /// a folder listed against the old root says nothing about the new one. The
     /// view model calls this the moment the workspace moves.
     func reset() {
-        // A listing already in flight belongs to the old workspace; bumping the
-        // generation is what stops it landing in the new one's rows.
+        // A listing already in flight belongs to the old workspace; bumping both
+        // generations is what stops it reaching the new one's rows and the new
+        // one's cache.
         generation &+= 1
+        cacheGeneration &+= 1
         listings.removeAll()
         loadedSessionID = nil
         matches = []
@@ -118,6 +133,7 @@ final class ComposerFilePathSearch {
     /// A path only means anything inside the session it came from.
     private func dropCacheIfSessionChanged(_ sessionID: String) {
         guard sessionID != loadedSessionID else { return }
+        cacheGeneration &+= 1
         listings.removeAll()
         loadedSessionID = sessionID
     }

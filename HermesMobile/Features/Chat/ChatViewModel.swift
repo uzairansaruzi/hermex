@@ -374,6 +374,9 @@ final class ChatViewModel {
     /// so a folder either surface has already listed is never listed twice.
     @ObservationIgnored let filePathSearch = ComposerFilePathSearch()
     @ObservationIgnored private var fileChipReferenceLoad: Task<Void, Never>?
+    /// Identifies the pass a handle belongs to, so a pass that was cancelled and
+    /// finishes late cannot clear the handle of the one that replaced it.
+    @ObservationIgnored private var fileChipReferenceLoadGeneration = 0
     /// Candidates the server has already answered for, so a `@word` that is not
     /// a file is not re-checked on every transcript update.
     @ObservationIgnored private var checkedFileChipCandidates: Set<String> = []
@@ -3231,9 +3234,12 @@ final class ChatViewModel {
         guard !candidates.isEmpty else { return }
 
         let workspace = currentWorkspace
+        fileChipReferenceLoadGeneration &+= 1
+        let loadGeneration = fileChipReferenceLoadGeneration
         let load = Task { [weak self] in
             guard let self else { return }
             await self.confirmFileChipReferences(candidates, sessionID: sessionID, workspace: workspace)
+            guard loadGeneration == self.fileChipReferenceLoadGeneration else { return }
             self.fileChipReferenceLoad = nil
         }
         fileChipReferenceLoad = load
@@ -3250,7 +3256,12 @@ final class ChatViewModel {
     private func resetFileChipReferences() {
         filePathSearch.reset()
         checkedFileChipCandidates.removeAll()
+        // Cancelling, not just forgetting: a pass left running would keep
+        // listing the old root's folders, and every folder it had already
+        // listed would settle candidates against a workspace that is gone.
+        fileChipReferenceLoad?.cancel()
         fileChipReferenceLoad = nil
+        fileChipReferenceLoadGeneration &+= 1
 
         fileChipScopeRevision &+= 1
         guard !fileChipPaths.isEmpty else { return }
@@ -3318,6 +3329,10 @@ final class ChatViewModel {
             var settled: Set<String> = []
 
             for directory in batch {
+                // Between folders, not just between batches: a workspace switch
+                // part-way through a pass must stop it before the next request,
+                // and nothing it has learned since may be applied.
+                guard !Task.isCancelled else { return }
                 guard let wanted = wantedByDirectory[directory] else { continue }
                 guard let entries = try? await filePathSearch.entries(
                     in: directory,
