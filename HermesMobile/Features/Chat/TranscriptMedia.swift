@@ -323,7 +323,9 @@ enum TranscriptMediaParser {
     }
 
     /// Drops the backslashes CommonMark uses to escape punctuation, so a path written as
-    /// `/tmp/a\)b.png` reaches the server as `/tmp/a)b.png`.
+    /// `/tmp/a\)b.png` reaches the server as `/tmp/a)b.png`. A backslash before anything
+    /// else is a literal one, and POSIX allows it in a filename, so `/tmp/a\b.png` keeps
+    /// its backslash and still names the file the agent meant.
     private static func unescaped(_ destination: String) -> String {
         guard destination.contains("\\") else { return destination }
 
@@ -331,6 +333,9 @@ enum TranscriptMediaParser {
         var isEscaped = false
         for character in destination {
             if isEscaped {
+                if !escapablePunctuation.contains(character) {
+                    result.append("\\")
+                }
                 result.append(character)
                 isEscaped = false
             } else if character == "\\" {
@@ -342,6 +347,9 @@ enum TranscriptMediaParser {
         if isEscaped { result.append("\\") }
         return result
     }
+
+    /// The ASCII punctuation CommonMark lets a backslash escape.
+    private static let escapablePunctuation = Set(##"!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"##)
 
     /// A Markdown image becomes transcript media when its destination names a raster
     /// image on the server's filesystem, which `/api/media` then decides whether to

@@ -143,6 +143,16 @@ final class TranscriptMarkdownImageTests: XCTestCase {
             try XCTUnwrap(mediaReferences(in: escaped).first).rawReference,
             "/tmp/a)b.png"
         )
+
+        // A backslash before a letter is a literal one, and POSIX allows it in a filename.
+        let literal = TranscriptMediaParser.segments(
+            in: #"![x](/tmp/a\b.png)"#,
+            workspaceRoot: workspace
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(mediaReferences(in: literal).first).rawReference,
+            #"/tmp/a\b.png"#
+        )
     }
 
     func testUnclosedDelimitersStayOrdinaryMarkdown() {
