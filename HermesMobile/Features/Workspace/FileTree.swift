@@ -33,7 +33,15 @@ struct FileTreeNode: Identifiable, Hashable {
         name = trimmedName.isEmpty ? String(path.split(separator: "/").last ?? Substring(path)) : trimmedName
         isDirectory = entry.isBrowsableDirectory
         isSymlink = entry.type == "symlink"
-        self.entry = entry
+        // Carry the resolved name and path so the preview never sees a nil path.
+        self.entry = WorkspaceEntry(
+            name: name,
+            path: path,
+            type: entry.type,
+            size: entry.size,
+            modified: entry.modified,
+            isDirectory: entry.isDirectory
+        )
 
         var segments: [String] = []
         var words: [String] = []

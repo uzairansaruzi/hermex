@@ -10,6 +10,8 @@ struct FileBrowserView: View {
     @State private var viewModel: FileBrowserViewModel
     @State private var searchText = ""
     @State private var openedFile: FileTreeNode?
+    /// The warm fetch handed over when `openedFile` was tapped; consumed by that preview only.
+    @State private var openedFilePrefetch: Task<FileResponse, Error>?
 
     init(session: SessionSummary, server: URL, onAPIError: @escaping (Error) -> Void) {
         self.session = session
@@ -32,7 +34,7 @@ struct FileBrowserView: View {
                 session: session,
                 server: server,
                 entry: node.entry,
-                prefetchedFile: viewModel.prefetchedFile(at: node.path),
+                prefetchedFile: openedFilePrefetch,
                 onAPIError: onAPIError
             )
         }
@@ -171,14 +173,14 @@ struct FileBrowserView: View {
             return
         }
 
-        viewModel.keepPrefetch(for: node.path)
+        openedFilePrefetch = viewModel.takePrefetch(for: node.path)
         openedFile = node
         Task { await viewModel.select(path: node.path) }
     }
 
     private func handleLastError() {
-        if let lastError = viewModel.lastError {
-            onAPIError(lastError)
+        if let error = viewModel.takeLastError() {
+            onAPIError(error)
         }
     }
 }

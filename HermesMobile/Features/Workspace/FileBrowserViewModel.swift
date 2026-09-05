@@ -24,7 +24,8 @@ final class FileBrowserViewModel {
     private var hasRestoredExpansion = false
     /// Per-directory generation counters so a stale listing never overwrites a newer one.
     private var loadGenerations: [String: Int] = [:]
-    /// At most one prefetch is kept: a newer press-down replaces the previous one.
+    /// At most one prefetch is in flight: a newer press-down replaces the previous one, and
+    /// opening a file takes its task out so the next visit fetches fresh content.
     private var prefetches: [String: Task<FileResponse, Error>] = [:]
 
     init(session: SessionSummary, server: URL, apiClient: APIClient? = nil, defaults: UserDefaults = .standard) {
@@ -54,6 +55,13 @@ final class FileBrowserViewModel {
     /// Nil until the directory has been listed.
     func childCount(of path: String) -> Int? {
         tree.children(of: path)?.count
+    }
+
+    /// Hands the most recent failure to the caller once, so a recovered folder or a plain
+    /// collapse never re-reports an error that already surfaced.
+    func takeLastError() -> Error? {
+        defer { lastError = nil }
+        return lastError
     }
 
     // MARK: - Loading
@@ -156,11 +164,16 @@ final class FileBrowserViewModel {
         let generation = bumpGeneration(for: path)
         loadingPaths.insert(path)
         failedPaths[path] = nil
+        lastError = nil
 
         do {
             let response = try await apiClient.directoryList(sessionID: sessionID, path: path)
             guard generation == loadGenerations[path] else { return }
-            tree.setChildren(response.entries ?? [], of: path)
+            // A root refresh that finished meanwhile may have dropped this directory; an
+            // orphaned listing would be shown as current if the folder ever came back.
+            if tree.node(at: path)?.isDirectory == true {
+                tree.setChildren(response.entries ?? [], of: path)
+            }
         } catch {
             guard generation == loadGenerations[path] else { return }
             if !Self.isCancellationError(error) {
@@ -198,12 +211,12 @@ final class FileBrowserViewModel {
         }
     }
 
-    /// Called when a file opens: keeps that file's prefetch and cancels every other one.
-    func keepPrefetch(for path: String) {
-        for (prefetchedPath, task) in prefetches where prefetchedPath != path {
-            task.cancel()
-            prefetches[prefetchedPath] = nil
-        }
+    /// Called when a file opens: hands over that file's prefetch, if any, and cancels every
+    /// other one. The task leaves the table so reopening the file fetches it again.
+    func takePrefetch(for path: String) -> Task<FileResponse, Error>? {
+        let task = prefetches.removeValue(forKey: path)
+        cancelPrefetches()
+        return task
     }
 
     func prefetchedFile(at path: String) -> Task<FileResponse, Error>? {

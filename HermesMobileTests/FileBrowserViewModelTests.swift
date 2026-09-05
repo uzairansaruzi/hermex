@@ -166,6 +166,57 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.loadFailure(for: "src"))
         XCTAssertTrue(viewModel.isExpanded("src"))
         XCTAssertEqual(viewModel.childCount(of: "src"), 1)
+        XCTAssertNil(viewModel.takeLastError(), "A recovered folder must not re-report the old failure")
+    }
+
+    @MainActor
+    func testLastErrorIsHandedOverOnce() async throws {
+        let log = RequestLog(failing: ["src"])
+        let viewModel = try makeViewModel(client: makeListingClient(log: log))
+
+        await viewModel.loadInitialRootIfNeeded()
+
+        XCTAssertNotNil(viewModel.takeLastError())
+        XCTAssertNil(viewModel.takeLastError())
+    }
+
+    @MainActor
+    func testFolderRemovedDuringAnInFlightListingIsNotKeptAsLoaded() async throws {
+        let slowListingStarted = expectation(description: "slow src listing started")
+        let log = RequestLog()
+        let client = makeClient { [self] request in
+            let path = listedPath(in: request)
+            log.record(path)
+            switch path {
+            case ".":
+                let rootCalls = log.listedPaths.filter { $0 == "." }.count
+                let entries = rootCalls == 2 ? "" : entryJSON("src", path: "src", isDirectory: true)
+                return apiTestJSONResponse(#"{"path": ".", "entries": [\#(entries)]}"#, for: request)
+            case "src":
+                if log.listedPaths.filter({ $0 == "src" }).count == 1 {
+                    slowListingStarted.fulfill()
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
+                return apiTestJSONResponse(#"{"path": "src", "entries": [\#(entryJSON("a.txt", path: "src/a.txt", isDirectory: false))]}"#, for: request)
+            default:
+                return apiTestJSONResponse(#"{"error": "not found"}"#, for: request, status: 404)
+            }
+        }
+        FileTreeExpansionStore(server: try XCTUnwrap(URL(string: "https://example.test")), workspace: "/tmp/ws", defaults: defaults).save([])
+        let viewModel = try makeViewModel(client: client)
+        await viewModel.loadInitialRootIfNeeded()
+
+        let slowOpen = Task { await viewModel.toggleDirectory("src") }
+        await fulfillment(of: [slowListingStarted], timeout: 1)
+        await viewModel.refresh()
+        await slowOpen.value
+
+        XCTAssertFalse(viewModel.tree.isLoaded("src"), "The folder vanished from the root while its listing was in flight")
+
+        await viewModel.retryRoot()
+
+        XCTAssertEqual(viewModel.childCount(of: "src"), 1, "A folder that comes back is listed again, not served from the orphaned listing")
+        XCTAssertEqual(log.listedPaths.filter { $0 == "src" }.count, 2)
     }
 
     @MainActor
@@ -244,10 +295,15 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertTrue(stale.isCancelled, "A newer press-down replaces the older prefetch")
         XCTAssertNil(viewModel.prefetchedFile(at: "notes.txt"))
 
-        viewModel.keepPrefetch(for: "README.md")
-        let kept = try XCTUnwrap(viewModel.prefetchedFile(at: "README.md"))
-        let file = try await kept.value
+        let handedOver = try XCTUnwrap(viewModel.takePrefetch(for: "README.md"))
+        let file = try await handedOver.value
         XCTAssertEqual(file.content, "hi")
+        XCTAssertNil(viewModel.prefetchedFile(at: "README.md"), "A handed-over prefetch leaves the table")
+
+        viewModel.prefetchFile(at: "README.md")
+        let fresh = try XCTUnwrap(viewModel.prefetchedFile(at: "README.md"))
+        XCTAssertNotEqual(fresh, handedOver, "Reopening the same file starts a new fetch instead of reusing the old response")
+        _ = try await fresh.value
     }
 
     // MARK: - Races and cancellation

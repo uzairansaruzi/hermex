@@ -44,6 +44,7 @@ final class FileTreeTests: XCTestCase {
 
         XCTAssertEqual(tree.children(of: "docs")?.map(\.path), ["docs/notes.txt"])
         XCTAssertEqual(tree.node(at: "docs/notes.txt")?.name, "notes.txt")
+        XCTAssertEqual(tree.node(at: "docs/notes.txt")?.entry.path, "docs/notes.txt", "The preview reads the entry's path")
     }
 
     func testSymlinkKeepsDirectoryFlagFromServer() {
