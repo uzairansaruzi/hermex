@@ -316,6 +316,8 @@ struct ChatView: View {
     @State private var selectableResponseText: SelectableTextPresentation?
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
+    /// A workspace file a chat link named; presented on the source viewer at its line.
+    @State private var openedFileReference: FileReference?
     @State private var pendingProfileSelection: ProfileSummary?
     @State private var showProfileNewSessionConfirmation = false
     /// Set while the destructive `/clear` confirmation is on screen. Holds the
@@ -587,6 +589,34 @@ struct ChatView: View {
         )
     }
 
+    /// A chat link that names a workspace file opens the source viewer at its line; every
+    /// other link keeps the system behaviour. The viewer's own error state covers a path
+    /// the server no longer has, so the tap never waits on a fetch.
+    private func handleTranscriptLink(_ url: URL) -> OpenURLAction.Result {
+        guard let reference = FileReference.parse(url.absoluteString, workspaceRoot: session.workspace) else {
+            return .systemAction
+        }
+        openedFileReference = reference
+        return .handled
+    }
+
+    private func fileReferenceSheet(for reference: FileReference) -> some View {
+        NavigationStack {
+            FilePreviewView(
+                session: session,
+                server: server,
+                entry: WorkspaceEntry(name: reference.name, path: reference.path),
+                initialLine: reference.line,
+                onAPIError: onAPIError
+            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { openedFileReference = nil }
+                }
+            }
+        }
+    }
+
     private var transcriptMediaSessionID: String? {
         guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !sessionID.isEmpty
@@ -781,6 +811,7 @@ struct ChatView: View {
                 }
             }
             .sheet(item: $transcriptMediaPreviewItem, content: transcriptMediaPreviewView)
+            .sheet(item: $openedFileReference, content: fileReferenceSheet)
             .sheet(item: $activeGitSheet, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
             .alert(item: $gitAlert, content: gitAlertPresentation)
@@ -1363,6 +1394,7 @@ struct ChatView: View {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
         .environment(\.skillChipCatalog, viewModel.skillChipCatalog)
+        .environment(\.openURL, OpenURLAction(handler: handleTranscriptLink))
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }

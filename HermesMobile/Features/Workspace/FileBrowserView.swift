@@ -211,9 +211,7 @@ private struct FileTreeRowView: View {
                     Color.clear.frame(width: 12, height: 1)
                 }
 
-                Image(systemName: iconName)
-                    .font(.system(size: 17))
-                    .foregroundStyle(iconColor)
+                icon
                     .frame(width: 22)
 
                 Text(node.name)
@@ -261,13 +259,20 @@ private struct FileTreeRowView: View {
         }
     }
 
-    private var iconName: String {
-        if node.isSymlink { return "link" }
-        return node.isDirectory ? (isExpanded ? "folder.fill" : "folder") : "doc.text"
-    }
-
-    private var iconColor: Color {
-        node.isDirectory ? .accentColor : .secondary
+    /// Folders and symlinks are quiet grey symbols; a file shows the glyph for its type.
+    /// Everything sits at 17 pt so the column lines up.
+    @ViewBuilder
+    private var icon: some View {
+        if node.isDirectory || node.isSymlink {
+            Image(systemName: node.isSymlink ? "link" : "folder")
+                .font(.system(size: 17))
+                .foregroundStyle(Color(uiColor: .systemGray))
+        } else {
+            FileIcon.resolve(node.name).image
+                .resizable()
+                .scaledToFit()
+                .frame(width: 17, height: 17)
+        }
     }
 
     private var accessibilityLabel: String {
