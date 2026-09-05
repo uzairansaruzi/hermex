@@ -39,9 +39,23 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         get { canvas.selectedRowIDs }
         set { canvas.selectedRowIDs = newValue }
     }
+    /// Toggling wrap changes row heights above the viewport, so the row at the top
+    /// is kept where it is drawn.
     var wrapsLines: Bool {
         get { canvas.wrapsLines }
-        set { canvas.wrapsLines = newValue }
+        set {
+            guard newValue != canvas.wrapsLines else { return }
+            let anchor = currentRowAnchor()
+            canvas.wrapsLines = newValue
+            restore(anchor)
+        }
+    }
+    /// Current scroll position; tests read it.
+    var verticalOffset: CGFloat { scrollView.contentOffset.y }
+
+    /// Vertical extent of a row in content coordinates.
+    func frame(forRowID rowID: String) -> (minY: CGFloat, height: CGFloat)? {
+        rows.firstIndex { $0.id == rowID }.flatMap { canvas.layout.frame(forRowAt: $0) }
     }
     var tokensByRowID: [String: [SourceHighlightRun]] {
         get { canvas.tokensByRowID }
@@ -153,6 +167,23 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         setVerticalOffset(headerOffset - anchor.screenY, animated: false)
     }
 
+    private struct RowAnchor {
+        let rowIndex: Int
+        let screenY: CGFloat
+    }
+
+    private func currentRowAnchor() -> RowAnchor? {
+        let offset = scrollView.contentOffset.y
+        guard offset > 0.5, let rowIndex = canvas.layout.rowIndex(at: offset),
+              let frame = canvas.layout.frame(forRowAt: rowIndex) else { return nil }
+        return RowAnchor(rowIndex: rowIndex, screenY: frame.minY - offset)
+    }
+
+    private func restore(_ anchor: RowAnchor?) {
+        guard let anchor, let frame = canvas.layout.frame(forRowAt: anchor.rowIndex) else { return }
+        setVerticalOffset(frame.minY - anchor.screenY, animated: false)
+    }
+
     private func applyPendingScrollIfNeeded() {
         guard let anchor = pendingScroll, bounds.height > 0 else { return }
         let target: CGFloat?
@@ -160,9 +191,7 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         case .fileHeader(let fileID):
             target = canvas.layout.fileHeaderOffset(forFileID: fileID)
         case .row(let rowID):
-            target = rows.firstIndex { $0.id == rowID }
-                .flatMap { canvas.layout.frame(forRowAt: $0) }
-                .map { $0.minY - max(0, (bounds.height - $0.height) * 0.3) }
+            target = frame(forRowID: rowID).map { $0.minY - max(0, (bounds.height - $0.height) * 0.3) }
         }
         guard let target else {
             if !rows.isEmpty { pendingScroll = nil }

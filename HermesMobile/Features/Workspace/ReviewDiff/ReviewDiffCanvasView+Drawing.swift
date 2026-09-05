@@ -241,12 +241,13 @@ extension ReviewDiffCanvasView {
             context.fill(barRect)
         }
 
+        // The number sits on the first visual line, so a wrapped row keeps it at the top.
         if let number = line.displayLineNumber {
             drawRightAlignedText(
                 "\(number)",
                 rect: CGRect(
                     x: style.changeBarWidth,
-                    y: rect.midY - style.lineNumberFont.lineHeight / 2,
+                    y: rect.minY + (style.metrics.rowHeight - style.lineNumberFont.lineHeight) / 2,
                     width: style.gutterWidth - style.codePadding,
                     height: style.lineNumberFont.lineHeight
                 ),

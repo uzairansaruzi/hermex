@@ -59,6 +59,30 @@ final class SourceFileViewModelTests: XCTestCase {
         XCTAssertGreaterThan(model.tokensVersion, version)
     }
 
+    /// A coloured island inside a later window is skipped: the request covers the
+    /// uncoloured run before it, then the run after it, never the island itself.
+    func testHighlightedIslandInsideAWindowIsNotSentAgain() async {
+        let model = await loadedModel(lineCount: 400)
+        model.visibleRowRangeChanged(100...100)
+        await model.highlightTask?.value
+        XCTAssertNotNil(model.tokensByRowID["source:line:60"])
+        XCTAssertNotNil(model.tokensByRowID["source:line:140"])
+        let islandRun = model.tokensByRowID["source:line:100"]
+
+        model.visibleRowRangeChanged(50...200)
+        var passes = 0
+        while let task = model.highlightTask {
+            await task.value
+            passes += 1
+        }
+
+        XCTAssertEqual(passes, 2, "One pass below the island, one above it.")
+        XCTAssertNotNil(model.tokensByRowID["source:line:10"])
+        XCTAssertNotNil(model.tokensByRowID["source:line:240"])
+        XCTAssertNil(model.tokensByRowID["source:line:241"])
+        XCTAssertEqual(model.tokensByRowID["source:line:100"], islandRun, "The island keeps its first colouring.")
+    }
+
     func testAppearanceChangeDropsColourAndRecoloursTheViewport() async {
         let model = await loadedModel(lineCount: 50)
         model.visibleRowRangeChanged(0...10)

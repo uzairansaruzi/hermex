@@ -2,9 +2,9 @@ import Foundation
 import OSLog
 
 /// Rows and syntax colour for one workspace file. Rows build off the main actor;
-/// colour arrives per visible window from `SourceHighlighter`, a row is never
-/// tokenized twice, and a new window is requested only once the viewport has moved
-/// twenty rows past the last request.
+/// colour arrives per visible window from `SourceHighlighter`, one contiguous
+/// uncoloured run at a time so a row is never tokenized twice, and a new window is
+/// requested only once the viewport has moved twenty rows past the last request.
 @MainActor
 @Observable
 final class SourceFileViewModel {
@@ -31,7 +31,6 @@ final class SourceFileViewModel {
     /// Bumped whenever colour must start over (new rows, new appearance); a
     /// highlight result from an older generation is dropped.
     private var highlightGeneration = 0
-    private var needsAnotherPass = false
     /// The request in flight, if any; tests await it.
     private(set) var highlightTask: Task<Void, Never>?
 
@@ -54,7 +53,7 @@ final class SourceFileViewModel {
             reviewDiffSignposter.endInterval("BuildSourceRows", state, "rows=\(rows.count)")
             return (lines, rows)
         }.value
-        guard buildGeneration == loadGeneration else { return }
+        guard buildGeneration == loadGeneration, !Task.isCancelled else { return }
         lines = built.0
         rows = built.1
         rowsVersion += 1
@@ -86,23 +85,23 @@ final class SourceFileViewModel {
         tokensVersion += 1
         highlightedLines = Array(repeating: false, count: lines.count)
         requestedRange = nil
-        needsAnotherPass = false
         requestHighlight()
     }
 
     private func requestHighlight() {
         guard let language, let visibleRange, !lines.isEmpty else { return }
         requestedRange = visibleRange
-        if highlightTask != nil {
-            needsAnotherPass = true
-            return
-        }
+        // One request at a time; the answer re-runs this for whatever is still uncoloured.
+        guard highlightTask == nil else { return }
 
+        // The first uncoloured run inside the padded window. Rows already coloured
+        // (an earlier window the reader scrolled past) are never sent again.
         var lower = max(0, visibleRange.lowerBound - Self.highlightOverscan)
-        var upper = min(lines.count - 1, visibleRange.upperBound + Self.highlightOverscan)
-        while lower <= upper, highlightedLines[lower] { lower += 1 }
-        while upper >= lower, highlightedLines[upper] { upper -= 1 }
-        guard lower <= upper else { return }
+        let windowEnd = min(lines.count - 1, visibleRange.upperBound + Self.highlightOverscan)
+        while lower <= windowEnd, highlightedLines[lower] { lower += 1 }
+        guard lower <= windowEnd else { return }
+        var upper = lower
+        while upper < windowEnd, !highlightedLines[upper + 1] { upper += 1 }
 
         let slice = Array(lines[lower...upper])
         let requestGeneration = highlightGeneration
@@ -115,12 +114,8 @@ final class SourceFileViewModel {
 
     private func finishHighlight(_ result: [[SourceHighlightRun]]?, range: ClosedRange<Int>, generation: Int) {
         highlightTask = nil
-        defer {
-            if needsAnotherPass {
-                needsAnotherPass = false
-                requestHighlight()
-            }
-        }
+        // Whatever the viewport shows now (it may have moved mid-request) gets the next pass.
+        defer { requestHighlight() }
         guard generation == highlightGeneration else { return }
         guard let result else {
             language = nil

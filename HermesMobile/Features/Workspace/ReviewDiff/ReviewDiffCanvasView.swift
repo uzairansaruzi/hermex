@@ -381,6 +381,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
             guard let header = rows.first(where: { $0.fileID == fileID && $0.isFileHeader })?.fileHeader else { return 0 }
             return maxHeaderPathOffset(for: header)
         case .code:
+            guard !wrapsLines else { return 0 }
             return max(0, contentWidth(for: fileID) - max(0, viewportWidth - style.codeStartX))
         }
     }

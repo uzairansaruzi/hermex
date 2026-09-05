@@ -41,6 +41,54 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(canvas.index(ofAccessibilityElement: element), NSNotFound)
     }
 
+    func testWrappingDisablesHorizontalPan() {
+        let long = ReviewDiffRow(
+            id: "s:0",
+            fileID: "s",
+            kind: .line(ReviewDiffLine(content: String(repeating: "x", count: 400), change: .context, oldLineNumber: nil, newLineNumber: 1))
+        )
+        let canvas = ReviewDiffCanvasView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), presentation: .source)
+        canvas.viewportWidth = 390
+        canvas.setRows([long])
+        XCTAssertGreaterThan(canvas.maxHorizontalOffset(for: "s", kind: .code), 0)
+        XCTAssertEqual(canvas.style.changeBarWidth, 0, "Source files have no change bar.")
+
+        canvas.wrapsLines = true
+        XCTAssertEqual(canvas.maxHorizontalOffset(for: "s", kind: .code), 0)
+        XCTAssertGreaterThan(canvas.layout.visualLineCount(forRowAt: 0), 1)
+    }
+
+    /// Toggling wrap grows the rows above the viewport; the row at the top must stay put.
+    func testWrapToggleKeepsTheTopRowWhereItIs() throws {
+        let rows = (0..<60).map { index in
+            ReviewDiffRow(
+                id: "s:\(index)",
+                fileID: "s",
+                kind: .line(ReviewDiffLine(content: String(repeating: "x", count: 200), change: .context, oldLineNumber: nil, newLineNumber: index + 1))
+            )
+        }
+        let view = ReviewDiffSurfaceView(presentation: .source)
+        view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        view.layoutIfNeeded()
+        view.setRows(rows)
+        view.scroll(to: .row("s:30"), animated: false)
+        let before = view.verticalOffset
+        XCTAssertGreaterThan(before, 0)
+        // The row under the top edge is the one that must not move.
+        let topRow = try XCTUnwrap(view.rows.first { row in
+            guard let frame = view.frame(forRowID: row.id) else { return false }
+            return frame.minY <= before && before < frame.minY + frame.height
+        })
+        XCTAssertNotEqual(topRow.id, "s:30", "The target sits 30 % down, so the top row is above it.")
+        let screenYBefore = try XCTUnwrap(view.frame(forRowID: topRow.id)).minY - before
+
+        view.wrapsLines = true
+
+        XCTAssertGreaterThan(view.verticalOffset, before, "Wrapped rows above pushed the content down.")
+        let screenYAfter = try XCTUnwrap(view.frame(forRowID: topRow.id)).minY - view.verticalOffset
+        XCTAssertEqual(screenYAfter, screenYBefore, accuracy: 0.5)
+    }
+
     func testStickyHeaderReportsItsPinnedFrame() {
         let rows = [header("a")] + (0..<40).map { line("a", $0) } + [header("b")] + (0..<5).map { line("b", $0) }
         let canvas = makeCanvas(rows: rows)

@@ -126,10 +126,11 @@ struct SourceFileSurface: View {
         ChatHaptics.diffLineSelected(isEnabled: isHapticsEnabled)
     }
 
+    /// Copies the selected lines, blank ones included, so a selection always answers.
     private func copySelection() {
-        let text = selection.selectedRows(in: viewModel.rows).compactMap { $0.line?.content }.joined(separator: "\n")
-        guard !text.isEmpty else { return }
-        UIPasteboard.general.string = text
+        let selected = selection.selectedRows(in: viewModel.rows)
+        guard !selected.isEmpty else { return }
+        UIPasteboard.general.string = selected.compactMap { $0.line?.content }.joined(separator: "\n")
         ChatHaptics.copied(isEnabled: isHapticsEnabled)
         selection.clear()
     }
