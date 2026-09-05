@@ -121,7 +121,7 @@ final class FileBrowserViewModel {
         do {
             let response = try await apiClient.directoryList(sessionID: sessionID, path: FileTree.rootPath)
             guard generation == loadGenerations[FileTree.rootPath] else { return }
-            tree.setChildren(response.entries ?? [], of: FileTree.rootPath)
+            commitListing(response.entries ?? [], of: FileTree.rootPath)
             if !hasRestoredExpansion {
                 hasRestoredExpansion = true
                 expandedPaths = expansionStore.load() ?? FileTree.defaultExpandedPaths(in: tree.rootNodes)
@@ -172,7 +172,7 @@ final class FileBrowserViewModel {
             // A root refresh that finished meanwhile may have dropped this directory; an
             // orphaned listing would be shown as current if the folder ever came back.
             if tree.node(at: path)?.isDirectory == true {
-                tree.setChildren(response.entries ?? [], of: path)
+                commitListing(response.entries ?? [], of: path)
             }
         } catch {
             guard generation == loadGenerations[path] else { return }
@@ -183,6 +183,20 @@ final class FileBrowserViewModel {
         }
 
         loadingPaths.remove(path)
+    }
+
+    /// Stores a listing and invalidates in-flight requests for every folder the listing
+    /// dropped (and any cached listing beneath it), so a folder that is removed and recreated
+    /// cannot resurface a response that was requested before it disappeared.
+    private func commitListing(_ entries: [WorkspaceEntry], of directory: String) {
+        let previousFolders = Set((tree.children(of: directory) ?? []).filter(\.isDirectory).map(\.path))
+        let previousKeys = Set(tree.children.keys)
+        tree.setChildren(entries, of: directory)
+        let currentFolders = Set((tree.children(of: directory) ?? []).filter(\.isDirectory).map(\.path))
+        let stale = previousFolders.subtracting(currentFolders).union(previousKeys.subtracting(tree.children.keys))
+        for path in stale {
+            _ = bumpGeneration(for: path)
+        }
     }
 
     private func bumpGeneration(for path: String) -> Int {

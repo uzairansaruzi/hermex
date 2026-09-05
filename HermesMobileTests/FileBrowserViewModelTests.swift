@@ -220,6 +220,45 @@ final class FileBrowserViewModelTests: APIClientTestCase {
     }
 
     @MainActor
+    func testFolderRemovedAndRecreatedDuringAnInFlightListingDropsTheOldResponse() async throws {
+        let slowListingStarted = expectation(description: "slow src listing started")
+        let log = RequestLog()
+        let client = makeClient { [self] request in
+            let path = listedPath(in: request)
+            log.record(path)
+            switch path {
+            case ".":
+                let rootCalls = log.listedPaths.filter { $0 == "." }.count
+                let entries = rootCalls == 2 ? "" : entryJSON("src", path: "src", isDirectory: true)
+                return apiTestJSONResponse(#"{"path": ".", "entries": [\#(entries)]}"#, for: request)
+            case "src":
+                if log.listedPaths.filter({ $0 == "src" }).count == 1 {
+                    slowListingStarted.fulfill()
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
+                return apiTestJSONResponse(#"{"path": "src", "entries": [\#(entryJSON("a.txt", path: "src/a.txt", isDirectory: false))]}"#, for: request)
+            default:
+                return apiTestJSONResponse(#"{"error": "not found"}"#, for: request, status: 404)
+            }
+        }
+        FileTreeExpansionStore(server: try XCTUnwrap(URL(string: "https://example.test")), workspace: "/tmp/ws", defaults: defaults).save([])
+        let viewModel = try makeViewModel(client: client)
+        await viewModel.loadInitialRootIfNeeded()
+
+        let slowOpen = Task { await viewModel.toggleDirectory("src") }
+        await fulfillment(of: [slowListingStarted], timeout: 1)
+        await viewModel.toggleDirectory("src")
+        XCTAssertFalse(viewModel.isExpanded("src"), "Collapsed while the listing is still in flight")
+        await viewModel.refresh()
+        XCTAssertNil(viewModel.tree.node(at: "src"), "Second root listing dropped the folder")
+        await viewModel.retryRoot()
+        XCTAssertNotNil(viewModel.tree.node(at: "src"), "Third root listing brought it back, collapsed, so nothing re-listed it")
+        await slowOpen.value
+
+        XCTAssertFalse(viewModel.tree.isLoaded("src"), "The listing from before the folder was recreated is stale and must not be stored")
+    }
+
+    @MainActor
     func testRefreshRelistsRootAndOpenFoldersOnly() async throws {
         let log = RequestLog()
         let viewModel = try makeViewModel(client: makeListingClient(log: log))
