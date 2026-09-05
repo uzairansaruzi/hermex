@@ -245,31 +245,66 @@ enum TranscriptMediaParser {
         let end: String.Index
     }
 
-    /// Reads a Markdown image starting at `![`. Only the flat form is recognized: the
-    /// first `]` ends the alt text and the first `)` ends the destination, so a nested
-    /// or reference-style image stays ordinary Markdown rather than being mis-split.
+    /// Reads a Markdown image starting at `![`. Brackets and parentheses nest and can be
+    /// backslash-escaped, so `![Build (1)](/tmp/build(1)/shot.png)` reads as one image
+    /// rather than being cut at the first `)`. A reference-style image, which has no
+    /// destination at all, stays ordinary Markdown.
     private static func markdownImage(in line: String, from start: String.Index) -> MarkdownImage? {
-        guard let altStart = line.index(
-            start,
-            offsetBy: markdownImageMarker.count,
-            limitedBy: line.endIndex
-        ) else { return nil }
+        guard let altOpen = line.index(start, offsetBy: 1, limitedBy: line.endIndex),
+              altOpen < line.endIndex,
+              let altEnd = balancedEnd(in: line, after: altOpen, open: "[", close: "]")
+        else { return nil }
 
-        guard let altEnd = line[altStart...].firstIndex(of: "]") else { return nil }
         let openParenthesis = line.index(after: altEnd)
         guard openParenthesis < line.endIndex, line[openParenthesis] == "(" else { return nil }
+        guard let closeParenthesis = balancedEnd(
+            in: line,
+            after: openParenthesis,
+            open: "(",
+            close: ")"
+        ) else { return nil }
 
-        let destinationStart = line.index(after: openParenthesis)
-        guard let closeParenthesis = line[destinationStart...].firstIndex(of: ")") else { return nil }
-
-        let body = String(line[destinationStart..<closeParenthesis])
+        let body = String(line[line.index(after: openParenthesis)..<closeParenthesis])
         guard let destination = destination(inLinkBody: body) else { return nil }
 
         return MarkdownImage(
-            alt: String(line[altStart..<altEnd]).trimmingCharacters(in: .whitespacesAndNewlines),
+            alt: String(line[line.index(after: altOpen)..<altEnd])
+                .trimmingCharacters(in: .whitespacesAndNewlines),
             destination: destination,
             end: line.index(after: closeParenthesis)
         )
+    }
+
+    /// The index of the delimiter closing the run opened at `openIndex`, counting nesting
+    /// and skipping backslash-escaped characters the way CommonMark does. Nil when the
+    /// run never closes on this line.
+    private static func balancedEnd(
+        in line: String,
+        after openIndex: String.Index,
+        open: Character,
+        close: Character
+    ) -> String.Index? {
+        var depth = 1
+        var index = line.index(after: openIndex)
+
+        while index < line.endIndex {
+            switch line[index] {
+            case "\\":
+                index = line.index(after: index)
+            case open:
+                depth += 1
+            case close:
+                depth -= 1
+                if depth == 0 { return index }
+            default:
+                break
+            }
+
+            guard index < line.endIndex else { break }
+            index = line.index(after: index)
+        }
+
+        return nil
     }
 
     /// The destination out of a link body, dropping any `"title"`. An angle-bracketed
@@ -280,11 +315,32 @@ enum TranscriptMediaParser {
 
         if trimmed.hasPrefix("<") {
             guard let close = trimmed.firstIndex(of: ">") else { return nil }
-            return String(trimmed[trimmed.index(after: trimmed.startIndex)..<close])
+            return unescaped(String(trimmed[trimmed.index(after: trimmed.startIndex)..<close]))
         }
 
-        guard let space = trimmed.firstIndex(where: \.isWhitespace) else { return trimmed }
-        return String(trimmed[..<space])
+        guard let space = trimmed.firstIndex(where: \.isWhitespace) else { return unescaped(trimmed) }
+        return unescaped(String(trimmed[..<space]))
+    }
+
+    /// Drops the backslashes CommonMark uses to escape punctuation, so a path written as
+    /// `/tmp/a\)b.png` reaches the server as `/tmp/a)b.png`.
+    private static func unescaped(_ destination: String) -> String {
+        guard destination.contains("\\") else { return destination }
+
+        var result = ""
+        var isEscaped = false
+        for character in destination {
+            if isEscaped {
+                result.append(character)
+                isEscaped = false
+            } else if character == "\\" {
+                isEscaped = true
+            } else {
+                result.append(character)
+            }
+        }
+        if isEscaped { result.append("\\") }
+        return result
     }
 
     /// A Markdown image becomes transcript media when its destination names a raster

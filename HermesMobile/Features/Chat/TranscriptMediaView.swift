@@ -12,9 +12,10 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
     }
 }
 
-/// The active session's workspace root, read by the transcript when it parses
-/// `![alt](path)` images: an image only becomes media when its path is contained by
-/// this root, so a message can never point the media loader outside the workspace.
+/// The active session's workspace root, read by the transcript to resolve the relative
+/// forms of `![alt](path)` (`./`, `../`, `~/`). It is a base, not a boundary: absolute
+/// paths and `file:` URLs need no root, and `/api/media` owns the allow-list that decides
+/// what the server will actually serve.
 extension EnvironmentValues {
     var chatWorkspaceRoot: String? {
         get { self[ChatWorkspaceRootKey.self] }

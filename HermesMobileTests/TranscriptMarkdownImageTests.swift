@@ -122,6 +122,39 @@ final class TranscriptMarkdownImageTests: XCTestCase {
         }
     }
 
+    /// CommonMark allows nested and escaped delimiters, and macOS hands out duplicate
+    /// names like `build (1)`, so cutting at the first `)` would blank exactly the images
+    /// this is meant to show.
+    func testHandlesNestedAndEscapedDelimiters() throws {
+        let nested = TranscriptMediaParser.segments(
+            in: "![Build (1)](/tmp/build(1)/shot.png) after",
+            workspaceRoot: workspace
+        )
+        let nestedMedia = try XCTUnwrap(mediaReferences(in: nested).first)
+        XCTAssertEqual(nestedMedia.rawReference, "/tmp/build(1)/shot.png")
+        XCTAssertEqual(nestedMedia.altText, "Build (1)")
+        XCTAssertEqual(nested.last, .text(" after"))
+
+        let escaped = TranscriptMediaParser.segments(
+            in: #"![x](/tmp/a\)b.png)"#,
+            workspaceRoot: workspace
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(mediaReferences(in: escaped).first).rawReference,
+            "/tmp/a)b.png"
+        )
+    }
+
+    func testUnclosedDelimitersStayOrdinaryMarkdown() {
+        for markdown in ["![x(/tmp/shot.png)", "![x](/tmp/shot.png"] {
+            XCTAssertEqual(
+                TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspace),
+                [.text(markdown)],
+                markdown
+            )
+        }
+    }
+
     func testSkipsImagesInCode() {
         let fenced = """
         ```md

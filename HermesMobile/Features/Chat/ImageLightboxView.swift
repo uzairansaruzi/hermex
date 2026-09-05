@@ -323,6 +323,8 @@ struct ZoomableImageView: UIViewRepresentable {
             target: coordinator,
             action: #selector(Coordinator.handleDismissPan(_:))
         )
+        // One finger only: a two-finger pinch that drifts downward must stay a zoom.
+        dismissPan.maximumNumberOfTouches = 1
         dismissPan.delegate = coordinator
         scrollView.addGestureRecognizer(dismissPan)
         coordinator.dismissPan = dismissPan
@@ -469,13 +471,16 @@ struct ZoomableImageView: UIViewRepresentable {
             )
         }
 
-        /// At fit scale the scroll view's own pan has nothing to scroll, so letting both
-        /// recognizers run avoids a `require(toFail:)` delay on every touch.
+        /// At fit scale the scroll view's own pan has nothing to scroll, so letting the two
+        /// pans run together avoids a `require(toFail:)` delay on every touch. Nothing else
+        /// pairs with the dismiss drag: sharing with the pinch would let a zoom and a
+        /// dismiss animate the same image view at once.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
         ) -> Bool {
-            true
+            guard gestureRecognizer === dismissPan else { return true }
+            return other === scrollView?.panGestureRecognizer
         }
 
         // MARK: - Helpers
@@ -528,6 +533,12 @@ struct ZoomableImageView: UIViewRepresentable {
 
         private func restoreImagePosition() {
             guard let imageView else { return }
+
+            // Once zoomed, the transform belongs to the scroll view; resetting it here
+            // would snap the image back to fit while `zoomScale` still says otherwise.
+            if let scrollView, scrollView.zoomScale > scrollView.minimumZoomScale + 0.01 {
+                return
+            }
 
             guard !reduceMotion else {
                 imageView.transform = .identity

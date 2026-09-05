@@ -116,7 +116,10 @@ struct TranscriptMediaImageLightbox: View {
     }
 
     private var content: ImageLightboxContent {
-        if let data = viewModel.previewData, let image = UIImage(data: data) {
+        if let data = viewModel.previewData {
+            guard let image = UIImage(data: data) else {
+                return .failure(String(localized: "Could not decode this image."))
+            }
             return .image(image, detail: detailText)
         }
 
