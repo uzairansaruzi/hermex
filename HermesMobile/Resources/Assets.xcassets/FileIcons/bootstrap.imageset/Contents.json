@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "bootstrap.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
