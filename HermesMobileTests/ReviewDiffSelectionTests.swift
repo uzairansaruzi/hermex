@@ -64,4 +64,16 @@ final class ReviewDiffSelectionTests: XCTestCase {
         selection.clear()
         XCTAssertNil(selection.snippet(in: rows))
     }
+
+    func testFenceOutgrowsBackticksInsideTheSelection() {
+        let markdown = [
+            ReviewDiffRow(id: "m:header", fileID: "m", kind: .file(ReviewDiffFileHeader(path: "README.md", previousPath: nil, changeKind: .modified, additions: 1, deletions: 0))),
+            ReviewDiffRow(id: "m:line:0", fileID: "m", kind: .line(ReviewDiffLine(content: "```swift", change: .addition, oldLineNumber: nil, newLineNumber: 4))),
+            ReviewDiffRow(id: "m:line:1", fileID: "m", kind: .line(ReviewDiffLine(content: "let x = `y`", change: .addition, oldLineNumber: nil, newLineNumber: 5)))
+        ]
+        var selection = ReviewDiffSelection()
+        selection.longPress(rowID: "m:line:0", fileID: "m")
+        selection.tap(rowID: "m:line:1", fileID: "m")
+        XCTAssertEqual(selection.snippet(in: markdown), "README.md L4-L5\n````diff\n+```swift\n+let x = `y`\n````")
+    }
 }

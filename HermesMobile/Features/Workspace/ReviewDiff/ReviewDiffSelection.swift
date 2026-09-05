@@ -56,7 +56,9 @@ struct ReviewDiffSelection: Equatable {
     }
 
     /// Plain Markdown for the composer: path and line range, then the selected lines
-    /// as a fenced diff so the agent sees what was added, removed, or unchanged.
+    /// as a fenced diff so the agent sees what was added, removed, or unchanged. The
+    /// fence is one backtick longer than any run inside the lines, so selecting a
+    /// Markdown code block cannot close it early.
     func snippet(in rows: [ReviewDiffRow]) -> String? {
         let selected = selectedRows(in: rows)
         guard let fileID, !selected.isEmpty else { return nil }
@@ -76,6 +78,19 @@ struct ReviewDiffSelection: Equatable {
             }
             return prefix + line.content
         }
-        return "\(heading)\n```diff\n\(body.joined(separator: "\n"))\n```"
+        let fence = String(repeating: "`", count: max(3, Self.longestBacktickRun(in: body) + 1))
+        return "\(heading)\n\(fence)diff\n\(body.joined(separator: "\n"))\n\(fence)"
+    }
+
+    private static func longestBacktickRun(in lines: [String]) -> Int {
+        var longest = 0
+        for line in lines {
+            var run = 0
+            for character in line {
+                run = character == "`" ? run + 1 : 0
+                longest = max(longest, run)
+            }
+        }
+        return longest
     }
 }

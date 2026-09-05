@@ -249,6 +249,7 @@
 		1D1FF0000000000000000B0A /* ReviewWordDiffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0A /* ReviewWordDiffTests.swift */; };
 		1D1FF0000000000000000B0B /* ReviewDiffLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */; };
 		1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */; };
+		1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */; };
 		C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */; };
 		C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */; };
 		C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */; };
@@ -664,6 +665,7 @@
 		1D1FF0000000000000000F0A /* ReviewWordDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWordDiffTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffLayoutTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelectionTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasViewTests.swift; sourceTree = "<group>"; };
 		C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeAggregatorTests.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatterTests.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFoldingTests.swift; sourceTree = "<group>"; };
@@ -988,6 +990,7 @@
 				1D1FF0000000000000000F0A /* ReviewWordDiffTests.swift */,
 				1D1FF0000000000000000F0B /* ReviewDiffLayoutTests.swift */,
 				1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */,
+				1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */,
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
@@ -1988,6 +1991,7 @@
 				1D1FF0000000000000000B0A /* ReviewWordDiffTests.swift in Sources */,
 				1D1FF0000000000000000B0B /* ReviewDiffLayoutTests.swift in Sources */,
 				1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */,
+				1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */,
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,

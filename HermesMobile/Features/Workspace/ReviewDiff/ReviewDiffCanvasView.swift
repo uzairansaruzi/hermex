@@ -154,10 +154,10 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
 
     // MARK: - Inputs
 
+    /// Rows arrive file by file while loading, so a pan the reader already made on a
+    /// loaded file survives the rebuild; offsets are clamped to the new widths.
     func setRows(_ rows: [ReviewDiffRow]) {
         stopHorizontalDeceleration()
-        horizontalOffsetsByFileID.removeAll()
-        headerPathOffsetsByFileID.removeAll()
         activePanFileID = nil
         activePanKind = nil
         rebuildLayout(rows: rows, collapsedFileIDs: layout.collapsedFileIDs)
@@ -189,6 +189,15 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     func frame(forRowAt index: Int) -> CGRect? {
         guard let frame = layout.frame(forRowAt: index) else { return nil }
         return CGRect(x: 0, y: frame.minY - verticalOffset, width: max(bounds.width, viewportWidth), height: frame.height)
+    }
+
+    /// Where a row is drawn right now: the pinned rect for the sticky header, the
+    /// scrolled position for everything else. VoiceOver frames use this.
+    func drawnFrame(forRowAt index: Int) -> CGRect? {
+        if let sticky = stickyHeaderTarget(), sticky.rowIndex == index {
+            return sticky.rect
+        }
+        return frame(forRowAt: index)
     }
 
     func stickyHeaderTarget() -> (rowIndex: Int, rect: CGRect)? {

@@ -184,7 +184,7 @@ struct GitDiffView: View {
             ordered.insert(initialFile, at: 0)
         }
         var reportedError = false
-        await withTaskGroup(of: FileDiffResult.self) { group in
+        await withTaskGroup(of: FileDiffResult?.self) { group in
             var pending = ordered.makeIterator()
             func enqueueNext() {
                 guard let file = pending.next() else { return }
@@ -193,10 +193,13 @@ struct GitDiffView: View {
             }
             for _ in 0..<Self.maxConcurrentDiffLoads { enqueueNext() }
             for await result in group {
-                guard generation == loadGeneration else {
+                // A dismissed sheet or a newer load owns the rest; stop fetching and
+                // leave the state alone.
+                guard !Task.isCancelled, generation == loadGeneration else {
                     group.cancelAll()
                     return
                 }
+                guard let result else { continue }
                 statesByFileID[result.fileID] = result.state
                 if let error = result.error, !reportedError {
                     reportedError = true
@@ -214,7 +217,8 @@ struct GitDiffView: View {
         let error: Error?
     }
 
-    private static func fetchDiff(for file: GitFile, sessionID: String, apiClient: APIClient) async -> FileDiffResult {
+    /// Nil when the request was cancelled: not a failure to show or report.
+    private static func fetchDiff(for file: GitFile, sessionID: String, apiClient: APIClient) async -> FileDiffResult? {
         do {
             let diff = try await apiClient.gitDiff(
                 sessionID: sessionID,
@@ -226,8 +230,20 @@ struct GitDiffView: View {
             }
             return FileDiffResult(fileID: file.id, state: .loaded(diff), error: nil)
         } catch {
+            if isCancellation(error) { return nil }
             return FileDiffResult(fileID: file.id, state: .failed(error.localizedDescription), error: error)
         }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let underlying: Error
+        if case APIError.network(let wrapped) = error {
+            underlying = wrapped
+        } else {
+            underlying = error
+        }
+        return (underlying as? URLError)?.code == .cancelled
     }
 
     /// Rows build off the main thread; a newer build supersedes an older one.

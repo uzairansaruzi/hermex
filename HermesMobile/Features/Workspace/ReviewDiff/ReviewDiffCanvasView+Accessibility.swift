@@ -37,7 +37,11 @@ extension ReviewDiffCanvasView {
         return lower < indices.count && indices[lower] == element.rowIndex ? lower : NSNotFound
     }
 
+    // VoiceOver can hold an element from before a rows rebuild, so every accessor
+    // treats an out-of-range index as an empty row instead of trapping.
+
     func accessibilityLabel(forRowAt rowIndex: Int) -> String {
+        guard rows.indices.contains(rowIndex) else { return "" }
         let row = rows[rowIndex]
         switch row.kind {
         case .file(let header):
@@ -67,6 +71,7 @@ extension ReviewDiffCanvasView {
     }
 
     func accessibilityTraits(forRowAt rowIndex: Int) -> UIAccessibilityTraits {
+        guard rows.indices.contains(rowIndex) else { return .none }
         let row = rows[rowIndex]
         switch row.kind {
         case .file: return [.header, .button]
@@ -76,6 +81,7 @@ extension ReviewDiffCanvasView {
     }
 
     func accessibilityCustomActions(forRowAt rowIndex: Int) -> [UIAccessibilityCustomAction] {
+        guard rows.indices.contains(rowIndex) else { return [] }
         let row = rows[rowIndex]
         switch row.kind {
         case .file:
@@ -116,12 +122,14 @@ extension ReviewDiffCanvasView {
     }
 
     func accessibilityScreenFrame(forRowAt rowIndex: Int) -> CGRect {
-        guard let frame = frame(forRowAt: rowIndex) else { return .null }
+        guard let frame = drawnFrame(forRowAt: rowIndex) else { return .null }
         return UIAccessibility.convertToScreenCoordinates(frame, in: self)
     }
 
+    /// Scrolls a focused row into view unless it is already drawn on screen, which
+    /// includes the pinned sticky header.
     func revealRowForAccessibility(_ rowIndex: Int) {
-        guard let frame = frame(forRowAt: rowIndex) else { return }
+        guard let frame = drawnFrame(forRowAt: rowIndex) else { return }
         if frame.minY < 0 || frame.maxY > bounds.height {
             onRevealRow?(rowIndex)
         }
