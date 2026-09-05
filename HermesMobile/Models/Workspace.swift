@@ -85,7 +85,7 @@ struct DirectoryListResponse: Decodable, Equatable {
     let error: String?
 }
 
-struct WorkspaceEntry: Decodable, Equatable, Identifiable {
+struct WorkspaceEntry: Decodable, Hashable, Identifiable {
     var id: String { path ?? name ?? UUID().uuidString }
     var isBrowsableDirectory: Bool {
         isDirectory == true || type == "dir"
@@ -97,6 +97,15 @@ struct WorkspaceEntry: Decodable, Equatable, Identifiable {
     let size: Int?
     let modified: Double?
     let isDirectory: Bool?
+
+    init(name: String?, path: String?, type: String? = nil, size: Int? = nil, modified: Double? = nil, isDirectory: Bool? = nil) {
+        self.name = name
+        self.path = path
+        self.type = type
+        self.size = size
+        self.modified = modified
+        self.isDirectory = isDirectory
+    }
 
     enum CodingKeys: String, CodingKey {
         case name

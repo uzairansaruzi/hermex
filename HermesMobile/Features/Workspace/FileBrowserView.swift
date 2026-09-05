@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// The workspace file tree: folders open in place, search keeps matches with their parents,
+/// and a file row pushes its preview.
 struct FileBrowserView: View {
     let onAPIError: (Error) -> Void
 
@@ -7,6 +9,7 @@ struct FileBrowserView: View {
     private let server: URL
     @State private var viewModel: FileBrowserViewModel
     @State private var searchText = ""
+    @State private var openedFile: FileTreeNode?
 
     init(session: SessionSummary, server: URL, onAPIError: @escaping (Error) -> Void) {
         self.session = session
@@ -17,73 +20,80 @@ struct FileBrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            pathHeader
             searchBar
 
             content
                 .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
         }
-            .navigationTitle("Files")
-            .navigationBarTitleDisplayMode(.inline)
-            .task {
-                await loadInitialRootIfNeeded()
-            }
+        .navigationTitle("Files")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $openedFile) { node in
+            FilePreviewView(
+                session: session,
+                server: server,
+                entry: node.entry,
+                prefetchedFile: viewModel.prefetchedFile(at: node.path),
+                onAPIError: onAPIError
+            )
+        }
+        .task {
+            await viewModel.loadInitialRootIfNeeded()
+            handleLastError()
+        }
     }
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading && viewModel.entries.isEmpty {
+        let visibleNodes = viewModel.visibleNodes(matching: searchText)
+
+        if viewModel.isLoadingRoot && !viewModel.tree.isRootLoaded {
             ProgressView("Loading files...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage = viewModel.errorMessage, viewModel.entries.isEmpty {
+        } else if let errorMessage = viewModel.errorMessage, !viewModel.tree.isRootLoaded {
             ContentUnavailableView {
                 Label("Could Not Load Files", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(errorMessage)
             } actions: {
                 Button("Try Again") {
-                    Task { await retryLastLoad() }
+                    Task {
+                        await viewModel.retryRoot()
+                        handleLastError()
+                    }
                 }
             }
-        } else if visibleEntries.isEmpty {
+        } else if visibleNodes.isEmpty {
             ContentUnavailableView {
                 Label(searchText.isEmpty ? "No Files" : "No Matches", systemImage: searchText.isEmpty ? "folder" : "magnifyingglass")
             } description: {
-                if searchText.isEmpty {
-                    Text(viewModel.currentPath)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
+                if !searchText.isEmpty {
                     Text("Try a different file name or path.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
         } else {
-            List(visibleEntries) { entry in
-                if entry.isBrowsableDirectory {
-                    Button {
-                        Task { await load(path: entry.path ?? ".") }
-                    } label: {
-                        FileBrowserRow(entry: entry, showsDisclosure: true)
-                    }
-                    .buttonStyle(.plain)
-                } else if entry.path != nil {
-                    NavigationLink {
-                        FilePreviewView(session: session, server: server, entry: entry, onAPIError: onAPIError)
-                    } label: {
-                        FileBrowserRow(entry: entry, showsDisclosure: false)
-                    }
-                } else {
-                    FileBrowserRow(entry: entry, showsDisclosure: false)
-                }
-            }
-            .refreshable {
-                await reloadCurrentPath()
+            List(visibleNodes) { item in
+                FileTreeRowView(
+                    item: item,
+                    isExpanded: viewModel.isExpanded(item.node.path),
+                    isLoading: viewModel.isLoading(item.node.path),
+                    isSelected: item.node.path == viewModel.selectedPath,
+                    hasLoadFailure: viewModel.loadFailure(for: item.node.path) != nil,
+                    childCount: viewModel.childCount(of: item.node.path),
+                    onPressDown: { viewModel.prefetchFile(at: item.node.path) },
+                    onTap: { open(item.node) }
+                )
+                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
+            .refreshable {
+                await viewModel.refresh()
+                handleLastError()
+            }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if viewModel.isLoading {
+                if viewModel.isLoadingRoot {
                     HStack(spacing: 8) {
                         ProgressView()
                         Text("Loading files...")
@@ -103,7 +113,10 @@ struct FileBrowserView: View {
                         Spacer(minLength: 0)
 
                         Button("Try Again") {
-                            Task { await retryLastLoad() }
+                            Task {
+                                await viewModel.retryRoot()
+                                handleLastError()
+                            }
                         }
                         .font(.footnote.weight(.semibold))
                     }
@@ -113,74 +126,6 @@ struct FileBrowserView: View {
                 }
             }
         }
-    }
-
-    private var pathHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Location")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-
-                Text(viewModel.displayPath)
-                    .font(.caption)
-                    .fontDesign(.monospaced)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 8)
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    Task { await loadRoot() }
-                } label: {
-                    Label("Root", systemImage: "house")
-                }
-                .disabled(viewModel.isAtRoot)
-
-                Button {
-                    guard let parentPath = viewModel.parentPath else { return }
-                    Task { await load(path: parentPath) }
-                } label: {
-                    Label("Up", systemImage: "arrow.up")
-                }
-                .disabled(viewModel.parentPath == nil)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(viewModel.breadcrumbs.enumerated()), id: \.element.id) { index, breadcrumb in
-                            if index > 0 {
-                                Image(systemName: "chevron.forward")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .accessibilityHidden(true)
-                            }
-
-                            Button {
-                                Task { await load(path: breadcrumb.path) }
-                            } label: {
-                                Text(breadcrumb.title)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                            }
-                            .disabled(breadcrumb.path == viewModel.currentPath)
-                            .accessibilityLabel("Open \(breadcrumb.title)")
-                        }
-                    }
-                    .frame(height: 30)
-                }
-                .frame(height: 30)
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-        .background(Color(.systemBackground))
     }
 
     private var searchBar: some View {
@@ -210,45 +155,25 @@ struct FileBrowserView: View {
         .frame(height: 40)
         .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal)
-        .padding(.bottom, 10)
+        .padding(.vertical, 10)
         .background(Color(.systemBackground))
         .overlay(alignment: .bottom) {
             Divider()
         }
     }
 
-    private var visibleEntries: [WorkspaceEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return viewModel.entries }
-
-        return viewModel.entries.filter { entry in
-            entry.searchableText.localizedCaseInsensitiveContains(query)
+    private func open(_ node: FileTreeNode) {
+        if node.isDirectory {
+            Task {
+                await viewModel.toggleDirectory(node.path)
+                handleLastError()
+            }
+            return
         }
-    }
 
-    private func loadRoot() async {
-        await viewModel.loadRoot()
-        handleLastError()
-    }
-
-    private func loadInitialRootIfNeeded() async {
-        await viewModel.loadInitialRootIfNeeded()
-        handleLastError()
-    }
-
-    private func reloadCurrentPath() async {
-        await viewModel.reloadCurrentPath()
-        handleLastError()
-    }
-
-    private func retryLastLoad() async {
-        await viewModel.retryLastLoad()
-        handleLastError()
-    }
-
-    private func load(path: String) async {
-        await viewModel.load(path: path)
-        handleLastError()
+        viewModel.keepPrefetch(for: node.path)
+        openedFile = node
+        Task { await viewModel.select(path: node.path) }
     }
 
     private func handleLastError() {
@@ -258,100 +183,126 @@ struct FileBrowserView: View {
     }
 }
 
-private struct FileBrowserRow: View {
-    let entry: WorkspaceEntry
-    let showsDisclosure: Bool
+/// One tree row: 42 pt tall, indented 18 pt per level, chevron for folders, child count once
+/// the folder has been listed. Press-down warms the file preview before the tap lands.
+private struct FileTreeRowView: View {
+    let item: VisibleFileTreeNode
+    let isExpanded: Bool
+    let isLoading: Bool
+    let isSelected: Bool
+    let hasLoadFailure: Bool
+    let childCount: Int?
+    let onPressDown: () -> Void
+    let onTap: () -> Void
+
+    private var node: FileTreeNode { item.node }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: iconName)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(iconColor)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(iconBackground)
-                )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(displayName)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-
-                if let detailText {
-                    Text(detailText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                if node.isDirectory {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.forward")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 12)
+                } else {
+                    Color.clear.frame(width: 12, height: 1)
                 }
-            }
 
-            Spacer(minLength: 8)
+                Image(systemName: iconName)
+                    .font(.system(size: 17))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 22)
 
-            if showsDisclosure {
-                Image(systemName: "chevron.forward")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                Text(node.name)
+                    .font(.subheadline.weight(isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected || node.isDirectory ? .primary : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer(minLength: 8)
+
+                trailingAccessory
             }
+            .padding(.leading, 8 + CGFloat(item.depth) * 18)
+            .padding(.trailing, 12)
+            .frame(minHeight: 42)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
+        .buttonStyle(FileTreeRowButtonStyle(isSelected: isSelected, onPressChanged: { isPressed in
+            if isPressed, !node.isDirectory {
+                onPressDown()
+            }
+        }))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var displayName: String {
-        let name = entry.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name, !name.isEmpty else {
-            return String(localized: "Untitled")
+    @ViewBuilder
+    private var trailingAccessory: some View {
+        if node.isDirectory {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.mini)
+            } else if hasLoadFailure {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if let childCount {
+                Text(childCount, format: .number)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
         }
-        return name
-    }
-
-    private var detailText: String? {
-        if isDirectory {
-            return entry.path
-        }
-
-        guard let size = entry.size else {
-            return entry.path
-        }
-
-        return ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-    }
-
-    private var accessibilityLabel: String {
-        let kind = isDirectory ? String(localized: "Folder") : String(localized: "File")
-        if let detailText {
-            return String(localized: "\(kind), \(displayName), \(detailText)")
-        }
-        return String(localized: "\(kind), \(displayName)")
-    }
-
-    private var isDirectory: Bool {
-        entry.isBrowsableDirectory
     }
 
     private var iconName: String {
-        isDirectory ? "folder" : "doc.text"
+        if node.isSymlink { return "link" }
+        return node.isDirectory ? (isExpanded ? "folder.fill" : "folder") : "doc.text"
     }
 
     private var iconColor: Color {
-        isDirectory ? .primary : .secondary
+        node.isDirectory ? .accentColor : .secondary
     }
 
-    private var iconBackground: Color {
-        isDirectory ? Color(.tertiarySystemFill) : Color(.secondarySystemFill)
+    private var accessibilityLabel: String {
+        let kind: String
+        if node.isSymlink {
+            kind = String(localized: "Link")
+        } else {
+            kind = node.isDirectory ? String(localized: "Folder") : String(localized: "File")
+        }
+        return String(localized: "\(kind), \(node.name)")
+    }
+
+    private var accessibilityValue: String {
+        guard node.isDirectory else { return "" }
+        if hasLoadFailure { return String(localized: "Could Not Load Files") }
+        return isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed")
     }
 }
 
-private extension WorkspaceEntry {
-    var searchableText: String {
-        [name, path, type]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
+/// Highlights the row while pressed and reports press changes so the row can prefetch.
+private struct FileTreeRowButtonStyle: ButtonStyle {
+    let isSelected: Bool
+    let onPressChanged: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(background(isPressed: configuration.isPressed))
+            )
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                onPressChanged(isPressed)
+            }
+    }
+
+    private func background(isPressed: Bool) -> Color {
+        if isPressed { return Color(.tertiarySystemFill) }
+        return isSelected ? Color(.secondarySystemFill) : .clear
     }
 }

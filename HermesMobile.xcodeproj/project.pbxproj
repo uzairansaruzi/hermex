@@ -205,6 +205,9 @@
 		1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */; };
 		1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */; };
 		1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */; };
+		1F16000000000000000000B3 /* FileBrowserViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */; };
+		1F16000000000000000000B2 /* FileTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F2 /* FileTreeTests.swift */; };
+		1F16000000000000000000B1 /* FileTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F1 /* FileTree.swift */; };
 		1A2B3C4D5E6F7000000000E8 /* FilePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */; };
 		1A2B3C4D5E6F7000000000EA /* FilePreviewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000EB /* FilePreviewViewModel.swift */; };
 		BEEF02600000000000000001 /* FileExportSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02600000000000000002 /* FileExportSupport.swift */; };
@@ -628,6 +631,9 @@
 		1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningBlockView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
+		1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModelTests.swift; sourceTree = "<group>"; };
+		1F16000000000000000000F2 /* FileTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeTests.swift; sourceTree = "<group>"; };
+		1F16000000000000000000F1 /* FileTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTree.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000EB /* FilePreviewViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewViewModel.swift; sourceTree = "<group>"; };
 		BEEF02600000000000000002 /* FileExportSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExportSupport.swift; sourceTree = "<group>"; };
@@ -1006,6 +1012,8 @@
 				1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */,
 				1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */,
 				1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */,
+				1F16000000000000000000F2 /* FileTreeTests.swift */,
+				1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */,
 				1D1FF0000000000000000F35 /* SourceHighlighterTests.swift */,
 				1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */,
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
@@ -1323,6 +1331,7 @@
 			children = (
 				1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */,
 				1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */,
+				1F16000000000000000000F1 /* FileTree.swift */,
 				1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */,
 				1A2B3C4D5E6F7000000000EB /* FilePreviewViewModel.swift */,
 				BEEF02600000000000000002 /* FileExportSupport.swift */,
@@ -1850,6 +1859,7 @@
 				C21300000000000000000003 /* StreamingTextFadeRenderer.swift in Sources */,
 				1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */,
 				1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */,
+				1F16000000000000000000B1 /* FileTree.swift in Sources */,
 				1A2B3C4D5E6F7000000000E8 /* FilePreviewView.swift in Sources */,
 				1A2B3C4D5E6F7000000000EA /* FilePreviewViewModel.swift in Sources */,
 				BEEF02600000000000000001 /* FileExportSupport.swift in Sources */,
@@ -2026,6 +2036,8 @@
 				1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */,
 				1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */,
 				1D1FF0000000000000000B34 /* SourceFileRowsTests.swift in Sources */,
+				1F16000000000000000000B2 /* FileTreeTests.swift in Sources */,
+				1F16000000000000000000B3 /* FileBrowserViewModelTests.swift in Sources */,
 				1D1FF0000000000000000B35 /* SourceHighlighterTests.swift in Sources */,
 				1D1FF0000000000000000B36 /* SourceFileViewModelTests.swift in Sources */,
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,

@@ -15,10 +15,26 @@ final class FilePreviewViewModel {
     private(set) var lastError: Error?
     private var exportData: Data?
 
-    init(session: SessionSummary, server: URL, path: String, apiClient: APIClient? = nil) {
+    /// A text fetch the file tree started on press-down; consumed by the first `load()`.
+    private var prefetchedFile: Task<FileResponse, Error>?
+
+    init(
+        session: SessionSummary,
+        server: URL,
+        path: String,
+        apiClient: APIClient? = nil,
+        prefetchedFile: Task<FileResponse, Error>? = nil
+    ) {
         self.session = session
         self.path = path
         self.apiClient = apiClient ?? APIClient(baseURL: server)
+        self.prefetchedFile = prefetchedFile
+    }
+
+    /// True for paths that load through `/api/file` as text rather than as image or raw bytes.
+    static func loadsTextPreview(forPath path: String) -> Bool {
+        let pathExtension = pathExtension(of: path)
+        return !rasterImageExtensions.contains(pathExtension) && !unsupportedBinaryExtensions.contains(pathExtension)
     }
 
     var canExportFile: Bool {
@@ -61,7 +77,14 @@ final class FilePreviewViewModel {
             } else if isKnownUnsupportedBinaryPath {
                 preview = .unavailable(String(localized: "Preview is not available for this file type."))
             } else {
-                let file = try await apiClient.file(sessionID: sessionID, path: path)
+                let prefetched = prefetchedFile
+                prefetchedFile = nil
+                let file: FileResponse
+                if let prefetched, let result = try? await prefetched.value {
+                    file = result
+                } else {
+                    file = try await apiClient.file(sessionID: sessionID, path: path)
+                }
                 exportData = Data((file.content ?? "").utf8)
                 preview = .text(file)
             }
@@ -105,21 +128,29 @@ final class FilePreviewViewModel {
         }
     }
 
-    private var pathExtension: String {
+    private static let rasterImageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]
+
+    private static let unsupportedBinaryExtensions: Set<String> = [
+        "7z", "a", "aiff", "avi", "bin", "bz2", "class", "db", "dmg", "doc",
+        "docx", "dylib", "exe", "flac", "gz", "jar", "m4a", "mov", "mp3",
+        "mp4", "o", "pdf", "pkg", "ppt", "pptx", "pyc", "rar", "sqlite",
+        "svg", "tar", "tgz", "wav", "xls", "xlsx", "xz", "zip"
+    ]
+
+    private static func pathExtension(of path: String) -> String {
         URL(fileURLWithPath: path).pathExtension.lowercased()
     }
 
+    private var pathExtension: String {
+        Self.pathExtension(of: path)
+    }
+
     private var isRasterImagePath: Bool {
-        ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"].contains(pathExtension)
+        Self.rasterImageExtensions.contains(pathExtension)
     }
 
     private var isKnownUnsupportedBinaryPath: Bool {
-        [
-            "7z", "a", "aiff", "avi", "bin", "bz2", "class", "db", "dmg", "doc",
-            "docx", "dylib", "exe", "flac", "gz", "jar", "m4a", "mov", "mp3",
-            "mp4", "o", "pdf", "pkg", "ppt", "pptx", "pyc", "rar", "sqlite",
-            "svg", "tar", "tgz", "wav", "xls", "xlsx", "xz", "zip"
-        ].contains(pathExtension)
+        Self.unsupportedBinaryExtensions.contains(pathExtension)
     }
 
     private func payload(with data: Data) -> FileExportPayload {

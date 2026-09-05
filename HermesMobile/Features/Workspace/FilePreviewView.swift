@@ -23,17 +23,24 @@ struct FilePreviewView: View {
     @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
 
     /// `initialLine` is one-based; the source surface scrolls to it and highlights it.
+    /// `prefetchedFile` is a text fetch the file tree already started; the first load reuses it.
     init(
         session: SessionSummary,
         server: URL,
         entry: WorkspaceEntry,
         initialLine: Int? = nil,
+        prefetchedFile: Task<FileResponse, Error>? = nil,
         onAPIError: @escaping (Error) -> Void
     ) {
         self.entry = entry
         self.initialLine = initialLine
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: FilePreviewViewModel(session: session, server: server, path: entry.path ?? ""))
+        _viewModel = State(initialValue: FilePreviewViewModel(
+            session: session,
+            server: server,
+            path: entry.path ?? "",
+            prefetchedFile: prefetchedFile
+        ))
     }
 
     var body: some View {
