@@ -151,6 +151,8 @@
 		C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14300000000000000000002 /* StreamingMarkdownSupport.swift */; };
 		C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000002 /* TranscriptMedia.swift */; };
 		C0DE34000000000000000006 /* TranscriptMediaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000005 /* TranscriptMediaView.swift */; };
+		1F18000000000000000000B2 /* TranscriptMediaImageLightbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F18000000000000000000A2 /* TranscriptMediaImageLightbox.swift */; };
+		1F18000000000000000000B1 /* ImageLightboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F18000000000000000000A1 /* ImageLightboxView.swift */; };
 		C0DE34000000000000000008 /* TranscriptMediaPreviewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000007 /* TranscriptMediaPreviewViewModel.swift */; };
 		C0DE34000000000000000009 /* TranscriptMediaDataLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE3400000000000000000A /* TranscriptMediaDataLoader.swift */; };
 		C0DE3400000000000000000D /* TranscriptMediaExportSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE3400000000000000000E /* TranscriptMediaExportSupport.swift */; };
@@ -211,6 +213,8 @@
 		1F16000000000000000000B4 /* FileReference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F4 /* FileReference.swift */; };
 		1F16000000000000000000B5 /* FileIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F5 /* FileIcon.swift */; };
 		1F16000000000000000000B6 /* FileReferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F6 /* FileReferenceTests.swift */; };
+		1F18000000000000000000B4 /* ImageLightboxGesturePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F18000000000000000000A4 /* ImageLightboxGesturePolicyTests.swift */; };
+		1F18000000000000000000B3 /* TranscriptMarkdownImageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F18000000000000000000A3 /* TranscriptMarkdownImageTests.swift */; };
 		1F16000000000000000000B7 /* FileIconTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F7 /* FileIconTests.swift */; };
 		1A2B3C4D5E6F7000000000E8 /* FilePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */; };
 		1A2B3C4D5E6F7000000000EA /* FilePreviewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000EB /* FilePreviewViewModel.swift */; };
@@ -581,6 +585,8 @@
 		C14300000000000000000002 /* StreamingMarkdownSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingMarkdownSupport.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000002 /* TranscriptMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMedia.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000005 /* TranscriptMediaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaView.swift; sourceTree = "<group>"; };
+		1F18000000000000000000A2 /* TranscriptMediaImageLightbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaImageLightbox.swift; sourceTree = "<group>"; };
+		1F18000000000000000000A1 /* ImageLightboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLightboxView.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000007 /* TranscriptMediaPreviewViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaPreviewViewModel.swift; sourceTree = "<group>"; };
 		C0DE3400000000000000000A /* TranscriptMediaDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaDataLoader.swift; sourceTree = "<group>"; };
 		C0DE3400000000000000000E /* TranscriptMediaExportSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaExportSupport.swift; sourceTree = "<group>"; };
@@ -641,6 +647,8 @@
 		1F16000000000000000000F4 /* FileReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReference.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F5 /* FileIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIcon.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F6 /* FileReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReferenceTests.swift; sourceTree = "<group>"; };
+		1F18000000000000000000A4 /* ImageLightboxGesturePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLightboxGesturePolicyTests.swift; sourceTree = "<group>"; };
+		1F18000000000000000000A3 /* TranscriptMarkdownImageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMarkdownImageTests.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F7 /* FileIconTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIconTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E9 /* FilePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000EB /* FilePreviewViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewViewModel.swift; sourceTree = "<group>"; };
@@ -1022,6 +1030,8 @@
 				1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */,
 				1F16000000000000000000F2 /* FileTreeTests.swift */,
 				1F16000000000000000000F6 /* FileReferenceTests.swift */,
+				1F18000000000000000000A4 /* ImageLightboxGesturePolicyTests.swift */,
+				1F18000000000000000000A3 /* TranscriptMarkdownImageTests.swift */,
 				1F16000000000000000000F7 /* FileIconTests.swift */,
 				1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */,
 				1D1FF0000000000000000F35 /* SourceHighlighterTests.swift */,
@@ -1279,6 +1289,8 @@
 				C14300000000000000000002 /* StreamingMarkdownSupport.swift */,
 				C0DE34000000000000000002 /* TranscriptMedia.swift */,
 				C0DE34000000000000000005 /* TranscriptMediaView.swift */,
+				1F18000000000000000000A2 /* TranscriptMediaImageLightbox.swift */,
+				1F18000000000000000000A1 /* ImageLightboxView.swift */,
 				C0DE34000000000000000007 /* TranscriptMediaPreviewViewModel.swift */,
 				C0DE3400000000000000000A /* TranscriptMediaDataLoader.swift */,
 				C0DE3400000000000000000E /* TranscriptMediaExportSupport.swift */,
@@ -1881,6 +1893,8 @@
 				C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */,
 				C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */,
 				C0DE34000000000000000006 /* TranscriptMediaView.swift in Sources */,
+				1F18000000000000000000B2 /* TranscriptMediaImageLightbox.swift in Sources */,
+				1F18000000000000000000B1 /* ImageLightboxView.swift in Sources */,
 				C0DE34000000000000000008 /* TranscriptMediaPreviewViewModel.swift in Sources */,
 				C0DE34000000000000000009 /* TranscriptMediaDataLoader.swift in Sources */,
 				C0DE3400000000000000000D /* TranscriptMediaExportSupport.swift in Sources */,
@@ -2052,6 +2066,8 @@
 				1D1FF0000000000000000B34 /* SourceFileRowsTests.swift in Sources */,
 				1F16000000000000000000B2 /* FileTreeTests.swift in Sources */,
 				1F16000000000000000000B6 /* FileReferenceTests.swift in Sources */,
+				1F18000000000000000000B4 /* ImageLightboxGesturePolicyTests.swift in Sources */,
+				1F18000000000000000000B3 /* TranscriptMarkdownImageTests.swift in Sources */,
 				1F16000000000000000000B7 /* FileIconTests.swift in Sources */,
 				1F16000000000000000000B3 /* FileBrowserViewModelTests.swift in Sources */,
 				1D1FF0000000000000000B35 /* SourceHighlighterTests.swift in Sources */,

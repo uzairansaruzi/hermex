@@ -25,6 +25,31 @@ struct FileReference: Hashable, Identifiable {
         return "\(name):\(line):\(column)"
     }
 
+    /// The absolute path a Markdown destination names, accepting the same syntax as
+    /// `parse` but without its workspace containment. Media is deliberately not workspace
+    /// scoped: the server keeps chat images in its own attachment store
+    /// (`~/.hermes/webui/attachments/`), well outside any workspace, and `/api/media`
+    /// owns the allow-list that decides what it will serve. A containment check here
+    /// would only hide images the server is happy to hand over.
+    ///
+    /// `./` and `../` need a workspace root to resolve against; an absolute path or a
+    /// `file:` URL does not. Bare relative paths stay unrecognized, as they do for links.
+    static func absoluteMediaPath(_ destination: String, workspaceRoot: String?) -> String? {
+        var normalized = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.hasPrefix("<"), normalized.hasSuffix(">"), normalized.count >= 2 {
+            normalized = String(normalized.dropFirst().dropLast())
+        }
+        guard let target = fileTarget(of: normalized) else { return nil }
+
+        let rootComponents = pathComponents(ofAbsolutePath: workspaceRoot ?? "") ?? []
+        guard target.path.hasPrefix("/") || !rootComponents.isEmpty else { return nil }
+        guard let components = absolutePath(for: target.path, rootComponents: rootComponents),
+              !components.isEmpty
+        else { return nil }
+
+        return "/" + components.joined(separator: "/")
+    }
+
     /// Parses a Markdown link destination against the session's workspace root. Nil when
     /// the destination is not a file link, the workspace root is unknown, or the path
     /// resolves outside the workspace (including `..` traversal).

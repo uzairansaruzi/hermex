@@ -12,6 +12,21 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
     }
 }
 
+/// The active session's workspace root, read by the transcript to resolve the relative
+/// forms of `![alt](path)` (`./`, `../`, `~/`). It is a base, not a boundary: absolute
+/// paths and `file:` URLs need no root, and `/api/media` owns the allow-list that decides
+/// what the server will actually serve.
+extension EnvironmentValues {
+    var chatWorkspaceRoot: String? {
+        get { self[ChatWorkspaceRootKey.self] }
+        set { self[ChatWorkspaceRootKey.self] = newValue }
+    }
+}
+
+private struct ChatWorkspaceRootKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 struct TranscriptMediaContentView: View {
     let segments: [TranscriptMediaSegment]
     let cacheNamespace: String
@@ -158,7 +173,7 @@ private struct TranscriptMediaThumbnailView: View {
             return String(localized: "Open media video \(reference.displayName)")
         }
 
-        return String(localized: "Open media image \(reference.displayName)")
+        return String(localized: "Open media image \(reference.accessibilityName)")
     }
 
     @ViewBuilder

@@ -8,6 +8,7 @@ struct MessageBubbleView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The skills this chat can draw as chips, published by `ChatView`.
     @Environment(\.skillChipCatalog) private var skillChipCatalog
+    @Environment(\.chatWorkspaceRoot) private var chatWorkspaceRoot
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
@@ -92,7 +93,10 @@ struct MessageBubbleView: View {
     }
 
     private var assistantMessageRow: some View {
-        let segments = TranscriptMediaParser.segments(in: messageText)
+        let segments = TranscriptMediaParser.segments(
+            in: messageText,
+            workspaceRoot: chatWorkspaceRoot
+        )
 
         return VStack(alignment: .leading, spacing: 6) {
             if showsAssistantTurnHeaderForThisMessage {
