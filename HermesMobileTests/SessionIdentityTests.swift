@@ -83,7 +83,7 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(SessionRowView.metadataLabel(for: session, showsMessageCount: false, showsWorkspace: false))
     }
 
-    func testSessionRowAccessibilityStateLabelsIncludeStreamingPinnedAndCachedState() {
+    func testSessionRowAccessibilityStateLabelsIncludeAttentionPinnedAndCachedState() {
         let session = SessionSummary(
             sessionId: "stateful",
             pinned: true,
@@ -93,7 +93,7 @@ final class SessionIdentityTests: XCTestCase {
 
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: session, isViewingCachedData: true),
-            ["Streaming", "Pinned", "Cached"]
+            ["Working", "Pinned", "Cached"]
         )
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: SessionSummary(sessionId: "plain"), isViewingCachedData: false),

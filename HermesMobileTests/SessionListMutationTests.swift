@@ -729,6 +729,10 @@ final class SessionListMutationTests: XCTestCase {
                     #"{"active":true,"stream_id":"stream-123"}"#,
                     for: request
                 )
+            case "/api/approval/pending", "/api/clarify/pending":
+                // The same tick also probes the streaming row's attention state
+                // (see SessionRowAttentionStateTests); nothing is pending here.
+                return apiTestJSONResponse(#"{"pending": null}"#, for: request)
             default:
                 XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
                 throw URLError(.badURL)
