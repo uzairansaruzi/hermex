@@ -47,9 +47,9 @@ struct SlashCommandAutocompleteView: View {
         .adaptiveGlass(
             .regular,
             fallbackMaterial: .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            in: RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
         .frame(height: panelHeight(for: results, parsed: parsed))
         .task(id: rankingInput) {

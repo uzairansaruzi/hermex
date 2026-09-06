@@ -1177,9 +1177,9 @@ struct PinnedLocalNoticeStack: View {
                 }
                 .padding(12)
                 .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
                         .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
                 )
             }

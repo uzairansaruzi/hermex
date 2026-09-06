@@ -150,7 +150,7 @@ struct ClarificationRequestBar: View {
         .padding(.trailing, 8)
         .padding(.vertical, 8)
         .frame(maxWidth: 560)
-        .clarificationSurface(cornerRadius: 22)
+        .clarificationSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
         .accessibilityElement(children: .contain)
     }
 }
@@ -177,7 +177,7 @@ struct ClarificationRequestCard: View {
     var body: some View {
         cardContent
             .frame(maxWidth: 560, alignment: .leading)
-            .clarificationSurface(cornerRadius: 24)
+            .clarificationSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
             // Ideal height regardless of what the bar-sized overlay proposes.
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .contain)

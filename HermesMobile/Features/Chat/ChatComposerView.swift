@@ -2,6 +2,12 @@ import SwiftUI
 import UIKit
 import PhotosUI
 
+/// Shape metrics for the composer stack: the expanded composer card and every
+/// full-width surface stacked above it share this radius so they read as one set.
+enum ChatComposerMetrics {
+    static let cardCornerRadius: CGFloat = 26
+}
+
 private struct ComposerStatusView: View {
     let text: String
     let isError: Bool
@@ -66,7 +72,6 @@ struct MessageComposerView: View {
     /// t3code sizing: every circle in the composer is 44 pt, which is also the
     /// minimum hit target, so no invisible hit padding is needed.
     private let circleSize: CGFloat = 44
-    private let cardCornerRadius: CGFloat = 26
     private let pillInset: CGFloat = 5
 
     @Binding var draftMessage: String
@@ -649,7 +654,10 @@ struct MessageComposerView: View {
     }
 
     private var composerSurfaceShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: isExpanded ? cardCornerRadius : (circleSize + pillInset * 2) / 2, style: .continuous)
+        RoundedRectangle(
+            cornerRadius: isExpanded ? ChatComposerMetrics.cardCornerRadius : (circleSize + pillInset * 2) / 2,
+            style: .continuous
+        )
     }
 
     /// The glass surface: one text view in both states so focus and the draft

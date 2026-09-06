@@ -20,7 +20,7 @@ struct ChatActiveRunStatusView: View {
         .padding(.vertical, 7)
         .chatTimelineAccessorySurface(
             fallbackMaterial: .regularMaterial,
-            cornerRadius: 16
+            in: Capsule(style: .continuous)
         )
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .ignore)
