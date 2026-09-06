@@ -81,6 +81,25 @@ enum KanbanHeaderPresentation {
             ? "line.3.horizontal.decrease.circle.fill"
             : "line.3.horizontal.decrease.circle"
     }
+
+    /// Widest the Board picker may ever ask to be, so the navigation bar always has
+    /// room for it beside the back button and the trailing group.
+    ///
+    /// Measured on iPhone 17 (402pt wide, default text size) from the short-name
+    /// layout: the back button occupies x≈16-60 and the principal item starts at
+    /// x≈72, so the leading side costs 16 (margin) + 44 (button) + 12 (gap) = 72pt.
+    /// The trailing glass pill occupies x≈218-386, i.e. 168pt for three 44pt controls
+    /// plus the pill's padding, and costs another 16 (margin) + 12 (gap) = 28pt. That
+    /// leaves ~134pt of usable gap at 402pt wide, and a reserve of ~268pt.
+    ///
+    /// Only the pill scales with Dynamic Type (`trailingGroupWidth`); the fixed 100pt
+    /// of margins and gaps does not. The 80pt floor keeps the picker tappable on the
+    /// narrowest device and covers the first layout pass, where `barWidth` is still 0.
+    static func boardPickerMaxWidth(barWidth: CGFloat, trailingGroupWidth: CGFloat) -> CGFloat {
+        let leadingReserve: CGFloat = 72
+        let trailingReserve = min(trailingGroupWidth, 168 * 1.4) + 28
+        return max(80, barWidth - leadingReserve - trailingReserve)
+    }
 }
 
 @MainActor
@@ -1321,23 +1340,11 @@ struct KanbanStatusFocusView: View {
         model.selectedBoard?.name ?? model.selectedBoardSlug ?? String(localized: "Board")
     }
 
-    /// Widest the Board picker may ever ask to be, so the navigation bar always has
-    /// room for it beside the back button and the trailing group.
-    ///
-    /// Measured on iPhone 17 (402pt wide, default text size) from the short-name
-    /// layout: the back button occupies x≈16-60 and the principal item starts at
-    /// x≈72, so the leading side costs 16 (margin) + 44 (button) + 12 (gap) = 72pt.
-    /// The trailing glass pill occupies x≈218-386, i.e. 168pt for three 44pt controls
-    /// plus the pill's padding, and costs another 16 (margin) + 12 (gap) = 28pt. That
-    /// leaves ~134pt of usable gap at 402pt wide, and a reserve of ~268pt.
-    ///
-    /// Only the pill scales with Dynamic Type (`trailingGroupWidth`); the fixed 100pt
-    /// of margins and gaps does not. The 80pt floor keeps the picker tappable on the
-    /// narrowest device and covers the first layout pass, where `barWidth` is still 0.
     private var boardPickerMaxWidth: CGFloat {
-        let leadingReserve: CGFloat = 72
-        let trailingReserve = min(trailingGroupWidth, 168 * 1.4) + 28
-        return max(80, barWidth - leadingReserve - trailingReserve)
+        KanbanHeaderPresentation.boardPickerMaxWidth(
+            barWidth: barWidth,
+            trailingGroupWidth: trailingGroupWidth
+        )
     }
 
     /// The navigation bar drops the `.principal` slot outright when its content insists
