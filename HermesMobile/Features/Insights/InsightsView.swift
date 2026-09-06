@@ -38,10 +38,14 @@ struct InsightsView: View {
             .task(id: viewModel.selectedTimeframe) {
                 await loadInsights()
             }
-            // A separate task on purpose: a cold account-limits probe can take
-            // several seconds upstream, and the chart must not wait on it.
-            // Neither load passes `refresh` — that belongs to explicit gestures.
-            .task(id: viewModel.selectedTimeframe) {
+            // A separate, unkeyed task on purpose: a cold account-limits probe
+            // can take several seconds upstream and the chart must not wait on
+            // it, and quota does not depend on the window. Keying it to the
+            // window would restart the probe on every picker change, wasting
+            // traffic and letting the restarted load supersede an in-flight
+            // explicit refresh. This load never passes `refresh` — that belongs
+            // to explicit gestures.
+            .task {
                 await viewModel.loadLimits()
             }
     }
