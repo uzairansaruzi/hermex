@@ -87,7 +87,11 @@ The interaction model is **Status Focus**:
 
 - a horizontally scrollable Status selector with counts;
 - one Status at a time as a vertical Card list;
-- Board switching in the header;
+- Board switching from a picker in the header's principal slot: it is capped to the
+  width actually left between the back button and the trailing group, and truncates
+  the Board name inside that cap, so the bar can never drop the slot. The trailing
+  side is New Card, Dispatcher, and a More menu holding Select Cards and Card Filters
+  (More becomes Cancel while selecting);
 - explicit search, Profile/tenant/archive/only-mine filters, and clear-filter state;
 - visible non-drag Move actions; drag may supplement but never replace them;
 - Select Cards mode with named Bulk Actions and a persistent selection count;

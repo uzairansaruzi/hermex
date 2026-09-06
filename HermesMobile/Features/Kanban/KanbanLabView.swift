@@ -69,6 +69,20 @@ enum KanbanDispatcherPresentation {
     }
 }
 
+/// Icons for the Kanban header's overflow slot, which keeps Select Cards and Card
+/// Filters behind a More menu and flips to a filled glyph while a filter is applied.
+enum KanbanHeaderPresentation {
+    static func overflowSystemImage(hasActiveFilters: Bool) -> String {
+        hasActiveFilters ? "ellipsis.circle.fill" : "ellipsis.circle"
+    }
+
+    static func cardFiltersSystemImage(hasActiveFilters: Bool) -> String {
+        hasActiveFilters
+            ? "line.3.horizontal.decrease.circle.fill"
+            : "line.3.horizontal.decrease.circle"
+    }
+}
+
 @MainActor
 struct KanbanFiltersDraft {
     var profile: String?
@@ -114,6 +128,14 @@ struct KanbanStatusFocusView: View {
     @State private var confirmsRunDispatcher = false
     @State private var showsDispatcher = false
     @State private var presentedCardID: String?
+    /// Width of the screen, measured on the content view and used to cap the Board
+    /// picker so the navigation bar never drops it. See `boardPickerMaxWidth`.
+    @State private var barWidth: CGFloat = 0
+    /// The trailing glass pill's width at the current text size. Its base is the
+    /// measured 168pt (three 44pt controls plus the pill's own padding) on iPhone 17
+    /// at the default text size; nav-bar glyphs grow with Dynamic Type but stop well
+    /// before AX5, so `boardPickerMaxWidth` clamps this to 1.4x the base.
+    @ScaledMetric(relativeTo: .body) private var trailingGroupWidth: CGFloat = 168
     @AccessibilityFocusState private var focusedCardID: String?
     @AccessibilityFocusState private var archiveUndoIsFocused: Bool
     @AccessibilityFocusState private var selectionControlsAreFocused: Bool
@@ -153,6 +175,11 @@ struct KanbanStatusFocusView: View {
                     systemImage: "exclamationmark.triangle"
                 )
             }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            barWidth = width
         }
         .navigationDestination(item: $presentedCardID) { cardID in
             KanbanCardDetailView(featureModel: model, cardID: cardID)
@@ -1290,6 +1317,40 @@ struct KanbanStatusFocusView: View {
         }
     }
 
+    private var boardTitle: String {
+        model.selectedBoard?.name ?? model.selectedBoardSlug ?? String(localized: "Board")
+    }
+
+    /// Widest the Board picker may ever ask to be, so the navigation bar always has
+    /// room for it beside the back button and the trailing group.
+    ///
+    /// Measured on iPhone 17 (402pt wide, default text size) from the short-name
+    /// layout: the back button occupies x≈16-60 and the principal item starts at
+    /// x≈72, so the leading side costs 16 (margin) + 44 (button) + 12 (gap) = 72pt.
+    /// The trailing glass pill occupies x≈218-386, i.e. 168pt for three 44pt controls
+    /// plus the pill's padding, and costs another 16 (margin) + 12 (gap) = 28pt. That
+    /// leaves ~134pt of usable gap at 402pt wide, and a reserve of ~268pt.
+    ///
+    /// Only the pill scales with Dynamic Type (`trailingGroupWidth`); the fixed 100pt
+    /// of margins and gaps does not. The 80pt floor keeps the picker tappable on the
+    /// narrowest device and covers the first layout pass, where `barWidth` is still 0.
+    private var boardPickerMaxWidth: CGFloat {
+        let leadingReserve: CGFloat = 72
+        let trailingReserve = min(trailingGroupWidth, 168 * 1.4) + 28
+        return max(80, barWidth - leadingReserve - trailingReserve)
+    }
+
+    /// The navigation bar drops the `.principal` slot outright when its content insists
+    /// on a width that will not fit beside the bar's other items — the original #340
+    /// bug, where a long Board name took the picker off screen entirely. A custom
+    /// principal item is not constrained by its siblings on iOS 26 either: given
+    /// `.frame(maxWidth: .infinity)` it spans the whole bar and draws under the back
+    /// button and the trailing controls. Handing the title to the system instead
+    /// (`.navigationTitle` + `.toolbarTitleMenu`) trades one bug for another: UIKit
+    /// makes room for the full title by collapsing New Card and Dispatcher into a
+    /// system overflow button, hiding the Dispatcher's state icon. So the picker keeps
+    /// its own slot and an explicit width cap that can never exceed the real gap, and
+    /// truncates inside it.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
@@ -1315,31 +1376,19 @@ struct KanbanStatusFocusView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text(model.selectedBoard?.name ?? model.selectedBoardSlug ?? String(localized: "Board"))
+                    Text(boardTitle)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                     Image(systemName: "chevron.down")
                         .font(.caption2)
+                        .layoutPriority(1)
                 }
-                .frame(minHeight: 44)
+                .frame(maxWidth: boardPickerMaxWidth, minHeight: 44)
             }
             .accessibilityLabel(String(localized: "Switch Board"))
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button {
-                if model.isSelectingCards {
-                    model.clearCardSelection()
-                } else {
-                    model.beginSelectingCards()
-                    selectionControlsAreFocused = true
-                }
-            } label: {
-                Image(systemName: model.isSelectingCards ? "xmark" : "checkmark.circle")
-            }
-            .disabled(model.bulkActionPhase != nil || !model.canUseBulkActions)
-            .frame(minWidth: 44, minHeight: 44)
-            .accessibilityLabel(model.isSelectingCards ? Text("Cancel") : Text("Select Cards"))
-
             Button {
                 cardEditor = model.makeCreateCardEditorState()
             } label: {
@@ -1365,13 +1414,48 @@ struct KanbanStatusFocusView: View {
             )
             .accessibilityFocused($dispatcherButtonIsFocused)
 
-            Button {
-                showsFilters = true
-            } label: {
-                Image(systemName: model.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            // Select Cards and Card Filters sit behind More so the trailing group stays
+            // narrow enough to leave the inline Board title room to read. Select mode
+            // swaps More for Cancel in the same slot.
+            if model.isSelectingCards {
+                Button {
+                    model.clearCardSelection()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .disabled(model.bulkActionPhase != nil || !model.canUseBulkActions)
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityLabel(Text("Cancel"))
+            } else {
+                Menu {
+                    Button {
+                        model.beginSelectingCards()
+                        selectionControlsAreFocused = true
+                    } label: {
+                        Label("Select Cards", systemImage: "checkmark.circle")
+                    }
+                    .disabled(model.bulkActionPhase != nil || !model.canUseBulkActions)
+
+                    Button {
+                        showsFilters = true
+                    } label: {
+                        Label(
+                            "Card Filters",
+                            systemImage: KanbanHeaderPresentation.cardFiltersSystemImage(
+                                hasActiveFilters: model.hasActiveFilters
+                            )
+                        )
+                    }
+                } label: {
+                    Image(
+                        systemName: KanbanHeaderPresentation.overflowSystemImage(
+                            hasActiveFilters: model.hasActiveFilters
+                        )
+                    )
+                }
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityLabel(Text("More"))
             }
-            .frame(minWidth: 44, minHeight: 44)
-            .accessibilityLabel(Text("Card Filters"))
         }
     }
 

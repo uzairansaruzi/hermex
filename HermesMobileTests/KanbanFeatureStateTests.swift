@@ -700,6 +700,26 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(KanbanDispatcherPresentation.hasResult(state.dispatchState))
     }
 
+    func testHeaderOverflowIconTracksActiveFilters() {
+        XCTAssertEqual(
+            KanbanHeaderPresentation.overflowSystemImage(hasActiveFilters: false),
+            "ellipsis.circle"
+        )
+        XCTAssertEqual(
+            KanbanHeaderPresentation.overflowSystemImage(hasActiveFilters: true),
+            "ellipsis.circle.fill",
+            "More stays filled while a filter is applied, because Card Filters now lives inside it."
+        )
+        XCTAssertEqual(
+            KanbanHeaderPresentation.cardFiltersSystemImage(hasActiveFilters: false),
+            "line.3.horizontal.decrease.circle"
+        )
+        XCTAssertEqual(
+            KanbanHeaderPresentation.cardFiltersSystemImage(hasActiveFilters: true),
+            "line.3.horizontal.decrease.circle.fill"
+        )
+    }
+
     func testRunDispatcherJoinsBoardWideLockAndAlwaysReconcilesWithoutRequiringPreview() async {
         let multipleBoards: KanbanBoardsResponse = mutationDecode(
             #"{"boards":[{"slug":"main"},{"slug":"release"}],"current":"main","read_only":false}"#
