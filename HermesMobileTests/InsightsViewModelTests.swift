@@ -525,6 +525,7 @@ final class InsightsViewModelTests: XCTestCase {
     }
 }
 
+@MainActor
 private final class StubInsightsClient: InsightsDataClient {
     private let insightsResult: Result<InsightsResponse, Error>
     private let sessionsResult: Result<SessionsResponse, Error>
@@ -542,6 +543,14 @@ private final class StubInsightsClient: InsightsDataClient {
 
     func sessions() async throws -> SessionsResponse {
         try sessionsResult.get()
+    }
+
+    func providers() async throws -> ProvidersResponse {
+        throw StubInsightsError()
+    }
+
+    func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse {
+        throw StubInsightsError()
     }
 }
 
@@ -572,6 +581,14 @@ private final class DelayedInsightsClient: InsightsDataClient {
     }
 
     func sessions() async throws -> SessionsResponse {
+        throw StubInsightsError()
+    }
+
+    func providers() async throws -> ProvidersResponse {
+        throw StubInsightsError()
+    }
+
+    func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse {
         throw StubInsightsError()
     }
 

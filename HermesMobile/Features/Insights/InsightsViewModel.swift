@@ -1,9 +1,13 @@
 import Foundation
 import Observation
 
-protocol InsightsDataClient {
+/// Sendable because quota probes run concurrently in a task group: the client
+/// is handed to child tasks off the main actor.
+protocol InsightsDataClient: Sendable {
     func sessions() async throws -> SessionsResponse
     func insights(days: Int) async throws -> InsightsResponse
+    func providers() async throws -> ProvidersResponse
+    func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse
 }
 
 extension APIClient: InsightsDataClient {}
@@ -124,7 +128,19 @@ final class InsightsViewModel {
     private(set) var lastError: Error?
     private(set) var dataSource: InsightsDataSource = .local
     private(set) var fallbackReason: String?
+    /// The provider quota cards above the window picker (#415). Empty until a
+    /// provider qualifies, and empty again the moment one stops qualifying.
+    private(set) var limitCards: [ProviderLimitCard] = []
+    /// True only while quota probes for at least one candidate provider are in
+    /// flight. It exists so the Limits slot can be reserved before the answers
+    /// arrive instead of popping in and shoving the analytics down (#415), so a
+    /// server with no keyed provider must never set it.
+    private(set) var isLoadingLimits = false
     private var activeLoadID: UUID?
+    /// Same generation guard as `ProvidersViewModel`: quota has three
+    /// overlapping entry points (`.task`, `.refreshable`, the toolbar button),
+    /// and a superseded probe must never overwrite a newer one's cards.
+    private var limitsGeneration = 0
 
     private let client: any InsightsDataClient
 
@@ -189,6 +205,74 @@ final class InsightsViewModel {
         }
     }
 
+    /// Loads the quota cards. Deliberately separate from `load()`: a cold
+    /// account-limits probe can take several seconds upstream, and the chart
+    /// must never wait on it.
+    ///
+    /// Every failure here is silent. Quota is a bonus panel, so a 404 on an
+    /// older server, a decode failure, or a dead provider hides the group
+    /// rather than putting an error over the analytics the user came for —
+    /// which is why this never touches `errorMessage` or `lastError`.
+    ///
+    /// `refresh` bypasses the server's 45 s probe cache and belongs only to the
+    /// toolbar button and pull-to-refresh.
+    func loadLimits(refresh: Bool = false) async {
+        limitsGeneration += 1
+        let generation = limitsGeneration
+        // The newest generation owns `isLoadingLimits`, and clears it on every
+        // way out — including the silent failures below. A superseded load
+        // leaves it alone so it cannot cancel the placeholder of the load that
+        // replaced it.
+        defer {
+            if generation == limitsGeneration {
+                isLoadingLimits = false
+            }
+        }
+
+        let selection: [String]
+        do {
+            selection = providerQuotaSelection(from: try await client.providers())
+        } catch {
+            // Nothing to correct the cards with — leave whatever is on screen.
+            return
+        }
+
+        guard generation == limitsGeneration, !Task.isCancelled else { return }
+        guard !selection.isEmpty else {
+            limitCards = []
+            return
+        }
+
+        isLoadingLimits = true
+
+        let fetchedAt = Date()
+        let cards = await withTaskGroup(of: (Int, ProviderLimitCard?).self) { group in
+            for (index, provider) in selection.enumerated() {
+                group.addTask { [client] in
+                    guard let response = try? await client.providerQuota(provider: provider, refresh: refresh) else {
+                        return (index, nil)
+                    }
+
+                    return (index, ProviderLimitCard(provider: provider, response: response, fetchedAt: fetchedAt))
+                }
+            }
+
+            var collected: [(Int, ProviderLimitCard)] = []
+            for await (index, card) in group {
+                if let card {
+                    collected.append((index, card))
+                }
+            }
+
+            // Selection order, not completion order: cards must not reshuffle
+            // because one provider answered faster this time.
+            return collected.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+
+        guard generation == limitsGeneration, !Task.isCancelled else { return }
+        limitCards = cards
+    }
+
     // MARK: - Aggregates
 
     var analytics: SessionUsageAnalytics {
@@ -242,6 +326,13 @@ final class InsightsViewModel {
     /// the refresh spinner on.
     var isRefreshing: Bool {
         isLoading && hasLoadedAnalytics
+    }
+
+    /// Whether the Limits group has anything to occupy its slot: real cards, or
+    /// the placeholder standing in for a first load. False once a load settles
+    /// with nothing to show, which is how the group disappears again.
+    var showsLimits: Bool {
+        !limitCards.isEmpty || isLoadingLimits
     }
 
     var sourceDescription: String {

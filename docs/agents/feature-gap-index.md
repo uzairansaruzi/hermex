@@ -82,7 +82,7 @@ sub-paths of a group. Do not reorder casually.
 | `/api/session/worktree/` | roadmap | P4 | write | Advanced Session Maintenance |
 | `/api/session/recovery/` | roadmap | P4 | write | Advanced Session Maintenance |
 | `/api/sessions/cleanup` | roadmap | P4 | write | Advanced Session Maintenance — bulk cleanup |
-| `/api/provider/` | roadmap | P3 | secret | Provider Management — quota/cost history |
+| `/api/provider/` | roadmap | P3 | secret | Provider Management — `quota` shipped as the Usage screen's Limits cards (#415); `cost-history` remains roadmap |
 | `/api/providers` | roadmap | P3 | secret | Provider Management — read-only status screen shipped (#26); key set/delete remains roadmap |
 | `/api/models/refresh` | roadmap | P3 | — | Provider / Model Management |
 | `/api/models/live` | roadmap | P3 | — | Provider / Model Management — live model fetch |

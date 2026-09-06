@@ -86,6 +86,10 @@ enum Endpoint {
     case switchProfile
     case createProfile
     case providers
+    /// `GET /api/provider/quota` — subscription limits or credits for one
+    /// provider. `refresh` bypasses the server's 45 s probe cache; a cold probe
+    /// can take several seconds, so only explicit refresh gestures pass it.
+    case providerQuota(provider: String, refresh: Bool = false)
     case settings
     case updatesCheck
     case updatesApply
@@ -304,6 +308,8 @@ enum Endpoint {
             return "/api/profile/create"
         case .providers:
             return "/api/providers"
+        case .providerQuota:
+            return "/api/provider/quota"
         case .settings:
             return "/api/settings"
         case .updatesCheck:
@@ -550,6 +556,12 @@ enum Endpoint {
             return items
         case let .insights(days):
             return [URLQueryItem(name: "days", value: "\(days)")]
+        case let .providerQuota(provider, refresh):
+            var items = [URLQueryItem(name: "provider", value: provider)]
+            if refresh {
+                items.append(URLQueryItem(name: "refresh", value: "1"))
+            }
+            return items
         case let .skillContent(name, file):
             var items = [URLQueryItem(name: "name", value: name)]
             if let file {

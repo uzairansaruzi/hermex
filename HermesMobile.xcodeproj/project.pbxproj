@@ -46,6 +46,10 @@
 		C04000000000000000000003 /* APIClient+Chat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000013 /* APIClient+Chat.swift */; };
 		C04000000000000000000004 /* APIClient+Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000014 /* APIClient+Workspace.swift */; };
 		C04000000000000000000005 /* APIClient+ServerPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000015 /* APIClient+ServerPanels.swift */; };
+		C0415B0000000000000001 /* APIClient+ProviderQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0415A0000000000000001 /* APIClient+ProviderQuota.swift */; };
+		C0415B0000000000000002 /* ProviderLimitsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0415A0000000000000002 /* ProviderLimitsCard.swift */; };
+		C0415B0000000000000003 /* APIClientProviderQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0415A0000000000000003 /* APIClientProviderQuotaTests.swift */; };
+		C0415B0000000000000004 /* ProviderLimitCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0415A0000000000000004 /* ProviderLimitCardTests.swift */; };
 		C04000000000000000000006 /* APIClient+Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000016 /* APIClient+Cron.swift */; };
 		C04000000000000000000007 /* APIClient+Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000017 /* APIClient+Memory.swift */; };
 		C04000000000000000000008 /* APIClient+Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000018 /* APIClient+Skills.swift */; };
@@ -490,6 +494,10 @@
 		C04000000000000000000013 /* APIClient+Chat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Chat.swift"; sourceTree = "<group>"; };
 		C04000000000000000000014 /* APIClient+Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Workspace.swift"; sourceTree = "<group>"; };
 		C04000000000000000000015 /* APIClient+ServerPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+ServerPanels.swift"; sourceTree = "<group>"; };
+		C0415A0000000000000001 /* APIClient+ProviderQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+ProviderQuota.swift"; sourceTree = "<group>"; };
+		C0415A0000000000000002 /* ProviderLimitsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsCard.swift; sourceTree = "<group>"; };
+		C0415A0000000000000003 /* APIClientProviderQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientProviderQuotaTests.swift; sourceTree = "<group>"; };
+		C0415A0000000000000004 /* ProviderLimitCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitCardTests.swift; sourceTree = "<group>"; };
 		C04000000000000000000016 /* APIClient+Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Cron.swift"; sourceTree = "<group>"; };
 		C04000000000000000000017 /* APIClient+Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Memory.swift"; sourceTree = "<group>"; };
 		C04000000000000000000018 /* APIClient+Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Skills.swift"; sourceTree = "<group>"; };
@@ -1083,6 +1091,8 @@
 				6809B8F1391248A4AA77C453 /* SlashCommandExecutorTests.swift */,
 				A710739233F64F4FA4C2B711 /* ComposerVoiceDraftComposerTests.swift */,
 				C5A0D8F5502048B6B9258B00 /* InsightsViewModelTests.swift */,
+				C0415A0000000000000004 /* ProviderLimitCardTests.swift */,
+				C0415A0000000000000003 /* APIClientProviderQuotaTests.swift */,
 				2BE8F2B38F094C4C9EB18300 /* SkillsViewModelTests.swift */,
 				26AB000000000000000000F3 /* APIClientProvidersTests.swift */,
 				26AB000000000000000000F4 /* ProvidersViewModelTests.swift */,
@@ -1122,6 +1132,7 @@
 				C04000000000000000000014 /* APIClient+Workspace.swift */,
 				C03120000000000000F002 /* APIClient+Git.swift */,
 				C04000000000000000000015 /* APIClient+ServerPanels.swift */,
+				C0415A0000000000000001 /* APIClient+ProviderQuota.swift */,
 				C04000000000000000000016 /* APIClient+Cron.swift */,
 				C04000000000000000000017 /* APIClient+Memory.swift */,
 				C04000000000000000000018 /* APIClient+Skills.swift */,
@@ -1555,6 +1566,7 @@
 				C0DE512E00000000000002205 /* UsageChartData.swift */,
 				C0DE512E00000000000002207 /* UsageChartCard.swift */,
 				C0DE512E00000000000002209 /* UsageTotalsGrid.swift */,
+				C0415A0000000000000002 /* ProviderLimitsCard.swift */,
 				C0DE512E0000000000000220B /* UsageModelRows.swift */,
 				931EC010A2D940B0E42287A4 /* InsightsViewModel.swift */,
 			);
@@ -1797,6 +1809,7 @@
 				1D1FF0000000000000000B33 /* SourceFileSurface.swift in Sources */,
 				C03140000000000000B001 /* GitBranchPickerView.swift in Sources */,
 				C04000000000000000000005 /* APIClient+ServerPanels.swift in Sources */,
+				C0415B0000000000000001 /* APIClient+ProviderQuota.swift in Sources */,
 				C04000000000000000000006 /* APIClient+Cron.swift in Sources */,
 				C04000000000000000000007 /* APIClient+Memory.swift in Sources */,
 				C04000000000000000000008 /* APIClient+Skills.swift in Sources */,
@@ -2004,6 +2017,7 @@
 				C0DE512E00000000000002206 /* UsageChartData.swift in Sources */,
 				C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */,
 				C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */,
+				C0415B0000000000000002 /* ProviderLimitsCard.swift in Sources */,
 				C0DE512E0000000000000220C /* UsageModelRows.swift in Sources */,
 				05814DEA5DE4690F730B1E15 /* InsightsViewModel.swift in Sources */,
 				26AB000000000000000000B1 /* ProvidersViewModel.swift in Sources */,
@@ -2131,6 +2145,8 @@
 				0D82B28493C6401D98DA9C0E /* SlashCommandExecutorTests.swift in Sources */,
 				A710739233F64F4FA4C2B701 /* ComposerVoiceDraftComposerTests.swift in Sources */,
 				C5A0D8F5502048B6B9258B01 /* InsightsViewModelTests.swift in Sources */,
+				C0415B0000000000000004 /* ProviderLimitCardTests.swift in Sources */,
+				C0415B0000000000000003 /* APIClientProviderQuotaTests.swift in Sources */,
 				2BE8F2B38F094C4C9EB18301 /* SkillsViewModelTests.swift in Sources */,
 				26AB000000000000000000B3 /* APIClientProvidersTests.swift in Sources */,
 				26AB000000000000000000B4 /* ProvidersViewModelTests.swift in Sources */,
