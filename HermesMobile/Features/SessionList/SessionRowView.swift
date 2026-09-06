@@ -61,11 +61,23 @@ struct SessionRowView: View {
 
     /// The state the row actually shows: what the polling screen resolved, or —
     /// for screens that do not poll — whatever the session alone can say.
+    ///
+    /// The fallback is off while the row is showing cached data: a cached
+    /// summary keeps whatever `isStreaming`/`activeStreamId` it was captured
+    /// with, so an offline row would otherwise claim the agent is still
+    /// working. Cached rows fall back to their relative time instead.
     static func effectiveAttentionState(
         for session: SessionSummary,
-        attentionState: SessionRowAttentionState?
+        attentionState: SessionRowAttentionState?,
+        isViewingCachedData: Bool
     ) -> SessionRowAttentionState? {
-        attentionState ?? SessionRowAttentionState.resolve(
+        if let attentionState {
+            return attentionState
+        }
+
+        guard !isViewingCachedData else { return nil }
+
+        return SessionRowAttentionState.resolve(
             session: session,
             hasPendingApproval: false,
             hasPendingClarification: false
@@ -79,7 +91,11 @@ struct SessionRowView: View {
     ) -> [String] {
         var labels: [String] = []
 
-        if let state = effectiveAttentionState(for: session, attentionState: attentionState) {
+        if let state = effectiveAttentionState(
+            for: session,
+            attentionState: attentionState,
+            isViewingCachedData: isViewingCachedData
+        ) {
             labels.append(state.accessibilityLabel)
         }
 
@@ -185,7 +201,11 @@ struct SessionRowView: View {
     }
 
     private var effectiveAttentionState: SessionRowAttentionState? {
-        Self.effectiveAttentionState(for: session, attentionState: attentionState)
+        Self.effectiveAttentionState(
+            for: session,
+            attentionState: attentionState,
+            isViewingCachedData: isViewingCachedData
+        )
     }
 
     private func attentionStateText(_ state: SessionRowAttentionState) -> some View {

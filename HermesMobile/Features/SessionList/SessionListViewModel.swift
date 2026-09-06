@@ -467,7 +467,9 @@ final class SessionListViewModel {
 
     /// One approval probe and one clarification probe per streaming row, on the
     /// tick the caller already runs. Sessions without an active stream are never
-    /// probed, and there is no separate polling loop or timer.
+    /// probed, and there is no separate polling loop or timer. A row's two
+    /// probes go out together, so N streaming rows cost about N round trips per
+    /// tick instead of 2N.
     private func refreshAttentionStates() async -> ActiveSessionStateRefreshResult {
         let streamingSessions = sessions.filter { SessionRowView.isActiveStreaming($0) }
         guard !streamingSessions.isEmpty else {
@@ -480,24 +482,37 @@ final class SessionListViewModel {
         for session in streamingSessions {
             guard let sessionID = Self.nonEmpty(session.sessionId) else { continue }
 
+            async let pendingApproval = client.approvalPending(sessionID: sessionID)
+            async let pendingClarification = client.clarifyPending(sessionID: sessionID)
+
+            // A failed probe is not evidence that nothing is pending, so it
+            // keeps what the last successful tick knew rather than letting the
+            // row fall back to "Working". The rule is deliberately simple: a
+            // previous `.approval` masks any clarification, so it carries no
+            // clarify knowledge, and a clarify probe that fails behind it
+            // resolves to nothing pending.
+            let previous = attentionStatesBySessionID[sessionID]
             var hasPendingApproval = false
             var hasPendingClarification = false
+            var probeErrors: [Error] = []
 
             do {
-                let response = try await client.approvalPending(sessionID: sessionID)
+                let response = try await pendingApproval
                 hasPendingApproval = Self.hasPending(response.pending)
             } catch {
-                guard !isCancellationError(error) else { return .unchanged }
-                if case APIError.unauthorized = error {
-                    lastError = error
-                    return .failed
-                }
+                probeErrors.append(error)
+                hasPendingApproval = previous == .approval
             }
 
             do {
-                let response = try await client.clarifyPending(sessionID: sessionID)
+                let response = try await pendingClarification
                 hasPendingClarification = Self.hasPending(response.pending)
             } catch {
+                probeErrors.append(error)
+                hasPendingClarification = previous == .input
+            }
+
+            for error in probeErrors {
                 guard !isCancellationError(error) else { return .unchanged }
                 if case APIError.unauthorized = error {
                     lastError = error

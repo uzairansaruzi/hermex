@@ -103,14 +103,41 @@ final class SessionRowAttentionStateTests: XCTestCase {
         let streaming = SessionSummary(sessionId: "s", activeStreamId: "stream-1")
 
         XCTAssertEqual(
-            SessionRowView.effectiveAttentionState(for: streaming, attentionState: nil),
+            SessionRowView.effectiveAttentionState(
+                for: streaming,
+                attentionState: nil,
+                isViewingCachedData: false
+            ),
             .working
         )
         XCTAssertNil(
             SessionRowView.effectiveAttentionState(
                 for: SessionSummary(sessionId: "s"),
-                attentionState: nil
+                attentionState: nil,
+                isViewingCachedData: false
             )
+        )
+    }
+
+    /// A cached summary keeps the stream fields it was captured with, so an
+    /// offline row must not say the agent is working.
+    func testCachedRowDoesNotFallBackToWorking() {
+        let streaming = SessionSummary(sessionId: "s", activeStreamId: "stream-1")
+
+        XCTAssertNil(
+            SessionRowView.effectiveAttentionState(
+                for: streaming,
+                attentionState: nil,
+                isViewingCachedData: true
+            )
+        )
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(for: streaming, isViewingCachedData: true),
+            ["Cached"]
+        )
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(for: streaming, isViewingCachedData: false),
+            ["Working"]
         )
     }
 
@@ -221,6 +248,43 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertTrue(viewModel.attentionStatesBySessionID.isEmpty)
     }
 
+    /// A probe that fails is not an answer. A tick that cannot reach the server
+    /// keeps the row's known Approval instead of demoting it to Working.
+    @MainActor
+    func testFailedApprovalProbeKeepsTheKnownApprovalState() async throws {
+        let approvalProbes = LockedCounter()
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path ?? "" {
+            case "/api/sessions":
+                return apiTestJSONResponse("""
+                {"sessions": [{"session_id": "waiting", "title": "Waiting", "active_stream_id": "stream-waiting"}]}
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(#"{"active": true}"#, for: request)
+            case "/api/approval/pending":
+                guard approvalProbes.increment() == 1 else {
+                    return apiTestJSONResponse(#"{"error": "boom"}"#, for: request, status: 500)
+                }
+
+                return apiTestJSONResponse("""
+                {"pending": {"approval_id": "ap-1"}, "pending_count": 1}
+                """, for: request)
+            case "/api/clarify/pending":
+                return apiTestJSONResponse(#"{"pending": null}"#, for: request)
+            default:
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+
+        await viewModel.load()
+        await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-waiting"])
+        XCTAssertEqual(viewModel.attentionStatesBySessionID, ["waiting": .approval])
+
+        await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-waiting"])
+
+        XCTAssertEqual(viewModel.attentionStatesBySessionID, ["waiting": .approval])
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -259,6 +323,22 @@ private final class RequestCounts: @unchecked Sendable {
         defer { lock.unlock() }
 
         return counts["\(path)|\(sessionID)"] ?? 0
+    }
+}
+
+/// Counts calls from the mock's loading queue, so a handler can answer the
+/// first probe differently from the ones after it.
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    /// Returns the new count, so `== 1` means "this was the first call".
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        value += 1
+        return value
     }
 }
 
