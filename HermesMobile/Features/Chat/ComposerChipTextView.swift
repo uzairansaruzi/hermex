@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 /// The composer's editor: a text view that draws known skill references as
 /// atomic chips while every value that leaves it stays the draft's own text.
-final class ComposerChipTextView: UITextView {
+final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     var isKeyboardSendEnabled = false
     var onKeyboardSend: () -> Void = {}
     var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
@@ -38,6 +38,12 @@ final class ComposerChipTextView: UITextView {
     /// and nothing but this editor knows that.
     private(set) var renderedTokens: [ComposerChipToken] = []
     private var renderedStyle: ChipRenderStyle?
+    private lazy var chipTapRecognizer: UITapGestureRecognizer = {
+        let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleChipTap))
+        recognizer.cancelsTouchesInView = false
+        recognizer.delegate = self
+        return recognizer
+    }()
 
     /// What the chips were drawn against. A chip is a baked image, so a change
     /// of appearance or text size has to redraw it even when the draft has not
@@ -52,12 +58,7 @@ final class ComposerChipTextView: UITextView {
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
 
-        // Rides alongside the text view's own tap rather than replacing it, so
-        // the caret still lands where the finger did and only a tap that
-        // actually covers a chip's glyph reports one.
-        let chipTap = UITapGestureRecognizer(target: self, action: #selector(handleChipTap))
-        chipTap.cancelsTouchesInView = false
-        addGestureRecognizer(chipTap)
+        addGestureRecognizer(chipTapRecognizer)
 
         registerForTraitChanges(
             [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
@@ -100,6 +101,24 @@ final class ComposerChipTextView: UITextView {
     }
 
     // MARK: - Chips
+
+    /// Keeps the chip recognizer out of UIKit's gesture arbitration unless the
+    /// touch begins on a rendered chip. Ordinary text touches remain entirely
+    /// owned by the text view's native editing recognizers.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === chipTapRecognizer else { return true }
+        guard !renderedTokens.isEmpty else { return false }
+        return chipToken(at: touch.location(in: self)) != nil
+    }
+
+    /// A chip tap reports its action while UIKit continues handling the same
+    /// touch for caret placement and selection.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === chipTapRecognizer || otherGestureRecognizer === chipTapRecognizer
+    }
 
     private func rebuildChipCatalog() {
         chipCatalog = ComposerChipCatalog(skills: chipSkills, filePaths: chipFilePaths)

@@ -381,6 +381,133 @@ final class ComposerChipDocumentTests: XCTestCase {
     }
 }
 
+@MainActor
+final class ComposerChipGestureTests: XCTestCase {
+    private final class TouchStub: UITouch {
+        private let point: CGPoint
+
+        init(point: CGPoint) {
+            self.point = point
+            super.init()
+        }
+
+        override func location(in view: UIView?) -> CGPoint {
+            point
+        }
+    }
+
+    private let skills = [
+        SkillSlashSuggestion(name: "ask-matt", category: nil, description: nil),
+        SkillSlashSuggestion(name: "babysit-pr", category: nil, description: nil)
+    ]
+
+    func testPlainTextDoesNotParticipateInChipRecognition() throws {
+        let textView = makeTextView(text: "ordinary editable text")
+        let recognizer = try chipRecognizer(in: textView)
+        let textRange = try XCTUnwrap(textView.textRange(from: NSRange(location: 2, length: 1)))
+        let textPoint = center(of: textView.firstRect(for: textRange))
+
+        XCTAssertTrue(textView.renderedTokens.isEmpty)
+        XCTAssertFalse(textView.gestureRecognizer(recognizer, shouldReceive: TouchStub(point: textPoint)))
+    }
+
+    func testOnlyTheChipGlyphParticipatesInChipRecognition() throws {
+        let textView = makeTextView(text: "/ask-matt editable text")
+        let recognizer = try chipRecognizer(in: textView)
+        let chip = try XCTUnwrap(chipRanges(in: textView).first)
+
+        XCTAssertTrue(
+            textView.gestureRecognizer(recognizer, shouldReceive: TouchStub(point: center(of: chip.rect)))
+        )
+
+        let spaceRange = try XCTUnwrap(textView.textRange(from: NSRange(location: chip.range.upperBound, length: 1)))
+        XCTAssertFalse(
+            textView.gestureRecognizer(
+                recognizer,
+                shouldReceive: TouchStub(point: center(of: textView.firstRect(for: spaceRange)))
+            )
+        )
+    }
+
+    func testMultipleWrappedChipsUseTheirOwnGlyphBounds() throws {
+        let textView = makeTextView(
+            width: 190,
+            text: "/ask-matt some text that wraps onto another line before /babysit-pr trailing text"
+        )
+        let recognizer = try chipRecognizer(in: textView)
+        let chips = chipRanges(in: textView)
+
+        XCTAssertEqual(chips.count, 2)
+        XCTAssertNotEqual(chips[0].rect.minY, chips[1].rect.minY)
+        XCTAssertTrue(
+            textView.gestureRecognizer(recognizer, shouldReceive: TouchStub(point: center(of: chips[0].rect)))
+        )
+        XCTAssertTrue(
+            textView.gestureRecognizer(recognizer, shouldReceive: TouchStub(point: center(of: chips[1].rect)))
+        )
+
+        let betweenRange = try XCTUnwrap(textView.textRange(from: NSRange(location: 2, length: 1)))
+        XCTAssertFalse(
+            textView.gestureRecognizer(
+                recognizer,
+                shouldReceive: TouchStub(point: center(of: textView.firstRect(for: betweenRange)))
+            )
+        )
+    }
+
+    func testChipRecognizerAllowsUIKitEditingRecognizersAlongsideIt() throws {
+        let textView = makeTextView(text: "/ask-matt editable text")
+        let recognizer = try chipRecognizer(in: textView)
+        let editingRecognizer = UITapGestureRecognizer()
+
+        XCTAssertTrue(recognizer.delegate === textView)
+        XCTAssertTrue(
+            textView.gestureRecognizer(
+                recognizer,
+                shouldRecognizeSimultaneouslyWith: editingRecognizer
+            )
+        )
+    }
+
+    private func makeTextView(width: CGFloat = 320, text: String) -> ComposerChipTextView {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: width, height: 240))
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.chipSkills = skills
+        textView.replaceDocument(with: text)
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        textView.layoutIfNeeded()
+        return textView
+    }
+
+    private func chipRecognizer(in textView: ComposerChipTextView) throws -> UITapGestureRecognizer {
+        try XCTUnwrap(
+            textView.gestureRecognizers?
+                .compactMap { $0 as? UITapGestureRecognizer }
+                .first { $0.delegate === textView }
+        )
+    }
+
+    private func chipRanges(in textView: ComposerChipTextView) -> [(range: NSRange, rect: CGRect)] {
+        var chips: [(range: NSRange, rect: CGRect)] = []
+        textView.textStorage.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: textView.textStorage.length)
+        ) { attachment, range, _ in
+            guard attachment is ComposerChipAttachment,
+                  let textRange = textView.textRange(from: range)
+            else {
+                return
+            }
+            chips.append((range, textView.firstRect(for: textRange)))
+        }
+        return chips
+    }
+
+    private func center(of rect: CGRect) -> CGPoint {
+        CGPoint(x: rect.midX, y: rect.midY)
+    }
+}
+
 final class ComposerDropRouteTests: XCTestCase {
     func testRoutesAMixOfFilesAndImages() throws {
         let route = try XCTUnwrap(
