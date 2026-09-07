@@ -59,6 +59,7 @@ struct SessionListView: View {
     @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
     @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
     @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
+    @AppStorage(SectionVisibilitySettings.filesKey) private var showsFilesSection = true
     @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
     @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
     // Per-server key (#19): the CLI toggle mirrors the active server's
@@ -428,6 +429,8 @@ struct SessionListView: View {
                 MemoryView(server: server, onAPIError: authManager.handleAPIError)
             case .insights:
                 InsightsView(server: server, onAPIError: authManager.handleAPIError)
+            case .files:
+                FilesDestinationView(server: server, viewModel: viewModel, onAPIError: authManager.handleAPIError)
             case .archived:
                 ArchivedSessionsView(server: server, onAPIError: authManager.handleAPIError)
             case .scheduled:
@@ -771,6 +774,7 @@ struct SessionListView: View {
             skills: showsSkillsSection,
             memory: showsMemorySection,
             insights: showsInsightsSection,
+            files: showsFilesSection,
             activeProfile: showsActiveProfileSection,
             projects: showsProjectsSection
         )
@@ -1484,11 +1488,39 @@ enum SessionListUtilityDestination: Hashable, Identifiable {
     case skills
     case memory
     case insights
+    /// Workspace file browser, reachable from the main screen. The WebUI file
+    /// API is session-scoped, so the browser binds to the most recent usable
+    /// session.
+    case files
     /// Archived sessions screen (issue #17), also reachable from Settings.
     case archived
     case scheduled
 
     var id: Self { self }
+}
+
+/// Main-screen Files entry: the workspace file browser bound to the most
+/// recent usable session. The WebUI file API is session-scoped (there is no
+/// session-less file listing yet), so the browser needs a session to read
+/// through; on single-workspace servers every session shows the same files.
+private struct FilesDestinationView: View {
+    let server: URL
+    let viewModel: SessionListViewModel
+    let onAPIError: (Error) -> Void
+
+    var body: some View {
+        Group {
+            if let session = viewModel.mostRecentUsableSession {
+                FileBrowserView(session: session, server: server, onAPIError: onAPIError)
+            } else {
+                ContentUnavailableView {
+                    Label("No Session Yet", systemImage: "folder")
+                } description: {
+                    Text("Files browses your server's workspace through a session. Start a chat first, then open Files from here.")
+                }
+            }
+        }
+    }
 }
 
 private struct SessionSearchTaskID: Hashable {
