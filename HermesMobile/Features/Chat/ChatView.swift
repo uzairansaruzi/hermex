@@ -292,6 +292,7 @@ struct ChatView: View {
     let onConversationStarted: () -> Void
 
     @State private var draftMessage = ""
+    @State private var draftQuotes: [ComposerQuote] = []
     @State private var draftRevision = 0
     @State private var isScrolledNearBottom = true
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
@@ -412,6 +413,7 @@ struct ChatView: View {
     private var messageComposer: some View {
         MessageComposerView(
             draftMessage: persistedDraftBinding,
+            quotes: persistedQuotesBinding,
             isFocused: $composerIsFocused,
             isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote,
             isCompressingSession: viewModel.isCompressingSession,
@@ -1424,6 +1426,7 @@ struct ChatView: View {
             onPreviewTranscriptMedia: { reference in
                 presentTranscriptMediaPreview(reference)
             },
+            onAskHermex: addSelectedPassageToDraft,
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
             },
@@ -1847,11 +1850,17 @@ struct ChatView: View {
     }
 
     private func sendDraftMessage() async {
-        let submittedDraft = draftMessage
+        let submittedContent = ComposerDraftContent(text: draftMessage, quotes: draftQuotes)
+        let submittedDraft = submittedContent.text
+        let outboundMessage = ComposerQuoteMessageFormatter.message(
+            text: submittedDraft,
+            quotes: submittedContent.quotes
+        )
         let submittedDraftRevision = draftRevision
         let shouldRestoreFocusAfterSend = composerIsFocused
 
-        if submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
+        if submittedContent.quotes.isEmpty,
+           submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
             let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
             // `/clear` wipes the conversation on the server, so it always asks
             // first. The draft stays in the composer until the user confirms.
@@ -1889,20 +1898,22 @@ struct ChatView: View {
         if viewModel.activeStreamID != nil {
             prepareTranscriptForExplicitSend()
             let result = await viewModel.submitStreamingMessage(
-                submittedDraft,
+                outboundMessage,
                 behavior: StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue)
             )
             handleSlashExecutionResult(
                 result,
                 parsedCommand: SlashCommandCatalog.command(named: streamingSendBehaviorCommandName),
                 submittedDraft: submittedDraft,
+                submittedQuotes: submittedContent.quotes,
                 submittedDraftRevision: submittedDraftRevision,
                 consumesDraft: result.isSuccessfulSubmission
             )
             didStart = result.isSuccessfulSubmission
         } else {
             didStart = await sendStandardMessage(
-                submittedDraft,
+                submittedContent,
+                outboundMessage: outboundMessage,
                 submittedDraftRevision: submittedDraftRevision
             )
         }
@@ -1941,14 +1952,15 @@ struct ChatView: View {
     }
 
     private func sendStandardMessage(
-        _ submittedDraft: String,
+        _ submittedContent: ComposerDraftContent,
+        outboundMessage: String,
         submittedDraftRevision: Int
     ) async -> Bool {
-        // Attachment-only sends (empty text) flow through; the view model
-        // synthesize the message text. `draftStore.setDraft("")` below is the
-        // correct end state for them: the draft is empty after sending.
+        // Attachment-only sends (empty text and quotes) flow through; the view
+        // model synthesizes their message text. Clearing the captured composer
+        // content below is the correct end state after sending.
         let hasStagedAttachments = !viewModel.pendingAttachments.isEmpty
-        guard !submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasStagedAttachments else {
+        guard !outboundMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasStagedAttachments else {
             return false
         }
 
@@ -1962,21 +1974,24 @@ struct ChatView: View {
             draftRecords: lastSyncedDraftAttachments,
             stagedAttachmentIDs: Set(viewModel.pendingAttachments.map(\.id))
         )
-        draftStore.setDraft(submittedDraft, for: draftKey)
+        draftStore.setContent(submittedContent, for: draftKey)
         draftMessage = ""
+        draftQuotes = []
 
-        let didStart = await viewModel.sendMessage(submittedDraft, modelContext: modelContext)
+        let didStart = await viewModel.sendMessage(outboundMessage, modelContext: modelContext)
         if didStart {
             onConversationStarted()
             draftAttachmentsPendingRetry = sendReconciliation.retained
         }
-        draftMessage = draftStore.resolveSubmission(
-            submittedText: submittedDraft,
-            currentText: draftMessage,
+        let resolvedContent = draftStore.resolveSubmission(
+            submitted: submittedContent,
+            current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),
             didStart: didStart,
             draftWasEdited: draftRevision != submittedDraftRevision,
             for: draftKey
         )
+        draftMessage = resolvedContent.text
+        draftQuotes = resolvedContent.quotes
         if didStart {
             // `resolveSubmission` cleared the draft's attachment records; put
             // back the ones the send never carried so they retry on a later
@@ -1992,6 +2007,7 @@ struct ChatView: View {
         _ result: SlashCommandExecutionResult,
         parsedCommand: SlashCommand?,
         submittedDraft: String,
+        submittedQuotes: [ComposerQuote] = [],
         submittedDraftRevision: Int,
         consumesDraft: Bool = true
     ) {
@@ -2010,7 +2026,7 @@ struct ChatView: View {
             }
             if consumesDraft {
                 reconcileConsumedDraft(
-                    submittedDraft,
+                    ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
                     submittedDraftRevision: submittedDraftRevision
                 )
             }
@@ -2018,7 +2034,7 @@ struct ChatView: View {
             forkedSession = session
             if consumesDraft {
                 reconcileConsumedDraft(
-                    submittedDraft,
+                    ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
                     submittedDraftRevision: submittedDraftRevision
                 )
             }
@@ -2026,7 +2042,7 @@ struct ChatView: View {
             viewModel.setSendErrorMessage(friendlyMessage)
             if consumesDraft {
                 reconcileConsumedDraft(
-                    submittedDraft,
+                    ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
                     submittedDraftRevision: submittedDraftRevision
                 )
             }
@@ -2071,7 +2087,24 @@ struct ChatView: View {
             set: { newValue in
                 draftMessage = newValue
                 draftRevision &+= 1
-                draftStore.setDraft(newValue, for: draftKey)
+                draftStore.setContent(
+                    ComposerDraftContent(text: newValue, quotes: draftQuotes),
+                    for: draftKey
+                )
+            }
+        )
+    }
+
+    private var persistedQuotesBinding: Binding<[ComposerQuote]> {
+        Binding(
+            get: { draftQuotes },
+            set: { newValue in
+                draftQuotes = newValue
+                draftRevision &+= 1
+                draftStore.setContent(
+                    ComposerDraftContent(text: draftMessage, quotes: newValue),
+                    for: draftKey
+                )
             }
         )
     }
@@ -2079,8 +2112,12 @@ struct ChatView: View {
     private func hydrateDraftIfNeeded() async {
         guard !didHydrateDraft else { return }
         let textBeforeHydration = draftMessage
+        let quotesBeforeHydration = draftQuotes
         let persistedDraft = await draftStore.draft(for: draftKey)
-        guard !Task.isCancelled, draftMessage == textBeforeHydration else { return }
+        guard !Task.isCancelled,
+              draftMessage == textBeforeHydration,
+              draftQuotes == quotesBeforeHydration
+        else { return }
 
         if textBeforeHydration.isEmpty {
             if let persistedDraft, !persistedDraft.text.isEmpty {
@@ -2088,6 +2125,11 @@ struct ChatView: View {
             }
         } else {
             draftStore.setDraft(textBeforeHydration, for: draftKey)
+        }
+        if quotesBeforeHydration.isEmpty {
+            draftQuotes = persistedDraft?.quotes ?? []
+        } else {
+            draftStore.setQuotes(quotesBeforeHydration, for: draftKey)
         }
         didHydrateDraft = true
 
@@ -2247,15 +2289,23 @@ struct ChatView: View {
     }
 
     private func reconcileConsumedDraft(
-        _ submittedDraft: String,
+        _ submittedContent: ComposerDraftContent,
         submittedDraftRevision: Int
     ) {
-        draftMessage = draftStore.resolveConsumedInput(
-            submittedText: submittedDraft,
-            currentText: draftMessage,
+        let resolvedContent = draftStore.resolveConsumedInput(
+            submitted: submittedContent,
+            current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),
             draftWasEdited: draftRevision != submittedDraftRevision,
             for: draftKey
         )
+        draftMessage = resolvedContent.text
+        draftQuotes = resolvedContent.quotes
+    }
+
+    private func addSelectedPassageToDraft(_ passage: String) {
+        guard !passage.isEmpty else { return }
+        persistedQuotesBinding.wrappedValue = draftQuotes + [ComposerQuote(text: passage)]
+        requestComposerFocusIfPossible()
     }
 
     private func flushDraftsBestEffort() {

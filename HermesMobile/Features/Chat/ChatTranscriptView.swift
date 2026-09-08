@@ -73,6 +73,7 @@ struct ChatTranscriptView: View {
     let onScrollToLatestContent: (ScrollViewProxy, Bool) -> Void
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
@@ -310,6 +311,7 @@ struct ChatTranscriptView: View {
                     shouldRenderMessageRow: shouldRenderMessageRow,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
+                    onAskHermex: onAskHermex,
                     onToggleListening: onToggleListening,
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
@@ -553,6 +555,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let shouldRenderMessageRow: (ChatMessage) -> Bool
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
@@ -672,6 +675,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
+                    onAskHermex: onAskHermex,
                     onToggleListening: onToggleListening,
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
@@ -759,6 +763,7 @@ private struct ChatTranscriptMessageRow: View {
     let transcriptMediaCacheNamespace: String
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
@@ -818,6 +823,7 @@ private struct ChatTranscriptMessageRow: View {
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,
             isStreaming: isStreaming,
             liveTokensPerSecond: liveTokensPerSecond,
+            onAskHermex: onAskHermex,
             contextMenu: isUserMessage ? actionMenu : nil
         )
     }

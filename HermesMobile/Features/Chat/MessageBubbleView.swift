@@ -23,6 +23,7 @@ struct MessageBubbleView: View {
     let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
     let liveTokensPerSecond: Double?
+    let onAskHermex: (String) -> Void
     /// Long-press actions, attached to the message content only so the empty
     /// gutter beside a user bubble does not open its menu.
     let contextMenu: ChatMessageActionMenu?
@@ -39,6 +40,7 @@ struct MessageBubbleView: View {
         onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
         isStreaming: Bool = false,
         liveTokensPerSecond: Double? = nil,
+        onAskHermex: @escaping (String) -> Void = { _ in },
         contextMenu: ChatMessageActionMenu? = nil
     ) {
         self.message = message
@@ -52,6 +54,7 @@ struct MessageBubbleView: View {
         self.onPreviewTranscriptMedia = onPreviewTranscriptMedia
         self.isStreaming = isStreaming
         self.liveTokensPerSecond = liveTokensPerSecond
+        self.onAskHermex = onAskHermex
         self.contextMenu = contextMenu
     }
 
@@ -106,7 +109,7 @@ struct MessageBubbleView: View {
             if isStreaming {
                 assistantContent(segments: segments)
             } else {
-                ResponseTextSelection(identity: messageText) {
+                ResponseTextSelection(identity: messageText, onAskHermex: onAskHermex) {
                     assistantContent(segments: segments)
                 }
             }

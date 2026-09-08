@@ -13,6 +13,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// Reports a tap that landed on a chip's glyph. Every chip reports; what a
     /// tap means belongs to the composer.
     var onTapChip: (ComposerChipToken) -> Void = { _ in }
+    var onTapQuote: (ComposerQuote) -> Void = { _ in }
+    var onRemoveQuote: (UUID) -> Void = { _ in }
+
+    /// Explicit quoted passages are zero-source chips placed before the typed
+    /// draft. Their ids and full text live outside the editor document.
+    var quotes: [ComposerQuote] = []
 
     /// The skills whose references are drawn as chips.
     var chipSkills: [SkillSlashSuggestion] = [] {
@@ -37,6 +43,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// was drawn before — a trailing chip whose space was deleted stays a chip,
     /// and nothing but this editor knows that.
     private(set) var renderedTokens: [ComposerChipToken] = []
+    private(set) var renderedQuotes: [ComposerQuote] = []
     private var renderedStyle: ChipRenderStyle?
     private lazy var chipTapRecognizer: UITapGestureRecognizer = {
         let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleChipTap))
@@ -53,6 +60,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         let userInterfaceStyle: UIUserInterfaceStyle
         let accessibilityContrast: UIAccessibilityContrast
         let isRightToLeft: Bool
+        let quoteMaximumWidth: CGFloat
     }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
@@ -77,9 +85,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     // MARK: - Draft text
 
-    /// The draft this editor stands for: every chip contributes the reference it
-    /// was made from. This, never the on-screen text, is what is sent, saved,
-    /// copied, and matched against a slash trigger.
+    /// The typed portion of the draft: every skill or file chip contributes the
+    /// reference it was made from, while quote chips contribute nothing. Quote
+    /// metadata is combined with this text by the owning composer when it saves
+    /// or sends; copy and slash-trigger matching use this source text directly.
     var sourceText: String {
         attributedText.composerSourceText
     }
@@ -92,6 +101,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             guard selectedRange != displayRange else { return }
             selectedRange = displayRange
         }
+    }
+
+    /// UIKit may place a caret on the zero-source quote prefix after a chip tap.
+    /// Map it back through draft coordinates so typing always starts after the
+    /// quote metadata.
+    func normalizeSelectionAroundQuoteMetadata() {
+        let draftSelection = sourceSelection
+        sourceSelection = draftSelection
     }
 
     /// The on-screen range a draft range covers, or `nil` when it does not land
@@ -107,8 +124,8 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// owned by the text view's native editing recognizers.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard gestureRecognizer === chipTapRecognizer else { return true }
-        guard !renderedTokens.isEmpty else { return false }
-        return chipToken(at: touch.location(in: self)) != nil
+        guard !renderedTokens.isEmpty || !renderedQuotes.isEmpty else { return false }
+        return tappableChip(at: touch.location(in: self)) != nil
     }
 
     /// A chip tap reports its action while UIKit continues handling the same
@@ -126,11 +143,21 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     @objc private func handleChipTap(_ recognizer: UITapGestureRecognizer) {
         guard recognizer.state == .ended,
-              let token = chipToken(at: recognizer.location(in: self))
+              let chip = tappableChip(at: recognizer.location(in: self))
         else {
             return
         }
-        onTapChip(token)
+        switch chip {
+        case let .reference(token):
+            onTapChip(token)
+        case let .quote(quote):
+            onTapQuote(quote)
+        }
+    }
+
+    private enum TappableChip {
+        case reference(ComposerChipToken)
+        case quote(ComposerQuote)
     }
 
     /// The chip whose glyph covers `point`, or `nil`.
@@ -139,7 +166,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// both sides of it are candidates; the glyph's own rectangle is what
     /// decides, which is what keeps a tap in the space beside a chip from
     /// counting as a tap on it.
-    private func chipToken(at point: CGPoint) -> ComposerChipToken? {
+    private func tappableChip(at point: CGPoint) -> TappableChip? {
         guard let position = closestPosition(to: point) else { return nil }
         let caret = offset(from: beginningOfDocument, to: position)
 
@@ -148,13 +175,18 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
                 .attachment,
                 at: index,
                 effectiveRange: nil
-            ) as? ComposerChipAttachment,
+            ) as? NSTextAttachment,
                 let range = textRange(from: NSRange(location: index, length: 1)),
                 firstRect(for: range).contains(point)
             else {
                 continue
             }
-            return attachment.token
+            if let chip = attachment as? ComposerChipAttachment {
+                return .reference(chip.token)
+            }
+            if let quote = attachment as? ComposerQuoteAttachment {
+                return .quote(quote.quote)
+            }
         }
 
         return nil
@@ -173,9 +205,9 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             catalog: chipCatalog,
             preservingTrailing: renderedTokens
         )
-        guard tokens != renderedTokens || currentStyle != renderedStyle else { return }
+        guard tokens != renderedTokens || quotes != renderedQuotes || currentStyle != renderedStyle else { return }
 
-        render(source: source, tokens: tokens, sourceSelection: sourceSelection)
+        render(source: source, tokens: tokens, quotes: quotes, sourceSelection: sourceSelection)
     }
 
     /// Replaces the whole draft, chips and all. The fallback for an edit the
@@ -189,6 +221,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         render(
             source: source,
             tokens: tokens,
+            quotes: quotes,
             sourceSelection: NSRange(location: (source as NSString).length, length: 0)
         )
     }
@@ -213,7 +246,8 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
             accessibilityContrast: traitCollection.accessibilityContrast,
-            isRightToLeft: isRightToLeft
+            isRightToLeft: isRightToLeft,
+            quoteMaximumWidth: max(120, min(260, bounds.width * 0.72))
         )
     }
 
@@ -228,7 +262,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         ]
     }
 
-    private func render(source: String, tokens: [ComposerChipToken], sourceSelection: NSRange) {
+    private func render(
+        source: String,
+        tokens: [ComposerChipToken],
+        quotes: [ComposerQuote],
+        sourceSelection: NSRange
+    ) {
         let font = self.font ?? .preferredFont(forTextStyle: .body)
         let textColor = self.textColor ?? .label
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
@@ -236,6 +275,13 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         let text = source as NSString
 
         let document = NSMutableAttributedString()
+        for quote in quotes {
+            document.append(quoteString(for: quote, metrics: metrics, attributes: attributes))
+            document.append(NSAttributedString(
+                string: " ",
+                attributes: attributes.merging([.composerQuoteSpacer: true]) { _, new in new }
+            ))
+        }
         var cursor = 0
         for token in tokens {
             if token.range.location > cursor {
@@ -264,6 +310,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         self.font = font
         self.textColor = textColor
         renderedTokens = tokens
+        renderedQuotes = quotes
         renderedStyle = currentStyle
         self.sourceSelection = Self.clamp(sourceSelection, toLengthOf: source)
         restoreTypingAttributes()
@@ -296,6 +343,31 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return chip
     }
 
+    private func quoteString(
+        for quote: ComposerQuote,
+        metrics: ComposerChipMetrics,
+        attributes: [NSAttributedString.Key: Any]
+    ) -> NSAttributedString {
+        let image = ComposerChipRenderer.image(
+            label: quote.preview,
+            icon: .symbol("quote.opening"),
+            metrics: metrics,
+            traits: traitCollection,
+            isRightToLeft: isRightToLeft,
+            maximumWidth: currentStyle.quoteMaximumWidth,
+            usesAccentIcon: true
+        )
+        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let attachment = ComposerQuoteAttachment(
+            quote: quote,
+            image: image,
+            baselineOffset: floor((font.capHeight - image.size.height) / 2)
+        )
+        let chip = NSMutableAttributedString(attachment: attachment)
+        chip.addAttributes(attributes, range: NSRange(location: 0, length: chip.length))
+        return chip
+    }
+
     private static func clamp(_ range: NSRange, toLengthOf text: String) -> NSRange {
         let length = (text as NSString).length
         let location = min(max(0, range.location), length)
@@ -307,6 +379,13 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// A chip deletes as one thing: backspacing next to it removes the whole
     /// reference rather than the last character of a name the user cannot see.
     override func deleteBackward() {
+        if selectedRange.length == 0,
+           sourceSelection.location == 0,
+           let quote = renderedQuotes.last {
+            onRemoveQuote(quote.id)
+            return
+        }
+
         guard selectedRange.length == 0, selectedRange.location > 0 else {
             super.deleteBackward()
             return

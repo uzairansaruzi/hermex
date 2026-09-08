@@ -67,14 +67,16 @@ struct ChatDraftSettings: Equatable, Sendable {
 }
 
 /// Everything a composer context restores after navigation, termination, or an
-/// abandoned new chat: typed text, staged attachments, and effective settings.
+/// abandoned new chat: typed text, quoted passages, staged attachments, and
+/// effective settings.
 struct ChatDraft: Equatable, Sendable {
     var text = ""
+    var quotes: [ComposerQuote] = []
     var attachments: [ChatDraftAttachment] = []
     var settings: ChatDraftSettings?
 
     var isEmpty: Bool {
-        text.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true)
+        text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true)
     }
 }
 
@@ -213,6 +215,51 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         }
     }
 
+    /// Per-element tolerance keeps one damaged quote from discarding the rest
+    /// of the draft.
+    private struct FailableQuote: Codable {
+        let value: QuoteRecord?
+
+        init(value: QuoteRecord?) {
+            self.value = value
+        }
+
+        init(from decoder: Decoder) throws {
+            value = try? QuoteRecord(from: decoder)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            guard let value else {
+                var container = encoder.singleValueContainer()
+                try container.encodeNil()
+                return
+            }
+            try value.encode(to: encoder)
+        }
+    }
+
+    private struct QuoteRecord: Codable {
+        let id: String?
+        let text: String?
+
+        init(_ quote: ComposerQuote) {
+            id = quote.id.uuidString
+            text = quote.text
+        }
+
+        var quote: ComposerQuote? {
+            guard
+                let idString = id?.trimmingCharacters(in: .whitespacesAndNewlines),
+                let id = UUID(uuidString: idString),
+                let text,
+                !text.isEmpty
+            else {
+                return nil
+            }
+            return ComposerQuote(id: id, text: text)
+        }
+    }
+
     private struct AttachmentRecord: Codable {
         let id: String?
         let name: String?
@@ -305,6 +352,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         let context: String?
         let sessionID: String?
         let text: String?
+        let quotes: [FailableQuote]?
         let attachments: [FailableAttachment]?
         let settings: SettingsRecord?
 
@@ -313,6 +361,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case context
             case sessionID
             case text
+            case quotes
             case attachments
             case settings
         }
@@ -328,6 +377,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 sessionID = nil
             }
             text = draft.text
+            quotes = draft.quotes.map { FailableQuote(value: QuoteRecord($0)) }
             attachments = draft.attachments.map { FailableAttachment(value: AttachmentRecord($0)) }
             settings = draft.settings.map { SettingsRecord($0) }
         }
@@ -340,6 +390,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             context = (try? container.decodeIfPresent(String.self, forKey: .context)) ?? nil
             sessionID = (try? container.decodeIfPresent(String.self, forKey: .sessionID)) ?? nil
             text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? nil
+            quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
             settings = (try? container.decodeIfPresent(SettingsRecord.self, forKey: .settings)) ?? nil
         }
@@ -371,6 +422,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
 
             let draft = ChatDraft(
                 text: text ?? "",
+                quotes: (quotes ?? []).compactMap(\.value?.quote),
                 attachments: (attachments ?? []).compactMap(\.value?.attachment),
                 settings: settings?.settings
             )
@@ -379,11 +431,10 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         }
     }
 
-    private static let currentVersion = 2
-    /// Version 1 documents carry text-only records; they decode through the
-    /// same schema (attachments/settings are optional fields) so upgrading
-    /// never loses saved drafts.
-    private static let readableVersions: Set<Int> = [1, currentVersion]
+    private static let currentVersion = 3
+    /// Older documents decode through the same schema because every field added
+    /// after typed text is optional.
+    private static let readableVersions: Set<Int> = [1, 2, currentVersion]
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile",
         category: "ChatDraftStore"
@@ -498,6 +549,21 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.text = text }
     }
 
+    /// Replaces explicit quoted passages without disturbing typed text,
+    /// attachments, or settings.
+    func setQuotes(_ quotes: [ComposerQuote], for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { $0.quotes = quotes }
+    }
+
+    func setContent(_ content: ComposerDraftContent, for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.text = content.text
+            draft.quotes = content.quotes
+        }
+    }
+
     /// Replaces the draft's staged-attachment records without disturbing its
     /// text or settings.
     func setAttachments(_ attachments: [ChatDraftAttachment], for key: ChatDraftKey) {
@@ -530,10 +596,45 @@ final class ChatDraftStore {
         await discardDrafts(matching: { $0.serverID == serverID })
     }
 
-    /// Clears the draft's typed text. Attachments and settings are managed
-    /// separately (attachments sync from the composer observationally).
+    /// Clears the draft's user-authored content. Attachments and settings are
+    /// managed separately (attachments sync from the composer observationally).
     func clearDraft(for key: ChatDraftKey) {
-        setDraft("", for: key)
+        setContent(.empty, for: key)
+    }
+
+    func resolveSubmission(
+        submitted: ComposerDraftContent,
+        current: ComposerDraftContent,
+        didStart: Bool,
+        draftWasEdited: Bool,
+        for key: ChatDraftKey
+    ) -> ComposerDraftContent {
+        if didStart {
+            // A started send consumed any staged attachments, even when the
+            // user kept editing the composer during the request.
+            updateDraft(for: key) { $0.attachments = [] }
+        }
+
+        guard !draftWasEdited else { return current }
+
+        if didStart {
+            if current.isEmpty {
+                // Content is consumed by the accepted send; applicable settings
+                // stay so the context keeps them.
+                updateDraft(for: key) { draft in
+                    draft.text = ""
+                    draft.quotes = []
+                    draft.attachments = []
+                }
+            }
+            return current
+        }
+
+        if current.isEmpty {
+            setContent(submitted, for: key)
+            return submitted
+        }
+        return current
     }
 
     func resolveSubmission(
@@ -543,31 +644,24 @@ final class ChatDraftStore {
         draftWasEdited: Bool,
         for key: ChatDraftKey
     ) -> String {
-        if didStart {
-            // A started send consumed any staged attachments, even when the
-            // user kept typing during the request.
-            updateDraft(for: key) { $0.attachments = [] }
-        }
+        resolveSubmission(
+            submitted: ComposerDraftContent(text: submittedText, quotes: []),
+            current: ComposerDraftContent(text: currentText, quotes: []),
+            didStart: didStart,
+            draftWasEdited: draftWasEdited,
+            for: key
+        ).text
+    }
 
-        guard !draftWasEdited else { return currentText }
-
-        if didStart {
-            if currentText.isEmpty {
-                // Content is consumed by the accepted send; applicable settings
-                // stay so the context keeps them.
-                updateDraft(for: key) { draft in
-                    draft.text = ""
-                    draft.attachments = []
-                }
-            }
-            return currentText
-        }
-
-        if currentText.isEmpty {
-            setDraft(submittedText, for: key)
-            return submittedText
-        }
-        return currentText
+    func resolveConsumedInput(
+        submitted: ComposerDraftContent,
+        current: ComposerDraftContent,
+        draftWasEdited: Bool,
+        for key: ChatDraftKey
+    ) -> ComposerDraftContent {
+        guard !draftWasEdited, current == submitted else { return current }
+        clearDraft(for: key)
+        return .empty
     }
 
     func resolveConsumedInput(
@@ -576,13 +670,16 @@ final class ChatDraftStore {
         draftWasEdited: Bool,
         for key: ChatDraftKey
     ) -> String {
-        guard !draftWasEdited, currentText == submittedText else { return currentText }
-        clearDraft(for: key)
-        return ""
+        resolveConsumedInput(
+            submitted: ComposerDraftContent(text: submittedText, quotes: []),
+            current: ComposerDraftContent(text: currentText, quotes: []),
+            draftWasEdited: draftWasEdited,
+            for: key
+        ).text
     }
 
-    /// Moves the entire draft object (text, attachments, settings) between
-    /// contexts, e.g. a new-chat draft into its created session.
+    /// Moves the entire draft object (text, quotes, attachments, settings)
+    /// between contexts, e.g. a new-chat draft into its created session.
     @discardableResult
     func moveDraft(from sourceKey: ChatDraftKey, to targetKey: ChatDraftKey) -> ChatDraft {
         markChangedBeforeLoad(sourceKey)

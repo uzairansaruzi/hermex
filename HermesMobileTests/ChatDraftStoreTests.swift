@@ -4,6 +4,162 @@ import XCTest
 
 @MainActor
 final class ChatDraftStoreTests: XCTestCase {
+    func testQuotesAreOrderedAndIsolatedByServerAndSession() async throws {
+        let persistence = RecordingChatDraftPersistence()
+        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
+        let first = ChatDraftKey.session(
+            server: URL(string: "https://one.example")!,
+            sessionID: "shared"
+        )
+        let second = ChatDraftKey.session(
+            server: URL(string: "https://two.example")!,
+            sessionID: "shared"
+        )
+        let otherSession = ChatDraftKey.session(
+            server: URL(string: "https://one.example")!,
+            sessionID: "other"
+        )
+        let repeated = ComposerQuote(text: "Same passage")
+        let firstQuotes = [repeated, ComposerQuote(text: "Same passage")]
+        let attachment = Self.sampleAttachment()
+        let settings = ChatDraftSettings(modelID: "model-x", workspacePath: "/repo")
+
+        store.setDraft("Keep text", for: first)
+        store.setAttachments([attachment], for: first)
+        store.setSettings(settings, for: first)
+        store.setQuotes(firstQuotes, for: first)
+        store.setQuotes([ComposerQuote(text: "Other server")], for: second)
+        store.setQuotes([ComposerQuote(text: "Other session")], for: otherSession)
+        try await store.flush()
+
+        let restored = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
+        let restoredFirst = await restored.draft(for: first)
+        let restoredSecond = await restored.draft(for: second)
+        let restoredOtherSession = await restored.draft(for: otherSession)
+        XCTAssertEqual(restoredFirst?.quotes, firstQuotes)
+        XCTAssertEqual(restoredFirst?.text, "Keep text")
+        XCTAssertEqual(restoredFirst?.attachments, [attachment])
+        XCTAssertEqual(restoredFirst?.settings, settings)
+        XCTAssertEqual(restoredSecond?.quotes.map(\.text), ["Other server"])
+        XCTAssertEqual(restoredOtherSession?.quotes.map(\.text), ["Other session"])
+    }
+
+    func testFailedQuoteSubmissionRestoresSnapshotAndAnInFlightEditWins() async {
+        let store = ChatDraftStore(
+            persistence: RecordingChatDraftPersistence(),
+            debounceDuration: .seconds(10)
+        )
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("chat-1"))
+        let submitted = ComposerDraftContent(
+            text: "Question",
+            quotes: [ComposerQuote(text: "Original quote")]
+        )
+        store.setContent(submitted, for: key)
+
+        let restored = store.resolveSubmission(
+            submitted: submitted,
+            current: .empty,
+            didStart: false,
+            draftWasEdited: false,
+            for: key
+        )
+        XCTAssertEqual(restored, submitted)
+        let restoredDraft = await store.draft(for: key)
+        XCTAssertEqual(restoredDraft?.quotes, submitted.quotes)
+
+        let edited = ComposerDraftContent(
+            text: "Typed while sending",
+            quotes: submitted.quotes + [ComposerQuote(text: "New quote")]
+        )
+        store.setContent(edited, for: key)
+        let retained = store.resolveSubmission(
+            submitted: submitted,
+            current: edited,
+            didStart: true,
+            draftWasEdited: true,
+            for: key
+        )
+        XCTAssertEqual(retained, edited)
+        let editedDraft = await store.draft(for: key)
+        XCTAssertEqual(editedDraft?.quotes, edited.quotes)
+    }
+
+    func testSuccessfulQuoteSubmissionConsumesSnapshotAndAttachmentsButKeepsSettings() async {
+        let store = ChatDraftStore(
+            persistence: RecordingChatDraftPersistence(),
+            debounceDuration: .seconds(10)
+        )
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("chat-1"))
+        let submitted = ComposerDraftContent(
+            text: "Question",
+            quotes: [ComposerQuote(text: "Quoted passage")]
+        )
+        let attachment = Self.sampleAttachment()
+        let settings = ChatDraftSettings(modelID: "model-x", workspacePath: "/repo")
+        store.setContent(submitted, for: key)
+        store.setAttachments([attachment], for: key)
+        store.setSettings(settings, for: key)
+
+        let resolved = store.resolveSubmission(
+            submitted: submitted,
+            current: .empty,
+            didStart: true,
+            draftWasEdited: false,
+            for: key
+        )
+
+        XCTAssertEqual(resolved, .empty)
+        let stored = await store.draft(for: key)
+        XCTAssertEqual(stored, ChatDraft(settings: settings))
+    }
+
+    func testActiveStreamConsumptionClearsQuoteSnapshotUnlessComposerRevisionChanged() async {
+        let store = ChatDraftStore(
+            persistence: RecordingChatDraftPersistence(),
+            debounceDuration: .seconds(10)
+        )
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("chat-1"))
+        let submitted = ComposerDraftContent(
+            text: "Follow up",
+            quotes: [ComposerQuote(text: "Original passage")]
+        )
+        let attachment = Self.sampleAttachment()
+        let settings = ChatDraftSettings(modelID: "model-x")
+        store.setContent(submitted, for: key)
+        store.setAttachments([attachment], for: key)
+        store.setSettings(settings, for: key)
+
+        let consumed = store.resolveConsumedInput(
+            submitted: submitted,
+            current: submitted,
+            draftWasEdited: false,
+            for: key
+        )
+        XCTAssertEqual(consumed, .empty)
+        var stored = await store.draft(for: key)
+        XCTAssertEqual(stored, ChatDraft(attachments: [attachment], settings: settings))
+
+        store.setContent(submitted, for: key)
+        let revised = ComposerDraftContent(
+            text: submitted.text,
+            quotes: submitted.quotes + [ComposerQuote(text: "Appended while sending")]
+        )
+        store.setContent(revised, for: key)
+        let retained = store.resolveConsumedInput(
+            submitted: submitted,
+            current: revised,
+            draftWasEdited: true,
+            for: key
+        )
+
+        XCTAssertEqual(retained, revised)
+        stored = await store.draft(for: key)
+        XCTAssertEqual(stored?.text, revised.text)
+        XCTAssertEqual(stored?.quotes, revised.quotes)
+        XCTAssertEqual(stored?.attachments, [attachment])
+        XCTAssertEqual(stored?.settings, settings)
+    }
+
     func testDraftsAreIsolatedByServerAndContext() async throws {
         let persistence = RecordingChatDraftPersistence()
         let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
@@ -666,6 +822,11 @@ final class ChatDraftStoreTests: XCTestCase {
         )
         let draft = ChatDraft(
             text: "Body",
+            quotes: [
+                ComposerQuote(text: "First line\nSecond line"),
+                ComposerQuote(text: "Repeated"),
+                ComposerQuote(text: "Repeated")
+            ],
             attachments: [
                 Self.sampleAttachment(),
                 Self.sampleAttachment(file: nil)

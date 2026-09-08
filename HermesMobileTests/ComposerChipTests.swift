@@ -379,6 +379,70 @@ final class ComposerChipDocumentTests: XCTestCase {
         XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 99), 17)
         XCTAssertEqual(document.composerDisplayOffset(forSourceOffset: 99), 9)
     }
+
+    func testQuoteMetadataIsExcludedAndTheDraftStartsAfterItsPrefix() {
+        let quote = ComposerQuote(text: "Selected passage")
+        let document = NSMutableAttributedString(
+            attachment: ComposerQuoteAttachment(quote: quote, image: UIImage(), baselineOffset: 0)
+        )
+        document.append(NSAttributedString(
+            string: " ",
+            attributes: [.composerQuoteSpacer: true]
+        ))
+        document.append(NSAttributedString(string: "/ask-matt next"))
+
+        XCTAssertEqual(document.composerSourceText, "/ask-matt next")
+        XCTAssertEqual(document.composerSourceOffset(forDisplayOffset: 2), 0)
+        XCTAssertEqual(document.composerDisplayOffset(forSourceOffset: 0), 2)
+        XCTAssertEqual(
+            document.composerDisplayRange(forSourceRange: NSRange(location: 0, length: 9)),
+            NSRange(location: 2, length: 9)
+        )
+    }
+}
+
+final class ComposerQuoteTests: XCTestCase {
+    func testFormatterPreservesFullPassagesAndOrderAsMarkdownBlockquotes() {
+        let quotes = [
+            ComposerQuote(text: "First line\n\nThird line"),
+            ComposerQuote(text: "Repeated"),
+            ComposerQuote(text: "Repeated")
+        ]
+
+        XCTAssertEqual(
+            ComposerQuoteMessageFormatter.message(text: "What does this mean?", quotes: quotes),
+            "> First line\n>\n> Third line\n\n> Repeated\n\n> Repeated\n\nWhat does this mean?"
+        )
+    }
+
+    func testFormatterAllowsAQuoteOnlyMessage() {
+        XCTAssertEqual(
+            ComposerQuoteMessageFormatter.message(
+                text: "",
+                quotes: [ComposerQuote(text: "Keep trailing space ")]
+            ),
+            "> Keep trailing space "
+        )
+    }
+
+    func testPreviewTruncationDoesNotChangeStoredText() {
+        let text = "One\n\n" + String(repeating: "long passage ", count: 20)
+        let quote = ComposerQuote(text: text)
+
+        XCTAssertFalse(quote.preview.contains("\n"))
+        XCTAssertTrue(quote.preview.hasSuffix("…"))
+        XCTAssertEqual(quote.text, text)
+    }
+
+    func testTypedMarkdownDoesNotCreateQuoteMetadata() {
+        let content = ComposerDraftContent(text: "> ordinary pasted quote", quotes: [])
+
+        XCTAssertTrue(content.quotes.isEmpty)
+        XCTAssertEqual(
+            ComposerQuoteMessageFormatter.message(text: content.text, quotes: content.quotes),
+            "> ordinary pasted quote"
+        )
+    }
 }
 
 @MainActor
@@ -469,10 +533,64 @@ final class ComposerChipGestureTests: XCTestCase {
         )
     }
 
-    private func makeTextView(width: CGFloat = 320, text: String) -> ComposerChipTextView {
+    func testRemovingAMiddleQuoteKeepsOrderedMetadataAndSourceBackedChipsStable() {
+        let first = ComposerQuote(text: "Repeated passage")
+        let middle = ComposerQuote(text: "Middle passage")
+        let last = ComposerQuote(text: "Repeated passage")
+        let source = "/ask-matt @Docs/Guide.md typed text"
+        let caret = NSRange(location: (source as NSString).length, length: 0)
+        let textView = makeTextView(
+            text: source,
+            quotes: [first, middle, last],
+            filePaths: ["Docs/Guide.md"]
+        )
+        textView.sourceSelection = caret
+        let displayOffsetBeforeRemoval = textView.selectedRange.location
+
+        textView.quotes.removeAll { $0.id == middle.id }
+        textView.refreshChipsIfNeeded()
+
+        XCTAssertEqual(textView.renderedQuotes.map(\.id), [first.id, last.id])
+        XCTAssertNotEqual(first.id, last.id)
+        XCTAssertEqual(quoteIDs(in: textView), [first.id, last.id])
+        XCTAssertEqual(textView.renderedTokens.map(\.source), ["/ask-matt", "@Docs/Guide.md"])
+        XCTAssertEqual(textView.sourceText, source)
+        XCTAssertEqual(textView.sourceSelection, caret)
+        XCTAssertEqual(textView.selectedRange.location, displayOffsetBeforeRemoval - 2)
+    }
+
+    func testBackspaceAtDraftStartRemovesOnlyTheLastQuote() {
+        let first = ComposerQuote(text: "First passage")
+        let last = ComposerQuote(text: "Last passage")
+        let source = "typed content"
+        let textView = makeTextView(text: source, quotes: [first, last])
+        textView.sourceSelection = NSRange(location: 0, length: 0)
+        var removedIDs: [UUID] = []
+        textView.onRemoveQuote = { id in
+            removedIDs.append(id)
+            textView.quotes.removeAll { $0.id == id }
+            textView.refreshChipsIfNeeded()
+        }
+
+        textView.deleteBackward()
+
+        XCTAssertEqual(removedIDs, [last.id])
+        XCTAssertEqual(textView.renderedQuotes.map(\.id), [first.id])
+        XCTAssertEqual(textView.sourceText, source)
+        XCTAssertEqual(textView.sourceSelection, NSRange(location: 0, length: 0))
+    }
+
+    private func makeTextView(
+        width: CGFloat = 320,
+        text: String,
+        quotes: [ComposerQuote] = [],
+        filePaths: Set<String> = []
+    ) -> ComposerChipTextView {
         let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: width, height: 240))
         textView.font = .preferredFont(forTextStyle: .body)
         textView.chipSkills = skills
+        textView.chipFilePaths = filePaths
+        textView.quotes = quotes
         textView.replaceDocument(with: text)
         textView.layoutManager.ensureLayout(for: textView.textContainer)
         textView.layoutIfNeeded()
@@ -501,6 +619,19 @@ final class ComposerChipGestureTests: XCTestCase {
             chips.append((range, textView.firstRect(for: textRange)))
         }
         return chips
+    }
+
+    private func quoteIDs(in textView: ComposerChipTextView) -> [UUID] {
+        var ids: [UUID] = []
+        textView.textStorage.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: textView.textStorage.length)
+        ) { attachment, _, _ in
+            if let quote = attachment as? ComposerQuoteAttachment {
+                ids.append(quote.quote.id)
+            }
+        }
+        return ids
     }
 
     private func center(of rect: CGRect) -> CGPoint {

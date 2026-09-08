@@ -5,6 +5,31 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    func testQuoteOnlyDraftShowsSendWhileStreamIsActive() {
+        XCTAssertFalse(ChatComposerSendGate.showsStopButton(
+            isWaitingForStream: true,
+            hasText: false,
+            hasQuotes: true
+        ))
+        XCTAssertTrue(ChatComposerSendGate.showsStopButton(
+            isWaitingForStream: true,
+            hasText: false,
+            hasQuotes: false
+        ))
+    }
+
+    func testQuoteOnlySendIsEnabled() {
+        XCTAssertFalse(ChatComposerSendGate.isDisabled(
+            hasText: false,
+            hasQuotes: true,
+            hasStagedAttachments: false,
+            isSending: false,
+            isCompressingSession: false,
+            isUploadingAttachment: false,
+            isUpdatingConfiguration: false
+        ))
+    }
+
     func testAttachmentOnlySendIsEnabled() {
         XCTAssertFalse(ChatComposerSendGate.isDisabled(
             hasText: false,

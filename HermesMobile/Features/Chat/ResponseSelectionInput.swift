@@ -3,6 +3,7 @@ import UIKit
 /// Read-only UITextInput adapter. UIKit owns gestures, handles, and the edit menu;
 /// the existing SwiftUI leaves continue to own rendering and link interactions.
 final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelegate {
+    var onAskHermex: (String) -> Void = { _ in }
     let leaves = NSHashTable<ResponseSelectionLeafView>.weakObjects()
     var leafOrder: [UUID] = []
     let selectionInteraction = UITextInteraction(for: .nonEditable)
@@ -250,7 +251,20 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(copy(_:)) { return selectedTextRange?.isEmpty == false }
         if action == #selector(selectAll(_:)) { return hasText }
+        if action == #selector(askHermex(_:)) { return selectedTextRange?.isEmpty == false }
         return false
+    }
+
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard builder.system == .context else { return }
+
+        let ask = UICommand(
+            title: String(localized: "Ask Hermex"),
+            image: UIImage(systemName: "quote.opening"),
+            action: #selector(askHermex(_:))
+        )
+        builder.replaceChildren(ofMenu: .standardEdit) { $0 + [ask] }
     }
 
     override func copy(_ sender: Any?) {
@@ -260,6 +274,13 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
 
     override func selectAll(_ sender: Any?) {
         selectedTextRange = textRange(from: beginningOfDocument, to: endOfDocument)
+    }
+
+    @objc func askHermex(_ sender: Any?) {
+        guard let selectedTextRange, let text = text(in: selectedTextRange), !text.isEmpty else { return }
+        self.selectedTextRange = nil
+        resignFirstResponder()
+        onAskHermex(text)
     }
 
     func replace(_ range: UITextRange, withText text: String) {}

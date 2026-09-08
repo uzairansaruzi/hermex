@@ -4,6 +4,32 @@ import XCTest
 
 @MainActor
 final class ResponseSelectionTests: XCTestCase {
+    func testAskHermexReturnsExactSelectionAndClearsIt() {
+        let input = ResponseSelectionInput()
+        let controller = UIViewController()
+        controller.view = input
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 200))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        input.leafOrder = []
+        let leaf = ResponseSelectionLeafView()
+        leaf.text = "  First line\nSecond line  "
+        input.addSubview(leaf)
+        input.leaves.add(leaf)
+        input.selectedTextRange = ResponseTextRange(
+            NSRange(location: 0, length: leaf.text.utf16.count)
+        )
+        var passage: String?
+        input.onAskHermex = { passage = $0 }
+
+        XCTAssertTrue(input.canPerformAction(#selector(input.askHermex(_:)), withSender: nil))
+        input.askHermex(nil)
+
+        XCTAssertEqual(passage, "  First line\nSecond line  ")
+        XCTAssertNil(input.selectedTextRange)
+    }
+
     func testSwiftUIResponseBoundaryRegistersItsHostedText() async throws {
         let controller = UIHostingController(rootView: ResponseTextSelection(identity: "response") {
             Text("A completed response").responseSelectableText("A completed response")

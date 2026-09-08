@@ -59,6 +59,35 @@ private struct ComposerStatusView: View {
     }
 }
 
+private struct ComposerQuoteDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let quote: ComposerQuote
+    let onRemove: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(verbatim: quote.text)
+                    .font(AppFont.body())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .navigationTitle("Quoted passage")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Remove Quote", role: .destructive, action: onRemove)
+                }
+            }
+        }
+    }
+}
+
 struct MessageComposerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -75,6 +104,7 @@ struct MessageComposerView: View {
     private let pillInset: CGFloat = 5
 
     @Binding var draftMessage: String
+    @Binding var quotes: [ComposerQuote]
     @Binding var isFocused: Bool
     let isSending: Bool
     let isCompressingSession: Bool
@@ -177,6 +207,7 @@ struct MessageComposerView: View {
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
+    @State private var selectedQuote: ComposerQuote?
 
     @State private var deferredUploadFocusPhase: DeferredUploadFocusPhase = .none
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
@@ -552,6 +583,17 @@ struct MessageComposerView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(item: $selectedQuote, onDismiss: restoreFocusAfterPresentationIfNeeded) { quote in
+            ComposerQuoteDetailView(
+                quote: quote,
+                onRemove: {
+                    removeQuote(quote.id)
+                    selectedQuote = nil
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: [.item],
@@ -645,6 +687,7 @@ struct MessageComposerView: View {
     /// bridges the gap between a sheet dismissing and focus coming back.
     private var isExpanded: Bool {
         isFocused
+            || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
             || showsAllModelsSheet
             || showsWorkspaceSheet
@@ -687,6 +730,7 @@ struct MessageComposerView: View {
                     verticalPadding: 12,
                     chipSkills: skillSuggestions,
                     chipFilePaths: chipFilePaths,
+                    quotes: quotes,
                     onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
                     onPasteFileURLs: onPasteFileURLs,
@@ -696,7 +740,9 @@ struct MessageComposerView: View {
                         // A skill chip is inert; a file chip opens the file.
                         guard let path = token.filePath else { return }
                         onOpenFileReference(path)
-                    }
+                    },
+                    onTapQuote: presentQuote,
+                    onRemoveQuote: removeQuote
                 )
 
                 if !isExpanded {
@@ -1179,7 +1225,11 @@ struct MessageComposerView: View {
     }
 
     private var showsStopButton: Bool {
-        isWaitingForStream && trimmedDraftMessage.isEmpty
+        ChatComposerSendGate.showsStopButton(
+            isWaitingForStream: isWaitingForStream,
+            hasText: !trimmedDraftMessage.isEmpty,
+            hasQuotes: !quotes.isEmpty
+        )
     }
 
     private var isActionButtonDisabled: Bool {
@@ -1193,6 +1243,7 @@ struct MessageComposerView: View {
 
         return ChatComposerSendGate.isDisabled(
             hasText: !trimmedDraftMessage.isEmpty,
+            hasQuotes: !quotes.isEmpty,
             hasStagedAttachments: !pendingAttachments.isEmpty,
             isSending: isSending,
             isCompressingSession: isCompressingSession,
@@ -1281,6 +1332,15 @@ struct MessageComposerView: View {
         if isFocused {
             isFocused = false
         }
+    }
+
+    private func presentQuote(_ quote: ComposerQuote) {
+        prepareForComposerPresentation()
+        selectedQuote = quote
+    }
+
+    private func removeQuote(_ id: UUID) {
+        quotes.removeAll { $0.id == id }
     }
 
     private func restoreFocusAfterPresentationIfNeeded() {

@@ -409,6 +409,7 @@
 		C0DEC0DE0000000000000003 /* ChatComposerSendGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE0000000000000004 /* ChatComposerSendGate.swift */; };
 		D01ECB8354BE43609DB90E77 /* ComposerTextEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93ED01E261E647E79540A6AD /* ComposerTextEditing.swift */; };
 		A1C0F1000000000000000002 /* ComposerChipToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0F1000000000000000001 /* ComposerChipToken.swift */; };
+		A1C0F2000000000000000002 /* ComposerQuote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0F2000000000000000001 /* ComposerQuote.swift */; };
 		A1C0F1000000000000000004 /* ComposerChipRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0F1000000000000000003 /* ComposerChipRendering.swift */; };
 		A1C0F1000000000000000008 /* ComposerChipTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0F1000000000000000007 /* ComposerChipTextView.swift */; };
 		D8FC4AB182545360A544E1FB /* ComposerFileTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB0B6C20A2A5612B0A3809E /* ComposerFileTrigger.swift */; };
@@ -864,6 +865,7 @@
 		C0DEC0DE0000000000000004 /* ChatComposerSendGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSendGate.swift; sourceTree = "<group>"; };
 		93ED01E261E647E79540A6AD /* ComposerTextEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTextEditing.swift; sourceTree = "<group>"; };
 		A1C0F1000000000000000001 /* ComposerChipToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerChipToken.swift; sourceTree = "<group>"; };
+		A1C0F2000000000000000001 /* ComposerQuote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerQuote.swift; sourceTree = "<group>"; };
 		A1C0F1000000000000000003 /* ComposerChipRendering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerChipRendering.swift; sourceTree = "<group>"; };
 		A1C0F1000000000000000007 /* ComposerChipTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerChipTextView.swift; sourceTree = "<group>"; };
 		BDB0B6C20A2A5612B0A3809E /* ComposerFileTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerFileTrigger.swift; sourceTree = "<group>"; };
@@ -1285,6 +1287,7 @@
 				C0DEC0DE0000000000000004 /* ChatComposerSendGate.swift */,
 				93ED01E261E647E79540A6AD /* ComposerTextEditing.swift */,
 				A1C0F1000000000000000001 /* ComposerChipToken.swift */,
+				A1C0F2000000000000000001 /* ComposerQuote.swift */,
 				A1C0F1000000000000000003 /* ComposerChipRendering.swift */,
 				A1C0F1000000000000000007 /* ComposerChipTextView.swift */,
 				BDB0B6C20A2A5612B0A3809E /* ComposerFileTrigger.swift */,
@@ -1895,6 +1898,7 @@
 				C0DEC0DE0000000000000003 /* ChatComposerSendGate.swift in Sources */,
 				D01ECB8354BE43609DB90E77 /* ComposerTextEditing.swift in Sources */,
 				A1C0F1000000000000000002 /* ComposerChipToken.swift in Sources */,
+				A1C0F2000000000000000002 /* ComposerQuote.swift in Sources */,
 				A1C0F1000000000000000004 /* ComposerChipRendering.swift in Sources */,
 				A1C0F1000000000000000008 /* ComposerChipTextView.swift in Sources */,
 				D8FC4AB182545360A544E1FB /* ComposerFileTrigger.swift in Sources */,

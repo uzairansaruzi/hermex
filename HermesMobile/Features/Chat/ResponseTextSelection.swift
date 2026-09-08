@@ -5,6 +5,7 @@ import UIKit
 /// supply their actual glyph geometry; images, equations and controls never register.
 struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     let identity: String
+    var onAskHermex: (String) -> Void = { _ in }
     @ViewBuilder let content: () -> Content
     @Environment(\.self) private var environment
 
@@ -13,6 +14,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: ResponseSelectionController, context: Context) {
+        controller.input.onAskHermex = onAskHermex
         if controller.identity != identity {
             controller.input.selectedTextRange = nil
             controller.identity = identity

@@ -27,6 +27,7 @@ struct ComposerTextInputView: View {
     /// The workspace files picked in this chat, whose `@path` references the
     /// editor draws as chips.
     let chipFilePaths: Set<String>
+    let quotes: [ComposerQuote]
     let onKeyboardSend: () -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
     let onPasteFileURLs: ([URL]) -> Void
@@ -34,6 +35,8 @@ struct ComposerTextInputView: View {
     let onPasteImages: ([UIImage]) -> Void
     /// A tap that landed on a chip's glyph.
     let onTapChip: (ComposerChipToken) -> Void
+    let onTapQuote: (ComposerQuote) -> Void
+    let onRemoveQuote: (UUID) -> Void
 
     private let placeholder = String(localized: "Ask anything... /commands")
     private let collapsedLineHeight: CGFloat = 22
@@ -49,8 +52,11 @@ struct ComposerTextInputView: View {
                 isKeyboardSendEnabled: isKeyboardSendEnabled,
                 chipSkills: chipSkills,
                 chipFilePaths: chipFilePaths,
+                quotes: quotes,
                 renderedChips: $renderedChips,
                 onTapChip: onTapChip,
+                onTapQuote: onTapQuote,
+                onRemoveQuote: onRemoveQuote,
                 onKeyboardSend: onKeyboardSend,
                 onHeightChange: updateMeasuredHeight,
                 onPasteFileProviders: onPasteFileProviders,
@@ -81,7 +87,7 @@ struct ComposerTextInputView: View {
                     }
                     .accessibilityAddTraits(.isButton)
                     .accessibilityHint(Text("Edit message"))
-            } else if text.isEmpty {
+            } else if text.isEmpty && quotes.isEmpty {
                 Text(placeholder)
                     .foregroundStyle(Color(.placeholderText))
                     .padding(.horizontal, 16)
@@ -167,8 +173,11 @@ private struct ComposerTextView: UIViewRepresentable {
     let isKeyboardSendEnabled: Bool
     let chipSkills: [SkillSlashSuggestion]
     let chipFilePaths: Set<String>
+    let quotes: [ComposerQuote]
     @Binding var renderedChips: [ComposerChipToken]
     let onTapChip: (ComposerChipToken) -> Void
+    let onTapQuote: (ComposerQuote) -> Void
+    let onRemoveQuote: (UUID) -> Void
     let onKeyboardSend: () -> Void
     let onHeightChange: (CGFloat) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
@@ -215,6 +224,8 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.onPasteImageProviders = onPasteImageProviders
         textView.onPasteImages = onPasteImages
         textView.onTapChip = onTapChip
+        textView.onTapQuote = onTapQuote
+        textView.onRemoveQuote = onRemoveQuote
         context.coordinator.reportHeight(for: textView)
         return textView
     }
@@ -239,6 +250,9 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.onPasteImageProviders = onPasteImageProviders
         textView.onPasteImages = onPasteImages
         textView.onTapChip = onTapChip
+        textView.onTapQuote = onTapQuote
+        textView.onRemoveQuote = onRemoveQuote
+        textView.quotes = quotes
         textView.chipSkills = chipSkills
         textView.chipFilePaths = chipFilePaths
         context.coordinator.onDropFileProviders = onPasteFileProviders
@@ -485,6 +499,7 @@ private struct ComposerTextView: UIViewRepresentable {
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard !isApplyingBoundValue, textView.markedTextRange == nil else { return }
             guard let textView = textView as? ComposerChipTextView else { return }
+            textView.normalizeSelectionAroundQuoteMetadata()
             textView.restoreTypingAttributes()
 
             let range = textView.sourceSelection

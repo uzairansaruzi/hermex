@@ -29,6 +29,34 @@ final class ComposerChipAttachment: NSTextAttachment {
     }
 }
 
+/// A zero-source attachment for one explicitly selected response passage.
+/// Unlike skill and file chips, it is backed by draft metadata rather than a
+/// substring the user can type.
+final class ComposerQuoteAttachment: NSTextAttachment {
+    let quote: ComposerQuote
+
+    init(quote: ComposerQuote, image: UIImage, baselineOffset: CGFloat) {
+        self.quote = quote
+        super.init(data: nil, ofType: nil)
+        let label = String(localized: "Quoted passage") + ": " + quote.text
+        image.accessibilityLabel = label
+        self.image = image
+        accessibilityLabel = label
+        bounds = CGRect(origin: CGPoint(x: 0, y: baselineOffset), size: image.size)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+}
+
+extension NSAttributedString.Key {
+    /// Spacing between quote attachments is part of their presentation and must
+    /// never enter the typed draft.
+    static let composerQuoteSpacer = NSAttributedString.Key("com.hermex.composerQuoteSpacer")
+}
+
 /// Chip geometry, derived from the editor's own font so Dynamic Type moves the
 /// chip with the text around it.
 ///
@@ -72,7 +100,9 @@ enum ComposerChipRenderer {
         icon: ComposerChipIcon,
         metrics: ComposerChipMetrics,
         traits: UITraitCollection,
-        isRightToLeft: Bool
+        isRightToLeft: Bool,
+        maximumWidth: CGFloat? = nil,
+        usesAccentIcon: Bool = false
     ) -> UIImage {
         let key = [
             label,
@@ -81,7 +111,9 @@ enum ComposerChipRenderer {
             String(describing: metrics.height),
             String(traits.userInterfaceStyle.rawValue),
             String(traits.accessibilityContrast.rawValue),
-            isRightToLeft ? "rtl" : "ltr"
+            isRightToLeft ? "rtl" : "ltr",
+            maximumWidth.map(String.init(describing:)) ?? "unbounded",
+            usesAccentIcon ? "accent" : "secondary"
         ].joined(separator: "|") as NSString
 
         if let cached = cache.object(forKey: key) {
@@ -93,7 +125,9 @@ enum ComposerChipRenderer {
             icon: icon,
             metrics: metrics,
             traits: traits,
-            isRightToLeft: isRightToLeft
+            isRightToLeft: isRightToLeft,
+            maximumWidth: maximumWidth,
+            usesAccentIcon: usesAccentIcon
         )
         cache.setObject(image, forKey: key)
         return image
@@ -104,11 +138,14 @@ enum ComposerChipRenderer {
     private static func iconImage(
         _ icon: ComposerChipIcon,
         metrics: ComposerChipMetrics,
-        traits: UITraitCollection
+        traits: UITraitCollection,
+        usesAccentIcon: Bool
     ) -> UIImage? {
         switch icon {
         case let .symbol(name):
-            let tint = UIColor.secondaryLabel.resolvedColor(with: traits)
+            let tint = usesAccentIcon
+                ? UIColor.systemBlue.resolvedColor(with: traits)
+                : UIColor.secondaryLabel.resolvedColor(with: traits)
             return UIImage(
                 systemName: name,
                 withConfiguration: UIImage.SymbolConfiguration(
@@ -126,21 +163,33 @@ enum ComposerChipRenderer {
         icon iconStyle: ComposerChipIcon,
         metrics: ComposerChipMetrics,
         traits: UITraitCollection,
-        isRightToLeft: Bool
+        isRightToLeft: Bool,
+        maximumWidth: CGFloat?,
+        usesAccentIcon: Bool
     ) -> UIImage {
         let background = UIColor.secondarySystemFill.resolvedColor(with: traits)
         let border = UIColor.separator.resolvedColor(with: traits)
         let textColor = UIColor.label.resolvedColor(with: traits)
 
-        let icon = iconImage(iconStyle, metrics: metrics, traits: traits)
+        let icon = iconImage(
+            iconStyle,
+            metrics: metrics,
+            traits: traits,
+            usesAccentIcon: usesAccentIcon
+        )
 
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
             .font: metrics.labelFont,
-            .foregroundColor: textColor
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
         ]
         let textSize = (label as NSString).size(withAttributes: attributes)
         let iconWidth = icon == nil ? 0 : metrics.iconSize + metrics.iconGap
-        let width = ceil(metrics.horizontalPadding * 2 + iconWidth + textSize.width)
+        let naturalWidth = ceil(metrics.horizontalPadding * 2 + iconWidth + textSize.width)
+        let width = maximumWidth.map { min(naturalWidth, max(metrics.height * 2, $0)) } ?? naturalWidth
+        let textWidth = max(0, width - metrics.horizontalPadding * 2 - iconWidth)
 
         let format = UIGraphicsImageRendererFormat.preferred()
         format.opaque = false
@@ -184,7 +233,7 @@ enum ComposerChipRenderer {
                 in: CGRect(
                     x: textX,
                     y: (metrics.height - textSize.height) / 2,
-                    width: textSize.width + 1,
+                    width: textWidth,
                     height: textSize.height
                 ),
                 withAttributes: attributes
@@ -302,10 +351,11 @@ extension NSAttributedString {
         let display = string as NSString
         let source = NSMutableString()
 
-        enumerateAttribute(.attachment, in: range) { value, attributeRange, _ in
-            if let chip = value as? ComposerChipAttachment {
+        enumerateAttributes(in: range) { attributes, attributeRange, _ in
+            if let chip = attributes[.attachment] as? ComposerChipAttachment {
                 source.append(chip.source)
-            } else if value == nil {
+            } else if attributes[.attachment] == nil,
+                      attributes[.composerQuoteSpacer] == nil {
                 source.append(display.substring(with: attributeRange))
             }
         }
@@ -319,10 +369,11 @@ extension NSAttributedString {
         guard bounded > 0 else { return 0 }
 
         var source = 0
-        enumerateAttribute(.attachment, in: NSRange(location: 0, length: bounded)) { value, range, _ in
-            if let chip = value as? ComposerChipAttachment {
+        enumerateAttributes(in: NSRange(location: 0, length: bounded)) { attributes, range, _ in
+            if let chip = attributes[.attachment] as? ComposerChipAttachment {
                 source += (chip.source as NSString).length
-            } else if value == nil {
+            } else if attributes[.attachment] == nil,
+                      attributes[.composerQuoteSpacer] == nil {
                 source += range.length
             }
         }
@@ -333,13 +384,11 @@ extension NSAttributedString {
     /// a chip resolves to just after it, because there is nowhere inside a chip
     /// for a caret to be.
     func composerDisplayOffset(forSourceOffset sourceOffset: Int) -> Int {
-        guard sourceOffset > 0 else { return 0 }
-
         var source = 0
         var display = 0
 
-        enumerateAttribute(.attachment, in: NSRange(location: 0, length: length)) { value, range, stop in
-            if let chip = value as? ComposerChipAttachment {
+        enumerateAttributes(in: NSRange(location: 0, length: length)) { attributes, range, stop in
+            if let chip = attributes[.attachment] as? ComposerChipAttachment {
                 let chipLength = (chip.source as NSString).length
                 if sourceOffset < source + chipLength {
                     // The chip's own start still has a caret position; anywhere
@@ -349,7 +398,8 @@ extension NSAttributedString {
                     return
                 }
                 source += chipLength
-            } else if value == nil {
+            } else if attributes[.attachment] == nil,
+                      attributes[.composerQuoteSpacer] == nil {
                 if sourceOffset < source + range.length {
                     display = range.location + (sourceOffset - source)
                     stop.pointee = true
