@@ -4,6 +4,28 @@ import XCTest
 @testable import HermesMobile
 
 final class MarkdownMathRendererTests: XCTestCase {
+    func testMathFreeTextIsPreservedAcrossFormattingAndLayout() {
+        for input in ["", "a", "\n\n", "**Bold** and `code`", "中文 العربية 👨‍👩‍👧‍👦 e\u{301}",
+                      String(repeating: "A normal response.\n", count: 1_000)] {
+            XCTAssertEqual(MarkdownMathFormatter.replacingInlineMath(in: input), input)
+            XCTAssertEqual(MarkdownMathSegmenter.segments(in: input), [.markdown(input)])
+            XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
+        }
+    }
+
+    func testLiteralCommandsPreserveCasePrefixesAndUnicodeSuffixes() {
+        XCTAssertEqual(
+            MarkdownMathFormatter.replacingKnownCommands(
+                in: #"\leftarrow \left x \right \Rightarrow \top \to \leq \le \neq \ne \varepsilon \epsilon"#
+            ),
+            "←  x  ⇒ ⊤ → ≤ ≤ ≠ ≠ ε ε"
+        )
+        XCTAssertEqual(
+            MarkdownMathFormatter.replacingKnownCommands(in: "\\alpha\u{301} \\Alpha \\unknown"),
+            "α\u{301} \\Alpha \\unknown"
+        )
+    }
+
     func testInlineMathReplacesCommonLatexCommands() {
         let input = #"Inline: the quadratic formula $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$ works."#
 

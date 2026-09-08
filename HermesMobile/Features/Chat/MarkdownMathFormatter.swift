@@ -2,6 +2,8 @@ import Foundation
 
 struct MarkdownMathFormatter {
     static func replacingInlineMath(in markdown: String) -> String {
+        // Neither supported opener ($ or \() can occur without these ASCII bytes.
+        guard markdown.utf8.contains(0x24) || markdown.utf8.contains(0x5C) else { return markdown }
         let characters = Array(markdown)
         guard characters.count >= 3 else { return markdown }
 
