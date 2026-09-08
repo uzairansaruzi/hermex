@@ -20,7 +20,6 @@ struct SelectableTextPresentation: Identifiable, Equatable {
 struct ChatMessageActionItem: Identifiable {
     enum Kind: String {
         case listen
-        case selectText
         case regenerate
         case edit
         case fork
@@ -45,7 +44,6 @@ struct ChatMessageActionMenu: View {
     let isEditingMessage: Bool
     let isForkingMessage: Bool
     let onToggleListening: (MessageActionContext) -> Void
-    let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
@@ -76,13 +74,6 @@ struct ChatMessageActionMenu: View {
                 perform: { onToggleListening(context) }
             ))
             items.append(ChatMessageActionItem(
-                kind: .selectText,
-                title: String(localized: "Select Text"),
-                systemImage: "text.cursor",
-                isEnabled: true,
-                perform: { onSelectText(context) }
-            ))
-            items.append(ChatMessageActionItem(
                 kind: .regenerate,
                 title: String(localized: "Regenerate Response"),
                 systemImage: "arrow.clockwise",
@@ -108,13 +99,15 @@ struct ChatMessageActionMenu: View {
             isEnabled: !(isViewingCachedData || hasActiveStream || isForkingMessage),
             perform: { onFork(context) }
         ))
-        items.append(ChatMessageActionItem(
-            kind: .copy,
-            title: String(localized: "Copy"),
-            systemImage: "doc.on.doc",
-            isEnabled: true,
-            perform: { onCopy(context) }
-        ))
+        if context.role == .user {
+            items.append(ChatMessageActionItem(
+                kind: .copy,
+                title: String(localized: "Copy"),
+                systemImage: "doc.on.doc",
+                isEnabled: true,
+                perform: { onCopy(context) }
+            ))
+        }
 
         return items
     }

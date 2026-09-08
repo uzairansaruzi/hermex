@@ -103,22 +103,16 @@ struct MessageBubbleView: View {
                 assistantTurnHeader
             }
 
-            if segments.containsTranscriptMedia {
-                TranscriptMediaContentView(
-                    segments: segments,
-                    cacheNamespace: transcriptMediaCacheNamespace,
-                    loadMediaImage: loadTranscriptMediaImage,
-                    loadMediaData: loadTranscriptMediaData,
-                    onPreviewMedia: onPreviewTranscriptMedia,
-                    isStreaming: isStreaming
-                )
+            if isStreaming {
+                assistantContent(segments: segments)
             } else {
-                MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+                ResponseTextSelection(identity: messageText) {
+                    assistantContent(segments: segments)
+                }
             }
 
             linkPreview
         }
-        .chatMessageContextMenu(contextMenu)
         .frame(maxWidth: .infinity, alignment: .leading)
         // While this row is the active streaming message, animate its height
         // growth at the same curve as the bottom-follow scroll so the streaming
@@ -127,6 +121,22 @@ struct MessageBubbleView: View {
             isStreaming ? ChatMotion.streamingFollow(reduceMotion: reduceMotion) : nil,
             value: messageText
         )
+    }
+
+    @ViewBuilder
+    private func assistantContent(segments: [TranscriptMediaSegment]) -> some View {
+        if segments.containsTranscriptMedia {
+            TranscriptMediaContentView(
+                segments: segments,
+                cacheNamespace: transcriptMediaCacheNamespace,
+                loadMediaImage: loadTranscriptMediaImage,
+                loadMediaData: loadTranscriptMediaData,
+                onPreviewMedia: onPreviewTranscriptMedia,
+                isStreaming: isStreaming
+            )
+        } else {
+            MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+        }
     }
 
     // MARK: - Assistant turn header (issue #258)

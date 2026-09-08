@@ -38,14 +38,15 @@ enum TranscriptMessageMetaPolicy {
     }
 }
 
-/// The row under a message bubble: the time it was sent and a copy button.
+/// The row under a message bubble: timestamp, copy, and completed-response actions.
 /// User rows read `[time][copy]` against the trailing edge, assistant rows
-/// `[copy][time]` against the leading edge, so the button always sits at the
+/// `[copy][actions][time]` against the leading edge, so Copy always sits at the
 /// outer edge and RTL mirrors both through the semantic alignments.
 struct ChatMessageMetaRow: View {
     let isUserMessage: Bool
     let timeText: String?
     let onCopy: (() -> Void)?
+    var actionMenu: ChatMessageActionMenu? = nil
 
     var body: some View {
         HStack(spacing: 4) {
@@ -54,6 +55,16 @@ struct ChatMessageMetaRow: View {
                 copyButton
             } else {
                 copyButton
+                if let actionMenu {
+                    Menu { actionMenu } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 28, height: 28)
+                            .chatMinimumHitTarget(in: Rectangle())
+                    }
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("More")
+                }
                 time
             }
         }

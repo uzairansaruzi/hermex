@@ -313,7 +313,6 @@ struct ChatView: View {
     @State private var showEditDiscardConfirmation = false
     @State private var regenerateContext: MessageActionContext?
     @State private var showRegenerateDiscardConfirmation = false
-    @State private var selectableResponseText: SelectableTextPresentation?
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
@@ -835,9 +834,6 @@ struct ChatView: View {
             }
             .navigationDestination(item: $forkedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
-            }
-            .fullScreenCover(item: $selectableResponseText) { selectableText in
-                SelectableTextPresentationView(selection: selectableText)
             }
             .sheet(item: $attachmentPreviewItem) { item in
                 ChatAttachmentPreviewView(
@@ -1430,9 +1426,6 @@ struct ChatView: View {
             },
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
-            },
-            onSelectText: { context in
-                selectableResponseText = SelectableTextPresentation(context: context)
             },
             onRegenerate: beginRegenerateResponse,
             onEdit: beginEditMessage,

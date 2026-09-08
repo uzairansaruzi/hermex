@@ -74,7 +74,6 @@ struct ChatTranscriptView: View {
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onToggleListening: (MessageActionContext) -> Void
-    let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
@@ -312,7 +311,6 @@ struct ChatTranscriptView: View {
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
                     onToggleListening: onToggleListening,
-                    onSelectText: onSelectText,
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
@@ -556,7 +554,6 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onToggleListening: (MessageActionContext) -> Void
-    let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
@@ -676,7 +673,6 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     onPreviewAttachment: onPreviewAttachment,
                     onPreviewTranscriptMedia: onPreviewTranscriptMedia,
                     onToggleListening: onToggleListening,
-                    onSelectText: onSelectText,
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
@@ -764,7 +760,6 @@ private struct ChatTranscriptMessageRow: View {
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onToggleListening: (MessageActionContext) -> Void
-    let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
@@ -786,7 +781,8 @@ private struct ChatTranscriptMessageRow: View {
                         timeText: metaTimeText,
                         onCopy: actionContext.map { context -> () -> Void in
                             { onCopy(context) }
-                        }
+                        },
+                        actionMenu: isUserMessage ? nil : actionMenu
                     )
                 }
             }
@@ -822,7 +818,7 @@ private struct ChatTranscriptMessageRow: View {
             onPreviewTranscriptMedia: onPreviewTranscriptMedia,
             isStreaming: isStreaming,
             liveTokensPerSecond: liveTokensPerSecond,
-            contextMenu: actionMenu
+            contextMenu: isUserMessage ? actionMenu : nil
         )
     }
 
@@ -837,7 +833,6 @@ private struct ChatTranscriptMessageRow: View {
             isEditingMessage: isEditingMessage,
             isForkingMessage: isForkingMessage,
             onToggleListening: onToggleListening,
-            onSelectText: onSelectText,
             onRegenerate: onRegenerate,
             onEdit: onEdit,
             onFork: onFork,

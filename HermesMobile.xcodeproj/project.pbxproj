@@ -422,6 +422,9 @@
 		C0366000000000000000005 /* ModelPickerSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0366000000000000000006 /* ModelPickerSheetTests.swift */; };
 		C0369000000000000000005 /* CronJobEditorConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0369000000000000000006 /* CronJobEditorConfigurationTests.swift */; };
 		1050500000000000000000B1 /* OnboardingViewModelIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */; };
+		454454454454454454454402 /* ResponseTextSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454454454454454454454401 /* ResponseTextSelection.swift */; };
+		454454454454454454454412 /* ResponseSelectionInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454454454454454454454411 /* ResponseSelectionInput.swift */; };
+		454454454454454454454432 /* ResponseSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454454454454454454454431 /* ResponseSelectionTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -875,6 +878,9 @@
 		C0366000000000000000006 /* ModelPickerSheetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheetTests.swift; sourceTree = "<group>"; };
 		C0369000000000000000006 /* CronJobEditorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobEditorConfigurationTests.swift; sourceTree = "<group>"; };
 		1050500000000000000000B2 /* OnboardingViewModelIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModelIdentityTests.swift; sourceTree = "<group>"; };
+		454454454454454454454401 /* ResponseTextSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseTextSelection.swift; sourceTree = "<group>"; };
+		454454454454454454454411 /* ResponseSelectionInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseSelectionInput.swift; sourceTree = "<group>"; };
+		454454454454454454454431 /* ResponseSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseSelectionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1066,6 +1072,7 @@
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
 				C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */,
+				454454454454454454454431 /* ResponseSelectionTests.swift */,
 				C0AA0208000000000000F002 /* ChatMessageActionMenuTests.swift */,
 				C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */,
 				C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */,
@@ -1320,6 +1327,8 @@
 				C21200000000000000000002 /* StreamingWordDrain.swift */,
 				C21300000000000000000002 /* StreamingTextFade.swift */,
 				C21300000000000000000004 /* StreamingTextFadeRenderer.swift */,
+				454454454454454454454401 /* ResponseTextSelection.swift */,
+				454454454454454454454411 /* ResponseSelectionInput.swift */,
 				1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */,
 				C14300000000000000000002 /* StreamingMarkdownSupport.swift */,
 				C0DE34000000000000000002 /* TranscriptMedia.swift */,
@@ -1930,6 +1939,8 @@
 				1A2B3C4D5E6F7000000000E8 /* FilePreviewView.swift in Sources */,
 				1A2B3C4D5E6F7000000000EA /* FilePreviewViewModel.swift in Sources */,
 				BEEF02600000000000000001 /* FileExportSupport.swift in Sources */,
+				454454454454454454454402 /* ResponseTextSelection.swift in Sources */,
+				454454454454454454454412 /* ResponseSelectionInput.swift in Sources */,
 				1A2B3C4D5E6F7000000000DA /* MarkdownRenderer.swift in Sources */,
 				C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */,
 				C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */,
@@ -2120,6 +2131,7 @@
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */,
+				454454454454454454454432 /* ResponseSelectionTests.swift in Sources */,
 				C0AA0208000000000000B002 /* ChatMessageActionMenuTests.swift in Sources */,
 				C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */,
 				C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */,
