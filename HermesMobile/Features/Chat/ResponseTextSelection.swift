@@ -88,20 +88,21 @@ extension View {
 
 extension View {
     /// Attach only to a leaf containing one resolved Text, not its block container.
-    func responseSelectableText(_ text: String, separator: String = "\n") -> some View {
-        modifier(ResponseSelectionLeaf(text: text, separator: separator))
+    func responseSelectableText(_ text: String, separator: String = "\n", tableColumn: Int? = nil) -> some View {
+        modifier(ResponseSelectionLeaf(text: text, separator: separator, tableColumn: tableColumn))
     }
 }
 
 private struct ResponseSelectionLeaf: ViewModifier {
     let text: String
     let separator: String
+    let tableColumn: Int?
     @Environment(\.responseSelectionScope) private var scope
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if let scope {
-            content.modifier(RegisteredResponseSelectionLeaf(text: text, separator: separator, scope: scope))
+            content.modifier(RegisteredResponseSelectionLeaf(text: text, separator: separator, tableColumn: tableColumn, scope: scope))
         } else {
             content
         }
@@ -112,6 +113,7 @@ private struct ResponseSelectionLeaf: ViewModifier {
 private struct RegisteredResponseSelectionLeaf: ViewModifier {
     let text: String
     let separator: String
+    let tableColumn: Int?
     let scope: ResponseSelectionScope
     @State private var geometry = ResponseGlyphGeometry()
     @State private var id = UUID()
@@ -119,7 +121,7 @@ private struct RegisteredResponseSelectionLeaf: ViewModifier {
     func body(content: Content) -> some View {
         content
             .textRenderer(ResponseSelectionRenderer(geometry: geometry))
-            .background(ResponseSelectionMarker(scope: scope, id: id, text: text, separator: separator, geometry: geometry))
+            .background(ResponseSelectionMarker(scope: scope, id: id, text: text, separator: separator, tableColumn: tableColumn, geometry: geometry))
             .preference(key: ResponseSelectionOrderKey.self, value: [id])
     }
 }
@@ -178,6 +180,7 @@ private struct ResponseSelectionMarker: UIViewRepresentable {
     let id: UUID
     let text: String
     let separator: String
+    let tableColumn: Int?
     let geometry: ResponseGlyphGeometry
     @Environment(\.layoutDirection) private var layoutDirection
 
@@ -192,6 +195,7 @@ private struct ResponseSelectionMarker: UIViewRepresentable {
         view.id = id
         view.text = text
         view.separator = separator
+        view.tableColumn = tableColumn
         view.geometry = geometry
         view.rightToLeft = layoutDirection == .rightToLeft
     }
@@ -201,6 +205,7 @@ final class ResponseSelectionLeafView: UIView {
     var id = UUID()
     var text = ""
     var separator = "\n"
+    var tableColumn: Int?
     var geometry: ResponseGlyphGeometry?
     var rightToLeft = false
 }

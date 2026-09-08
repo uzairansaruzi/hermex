@@ -1235,7 +1235,7 @@ private extension MarkdownUI.Theme {
                     maxWidth: ChatMarkdownTable.cellMaxWidth
                 ) {
                     configuration.label
-                        .responseSelectableText(configuration.content.renderPlainText().trimmingCharacters(in: .newlines), separator: "\t")
+                        .responseSelectableText(configuration.content.renderPlainText().trimmingCharacters(in: .newlines), separator: "\t", tableColumn: configuration.column)
                         .markdownTextStyle {
                             if configuration.row == 0 {
                                 FontWeight(.semibold)

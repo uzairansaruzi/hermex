@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Which transcript rows draw the `time · copy` row under their bubble. Every
-/// user message gets one. An assistant row gets one only as the reply that
-/// closes a settled turn: mid-turn replies, the turn a stream is still
-/// answering, and the message that is streaming show nothing, so the row only
-/// ever sits under text the user can act on.
+/// Timestamps belong to user messages and settled terminal replies. Actions
+/// remain reachable on every actionable message, including a turn still streaming.
 enum TranscriptMessageMetaPolicy {
+    static func showsRow(hasActions: Bool, hasTimestamp: Bool) -> Bool {
+        hasActions || hasTimestamp
+    }
+
     /// Render IDs of the last bubble-bearing reply of each settled assistant turn.
     static func terminalReplyRenderIDs(
         transcriptMessages: [TranscriptMessage],

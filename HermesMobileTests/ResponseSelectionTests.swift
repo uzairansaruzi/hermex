@@ -76,6 +76,7 @@ final class ResponseSelectionTests: XCTestCase {
         for expected in ["Heading", "First paragraph with a link.", "List entry", "Another entry", "let value = 1", "Column", "Value", "Row", "Cell"] {
             XCTAssertTrue(text.contains(expected), "Missing \(expected) in \(text)")
         }
+        XCTAssertTrue(text.contains("Column\tValue\nRow\tCell\n\n"), text)
         XCTAssertFalse(text.contains("x^2"))
         XCTAssertFalse(text.contains("x²"))
         XCTAssertFalse(text.contains("Copy code"))

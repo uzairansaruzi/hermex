@@ -793,15 +793,15 @@ private struct ChatTranscriptMessageRow: View {
         message.role == "user"
     }
 
-    /// Every user message carries the row; an assistant row only as the reply
-    /// that closes a settled turn, and never while it is still streaming.
+    /// Keep actions reachable for every actionable reply, including active turns.
     private var showsMetaRow: Bool {
-        guard metaTimeText != nil || actionContext != nil else { return false }
-        return isUserMessage || (isTerminalReply && !isStreaming)
+        TranscriptMessageMetaPolicy.showsRow(
+            hasActions: actionContext != nil, hasTimestamp: metaTimeText != nil
+        )
     }
 
     private var metaTimeText: String? {
-        guard showsTimestamps else { return nil }
+        guard showsTimestamps, isUserMessage || (isTerminalReply && !isStreaming) else { return nil }
         return ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: message.timestamp)
     }
 

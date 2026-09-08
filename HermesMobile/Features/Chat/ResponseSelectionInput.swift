@@ -73,9 +73,17 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
         var text = ""
         var offset = 0
         var glyphs: [ResponseSelectionGlyph] = []
-        for leaf in ordered {
+        for (index, leaf) in ordered.enumerated() {
             let length = leaf.text.utf16.count
-            text += leaf.text + leaf.separator
+            let nextColumn = index + 1 < ordered.count ? ordered[index + 1].tableColumn : nil
+            let separator: String
+            if leaf.tableColumn != nil {
+                // Cell coordinates preserve rows even when cells wrap or scroll.
+                separator = nextColumn.map { $0 == 0 ? "\n" : "\t" } ?? "\n\n"
+            } else {
+                separator = leaf.separator
+            }
+            text += leaf.text + separator
             var clip = bounds
             var ancestor = leaf.superview
             while let view = ancestor, view !== self {
@@ -91,7 +99,7 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
                     rightToLeft: glyph.rightToLeft
                 ))
             }
-            offset += length + leaf.separator.utf16.count
+            offset += length + separator.utf16.count
         }
         return (text as NSString, glyphs)
     }

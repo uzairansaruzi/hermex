@@ -2,6 +2,12 @@ import XCTest
 @testable import HermesMobile
 
 final class ChatMessageActionMenuTests: XCTestCase {
+    func testActionRowsRemainAvailableWithoutSettledTurnTimestamp() {
+        XCTAssertTrue(TranscriptMessageMetaPolicy.showsRow(hasActions: true, hasTimestamp: false))
+        XCTAssertTrue(TranscriptMessageMetaPolicy.showsRow(hasActions: false, hasTimestamp: true))
+        XCTAssertFalse(TranscriptMessageMetaPolicy.showsRow(hasActions: false, hasTimestamp: false))
+    }
+
     func testAssistantMenuListsAssistantActionsInOrder() throws {
         let menu = try makeMenu(role: "assistant")
 
