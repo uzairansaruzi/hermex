@@ -186,11 +186,16 @@ xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destinatio
 xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-If simulator launch is stale:
+If simulator launch is stale, shut down only the exact simulator you are
+about to use. Never run `simctl shutdown all`; a global shutdown is an
+owner-only manual action (AGENTS.md, "The three ways to hurt yourself").
+Capture the UDID, then test against that exact device:
 
 ```zsh
-xcrun simctl shutdown all
-xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
+xcrun simctl list devices available
+# copy the exact UDID of the iPhone you will test on, then:
+xcrun simctl shutdown <udid>
+xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'id=<udid>'
 ```
 
 Exit criteria:
@@ -292,7 +297,7 @@ Version-train rule: once a version is approved for the App Store, Apple closes i
 - Bump `MARKETING_VERSION` (in `HermesMobile.xcodeproj/project.pbxproj`, all entries) on `master` right after each App Store release goes live, so the next upload always targets an open train.
 - The workflow preflights the train against App Store Connect before archiving (`ENFORCE_OPEN_TRAIN` in `ci/select_testflight_build_number.rb`) and fails in seconds with a bump instruction if the train is closed.
 
-Workflow path, if implemented:
+Workflow path (`.github/workflows/external-testflight.yml`, see Step 3):
 
 1. Run `External TestFlight` from GitHub Actions.
 2. Select `master`.
