@@ -1518,6 +1518,7 @@ private struct PendingNewChatView: View {
 
     @State private var createdSession: SessionSummary?
     @State private var draftMessage = ""
+    @State private var draftQuotes: [ComposerQuote] = []
     @State private var didStartCreation = false
     @State private var didStartConversation = false
     @State private var didRequestComposerFocus = false
@@ -1554,6 +1555,7 @@ private struct PendingNewChatView: View {
                     server: server,
                     onAPIError: onAPIError,
                     initialDraft: draftMessage,
+                    initialQuotes: draftQuotes,
                     initialAttachments: initialAttachments,
                     loadsInitialMessages: false,
                     autoStartsVoiceInput: autoStartsVoiceInput,
@@ -1678,7 +1680,9 @@ private struct PendingNewChatView: View {
         if let session {
             let sessionKey = draftKey(for: session)
             draftStore.setDraft(draftMessage, for: draftKey)
-            draftMessage = draftStore.moveDraft(from: draftKey, to: sessionKey).text
+            let movedDraft = draftStore.moveDraft(from: draftKey, to: sessionKey)
+            draftMessage = movedDraft.text
+            draftQuotes = movedDraft.quotes
             SessionHaptics.sessionCreated(isEnabled: isHapticsEnabled)
             onSessionCreated(session)
             createdSession = session

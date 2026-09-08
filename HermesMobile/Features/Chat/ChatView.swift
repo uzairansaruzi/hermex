@@ -373,6 +373,7 @@ struct ChatView: View {
         server: URL,
         onAPIError: @escaping (Error) -> Void,
         initialDraft: String = "",
+        initialQuotes: [ComposerQuote] = [],
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
         autoStartsVoiceInput: Bool = false,
@@ -392,6 +393,7 @@ struct ChatView: View {
         self.restoresDraftSettings = restoresDraftSettings
         self.onConversationStarted = onConversationStarted
         _draftMessage = State(initialValue: initialDraft)
+        _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
         _viewModel = State(initialValue: ChatViewModel(
             session: session,

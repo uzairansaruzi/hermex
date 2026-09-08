@@ -253,17 +253,21 @@ final class ChatDraftStoreTests: XCTestCase {
         let newChat = ChatDraftKey.newChat(server: server)
         let createdChat = ChatDraftKey.session(server: server, sessionID: "created-chat")
 
-        store.setDraft("Carry this forward", for: newChat)
-        XCTAssertEqual(
-            store.moveDraft(from: newChat, to: createdChat).text,
-            "Carry this forward"
+        let quotes = [ComposerQuote(text: "Carry this quote forward")]
+        store.setContent(
+            ComposerDraftContent(text: "Carry this forward", quotes: quotes),
+            for: newChat
         )
+        let movedDraft = store.moveDraft(from: newChat, to: createdChat)
+        XCTAssertEqual(movedDraft.text, "Carry this forward")
+        XCTAssertEqual(movedDraft.quotes, quotes)
         try await store.flush()
 
         let restoredNewChat = await store.draft(for: newChat)
         let restoredCreatedChat = await store.draft(for: createdChat)
         XCTAssertNil(restoredNewChat)
         XCTAssertEqual(restoredCreatedChat?.text, "Carry this forward")
+        XCTAssertEqual(restoredCreatedChat?.quotes, quotes)
     }
 
     func testAbandonedCreatedChatDraftReturnsToNewChat() async {
