@@ -94,9 +94,6 @@ view layer (which holds the SwiftData `modelContext`) rather than in
 because the cache is server-keyed, a leftover row can never surface as another
 server's content even if the purge fails.
 
-`CacheStore.clearAll(in:)` (delete every server's cache) is retained as a tested
-utility but is no longer wired to any user action.
-
 ## Where isolation is tested
 
 | Dimension | Tests |

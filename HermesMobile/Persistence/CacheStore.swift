@@ -183,19 +183,6 @@ enum CacheStore {
         try context.save()
     }
 
-    @MainActor
-    static func clearAll(in context: ModelContext) throws {
-        for cachedSession in try context.fetch(FetchDescriptor<CachedSession>()) {
-            context.delete(cachedSession)
-        }
-
-        for cachedMessage in try context.fetch(FetchDescriptor<CachedMessage>()) {
-            context.delete(cachedMessage)
-        }
-
-        try context.save()
-    }
-
     /// Deletes only the cached sessions and messages belonging to `serverURL`,
     /// leaving every other configured server's offline data intact (#18). Backs
     /// the Settings "Clear Offline Cache" action (active server) and the purge

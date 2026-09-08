@@ -5,10 +5,6 @@ enum AppFont {
         system(.body, weight: weight)
     }
 
-    static func callout(weight: Font.Weight? = nil) -> Font {
-        system(.callout, weight: weight)
-    }
-
     static func subheadline(weight: Font.Weight? = nil) -> Font {
         system(.subheadline, weight: weight)
     }
@@ -31,10 +27,6 @@ enum AppFont {
 
     static func title(weight: Font.Weight? = nil) -> Font {
         system(.title, weight: weight)
-    }
-
-    static func title2(weight: Font.Weight? = nil) -> Font {
-        system(.title2, weight: weight)
     }
 
     static func title3(weight: Font.Weight? = nil) -> Font {

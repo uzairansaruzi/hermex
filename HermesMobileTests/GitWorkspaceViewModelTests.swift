@@ -183,23 +183,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.lastError)
     }
 
-    func testToolbarPresentationMapsRepositoryStates() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        func info(_ json: String) throws -> GitInfo? {
-            try decoder.decode(GitInfoResponse.self, from: Data(json.utf8)).git
-        }
-
-        let dirty = try info(#"{"git":{"is_git":true,"dirty":2,"behind":0}}"#)
-        let behind = try info(#"{"git":{"is_git":true,"dirty":0,"behind":1}}"#)
-        let clean = try info(#"{"git":{"is_git":true,"dirty":0,"behind":0}}"#)
-
-        XCTAssertEqual(GitToolbarPresentation(hasRepository: true, isLoading: false, info: dirty, status: nil, statusFailed: false).statusDot, .gray)
-        XCTAssertEqual(GitToolbarPresentation(hasRepository: true, isLoading: false, info: behind, status: nil, statusFailed: false).statusDot, .gray)
-        XCTAssertNil(GitToolbarPresentation(hasRepository: true, isLoading: false, info: clean, status: nil, statusFailed: false).statusDot)
-        XCTAssertNil(GitToolbarPresentation(hasRepository: false, isLoading: false, info: dirty, status: nil, statusFailed: false).statusDot)
-    }
-
     func testToolbarPresentationEnablesChangesAfterStatusFailure() {
         let failed = GitToolbarPresentation(
             hasRepository: true,

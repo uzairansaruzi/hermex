@@ -128,16 +128,6 @@ enum UsageChartSegment: String, Identifiable, CaseIterable {
     }
 }
 
-/// One Swift Charts mark: a bucket's contribution for one segment.
-struct UsageChartPoint: Identifiable, Equatable {
-    let bucketID: Int
-    let bucketLabel: String
-    let segment: UsageChartSegment
-    let value: Double
-
-    var id: String { "\(bucketID)-\(segment.rawValue)" }
-}
-
 /// The three lines of the hero figure above the chart.
 struct UsageHeroFigure: Equatable {
     let label: String
@@ -242,15 +232,6 @@ extension UsageBucket {
             }
         case let .hour(sessions):
             return [(.sessions, Double(sessions))]
-        }
-    }
-}
-
-/// Flattens buckets into chart marks, one per bucket and segment.
-func usageChartPoints(buckets: [UsageBucket], metric: UsageMetric) -> [UsageChartPoint] {
-    buckets.flatMap { bucket in
-        bucket.segments(for: metric).map {
-            UsageChartPoint(bucketID: bucket.id, bucketLabel: bucket.label, segment: $0.segment, value: $0.value)
         }
     }
 }

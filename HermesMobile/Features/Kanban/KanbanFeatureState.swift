@@ -527,10 +527,6 @@ final class KanbanFeatureState {
         selectedBoardSlug == nil && !boards.isEmpty
     }
 
-    func canArchiveBoard(_ board: KanbanBoard) -> Bool {
-        canManageBoards && normalizedOptional(board.slug) != "default"
-    }
-
     var selectedCardCount: Int { selectedCardIDs.count }
 
     var bulkActionsAvailability: KanbanBulkActionsAvailability {
@@ -1410,18 +1406,6 @@ final class KanbanFeatureState {
 
     func setTenantFilter(_ tenant: String?) async {
         selectedTenant = normalized(tenant)
-        await refreshBoard(usingCursor: false)
-    }
-
-    func setIncludeArchived(_ included: Bool) async {
-        includeArchived = included
-        if !included, selectedStatus == "archived" { selectedStatus = "triage" }
-        await refreshBoard(usingCursor: false)
-    }
-
-    func setOnlyMine(_ enabled: Bool) async {
-        onlyMine = enabled
-        if enabled { selectedProfile = nil }
         await refreshBoard(usingCursor: false)
     }
 

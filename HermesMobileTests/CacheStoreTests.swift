@@ -576,46 +576,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertNotNil(cachedMessages.first { $0.messageId == "message-\(CachePolicy.maxMessages)" })
     }
 
-    func testClearAllDeletesCachedSessionsAndMessages() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        let response = try decodeSessions("""
-        {
-          "sessions": [
-            {"session_id": "abc123", "title": "Cached", "last_message_at": 1770000000, "archived": false}
-          ]
-        }
-        """)
-
-        try CacheStore.cacheSessions(
-            try XCTUnwrap(response.sessions),
-            serverURL: serverURL,
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        try CacheStore.cacheMessages(
-            [
-                ChatMessage(
-                    role: "user",
-                    content: "Cached message",
-                    timestamp: 1_770_000_000,
-                    messageId: "m1"
-                )
-            ],
-            serverURL: serverURL,
-            sessionID: "abc123",
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        try CacheStore.clearAll(in: context)
-
-        XCTAssertTrue(try fetchCachedSessions(in: context).isEmpty)
-        XCTAssertTrue(try fetchCachedMessages(in: context).isEmpty)
-    }
-
     func testCacheMessagesRoundTripsAttachments() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
