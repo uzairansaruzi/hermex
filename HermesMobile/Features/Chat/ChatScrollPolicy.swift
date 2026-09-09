@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
-/// Pure decision rules for the chat transcript's auto-scroll behavior.
+/// Decision rules and history-position preservation for the chat transcript.
 ///
 /// Auto-follow is an explicit latch rather than a distance test.
 ///
@@ -25,6 +25,23 @@ enum ChatScrollPolicy {
     /// Existing transcripts should enter at their latest content as part of the
     /// scroll view's first layout, before the destination becomes visible.
     static let initialTranscriptAnchor = UnitPoint.bottom
+
+    /// Reasserts the visible message after a prepend instead of compensating
+    /// with the lazy stack's estimated total height. A reader who scrolls while
+    /// the request is in flight keeps their new position.
+    @MainActor
+    static func loadOlderMessages(
+        position: Binding<ScrollPosition>,
+        firstMessageID: String?,
+        load: () async -> Bool
+    ) async {
+        let captured = position.wrappedValue
+        let messageID = captured.viewID(type: String.self) ?? firstMessageID
+        guard await load(), !Task.isCancelled,
+              position.wrappedValue == captured,
+              let messageID else { return }
+        position.wrappedValue.scrollTo(id: messageID, anchor: .top)
+    }
 
     /// Rich Markdown can finish measuring after the scroll view's initial
     /// layout. Keep those size changes bottom-pinned only while follow is
@@ -108,11 +125,11 @@ enum ChatScrollPolicy {
 
     /// True when a report without a gesture shows the reader farther from the
     /// bottom than the last one, past the streaming threshold, in the same
-    /// viewport. While follow is on the bottom anchor snaps every size change
-    /// back to zero distance, so only an actual scroll (status-bar tap,
-    /// VoiceOver, hardware keyboard) can move the reader out that far. Keyboard
-    /// insets change the viewport and are excluded; the scroll observer
-    /// suppresses the check while a disclosure pin holds the offset.
+    /// viewport. The transcript only uses this signal after SwiftUI reports a
+    /// user-owned position, since lazy measurement can also change distance
+    /// during a programmatic scroll. Keyboard insets change the viewport and
+    /// are excluded; the scroll observer suppresses the check while a
+    /// disclosure pin holds the offset.
     static func isScrollingAwayFromBottom(previous: ScrollGeometry?, current: ScrollGeometry) -> Bool {
         guard let previous, previous.visibleHeight == current.visibleHeight else { return false }
         let distance = current.distanceFromBottom

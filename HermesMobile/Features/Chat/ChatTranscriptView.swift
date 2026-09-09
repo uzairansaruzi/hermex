@@ -5,6 +5,7 @@ struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var scrollPositionController = ChatScrollPositionController()
+    @Binding var scrollPosition: ScrollPosition
 
     let isLoading: Bool
     let errorMessage: String?
@@ -68,9 +69,9 @@ struct ChatTranscriptView: View {
     let expandedTurnKeys: Set<String>
     let onToggleTurnFold: (String) -> Void
     let onDismissKeyboard: () -> Void
-    let onScrollToBottom: (ScrollViewProxy) -> Void
-    let onScrollToLatestTranscriptMessage: (ScrollViewProxy) -> Void
-    let onScrollToLatestContent: (ScrollViewProxy, Bool) -> Void
+    let onScrollToBottom: () -> Void
+    let onScrollToLatestTranscriptMessage: () -> Void
+    let onScrollToLatestContent: (Bool) -> Void
     let onPreviewAttachment: (MessageAttachment, Data?) -> Void
     let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
     let onAskHermex: (String) -> Void
@@ -132,6 +133,7 @@ struct ChatTranscriptView: View {
                             contentWidth: contentWidth
                         )
                     }
+                    .scrollPosition($scrollPosition, anchor: .top)
                     .defaultScrollAnchor(
                         ChatScrollPolicy.initialTranscriptAnchor,
                         for: .initialOffset
@@ -146,7 +148,7 @@ struct ChatTranscriptView: View {
                     .frame(width: viewportWidth)
                     .refreshable {
                         if hasOlderMessages {
-                            await loadOlderMessagesPreservingPosition(proxy: proxy)
+                            await loadOlderMessagesPreservingPosition()
                         } else {
                             await onLoadMessages()
                         }
@@ -168,26 +170,25 @@ struct ChatTranscriptView: View {
                         ChatScrollToBottomButton(
                             bottomPadding: scrollToBottomButtonBottomPadding,
                             onTap: {
-                                releasingHold { onScrollToBottom(proxy) }
+                                releasingHold { onScrollToBottom() }
                             }
                         )
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                     }
                 }
-                .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
                 .background(Color(.systemBackground))
                 .onChange(of: messages.count) {
                     guard isFollowingLatestContent else { return }
 
                     if latestTranscriptMessageRole == "user" {
-                        releasingHold { onScrollToLatestTranscriptMessage(proxy) }
+                        releasingHold { onScrollToLatestTranscriptMessage() }
                     } else {
-                        releasingHold { onScrollToLatestContent(proxy, true) }
+                        releasingHold { onScrollToLatestContent(true) }
                     }
                 }
                 .onChange(of: streamingScrollTrigger) {
                     if isFollowingLatestContent {
-                        releasingHold { onScrollToLatestContent(proxy, true) }
+                        releasingHold { onScrollToLatestContent(true) }
                     }
                 }
                 .onChange(of: transcriptRelayoutScrollToken) {
@@ -200,17 +201,17 @@ struct ChatTranscriptView: View {
                         pinReader(proxy: proxy)
                         return
                     }
-                    releasingHold { onScrollToLatestContent(proxy, false) }
+                    releasingHold { onScrollToLatestContent(false) }
                 }
                 .onChange(of: clarificationPromptID) {
                     // The bar above the composer just grew the bottom inset; keep
                     // the latest content above it for a reader who was following.
                     guard clarificationPromptID != nil, isFollowingLatestContent else { return }
-                    releasingHold { onScrollToBottom(proxy) }
+                    releasingHold { onScrollToBottom() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                     if isScrolledNearBottom {
-                        releasingHold { onScrollToBottom(proxy) }
+                        releasingHold { onScrollToBottom() }
                     }
                 }
             }
@@ -253,8 +254,8 @@ struct ChatTranscriptView: View {
         // One clock read per body pass; each row compares its timestamp to it.
         let now = Date()
 
-        return VStack(spacing: transcriptSpacing) {
-            olderMessagesButton(proxy: proxy)
+        return LazyVStack(spacing: transcriptSpacing) {
+            olderMessagesButton
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
                 compressionReferenceCardView(compressionReferenceCard)
@@ -339,6 +340,7 @@ struct ChatTranscriptView: View {
                 .id(bottomAnchorID)
                 .allowsHitTesting(false)
         }
+        .scrollTargetLayout()
         .padding(.top, 16)
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, transcriptHorizontalPadding)
@@ -356,7 +358,14 @@ struct ChatTranscriptView: View {
                     scrollPositionController: scrollPositionController,
                     onFollowEvent: onFollowEvent
                 ) { metrics in
-                    onUpdateScrollMetrics(metrics)
+                    // Lazy height estimates can change while a programmatic
+                    // bottom-edge request is settling. That is not a reader
+                    // leaving the live edge; SwiftUI tracks user positioning.
+                    onUpdateScrollMetrics(ChatScrollMetrics(
+                        distanceFromBottom: metrics.distanceFromBottom,
+                        isUserInteracting: metrics.isUserInteracting,
+                        movedAwayFromBottom: metrics.movedAwayFromBottom && scrollPosition.isPositionedByUser
+                    ))
                 }
 
                 ChatVerticalScrollAxisGuard()
@@ -389,32 +398,20 @@ struct ChatTranscriptView: View {
     }
 
     @ViewBuilder
-    private func olderMessagesButton(proxy: ScrollViewProxy) -> some View {
+    private var olderMessagesButton: some View {
         if hasOlderMessages {
             LoadOlderMessagesButton(isLoading: isLoadingOlderMessages) {
-                Task { await loadOlderMessagesPreservingPosition(proxy: proxy) }
+                Task { await loadOlderMessagesPreservingPosition() }
             }
         }
     }
 
-    private func loadOlderMessagesPreservingPosition(proxy: ScrollViewProxy) async {
-        let capturedExactPosition = scrollPositionController.capture()
-        let renderID = displayedTranscriptMessages.first?.renderID
-        let didLoad = await onLoadOlderMessages()
-        guard didLoad else {
-            scrollPositionController.cancelPreservation()
-            return
-        }
-
-        if capturedExactPosition,
-           scrollPositionController.restoreAfterPrepend() {
-            return
-        }
-
-        guard let renderID else { return }
-
-        await Task.yield()
-        proxy.scrollTo(renderID, anchor: .top)
+    private func loadOlderMessagesPreservingPosition() async {
+        await ChatScrollPolicy.loadOlderMessages(
+            position: $scrollPosition,
+            firstMessageID: displayedTranscriptMessages.first?.renderID,
+            load: onLoadOlderMessages
+        )
     }
 
     @ViewBuilder
