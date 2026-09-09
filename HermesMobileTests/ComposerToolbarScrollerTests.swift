@@ -162,4 +162,60 @@ final class ComposerToolbarScrollerTests: XCTestCase {
         XCTAssertEqual(selection.committedEffort, "high")
         XCTAssertEqual(selection.title, "o4-mini · High")
     }
+
+    func testProfileMenuMarksTheSelectedProfile() throws {
+        let defaultProfile = profile(named: "default")
+        let reviewProfile = profile(named: "review")
+        let menu = profileSelector(
+            profiles: [defaultProfile, reviewProfile],
+            selectedName: reviewProfile.name
+        ).makeMenu()
+
+        let section = try XCTUnwrap(menu.children.first as? UIMenu)
+        let actions = try XCTUnwrap(section.children as? [UIAction])
+
+        XCTAssertEqual(section.title, String(localized: "Profile"))
+        XCTAssertTrue(section.options.contains(.displayInline))
+        XCTAssertEqual(actions.map(\.title), [defaultProfile.displayName, reviewProfile.displayName])
+        XCTAssertEqual(actions.map(\.state), [.off, .on])
+    }
+
+    func testProfileMenuDisablesItsEmptyState() throws {
+        let menu = profileSelector(profiles: [], selectedName: nil).makeMenu()
+        let action = try XCTUnwrap(menu.children.first as? UIAction)
+
+        XCTAssertEqual(action.title, String(localized: "No profiles available"))
+        XCTAssertTrue(action.attributes.contains(.disabled))
+    }
+
+    private func profileSelector(
+        profiles: [ProfileSummary],
+        selectedName: String?
+    ) -> ComposerProfileSelectorMenu {
+        ComposerProfileSelectorMenu(
+            profileOptions: profiles,
+            selectedProfileName: selectedName,
+            selectedProfileTitle: "Profile",
+            isStatic: false,
+            isDisabled: false,
+            color: .primary,
+            controlFont: .body,
+            chevronFont: .caption,
+            onSelectProfile: { _ in }
+        )
+    }
+
+    private func profile(named name: String) -> ProfileSummary {
+        ProfileSummary(
+            name: name,
+            path: nil,
+            isDefault: nil,
+            isActive: nil,
+            gatewayRunning: nil,
+            model: nil,
+            provider: nil,
+            hasEnv: nil,
+            skillCount: nil
+        )
+    }
 }

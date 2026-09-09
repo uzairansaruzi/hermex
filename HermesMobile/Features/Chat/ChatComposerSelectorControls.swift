@@ -56,25 +56,7 @@ struct ComposerProfileSelectorMenu: View {
     }
 
     private var profileMenu: some View {
-        Menu {
-            if profileOptions.isEmpty {
-                Text("No profiles available")
-            } else {
-                Section("Profile") {
-                    ForEach(profileOptions, id: \.self) { profile in
-                        Button {
-                            onSelectProfile(profile)
-                        } label: {
-                            if profile.name == selectedProfileName {
-                                Label(profile.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(profile.displayName)
-                            }
-                        }
-                    }
-                }
-            }
-        } label: {
+        ChatUIKitMenuButton {
             ComposerInlineControlLabel(
                 title: selectedProfileTitle,
                 systemImage: "person.crop.circle",
@@ -82,11 +64,40 @@ struct ComposerProfileSelectorMenu: View {
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
+        } menu: {
+            makeMenu()
         }
-        .buttonStyle(.chatTactile(.compactControl))
         .tint(color)
         .disabled(isDisabled)
         .accessibilityLabel("Choose profile")
+    }
+
+    func makeMenu() -> UIMenu {
+        guard !profileOptions.isEmpty else {
+            return UIMenu(children: [
+                UIAction(
+                    title: String(localized: "No profiles available"),
+                    attributes: .disabled
+                ) { _ in }
+            ])
+        }
+
+        return UIMenu(children: [
+            UIMenu(
+                title: String(localized: "Profile"),
+                options: [.displayInline],
+                children: profileOptions.map { profile in
+                    UIAction(
+                        title: profile.displayName,
+                        state: profile.name == selectedProfileName ? .on : .off
+                    ) { _ in
+                        Task { @MainActor in
+                            onSelectProfile(profile)
+                        }
+                    }
+                }
+            )
+        ])
     }
 }
 
