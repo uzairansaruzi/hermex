@@ -15,7 +15,7 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
   (`iPhone 17` is the reference device; any recent iPhone simulator works).
 - To actually use the app you need your own
   [hermes-webui](https://github.com/nesquena/hermes-webui) server — the app is
-  a client only. See the [README](README.md#you-need-your-own-server) for
+  a client only. See the [README](README.md#getting-started) for
   reachable-server options (Cloudflare Tunnel, reverse proxy, Tailscale, or
   `http://localhost:8787` for simulator-only testing).
 
