@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MessageBubbleView: View {
+    @State private var responseIsVisible = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.layoutDirection) private var layoutDirection
@@ -109,9 +110,13 @@ struct MessageBubbleView: View {
             if isStreaming {
                 assistantContent(segments: segments)
             } else {
-                ResponseTextSelection(identity: messageText, onAskHermex: onAskHermex) {
+                ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible, onAskHermex: onAskHermex) {
                     assistantContent(segments: segments)
                 }
+                .onGeometryChange(for: Bool.self) { geometry in
+                    guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+                    return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+                } action: { responseIsVisible = $0 }
             }
 
             linkPreview

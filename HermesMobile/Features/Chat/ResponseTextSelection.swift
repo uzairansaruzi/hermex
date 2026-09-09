@@ -5,6 +5,8 @@ import UIKit
 /// supply their actual glyph geometry; images, equations and controls never register.
 struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     let identity: String
+    // Metadata stays registered when glyph rendering is deferred offscreen.
+    var collectsGlyphs = true
     var onAskHermex: (String) -> Void = { _ in }
     @ViewBuilder let content: () -> Content
     @Environment(\.self) private var environment
@@ -14,6 +16,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: ResponseSelectionController, context: Context) {
+        controller.scope.collectsGlyphs = collectsGlyphs
         controller.input.onAskHermex = onAskHermex
         if controller.identity != identity {
             controller.input.selectedTextRange = nil
@@ -56,7 +59,9 @@ final class ResponseSelectionController: UIViewController {
 }
 
 /// The hosted SwiftUI tree must not retain its containing UIKit view.
+@Observable
 final class ResponseSelectionScope {
+    var collectsGlyphs = true
     weak var input: ResponseSelectionInput?
     init(input: ResponseSelectionInput) { self.input = input }
 }
@@ -121,10 +126,15 @@ private struct RegisteredResponseSelectionLeaf: ViewModifier {
     @State private var id = UUID()
 
     func body(content: Content) -> some View {
-        content
-            .textRenderer(ResponseSelectionRenderer(geometry: geometry))
-            .background(ResponseSelectionMarker(scope: scope, id: id, text: text, separator: separator, tableColumn: tableColumn, geometry: geometry))
-            .preference(key: ResponseSelectionOrderKey.self, value: [id])
+        Group {
+            if scope.collectsGlyphs {
+                content.textRenderer(ResponseSelectionRenderer(geometry: geometry))
+            } else {
+                content
+            }
+        }
+        .background(ResponseSelectionMarker(scope: scope, id: id, text: text, separator: separator, tableColumn: tableColumn, geometry: geometry))
+        .preference(key: ResponseSelectionOrderKey.self, value: [id])
     }
 }
 

@@ -296,7 +296,7 @@ struct ChatView: View {
     @State private var draftRevision = 0
     @State private var isScrolledNearBottom = true
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
-    @State private var transcriptScrollPosition = ScrollPosition(idType: String.self, edge: .bottom)
+    @State private var followScrollGeneration = 0
     /// While true the transcript's bottom size-change anchor and follow-driven
     /// scrolls are suspended so a disclosure toggle grows or shrinks in place.
     @State private var isDisclosureSettling = false
@@ -1342,7 +1342,6 @@ struct ChatView: View {
     private var messageContent: some View {
         let reasoningGroups = viewModel.displayedReasoningGroups
         ChatTranscriptView(
-            scrollPosition: $transcriptScrollPosition,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
             messages: viewModel.messages,
@@ -1415,9 +1414,11 @@ struct ChatView: View {
             onToggleTurnFold: toggleTurnFold,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
-            onScrollToLatestTranscriptMessage: { scrollToLatestTranscriptMessage() },
-            onScrollToLatestContent: { animated in
-                scrollToLatestContent(animated: animated)
+            onScrollToLatestTranscriptMessage: { proxy in
+                scrollToLatestTranscriptMessage(proxy)
+            },
+            onScrollToLatestContent: { proxy, animated in
+                scrollToLatestContent(proxy, animated: animated)
             },
             onPreviewAttachment: { attachment, localData in
                 presentAttachmentPreview(
@@ -2740,23 +2741,27 @@ struct ChatView: View {
         responseCompletionBackgroundTask = .invalid
     }
 
-    private func scrollToBottom() {
-        // Deliberate jumps re-arm following. During streaming the bottom edge
-        // is pinned immediately; idle jumps retain the short scroll animation.
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        // Deliberate jump to the latest content. Snap without animation while a
+        // response is streaming so the tap lands immediately instead of racing
+        // the short follow animations already chasing incoming tokens.
         ChatHaptics.scrolledToLatest(isEnabled: isHapticsEnabled)
         scrollToLatestContent(
+            proxy,
             animated: viewModel.activeStreamID == nil,
             isUserInitiated: true
         )
     }
 
     private func scrollToLatestTranscriptMessage(
+        _ proxy: ScrollViewProxy,
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
         guard let latestTranscriptMessageID else { return }
 
-        performFollowScroll(
+        scheduleFollowScroll(
+            proxy,
             targetID: latestTranscriptMessageID,
             anchor: .bottom,
             animated: animated,
@@ -2765,12 +2770,14 @@ struct ChatView: View {
     }
 
     private func scrollToLatestContent(
+        _ proxy: ScrollViewProxy,
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
         guard !viewModel.messages.isEmpty else { return }
 
-        performFollowScroll(
+        scheduleFollowScroll(
+            proxy,
             targetID: bottomAnchorID,
             anchor: .bottom,
             animated: animated,
@@ -2778,7 +2785,8 @@ struct ChatView: View {
         )
     }
 
-    private func performFollowScroll(
+    private func scheduleFollowScroll(
+        _ proxy: ScrollViewProxy,
         targetID: String,
         anchor: UnitPoint,
         animated: Bool,
@@ -2793,16 +2801,33 @@ struct ChatView: View {
             return
         }
 
-        // A semantic edge stays at the real bottom as lazy rows are measured.
-        // Streaming does not animate a chase toward an estimated footer frame.
-        let isCacheFirstSnapWindow = cacheFirstSnapUntil.map { Date() < $0 } ?? false
-        let animation = animated && viewModel.activeStreamID == nil && !isCacheFirstSnapWindow
-            ? ChatMotion.scrollToLatest(reduceMotion: reduceMotion) : nil
-        withAnimation(animation) {
-            if targetID == bottomAnchorID {
-                transcriptScrollPosition.scrollTo(edge: .bottom)
+        followScrollGeneration += 1
+        let generation = followScrollGeneration
+
+        Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 16_000_000)
+            guard !Task.isCancelled, generation == followScrollGeneration else { return }
+            // Re-check at fire time: a drag or a disclosure toggle may have
+            // begun during the delay.
+            if !isUserInitiated, !isFollowingLatestContent { return }
+
+            // Snap (no animation) while inside the cache-first reconcile window so the
+            // taller server transcript replacing the cached one doesn't animate a jump
+            // (#289). Evaluated at fire time so it's robust to onChange ordering.
+            let isCacheFirstSnapWindow = cacheFirstSnapUntil.map { Date() < $0 } ?? false
+            if animated, !isCacheFirstSnapWindow {
+                // While streaming, follow with the short cadence-synced curve so
+                // back-to-back triggers retarget smoothly; otherwise keep the
+                // regular follow-scroll feel.
+                let animation = viewModel.activeStreamID != nil
+                    ? ChatMotion.streamingFollow(reduceMotion: reduceMotion)
+                    : ChatMotion.scrollToLatest(reduceMotion: reduceMotion)
+                withAnimation(animation) {
+                    proxy.scrollTo(targetID, anchor: anchor)
+                }
             } else {
-                transcriptScrollPosition.scrollTo(id: targetID, anchor: anchor)
+                proxy.scrollTo(targetID, anchor: anchor)
             }
         }
     }
