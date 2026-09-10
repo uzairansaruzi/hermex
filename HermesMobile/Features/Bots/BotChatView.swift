@@ -6,10 +6,16 @@ import SwiftUI
     @State private var stopAction: BotConversation.StopAction?
     @State private var confirmingDiscard = false
     @State private var recoveryID = UUID()
+    @State private var followsLatest = true
+    @State private var isAtBottom = true
     @FocusState private var composerFocused: Bool
 
     init(server: URL, connection: BotConnection, profile: BotProfile) {
         _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile))
+    }
+
+    init(model: BotConversation) {
+        _model = State(initialValue: model)
     }
 
     var body: some View {
@@ -21,19 +27,45 @@ import SwiftUI
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if model.messages.isEmpty && model.liveMessages.isEmpty && model.connectionState == .connected {
-                        Text("No messages yet").foregroundStyle(.secondary)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 20) {
+                        if model.messages.isEmpty && model.liveMessages.isEmpty && model.connectionState == .connected {
+                            Text("No messages yet").foregroundStyle(.secondary)
+                        }
+                        ForEach(model.messages) { message in BotMessageRow(message: message) }
+                        ForEach(model.liveMessages) { message in BotMessageRow(message: message) }
+                        Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
-                    ForEach(model.messages) { message in BotMessageRow(message: message, streaming: false) }
-                    ForEach(model.liveMessages) { message in BotMessageRow(message: message, streaming: true) }
+                    .padding()
                 }
-                .padding()
+                .defaultScrollAnchor(.bottom)
+                .scrollDismissesKeyboard(.interactively)
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    geometry.contentOffset.y + geometry.containerSize.height
+                        >= geometry.contentSize.height + geometry.contentInsets.bottom - 48
+                } action: { _, atBottom in
+                    isAtBottom = atBottom
+                }
+                .onScrollPhaseChange { _, phase in
+                    if phase == .interacting { followsLatest = false }
+                    if phase == .idle && isAtBottom { followsLatest = true }
+                }
+                .onChange(of: model.messages.count) { followLatest(proxy) }
+                .onChange(of: model.liveMessages.last?.content) { followLatest(proxy) }
+                .onChange(of: model.connectionState) { followLatest(proxy) }
+                .overlay(alignment: .bottomTrailing) {
+                    if !followsLatest {
+                        Button("Latest", systemImage: "arrow.down") {
+                            followsLatest = true
+                            followLatest(proxy)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .padding()
+                    }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             }
-            .defaultScrollAnchor(.bottom)
-            .scrollDismissesKeyboard(.interactively)
-            .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         }
         .navigationTitle(model.profile.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -64,6 +96,12 @@ import SwiftUI
         } message: {
             Text("First check whether Desktop received this message. Discarding removes the held text from Hermex. It does not stop or resend any work.")
         }
+    }
+
+    private func followLatest(_ proxy: ScrollViewProxy) {
+        guard followsLatest else { return }
+        // The stable trailing anchor follows growing output without animating every token.
+        proxy.scrollTo("bot-transcript-bottom", anchor: .bottom)
     }
 
     private var composer: some View {
@@ -128,7 +166,6 @@ import SwiftUI
 
 private struct BotMessageRow: View {
     let message: ChatMessage
-    let streaming: Bool
     var body: some View {
         if message.role == "user" {
             Text(message.content ?? "")
@@ -137,8 +174,9 @@ private struct BotMessageRow: View {
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: .infinity, alignment: .trailing)
         } else {
-            // Reuse text rendering without webui media loaders or message actions.
-            MarkdownRenderer(content: message.content ?? "", isStreaming: streaming)
+            // Coalesced snapshots render synchronously: the deferred streaming
+            // renderer can leave the trailing viewport blank as its height changes.
+            MarkdownRenderer(content: message.content ?? "")
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

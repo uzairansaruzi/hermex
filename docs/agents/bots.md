@@ -27,6 +27,12 @@ request full history. There is no transcript cache or speculative REST adapter.
 Socket loss shows disconnected/unknown. Foreground and explicit reconnect reload
 canonical identity, history and current state before enabling commands.
 
+The transcript follows a stable trailing anchor until the user scrolls into
+history; Latest resumes following. Coalesced text snapshots use synchronous
+Markdown rendering without token reveal animations. The deferred streaming
+renderer can leave a growing Bot response's trailing viewport blank; an XCTest
+renders evolving snapshots and checks the actual visible output.
+
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 Before sending, the client flushes an unresolved marker to disk. An acknowledged
 send consumes the draft; explicit admission failures preserve its text. An

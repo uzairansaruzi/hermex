@@ -1,5 +1,7 @@
 import XCTest
 import Observation
+import SwiftUI
+import Vision
 @testable import HermesMobile
 
 @MainActor final class BotConversationTests: XCTestCase {
@@ -297,6 +299,75 @@ import Observation
 
     private func event(_ seq: Int) -> BotJSON {
         .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string("message.delta")])
+    }
+
+    func testLongInflightResponseRemainsVisibleAtLatestEdge() async throws {
+        let wire = BotFixtureWire()
+        wire.running = true
+        wire.history = [.object(["role": .string("assistant"), "text": .string(
+            (1...300).map { "\($0) SAVED HISTORY" }.joined(separator: "\n")
+        )])]
+        wire.inflight = .object(["assistant": .string(
+            (1...100).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
+        )])
+        let model = make(wire)
+        let host = UIHostingController(rootView: BotChatView(model: model).environment(\.scenePhase, .active))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { model.suspend(); window.isHidden = true; window.rootViewController = nil }
+        await model.recover()
+        await renderBotFrames()
+        for step in 1...12 {
+            wire.inflight = .object(["assistant": .string(
+                (1...(100 + step * 25)).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
+            )])
+            let updated = expectation(description: "Stream snapshot published")
+            withObservationTracking { _ = model.liveMessages } onChange: { updated.fulfill() }
+            wire.onEvent?(event(step))
+            await fulfillment(of: [updated], timeout: 3)
+            await renderBotFrames()
+            try assertBotOutputVisible(window)
+        }
+    }
+
+    private func renderBotFrames() async {
+        let rendered = expectation(description: "Transcript layout committed")
+        let driver = BotRenderFrameDriver { rendered.fulfill() }
+        driver.start()
+        await fulfillment(of: [rendered], timeout: 10)
+        driver.stop()
+    }
+
+    private func assertBotOutputVisible(_ window: UIWindow) throws {
+        let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: screenshot)
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let request = VNRecognizeTextRequest()
+        try VNImageRequestHandler(cgImage: XCTUnwrap(screenshot.cgImage)).perform([request])
+        let visibleText = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+        XCTAssertTrue(visibleText.contains("VISIBLE LIVE OUTPUT"), "Live response must be visible, got: \(visibleText)")
+    }
+}
+
+@MainActor private final class BotRenderFrameDriver: NSObject {
+    private let completion: () -> Void
+    private var link: CADisplayLink?
+    private var frames = 0
+    init(completion: @escaping () -> Void) { self.completion = completion }
+    func start() {
+        link = CADisplayLink(target: self, selector: #selector(tick))
+        link?.add(to: .main, forMode: .common)
+    }
+    func stop() { link?.invalidate(); link = nil }
+    @objc private func tick() {
+        frames += 1
+        if frames == 3 { stop(); completion() }
     }
 }
 
