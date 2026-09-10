@@ -38,7 +38,9 @@ struct ComposerTextInputView: View {
     let onTapQuote: (ComposerQuote) -> Void
     let onRemoveQuote: (UUID) -> Void
 
-    private let placeholder = String(localized: "Ask anything... /commands")
+    var placeholder = String(localized: "Ask anything... /commands")
+    /// Text-only clients reject file/image paste and drop before invoking callbacks.
+    var acceptsAttachments = true
     private let collapsedLineHeight: CGFloat = 22
     private let expandedMinimumHeight: CGFloat = 72
 
@@ -62,7 +64,9 @@ struct ComposerTextInputView: View {
                 onPasteFileProviders: onPasteFileProviders,
                 onPasteFileURLs: onPasteFileURLs,
                 onPasteImageProviders: onPasteImageProviders,
-                onPasteImages: onPasteImages
+                onPasteImages: onPasteImages,
+                acceptsAttachments: acceptsAttachments,
+                accessibilityLabel: placeholder
             )
             // The card editor is at least 72 pt of real text view, so a tap
             // anywhere in it lands on the editor rather than dead space.
@@ -185,6 +189,9 @@ private struct ComposerTextView: UIViewRepresentable {
     let onPasteImageProviders: ([NSItemProvider]) -> Void
     let onPasteImages: ([UIImage]) -> Void
 
+    let acceptsAttachments: Bool
+    let accessibilityLabel: String
+
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: $text,
@@ -212,13 +219,6 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.allowsEditingTextAttributes = false
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
         textView.onKeyboardSend = onKeyboardSend
-        textView.pasteConfiguration = UIPasteConfiguration(
-            acceptableTypeIdentifiers: [
-                UTType.fileURL.identifier,
-                UTType.image.identifier,
-                UTType.text.identifier
-            ]
-        )
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
@@ -240,6 +240,15 @@ private struct ComposerTextView: UIViewRepresentable {
         let isRTL = context.environment.layoutDirection == .rightToLeft
         textView.semanticContentAttribute = isRTL ? .forceRightToLeft : .unspecified
         textView.textAlignment = isRTL ? .right : .natural
+        textView.acceptsAttachments = acceptsAttachments
+        textView.accessibilityLabel = accessibilityLabel
+        let pasteTypes = acceptsAttachments
+            ? [UTType.fileURL.identifier, UTType.image.identifier, UTType.text.identifier]
+            : [UTType.plainText.identifier]
+        if textView.pasteConfiguration?.acceptableTypeIdentifiers != pasteTypes {
+            textView.pasteConfiguration = UIPasteConfiguration(acceptableTypeIdentifiers: pasteTypes)
+        }
+        context.coordinator.acceptsAttachments = acceptsAttachments
         textView.isEditable = !isDisabled
         textView.isSelectable = !isDisabled
         textView.textColor = isDisabled ? .secondaryLabel : .label
@@ -274,6 +283,7 @@ private struct ComposerTextView: UIViewRepresentable {
         @Binding var isFocused: Bool
         @Binding var renderedChips: [ComposerChipToken]
         var onHeightChange: (CGFloat) -> Void
+        var acceptsAttachments = true
         var onDropFileProviders: ([NSItemProvider]) -> Void = { _ in }
         var onDropImageProviders: ([NSItemProvider]) -> Void = { _ in }
         private var pendingFocusTarget: Bool?
@@ -529,6 +539,12 @@ private struct ComposerTextView: UIViewRepresentable {
             _ textDroppableView: UIView & UITextDroppable,
             proposalForDrop drop: UITextDropRequest
         ) -> UITextDropProposal {
+            if !acceptsAttachments {
+                let hasOnlyText = drop.dropSession.items.allSatisfy {
+                    $0.itemProvider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
+                }
+                return UITextDropProposal(operation: hasOnlyText ? .copy : .cancel)
+            }
             guard ComposerDropRoute(providers: drop.dropSession.items.map(\.itemProvider)) != nil else {
                 return drop.suggestedProposal
             }
@@ -543,7 +559,8 @@ private struct ComposerTextView: UIViewRepresentable {
             _ textDroppableView: UIView & UITextDroppable,
             willPerformDrop drop: UITextDropRequest
         ) {
-            guard let route = ComposerDropRoute(providers: drop.dropSession.items.map(\.itemProvider)) else {
+            guard acceptsAttachments,
+                  let route = ComposerDropRoute(providers: drop.dropSession.items.map(\.itemProvider)) else {
                 return
             }
 

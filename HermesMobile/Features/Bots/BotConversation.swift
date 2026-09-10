@@ -54,8 +54,10 @@ import Observation
             && !localOperation && !uncertainStop
     }
 
+    var mayEditDraft: Bool { hydrated && !uncertainSend && !localOperation }
+
     func editDraft(_ text: String) {
-        guard hydrated, !uncertainSend, !localOperation else { return }
+        guard mayEditDraft else { return }
         draft = text
         drafts.setDraft(text, for: draftKey)
     }

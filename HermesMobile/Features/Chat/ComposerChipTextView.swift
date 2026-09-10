@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 /// The composer's editor: a text view that draws known skill references as
 /// atomic chips while every value that leaves it stays the draft's own text.
 final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
+    var acceptsAttachments = true
     var isKeyboardSendEnabled = false
     var onKeyboardSend: () -> Void = {}
     var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
@@ -422,7 +423,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     func canPasteItemProviders(_ itemProviders: [NSItemProvider]) -> Bool {
-        itemProviders.contains {
+        if !acceptsAttachments {
+            return itemProviders.contains { $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) }
+        }
+        return itemProviders.contains {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
                 || $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
                 || $0.hasItemConformingToTypeIdentifier(UTType.text.identifier)
@@ -430,6 +434,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     func pasteItemProviders(_ itemProviders: [NSItemProvider]) {
+        guard acceptsAttachments else { paste(nil); return }
         let fileProviders = itemProviders.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
         }
@@ -465,6 +470,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             return isKeyboardSendEnabled
         }
 
+        if action == #selector(paste(_:)), !acceptsAttachments {
+            return isEditable && UIPasteboard.general.hasStrings
+        }
+
         if action == #selector(paste(_:)), hasPasteboardContent {
             return true
         }
@@ -478,6 +487,11 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     override func paste(_ sender: Any?) {
+        guard acceptsAttachments else {
+            guard isEditable, let text = UIPasteboard.general.string else { return }
+            insertText(text)
+            return
+        }
         let fileProviders = pasteboardFileProviders
 
         if !fileProviders.isEmpty {

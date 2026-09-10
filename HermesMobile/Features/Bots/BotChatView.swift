@@ -8,7 +8,7 @@ import SwiftUI
     @State private var recoveryID = UUID()
     @State private var followsLatest = true
     @State private var isAtBottom = true
-    @FocusState private var composerFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(server: URL, connection: BotConnection, profile: BotProfile) {
         _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile))
@@ -20,24 +20,18 @@ import SwiftUI
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.connection.name + " / " + model.profile.id)
-                    .font(.footnote).foregroundStyle(.secondary)
-                Text(connectionLabel).font(.caption)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
-
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 20) {
+                    LazyVStack(alignment: .leading, spacing: 8) {
                         if model.messages.isEmpty && model.liveMessages.isEmpty && model.connectionState == .connected {
                             Text("No messages yet").foregroundStyle(.secondary)
                         }
-                        ForEach(model.messages) { message in BotMessageRow(message: message) }
-                        ForEach(model.liveMessages) { message in BotMessageRow(message: message) }
+                        ForEach(model.messages) { message in MessageBubbleView(message: message, textOnly: true) }
+                        ForEach(model.liveMessages) { message in MessageBubbleView(message: message, textOnly: true) }
                         Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
-                    .padding()
+                    .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
+                    .padding(.vertical, 16)
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
@@ -105,79 +99,11 @@ import SwiftUI
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let error = model.errorMessage { Text(error).font(.footnote).foregroundStyle(.secondary) }
-            if model.uncertainSend {
-                Text("Send outcome unknown. Check the conversation in Desktop before sending again.").font(.footnote)
-                if model.connectionState == .connected {
-                    Button("Resolve held message…") { confirmingDiscard = true }.font(.footnote)
-                }
-            } else if model.turn == .needsAttention {
-                Text("Needs attention. Answer the request in Hermes Desktop on this same connection.").font(.footnote)
-            }
-            if model.connectionState == .disconnected {
-                Button("Reconnect") { recoveryID = UUID() }
-            }
-            TextField("Message bot", text: Binding(get: { model.draft }, set: { model.editDraft($0) }), axis: .vertical)
-                .lineLimit(1...6)
-                .focused($composerFocused)
-                .disabled(model.uncertainSend || model.turn == .submitting)
-                .accessibilityLabel("Message bot")
-            HStack {
-                Text(turnLabel).font(.footnote).foregroundStyle(.secondary)
-                Spacer()
-                if model.mayStop {
-                    Button("Stop…", systemImage: "stop.fill") { stopAction = model.prepareStop() }
-                        .frame(minWidth: 44, minHeight: 44)
-                } else {
-                    Button("Send", systemImage: "arrow.up") { Task { await model.send() } }
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .disabled(!model.maySend || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
-        .padding(.horizontal, 12).padding(.bottom, 8)
-    }
-
-    private var connectionLabel: String {
-        switch model.connectionState {
-        case .connected: return String(localized: "Connected")
-        case .recovering: return String(localized: "Loading current conversation…")
-        case .disconnected: return String(localized: "Disconnected · Last loaded conversation")
-        }
-    }
-
-    private var turnLabel: String {
-        switch model.turn {
-        case .idle: return String(localized: "Ready")
-        case .running: return String(localized: "Working")
-        case .needsAttention: return String(localized: "Needs attention")
-        case .submitting: return String(localized: "Sending…")
-        case .stopping: return String(localized: "Stopping…")
-        case .uncertain: return String(localized: "Outcome unknown")
-        case .interrupted: return String(localized: "Work was interrupted. The saved conversation is loaded.")
-        case .unknown: return String(localized: "Checking current work…")
-        }
-    }
-}
-
-private struct BotMessageRow: View {
-    let message: ChatMessage
-    var body: some View {
-        if message.role == "user" {
-            Text(message.content ?? "")
-                .textSelection(.enabled)
-                .padding(12)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        } else {
-            // Coalesced snapshots render synchronously: the deferred streaming
-            // renderer can leave the trailing viewport blank as its height changes.
-            MarkdownRenderer(content: message.content ?? "")
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        BotChatComposerView(
+            model: model,
+            onStop: { stopAction = model.prepareStop() },
+            onReconnect: { recoveryID = UUID() },
+            onResolveHeldMessage: { confirmingDiscard = true }
+        )
     }
 }

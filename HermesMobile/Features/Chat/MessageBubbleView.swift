@@ -13,6 +13,8 @@ struct MessageBubbleView: View {
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
+    /// Bot snapshots are text-only and must render synchronously while growing.
+    let textOnly: Bool
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
     let loadAttachmentData: ((String) async -> Data?)?
@@ -42,8 +44,10 @@ struct MessageBubbleView: View {
         isStreaming: Bool = false,
         liveTokensPerSecond: Double? = nil,
         onAskHermex: @escaping (String) -> Void = { _ in },
-        contextMenu: ChatMessageActionMenu? = nil
+        contextMenu: ChatMessageActionMenu? = nil,
+        textOnly: Bool = false
     ) {
+        self.textOnly = textOnly
         self.message = message
         self.loadAttachmentImage = loadAttachmentImage
         self.loadAttachmentData = loadAttachmentData
@@ -66,6 +70,9 @@ struct MessageBubbleView: View {
             localAssistantRow
         } else if isUserMessage {
             userMessageRow
+        } else if textOnly {
+            MarkdownRenderer(content: message.content ?? "")
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             assistantMessageRow
         }
@@ -73,7 +80,7 @@ struct MessageBubbleView: View {
 
     private var userMessageRow: some View {
         VStack(alignment: .trailing, spacing: 8) {
-            if let attachments = message.attachments, !attachments.isEmpty {
+            if !textOnly, let attachments = message.attachments, !attachments.isEmpty {
                 attachmentPreviews
             }
 
@@ -246,7 +253,7 @@ struct MessageBubbleView: View {
     /// actions read `message.content`, which is always the exact text.
     private var userBubble: some View {
         let text = userBubbleText
-        let chips = userBubbleChips(in: text)
+        let chips = textOnly ? [] : userBubbleChips(in: text)
 
         return ComposerChipTextLine.text(text, tokens: chips, style: chipStyle)
             .font(.body)
@@ -289,14 +296,14 @@ struct MessageBubbleView: View {
 
     @ViewBuilder
     private var linkPreview: some View {
-        if let url = TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) {
+        if !textOnly, let url = TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) {
             TranscriptLinkPreviewView(url: url)
                 .frame(maxWidth: 300)
         }
     }
 
     private var hasLinkPreview: Bool {
-        TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) != nil
+        !textOnly && TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) != nil
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked
@@ -454,7 +461,7 @@ struct MessageBubbleView: View {
     /// sent payload are untouched.
     private var userBubbleText: String {
         let content = message.content ?? ""
-        guard hidesAttachmentPaths else { return content }
+        guard !textOnly, hidesAttachmentPaths else { return content }
         return MessageAttachment.contentWithoutAttachedFilesMarker(in: content)
     }
 
