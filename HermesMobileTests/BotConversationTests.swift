@@ -355,7 +355,7 @@ import Vision
     }
 }
 
-@MainActor private final class BotRenderFrameDriver: NSObject {
+@MainActor final class BotRenderFrameDriver: NSObject {
     private let completion: () -> Void
     private var link: CADisplayLink?
     private var frames = 0

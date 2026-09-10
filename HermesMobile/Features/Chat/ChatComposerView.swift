@@ -2,12 +2,6 @@ import SwiftUI
 import UIKit
 import PhotosUI
 
-/// Shape metrics for the composer stack: the expanded composer card and every
-/// full-width surface stacked above it share this radius so they read as one set.
-enum ChatComposerMetrics {
-    static let cardCornerRadius: CGFloat = 26
-}
-
 private struct ComposerStatusView: View {
     let text: String
     let isError: Bool
@@ -100,8 +94,8 @@ struct MessageComposerView: View {
 
     /// t3code sizing: every circle in the composer is 44 pt, which is also the
     /// minimum hit target, so no invisible hit padding is needed.
-    private let circleSize: CGFloat = 44
-    private let pillInset: CGFloat = 5
+    private let circleSize = ChatComposerMetrics.actionSize
+    private let pillInset = ChatComposerMetrics.pillInset
 
     @Binding var draftMessage: String
     @Binding var quotes: [ComposerQuote]
@@ -696,13 +690,6 @@ struct MessageComposerView: View {
             || showFileImporter
     }
 
-    private var composerSurfaceShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: isExpanded ? ChatComposerMetrics.cardCornerRadius : (circleSize + pillInset * 2) / 2,
-            style: .continuous
-        )
-    }
-
     /// The glass surface: one text view in both states so focus and the draft
     /// survive the morph. Pill: text, thumbnails, mic, Stop/Send in a row.
     /// Card: strip above the editor, controls move to `toolbarRow` below.
@@ -761,14 +748,7 @@ struct MessageComposerView: View {
         }
         .padding(.top, isExpanded ? 2 : 0)
         .padding(.bottom, isExpanded ? 4 : 0)
-        .adaptiveGlass(
-            .regular,
-            isInteractive: true,
-            fallbackMaterial: .ultraThinMaterial,
-            in: composerSurfaceShape
-        )
-        .clipShape(composerSurfaceShape)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.12), radius: 14, y: 6)
+        .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
     }
 
     /// Card-state row under the surface: a scroller of secondary controls plus
@@ -1182,43 +1162,16 @@ struct MessageComposerView: View {
             || isUpdatingConfiguration
     }
 
-    private var actionButtonBackground: Color {
-        if showsStopButton {
-            return Color.red.opacity(colorScheme == .dark ? 0.22 : 0.14)
-        }
-
-        if PrimaryActionTintSettings.usesThemeColor(
-            isEnabled: tintsPrimaryActions,
-            controlIsEnabled: !isActionButtonDisabled
-        ) {
-            return HeaderLogoColor.color(for: headerLogoColorHex)
-        }
-
-        if isActionButtonDisabled {
-            return colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)
-        }
-
-        return colorScheme == .dark ? .white : .black
+    private var actionAppearance: ChatComposerActionAppearance {
+        ChatComposerActionAppearance(
+            isStop: showsStopButton, isDisabled: isActionButtonDisabled,
+            colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
+            themeHex: headerLogoColorHex
+        )
     }
 
-    private var actionButtonForeground: Color {
-        if showsStopButton {
-            return Color.red
-        }
-
-        if PrimaryActionTintSettings.usesThemeColor(
-            isEnabled: tintsPrimaryActions,
-            controlIsEnabled: !isActionButtonDisabled
-        ) {
-            return HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
-        }
-
-        if isActionButtonDisabled {
-            return Color(.secondaryLabel)
-        }
-
-        return colorScheme == .dark ? .black : .white
-    }
+    private var actionButtonBackground: Color { actionAppearance.background }
+    private var actionButtonForeground: Color { actionAppearance.foreground }
 
     private var trimmedDraftMessage: String {
         draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
