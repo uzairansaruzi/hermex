@@ -25,6 +25,7 @@ struct KeychainStore: KeychainStoring {
         // URL is treated as a credential, so the registry
         // lives in the Keychain, not UserDefaults (#15).
         case servers = "servers"
+        case botConnection = "bot_connection"
     }
 
     private let keychain: Keychain

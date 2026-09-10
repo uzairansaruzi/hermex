@@ -307,6 +307,7 @@ final class AuthManager {
             await attemptBestEffortServerLogout(server: active)
         }
 
+        await ChatDraftStore.shared.discardBotDrafts(server: active)
         advanceAfterRemoving(activeServer: active)
     }
 
@@ -316,6 +317,7 @@ final class AuthManager {
     /// headers, and cookies — leaving the active server's auth untouched (#17).
     func removeServer(_ account: ServerAccount) async {
         guard let serverURL = URL(string: account.urlString) else { return }
+        await ChatDraftStore.shared.discardBotDrafts(server: serverURL)
         let isActive = state.server?.absoluteString == account.id
 
         if isActive {
@@ -400,6 +402,7 @@ final class AuthManager {
     /// its cookies — without touching the registry or the global `server_url` key.
     private func clearLocalArtifacts(for server: URL) {
         try? keychain.delete(.customHeaders, scope: server.absoluteString)
+        try? keychain.delete(.botConnection, scope: server.absoluteString)
         clearSessionCookies(for: server)
     }
 

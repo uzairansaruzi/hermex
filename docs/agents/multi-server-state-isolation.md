@@ -108,3 +108,11 @@ server's content even if the purge fails.
 | Per-server custom headers | `CustomHeaderInjectionTests` (`testSSEStreamSourcesHeadersFromActiveServerStore`, `testLaunchMigratesLegacyGlobalHeadersToActiveServerScope`), `AuthManagerStateTests` (`testSignOutLeavesOtherServerHeadersAndRegistryIntact`, `testAddServerFailureKeepsActiveServerAndItsHeaders`) |
 | Per-server cookies | `AuthManagerStateTests` (`testSignOutClearsOnlyActiveServerCookies`, `testRemoveNonActiveServerClearsOnlyItsCookies`, `testUnauthorizedClearsOnlyActiveServerCookies`) |
 | Default model/profile | No persisted state to leak (server-fresh per active server); covered by the switch mechanism + `9.3` Settings tests. |
+
+## Bot connection and drafts
+
+Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.
+Bot drafts use configured server + connection UUID + Profile, independently of
+webui session IDs. Bot transcripts stay in memory. See [Bot Mode](bots.md) for
+identity, removal and recovery rules. `BotDraftTests` covers disk persistence,
+connection/server removal and compatibility with existing webui records.

@@ -2135,6 +2135,11 @@ private struct ServerDetailView: View {
                     }
                 }
 
+                if let server = URL(string: account.urlString) {
+                    NavigationLink("Bot connection") { BotConnectionView(server: server) }
+                        .frame(minHeight: 44)
+                }
+
                 SettingsCard(title: String(localized: "Identity")) {
                     ServerIdentityEditor(
                         displayName: $displayName,

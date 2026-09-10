@@ -60,6 +60,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Hermex connects to your Hermes backend on your local network to load bots and chat.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Hermex needs microphone access to dictate text into the message composer.</string>
 	<key>NSCameraUsageDescription</key>

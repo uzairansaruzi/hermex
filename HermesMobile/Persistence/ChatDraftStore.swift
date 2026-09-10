@@ -74,9 +74,11 @@ struct ChatDraft: Equatable, Sendable {
     var quotes: [ComposerQuote] = []
     var attachments: [ChatDraftAttachment] = []
     var settings: ChatDraftSettings?
+    // Written durably before Bot submission; acknowledgement loss must survive relaunch.
+    var botSubmissionUncertain = false
 
     var isEmpty: Bool {
-        text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true)
+        text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
     }
 }
 
@@ -136,6 +138,7 @@ enum ChatDraftSendReconciliation {
 struct ChatDraftKey: Hashable, Sendable {
     enum Context: Hashable, Sendable {
         case session(String)
+        case bot(connectionID: UUID, profile: String)
         case newChat
     }
 
@@ -144,6 +147,10 @@ struct ChatDraftKey: Hashable, Sendable {
 
     static func session(server: URL, sessionID: String) -> Self {
         Self(serverID: server.absoluteString, context: .session(sessionID))
+    }
+
+    static func bot(server: URL, connectionID: UUID, profile: String) -> Self {
+        Self(serverID: server.absoluteString, context: .bot(connectionID: connectionID, profile: profile))
     }
 
     static func newChat(server: URL) -> Self {
@@ -355,6 +362,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         let quotes: [FailableQuote]?
         let attachments: [FailableAttachment]?
         let settings: SettingsRecord?
+        var connectionID: UUID?
+        var profile: String?
+        var botSubmissionUncertain: Bool?
 
         private enum CodingKeys: String, CodingKey {
             case serverID
@@ -363,7 +373,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case text
             case quotes
             case attachments
-            case settings
+            case settings, connectionID, profile, botSubmissionUncertain
         }
 
         init(key: ChatDraftKey, draft: ChatDraft) {
@@ -372,10 +382,16 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case .session(let sessionID):
                 context = "session"
                 self.sessionID = sessionID
+            case .bot(let connectionID, let profile):
+                context = "bot"
+                sessionID = nil
+                self.connectionID = connectionID
+                self.profile = profile
             case .newChat:
                 context = "newChat"
                 sessionID = nil
             }
+            botSubmissionUncertain = draft.botSubmissionUncertain
             text = draft.text
             quotes = draft.quotes.map { FailableQuote(value: QuoteRecord($0)) }
             attachments = draft.attachments.map { FailableAttachment(value: AttachmentRecord($0)) }
@@ -389,6 +405,10 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             serverID = (try? container.decodeIfPresent(String.self, forKey: .serverID)) ?? nil
             context = (try? container.decodeIfPresent(String.self, forKey: .context)) ?? nil
             sessionID = (try? container.decodeIfPresent(String.self, forKey: .sessionID)) ?? nil
+            connectionID = try? container.decodeIfPresent(UUID.self, forKey: .connectionID)
+            profile = try? container.decodeIfPresent(String.self, forKey: .profile)
+            // A malformed uncertainty field fails closed for Bot records.
+            botSubmissionUncertain = (try? container.decodeIfPresent(Bool.self, forKey: .botSubmissionUncertain)) ?? (context == "bot" && container.contains(.botSubmissionUncertain))
             text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? nil
             quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
@@ -414,6 +434,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                     return nil
                 }
                 key = ChatDraftKey(serverID: serverID, context: .session(sessionID))
+            case "bot":
+                guard let connectionID, let profile, !profile.isEmpty else { return nil }
+                key = ChatDraftKey(serverID: serverID, context: .bot(connectionID: connectionID, profile: profile))
             case "newChat":
                 key = ChatDraftKey(serverID: serverID, context: .newChat)
             default:
@@ -424,17 +447,18 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 text: text ?? "",
                 quotes: (quotes ?? []).compactMap(\.value?.quote),
                 attachments: (attachments ?? []).compactMap(\.value?.attachment),
-                settings: settings?.settings
+                settings: settings?.settings,
+                botSubmissionUncertain: context == "bot" && (botSubmissionUncertain ?? false)
             )
             guard !draft.isEmpty else { return nil }
             return (key, draft)
         }
     }
 
-    private static let currentVersion = 3
+    private static let currentVersion = 4
     /// Older documents decode through the same schema because every field added
     /// after typed text is optional.
-    private static let readableVersions: Set<Int> = [1, 2, currentVersion]
+    private static let readableVersions: Set<Int> = [1, 2, 3, currentVersion]
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile",
         category: "ChatDraftStore"
@@ -547,6 +571,21 @@ final class ChatDraftStore {
     func setDraft(_ text: String, for key: ChatDraftKey) {
         markChangedBeforeLoad(key)
         updateDraft(for: key) { $0.text = text }
+    }
+
+    func setBotSubmissionUncertain(_ uncertain: Bool, for key: ChatDraftKey) {
+        guard case .bot = key.context else { return }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
+    }
+
+    func discardBotDrafts(server: URL, connectionID: UUID? = nil) async {
+        await loadIfNeeded()
+        await discardDrafts { key in
+            guard key.serverID == server.absoluteString,
+                  case .bot(let id, _) = key.context else { return false }
+            return connectionID == nil || id == connectionID
+        }
     }
 
     /// Replaces explicit quoted passages without disturbing typed text,
