@@ -66,6 +66,24 @@ import XCTest
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
     }
 
+    func testPendingRequestOutranksUncertainStopInStatus() async throws {
+        // A Stop whose acknowledgement was lost stays uncertain; if the next snapshot
+        // still carries a pending approval, the Desktop instruction must stay visible.
+        let wire = BotFixtureWire(); wire.running = true; wire.attention = true; wire.stopFailure = .transport
+        let model = make(wire)
+        await model.recover()
+        await model.stop(try XCTUnwrap(model.prepareStop()))
+        await model.recover()
+        XCTAssertTrue(model.uncertainStop)
+        XCTAssertEqual(model.turn, .needsAttention)
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        defer { model.suspend(); close(window) }
+        await renderFrames()
+        let status = try screenshot(window, name: "attention-over-uncertain-stop")
+        XCTAssertTrue(status.contains("Needs attention"))
+        XCTAssertFalse(status.contains("Outcome unknown"))
+    }
+
     func testTextOnlyEditorRejectsAttachmentProviders() {
         let editor = ComposerChipTextView()
         let image = NSItemProvider(item: NSData(), typeIdentifier: UTType.png.identifier)

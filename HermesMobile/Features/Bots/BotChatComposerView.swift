@@ -9,6 +9,7 @@ struct BotChatComposerView: View {
     let onResolveHeldMessage: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
@@ -71,8 +72,13 @@ struct BotChatComposerView: View {
                             .padding(.top, -10).padding(.bottom, -12)
                             .ignoresSafeArea(edges: .bottom)
                     )
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
             }
+            // Focus flips arrive from UIKit outside any withAnimation, so the
+            // pill-to-card morph and the row's insertion animate from here,
+            // exactly as the Sessions composer does.
+            .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isFocused)
         }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -123,10 +129,12 @@ private struct BotChatStatusView: View {
                     if model.connectionState == .connected {
                         Button("Resolve held message…", action: onResolveHeldMessage)
                     }
+                } else if model.turn == .needsAttention {
+                    // The model ranks a pending request above an unresolved Stop;
+                    // the Desktop instruction is the actionable line, so it wins here too.
+                    Text("Needs attention. Answer the request in Hermes Desktop on this same connection.")
                 } else if model.uncertainStop && model.turn != .stopping {
                     Text("Outcome unknown")
-                } else if model.turn == .needsAttention {
-                    Text("Needs attention. Answer the request in Hermes Desktop on this same connection.")
                 } else if model.connectionState == .connected, let turnText {
                     Text(turnText)
                 }
