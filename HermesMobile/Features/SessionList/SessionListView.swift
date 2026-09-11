@@ -73,6 +73,7 @@ struct SessionListView: View {
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     init(
         authManager: AuthManager,
@@ -115,6 +116,7 @@ struct SessionListView: View {
             .onChange(of: pendingDeepLinkedSessionID) { if pendingDeepLinkedSessionID != nil { showsBots = false } }
             .onChange(of: requestedNewChat) { if requestedNewChat != nil { showsBots = false } }
             .onChange(of: pendingSharedImport?.reservationID) { if pendingSharedImport != nil { showsBots = false } }
+            .onChange(of: isBotModeEnabled) { if !isBotModeEnabled { showsBots = false } }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if hasWaitingSharedImport {
                     waitingSharedImportBanner
@@ -332,9 +334,13 @@ struct SessionListView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var showsBotsInbox: Bool {
+        BotModeGate.showsBotsInbox(isEnabled: isBotModeEnabled, userPickedBots: showsBots)
+    }
+
     @ViewBuilder
     private var navigationContainer: some View {
-        if showsBots {
+        if showsBotsInbox {
             NavigationStack {
                 BotsInboxView(server: server) { showsBots = false }
             }
@@ -469,12 +475,14 @@ struct SessionListView: View {
             header
                 .sessionsTopChromeListRow()
 
-            Picker("Screen", selection: $showsBots) {
-                Text("Sessions").tag(false)
-                Text("Bots").tag(true)
+            if isBotModeEnabled {
+                Picker("Screen", selection: $showsBots) {
+                    Text("Sessions").tag(false)
+                    Text("Bots").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .sessionsScreenListRow()
             }
-            .pickerStyle(.segmented)
-            .sessionsScreenListRow()
 
             if viewModel.isViewingCachedData {
                 OfflineCacheBanner()
