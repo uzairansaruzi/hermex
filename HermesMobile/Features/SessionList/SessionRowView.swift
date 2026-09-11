@@ -552,7 +552,8 @@ private func nonEmpty(_ value: String?) -> String? {
     return trimmed.isEmpty ? nil : trimmed
 }
 
-private enum SessionRelativeDateFormatter {
+/// Shared "2h ago" formatter for session and Bot rows.
+enum SessionRelativeDateFormatter {
     static let shared: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated

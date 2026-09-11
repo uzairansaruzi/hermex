@@ -46,7 +46,7 @@ import SwiftUI
                         BotChatView(server: server, connection: connection, profile: profile)
                             .id(profile.id + connection.id.uuidString)
                     } label: {
-                        BotInboxRow(profile: profile)
+                        BotInboxRow(profile: profile, avatar: avatars[profile.id])
                     }
                     .listRowSeparator(.hidden)
                     .padding(.vertical, 10)
@@ -109,31 +109,48 @@ import SwiftUI
     }
 }
 
+/// One roster row: the Desktop avatar when the host has one, otherwise a letter
+/// tile; the server name; and the canonical preview, else the description, else
+/// the Profile name. The avatar is decorative; VoiceOver reads the text as one element.
 private struct BotInboxRow: View {
     let profile: BotProfile
+    let avatar: UIImage?
     private var color: Color {
         let colors: [Color] = [.green, .orange, .purple, .pink, .blue, .teal]
         let value = profile.id.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
         return colors[value]
     }
+    private var subline: String {
+        if let preview = profile.preview, !preview.isEmpty { return preview }
+        return profile.description ?? profile.id
+    }
     var body: some View {
         HStack(spacing: 16) {
-            Text(String(profile.name.prefix(1))).font(.title2.weight(.semibold))
-                .frame(width: 48, height: 48)
-                .background(color.opacity(0.2), in: RoundedRectangle(cornerRadius: 16))
-                .foregroundStyle(color).accessibilityHidden(true)
+            tile
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(profile.name).font(.headline)
                     Spacer()
                     if let date = profile.lastActive {
-                        Text(date, style: .date).font(.caption).foregroundStyle(.secondary)
+                        Text(SessionRelativeDateFormatter.shared.localizedString(for: date, relativeTo: Date())).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text(profile.preview?.isEmpty == false ? profile.preview! : profile.id)
-                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                Text(subline).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .accessibilityElement(children: .combine)
+    }
+    @ViewBuilder private var tile: some View {
+        if let avatar {
+            Image(uiImage: avatar).resizable().scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .accessibilityHidden(true)
+        } else {
+            Text(String(profile.name.prefix(1))).font(.title2.weight(.semibold))
+                .frame(width: 48, height: 48)
+                .background(color.opacity(0.2), in: RoundedRectangle(cornerRadius: 16))
+                .foregroundStyle(color).accessibilityHidden(true)
+        }
     }
 }
