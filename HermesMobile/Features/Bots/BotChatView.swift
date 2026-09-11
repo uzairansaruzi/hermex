@@ -1,6 +1,10 @@
 import SwiftUI
 
 @MainActor struct BotChatView: View {
+    /// Scroll anchor for the pending request card, so the status line can bring
+    /// the user back to it from anywhere in the transcript.
+    fileprivate static let requestAnchor = "bot-pending-request"
+
     @Environment(\.scenePhase) private var scenePhase
     @State private var model: BotConversation
     @State private var stopAction: BotConversation.StopAction?
@@ -8,6 +12,8 @@ import SwiftUI
     @State private var recoveryID = UUID()
     @State private var followsLatest = true
     @State private var isAtBottom = true
+    /// Bumped by the status line's Review action; the transcript scrolls on change.
+    @State private var showRequestID = UUID()
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(server: URL, connection: BotConnection, profile: BotProfile) {
@@ -47,6 +53,18 @@ import SwiftUI
                         if let plan = model.plan {
                             BotPlanRowView(plan: plan).id("bot-plan")
                         }
+                        // The blocking request sits where the work stopped, so the
+                        // command reads under the tool row that asked for it.
+                        if let request = model.pendingRequest {
+                            BotPendingRequestCard(
+                                request: request, identity: identity,
+                                isEnabled: model.mayAnswer, isAnswering: model.answeringRequestID != nil,
+                                resolution: resolution(for: request),
+                                onApprove: approve, onAnswer: answer, onSkip: skip,
+                                onStop: { stopAction = model.prepareStop() }
+                            )
+                            .id(BotChatView.requestAnchor)
+                        }
                         Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
                     .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
@@ -74,6 +92,13 @@ import SwiftUI
                 .onChange(of: model.liveActivity.toolCalls.count) { followLatest(proxy) }
                 .onChange(of: model.liveActivity.reasoning.count) { followLatest(proxy) }
                 .onChange(of: model.connectionState) { followLatest(proxy) }
+                // A request that needs the user wins over where they had scrolled.
+                .onChange(of: model.pendingRequest?.requestID) { _, id in
+                    guard id != nil else { return }
+                    followsLatest = true
+                    proxy.scrollTo(BotChatView.requestAnchor, anchor: .bottom)
+                }
+                .onChange(of: showRequestID) { proxy.scrollTo(BotChatView.requestAnchor, anchor: .bottom) }
                 .overlay(alignment: .bottomTrailing) {
                     if !followsLatest {
                         Button("Latest", systemImage: "arrow.down") {
@@ -118,6 +143,33 @@ import SwiftUI
         }
     }
 
+    /// Which bot on which connection, so two hosts with equal Profile names
+    /// never produce an anonymous card.
+    private var identity: String {
+        String(localized: "\(model.profile.name) on \(model.connection.name)")
+    }
+
+    /// The verdict for the request on screen, and only that one.
+    private func resolution(for request: BotPendingRequest) -> BotRequestResolution? {
+        guard let resolution = model.requestResolution, resolution.requestID == request.requestID else { return nil }
+        return resolution
+    }
+
+    private func approve(_ choice: BotApprovalRequest.Choice) {
+        guard let action = model.prepareAnswer() else { return }
+        Task { await model.respond(action, choice: choice) }
+    }
+
+    private func answer(_ answers: [BotQuestionAnswer]) {
+        guard let action = model.prepareAnswer() else { return }
+        Task { await model.answerQuestion(action, answers) }
+    }
+
+    private func skip() {
+        guard let action = model.prepareAnswer() else { return }
+        Task { await model.skipQuestion(action) }
+    }
+
     @ViewBuilder
     private func settledActivity(anchoredTo anchorID: String?) -> some View {
         ForEach(model.settledActivity.filter { $0.anchorMessageID == anchorID }) { activity in
@@ -136,7 +188,8 @@ import SwiftUI
             model: model,
             onStop: { stopAction = model.prepareStop() },
             onReconnect: { recoveryID = UUID() },
-            onResolveHeldMessage: { confirmingDiscard = true }
+            onResolveHeldMessage: { confirmingDiscard = true },
+            onShowRequest: { showRequestID = UUID() }
         )
     }
 }

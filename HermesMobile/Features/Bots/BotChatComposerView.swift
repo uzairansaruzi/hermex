@@ -7,6 +7,8 @@ struct BotChatComposerView: View {
     let onStop: () -> Void
     let onReconnect: () -> Void
     let onResolveHeldMessage: () -> Void
+    /// Scrolls the transcript back to the pending request card.
+    let onShowRequest: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -34,7 +36,10 @@ struct BotChatComposerView: View {
     var body: some View {
         AdaptiveGlassContainer(spacing: 6) {
             VStack(spacing: 0) {
-                BotChatStatusView(model: model, onReconnect: onReconnect, onResolveHeldMessage: onResolveHeldMessage)
+                BotChatStatusView(
+                    model: model, onReconnect: onReconnect,
+                    onResolveHeldMessage: onResolveHeldMessage, onShowRequest: onShowRequest
+                )
 
                 HStack(alignment: .center, spacing: 4) {
                     ComposerTextInputView(
@@ -118,6 +123,7 @@ private struct BotChatStatusView: View {
     let model: BotConversation
     let onReconnect: () -> Void
     let onResolveHeldMessage: () -> Void
+    let onShowRequest: () -> Void
 
     var body: some View {
         if model.connectionState != .connected || model.turn != .idle || model.errorMessage != nil || model.uncertainSend
@@ -137,9 +143,22 @@ private struct BotChatStatusView: View {
                         Button("Resolve held message…", action: onResolveHeldMessage)
                     }
                 } else if model.turn == .needsAttention {
-                    // The model ranks a pending request above an unresolved Stop;
-                    // the Desktop instruction is the actionable line, so it wins here too.
-                    Text("Needs attention. Answer the request in Hermes Desktop on this same connection.")
+                    // The model ranks a pending request above an unresolved Stop, so
+                    // the actionable line wins here too. The card is in the transcript
+                    // and may be scrolled away, so this doubles as the way back to it.
+                    if model.pendingRequest != nil {
+                        Button(action: onShowRequest) {
+                            Label(
+                                model.pendingRequest?.isAnswerable == true
+                                    ? String(localized: "Waiting for your answer")
+                                    : String(localized: "Needs attention in Hermes Desktop"),
+                                systemImage: "arrow.down.circle"
+                            )
+                        }
+                    } else {
+                        // A request the phone cannot address has no card to show.
+                        Text("Needs attention. Answer the request in Hermes Desktop on this same connection.")
+                    }
                 } else if model.uncertainStop && model.turn != .stopping {
                     Text("Outcome unknown")
                 } else if model.connectionState == .connected, let turnText {

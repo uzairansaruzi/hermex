@@ -142,6 +142,7 @@
 		A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000004 /* ApprovalRequestOverlay.swift */; };
 		C1A042000000000000000001 /* Clarification.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000002 /* Clarification.swift */; };
 		C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000004 /* ClarificationRequestCard.swift */; };
+		C1A0420000000000000000A3 /* PendingRequestSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */; };
 		C1A042000000000000000005 /* ClarificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000006 /* ClarificationTests.swift */; };
 		A02400000000000000000001 /* Goal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02400000000000000000002 /* Goal.swift */; };
 		C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000002 /* ChatStreamCoordinator.swift */; };
@@ -430,6 +431,7 @@
 		13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A712D3AE91645C9B8C27745 /* BotConnection.swift */; };
 		A4730000000000000000A001 /* BotAvatarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4730000000000000000A002 /* BotAvatarStore.swift */; };
 		A4750000000000000000B001 /* BotActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B002 /* BotActivity.swift */; };
+		A4750000000000000000B0A3 /* BotPendingRequestCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B0A4 /* BotPendingRequestCard.swift */; };
 		A4750000000000000000B0A1 /* BotPendingRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B0A2 /* BotPendingRequest.swift */; };
 		A4750000000000000000B003 /* BotActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B004 /* BotActivityViews.swift */; };
 		C2A87F2CDEB941BB825EABA5 /* BotConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */; };
@@ -616,6 +618,7 @@
 		A04200000000000000000004 /* ApprovalRequestOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequestOverlay.swift; sourceTree = "<group>"; };
 		C1A042000000000000000002 /* Clarification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clarification.swift; sourceTree = "<group>"; };
 		C1A042000000000000000004 /* ClarificationRequestCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationRequestCard.swift; sourceTree = "<group>"; };
+		C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRequestSurfaces.swift; sourceTree = "<group>"; };
 		C1A042000000000000000006 /* ClarificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationTests.swift; sourceTree = "<group>"; };
 		A02400000000000000000002 /* Goal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goal.swift; sourceTree = "<group>"; };
 		C04600000000000000000002 /* ChatStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinator.swift; sourceTree = "<group>"; };
@@ -909,6 +912,7 @@
 		0A712D3AE91645C9B8C27745 /* BotConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnection.swift"; sourceTree = "<group>"; };
 		A4730000000000000000A002 /* BotAvatarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAvatarStore.swift"; sourceTree = "<group>"; };
 		A4750000000000000000B002 /* BotActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotActivity.swift"; sourceTree = "<group>"; };
+		A4750000000000000000B0A4 /* BotPendingRequestCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotPendingRequestCard.swift"; sourceTree = "<group>"; };
 		A4750000000000000000B0A2 /* BotPendingRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotPendingRequest.swift"; sourceTree = "<group>"; };
 		A4750000000000000000B004 /* BotActivityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotActivityViews.swift"; sourceTree = "<group>"; };
 		40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnectionView.swift"; sourceTree = "<group>"; };
@@ -1259,6 +1263,7 @@
 				0A712D3AE91645C9B8C27745 /* BotConnection.swift */,
 				A4730000000000000000A002 /* BotAvatarStore.swift */,
 				A4750000000000000000B002 /* BotActivity.swift */,
+				A4750000000000000000B0A4 /* BotPendingRequestCard.swift */,
 				A4750000000000000000B0A2 /* BotPendingRequest.swift */,
 				A4750000000000000000B004 /* BotActivityViews.swift */,
 				27E21E4E9C8B44DFA6B8DFFB /* BotChatView.swift */,
@@ -1375,6 +1380,7 @@
 				105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */,
 				A04200000000000000000004 /* ApprovalRequestOverlay.swift */,
 				C1A042000000000000000004 /* ClarificationRequestCard.swift */,
+				C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */,
 				1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */,
 				C03190000000000000F002 /* InlineAudioPlayerView.swift */,
 				BEEF02400000000000000002 /* ChatAttachmentPreviewView.swift */,
@@ -1854,6 +1860,7 @@
 				13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */,
 				A4730000000000000000A001 /* BotAvatarStore.swift in Sources */,
 				A4750000000000000000B001 /* BotActivity.swift in Sources */,
+				A4750000000000000000B0A3 /* BotPendingRequestCard.swift in Sources */,
 				A4750000000000000000B0A1 /* BotPendingRequest.swift in Sources */,
 				A4750000000000000000B003 /* BotActivityViews.swift in Sources */,
 				E8812D2097AF431094460471 /* BotChatView.swift in Sources */,
@@ -2071,6 +2078,7 @@
 				A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */,
 				C1A042000000000000000001 /* Clarification.swift in Sources */,
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
+				C1A0420000000000000000A3 /* PendingRequestSurfaces.swift in Sources */,
 				A02400000000000000000001 /* Goal.swift in Sources */,
 				D600000000000000000002 /* CronRunHistory.swift in Sources */,
 				D6000000000000000000A2 /* CronRecentCompletion.swift in Sources */,

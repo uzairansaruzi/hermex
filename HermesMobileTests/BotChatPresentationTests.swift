@@ -20,7 +20,7 @@ import XCTest
         let wire = BotFixtureWire()
         let model = make(wire)
         await model.recover()
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let ready = try screenshot(window, name: "ready-no-status")
@@ -41,7 +41,7 @@ import XCTest
         XCTAssertFalse(model.mayEditDraft)
         await model.recover()
         model.editDraft("Persistent text")
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
@@ -76,12 +76,84 @@ import XCTest
         await model.recover()
         XCTAssertTrue(model.uncertainStop)
         XCTAssertEqual(model.turn, .needsAttention)
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}))
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let status = try screenshot(window, name: "attention-over-uncertain-stop")
-        XCTAssertTrue(status.contains("Needs attention"))
+        XCTAssertTrue(status.contains("Waiting for your answer"))
         XCTAssertFalse(status.contains("Outcome unknown"))
+    }
+
+    /// The approval card offers exactly what the host offered: this request was
+    /// smart-denied, so there is no session or permanent allow to hand out.
+    func testApprovalCardShowsOnlyTheHostsChoicesAndGoesInertOnceAnswered() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.pendingApproval = BotFixtureWire.approval(command: "rm -rf build", choices: ["once", "deny"])
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-approval-card")
+        XCTAssertTrue(shown.contains("Approval required"), shown)
+        XCTAssertTrue(shown.contains("recursive delete"), shown)
+        XCTAssertTrue(shown.contains("Allow once"), shown)
+        XCTAssertTrue(shown.contains("Deny"), shown)
+        XCTAssertFalse(shown.contains("Always allow"), shown)
+        XCTAssertFalse(shown.contains("Allow session"), shown)
+        // Identity, so two hosts with equal Profile names never look alike.
+        XCTAssertTrue(shown.contains("Fixture Mac"), shown)
+
+        wire.approvalResolved = 0
+        await model.respond(try XCTUnwrap(model.prepareAnswer()), choice: .once)
+        await renderFrames()
+        let answered = try screenshot(window, name: "bot-approval-card-already-answered")
+        XCTAssertTrue(answered.contains("already answered"), answered)
+        XCTAssertFalse(model.mayAnswer)
+    }
+
+    /// The question card is the Sessions clarification vocabulary: the question
+    /// block, the host's choices, and a free-text response field.
+    func testQuestionCardShowsChoicesWithoutTheHostsPresentationLabel() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.pendingClarify = BotFixtureWire.clarify()
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-question-card")
+        XCTAssertTrue(shown.contains("Clarification Required"), shown)
+        XCTAssertTrue(shown.contains("Which mailbox first?"), shown)
+        XCTAssertTrue(shown.contains("Primary"), shown)
+        XCTAssertTrue(shown.contains("Follow-ups"), shown)
+        XCTAssertTrue(shown.contains("Type a response"), shown)
+        // "(Recommended)" is the host's presentation suffix, shown as a tag.
+        XCTAssertFalse(shown.contains("Primary (Recommended)"), shown)
+    }
+
+    /// A kind the phone must never answer names itself and offers no input,
+    /// no choices and no credential field: only Desktop, or Stop.
+    func testDesktopOnlyCardNamesTheKindAndOffersNoInput() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        // Inactive so the view's own recovery task cannot race the injected event:
+        // a Desktop-only request lives only in the stream, so a reconnect drops it.
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("sudo.request"),
+            "payload": .object(["request_id": .string("sudo-1")])
+        ]))
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-desktop-only-card")
+        XCTAssertTrue(shown.contains("Only Hermes Desktop can answer this"), shown)
+        XCTAssertTrue(shown.contains("administrator password"), shown)
+        XCTAssertTrue(shown.contains("Stop current work"), shown)
+        XCTAssertFalse(shown.contains("Type a response"), shown)
+        XCTAssertFalse(shown.contains("Allow once"), shown)
+        XCTAssertFalse(model.mayAnswer)
     }
 
     func testTextOnlyEditorRejectsAttachmentProviders() {

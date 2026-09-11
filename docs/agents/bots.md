@@ -27,7 +27,7 @@ validates the contract just in time. Advancing the pin is described in AGENTS.md
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
 separate, and rejects a changed root before resume. Lookup can recover archived
 history; resume can auto-continue unfinished backend work. Neither is guaranteed
-to be read-only. Approvals remain in Desktop.
+to be read-only.
 
 History is memory-only. Open/recovery replaces it from a full resume snapshot.
 Replay detects discontinuity but never appends text to an overlapping snapshot.
@@ -63,6 +63,51 @@ global Chat display toggles; the plan row stays visible with cards off. Tool
 output is text only. `message.react` and `learning.frames` are deliberately
 not wired: the snapshot carries no reactions to show back, and the frames are
 terminal-sized renders.
+
+A blocking request is whatever has parked the bot. Approvals and questions come
+from the resume snapshot's `pending_approval` and `pending_clarify`, which ride
+both the full and the `omit_messages` read, so an answer given in Desktop clears
+the card on the next snapshot and nothing polls. `BotApprovalRequest` keeps the
+host's own `choices` (`once`/`session`/`always`/`deny`, already narrowed by
+smart-approval and permanent-allow policy) and rebuilds them the way the gateway
+would when an older host omits them; `BotQuestionRequest` reads the single
+(`question`/`choices`/`multi_select`) and batch (`questions` + locked `answers`)
+clarify shapes, keeping each choice's wire label so the host strips its own
+"(Recommended)" suffix rather than the phone reconstructing it. A clarify
+outranks an approval: approvals resolve inside a tool batch, a clarify blocks the
+turn. A pending key the phone cannot address still reads as needing attention,
+without a card.
+
+Answering is `approval.respond` and `clarify.respond`, the only additions to
+`BotClient`'s allowlist. Nothing is ever sent without a tap. Generation, runtime
+and request id are captured on tap and revalidated at the socket write, so a
+stale card fails closed. Three outcomes are distinguished: `resolved > 0` or
+`status: ok` is accepted; `resolved: 0` or `status: expired` means the host had
+nothing left to resolve, which is an action failure that leaves the card inert;
+a lost socket is a delivery failure whose outcome is unknown, warns, and is never
+resent, though a deliberate second answer after reconnect stays the user's call.
+A JSON-RPC error arrives over a live socket, so it reports the answer failed
+without tearing the connection down. `approval.received` only acknowledges
+delivery and is deliberately never called. Batch answers send one
+`clarify.respond` per question id and stop at the first `expired`; multi-select
+answers go as a JSON array string, which is what the host parses.
+
+`sudo`, `secret`, `terminal.read`, `window.read`, `mcp.setup`, `preview.read`,
+`preview.act` and `tour` are Desktop-only. They never reach a snapshot, so
+`BotDesktopOnlyRequest` tracks them from `<prefix>.request` to `<prefix>.expire`
+and they stop the app claiming the bot is working. The phone names the kind and
+offers only Desktop or Stop: no input, no shell, no credential fallback. Because
+the stream is their only record, a sequence gap, a `message.start`, an idle
+snapshot or a lost socket drops the card rather than showing a stale one; a
+reconnect cannot restore one.
+
+The card renders in the transcript where the work stopped, so the command sits
+under the tool row that asked for it, and the composer's attention line doubles
+as the way back to it. Placement is the only Bot-specific part: the surfaces,
+choice buttons, decision buttons and copy are the Sessions approval and
+clarification vocabulary, shared through `PendingRequestSurfaces.swift` and
+`ChatDecisionButtonStyle` rather than copied. Like Sessions, "Always allow"
+writes a permanent host rule without a second confirmation.
 
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 Before sending, the client flushes an unresolved marker to disk. An acknowledged
