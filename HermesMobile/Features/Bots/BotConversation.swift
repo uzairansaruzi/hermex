@@ -35,9 +35,9 @@ import Observation
     /// `pending_clarify`. Snapshot-owned, so an answer given in Desktop clears it
     /// on the next read without the phone polling for it.
     private(set) var blockingRequest: BotPendingRequest?
-    /// A request only Desktop can answer. These never appear in a snapshot, so
-    /// they live and die with the event stream.
-    private(set) var desktopOnlyRequest: BotDesktopOnlyRequest?
+    /// A credential prompt or a Desktop-renderer task. Neither appears in a
+    /// snapshot, so they live and die with the event stream.
+    private(set) var streamRequest: BotStreamRequest?
     /// Set while an answer is in flight, to keep the card's controls inert.
     private(set) var answeringRequestID: String?
     /// The verdict on the request currently on screen, if it has one.
@@ -77,9 +77,10 @@ import Observation
     var mayEditDraft: Bool { hydrated && !uncertainSend && !localOperation }
 
     /// The one request blocking this conversation. A clarify or approval wins over
-    /// a Desktop-only kind: it is the outer blocker and the only one the phone can clear.
+    /// a stream request: it is the outer blocker, and the host resolves the inner
+    /// one on its own deadline either way.
     var pendingRequest: BotPendingRequest? {
-        blockingRequest ?? desktopOnlyRequest.map(BotPendingRequest.desktopOnly)
+        blockingRequest ?? streamRequest?.pending
     }
 
     /// True when the user may answer the request on screen. A resolved or expired
@@ -196,7 +197,7 @@ import Observation
     private func applyActivity(type: String, payload: BotJSON) -> Bool {
         switch type {
         case "message.start":
-            liveActivity = BotTurnActivity(); workStatus = nil; desktopOnlyRequest = nil
+            liveActivity = BotTurnActivity(); workStatus = nil; streamRequest = nil
             return false
         case "todo.updated":
             if let next = BotPlan(payload), next.revision >= (plan?.revision ?? 0) { plan = next }
@@ -232,7 +233,7 @@ import Observation
         }
         if !running {
             uncertainStop = false; stopAcknowledged = false; workStatus = nil
-            desktopOnlyRequest = nil
+            streamRequest = nil
             // Only a full snapshot carries the settled rows, so live rows wait for it
             // instead of vanishing on the inflight read that first reports idle.
             if full { liveActivity.clearTurnWork() }
@@ -389,6 +390,30 @@ import Observation
         await dispatchAnswers([BotQuestionAnswer(questionID: nil, text: "")], for: action)
     }
 
+    /// Sends the value the user typed for a `sudo.request` or `secret.request`.
+    /// The value is passed straight to the dispatch and never stored on the model,
+    /// so nothing retains it once the write completes.
+    func answerCredential(_ action: AnswerAction, value: String) async {
+        guard case .credential(let request)? = pendingRequest, request.requestID == action.requestID,
+              action == prepareAnswer() else { return }
+        await deliver(action) {
+            let reply = try await self.request(request.kind.respondMethod, [
+                "request_id": .string(action.requestID),
+                request.kind.valueKey: .string(value)
+            ], owner: action.generation, validateDispatch: self.answerGuard(action))
+            // The host tolerates a late answer to a prompt it already dropped and
+            // says so rather than erroring; nothing was applied.
+            return reply["status"].text == "expired" ? .alreadyResolved : .answered
+        }
+    }
+
+    /// Declines to supply the value. An empty string is the host's own skip: the
+    /// secret tool records a skip and the sudo command is left to fail, which is
+    /// the honest outcome and far better than parking the bot until it times out.
+    func skipCredential(_ action: AnswerAction) async {
+        await answerCredential(action, value: "")
+    }
+
     private func dispatchAnswers(_ answers: [BotQuestionAnswer], for action: AnswerAction) async {
         await deliver(action) {
             for answer in answers {
@@ -430,6 +455,10 @@ import Observation
             guard action.generation == generation, !Task.isCancelled else { return }
             localOperation = false; answeringRequestID = nil
             requestResolution = BotRequestResolution(requestID: action.requestID, outcome: outcome)
+            // Snapshots clear an approval or question; a stream request has no
+            // snapshot to clear it and the host emits `.expire` only on timeout,
+            // so an answered one is retired here or the card would outlive it.
+            if streamRequest?.pending.requestID == action.requestID { streamRequest = nil }
             // The host owns what happens next; read the snapshot instead of
             // assuming the turn resumed.
             turnRevision += 1
@@ -478,7 +507,7 @@ import Observation
         guard let next = event["seq"].integer, next > 0 else {
             replayWasReset = true; snapshotDirty = true; fullSnapshotNeeded = true
             turnRevision += 1
-            liveActivity = BotTurnActivity(); desktopOnlyRequest = nil
+            liveActivity = BotTurnActivity(); streamRequest = nil
             if !localOperation { turn = .unknown }
             scheduleRefresh(); return
         }
@@ -486,19 +515,19 @@ import Observation
         let discontinuity = next != sequence + 1
         if discontinuity {
             replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
-            // Missed events may hold tool rows, a notice's clear or a Desktop-only
+            // Missed events may hold tool rows, a notice's clear or a stream
             // request's expiry; partial or stale state is worse than none.
-            liveActivity = BotTurnActivity(); desktopOnlyRequest = nil
+            liveActivity = BotTurnActivity(); streamRequest = nil
             if !localOperation { turn = .unknown }
         }
         sequence = next
         let type = event["type"].text ?? ""
-        let desktopOnlyChanged = applyDesktopOnly(type: type, payload: event["payload"])
+        let streamRequestChanged = applyStreamRequest(type: type, payload: event["payload"])
         // Activity events never change the inflight text, so a continuous stream
         // during known work updates local state without another snapshot read.
-        if !desktopOnlyChanged, applyActivity(type: type, payload: event["payload"]),
+        if !streamRequestChanged, applyActivity(type: type, payload: event["payload"]),
            !discontinuity, turn == .running { return }
-        if desktopOnlyChanged
+        if streamRequestChanged
             || ["message.start", "message.complete", "session.info", "error", "approval.request", "clarify.request"].contains(type) {
             turnRevision += 1
             fullSnapshotNeeded = true
@@ -510,17 +539,20 @@ import Observation
         scheduleRefresh()
     }
 
-    /// Tracks the Desktop-only request the event stream is announcing or tearing
-    /// down. These never reach a resume snapshot, so the stream is the only record
-    /// of them; returns true when the current one changed.
-    private func applyDesktopOnly(type: String, payload: BotJSON) -> Bool {
-        if let request = BotDesktopOnlyRequest.requested(eventType: type, payload: payload) {
-            guard desktopOnlyRequest != request else { return false }
-            desktopOnlyRequest = request
+    /// Tracks the credential or Desktop-task request the event stream is
+    /// announcing or tearing down. These never reach a resume snapshot, so the
+    /// stream is the only record of them; returns true when the current one changed.
+    private func applyStreamRequest(type: String, payload: BotJSON) -> Bool {
+        if let request = BotStreamRequest.requested(eventType: type, payload: payload) {
+            guard streamRequest != request else { return false }
+            // A new prompt inherits nothing from the one it replaces.
+            answeringRequestID = nil
+            if requestResolution?.requestID != request.pending.requestID { requestResolution = nil }
+            streamRequest = request
             return true
         }
-        if let kind = BotDesktopOnlyRequest.expired(eventType: type), desktopOnlyRequest?.kind == kind {
-            desktopOnlyRequest = nil
+        if let prefix = BotStreamRequest.expiredPrefix(eventType: type), streamRequest?.eventPrefix == prefix {
+            streamRequest = nil
             return true
         }
         return false
@@ -555,9 +587,9 @@ import Observation
     private func disconnected(_ error: Error) {
         wire.close()
         refreshTask?.cancel(); refreshTask = nil
-        // A Desktop-only request lives only in the stream, so a lost socket makes
-        // its state unknowable. The card goes rather than lying about it.
-        desktopOnlyRequest = nil; answeringRequestID = nil
+        // A stream request lives only in the stream, so a lost socket makes its
+        // state unknowable. The card goes rather than lying about it.
+        streamRequest = nil; answeringRequestID = nil
         connectionState = .disconnected
         turn = uncertainSend || uncertainStop ? .uncertain : .unknown
         turnRevision += 1
@@ -569,7 +601,7 @@ import Observation
         refreshTask?.cancel(); refreshTask = nil
         wire.close()
         localOperation = false
-        desktopOnlyRequest = nil; answeringRequestID = nil
+        streamRequest = nil; answeringRequestID = nil
         connectionState = .disconnected; turn = .unknown
         Task { try? await drafts.flush() }
     }

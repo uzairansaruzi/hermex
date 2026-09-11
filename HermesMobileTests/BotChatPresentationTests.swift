@@ -132,13 +132,13 @@ import XCTest
         XCTAssertFalse(shown.contains("Primary (Recommended)"), shown)
     }
 
-    /// A kind the phone must never answer names itself and offers no input,
-    /// no choices and no credential field: only Desktop, or Stop.
-    func testDesktopOnlyCardNamesTheKindAndOffersNoInput() async throws {
+    /// A sudo prompt is answered here, not at the Mac: a masked field, a Skip,
+    /// and the handling line stated before anything is typed.
+    func testSudoCardOffersAMaskedFieldAndSaysWhereTheValueGoes() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire)
         // Inactive so the view's own recovery task cannot race the injected event:
-        // a Desktop-only request lives only in the stream, so a reconnect drops it.
+        // a credential prompt lives only in the stream, so a reconnect drops it.
         let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
         defer { model.suspend(); close(window) }
         await model.recover()
@@ -146,14 +146,64 @@ import XCTest
             "session_id": .string("runtime"), "seq": .number(1), "type": .string("sudo.request"),
             "payload": .object(["request_id": .string("sudo-1")])
         ]))
-        // The event only puts the turn in doubt; the coalesced snapshot is what
-        // settles it on needs-attention, which is when Stop becomes offerable.
+        // The event only puts the turn in doubt; the coalesced snapshot settles it.
+        await awaitSnapshot(model)
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-sudo-card")
+        XCTAssertTrue(shown.contains("Administrator password needed"), shown)
+        XCTAssertTrue(shown.contains("never saves it"), shown)
+        XCTAssertTrue(shown.contains("Skip"), shown)
+        XCTAssertTrue(shown.contains("Fixture Mac"), shown)
+        // Nothing here tells the user to go and find a desk.
+        XCTAssertFalse(shown.contains("Only Hermes Desktop"), shown)
+        XCTAssertTrue(model.mayAnswer)
+
+        let fields = descendants(window).compactMap { $0 as? UITextField }
+        XCTAssertFalse(fields.isEmpty, "Expected the credential field")
+        XCTAssertTrue(fields.allSatisfy(\.isSecureTextEntry), "A credential field is never in the clear")
+    }
+
+    /// A secret prompt shows the host's own words and the name the value is
+    /// saved under, so the user knows which key to paste.
+    func testSecretCardNamesTheVariableItWillBeSavedAs() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("secret.request"),
+            "payload": .object(["request_id": .string("sec-1"), "env_var": .string("TAVILY_API_KEY"),
+                                "prompt": .string("Paste your Tavily key")])
+        ]))
+        await awaitSnapshot(model)
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-secret-card")
+        XCTAssertTrue(shown.contains("Secret needed"), shown)
+        XCTAssertTrue(shown.contains("Paste your Tavily key"), shown)
+        XCTAssertTrue(shown.contains("TAVILY_API_KEY"), shown)
+    }
+
+    /// A Desktop-renderer task has no input because there is no answer a person
+    /// gives — here or at the Mac. It says so, and keeps Stop.
+    func testDesktopTaskCardReportsTheWaitInsteadOfSendingTheUserToADesk() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("terminal.read.request"),
+            "payload": .object(["request_id": .string("term-1")])
+        ]))
+        // Stop only becomes offerable once the snapshot settles on needs-attention.
         await awaitSnapshot(model)
         await renderFrames()
         XCTAssertTrue(model.mayStop)
-        let shown = try screenshot(window, name: "bot-desktop-only-card")
-        XCTAssertTrue(shown.contains("Only Hermes Desktop can answer this"), shown)
-        XCTAssertTrue(shown.contains("administrator password"), shown)
+        let shown = try screenshot(window, name: "bot-desktop-task-card")
+        XCTAssertTrue(shown.contains("Hermes Desktop is handling this"), shown)
+        XCTAssertTrue(shown.contains("reading a terminal"), shown)
+        XCTAssertTrue(shown.contains("nothing to do"), shown)
         XCTAssertTrue(shown.contains("Stop current work"), shown)
         XCTAssertFalse(shown.contains("Type a response"), shown)
         XCTAssertFalse(shown.contains("Allow once"), shown)

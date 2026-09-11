@@ -62,6 +62,7 @@ import SwiftUI
                                 isAnswering: model.answeringRequestID != nil,
                                 resolution: resolution(for: request),
                                 onApprove: approve, onAnswer: answer, onSkip: skip,
+                                onCredential: sendCredential,
                                 onStop: { stopAction = model.prepareStop() }
                             )
                             .id(BotChatView.requestAnchor)
@@ -169,6 +170,13 @@ import SwiftUI
     private func skip() {
         guard let action = model.prepareAnswer() else { return }
         Task { await model.skipQuestion(action) }
+    }
+
+    /// The typed value goes straight from the field to the dispatch. An empty
+    /// one is the Skip button, which the host reads as a decline.
+    private func sendCredential(_ value: String) {
+        guard let action = model.prepareAnswer() else { return }
+        Task { await model.answerCredential(action, value: value) }
     }
 
     @ViewBuilder

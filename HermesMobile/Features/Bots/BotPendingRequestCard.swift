@@ -8,6 +8,10 @@ import UIKit
 /// decision buttons and copy are the Sessions approval and clarification
 /// vocabulary. `isEnabled` false is a resolved, expired or in-flight request:
 /// the card stays readable and stops acting.
+///
+/// Only the Desktop-task body has no input, because its answer is data the
+/// Desktop renderer holds. Everything else — approvals, questions, sudo and
+/// secret prompts — is answered from here.
 struct BotPendingRequestCard: View {
     static let cornerRadius: CGFloat = 14
 
@@ -24,6 +28,8 @@ struct BotPendingRequestCard: View {
     let onApprove: (BotApprovalRequest.Choice) -> Void
     let onAnswer: ([BotQuestionAnswer]) -> Void
     let onSkip: () -> Void
+    /// Sends a typed sudo password or secret. Empty is the host's skip.
+    let onCredential: (String) -> Void
     let onStop: () -> Void
 
     var body: some View {
@@ -39,9 +45,14 @@ struct BotPendingRequestCard: View {
                     question: question, identity: identity, isEnabled: isEnabled,
                     isAnswering: isAnswering, onAnswer: onAnswer, onSkip: onSkip
                 )
-            case .desktopOnly(let desktopOnly):
-                BotDesktopOnlyRequestBody(
-                    desktopOnly: desktopOnly, identity: identity, canStop: canStop, onStop: onStop
+            case .credential(let credential):
+                BotCredentialRequestBody(
+                    credential: credential, identity: identity, isEnabled: isEnabled,
+                    isAnswering: isAnswering, onCredential: onCredential
+                )
+            case .desktopTask(let task):
+                BotDesktopTaskRequestBody(
+                    task: task, identity: identity, canStop: canStop, onStop: onStop
                 )
             }
             if let resolution {
@@ -67,8 +78,10 @@ struct BotPendingRequestCard: View {
             summary = approval.consequence ?? approval.command ?? String(localized: "Approval required")
         case .question(let question):
             summary = question.questions.first?.prompt ?? String(localized: "Input needed")
-        case .desktopOnly(let desktopOnly):
-            summary = desktopOnly.kind.title
+        case .credential(let credential):
+            summary = credential.kind.title
+        case .desktopTask(let task):
+            summary = task.kind.title
         }
         AccessibilityNotification.Announcement(String(localized: "Input needed: \(summary)")).post()
     }
@@ -325,10 +338,81 @@ private struct BotQuestionRequestBody: View {
     }
 }
 
-/// A request the phone must not answer. It names the kind, says why, and offers
-/// only the two things the phone legitimately owns: go to Desktop, or stop the work.
-private struct BotDesktopOnlyRequestBody: View {
-    let desktopOnly: BotDesktopOnlyRequest
+/// A sudo password or a secret the bot asked for. Masked, sent straight to the
+/// host and never held on the model, in a draft or anywhere else on the phone.
+/// Skip is a first-class answer: it releases the bot immediately instead of
+/// leaving it parked until the host's deadline.
+private struct BotCredentialRequestBody: View {
+    let credential: BotCredentialRequest
+    let identity: String
+    let isEnabled: Bool
+    let isAnswering: Bool
+    let onCredential: (String) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var value = ""
+
+    private var canSubmit: Bool { isEnabled && !isAnswering && !value.isEmpty }
+
+    var body: some View {
+        BotRequestHeader(
+            systemImage: credential.kind == .sudo ? "lock.shield.fill" : "key.fill",
+            tint: .secondary, title: credential.kind.title, identity: identity
+        )
+        Text(credential.detail)
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+        if let envVar = credential.envVar {
+            // The name the host will store it under, so the user knows which of
+            // their keys to paste before they paste one.
+            Text(envVar)
+                .font(.system(.footnote, design: .monospaced))
+                .textSelection(.enabled)
+                .pendingRequestBlockSurface()
+        }
+        HStack(alignment: .bottom, spacing: 10) {
+            SecureField(credential.kind == .sudo ? "Administrator password" : "Secret value", text: $value)
+                .textContentType(credential.kind == .sudo ? .password : nil)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.send)
+                .onSubmit(submit)
+                .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
+                .pendingRequestFieldSurface()
+                .disabled(!isEnabled || isAnswering)
+
+            PendingRequestSubmitButton(isBusy: isAnswering, canSubmit: canSubmit, action: submit)
+                .accessibilityLabel(credential.kind == .sudo ? "Send password" : "Send secret")
+        }
+        Text(credential.handling)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        Button { onCredential("") } label: {
+            Text("Skip").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.chatDecision(.secondary))
+        .disabled(!isEnabled || isAnswering)
+        .accessibilityHint(Text(credential.kind.skipConsequence))
+    }
+
+    private func submit() {
+        guard canSubmit else { return }
+        let outgoing = value
+        // Dropped from the view the moment it is handed over; the model never
+        // holds it either, so no layer of the phone keeps the value around.
+        value = ""
+        onCredential(outgoing)
+    }
+}
+
+/// Work the Desktop renderer does and answers itself. There is no input because
+/// there is no answer a person gives — not here, and not at the Mac either. The
+/// host releases the bot on its own deadline, so the card reports the wait and
+/// keeps Stop for the user who does not want to wait it out.
+private struct BotDesktopTaskRequestBody: View {
+    let task: BotDesktopTaskRequest
     let identity: String
     let canStop: Bool
     let onStop: () -> Void
@@ -336,13 +420,16 @@ private struct BotDesktopOnlyRequestBody: View {
     var body: some View {
         BotRequestHeader(
             systemImage: "desktopcomputer", tint: .secondary,
-            title: String(localized: "Only Hermes Desktop can answer this"), identity: identity
+            title: task.kind.needsSomeoneAtTheMac
+                ? String(localized: "Waiting on Hermes Desktop")
+                : String(localized: "Hermes Desktop is handling this"),
+            identity: identity
         )
-        Text(desktopOnly.kind.title)
+        Text(task.kind.title)
             .font(.subheadline)
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
-        Text("Hermex never collects passwords, secrets or device context. Answer this in Hermes Desktop on the same Mac, or stop the bot's current work.")
+        Text(task.kind.detail)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

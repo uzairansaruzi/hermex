@@ -78,8 +78,8 @@ outranks an approval: approvals resolve inside a tool batch, a clarify blocks th
 turn. A pending key the phone cannot address still reads as needing attention,
 without a card.
 
-Answering is `approval.respond` and `clarify.respond`, the only additions to
-`BotClient`'s allowlist. Nothing is ever sent without a tap. Generation, runtime
+Answering is `approval.respond`, `clarify.respond`, `sudo.respond` and
+`secret.respond`, the only additions to `BotClient`'s allowlist. Nothing is ever sent without a tap. Generation, runtime
 and request id are captured on tap and revalidated at the socket write, so a
 stale card fails closed. Three outcomes are distinguished: `resolved > 0` or
 `status: ok` is accepted; `resolved: 0` or `status: expired` means the host had
@@ -93,20 +93,41 @@ delivery and is deliberately never called. Batch answers send one
 answers go as a JSON array string, which is what the host parses.
 
 `sudo`, `secret`, `terminal.read`, `window.read`, `mcp.setup`, `preview.read`,
-`preview.act` and `tour` are Desktop-only. They never reach a snapshot, so
-`BotDesktopOnlyRequest` tracks them from `<prefix>.request` to `<prefix>.expire`
-and they stop the app claiming the bot is working. The phone names the kind and
-offers only Desktop or Stop: no input, no shell, no credential fallback. Because
-the stream is their only record, a sequence gap, a `message.start`, an idle
-snapshot or a lost socket drops the card rather than showing a stale one; a
-reconnect cannot restore one.
+`preview.act` and `tour` never reach a snapshot, so `BotStreamRequest` tracks
+them from `<prefix>.request` to `<prefix>.expire` and they stop the app claiming
+the bot is working. Because the stream is their only record, a sequence gap, a
+`message.start`, an idle snapshot or a lost socket drops the card rather than
+showing a stale one; a reconnect cannot restore one. `.expire` fires only on
+timeout, so an answered one is retired at dispatch instead.
+
+They split two ways. `sudo` and `secret` block on a value only the person has,
+and the phone sends it: `sudo.respond` and `secret.respond` take a `request_id`
+from any connected client, and the host's own terminal UI answers over the same
+methods. `BotCredentialRequest` carries the kind's `valueKey` (`password` vs
+`value`) because each handler reads one name and a mismatch answers empty. The
+field is a `SecureField`, the value is passed straight to the dispatch and held
+by no layer of the phone, and Skip sends the empty string the host documents as
+a decline — the sudo command fails, the secret tool records a skip, and the bot
+is released immediately instead of parking until the deadline.
+
+The other six are `BotDesktopTaskRequest`: the answer is data Hermes Desktop's
+own renderer holds — its terminal scrollback, the window beneath it, its preview
+pane — so no client without that window can produce one, on a phone or anywhere
+else. Nobody types an answer at the Mac either. Each has a host deadline (30s for
+the reads, 45s for preview and tour, ten minutes for `mcp.setup`) after which the
+tool takes an empty answer and the bot carries on, so the card reports the wait
+and keeps Stop rather than sending the user to a desk. `mcp.setup` is the one
+kind a person really does walk through in Desktop, and says so. Declining it from
+the phone (`mcp.setup.respond` with `{"status": "declined"}`) is possible and not
+yet built.
 
 The card renders in the transcript where the work stopped, so the command sits
 under the tool row that asked for it, and the composer's attention line doubles
 as the way back to it. Placement is the only Bot-specific part: the surfaces,
 choice buttons, decision buttons and copy are the Sessions approval and
 clarification vocabulary, shared through `PendingRequestSurfaces.swift` and
-`ChatDecisionButtonStyle` rather than copied. Like Sessions, "Always allow"
+`ChatDecisionButtonStyle` rather than copied; the credential field reuses the
+same response field and submit button as the Sessions clarification card. Like Sessions, "Always allow"
 writes a permanent host rule without a second confirmation.
 
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.

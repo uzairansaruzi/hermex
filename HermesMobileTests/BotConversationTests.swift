@@ -521,6 +521,8 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     /// What `approval.respond` reports unblocking, and what `clarify.respond` reports.
     var approvalResolved = 1
     var clarifyStatus = "ok"
+    /// What `sudo.respond` / `secret.respond` report; "ok" or "expired".
+    var credentialStatus = "ok"
     var respondFailure: BotFailure?
     var todoState = BotJSON.null
     var history: [BotJSON] = [.object(["role": .string("assistant"), "text": .string("saved")])]
@@ -562,6 +564,9 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             if let respondFailure { throw respondFailure }
             if clarifyStatus == "ok" { pendingClarify = .null }
             return .object(["status": .string(clarifyStatus)])
+        case "sudo.respond", "secret.respond":
+            if let respondFailure { throw respondFailure }
+            return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay
         case "prompt.submit":
             await beforeSubmit?()

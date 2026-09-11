@@ -151,12 +151,12 @@ private struct BotChatStatusView: View {
                             Label(
                                 model.pendingRequest?.isAnswerable == true
                                     ? String(localized: "Waiting for your answer")
-                                    : String(localized: "Needs attention in Hermes Desktop"),
+                                    : String(localized: "Hermes Desktop is handling this"),
                                 systemImage: "arrow.down.circle"
                             )
                         }
                     } else {
-                        // A request the phone cannot address has no card to show.
+                        // A pending key the phone could not read has no card to show.
                         Text("Needs attention. Answer the request in Hermes Desktop on this same connection.")
                     }
                 } else if model.uncertainStop && model.turn != .stopping {
