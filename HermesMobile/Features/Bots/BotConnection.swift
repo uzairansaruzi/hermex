@@ -53,18 +53,39 @@ struct BotConnection: Codable, Equatable, Identifiable {
     }
 }
 
+/// One `profiles.list` row. Identity comes only from server fields: the Desktop
+/// title, then the core `display_name`, then the Profile name (`default` reads as
+/// Hermes, as in Desktop). Description follows the same Desktop-then-core order.
 struct BotProfile: Identifiable, Hashable {
     let id: String
     let name: String
+    let description: String?
     let preview: String?
     let lastActive: Date?
+    /// True when the host has an avatar asset, so the inbox fetches only rows that have one.
+    let hasAvatar: Bool
+    /// Desktop's compare-and-swap revision for this bot's look
+    /// (`ui_meta_revisions["hermes-bots"]`). Nil when the host or bot has none; the
+    /// avatar is then refetched on every roster load instead of served from memory.
+    let lookRevision: Int?
 
     init?(_ row: BotJSON) {
         guard let profile = row["name"].text, !profile.isEmpty else { return nil }
         id = profile
-        let displayName = row["display_name"].text ?? ""
-        name = displayName.isEmpty ? profile : displayName
+        let look = row["ui_meta"]["hermes-bots"]
+        name = Self.firstText(look["title"], row["display_name"]) ?? (profile == "default" ? "Hermes" : profile)
+        description = Self.firstText(look["description"], row["description"])
         preview = row["canonical_session"]["preview"].text
         lastActive = row["canonical_session"]["last_active"].number.map(Date.init(timeIntervalSince1970:))
+        hasAvatar = row["has_avatar"].flag == true
+        lookRevision = row["ui_meta_revisions"]["hermes-bots"].integer
+    }
+
+    private static func firstText(_ candidates: BotJSON...) -> String? {
+        for candidate in candidates {
+            let trimmed = candidate.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
     }
 }

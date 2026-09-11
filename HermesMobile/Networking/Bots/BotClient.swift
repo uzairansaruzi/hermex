@@ -128,7 +128,7 @@ import Foundation
     }
 
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
-        guard ["profiles.list", "session.list", "session.resume", "session.events.since", "prompt.submit", "session.interrupt"].contains(method)
+        guard ["profiles.list", "profiles.get_asset", "session.list", "session.resume", "session.events.since", "prompt.submit", "session.interrupt"].contains(method)
         else { throw BotFailure.unsupported }
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1

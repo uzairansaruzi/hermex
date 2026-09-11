@@ -55,6 +55,29 @@ import XCTest
         XCTAssertEqual(sockets.map { $0.sentTextFrames }, [1, 1])
     }
 
+    func testAllowlistAdmitsAvatarReadsButNoAssetWrites() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        _ = try await client.call("profiles.get_asset", ["name": .string("inbox-triage"), "asset": .string("avatar")])
+        XCTAssertEqual(socket.sentTextFrames, 1)
+        do { _ = try await client.call("profiles.set_asset", ["name": .string("inbox-triage"), "clear": .bool(true)]); XCTFail("Writes stay off the allowlist") }
+        catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
+        XCTAssertEqual(socket.sentTextFrames, 1)
+        client.close()
+    }
+
     func testStatusWithoutVersionStillConnectsAndShowsNoNote() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

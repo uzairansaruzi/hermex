@@ -57,6 +57,19 @@ occurs after disconnect. Acknowledgement alone does not establish completion;
 current idle does. The accepted server race remains: a Stop already sent may reach
 later Desktop work because the ordinary RPC has no expected-turn guard.
 
+Roster identity is server-owned. `BotProfile` reads the Desktop title from
+`ui_meta["hermes-bots"]`, then the core `display_name`, then the Profile name
+(`default` reads as Hermes, as in Desktop); description follows the same order.
+`BotAvatarStore` fetches `profiles.get_asset` only for rows flagged `has_avatar`,
+decodes the data URL into a bounded thumbnail off the main actor, and keeps the
+image in memory keyed by connection UUID plus Profile with the Desktop look
+revision (`ui_meta_revisions["hermes-bots"]`). An unchanged revision skips the
+fetch; a missing revision refetches on every roster load. Loading a roster drops
+every other connection's images, and removing or replacing a connection purges
+its entries, so equal Profile names on two hosts never share a picture. A
+malformed, oversized or missing asset leaves the row on its letter tile. Desktop's
+animated faces are not ported; the phone shows the static asset only.
+
 Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
 by default and owned by the Settings "Bot Mode (beta)" row (#496). Off hides the
 Sessions/Bots switch, the Bots inbox and the per-server Bot connection row;

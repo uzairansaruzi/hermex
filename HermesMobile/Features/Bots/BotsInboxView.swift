@@ -6,6 +6,7 @@ import SwiftUI
     let showSessions: () -> Void
     @State private var connection: BotConnection?
     @State private var profiles: [BotProfile] = []
+    @State private var avatars: [String: UIImage] = [:]
     @State private var search = ""
     @State private var errorMessage: String?
     @State private var loading = false
@@ -83,7 +84,7 @@ import SwiftUI
         // The stored client identity is the load owner; a replacement invalidates late results.
         do {
             let saved = try store.load(server: server)
-            if connection?.id != saved?.id { profiles = [] }
+            if connection?.id != saved?.id { profiles = []; avatars = [:] }
             connection = saved
             guard let saved else { return }
             let client = BotClient(connection: saved)
@@ -96,6 +97,9 @@ import SwiftUI
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             var seen = Set<String>()
             profiles = rows.compactMap(BotProfile.init).filter { seen.insert($0.id).inserted }
+            await BotAvatarStore.shared.refresh(profiles, connectionID: saved.id, using: client) {
+                if wire === client { avatars = BotAvatarStore.shared.images(connectionID: saved.id) }
+            }
             client.close()
         } catch {
             guard !Task.isCancelled, loadOwner == owner else { return }

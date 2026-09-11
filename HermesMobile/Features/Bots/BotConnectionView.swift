@@ -68,7 +68,10 @@ import SwiftUI
                 Task {
                     do {
                         try store.remove(server: server)
-                        if let saved { await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id) }
+                        if let saved {
+                            await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
+                            BotAvatarStore.shared.removeAll(connectionID: saved.id)
+                        }
                         dismiss()
                     } catch { errorMessage = String(localized: "Could not remove saved sign-in details.") }
                 }
@@ -100,6 +103,7 @@ import SwiftUI
             try store.save(candidate, server: server)
             if let saved, saved.id != candidate.id {
                 await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
+                BotAvatarStore.shared.removeAll(connectionID: saved.id)
             }
             guard !Task.isCancelled, client === wire else { return }
             saved = candidate
