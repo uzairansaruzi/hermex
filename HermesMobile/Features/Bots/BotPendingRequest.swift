@@ -61,17 +61,22 @@ struct BotApprovalRequest: Equatable {
         requestID = id
         command = Self.trimmed(json["command"])
         consequence = Self.trimmed(json["description"])
-        let offered = (json["choices"].list ?? []).compactMap { $0.text.flatMap(Choice.init(rawValue:)) }
-        // Older hosts may omit `choices`; rebuild the same set the gateway would.
-        if offered.isEmpty {
+        // A present `choices` is the host speaking, and nothing may be added to
+        // what it offered. If a newer host renames the lot so none of it parses,
+        // Deny is the only thing left that is safe to offer: rebuilding here
+        // would invent an Always allow the host never sanctioned.
+        if let list = json["choices"].list {
+            let offered = list.compactMap { $0.text.flatMap(Choice.init(rawValue:)) }
+            if offered.isEmpty { choices = [.deny] }
+            else { choices = offered.contains(.deny) ? offered : offered + [.deny] }
+        } else {
+            // Only an absent `choices` is an older host; rebuild what it would send.
             var rebuilt: [Choice] = [.once]
             if json["smart_denied"].flag != true, json["allow_session"].flag != false {
                 rebuilt.append(.session)
                 if json["allow_permanent"].flag != false { rebuilt.append(.always) }
             }
             choices = rebuilt + [.deny]
-        } else {
-            choices = offered.contains(.deny) ? offered : offered + [.deny]
         }
     }
 

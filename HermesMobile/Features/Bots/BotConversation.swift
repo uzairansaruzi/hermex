@@ -201,7 +201,14 @@ import Observation
             }
             missed.removeFirst(start)
         }
-        for event in missed { applyActivity(type: event["type"].text ?? "", payload: event["payload"]) }
+        for event in missed {
+            let type = event["type"].text ?? ""
+            // Credential and Desktop-task prompts reach no snapshot, so while the
+            // ring still holds them replay is the only way back to one after a
+            // reconnect. Dropping them here left a blocked bot looking idle.
+            if applyStreamRequest(type: type, payload: event["payload"]) { continue }
+            applyActivity(type: type, payload: event["payload"])
+        }
     }
 
     /// Feeds activity events to the live reducer, plan and work status. Returns
@@ -391,6 +398,13 @@ import Observation
         guard answers.allSatisfy({ answer in
             answer.questionID.map(offered.contains) ?? !request.isBatch
         }) else { return }
+        // The host locks every answer it is handed and reads an empty one as a
+        // skip, so a partial batch would silently skip the questions the user
+        // never touched. All of them, or none: `skipQuestion` is the none.
+        if request.isBatch {
+            let outstanding = Set(request.questions.filter { !$0.isAnswered }.compactMap(\.wireID))
+            guard Set(answers.compactMap(\.questionID)) == outstanding else { return }
+        }
         await dispatchAnswers(answers, for: action)
     }
 

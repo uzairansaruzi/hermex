@@ -200,8 +200,11 @@ private struct BotQuestionRequestBody: View {
 
     private var canSubmit: Bool { isEnabled && !isAnswering && hasAnswer }
 
+    /// Every outstanding question, not just one. A partial send would lock the
+    /// untouched questions as skipped, so Send waits for the whole batch and
+    /// Skip stays the deliberate way to decline all of it.
     private var hasAnswer: Bool {
-        unanswered.contains { item in
+        !unanswered.isEmpty && unanswered.allSatisfy { item in
             !(picked[item.id]?.isEmpty ?? true)
                 || !(typed[item.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }

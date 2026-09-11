@@ -36,6 +36,22 @@ import XCTest
         )
     }
 
+    /// A host that renames every choice must not have a permission invented for
+    /// it. Deny is the only thing safe to offer when none of the list parses.
+    func testAnApprovalWhoseChoicesAreAllUnknownOffersOnlyDeny() {
+        let request = BotApprovalRequest(.object([
+            "request_id": .string("req-9"), "command": .string("rm -rf /"),
+            "choices": .array([.string("allow_forever"), .string("nope")]),
+            "allow_permanent": .bool(true)
+        ]))
+        XCTAssertEqual(request?.choices, [.deny])
+        // An explicitly empty list is the host offering nothing, not an old host.
+        XCTAssertEqual(
+            BotApprovalRequest(.object(["request_id": .string("req-10"), "choices": .array([])]))?.choices,
+            [.deny]
+        )
+    }
+
     func testApprovalWithoutARequestIDIsNotShown() {
         XCTAssertNil(BotApprovalRequest(.object(["command": .string("rm -rf /")])))
         XCTAssertNil(BotApprovalRequest(.object(["request_id": .string("")])))
@@ -394,6 +410,88 @@ import XCTest
 
     /// The host dropped the prompt before the answer arrived. It kept nothing, so
     /// the remaining questions have nothing left to lock either.
+    /// The host locks every answer it is handed, and an empty one is a skip, so
+    /// a partial batch would silently skip whatever the user never touched.
+    func testAPartialBatchAnswerIsNeverSent() async {
+        let wire = BotFixtureWire()
+        wire.pendingClarify = .object([
+            "request_id": .string("clr-5"),
+            "questions": .array([
+                .object(["qid": .string("q0"), "question": .string("First?")]),
+                .object(["qid": .string("q1"), "question": .string("Second?")])
+            ])
+        ])
+        let model = await blocked(on: wire)
+        await model.answerQuestion(action(model), [BotQuestionAnswer(questionID: "q0", text: "a")])
+        XCTAssertTrue(wire.calls.filter { $0.0 == "clarify.respond" }.isEmpty)
+        XCTAssertNil(model.requestResolution)
+        // Declining the whole request is still one deliberate unkeyed answer.
+        await model.skipQuestion(action(model))
+        XCTAssertEqual(wire.calls.filter { $0.0 == "clarify.respond" }.count, 1)
+        model.suspend()
+    }
+
+    /// A question the host already locked is not outstanding, so the rest of the
+    /// batch completes without re-answering it.
+    func testABatchIgnoresQuestionsTheHostHasAlreadyLocked() async {
+        let wire = BotFixtureWire()
+        wire.pendingClarify = .object([
+            "request_id": .string("clr-6"),
+            "questions": .array([
+                .object(["qid": .string("q0"), "question": .string("First?")]),
+                .object(["qid": .string("q1"), "question": .string("Second?")])
+            ]),
+            "answers": .object(["q0": .string("already")])
+        ])
+        let model = await blocked(on: wire)
+        await model.answerQuestion(action(model), [BotQuestionAnswer(questionID: "q1", text: "b")])
+        XCTAssertEqual(wire.calls.filter { $0.0 == "clarify.respond" }.map { $0.1["question_id"] },
+                       [.string("q1")])
+        model.suspend()
+    }
+
+    /// Credential prompts reach no snapshot, so while the ring still holds one,
+    /// replay is the only way back to it. Dropping it left a blocked bot looking
+    /// idle with nothing on screen to answer.
+    func testAReplayedCredentialPromptSurvivesAReconnect() async {
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onDisconnect?(BotFailure.transport)
+        XCTAssertNil(model.streamRequest)
+
+        wire.replay = BotFixtureWire.replay(latest: 2, events: [
+            .object(["session_id": .string("runtime"), "seq": .number(1),
+                     "type": .string("tool.start"),
+                     "payload": .object(["tool_id": .string("t1"), "name": .string("terminal")])]),
+            .object(["session_id": .string("runtime"), "seq": .number(2),
+                     "type": .string("sudo.request"),
+                     "payload": .object(["request_id": .string("sudo-r")])])
+        ])
+        await model.recover()
+        XCTAssertFalse(model.replayWasReset)
+        XCTAssertEqual(model.pendingRequest?.requestID, "sudo-r")
+        XCTAssertEqual(model.turn, .needsAttention)
+        XCTAssertTrue(model.mayAnswer)
+        model.suspend()
+    }
+
+    /// A prompt whose expiry is also in the replay window is already over.
+    func testAReplayedPromptThatExpiredInTheSameWindowIsNotShown() async {
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onDisconnect?(BotFailure.transport)
+        wire.replay = BotFixtureWire.replay(latest: 2, events: [
+            .object(["session_id": .string("runtime"), "seq": .number(1),
+                     "type": .string("sudo.request"),
+                     "payload": .object(["request_id": .string("sudo-r")])]),
+            .object(["session_id": .string("runtime"), "seq": .number(2),
+                     "type": .string("sudo.expire"), "payload": .object([:])])
+        ])
+        await model.recover()
+        XCTAssertNil(model.streamRequest)
+        model.suspend()
+    }
+
     func testAnExpiredQuestionStopsTheBatchAndReportsItAsAlreadyResolved() async {
         let wire = BotFixtureWire(); wire.clarifyStatus = "expired"
         wire.pendingClarify = .object([

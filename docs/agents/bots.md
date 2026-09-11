@@ -91,15 +91,24 @@ A JSON-RPC error arrives over a live socket, so it reports the answer failed
 without tearing the connection down. `approval.received` only acknowledges
 delivery and is deliberately never called. Batch answers send one
 `clarify.respond` per question id and stop at the first `expired`; multi-select
-answers go as a JSON array string, which is what the host parses.
+answers go as a JSON array string, which is what the host parses. A batch is
+all-or-none: the host locks every answer it is handed and reads an empty one as
+a skip, so a partial send would silently skip the questions the user never
+touched. `skipQuestion` is the deliberate none. A present `choices` array is the
+host speaking and nothing is added to it — if a future host renames the lot so
+none of it parses, only Deny is offered, because rebuilding there would invent
+an "Always allow" the host never sanctioned.
 
 `sudo`, `secret`, `terminal.read`, `window.read`, `mcp.setup`, `preview.read`,
 `preview.act` and `tour` never reach a snapshot, so `BotStreamRequest` tracks
 them from `<prefix>.request` to `<prefix>.expire` and they stop the app claiming
 the bot is working. Because the stream is their only record, a sequence gap, a
 `message.start`, an idle snapshot or a lost socket drops the card rather than
-showing a stale one; a reconnect cannot restore one. `.expire` fires only on
-timeout, so an answered one is retired at dispatch instead.
+showing a stale one. `.expire` fires only on timeout, so an answered one is
+retired at dispatch instead. Replay does restore one while the ring still holds
+it: `reconcileReplay` routes missed events through `applyStreamRequest` before
+the activity reducer, so backgrounding past a credential prompt and returning
+finds it still there rather than a blocked bot that looks idle.
 
 They split two ways. `sudo` and `secret` block on a value only the person has,
 and the phone sends it: `sudo.respond` and `secret.respond` take a `request_id`
