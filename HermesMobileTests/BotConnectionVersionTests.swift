@@ -12,8 +12,10 @@ final class BotConnectionVersionTests: XCTestCase {
     }
 
     func testPinFileMatchesRuntimeConstant() throws {
-        let lines = try String(contentsOf: pinFile, encoding: .utf8)
-            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let contents = try? String(contentsOf: pinFile, encoding: .utf8) else {
+            throw XCTSkip("Could not read \(pinFile.path); the source tree is not present (physical device or remote runner).")
+        }
+        let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         XCTAssertEqual(lines.count, 3, "commit, release, trailing newline")
         XCTAssertNotNil(lines[0].wholeMatch(of: /[0-9a-f]{40}/), "line 1 is the hermes-agent commit")
         XCTAssertEqual(lines[1], BotConnection.testedHermesVersion, "line 2 is the release /api/status reports")
