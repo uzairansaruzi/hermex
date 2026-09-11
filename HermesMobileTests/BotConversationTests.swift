@@ -387,22 +387,26 @@ import Vision
         await model.recover()
         XCTAssertTrue(model.replayWasReset)
         XCTAssertEqual(model.liveActivity.toolCalls.map(\.id), ["new"])
-        // Truncated without the start: partial rows are dropped rather than shown.
-        wire.replay = BotFixtureWire.replay(latest: 8, truncated: true, events: [
-            typed(8, "tool.start", .object(["tool_id": .string("partial"), "name": .string("terminal")]))
+        // Truncated without the start: partial rows and notices whose clear may sit
+        // in the gap are dropped rather than shown.
+        wire.onEvent?(typed(7, "notification.show", .object(["key": .string("credits"), "text": .string("Low credits")])))
+        XCTAssertEqual(model.liveActivity.notices.map(\.id), ["credits"])
+        wire.replay = BotFixtureWire.replay(latest: 9, truncated: true, events: [
+            typed(9, "tool.start", .object(["tool_id": .string("partial"), "name": .string("terminal")]))
         ])
         await model.recover()
         XCTAssertTrue(model.replayWasReset)
         XCTAssertFalse(model.liveActivity.hasTurnWork)
+        XCTAssertTrue(model.liveActivity.notices.isEmpty)
         // Duplicate sequence numbers in a replay never duplicate rows.
-        wire.replay = BotFixtureWire.replay(latest: 10, events: [
-            typed(9, "tool.start", .object(["tool_id": .string("t9"), "name": .string("terminal")])),
-            typed(9, "tool.start", .object(["tool_id": .string("t9"), "name": .string("terminal")])),
-            typed(10, "tool.start", .object(["tool_id": .string("t10"), "name": .string("terminal")]))
+        wire.replay = BotFixtureWire.replay(latest: 11, events: [
+            typed(10, "tool.start", .object(["tool_id": .string("t10"), "name": .string("terminal")])),
+            typed(10, "tool.start", .object(["tool_id": .string("t10"), "name": .string("terminal")])),
+            typed(11, "tool.start", .object(["tool_id": .string("t11"), "name": .string("terminal")]))
         ])
         await model.recover()
         XCTAssertFalse(model.replayWasReset)
-        XCTAssertEqual(model.liveActivity.toolCalls.map(\.id), ["t9", "t10"])
+        XCTAssertEqual(model.liveActivity.toolCalls.map(\.id), ["t10", "t11"])
         model.suspend()
     }
 

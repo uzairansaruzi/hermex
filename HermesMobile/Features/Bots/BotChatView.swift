@@ -51,8 +51,13 @@ import SwiftUI
                     }
                     .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
                     .padding(.vertical, 16)
+                    // A tapped row must stay under the finger: stop following so
+                    // neither the size-change anchor nor the next activity update
+                    // moves the reader. Latest brings them back.
+                    .environment(\.chatDisclosureToggled) { followsLatest = false }
                 }
-                .defaultScrollAnchor(.bottom)
+                .defaultScrollAnchor(ChatScrollPolicy.initialTranscriptAnchor, for: .initialOffset)
+                .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
                 .onScrollGeometryChange(for: Bool.self) { geometry in
                     geometry.contentOffset.y + geometry.containerSize.height

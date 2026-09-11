@@ -146,11 +146,12 @@ import Observation
         // Replay never appends text; the full snapshot below owns it. It does rebuild
         // the current turn's activity: every missed event when the sequence was
         // continuous, otherwise only the events after the last `message.start` the
-        // ring still holds, which is the whole current turn. Without either, the
-        // live rows are dropped rather than shown incomplete.
+        // ring still holds, which is the whole current turn. Without either, every
+        // live row and notice is dropped rather than shown incomplete or stale: a
+        // notice whose clear was in the gap has no snapshot state to reconcile it.
         if replayWasReset {
             guard let start = missed.lastIndex(where: { $0["type"].text == "message.start" }) else {
-                liveActivity.clearTurnWork(); return
+                liveActivity = BotTurnActivity(); return
             }
             missed.removeFirst(start)
         }
@@ -318,7 +319,7 @@ import Observation
         guard let next = event["seq"].integer, next > 0 else {
             replayWasReset = true; snapshotDirty = true; fullSnapshotNeeded = true
             turnRevision += 1
-            liveActivity.clearTurnWork()
+            liveActivity = BotTurnActivity()
             if !localOperation { turn = .unknown }
             scheduleRefresh(); return
         }
@@ -326,8 +327,9 @@ import Observation
         let discontinuity = next != sequence + 1
         if discontinuity {
             replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
-            // Missed events may hold tool rows; partial activity is worse than none.
-            liveActivity.clearTurnWork()
+            // Missed events may hold tool rows or a notice's clear; partial or stale
+            // activity is worse than none.
+            liveActivity = BotTurnActivity()
             if !localOperation { turn = .unknown }
         }
         sequence = next
