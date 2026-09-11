@@ -475,11 +475,18 @@ import Vision
     }
 }
 
+/// Drives real display-link frames so a capture happens after layout, never
+/// after a wall-clock sleep. `target` is how many frames to let pass: a view
+/// whose content arrives from a live event needs more than the default.
 @MainActor final class BotRenderFrameDriver: NSObject {
     private let completion: () -> Void
+    private let target: Int
     private var link: CADisplayLink?
     private var frames = 0
-    init(completion: @escaping () -> Void) { self.completion = completion }
+    init(target: Int = 3, completion: @escaping () -> Void) {
+        self.target = target
+        self.completion = completion
+    }
     func start() {
         link = CADisplayLink(target: self, selector: #selector(tick))
         link?.add(to: .main, forMode: .common)
@@ -487,7 +494,7 @@ import Vision
     func stop() { link?.invalidate(); link = nil }
     @objc private func tick() {
         frames += 1
-        if frames == 3 { stop(); completion() }
+        if frames == target { stop(); completion() }
     }
 }
 

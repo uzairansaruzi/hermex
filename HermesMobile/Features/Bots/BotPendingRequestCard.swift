@@ -16,6 +16,9 @@ struct BotPendingRequestCard: View {
     /// names never produce an anonymous card.
     let identity: String
     let isEnabled: Bool
+    /// Stop is gated separately: a Desktop-only request is never answerable, but
+    /// stopping the work it blocks is exactly what the phone still owns.
+    let canStop: Bool
     let isAnswering: Bool
     let resolution: BotRequestResolution?
     let onApprove: (BotApprovalRequest.Choice) -> Void
@@ -38,7 +41,7 @@ struct BotPendingRequestCard: View {
                 )
             case .desktopOnly(let desktopOnly):
                 BotDesktopOnlyRequestBody(
-                    desktopOnly: desktopOnly, identity: identity, isEnabled: isEnabled, onStop: onStop
+                    desktopOnly: desktopOnly, identity: identity, canStop: canStop, onStop: onStop
                 )
             }
             if let resolution {
@@ -166,7 +169,7 @@ private struct BotQuestionRequestBody: View {
     let onSkip: () -> Void
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @ScaledMetric(relativeTo: .body) private var submitButtonSize: CGFloat = 40
+    @Environment(\.colorScheme) private var colorScheme
     /// Choice ids picked per question id, and the free text typed for it.
     @State private var picked: [String: Set<Int>] = [:]
     @State private var typed: [String: String] = [:]
@@ -177,6 +180,8 @@ private struct BotQuestionRequestBody: View {
     }
 
     private var unanswered: [BotQuestionRequest.Question] { question.questions.filter { !$0.isAnswered } }
+
+    private var canSubmit: Bool { isEnabled && !isAnswering && hasAnswer }
 
     private var hasAnswer: Bool {
         unanswered.contains { item in
@@ -221,7 +226,7 @@ private struct BotQuestionRequestBody: View {
                     Label("Send answers", systemImage: "arrow.up.circle.fill").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.chatDecision(.primary))
-                .disabled(!isEnabled || isAnswering || !hasAnswer)
+                .disabled(!canSubmit)
 
                 Button(action: onSkip) {
                     Text("Skip").frame(maxWidth: .infinity)
@@ -274,28 +279,16 @@ private struct BotQuestionRequestBody: View {
             TextField("Type a response", text: binding(for: item), axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .pendingRequestBlockSurface()
+                .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
+                .pendingRequestFieldSurface()
                 .disabled(!isEnabled || isAnswering)
 
+            // A batch or multi-select answer is sent by the Send control below,
+            // which speaks for every question at once.
             if submitsOnTap {
-                Button { onAnswer(answers()) } label: {
-                    submitLabel.frame(width: submitButtonSize, height: submitButtonSize)
-                }
-                .buttonStyle(.chatTactile(.icon))
-                .disabled(!isEnabled || isAnswering || !hasAnswer)
-                .accessibilityLabel("Send answer")
+                PendingRequestSubmitButton(isBusy: isAnswering, canSubmit: canSubmit) { onAnswer(answers()) }
+                    .accessibilityLabel("Send answer")
             }
-        }
-    }
-
-    @ViewBuilder
-    private var submitLabel: some View {
-        if isAnswering {
-            ProgressView().scaleEffect(0.82)
-        } else {
-            Image(systemName: "arrow.up.circle.fill").font(.system(size: 24, weight: .semibold))
         }
     }
 
@@ -337,7 +330,7 @@ private struct BotQuestionRequestBody: View {
 private struct BotDesktopOnlyRequestBody: View {
     let desktopOnly: BotDesktopOnlyRequest
     let identity: String
-    let isEnabled: Bool
+    let canStop: Bool
     let onStop: () -> Void
 
     var body: some View {
@@ -357,7 +350,7 @@ private struct BotDesktopOnlyRequestBody: View {
             Label("Stop current work", systemImage: "stop.fill").frame(maxWidth: .infinity)
         }
         .buttonStyle(.chatDecision(.destructive))
-        .disabled(!isEnabled)
+        .disabled(!canStop)
     }
 }
 

@@ -403,6 +403,8 @@ import XCTest
         // The snapshot read it triggers must stop the app claiming the bot is working.
         await awaitSnapshot(model)
         XCTAssertEqual(model.turn, .needsAttention)
+        // Answering is off the table, but stopping the blocked work is not.
+        XCTAssertTrue(model.mayStop)
         model.suspend()
     }
 

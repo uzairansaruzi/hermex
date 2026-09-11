@@ -146,7 +146,11 @@ import XCTest
             "session_id": .string("runtime"), "seq": .number(1), "type": .string("sudo.request"),
             "payload": .object(["request_id": .string("sudo-1")])
         ]))
+        // The event only puts the turn in doubt; the coalesced snapshot is what
+        // settles it on needs-attention, which is when Stop becomes offerable.
+        await awaitSnapshot(model)
         await renderFrames()
+        XCTAssertTrue(model.mayStop)
         let shown = try screenshot(window, name: "bot-desktop-only-card")
         XCTAssertTrue(shown.contains("Only Hermes Desktop can answer this"), shown)
         XCTAssertTrue(shown.contains("administrator password"), shown)
@@ -243,7 +247,10 @@ import XCTest
             "session_id": .string("runtime"), "seq": .number(1), "type": .string("tool.start"),
             "payload": .object(["tool_id": .string("t1"), "name": .string("write_file"), "args": .object(["path": .string("reply-delivery.md")])])
         ]))
-        await renderFrames()
+        // A live tool row lands without a following snapshot (activity events
+        // during known work skip the refresh), so layout is the only thing left
+        // to settle. Three frames is not always enough for the disclosure row.
+        await renderFrames(12)
         let shown = try screenshot(window, name: "bot-activity-cards-on")
         XCTAssertTrue(shown.contains("Ran"), shown)
         XCTAssertTrue(shown.contains("Thinking"), shown)
@@ -251,7 +258,7 @@ import XCTest
         XCTAssertTrue(shown.contains("Plan"), shown)
         XCTAssertTrue(shown.contains("1 of 2"), shown)
         defaults.set(false, forKey: key)
-        await renderFrames()
+        await renderFrames(12)
         let hidden = try screenshot(window, name: "bot-activity-cards-off")
         XCTAssertFalse(hidden.contains("Thinking"), hidden)
         XCTAssertFalse(hidden.contains("Updated"), hidden)
@@ -278,9 +285,17 @@ import XCTest
         [view] + view.subviews.flatMap(descendants)
     }
 
-    private func renderFrames() async {
+    /// Waits for the conversation's coalesced snapshot read to land. Every
+    /// `applySnapshot` republishes the turn state, so it is the arrival signal.
+    private func awaitSnapshot(_ model: BotConversation) async {
+        let applied = expectation(description: "Snapshot applied")
+        withObservationTracking { _ = String(describing: model.turn) } onChange: { applied.fulfill() }
+        await fulfillment(of: [applied], timeout: 5)
+    }
+
+    private func renderFrames(_ target: Int = 3) async {
         let rendered = expectation(description: "Layout committed")
-        let driver = BotRenderFrameDriver { rendered.fulfill() }
+        let driver = BotRenderFrameDriver(target: target) { rendered.fulfill() }
         driver.start()
         await fulfillment(of: [rendered], timeout: 10)
         driver.stop()

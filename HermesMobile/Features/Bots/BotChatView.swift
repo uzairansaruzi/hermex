@@ -58,7 +58,8 @@ import SwiftUI
                         if let request = model.pendingRequest {
                             BotPendingRequestCard(
                                 request: request, identity: identity,
-                                isEnabled: model.mayAnswer, isAnswering: model.answeringRequestID != nil,
+                                isEnabled: model.mayAnswer, canStop: model.mayStop,
+                                isAnswering: model.answeringRequestID != nil,
                                 resolution: resolution(for: request),
                                 onApprove: approve, onAnswer: answer, onSkip: skip,
                                 onStop: { stopAction = model.prepareStop() }

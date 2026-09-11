@@ -165,7 +165,6 @@ struct ClarificationRequestCard: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
-    @ScaledMetric(relativeTo: .body) private var submitButtonSize: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
     @State private var bodyContentHeight: CGFloat?
 
@@ -269,27 +268,16 @@ struct ClarificationRequestCard: View {
             TextField("Type a response", text: $draftResponse, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...5)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .tint(actionButtonBackground)
-                .background(textFieldBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(textFieldBorder)
+                .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
+                .pendingRequestFieldSurface()
                 .disabled(isResponding)
 
-            Button {
-                submitDraft()
-            } label: {
-                submitButtonLabel
-                    .frame(width: submitButtonSize, height: submitButtonSize)
-                    .background(actionButtonBackground)
-                    .foregroundStyle(actionButtonForeground)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.chatTactile(.icon))
-            .disabled(isResponding || trimmedDraft.isEmpty)
-            .accessibilityLabel("Submit clarification")
+            PendingRequestSubmitButton(isBusy: isResponding, canSubmit: canSubmit, action: submitDraft)
+                .accessibilityLabel("Submit clarification")
         }
     }
+
+    private var canSubmit: Bool { !isResponding && !trimmedDraft.isEmpty }
 
     @ViewBuilder
     private var footer: some View {
@@ -349,18 +337,6 @@ struct ClarificationRequestCard: View {
     }
 
     @ViewBuilder
-    private var submitButtonLabel: some View {
-        if isResponding {
-            ProgressView()
-                .tint(actionButtonForeground)
-                .scaleEffect(0.82)
-        } else {
-            Image(systemName: "arrow.up")
-                .font(.system(size: 15, weight: .semibold))
-        }
-    }
-
-    @ViewBuilder
     private func choiceButton(_ choice: String) -> some View {
         Button {
             onSubmit(choice)
@@ -377,31 +353,6 @@ struct ClarificationRequestCard: View {
         }
         .buttonStyle(.chatTactile(.capsule))
         .disabled(isResponding)
-    }
-
-    private var textFieldBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.055) : Color.black.opacity(0.045)
-    }
-
-    private var textFieldBorder: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .stroke(.primary.opacity(colorScheme == .dark ? 0.13 : 0.10), lineWidth: 1)
-    }
-
-    private var actionButtonBackground: Color {
-        if isResponding || trimmedDraft.isEmpty {
-            return colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)
-        }
-
-        return colorScheme == .dark ? .white : .black
-    }
-
-    private var actionButtonForeground: Color {
-        if isResponding || trimmedDraft.isEmpty {
-            return Color(.secondaryLabel)
-        }
-
-        return colorScheme == .dark ? .black : .white
     }
 
     private var progressFill: Color {
