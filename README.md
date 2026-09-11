@@ -107,6 +107,8 @@ Local validation defaults for XcodeBuildMCP users live in `.xcodebuildmcp/config
 
 The app is developed and tested against the `hermes-webui` commit pinned in [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA). Upstream does not yet guarantee API stability (its README declares version skew unsupported pending their stable-API work), so newer or older server versions may break individual features — please include your server version in bug reports. The app decodes tolerantly (unknown fields never crash it) and endpoint shapes are verified against upstream source, never invented.
 
+Bot Mode's direct-Hermes connection has its own pin, [`HERMES_AGENT_TESTED_SHA`](HERMES_AGENT_TESTED_SHA): line 1 is the tested `hermes-agent` commit and line 2 the release string its `/api/status` reports. When a host reports a different release, the Bot connection screen shows a one-line "Untested Hermes version" note. It never blocks signing in.
+
 ## Documentation map
 
 - [`AGENTS.md`](AGENTS.md): the working agreement — product boundaries, server-contract rules, locked dependencies, verification, and PR flow.

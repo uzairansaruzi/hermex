@@ -13,6 +13,16 @@ and mints a fresh single-use ticket for each socket. JSON-RPC uses text frames
 with the `hermes-gateway-v1` and ticket subprotocols. There is no bootstrap-token,
 OAuth, webui fallback, server provisioning or competing-backend path.
 
+`HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
+(line 1) and the release `/api/status` reports as `version` (line 2), the Bot
+counterpart of `UPSTREAM_TESTED_SHA`. `BotClient.connect()` captures `version`
+and the connection screen stores it on the `BotConnection` record. A release
+other than `BotConnection.testedHermesVersion` shows a one-line "Untested Hermes
+version" note and keeps the screen up after a successful connect so the note is
+seen; a missing `version` shows nothing. Login is never blocked on it: each RPC
+validates the contract just in time. Advancing the pin is described in AGENTS.md
+(Working with the server); update the file and the constant together.
+
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
 separate, and rejects a changed root before resume. Lookup can recover archived

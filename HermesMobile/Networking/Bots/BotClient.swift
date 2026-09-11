@@ -13,6 +13,8 @@ import Foundation
     private var pending: [Int: CheckedContinuation<BotJSON, Error>] = [:]
     private var deadlines: [Int: Task<Void, Never>] = [:]
     private(set) var replayEpoch: String?
+    /// `version` from `/api/status`, captured before the auth gate; nil when omitted.
+    private(set) var serverVersion: String?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 
@@ -47,6 +49,7 @@ import Foundation
         do {
             let status = try await http(.status)
             try check()
+            serverVersion = status["version"].text
             guard status["auth_required"].flag == true,
                   status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
             _ = try await http(.login, body: .object([

@@ -14,7 +14,7 @@ import XCTest
             let path = request.url!.path
             paths.append(path)
             switch path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]), "version": .string("0.22.0")]))
             case "/auth/password-login":
                 XCTAssertEqual(request.httpMethod, "POST")
                 return (200, .object(["ok": .bool(true)]))
@@ -40,6 +40,7 @@ import XCTest
         }
         for _ in 0..<2 {
             try await client.connect()
+            XCTAssertEqual(client.serverVersion, "0.22.0")
             let roster = try await client.call("profiles.list", [:])
             XCTAssertEqual(roster["profiles"].list, [])
             do {
@@ -52,6 +53,27 @@ import XCTest
         XCTAssertEqual(protocols, [["hermes-gateway-v1", "hermes-gateway-ticket.ticket-1"], ["hermes-gateway-v1", "hermes-gateway-ticket.ticket-2"]])
         XCTAssertEqual(paths.filter { $0 == "/api/auth/me" }.count, 2)
         XCTAssertEqual(sockets.map { $0.sentTextFrames }, [1, 1])
+    }
+
+    func testStatusWithoutVersionStillConnectsAndShowsNoNote() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in BotScriptedSocket() }
+        try await client.connect()
+        XCTAssertNil(client.serverVersion)
+        var record = connection()
+        record.hermesVersion = client.serverVersion
+        XCTAssertNil(record.untestedVersionNote)
+        client.close()
     }
 
     func testMissingPasswordGateFailsBeforeCredentialsOrSocket() async {

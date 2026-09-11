@@ -34,6 +34,8 @@ import SwiftUI
                     connectTask = Task { await connect() }
                 }
                 .disabled(isConnecting || address.isEmpty || username.isEmpty || password.isEmpty)
+            } footer: {
+                if let note = saved?.untestedVersionNote { Text(note) }
             }
             Section("Setup in Hermes Desktop") {
                 Text("Keep Hermes Desktop running. In Settings → Advanced, enable Keep computer awake. The display may dim.")
@@ -83,7 +85,7 @@ import SwiftUI
         do {
             let url = try BotConnection.address(address)
             let sameAccount = saved?.address == url && saved?.username == username
-            let candidate = BotConnection(id: sameAccount ? saved!.id : UUID(),
+            var candidate = BotConnection(id: sameAccount ? saved!.id : UUID(),
                                           name: name.isEmpty ? (url.host ?? "Hermes") : name,
                                           address: url, username: username, password: password)
             let wire = BotClient(connection: candidate)
@@ -91,6 +93,7 @@ import SwiftUI
             defer { wire.close() }
             try await wire.connect()
             guard !Task.isCancelled, client === wire else { return }
+            candidate.hermesVersion = wire.serverVersion
             let result = try await wire.call("profiles.list", ["include_sessions": .bool(true)])
             guard !Task.isCancelled, client === wire else { return }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
@@ -100,7 +103,8 @@ import SwiftUI
             }
             guard !Task.isCancelled, client === wire else { return }
             saved = candidate
-            dismiss()
+            // An untested release keeps the screen up so the note is seen once; Done closes it.
+            if candidate.untestedVersionNote == nil { dismiss() }
         } catch {
             guard !Task.isCancelled, client != nil else { return }
             errorMessage = (error as? BotFailure)?.localizedDescription ?? String(localized: "Could not save sign-in details or connect to Hermes.")
