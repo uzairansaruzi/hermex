@@ -301,6 +301,122 @@ import Vision
         .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string("message.delta")])
     }
 
+    private func typed(_ seq: Int, _ type: String, _ payload: BotJSON = .null) -> BotJSON {
+        var object: [String: BotJSON] = ["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string(type)]
+        if payload != .null { object["payload"] = payload }
+        return .object(object)
+    }
+
+    func testLongResponseInterleavesToolEventsThenSettlesWithoutDuplicateRows() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        wire.inflight = .object(["user": .string("Clear the inbox"), "assistant": .string("Archiving")])
+        wire.onEvent?(typed(1, "message.start"))
+        wire.onEvent?(typed(2, "thinking.delta", .object(["text": .string("Archive first")])))
+        wire.onEvent?(typed(3, "tool.start", .object(["tool_id": .string("t1"), "name": .string("terminal"), "args": .object(["command": .string("himalaya move")])])))
+        let streamed = expectation(description: "inflight snapshot published")
+        withObservationTracking { _ = model.liveMessages } onChange: { streamed.fulfill() }
+        wire.onEvent?(typed(4, "message.delta", .object(["text": .string("Archiving")])))
+        await fulfillment(of: [streamed], timeout: 3)
+        XCTAssertEqual(model.turn, .running)
+        let resumes = wire.calls.filter { $0.0 == "session.resume" }.count
+        wire.onEvent?(typed(5, "tool.complete", .object(["tool_id": .string("t1"), "name": .string("terminal"), "result": .object(["output": .string("ok")])])))
+        wire.onEvent?(typed(6, "todo.updated", .object(["revision": .number(2), "todos": .array([
+            .object(["id": .string("a"), "content": .string("Archive"), "status": .string("completed")]),
+            .object(["id": .string("b"), "content": .string("Draft"), "status": .string("in_progress")])
+        ])])))
+        wire.onEvent?(typed(7, "todo.updated", .object(["revision": .number(1), "todos": .array([.object(["id": .string("z"), "content": .string("stale"), "status": .string("pending")])])])))
+        wire.onEvent?(typed(8, "status.update", .object(["kind": .string("compacting"), "text": .string("Compacting context")])))
+        wire.onEvent?(typed(9, "review.summary", .object(["text": .string("Saved a memory")])))
+        XCTAssertEqual(model.liveMessages.map(\.content), ["Clear the inbox", "Archiving"])
+        XCTAssertEqual(model.liveActivity.reasoning, "Archive first")
+        XCTAssertEqual(model.liveActivity.toolCalls.map(\.isCompleted), [true])
+        XCTAssertEqual(model.plan?.revision, 2)
+        XCTAssertEqual(model.plan?.current?.content, "Draft")
+        XCTAssertEqual(model.workStatus, "Compacting context")
+        XCTAssertEqual(model.liveActivity.memoryNotes, ["Saved a memory"])
+        wire.inflight = .object(["user": .string("Clear the inbox"), "assistant": .string("Archiving done")])
+        let streamedAgain = expectation(description: "second inflight snapshot published")
+        withObservationTracking { _ = model.liveMessages } onChange: { streamedAgain.fulfill() }
+        wire.onEvent?(typed(10, "message.delta", .object(["text": .string(" done")])))
+        await fulfillment(of: [streamedAgain], timeout: 3)
+        XCTAssertEqual(wire.calls.filter { $0.0 == "session.resume" }.count, resumes + 1,
+                       "activity events during known work never add snapshot reads")
+        // Completion: the full snapshot carries the settled rows and the live rows go away.
+        wire.running = false; wire.inflight = .null
+        wire.history = [
+            .object(["role": .string("user"), "text": .string("Clear the inbox")]),
+            .object(["role": .string("tool"), "name": .string("terminal"), "context": .string("himalaya move")]),
+            .object(["role": .string("assistant"), "text": .string("Archiving done"), "reasoning": .string("Archive first")])
+        ]
+        let settled = expectation(description: "full snapshot published")
+        withObservationTracking { _ = model.messages } onChange: { settled.fulfill() }
+        wire.onEvent?(typed(11, "message.complete", .object(["text": .string("Archiving done")])))
+        await fulfillment(of: [settled], timeout: 3)
+        XCTAssertEqual(model.turn, .idle)
+        XCTAssertEqual(model.messages.map(\.content), ["Clear the inbox", "Archiving done"])
+        XCTAssertEqual(model.settledActivity.map(\.anchorMessageID), ["root/2"])
+        XCTAssertEqual(model.settledActivity[0].toolCalls.map(\.name), ["terminal"])
+        XCTAssertEqual(model.settledActivity[0].reasoning, "Archive first")
+        XCTAssertFalse(model.liveActivity.hasTurnWork, "settled rows replace the live rows, never both")
+        XCTAssertEqual(model.liveActivity.memoryNotes, ["Saved a memory"], "notes stay until the next turn starts")
+        XCTAssertNil(model.workStatus)
+        wire.onEvent?(typed(12, "message.start"))
+        XCTAssertTrue(model.liveActivity.memoryNotes.isEmpty)
+        model.suspend()
+    }
+
+    func testReplayRebuildsCurrentTurnActivityOnlyWhenTheRingHoldsIt() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        XCTAssertFalse(model.liveActivity.hasTurnWork)
+        // Continuous replay after a quiet socket: the missed events rebuild the rows.
+        wire.replay = BotFixtureWire.replay(latest: 2, events: [
+            typed(1, "tool.start", .object(["tool_id": .string("t1"), "name": .string("terminal")])),
+            typed(2, "tool.complete", .object(["tool_id": .string("t1"), "name": .string("terminal"), "result": .string("ok")]))
+        ])
+        await model.recover()
+        XCTAssertFalse(model.replayWasReset)
+        XCTAssertEqual(model.liveActivity.toolCalls.map(\.isCompleted), [true])
+        // A truncated ring that still holds the turn's start rebuilds from that start only.
+        wire.replay = BotFixtureWire.replay(latest: 6, truncated: true, events: [
+            typed(4, "tool.start", .object(["tool_id": .string("old"), "name": .string("terminal")])),
+            typed(5, "message.start"),
+            typed(6, "tool.start", .object(["tool_id": .string("new"), "name": .string("read_file")]))
+        ])
+        await model.recover()
+        XCTAssertTrue(model.replayWasReset)
+        XCTAssertEqual(model.liveActivity.toolCalls.map(\.id), ["new"])
+        // Truncated without the start: partial rows are dropped rather than shown.
+        wire.replay = BotFixtureWire.replay(latest: 8, truncated: true, events: [
+            typed(8, "tool.start", .object(["tool_id": .string("partial"), "name": .string("terminal")]))
+        ])
+        await model.recover()
+        XCTAssertTrue(model.replayWasReset)
+        XCTAssertFalse(model.liveActivity.hasTurnWork)
+        // Duplicate sequence numbers in a replay never duplicate rows.
+        wire.replay = BotFixtureWire.replay(latest: 10, events: [
+            typed(9, "tool.start", .object(["tool_id": .string("t9"), "name": .string("terminal")])),
+            typed(9, "tool.start", .object(["tool_id": .string("t9"), "name": .string("terminal")])),
+            typed(10, "tool.start", .object(["tool_id": .string("t10"), "name": .string("terminal")]))
+        ])
+        await model.recover()
+        XCTAssertFalse(model.replayWasReset)
+        XCTAssertEqual(model.liveActivity.toolCalls.map(\.id), ["t9", "t10"])
+        model.suspend()
+    }
+
+    func testSnapshotPlanIsRevisionMonotonic() async {
+        let wire = BotFixtureWire()
+        wire.todoState = .object(["revision": .number(5), "todos": .array([.object(["id": .string("a"), "content": .string("Ship"), "status": .string("pending")])])])
+        let model = make(wire); await model.recover()
+        XCTAssertEqual(model.plan?.revision, 5)
+        wire.todoState = .object(["revision": .number(4), "todos": .array([.object(["id": .string("b"), "content": .string("Older"), "status": .string("pending")])])])
+        await model.recover()
+        XCTAssertEqual(model.plan?.items.map(\.content), ["Ship"])
+        model.suspend()
+    }
+
     func testLongInflightResponseRemainsVisibleAtLatestEdge() async throws {
         let wire = BotFixtureWire()
         wire.running = true
@@ -387,6 +503,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var running = false
     var inflight = BotJSON.null
     var attention = false
+    var todoState = BotJSON.null
     var history: [BotJSON] = [.object(["role": .string("assistant"), "text": .string("saved")])]
     var replay = BotFixtureWire.replay()
     var lookupFailure: BotFailure?
@@ -413,6 +530,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             return .object([
                 "session_id": .string("runtime"), "session_key": .string(tip), "running": .bool(running),
                 "messages": .array(history), "inflight": inflight, "pending_approval": attention ? .object(["id": .string("approval")]) : .null,
+                "todo_state": todoState,
                 "info": .object(["profile_name": .string("inbox-triage")])
             ])
         case "session.events.since": return replay

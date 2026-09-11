@@ -26,8 +26,27 @@ import SwiftUI
                         if model.messages.isEmpty && model.liveMessages.isEmpty && model.connectionState == .connected {
                             Text("No messages yet").foregroundStyle(.secondary)
                         }
-                        ForEach(model.messages) { message in MessageBubbleView(message: message, textOnly: true) }
-                        ForEach(model.liveMessages) { message in MessageBubbleView(message: message, textOnly: true) }
+                        ForEach(model.messages) { message in
+                            settledActivity(anchoredTo: message.id)
+                            MessageBubbleView(message: message, textOnly: true)
+                        }
+                        settledActivity(anchoredTo: nil)
+                        // The live turn reads like a settled one: prompt, work, then reply.
+                        if let prompt = model.liveMessages.first(where: { $0.role == "user" }) {
+                            MessageBubbleView(message: prompt, textOnly: true)
+                        }
+                        if model.liveActivity.hasTurnWork {
+                            BotActivityBlocksView(
+                                id: "bot-live", reasoning: model.liveActivity.reasoning,
+                                toolCalls: model.liveActivity.toolCalls, isLive: true
+                            )
+                        }
+                        if let reply = model.liveMessages.first(where: { $0.role == "assistant" }) {
+                            MessageBubbleView(message: reply, textOnly: true)
+                        }
+                        if let plan = model.plan {
+                            BotPlanRowView(plan: plan).id("bot-plan")
+                        }
                         Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
                     .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
@@ -47,6 +66,8 @@ import SwiftUI
                 }
                 .onChange(of: model.messages.count) { followLatest(proxy) }
                 .onChange(of: model.liveMessages.last?.content) { followLatest(proxy) }
+                .onChange(of: model.liveActivity.toolCalls.count) { followLatest(proxy) }
+                .onChange(of: model.liveActivity.reasoning.count) { followLatest(proxy) }
                 .onChange(of: model.connectionState) { followLatest(proxy) }
                 .overlay(alignment: .bottomTrailing) {
                     if !followsLatest {
@@ -89,6 +110,13 @@ import SwiftUI
             }
         } message: {
             Text("First check whether Desktop received this message. Discarding removes the held text from Hermex. It does not stop or resend any work.")
+        }
+    }
+
+    @ViewBuilder
+    private func settledActivity(anchoredTo anchorID: String?) -> some View {
+        ForEach(model.settledActivity.filter { $0.anchorMessageID == anchorID }) { activity in
+            BotActivityBlocksView(id: activity.id, reasoning: activity.reasoning, toolCalls: activity.toolCalls)
         }
     }
 

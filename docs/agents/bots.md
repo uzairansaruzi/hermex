@@ -43,6 +43,27 @@ Markdown rendering without token reveal animations. The deferred streaming
 renderer can leave a growing Bot response's trailing viewport blank; an XCTest
 renders evolving snapshots and checks the actual visible output.
 
+Activity comes from two sources that never overlap. The full snapshot's
+`messages` rows already carry settled tool rows (`role: tool` with `name`,
+`context`, `args`) and assistant `reasoning`; `BotTranscriptProjection` turns
+them into `BotSettledActivity` anchored to the message each block precedes,
+keeping the `<root>/<row index>` identity. The live turn reduces gateway events
+in `BotTurnActivity`: `tool.start`/`tool.complete` keyed by `tool_id`,
+`thinking.delta`/`reasoning.delta`/`reasoning.available`, keyed
+`notification.show`/`clear`, and `review.summary` memory notes, bounded to 64
+rows, 32 KB of reasoning and 8 notices. `todo.updated` and the snapshot's
+`todo_state` feed a revision-monotonic `BotPlan`; `status.update` feeds
+`workStatus`. Activity events during known work update local state without a
+snapshot read. Replay rebuilds the current turn's rows when the sequence is
+continuous, or from the last `message.start` the ring still holds; otherwise the
+live rows are dropped and the next full snapshot shows the settled ones, so
+overlap never duplicates a card. Presentation reuses the Sessions log rows
+(`ReasoningBlockView`, `ToolActivityGroupView`, `TranscriptLogRowView`) and the
+global Chat display toggles; the plan row stays visible with cards off. Tool
+output is text only. `message.react` and `learning.frames` are deliberately
+not wired: the snapshot carries no reactions to show back, and the frames are
+terminal-sized renders.
+
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 Before sending, the client flushes an unresolved marker to disk. An acknowledged
 send consumes the draft; explicit admission failures preserve its text. An

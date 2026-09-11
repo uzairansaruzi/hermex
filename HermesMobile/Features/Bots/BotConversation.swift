@@ -22,6 +22,11 @@ import Observation
     private(set) var sequence = 0
     private(set) var epoch: String?
     private(set) var replayWasReset = false
+    private(set) var settledActivity: [BotSettledActivity] = []
+    private(set) var liveActivity = BotTurnActivity()
+    private(set) var plan: BotPlan?
+    /// `status.update` text while the bot works (compacting, compressing); nil once ready.
+    private(set) var workStatus: String?
     private var tip: String?
     private var generation = 0
     private var turnRevision = 0
@@ -127,16 +132,48 @@ import Observation
               let truncated = reply["truncated"].flag, let events = reply["events"].list else { throw BotFailure.unsupported }
         if epoch != receivedEpoch || truncated || latest < sequence { replayWasReset = true }
         var cursor = sequence
+        var missed: [BotJSON] = []
         for event in events {
             guard event["session_id"].text == runtime else { throw BotFailure.wrongIdentity }
             guard let next = event["seq"].integer, next > 0, next <= latest else { throw BotFailure.unsupported }
             if next <= cursor { continue }
             if next != cursor + 1 { replayWasReset = true }
             cursor = next
+            missed.append(event)
         }
         if cursor < latest { replayWasReset = true }
         epoch = receivedEpoch; sequence = latest
-        // Replay is only a continuity check. A full snapshot replaces text below.
+        // Replay never appends text; the full snapshot below owns it. It does rebuild
+        // the current turn's activity: every missed event when the sequence was
+        // continuous, otherwise only the events after the last `message.start` the
+        // ring still holds, which is the whole current turn. Without either, the
+        // live rows are dropped rather than shown incomplete.
+        if replayWasReset {
+            guard let start = missed.lastIndex(where: { $0["type"].text == "message.start" }) else {
+                liveActivity.clearTurnWork(); return
+            }
+            missed.removeFirst(start)
+        }
+        for event in missed { applyActivity(type: event["type"].text ?? "", payload: event["payload"]) }
+    }
+
+    /// Feeds activity events to the live reducer, plan and work status. Returns
+    /// false for event types that carry conversation text or turn state instead.
+    @discardableResult
+    private func applyActivity(type: String, payload: BotJSON) -> Bool {
+        switch type {
+        case "message.start":
+            liveActivity = BotTurnActivity(); workStatus = nil
+            return false
+        case "todo.updated":
+            if let next = BotPlan(payload), next.revision >= (plan?.revision ?? 0) { plan = next }
+        case "status.update":
+            let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            workStatus = payload["kind"].text == "ready" || text.isEmpty ? nil : text
+        default:
+            return liveActivity.apply(type: type, payload: payload)
+        }
+        return true
     }
 
     private func applySnapshot(_ snapshot: BotJSON, full: Bool) throws {
@@ -145,11 +182,11 @@ import Observation
         if let value = snapshot["info"]["profile_name"].text, value != profile.id { throw BotFailure.wrongIdentity }
         if full {
             guard let history = snapshot["messages"].list, snapshot["messages_omitted"].flag != true else { throw BotFailure.unsupported }
-            messages = history.enumerated().compactMap { index, row in
-                guard let role = row["role"].text, ["user", "assistant"].contains(role), let text = row["text"].text else { return nil }
-                return ChatMessage(role: role, content: text, timestamp: nil, messageId: "\(root ?? "")/\(index)")
-            }
+            let projected = BotTranscriptProjection.project(history: history, root: root ?? "")
+            messages = projected.messages
+            settledActivity = projected.activity
         }
+        if let next = BotPlan(snapshot["todo_state"]), next.revision >= (plan?.revision ?? 0) { plan = next }
         let inflight = snapshot["inflight"]
         let startedAt = inflight["started_at"].number ?? snapshot["turn_started_at"].number
         if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt }
@@ -160,7 +197,12 @@ import Observation
         if let text = inflight["assistant"].text, !text.isEmpty {
             liveMessages.append(ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "live-assistant"))
         }
-        if !running { uncertainStop = false; stopAcknowledged = false }
+        if !running {
+            uncertainStop = false; stopAcknowledged = false; workStatus = nil
+            // Only a full snapshot carries the settled rows, so live rows wait for it
+            // instead of vanishing on the inflight read that first reports idle.
+            if full { liveActivity.clearTurnWork() }
+        }
         let attention = snapshot["pending_approval"] != .null || snapshot["pending_clarify"] != .null
         let continuation = snapshot["auto_continue"] != .null && snapshot["auto_continue"].flag != false
         let queued = snapshot["queued"] != .null
@@ -276,6 +318,7 @@ import Observation
         guard let next = event["seq"].integer, next > 0 else {
             replayWasReset = true; snapshotDirty = true; fullSnapshotNeeded = true
             turnRevision += 1
+            liveActivity.clearTurnWork()
             if !localOperation { turn = .unknown }
             scheduleRefresh(); return
         }
@@ -283,10 +326,15 @@ import Observation
         let discontinuity = next != sequence + 1
         if discontinuity {
             replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
+            // Missed events may hold tool rows; partial activity is worse than none.
+            liveActivity.clearTurnWork()
             if !localOperation { turn = .unknown }
         }
         sequence = next
         let type = event["type"].text ?? ""
+        // Activity events never change the inflight text, so a continuous stream
+        // during known work updates local state without another snapshot read.
+        if applyActivity(type: type, payload: event["payload"]), !discontinuity, turn == .running { return }
         if ["message.start", "message.complete", "session.info", "error", "approval.request", "clarify.request"].contains(type) {
             turnRevision += 1
             fullSnapshotNeeded = true

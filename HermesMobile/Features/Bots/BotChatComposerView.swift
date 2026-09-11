@@ -120,9 +120,16 @@ private struct BotChatStatusView: View {
     let onResolveHeldMessage: () -> Void
 
     var body: some View {
-        if model.connectionState != .connected || model.turn != .idle || model.errorMessage != nil || model.uncertainSend {
+        if model.connectionState != .connected || model.turn != .idle || model.errorMessage != nil || model.uncertainSend
+            || !model.liveActivity.notices.isEmpty || !model.liveActivity.memoryNotes.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 if let connectionText { Text(connectionText) }
+                ForEach(model.liveActivity.notices) { notice in
+                    Label(notice.text, systemImage: notice.isWarning ? "exclamationmark.triangle" : "info.circle")
+                }
+                ForEach(model.liveActivity.memoryNotes, id: \.self) { note in
+                    Label(note, systemImage: "brain")
+                }
                 if let error = model.errorMessage { Text(error) }
                 if model.uncertainSend {
                     Text("Send outcome unknown. Check the conversation in Desktop before sending again.")
@@ -162,7 +169,7 @@ private struct BotChatStatusView: View {
     private var turnText: String? {
         switch model.turn {
         case .idle, .needsAttention: return nil
-        case .running: return String(localized: "Working")
+        case .running: return model.workStatus ?? String(localized: "Working")
         case .submitting: return String(localized: "Sending…")
         case .stopping: return String(localized: "Stopping…")
         case .uncertain: return String(localized: "Outcome unknown")

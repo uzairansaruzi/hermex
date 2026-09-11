@@ -143,6 +143,49 @@ import XCTest
         }
     }
 
+    /// The activity rows are the Sessions log rows, whose only motion is
+    /// `ChatMotion.disclosure`, which is nil under Reduce Motion (covered in
+    /// `TranscriptDisplayModelTests`); the Bot views add no animation of their own.
+    func testActivityRowsRenderAndFollowTheCardsSetting() async throws {
+        let defaults = UserDefaults.standard
+        let key = ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey
+        let previous = defaults.object(forKey: key)
+        defer { if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) } }
+        defaults.set(true, forKey: key)
+        let wire = BotFixtureWire(); wire.running = true
+        wire.history = [
+            .object(["role": .string("user"), "text": .string("Summarize yesterday's inbox.")]),
+            .object(["role": .string("tool"), "name": .string("terminal"), "args": .object(["command": .string("himalaya list")])]),
+            .object(["role": .string("assistant"), "text": .string("Three messages need a reply."), "reasoning": .string("Three threads need replies")])
+        ]
+        wire.inflight = .object(["user": .string("Clear the inbox."), "assistant": .string("Archived 14 newsletters.")])
+        wire.todoState = .object(["revision": .number(1), "todos": .array([
+            .object(["id": .string("a"), "content": .string("Archive newsletters"), "status": .string("completed")]),
+            .object(["id": .string("b"), "content": .string("Draft the estimate reply"), "status": .string("in_progress")])
+        ])])
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("tool.start"),
+            "payload": .object(["tool_id": .string("t1"), "name": .string("write_file"), "args": .object(["path": .string("reply-delivery.md")])])
+        ]))
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-activity-cards-on")
+        XCTAssertTrue(shown.contains("Ran"), shown)
+        XCTAssertTrue(shown.contains("Thinking"), shown)
+        XCTAssertTrue(shown.contains("Updated"), shown)
+        XCTAssertTrue(shown.contains("Plan"), shown)
+        XCTAssertTrue(shown.contains("1 of 2"), shown)
+        defaults.set(false, forKey: key)
+        await renderFrames()
+        let hidden = try screenshot(window, name: "bot-activity-cards-off")
+        XCTAssertFalse(hidden.contains("Thinking"), hidden)
+        XCTAssertFalse(hidden.contains("Updated"), hidden)
+        XCTAssertTrue(hidden.contains("Plan"), "work progress stays visible with cards off: " + hidden)
+    }
+
     private func show<V: View>(_ view: V) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
