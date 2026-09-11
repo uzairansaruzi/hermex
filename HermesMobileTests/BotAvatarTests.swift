@@ -9,15 +9,7 @@ import XCTest
         return .object(fields)
     }
 
-    /// A tiny solid PNG the server would return for an avatar, as a data URL.
-    private func png(side: Int) -> String {
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
-            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: side, height: side))
-        }
-        return "data:image/png;base64," + image.pngData()!.base64EncodedString()
-    }
+    private func png(side: Int) -> String { botAvatarDataURL(side: side) }
 
     private func found(_ dataURL: String) -> BotJSON {
         .object(["found": .bool(true), "mime": .string("image/png"), "size": .number(1), "data": .string(dataURL)])
@@ -129,8 +121,18 @@ import XCTest
     }
 }
 
+/// A tiny solid PNG the server would return for an avatar, as a data URL.
+func botAvatarDataURL(side: Int) -> String {
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+        UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+    }
+    return "data:image/png;base64," + image.pngData()!.base64EncodedString()
+}
+
 /// Answers `profiles.get_asset` from a scripted table; anything else is unsupported.
-@MainActor private final class BotAvatarFixtureWire: BotTransport {
+@MainActor final class BotAvatarFixtureWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?

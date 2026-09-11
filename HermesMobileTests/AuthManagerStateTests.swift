@@ -307,6 +307,25 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertTrue(HTTPCookieStorage.shared.cookies(for: serverB)?.isEmpty ?? true)
     }
 
+    func testRemovingAServerPurgesItsBotConnectionAvatars() async throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = ServerRegistry.inMemory(keychain: keychain)
+        let (manager, _, bAccount) = try await makeTwoServerManager(keychain: keychain, registry: registry)
+        let serverB = try XCTUnwrap(URL(string: "https://b.test"))
+        let connection = BotConnection(id: UUID(), name: "B", address: try XCTUnwrap(URL(string: "http://b.local:9120")), username: "u", password: "p")
+        try BotConnectionStore(keychain: keychain).save(connection, server: serverB)
+        let profile = try XCTUnwrap(BotProfile(.object(["name": .string("default"), "has_avatar": .bool(true)])))
+        let wire = BotAvatarFixtureWire()
+        wire.assets = ["default": .object(["found": .bool(true), "data": .string(botAvatarDataURL(side: 4))])]
+        await BotAvatarStore.shared.refresh([profile], connectionID: connection.id, using: wire) {}
+        XCTAssertEqual(BotAvatarStore.shared.images(connectionID: connection.id).count, 1)
+
+        await manager.removeServer(bAccount)
+
+        XCTAssertTrue(BotAvatarStore.shared.images(connectionID: connection.id).isEmpty)
+        XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: serverB))
+    }
+
     func testSignOutWithRemainingServerAutoSwitches() async throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory(keychain: keychain)
