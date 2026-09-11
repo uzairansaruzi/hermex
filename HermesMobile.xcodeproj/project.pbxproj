@@ -430,6 +430,7 @@
 		13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A712D3AE91645C9B8C27745 /* BotConnection.swift */; };
 		A4730000000000000000A001 /* BotAvatarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4730000000000000000A002 /* BotAvatarStore.swift */; };
 		A4750000000000000000B001 /* BotActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B002 /* BotActivity.swift */; };
+		A4750000000000000000B0A1 /* BotPendingRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B0A2 /* BotPendingRequest.swift */; };
 		A4750000000000000000B003 /* BotActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B004 /* BotActivityViews.swift */; };
 		C2A87F2CDEB941BB825EABA5 /* BotConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */; };
 		013E4253ACC0484FA59DC45F /* BotConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D93D8EC41FE4FBABD1746AD /* BotConversation.swift */; };
@@ -437,6 +438,7 @@
 		A27FAACA0A9243C5AD4860BB /* BotClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2EA5336E9B431489F91A63 /* BotClient.swift */; };
 		A990ABE1D2654992AD262B77 /* BotProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5619C4EB852849D396C45F95 /* BotProtocol.swift */; };
 		9510188AE84E41D9BAE025F1 /* BotConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B077A87C9D846D7A9D27D76 /* BotConversationTests.swift */; };
+		9510188AE84E41D9BAE025FA /* BotPendingRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B077A87C9D846D7A9D27D7A /* BotPendingRequestTests.swift */; };
 		142E7F57D82742678CF78DCA /* BotDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6A7BC5738C4EF9AB0A965B /* BotDraftTests.swift */; };
 		A496B07E0000000000000001 /* BotModeGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A496B07E0000000000000002 /* BotModeGateTests.swift */; };
 		A496B07E0000000000000003 /* BotConnectionVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A496B07E0000000000000004 /* BotConnectionVersionTests.swift */; };
@@ -907,6 +909,7 @@
 		0A712D3AE91645C9B8C27745 /* BotConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnection.swift"; sourceTree = "<group>"; };
 		A4730000000000000000A002 /* BotAvatarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAvatarStore.swift"; sourceTree = "<group>"; };
 		A4750000000000000000B002 /* BotActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotActivity.swift"; sourceTree = "<group>"; };
+		A4750000000000000000B0A2 /* BotPendingRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotPendingRequest.swift"; sourceTree = "<group>"; };
 		A4750000000000000000B004 /* BotActivityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotActivityViews.swift"; sourceTree = "<group>"; };
 		40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnectionView.swift"; sourceTree = "<group>"; };
 		9D93D8EC41FE4FBABD1746AD /* BotConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConversation.swift"; sourceTree = "<group>"; };
@@ -914,6 +917,7 @@
 		BF2EA5336E9B431489F91A63 /* BotClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotClient.swift"; sourceTree = "<group>"; };
 		5619C4EB852849D396C45F95 /* BotProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotProtocol.swift"; sourceTree = "<group>"; };
 		0B077A87C9D846D7A9D27D76 /* BotConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotConversationTests.swift"; sourceTree = "<group>"; };
+		0B077A87C9D846D7A9D27D7A /* BotPendingRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotPendingRequestTests.swift"; sourceTree = "<group>"; };
 		EE6A7BC5738C4EF9AB0A965B /* BotDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotDraftTests.swift"; sourceTree = "<group>"; };
 		A496B07E0000000000000002 /* BotModeGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotModeGateTests.swift; sourceTree = "<group>"; };
 		A496B07E0000000000000004 /* BotConnectionVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotConnectionVersionTests.swift; sourceTree = "<group>"; };
@@ -1031,6 +1035,7 @@
 				A4730000000000000000A004 /* BotAvatarTests.swift */,
 				A4750000000000000000B006 /* BotActivityTests.swift */,
 				0B077A87C9D846D7A9D27D76 /* BotConversationTests.swift */,
+				0B077A87C9D846D7A9D27D7A /* BotPendingRequestTests.swift */,
 				C28702000000000000000004 /* ChatDraftStoreTests.swift */,
 				C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */,
 				10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */,
@@ -1254,6 +1259,7 @@
 				0A712D3AE91645C9B8C27745 /* BotConnection.swift */,
 				A4730000000000000000A002 /* BotAvatarStore.swift */,
 				A4750000000000000000B002 /* BotActivity.swift */,
+				A4750000000000000000B0A2 /* BotPendingRequest.swift */,
 				A4750000000000000000B004 /* BotActivityViews.swift */,
 				27E21E4E9C8B44DFA6B8DFFB /* BotChatView.swift */,
 				1A2B3C4D5E6F7000000000C4 /* Onboarding */,
@@ -1848,6 +1854,7 @@
 				13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */,
 				A4730000000000000000A001 /* BotAvatarStore.swift in Sources */,
 				A4750000000000000000B001 /* BotActivity.swift in Sources */,
+				A4750000000000000000B0A1 /* BotPendingRequest.swift in Sources */,
 				A4750000000000000000B003 /* BotActivityViews.swift in Sources */,
 				E8812D2097AF431094460471 /* BotChatView.swift in Sources */,
 				1A2B3C4D5E6F700000000001 /* HermesMobileApp.swift in Sources */,
@@ -2126,6 +2133,7 @@
 				A4730000000000000000A003 /* BotAvatarTests.swift in Sources */,
 				A4750000000000000000B005 /* BotActivityTests.swift in Sources */,
 				9510188AE84E41D9BAE025F1 /* BotConversationTests.swift in Sources */,
+				9510188AE84E41D9BAE025FA /* BotPendingRequestTests.swift in Sources */,
 				10CA110C0DE000000000C001 /* LocalizationCatalogTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000AC /* APIClientTests.swift in Sources */,
 				B5A1000000000000000000A0 /* ServerRegistryTests.swift in Sources */,

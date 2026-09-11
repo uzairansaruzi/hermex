@@ -506,7 +506,15 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var tip = "tip"
     var running = false
     var inflight = BotJSON.null
+    /// Shorthand for "a command approval is blocking this session"; set
+    /// `pendingApproval` directly to control the payload.
     var attention = false
+    var pendingApproval: BotJSON?
+    var pendingClarify = BotJSON.null
+    /// What `approval.respond` reports unblocking, and what `clarify.respond` reports.
+    var approvalResolved = 1
+    var clarifyStatus = "ok"
+    var respondFailure: BotFailure?
     var todoState = BotJSON.null
     var history: [BotJSON] = [.object(["role": .string("assistant"), "text": .string("saved")])]
     var replay = BotFixtureWire.replay()
@@ -533,10 +541,20 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             await beforeResume?()
             return .object([
                 "session_id": .string("runtime"), "session_key": .string(tip), "running": .bool(running),
-                "messages": .array(history), "inflight": inflight, "pending_approval": attention ? .object(["id": .string("approval")]) : .null,
+                "messages": .array(history), "inflight": inflight,
+                "pending_approval": pendingApproval ?? (attention ? BotFixtureWire.approval() : .null),
+                "pending_clarify": pendingClarify,
                 "todo_state": todoState,
                 "info": .object(["profile_name": .string("inbox-triage")])
             ])
+        case "approval.respond":
+            if let respondFailure { throw respondFailure }
+            if approvalResolved > 0 { attention = false; pendingApproval = nil }
+            return .object(["resolved": .number(Double(approvalResolved))])
+        case "clarify.respond":
+            if let respondFailure { throw respondFailure }
+            if clarifyStatus == "ok" { pendingClarify = .null }
+            return .object(["status": .string(clarifyStatus)])
         case "session.events.since": return replay
         case "prompt.submit":
             await beforeSubmit?()
@@ -549,6 +567,27 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         default: throw BotFailure.unsupported
         }
     }
+    /// The gateway's `_approval_request_payload` shape, as it reaches both the
+    /// `approval.request` event and the resume snapshot.
+    static func approval(id: String = "req-1", command: String = "rm -rf build",
+                         choices: [String] = ["once", "session", "always", "deny"]) -> BotJSON {
+        .object([
+            "request_id": .string(id), "command": .string(command),
+            "description": .string("recursive delete"), "pattern_key": .string("rm"),
+            "choices": .array(choices.map(BotJSON.string))
+        ])
+    }
+
+    /// The single-question `clarify.request` / `pending_clarify` shape.
+    static func clarify(id: String = "clr-1", question: String = "Which mailbox first?",
+                        choices: [String] = ["Primary (Recommended)", "Follow-ups"],
+                        multiSelect: Bool = false) -> BotJSON {
+        .object([
+            "request_id": .string(id), "question": .string(question),
+            "choices": .array(choices.map(BotJSON.string)), "multi_select": .bool(multiSelect)
+        ])
+    }
+
     static func replay(latest: Int = 0, truncated: Bool = false, epoch: String = "epoch", events: [BotJSON] = []) -> BotJSON {
         .object(["latest_seq": .number(Double(latest)), "truncated": .bool(truncated), "epoch": .string(epoch), "events": .array(events)])
     }
