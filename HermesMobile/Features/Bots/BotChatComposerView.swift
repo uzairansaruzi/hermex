@@ -148,12 +148,7 @@ private struct BotChatStatusView: View {
                     // and may be scrolled away, so this doubles as the way back to it.
                     if model.pendingRequest != nil {
                         Button(action: onShowRequest) {
-                            Label(
-                                model.pendingRequest?.isAnswerable == true
-                                    ? String(localized: "Waiting for your answer")
-                                    : String(localized: "Hermes Desktop is handling this"),
-                                systemImage: "arrow.down.circle"
-                            )
+                            Label(requestText, systemImage: "arrow.down.circle")
                         }
                     } else {
                         // A pending key the phone could not read has no card to show.
@@ -175,6 +170,15 @@ private struct BotChatStatusView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("bot-chat-status")
         }
+    }
+
+    /// What the blocked bot is waiting on. "Handling this" is only true where
+    /// there is nothing to do: a request the phone can answer or decline has an
+    /// action on its card, and saying it is handled would hide that.
+    private var requestText: String {
+        if model.pendingRequest?.isAnswerable == true { return String(localized: "Waiting for your answer") }
+        if model.mayDecline { return String(localized: "Waiting on Hermes Desktop") }
+        return String(localized: "Hermes Desktop is handling this")
     }
 
     private var connectionText: String? {

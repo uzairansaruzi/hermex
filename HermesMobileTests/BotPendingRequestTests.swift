@@ -145,8 +145,11 @@ import XCTest
             XCTAssertFalse(kind.title.isEmpty)
             XCTAssertFalse(kind.detail.isEmpty)
         }
-        // Only the MCP setup card has a person at the Mac to wait for.
+        // Only the MCP setup card has a person at the Mac to wait for, and it is
+        // the only one there is anything to decline.
         XCTAssertEqual(BotDesktopTaskRequest.Kind.allCases.filter(\.needsSomeoneAtTheMac), [.mcpSetup])
+        XCTAssertEqual(BotDesktopTaskRequest.Kind.allCases.filter(\.isDeclinable), [.mcpSetup])
+        XCTAssertEqual(BotDesktopTaskRequest.Kind.mcpSetup.respondMethod, "mcp.setup.respond")
         // A Desktop task has no id to answer with, and still reads.
         XCTAssertEqual(BotStreamRequest.requested(eventType: "tour.request", payload: .object([:])),
                        .desktopTask(BotDesktopTaskRequest(kind: .tour, requestID: nil)))
@@ -593,6 +596,49 @@ import XCTest
         XCTAssertEqual(model.turn, .needsAttention)
         // Answering is off the table, but stopping the blocked work is not.
         XCTAssertTrue(model.mayStop)
+        model.suspend()
+    }
+
+    /// The one Desktop task with a person in the loop can be called off from
+    /// the phone: a ten-minute park becomes one tap, and the host's tool is
+    /// told never to re-ask.
+    func testAnMCPSetupIsDeclinedFromThePhone() async {
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("mcp.setup.request"),
+            "payload": .object(["request_id": .string("mcp-1"), "server": .string("tavily")])
+        ]))
+        // Declining is not answering: the setup itself still only happens in Desktop.
+        XCTAssertFalse(model.pendingRequest?.isAnswerable ?? true)
+        XCTAssertFalse(model.mayAnswer)
+        XCTAssertTrue(model.mayDecline)
+
+        await model.declineDesktopTask(action(model))
+        let sent = wire.calls.last { $0.0 == "mcp.setup.respond" }
+        XCTAssertEqual(sent?.1["request_id"], .string("mcp-1"))
+        XCTAssertEqual(sent?.1["result"], .string(#"{"status":"declined"}"#))
+        XCTAssertEqual(model.requestResolution?.outcome, .answered)
+        XCTAssertNil(model.streamRequest)
+        model.suspend()
+    }
+
+    /// Every other Desktop task has nothing to decline, and a decline aimed at
+    /// one must never reach the wire.
+    func testADesktopTaskThatCannotBeDeclinedNeverDispatches() async {
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("preview.read.request"),
+            "payload": .object(["request_id": .string("prev-1")])
+        ]))
+        XCTAssertFalse(model.mayDecline)
+        XCTAssertNil(model.prepareAnswer())
+        await model.declineDesktopTask(
+            BotConversation.AnswerAction(generation: 0, runtime: "runtime", requestID: "prev-1")
+        )
+        XCTAssertTrue(wire.calls.filter { $0.0.hasSuffix(".respond") }.isEmpty)
+        XCTAssertNil(model.requestResolution)
         model.suspend()
     }
 

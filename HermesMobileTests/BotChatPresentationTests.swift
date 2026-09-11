@@ -210,6 +210,28 @@ import XCTest
         XCTAssertFalse(model.mayAnswer)
     }
 
+    /// The MCP setup card is the one Desktop task with a way out that is not
+    /// Stop: skipping calls off the request and leaves the bot's work running.
+    func testMCPSetupCardOffersSkipAlongsideStop() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        wire.onEvent?(.object([
+            "session_id": .string("runtime"), "seq": .number(1), "type": .string("mcp.setup.request"),
+            "payload": .object(["request_id": .string("mcp-1"), "server": .string("tavily")])
+        ]))
+        await awaitSnapshot(model)
+        await renderFrames()
+        let shown = try screenshot(window, name: "bot-mcp-setup-card")
+        XCTAssertTrue(shown.contains("Waiting on Hermes Desktop"), shown)
+        XCTAssertTrue(shown.contains("Skip it here"), shown)
+        XCTAssertTrue(shown.contains("Skip this setup"), shown)
+        XCTAssertTrue(shown.contains("Stop current work"), shown)
+        XCTAssertTrue(model.mayDecline)
+    }
+
     func testTextOnlyEditorRejectsAttachmentProviders() {
         let editor = ComposerChipTextView()
         let image = NSItemProvider(item: NSData(), typeIdentifier: UTType.png.identifier)
@@ -298,10 +320,10 @@ import XCTest
             "payload": .object(["tool_id": .string("t1"), "name": .string("write_file"), "args": .object(["path": .string("reply-delivery.md")])])
         ]))
         // A live tool row lands without a following snapshot (activity events
-        // during known work skip the refresh), so layout is the only thing left
-        // to settle. Three frames is not always enough for the disclosure row.
-        await renderFrames(12)
-        let shown = try screenshot(window, name: "bot-activity-cards-on")
+        // during known work skip the refresh), so nothing signals when the
+        // LazyVStack has materialized it — any fixed frame count is a guess.
+        let shown = try await screenshot(window, name: "bot-activity-cards-on",
+                                         awaiting: ["Ran", "Thinking", "Updated", "Plan"])
         XCTAssertTrue(shown.contains("Ran"), shown)
         XCTAssertTrue(shown.contains("Thinking"), shown)
         XCTAssertTrue(shown.contains("Updated"), shown)
@@ -349,6 +371,21 @@ import XCTest
         driver.start()
         await fulfillment(of: [rendered], timeout: 10)
         driver.stop()
+    }
+
+    /// Captures once layout has produced every `expected` string, or gives up
+    /// and returns the last read so the assertion fails with what was on screen.
+    /// Rows that arrive without a state change to wait on settle at their own
+    /// pace, so this waits on the content under test instead of a frame count.
+    private func screenshot(_ window: UIWindow, name: String,
+                            awaiting expected: [String]) async throws -> String {
+        var text = ""
+        for _ in 0..<8 {
+            await renderFrames(4)
+            text = try screenshot(window, name: name)
+            if expected.allSatisfy(text.contains) { break }
+        }
+        return text
     }
 
     @discardableResult

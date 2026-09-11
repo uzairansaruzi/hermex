@@ -330,12 +330,27 @@ struct BotDesktopTaskRequest: Equatable {
         /// True for the one kind a person actually walks through at the Mac.
         var needsSomeoneAtTheMac: Bool { self == .mcpSetup }
 
+        /// True for the kind the phone can call off outright. Declining is not
+        /// answering: the setup card's work still only happens in Desktop, but
+        /// saying no to it is a decision, and the host takes that from here.
+        /// The rest have nothing to decline — the renderer answers or the
+        /// deadline passes, and either way nobody is kept waiting.
+        var isDeclinable: Bool { self == .mcpSetup }
+
+        var respondMethod: String { "\(rawValue).respond" }
+
         var detail: String {
             needsSomeoneAtTheMac
-                ? String(localized: "Hermes Desktop walks someone through this on the Mac. The bot gives up after about ten minutes if nobody does.")
+                ? String(localized: "Hermes Desktop walks someone through this on the Mac. Skip it here and the bot carries on without the server.")
                 : String(localized: "Hermes Desktop answers this by itself, and the bot carries on without it if it cannot. There is nothing to do here or at the Mac.")
         }
     }
+
+    /// The `result` an explicit decline carries. The host passes the object
+    /// straight through to the tool, which reads `declined` as a final no and
+    /// is told never to re-ask — unlike an unanswered card, which only means
+    /// the ten-minute deadline passed.
+    static let declinedResult = #"{"status":"declined"}"#
 
     let kind: Kind
     let requestID: String?

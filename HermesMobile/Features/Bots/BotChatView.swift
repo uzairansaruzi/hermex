@@ -63,6 +63,7 @@ import SwiftUI
                                 resolution: resolution(for: request),
                                 onApprove: approve, onAnswer: answer, onSkip: skip,
                                 onCredential: sendCredential,
+                                canDecline: model.mayDecline, onDecline: decline,
                                 onStop: { stopAction = model.prepareStop() }
                             )
                             .id(BotChatView.requestAnchor)
@@ -177,6 +178,11 @@ import SwiftUI
     private func sendCredential(_ value: String) {
         guard let action = model.prepareAnswer() else { return }
         Task { await model.answerCredential(action, value: value) }
+    }
+
+    private func decline() {
+        guard let action = model.prepareAnswer() else { return }
+        Task { await model.declineDesktopTask(action) }
     }
 
     @ViewBuilder

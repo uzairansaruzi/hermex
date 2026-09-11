@@ -564,7 +564,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             if let respondFailure { throw respondFailure }
             if clarifyStatus == "ok" { pendingClarify = .null }
             return .object(["status": .string(clarifyStatus)])
-        case "sudo.respond", "secret.respond":
+        case "sudo.respond", "secret.respond", "mcp.setup.respond":
             if let respondFailure { throw respondFailure }
             return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay

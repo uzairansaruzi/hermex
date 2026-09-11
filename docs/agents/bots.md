@@ -78,8 +78,9 @@ outranks an approval: approvals resolve inside a tool batch, a clarify blocks th
 turn. A pending key the phone cannot address still reads as needing attention,
 without a card.
 
-Answering is `approval.respond`, `clarify.respond`, `sudo.respond` and
-`secret.respond`, the only additions to `BotClient`'s allowlist. Nothing is ever sent without a tap. Generation, runtime
+Answering is `approval.respond`, `clarify.respond`, `sudo.respond`,
+`secret.respond` and `mcp.setup.respond`, the only additions to `BotClient`'s
+allowlist. Nothing is ever sent without a tap. Generation, runtime
 and request id are captured on tap and revalidated at the socket write, so a
 stale card fails closed. Three outcomes are distinguished: `resolved > 0` or
 `status: ok` is accepted; `resolved: 0` or `status: expired` means the host had
@@ -116,10 +117,15 @@ pane — so no client without that window can produce one, on a phone or anywher
 else. Nobody types an answer at the Mac either. Each has a host deadline (30s for
 the reads, 45s for preview and tour, ten minutes for `mcp.setup`) after which the
 tool takes an empty answer and the bot carries on, so the card reports the wait
-and keeps Stop rather than sending the user to a desk. `mcp.setup` is the one
-kind a person really does walk through in Desktop, and says so. Declining it from
-the phone (`mcp.setup.respond` with `{"status": "declined"}`) is possible and not
-yet built.
+and keeps Stop rather than sending the user to a desk.
+
+`mcp.setup` is the one kind a person really does walk through in Desktop, and
+the only one with anything to decline. `mayDecline` gates it separately from
+`mayAnswer` — declining is not answering, since the setup still only happens in
+Desktop — and sends `mcp.setup.respond` with `{"status": "declined"}`, which the
+tool reads as a final no and is told never to re-ask. That turns the longest
+wait in the set into one tap, and it is the reason the composer's status line
+says "handling this" only where there is genuinely nothing to do.
 
 The card renders in the transcript where the work stopped, so the command sits
 under the tool row that asked for it, and the composer's attention line doubles

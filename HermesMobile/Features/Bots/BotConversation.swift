@@ -83,13 +83,26 @@ import Observation
         blockingRequest ?? streamRequest?.pending
     }
 
-    /// True when the user may answer the request on screen. A resolved or expired
-    /// request stays inert; an uncertain one is answerable again once reconnected,
-    /// because a second deliberate tap is the user's decision, not an automatic replay.
+    /// True when the user may answer the request on screen.
     var mayAnswer: Bool {
+        guard let request = pendingRequest, request.isAnswerable else { return false }
+        return mayDispatchAnswer(for: request.requestID)
+    }
+
+    /// True when the request on screen can be called off from here. Separate
+    /// from `mayAnswer`: a Desktop task is never answerable, but the one kind
+    /// with a person in the loop can still be declined rather than waited out.
+    var mayDecline: Bool {
+        guard case .desktopTask(let task)? = pendingRequest, task.kind.isDeclinable else { return false }
+        return mayDispatchAnswer(for: task.requestID)
+    }
+
+    /// A resolved or expired request stays inert; an uncertain one is actionable
+    /// again once reconnected, because a second deliberate tap is the user's
+    /// decision, not an automatic replay.
+    private func mayDispatchAnswer(for requestID: String?) -> Bool {
         guard connectionState == .connected, !localOperation, answeringRequestID == nil,
-              let request = pendingRequest, request.isAnswerable,
-              let id = request.requestID else { return false }
+              let id = requestID else { return false }
         if let resolution = requestResolution, resolution.requestID == id { return !resolution.blocksFurtherAnswers }
         return true
     }
@@ -347,10 +360,10 @@ import Observation
         }
     }
 
-    /// Captures what an answer is validated against, or nil when the request on
-    /// screen cannot be answered right now.
+    /// Captures what an answer or a decline is validated against, or nil when
+    /// the request on screen cannot be acted on right now.
     func prepareAnswer() -> AnswerAction? {
-        guard mayAnswer, let runtime, let id = pendingRequest?.requestID else { return nil }
+        guard mayAnswer || mayDecline, let runtime, let id = pendingRequest?.requestID else { return nil }
         return AnswerAction(generation: generation, runtime: runtime, requestID: id)
     }
 
@@ -412,6 +425,21 @@ import Observation
     /// the honest outcome and far better than parking the bot until it times out.
     func skipCredential(_ action: AnswerAction) async {
         await answerCredential(action, value: "")
+    }
+
+    /// Calls off a Desktop task the phone cannot answer but can decline. The
+    /// host reads `declined` as a final no and its tool is told never to re-ask,
+    /// so the bot moves on now instead of parking for the full deadline.
+    func declineDesktopTask(_ action: AnswerAction) async {
+        guard case .desktopTask(let task)? = pendingRequest, task.requestID == action.requestID,
+              task.kind.isDeclinable, action == prepareAnswer() else { return }
+        await deliver(action) {
+            let reply = try await self.request(task.kind.respondMethod, [
+                "request_id": .string(action.requestID),
+                "result": .string(BotDesktopTaskRequest.declinedResult)
+            ], owner: action.generation, validateDispatch: self.answerGuard(action))
+            return reply["status"].text == "expired" ? .alreadyResolved : .answered
+        }
     }
 
     private func dispatchAnswers(_ answers: [BotQuestionAnswer], for action: AnswerAction) async {

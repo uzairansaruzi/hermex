@@ -30,6 +30,9 @@ struct BotPendingRequestCard: View {
     let onSkip: () -> Void
     /// Sends a typed sudo password or secret. Empty is the host's skip.
     let onCredential: (String) -> Void
+    /// Calls off a Desktop task that can be declined. Only `mcp.setup` can.
+    let canDecline: Bool
+    let onDecline: () -> Void
     let onStop: () -> Void
 
     var body: some View {
@@ -52,7 +55,8 @@ struct BotPendingRequestCard: View {
                 )
             case .desktopTask(let task):
                 BotDesktopTaskRequestBody(
-                    task: task, identity: identity, canStop: canStop, onStop: onStop
+                    task: task, identity: identity, canStop: canStop,
+                    canDecline: canDecline, onDecline: onDecline, onStop: onStop
                 )
             }
             if let resolution {
@@ -415,6 +419,8 @@ private struct BotDesktopTaskRequestBody: View {
     let task: BotDesktopTaskRequest
     let identity: String
     let canStop: Bool
+    let canDecline: Bool
+    let onDecline: () -> Void
     let onStop: () -> Void
 
     var body: some View {
@@ -433,6 +439,15 @@ private struct BotDesktopTaskRequestBody: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+        // Declining beats stopping where it is offered: it calls off this one
+        // request and lets the bot finish its work, where Stop ends the work.
+        if task.kind.isDeclinable {
+            Button(action: onDecline) {
+                Text("Skip this setup").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.chatDecision(.secondary))
+            .disabled(!canDecline)
+        }
         Button(role: .destructive, action: onStop) {
             Label("Stop current work", systemImage: "stop.fill").frame(maxWidth: .infinity)
         }
