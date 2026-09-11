@@ -314,6 +314,27 @@ enum SectionVisibilitySettings {
     }
 }
 
+/// App-wide preview gate for Bot Mode (#496). Default off so unfinished Bot UI
+/// never ships through a hotfix cut from `master`. Not per-server: it hides
+/// screens, it is not user data, and Bot connections and drafts stay in the
+/// Keychain while it is off. Delete this gate and its Settings row in the
+/// release PR that ships Bot Mode; see `docs/agents/bots.md`.
+enum BotModeGate {
+    static let isEnabledKey = "botMode.isEnabled"
+
+    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: isEnabledKey)
+    }
+
+    /// The session list shows the Bots inbox only while the gate is on and the
+    /// user picked Bots. External routes (deep links, App Intents, shared
+    /// imports, Live Activity taps) clear the pick before this runs, so they
+    /// always land on Sessions regardless of the gate.
+    static func showsBotsInbox(isEnabled: Bool, userPickedBots: Bool) -> Bool {
+        isEnabled && userPickedBots
+    }
+}
+
 /// Pure helpers for the few *physical* layout values SwiftUI does not mirror on
 /// its own under right-to-left layout (issue #294 — app-wide RTL). Semantic edges
 /// (`.leading`/`.trailing`) and toolbar placements flip automatically; these cover

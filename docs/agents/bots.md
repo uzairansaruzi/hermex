@@ -47,6 +47,14 @@ occurs after disconnect. Acknowledgement alone does not establish completion;
 current idle does. The accepted server race remains: a Stop already sent may reach
 later Desktop work because the ordinary RPC has no expected-turn guard.
 
+Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
+by default and owned by the Settings "Bot Mode (beta)" row (#496). Off hides the
+Sessions/Bots switch, the Bots inbox and the per-server Bot connection row;
+nothing else changes, and Bot connections and drafts stay in the Keychain until
+it is turned on again. The gate is not per-server because it hides screens
+rather than storing user data. It is removed, together with its Settings row
+and `BotModeGateTests`, in the release PR that ships Bot Mode, not before.
+
 New Bot code belongs only to the main app and XCTest target. Share-extension,
 App Intent, deep-link and Live Activity commands still route to webui sessions.
 The Sessions/Bots switch returns to Sessions for existing external entry points.
