@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Sessions presentation with Bot-owned draft and action rules. The same editor
 /// stays mounted through focus changes; no webui runtime controls are involved.
@@ -21,14 +22,17 @@ struct BotChatComposerView: View {
     @State private var measuredHeight: CGFloat = 0
     @State private var keyboardIsVisible = false
 
+    @State private var mode = BotPromptMode.send
+    @State private var redirectAction: BotConversation.PromptAction?
+
+    private var showsToolbar: Bool { isFocused || !model.draft.isEmpty || mode != .send }
     private var showsStop: Bool { model.mayStop || model.turn == .stopping }
     private var canSend: Bool {
-        model.maySend && !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        model.maySubmit(mode) && !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
-    private var actionDisabled: Bool { showsStop ? !model.mayStop : !canSend }
     private var appearance: ChatComposerActionAppearance {
         ChatComposerActionAppearance(
-            isStop: showsStop, isDisabled: actionDisabled, colorScheme: colorScheme,
+            isStop: false, isDisabled: !canSend, colorScheme: colorScheme,
             tintsPrimaryActions: tintsPrimaryActions, themeHex: themeHex
         )
     }
@@ -40,6 +44,13 @@ struct BotChatComposerView: View {
                     model: model, onReconnect: onReconnect,
                     onResolveHeldMessage: onResolveHeldMessage, onShowRequest: onShowRequest
                 )
+
+                if mode != .send && model.maySend {
+                    Text("Work finished. Choose Send to start a new turn.")
+                        .font(AppFont.footnote()).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.bottom, 8)
+                }
 
                 HStack(alignment: .center, spacing: 4) {
                     ComposerTextInputView(
@@ -55,7 +66,9 @@ struct BotChatComposerView: View {
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
                         placeholder: String(localized: "Message bot"), acceptsAttachments: false
                     )
-                    if !isFocused { actionButton }
+                    if !showsToolbar {
+                        if showsStop { stopButton } else { actionButton }
+                    }
                 }
                 .padding(.trailing, isFocused ? 0 : ChatComposerMetrics.pillInset)
                 .padding(.vertical, isFocused ? 0 : ChatComposerMetrics.pillInset)
@@ -64,10 +77,17 @@ struct BotChatComposerView: View {
                 .modifier(ChatComposerSurfaceStyle(isExpanded: isFocused))
                 .padding(.horizontal, 16)
 
-                if isFocused {
-                    HStack {
-                        Spacer(minLength: 0)
-                        actionButton
+                if showsToolbar {
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            modeMenu
+                            Spacer(minLength: 8)
+                            promptButtons
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            modeMenu
+                            HStack { Spacer(minLength: 0); promptButtons }
+                        }
                     }
                     .padding(.horizontal, 16)
                     // Sessions adds a 6 pt stack gap before its 8 pt toolbar inset.
@@ -86,6 +106,23 @@ struct BotChatComposerView: View {
             .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isFocused)
         }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
+        .onChange(of: model.mayGuide) { _, busy in
+            if busy && mode == .send { mode = .steer }
+        }
+        .onAppear { if model.mayGuide && mode == .send { mode = .steer } }
+        .confirmationDialog("Redirect this bot's current work?", isPresented: Binding(
+            get: { redirectAction != nil }, set: { if !$0 { redirectAction = nil } }
+        ), titleVisibility: .visible) {
+            if let action = redirectAction {
+                Button("Redirect", role: .destructive) {
+                    redirectAction = nil
+                    Task { await model.submit(action) }
+                }
+            }
+            Button("Cancel", role: .cancel) { redirectAction = nil }
+        } message: {
+            Text("Interrupt current work and send this direction? During startup, the server may queue it for the next turn.")
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardIsVisible = true
         }
@@ -94,26 +131,72 @@ struct BotChatComposerView: View {
         }
     }
 
-    private var actionButton: some View {
-        Button {
-            if showsStop { onStop() } else { send() }
-        } label: {
-            Image(systemName: showsStop ? "stop.fill" : "arrow.up")
+    private var modeMenu: some View {
+        ChatUIKitMenuButton {
+            ComposerInlineControlLabel(
+                title: mode.title, systemImage: "arrow.turn.up.right",
+                color: .secondary, controlFont: AppFont.subheadline(), chevronFont: AppFont.caption2()
+            )
+        } menu: {
+            UIMenu(children: BotPromptMode.allCases.map { option in
+                UIAction(title: option.title, subtitle: option.explanation,
+                         attributes: model.maySubmit(option) ? [] : [.disabled],
+                         state: mode == option ? .on : .off) { _ in
+                    mode = option
+                }
+            })
+        }
+        .accessibilityLabel(Text("Message action: \(mode.title)"))
+        .accessibilityHint(Text(mode.explanation))
+    }
+
+    private var promptButtons: some View {
+        HStack(spacing: 8) {
+            if showsStop { stopButton }
+            actionButton
+        }
+    }
+
+    private var stopButton: some View {
+        let colors = ChatComposerActionAppearance(
+            isStop: true, isDisabled: !model.mayStop, colorScheme: colorScheme,
+            tintsPrimaryActions: tintsPrimaryActions, themeHex: themeHex
+        )
+        return Button(action: onStop) {
+            Image(systemName: "stop.fill")
                 .font(.system(size: actionIconSize, weight: .semibold))
                 .frame(width: ChatComposerMetrics.actionSize, height: ChatComposerMetrics.actionSize)
-                .background(appearance.background)
-                .foregroundStyle(appearance.foreground)
-                .clipShape(Circle())
+                .background(colors.background).foregroundStyle(colors.foreground).clipShape(Circle())
         }
         .buttonStyle(.chatTactile(.icon))
-        .disabled(actionDisabled)
-        .accessibilityLabel(showsStop ? Text("Stop current work") : Text("Send"))
-        .keyboardShortcut(showsStop ? nil : KeyboardShortcut(.return, modifiers: .command))
+        .disabled(!model.mayStop)
+        .accessibilityLabel("Stop current work")
+    }
+
+    private var actionButton: some View {
+        Button(action: send) {
+            HStack(spacing: 6) {
+                if showsToolbar { Text(mode.title).font(AppFont.subheadline()) }
+                Image(systemName: "arrow.up")
+                    .font(.system(size: actionIconSize, weight: .semibold))
+            }
+            .padding(.horizontal, showsToolbar ? 14 : 0)
+            .frame(minWidth: ChatComposerMetrics.actionSize, minHeight: ChatComposerMetrics.actionSize)
+            .background(appearance.background)
+            .foregroundStyle(appearance.foreground)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .disabled(!canSend)
+        .accessibilityLabel(Text(mode.title))
+        .accessibilityHint(Text(mode.explanation))
+        .keyboardShortcut(.return, modifiers: .command)
     }
 
     private func send() {
-        guard canSend else { return }
-        Task { await model.send() }
+        guard let action = model.preparePrompt(mode) else { return }
+        if mode == .redirect { redirectAction = action }
+        else { Task { await model.submit(action) } }
     }
 }
 
@@ -127,7 +210,7 @@ private struct BotChatStatusView: View {
 
     var body: some View {
         if model.connectionState != .connected || model.turn != .idle || model.errorMessage != nil || model.uncertainSend
-            || !model.liveActivity.notices.isEmpty || !model.liveActivity.memoryNotes.isEmpty {
+            || model.promptReceipt != nil || !model.liveActivity.notices.isEmpty || !model.liveActivity.memoryNotes.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 if let connectionText { Text(connectionText) }
                 ForEach(model.liveActivity.notices) { notice in
@@ -137,8 +220,11 @@ private struct BotChatStatusView: View {
                     Label(note, systemImage: "brain")
                 }
                 if let error = model.errorMessage { Text(error) }
-                if model.uncertainSend {
-                    Text("Send outcome unknown. Check the conversation in Desktop before sending again.")
+                if let receipt = model.promptReceipt { Text(receipt) }
+                if model.submittingPrompt != nil {
+                    Text("Sending…")
+                } else if model.uncertainSend {
+                    Text("Message outcome unknown. Check the conversation in Desktop before sending again.")
                     if model.connectionState == .connected {
                         Button("Resolve held message…", action: onResolveHeldMessage)
                     }

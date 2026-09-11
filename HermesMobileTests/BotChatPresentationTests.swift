@@ -16,6 +16,27 @@ import XCTest
         )
     }
 
+    func testBusyComposerShowsSteerAndRequiresExplicitSendAfterIdle() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover(); model.editDraft("Focus on reconnect")
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onResolveHeldMessage: {}, onShowRequest: {}))
+        defer { model.suspend(); close(window) }
+        await renderFrames()
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertTrue(editor.isKeyboardSendEnabled)
+        let busy = try screenshot(window, name: "480-busy-steer")
+        XCTAssertTrue(busy.contains("Steer"), busy)
+        XCTAssertTrue(busy.contains("Focus on reconnect"), busy)
+        wire.running = false
+        await model.recover()
+        await renderFrames()
+        XCTAssertFalse(editor.isKeyboardSendEnabled)
+        XCTAssertEqual(model.draft, "Focus on reconnect")
+        let idle = try screenshot(window, name: "480-idle-explicit-send")
+        XCTAssertTrue(idle.contains("Choose Send"), idle)
+        XCTAssertFalse(wire.calls.contains { ["prompt.submit", "session.steer", "session.redirect"].contains($0.0) })
+    }
+
     func testReadyHasNoStatusAndDisconnectShowsRecoveryAboveComposer() async throws {
         let wire = BotFixtureWire()
         let model = make(wire)
@@ -61,7 +82,7 @@ import XCTest
         wire.running = true
         await model.recover()
         await renderFrames()
-        XCTAssertFalse(editor.isKeyboardSendEnabled, "Bot work never turns Command-Return into Stop or queued Send")
+        XCTAssertTrue(editor.isKeyboardSendEnabled, "Command-Return uses the visible Steer action while working")
         XCTAssertTrue(editor.isEditable, "Unsent drafts remain editable while the Bot works")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
     }

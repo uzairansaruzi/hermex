@@ -16,6 +16,174 @@ import Vision
                         drafts: drafts ?? ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)))
     }
 
+    func testFailedDraftClearAfterAcknowledgmentKeepsTextDurablyHeld() async throws {
+        let persistence = BotFailingDraftClear()
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire, drafts: ChatDraftStore(persistence: persistence, debounceDuration: .seconds(60)))
+        await model.recover(); model.editDraft("keep after disk failure")
+        await model.submit(try XCTUnwrap(model.preparePrompt(.steer)))
+        XCTAssertTrue(model.uncertainSend)
+        XCTAssertEqual(model.draft, "keep after disk failure")
+        let saved = await persistence.load()
+        XCTAssertEqual(saved[model.draftKey]?.text, "keep after disk failure")
+        XCTAssertTrue(saved[model.draftKey]?.botSubmissionUncertain == true)
+        model.suspend()
+    }
+
+    func testPromptModesRequireTheirOwnAcknowledgmentAndPreserveRejectedDrafts() async throws {
+        for (mode, status, accepted) in [(BotPromptMode.steer, "queued", true), (.redirect, "redirected", true),
+                                          (.redirect, "queued", true), (.queue, "queued", true),
+                                          (.queue, "streaming", true), (.steer, "rejected", false),
+                                          (.redirect, "rejected", false)] {
+            let wire = BotFixtureWire(); wire.running = true
+            wire.promptReply = .object(["status": .string(status), "future": .bool(true)])
+            let model = make(wire); await model.recover(); model.editDraft("guide once")
+            let action = try XCTUnwrap(model.preparePrompt(mode))
+            await model.submit(action)
+            XCTAssertEqual(model.draft, accepted ? "" : "guide once")
+            XCTAssertFalse(model.uncertainSend)
+            XCTAssertEqual(model.connectionState, .connected)
+            XCTAssertEqual(model.promptReceipt, accepted ? mode.outcome(wire.promptReply!).receipt : nil)
+            let calls = wire.calls.filter { $0.0 == mode.method }
+            XCTAssertEqual(calls.count, 1)
+            XCTAssertEqual(calls.first?.1["session_id"], .string("runtime"))
+            XCTAssertEqual(calls.first?.1["text"], .string("guide once"))
+            XCTAssertEqual(calls.first?.1["queued"], mode == .queue ? .bool(true) : nil)
+            await model.submit(action)
+            XCTAssertEqual(wire.calls.filter { $0.0 == mode.method }.count, 1)
+            model.suspend()
+        }
+    }
+
+    func testPromptRaceBeforeDispatchPreservesDraftAndNeverFallsBackToSend() async throws {
+        for mode in [BotPromptMode.steer, .redirect, .queue] {
+            let wire = BotFixtureWire(); wire.running = true
+            let model = make(wire); await model.recover(); model.editDraft("keep")
+            let action = try XCTUnwrap(model.preparePrompt(mode))
+            wire.beforeDispatch = { method in
+                guard method == mode.method else { return }
+                wire.running = false
+                wire.onEvent?(self.typed(1, "message.complete"))
+            }
+            await model.submit(action)
+            XCTAssertFalse(model.uncertainSend)
+            XCTAssertEqual(model.draft, "keep")
+            XCTAssertTrue(wire.calls.allSatisfy { !["prompt.submit", "session.steer", "session.redirect"].contains($0.0) })
+            model.suspend()
+        }
+    }
+
+    func testInitializationRejectionAndMissingMethodDoNotLoseDraft() async throws {
+        for failure in [BotFailure.rejected(4010), .rejected(-32601)] {
+            let wire = BotFixtureWire(); wire.running = true; wire.submitFailure = failure
+            let model = make(wire); await model.recover(); model.editDraft("not accepted")
+            await model.submit(try XCTUnwrap(model.preparePrompt(.steer)))
+            XCTAssertFalse(model.uncertainSend)
+            XCTAssertEqual(model.draft, "not accepted")
+            XCTAssertEqual(model.connectionState, .connected)
+            XCTAssertEqual(model.unavailablePromptModes.contains(.steer), failure == .rejected(-32601))
+            model.suspend()
+        }
+    }
+
+    func testTransportFailureAndServerSideErrorNeverRetryGuidance() async throws {
+        for failure in [BotFailure.transport, .rejected(5000)] {
+            let wire = BotFixtureWire(); wire.running = true; wire.submitFailure = failure
+            let model = make(wire); await model.recover(); model.editDraft("once")
+            wire.beforeSubmit = { XCTAssertNotNil(model.submittingPrompt) }
+            await model.submit(try XCTUnwrap(model.preparePrompt(.steer)))
+            XCTAssertTrue(model.uncertainSend)
+            XCTAssertNil(model.submittingPrompt)
+            XCTAssertEqual(model.draft, "once")
+            await model.recover()
+            XCTAssertNil(model.preparePrompt(.steer))
+            XCTAssertEqual(wire.calls.filter { $0.0 == "session.steer" }.count, 1)
+            model.suspend()
+        }
+    }
+
+    func testLostOrUnrecognizedPromptAcknowledgmentStaysHeldAcrossRecovery() async throws {
+        for reply in [BotJSON.null, .object(["status": .string("future")]), .object(["status": .string("redirected")])] {
+            let wire = BotFixtureWire(); wire.running = true; wire.promptReply = reply
+            let persistence = BotMemoryDrafts()
+            let model = make(wire, drafts: ChatDraftStore(persistence: persistence))
+            await model.recover(); model.editDraft("hold this")
+            await model.submit(try XCTUnwrap(model.preparePrompt(.steer)))
+            XCTAssertTrue(model.uncertainSend)
+            XCTAssertEqual(model.draft, "hold this")
+            let persisted = await persistence.load()
+            XCTAssertTrue(persisted[model.draftKey]?.botSubmissionUncertain == true)
+            await model.recover()
+            XCTAssertNil(model.preparePrompt(.steer))
+            XCTAssertEqual(wire.calls.filter { $0.0 == "session.steer" }.count, 1)
+            model.suspend()
+        }
+    }
+
+    func testDisconnectedAcknowledgmentCannotClearAnotherConnectionsDraft() async throws {
+        let persistence = BotMemoryDrafts()
+        let drafts = ChatDraftStore(persistence: persistence)
+        let wire = BotFixtureWire(); wire.running = true
+        let old = make(wire, drafts: drafts)
+        let nextWire = BotFixtureWire(); nextWire.running = true
+        let next = make(nextWire, drafts: drafts)
+        await old.recover(); old.editDraft("old guidance")
+        await next.recover(); next.editDraft("new guidance")
+        let wrote = expectation(description: "Steer dispatched")
+        var finish: CheckedContinuation<Void, Never>?
+        wire.beforeSubmit = { await withCheckedContinuation { finish = $0; wrote.fulfill() } }
+        let action = try XCTUnwrap(old.preparePrompt(.steer))
+        let pending = Task { await old.submit(action) }
+        await fulfillment(of: [wrote], timeout: 3)
+        old.suspend()
+        finish?.resume()
+        await pending.value
+        XCTAssertTrue(old.uncertainSend)
+        XCTAssertEqual(old.draft, "old guidance")
+        XCTAssertEqual(next.draft, "new guidance")
+        XCTAssertNotNil(next.preparePrompt(.steer))
+        let saved = await drafts.draft(for: old.draftKey)
+        XCTAssertEqual(saved?.text, "old guidance")
+        XCTAssertTrue(saved?.botSubmissionUncertain == true)
+        next.suspend()
+    }
+
+    func testQueuedFollowUpReceiptDoesNotSurviveStopOrClaimTheQueueRemains() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.promptReply = .object(["status": .string("queued")])
+        let model = make(wire); await model.recover(); model.editDraft("next")
+        await model.submit(try XCTUnwrap(model.preparePrompt(.queue)))
+        XCTAssertNotNil(model.promptReceipt)
+        await model.recover()
+        await model.stop(try XCTUnwrap(model.prepareStop()))
+        XCTAssertNil(model.promptReceipt)
+        XCTAssertFalse(model.maySend)
+        // A queued envelope can still appear after Stop races the server drain.
+        // Trust the next snapshot; never resend or claim the conversation is idle.
+        wire.running = false; wire.queued = .object(["text": .string("server follow-up")])
+        await model.recover()
+        XCTAssertFalse(model.maySend)
+        XCTAssertEqual(model.turn, .running)
+        wire.queued = .null
+        await model.recover()
+        XCTAssertTrue(model.maySend)
+        XCTAssertEqual(wire.calls.filter { $0.0 == "prompt.submit" }.count, 1)
+        model.suspend()
+    }
+
+    func testEditingDraftOrChangingConnectionInvalidatesRedirectConfirmation() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover(); model.editDraft("first")
+        let action = try XCTUnwrap(model.preparePrompt(.redirect))
+        model.editDraft("replacement")
+        await model.submit(action)
+        await model.recover()
+        await model.submit(action)
+        XCTAssertFalse(wire.calls.contains { $0.0 == "session.redirect" })
+        XCTAssertEqual(model.draft, "replacement")
+        model.suspend()
+    }
+
     func testOpenKeepsCanonicalRootTipAndRuntimeSeparate() async {
         let wire = BotFixtureWire()
         let model = make(wire)
@@ -513,6 +681,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var tip = "tip"
     var running = false
     var inflight = BotJSON.null
+    var queued = BotJSON.null
     /// Shorthand for "a command approval is blocking this session"; set
     /// `pendingApproval` directly to control the payload.
     var attention = false
@@ -529,6 +698,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var replay = BotFixtureWire.replay()
     var lookupFailure: BotFailure?
     var submitFailure: BotFailure?
+    var promptReply: BotJSON?
     var stopFailure: BotFailure?
     var beforeDispatch: ((String) -> Void)?
     var beforeSubmit: (() async -> Void)?
@@ -550,7 +720,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             await beforeResume?()
             return .object([
                 "session_id": .string("runtime"), "session_key": .string(tip), "running": .bool(running),
-                "messages": .array(history), "inflight": inflight,
+                "messages": .array(history), "inflight": inflight, "queued": queued,
                 "pending_approval": pendingApproval ?? (attention ? BotFixtureWire.approval() : .null),
                 "pending_clarify": pendingClarify,
                 "todo_state": todoState,
@@ -568,11 +738,11 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             if let respondFailure { throw respondFailure }
             return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay
-        case "prompt.submit":
+        case "prompt.submit", "session.steer", "session.redirect":
             await beforeSubmit?()
             if let submitFailure { throw submitFailure }
             running = true
-            return .object(["status": .string("streaming")])
+            return promptReply ?? .object(["status": .string(method == "prompt.submit" ? "streaming" : "queued")])
         case "session.interrupt":
             if let stopFailure { throw stopFailure }
             return .object(["interrupted": .bool(true)])
@@ -602,5 +772,20 @@ actor BotMemoryDrafts: ChatDraftPersisting {
 
     static func replay(latest: Int = 0, truncated: Bool = false, epoch: String = "epoch", events: [BotJSON] = []) -> BotJSON {
         .object(["latest_seq": .number(Double(latest)), "truncated": .bool(truncated), "epoch": .string(epoch), "events": .array(events)])
+    }
+}
+
+/// Fail only the acknowledged clear, after the durable admission marker succeeded.
+actor BotFailingDraftClear: ChatDraftPersisting {
+    private var values: [ChatDraftKey: ChatDraft] = [:]
+    private var shouldFail = true
+    func load() -> [ChatDraftKey: ChatDraft] { values }
+    func write(_ drafts: [ChatDraftKey: ChatDraft]) throws {
+        let admissionWasMarked = values.values.contains { $0.botSubmissionUncertain }
+        if shouldFail && admissionWasMarked && drafts.isEmpty {
+            shouldFail = false
+            throw BotFailure.transport
+        }
+        values = drafts
     }
 }

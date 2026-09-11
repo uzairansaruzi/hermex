@@ -78,6 +78,39 @@ import XCTest
         client.close()
     }
 
+    func testPromptActionsUseExplicitMethodsAndQueueParameters() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        for mode in BotPromptMode.allCases {
+            _ = try await client.call(mode.method, mode.params(runtime: "runtime", text: "one operation"))
+        }
+        XCTAssertEqual(socket.sentRequests.map { $0["method"].text },
+                       ["prompt.submit", "session.steer", "prompt.submit", "session.redirect"])
+        for (request, mode) in zip(socket.sentRequests, BotPromptMode.allCases) {
+            XCTAssertEqual(request["params"]["session_id"], .string("runtime"))
+            XCTAssertEqual(request["params"]["text"], .string("one operation"))
+            XCTAssertEqual(request["params"]["queued"], mode == .send || mode == .queue ? .bool(true) : .null)
+        }
+        for unsupported in ["prompt.btw", "prompt.background", "slash.exec"] {
+            do { _ = try await client.call(unsupported, [:]); XCTFail("Unimplemented actions must not dispatch") }
+            catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 4)
+        client.close()
+    }
+
     func testStatusWithoutVersionStillConnectsAndShowsNoNote() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
@@ -161,6 +194,7 @@ private final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private var waiter: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
     private var closed = false
     private(set) var sentTextFrames = 0
+    private(set) var sentRequests: [BotJSON] = []
     func receive() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
             lock.lock()
@@ -172,10 +206,15 @@ private final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     func send(_ message: URLSessionWebSocketTask.Message) async throws {
         guard case .string(let text) = message else { XCTFail("JSON-RPC must use text frames"); throw BotFailure.unsupported }
         let request = try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
+        record(request)
         let response = BotJSON.object(["id": request["id"], "result": .object(["profiles": .array([])])])
         let frame = URLSessionWebSocketTask.Message.string(String(decoding: try JSONEncoder().encode(response), as: UTF8.self))
         enqueue(frame)
     }
+    private func record(_ request: BotJSON) {
+        lock.lock(); sentRequests.append(request); lock.unlock()
+    }
+
     private func enqueue(_ frame: URLSessionWebSocketTask.Message) {
         lock.lock(); sentTextFrames += 1
         let waiting = waiter; waiter = nil

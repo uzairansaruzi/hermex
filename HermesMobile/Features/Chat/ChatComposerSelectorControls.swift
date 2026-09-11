@@ -301,7 +301,7 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
 
 /// Quiet toolbar-row control: icon, one-line title, optional chevron, no pill
 /// background, so the row reads as one surface. 44 pt tall for the hit target.
-private struct ComposerInlineControlLabel: View {
+struct ComposerInlineControlLabel: View {
     static let minimumHeight: CGFloat = 44
     static let horizontalPadding: CGFloat = 6
 

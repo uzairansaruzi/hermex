@@ -79,8 +79,8 @@ turn. A pending key the phone cannot address still reads as needing attention,
 without a card.
 
 Answering is `approval.respond`, `clarify.respond`, `sudo.respond`,
-`secret.respond` and `mcp.setup.respond`, the only additions to `BotClient`'s
-allowlist. Nothing is ever sent without a tap. Generation, runtime
+`secret.respond` and `mcp.setup.respond`. `BotClient` explicitly allowlists
+these response methods. Nothing is ever sent without a tap. Generation, runtime
 and request id are captured on tap and revalidated at the socket write, so a
 stale card fails closed. Three outcomes are distinguished: `resolved > 0` or
 `status: ok` is accepted; `resolved: 0` or `status: expired` means the host had
@@ -151,6 +151,47 @@ send consumes the draft; explicit admission failures preserve its text. An
 ambiguous outcome stays held across navigation and relaunch. The user can check
 Desktop and explicitly discard the held text; that action never resends it.
 Identical text in recovered history cannot reliably attribute a submission.
+
+The composer offers Send for idle work and a Sessions-style native menu for
+Steer, Queue and Redirect while busy. Selecting a mode does not submit. The
+selected action is labeled beside a separate Stop button; Command-Return uses
+that same action, including Redirect's consequence confirmation. A selected
+busy mode stays disabled after idle until the user chooses Send. No new
+animation or alternate editor is introduced.
+
+`BotPromptMode` validates the acknowledgment for each operation. `session.steer`
+accepts `status: queued` as guidance queued, not read; `session.redirect` accepts
+`redirected`, or `queued` during initialization. Both return `rejected` without
+consuming the draft. Send and Queue use `prompt.submit` with `queued: true`,
+which prevents a raced Desktop turn from turning a fresh send into the host's
+configured steer/interrupt behavior. `queued` acknowledges a follow-up;
+`streaming` acknowledges immediate admission if the previous work already ended.
+The handler's `voice_stopped: true` special case is reported as speech stopped,
+not as a new prompt. Unknown result shapes stay ambiguous and held.
+
+All four modes share the durable submission marker. An action captures the
+connection generation, runtime, turn revision and draft at the tap; confirmation
+and socket dispatch reject stale actions. No automatic retry or fallback changes
+one action into another. Missing methods become unavailable for that conversation
+lifetime. A `4010` correction rejection preserves the draft but does not permanently
+hide the operation, since an initializing agent may gain support shortly afterward.
+A receipt records admission only; it is not a queue list and Stop clears it.
+
+Contract checked against the issue's pinned hermes-agent source, without live
+mutation: `tui_gateway/methods_session.py` correction handlers,
+`methods_prompt.py` submit and side-agent handlers,
+`session_auto_continue.py::_handle_busy_submit`, and
+`session_lifecycle.py::_interrupt_session_turn`. The command catalog's `/queue`
+only adds a prompt. Queue inspection/edit/remove/resume remain unavailable until
+an installed host exposes a verified safe management contract. The phone does
+not synthesize a queue from receipts or call generic slash commands to manage it.
+
+Aside and background actions remain unavailable in this composer. The verified
+`prompt.btw` and `prompt.background` handlers return a `task_id` and emit results
+on the parent runtime as `btw.complete` and `background.complete`. They do not
+append normal canonical chat history. A future slice needs explicit result
+presentation and recovery behavior before offering either execution mode; neither
+is a Send variant or a reason to create another canonical session.
 
 Stop affects current conversation work, including Desktop work, queued prompts,
 pending approvals and process-wide speech playback. Confirmation actions carry

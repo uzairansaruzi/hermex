@@ -450,6 +450,7 @@
 		785784DE20094BA78F432A9A /* BotChatComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B87CE542BE84D09A7D1E276 /* BotChatComposerView.swift */; };
 		D4E8321C0A744DE3A5B8C997 /* ChatComposerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2FA0E3DFE844F8B3A710FD /* ChatComposerPresentation.swift */; };
 		A4C0A37288B742B9B284A67E /* BotChatPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26C849A9CE6B47E79695E069 /* BotChatPresentationTests.swift */; };
+		9BB85D722406416798DFA518 /* BotPromptMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C75DCD3DB974E27A3CB405C /* BotPromptMode.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -931,6 +932,7 @@
 		5B87CE542BE84D09A7D1E276 /* BotChatComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotChatComposerView.swift"; sourceTree = "<group>"; };
 		5B2FA0E3DFE844F8B3A710FD /* ChatComposerPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatComposerPresentation.swift"; sourceTree = "<group>"; };
 		26C849A9CE6B47E79695E069 /* BotChatPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotChatPresentationTests.swift"; sourceTree = "<group>"; };
+		3C75DCD3DB974E27A3CB405C /* BotPromptMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotPromptMode.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1259,6 +1261,7 @@
 				5B87CE542BE84D09A7D1E276 /* BotChatComposerView.swift */,
 				9FE221A56F264309AF71E18B /* BotsInboxView.swift */,
 				9D93D8EC41FE4FBABD1746AD /* BotConversation.swift */,
+				3C75DCD3DB974E27A3CB405C /* BotPromptMode.swift */,
 				40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */,
 				0A712D3AE91645C9B8C27745 /* BotConnection.swift */,
 				A4730000000000000000A002 /* BotAvatarStore.swift */,
@@ -1856,6 +1859,7 @@
 				A27FAACA0A9243C5AD4860BB /* BotClient.swift in Sources */,
 				7EF4120B486B4243AF54FCAF /* BotsInboxView.swift in Sources */,
 				013E4253ACC0484FA59DC45F /* BotConversation.swift in Sources */,
+				9BB85D722406416798DFA518 /* BotPromptMode.swift in Sources */,
 				C2A87F2CDEB941BB825EABA5 /* BotConnectionView.swift in Sources */,
 				13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */,
 				A4730000000000000000A001 /* BotAvatarStore.swift in Sources */,

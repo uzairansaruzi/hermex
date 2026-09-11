@@ -10,6 +10,15 @@ import Observation
     /// request or a replaced runtime.
     struct AnswerAction: Equatable { let generation: Int; let runtime: String; let requestID: String }
 
+    struct PromptAction: Equatable {
+        let generation: Int; let revision: Int; let runtime: String
+        let mode: BotPromptMode; let text: String
+    }
+
+    private(set) var submittingPrompt: BotPromptMode?
+    private(set) var promptReceipt: String?
+    private(set) var unavailablePromptModes: Set<BotPromptMode> = []
+
     let profile: BotProfile
     let connection: BotConnection
     let server: URL
@@ -46,6 +55,7 @@ import Observation
     private var generation = 0
     private var turnRevision = 0
     private var turnStartedAt: Double?
+    private var snapshotIsBusy: Bool?
     private var snapshotDirty = false
     private var fullSnapshotNeeded = false
     private var refreshTask: Task<Void, Never>?
@@ -72,6 +82,21 @@ import Observation
     var mayStop: Bool {
         connectionState == .connected && [.running, .needsAttention].contains(turn)
             && !localOperation && !uncertainStop
+    }
+
+    var mayGuide: Bool {
+        hydrated && connectionState == .connected && [.running, .needsAttention].contains(turn)
+            && !localOperation && !uncertainSend && !uncertainStop && answeringRequestID == nil
+    }
+
+    func maySubmit(_ mode: BotPromptMode) -> Bool {
+        !unavailablePromptModes.contains(mode) && (mode == .send ? maySend : mayGuide)
+    }
+
+    func preparePrompt(_ mode: BotPromptMode) -> PromptAction? {
+        guard maySubmit(mode), let runtime,
+              !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return PromptAction(generation: generation, revision: turnRevision, runtime: runtime, mode: mode, text: draft)
     }
 
     var mayEditDraft: Bool { hydrated && !uncertainSend && !localOperation }
@@ -265,6 +290,8 @@ import Observation
             || snapshot["pending_approval"] != .null || snapshot["pending_clarify"] != .null
         let continuation = snapshot["auto_continue"] != .null && snapshot["auto_continue"].flag != false
         let queued = snapshot["queued"] != .null
+        let busy = running || continuation || queued || attention
+        if snapshotIsBusy != busy { turnRevision += 1; snapshotIsBusy = busy }
         if attention { turn = .needsAttention }
         else if uncertainStop && stopAcknowledged { turn = .stopping }
         else if uncertainSend || uncertainStop { turn = .uncertain }
@@ -290,53 +317,102 @@ import Observation
     }
 
     func send() async {
-        guard maySend, !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let runtime else { return }
-        let owner = generation
-        let text = draft
-        let revision = turnRevision
-        localOperation = true; turn = .submitting; uncertainSend = true
+        guard let action = preparePrompt(.send) else { return }
+        await submit(action)
+    }
+
+    /// One deliberate action, one write. The durable marker covers every prompt
+    /// mode; snapshots and matching history can never acknowledge that write.
+    func submit(_ action: PromptAction) async {
+        guard action == preparePrompt(action.mode) else { return }
+        let owner = action.generation
+        localOperation = true; uncertainSend = true; submittingPrompt = action.mode
+        promptReceipt = nil; errorMessage = nil
+        defer { if generation == owner { submittingPrompt = nil } }
         drafts.setBotSubmissionUncertain(true, for: draftKey)
         do {
-            // No network dispatch until the durable ambiguity marker is on disk.
             try await drafts.flush()
             try check(owner)
         } catch {
             guard owner == generation else { return }
             localOperation = false; uncertainSend = false
             drafts.setBotSubmissionUncertain(false, for: draftKey)
-            turn = .idle; errorMessage = String(localized: "Could not save the draft. Your message was not sent.")
+            errorMessage = String(localized: "Could not save the draft. Your message was not sent.")
             return
         }
         do {
-            _ = try await request("prompt.submit", ["session_id": .string(runtime), "text": .string(text)], owner: owner) { [weak self] in
+            let reply = try await request(action.mode.method, action.mode.params(runtime: action.runtime, text: action.text), owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
-                guard self.turnRevision == revision else { throw BotFailure.stale }
+                guard self.connectionState == .connected, self.runtime == action.runtime,
+                      self.turnRevision == action.revision else { throw BotFailure.stale }
             }
+            let outcome = action.mode.outcome(reply)
+            if outcome == .rejected {
+                try await releasePromptMarker(owner: owner)
+                localOperation = false
+                errorMessage = String(localized: "The bot did not accept this message. Your draft is still here.")
+                refreshAfterPrompt()
+                return
+            }
+            guard let receipt = outcome.receipt else { throw BotFailure.unsupported }
             drafts.setDraft("", for: draftKey)
             drafts.setBotSubmissionUncertain(false, for: draftKey)
             try await drafts.flush()
             try check(owner)
-            draft = ""; uncertainSend = false; localOperation = false; turn = .running
-            fullSnapshotNeeded = true; snapshotDirty = true; scheduleRefresh()
+            draft = ""; uncertainSend = false; localOperation = false
+            promptReceipt = receipt
+            refreshAfterPrompt()
         } catch {
             guard owner == generation, !Task.isCancelled else { return }
-            localOperation = false
-            if error as? BotFailure == .stale {
-                uncertainSend = false
-                drafts.setBotSubmissionUncertain(false, for: draftKey)
+            // Only failures known to precede admission release the draft. A 5000
+            // may follow a side effect; an unrecognized success shape is ambiguous.
+            let safe = error as? BotFailure == .stale || action.mode.definitelyRejected(error)
+            if safe {
+                do { try await releasePromptMarker(owner: owner) }
+                catch { guard owner == generation else { return }; disconnected(error); localOperation = false; return }
+            }
+            guard owner == generation else { return }
+            if !safe {
+                // A failed durable clear must leave the original text held too.
+                drafts.setDraft(action.text, for: draftKey)
+                drafts.setBotSubmissionUncertain(true, for: draftKey)
                 try? await drafts.flush()
+                guard owner == generation, !Task.isCancelled else { return }
             }
-            if case BotFailure.rejected(let code) = error {
-                // Only explicit admission/auth/parameter failures establish nonacceptance.
-                if [401, 403, 4090, -32601, -32602].contains(code) {
-                    uncertainSend = false
-                    drafts.setBotSubmissionUncertain(false, for: draftKey)
-                    try? await drafts.flush()
+            localOperation = false
+            let needsRecovery: Bool
+            if case BotFailure.rejected(let code) = error { needsRecovery = [401, 403, 4001, 4090].contains(code) }
+            else { needsRecovery = false }
+            if action.mode != .send, safe, !needsRecovery {
+                if case BotFailure.rejected(let code) = error, [-32601, 4010].contains(code) {
+                    // 4010 can be temporary during initialization; do not hide it
+                    // permanently. A missing method stays unavailable this lifetime.
+                    if code == -32601 { unavailablePromptModes.insert(action.mode) }
+                    errorMessage = String(localized: "This action is unavailable for the bot's current work. Your draft is still here.")
+                } else {
+                    errorMessage = String(localized: "The work changed before this message could be sent. Choose an action again.")
                 }
-            }
-            disconnected(error)
+                refreshAfterPrompt()
+            } else { disconnected(error) }
         }
+    }
+
+    private func releasePromptMarker(owner: Int) async throws {
+        drafts.setBotSubmissionUncertain(false, for: draftKey)
+        do {
+            try await drafts.flush()
+            try check(owner)
+            uncertainSend = false
+        } catch {
+            if owner == generation { drafts.setBotSubmissionUncertain(true, for: draftKey) }
+            throw error
+        }
+    }
+
+    private func refreshAfterPrompt() {
+        turn = .unknown
+        fullSnapshotNeeded = true; snapshotDirty = true; scheduleRefresh()
     }
 
     func prepareStop() -> StopAction? {
@@ -348,6 +424,7 @@ import Observation
         guard mayStop, action == prepareStop() else { return }
         let owner = generation
         localOperation = true; uncertainStop = true; turn = .stopping; turnRevision += 1
+        promptReceipt = nil
         let revision = turnRevision
         do {
             _ = try await request("session.interrupt", ["session_id": .string(action.runtime)], owner: owner) { [weak self] in
@@ -642,7 +719,7 @@ import Observation
         generation += 1; turnRevision += 1
         refreshTask?.cancel(); refreshTask = nil
         wire.close()
-        localOperation = false
+        localOperation = false; submittingPrompt = nil
         streamRequest = nil; answeringRequestID = nil
         connectionState = .disconnected; turn = .unknown
         Task { try? await drafts.flush() }
