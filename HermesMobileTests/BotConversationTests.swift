@@ -197,6 +197,22 @@ import Vision
 
         XCTAssertEqual(model.promptReceipt, BotPromptOutcome.voiceStopped.receipt)
         XCTAssertEqual(model.turn, .idle)
+
+        wire.running = true
+        await model.recover()
+        XCTAssertNil(model.promptReceipt)
+
+        wire.running = false
+        await model.recover()
+        model.editDraft("stop speaking again")
+        await model.submit(try XCTUnwrap(model.preparePrompt(.send)))
+        wire.running = false
+        await model.recover()
+        XCTAssertEqual(model.promptReceipt, BotPromptOutcome.voiceStopped.receipt)
+
+        wire.runtimeID = "replacement-runtime"
+        await model.recover()
+        XCTAssertNil(model.promptReceipt)
         model.suspend()
     }
 
@@ -708,6 +724,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var calls: [(String, [String: BotJSON])] = []
     var root = "root"
     var tip = "tip"
+    var runtimeID = "runtime"
     var running = false
     var inflight = BotJSON.null
     var queued = BotJSON.null
@@ -748,7 +765,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         case "session.resume":
             await beforeResume?()
             return .object([
-                "session_id": .string("runtime"), "session_key": .string(tip), "running": .bool(running),
+                "session_id": .string(runtimeID), "session_key": .string(tip), "running": .bool(running),
                 "messages": .array(history), "inflight": inflight, "queued": queued,
                 "pending_approval": pendingApproval ?? (attention ? BotFixtureWire.approval() : .null),
                 "pending_clarify": pendingClarify,

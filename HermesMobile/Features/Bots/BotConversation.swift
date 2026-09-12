@@ -166,7 +166,10 @@ import Observation
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
-            if replayWasReset { sequence = 0 }
+            if replayWasReset {
+                sequence = 0
+                promptReceipt = nil; promptReceiptPersistsWhileIdle = false
+            }
             runtime = foundRuntime; epoch = foundEpoch
             let replay = try await request("session.events.since", ["session_id": .string(foundRuntime), "last_seen": .number(Double(sequence))], owner: owner)
             try reconcileReplay(replay)
@@ -294,7 +297,9 @@ import Observation
         let busy = running || continuation || queued || attention
         // Receipts confirm admission; the snapshot owns whether that admitted work
         // is still active. Do not leave an old confirmation above an idle composer.
-        if !busy && !promptReceiptPersistsWhileIdle { promptReceipt = nil }
+        if (!busy && !promptReceiptPersistsWhileIdle) || (busy && promptReceiptPersistsWhileIdle) {
+            promptReceipt = nil; promptReceiptPersistsWhileIdle = false
+        }
         if snapshotIsBusy != busy { turnRevision += 1; snapshotIsBusy = busy }
         if attention { turn = .needsAttention }
         else if uncertainStop && stopAcknowledged { turn = .stopping }
