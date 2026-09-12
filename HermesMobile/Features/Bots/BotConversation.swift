@@ -291,6 +291,9 @@ import Observation
         let continuation = snapshot["auto_continue"] != .null && snapshot["auto_continue"].flag != false
         let queued = snapshot["queued"] != .null
         let busy = running || continuation || queued || attention
+        // Receipts confirm admission; the snapshot owns whether that admitted work
+        // is still active. Do not leave an old confirmation above an idle composer.
+        if !busy { promptReceipt = nil }
         if snapshotIsBusy != busy { turnRevision += 1; snapshotIsBusy = busy }
         if attention { turn = .needsAttention }
         else if uncertainStop && stopAcknowledged { turn = .stopping }

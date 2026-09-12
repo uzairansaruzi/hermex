@@ -171,6 +171,22 @@ import Vision
         model.suspend()
     }
 
+    func testAcceptedPromptReceiptClearsWhenSnapshotEstablishesIdle() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.promptReply = .object(["status": .string("queued")])
+        let model = make(wire); await model.recover(); model.editDraft("next")
+        await model.submit(try XCTUnwrap(model.preparePrompt(.queue)))
+        XCTAssertNotNil(model.promptReceipt)
+
+        wire.running = false
+        wire.queued = .null
+        await model.recover()
+
+        XCTAssertNil(model.promptReceipt)
+        XCTAssertEqual(model.turn, .idle)
+        model.suspend()
+    }
+
     func testEditingDraftOrChangingConnectionInvalidatesRedirectConfirmation() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover(); model.editDraft("first")
