@@ -227,11 +227,17 @@ backgrounding, pull-to-refresh and Reconnect all go through `close()` then
 stopped, and makes pin and hide inert until the next `open()`.
 
 Roster organization is Desktop's. `pinned` and `hidden` in
-`ui_meta["hermes-bots"]` are honored: pinned bots come first, hidden bots are
-out of the list unless revealed for the session or named by a search. Desktop's
+`ui_meta["hermes-bots"]` are honored: pinned bots sit above the list as large
+avatar tiles with the name beneath, the rest follow in server order, and hidden
+bots stay out unless revealed for the session (dimmed, in place) or named by a
+search. Pin, Unpin, Hide and Unhide are the row's long-press menu. Desktop's
 user sections are not shown because their catalog (`bot-sections-v1`) lives in
-Desktop's local plugin storage and only an opaque `sectionId` reaches the phone;
-`groups` are executable group rooms, not sections, and stay untouched. A pin or
+the Desktop renderer's `localStorage` and only an opaque `sectionId` reaches the
+phone; named section headers need upstream to publish the catalog on the host.
+`groups` are executable group rooms, not sections, and stay untouched. A
+description of 24 characters or fewer reads as a role chip beside the name when
+the chat has a preview; the activity label is the time today, the weekday within
+the past week, otherwise month and day (`BotInboxDateLabel`). A pin or
 hide write is `profiles.configure` with the whole `hermes-bots` object as
 received plus one changed field, under `ui_meta_expected_revisions` set to the
 row's `ui_meta_revisions["hermes-bots"]` (0 when absent), which is how the

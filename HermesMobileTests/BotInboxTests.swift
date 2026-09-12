@@ -234,6 +234,22 @@ import XCTest
         XCTAssertNil(inbox.errorMessage)
     }
 
+    func testActivityLabelUsesTimeTodayWeekdayThisWeekThenMonthAndDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let locale = Locale(identifier: "en_US")
+        // Thursday 2026-09-10 15:00 UTC.
+        let now = Date(timeIntervalSince1970: 1_789_052_400)
+        let label = { (offset: TimeInterval) in
+            BotInboxDateLabel.text(for: now.addingTimeInterval(offset), now: now, calendar: calendar, locale: locale)
+        }
+        XCTAssertEqual(label(-6 * 3600), "9:00\u{202F}AM")
+        XCTAssertEqual(label(-24 * 3600), "Wednesday")
+        XCTAssertEqual(label(-6 * 86_400), "Friday")
+        XCTAssertEqual(label(-7 * 86_400), "Sep 3")
+        XCTAssertEqual(label(-40 * 86_400), "Aug 1")
+    }
+
     // MARK: - Helpers
 
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil) throws -> BotInbox {
