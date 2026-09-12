@@ -213,6 +213,45 @@ its entries, so equal Profile names on two hosts never share a picture. A
 malformed, oversized or missing asset leaves the row on its letter tile. Desktop's
 animated faces are not ported; the phone shows the static asset only.
 
+`BotInbox` owns the roster for one configured server and one live subscription
+that lasts while the inbox is on screen. `open()` connects, reads
+`profiles.list`, then keeps the socket; the gateway advertises `change_events`
+in `gateway.ready` and broadcasts `sessions.changed` whenever any served
+Profile's `state.db` moves (floored at two seconds, `change_watcher.py`). Each
+event coalesces into one `profiles.list` reload with at most one more queued,
+spaced by one second, applied only when the reply is the newest request and the
+wire still owns the inbox. Event reloads skip the avatar pass: a look change
+never moves `state.db`, so nothing new would be there. Leaving the screen,
+backgrounding, pull-to-refresh and Reconnect all go through `close()` then
+`open()`; a dropped socket keeps the roster on screen, says live updates
+stopped, and makes pin and hide inert until the next `open()`.
+
+Roster organization is Desktop's. `pinned` and `hidden` in
+`ui_meta["hermes-bots"]` are honored: pinned bots come first, hidden bots are
+out of the list unless revealed for the session or named by a search. Desktop's
+user sections are not shown because their catalog (`bot-sections-v1`) lives in
+Desktop's local plugin storage and only an opaque `sectionId` reaches the phone;
+`groups` are executable group rooms, not sections, and stay untouched. A pin or
+hide write is `profiles.configure` with the whole `hermes-bots` object as
+received plus one changed field, under `ui_meta_expected_revisions` set to the
+row's `ui_meta_revisions["hermes-bots"]` (0 when absent), which is how the
+gateway's key-wise merge keeps Desktop-only fields intact. Nothing moves until
+`applied.ui_meta` is true and the roster is re-read; a conflict re-reads the
+roster, shows the fresh state and a one-line notice, and never claims success.
+`profiles.configure` is on the allowlist for this use only; the phone sends no
+`soul`, `model` or capability fields through it.
+
+Unread is device-local. `BotUnreadStore` keeps, per connection UUID and Profile,
+the canonical `last_active` the user last saw, in `UserDefaults` because the
+values are timestamps and never leave the phone. The first roster load seeds a
+missing mark so a fresh install starts quiet; opening a chat marks it seen, and
+returning marks the next roster read seen once so activity that was on screen
+during the visit does not come back as unread. Removing the connection deletes
+its marks with its drafts. Working and needs-attention states are not shown in
+the inbox: the roster row carries no turn state for the canonical chat, and the
+only live signal, `worker_session` heartbeats, describes kanban and tool
+workers rather than the conversation.
+
 Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
 by default and owned by the Settings "Bot Mode (beta)" row (#496). Off hides the
 Sessions/Bots switch, the Bots inbox and the per-server Bot connection row;

@@ -72,9 +72,11 @@ import XCTest
         try await client.connect()
         _ = try await client.call("profiles.get_asset", ["name": .string("inbox-triage"), "asset": .string("avatar")])
         XCTAssertEqual(socket.sentTextFrames, 1)
+        _ = try await client.call("profiles.configure", ["name": .string("inbox-triage"), "ui_meta": .object([:])])
+        XCTAssertEqual(socket.sentTextFrames, 2, "the inbox's pin and hide writes go through profiles.configure")
         do { _ = try await client.call("profiles.set_asset", ["name": .string("inbox-triage"), "clear": .bool(true)]); XCTFail("Writes stay off the allowlist") }
         catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
-        XCTAssertEqual(socket.sentTextFrames, 1)
+        XCTAssertEqual(socket.sentTextFrames, 2)
         client.close()
     }
 

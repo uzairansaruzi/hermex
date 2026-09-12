@@ -4,20 +4,19 @@ import SwiftUI
     @Environment(\.scenePhase) private var scenePhase
     let server: URL
     let showSessions: () -> Void
-    @State private var connection: BotConnection?
-    @State private var profiles: [BotProfile] = []
-    @State private var avatars: [String: UIImage] = [:]
+    @State private var inbox: BotInbox
     @State private var search = ""
-    @State private var errorMessage: String?
-    @State private var loading = false
     @State private var showingSetup = false
     @State private var revision = UUID()
-    @State private var loadOwner = UUID()
-    @State private var wire: BotClient?
-    private let store = BotConnectionStore()
+
+    init(server: URL, showSessions: @escaping () -> Void) {
+        self.server = server
+        self.showSessions = showSessions
+        _inbox = State(initialValue: BotInbox(server: server))
+    }
 
     private var filteredProfiles: [BotProfile] {
-        profiles.filter { search.isEmpty || $0.name.localizedStandardContains(search) }
+        inbox.profiles.filter { search.isEmpty || $0.name.localizedStandardContains(search) }
     }
 
     var body: some View {
@@ -29,24 +28,26 @@ import SwiftUI
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
 
-            if let connection {
+            if let connection = inbox.connection {
                 Text(connection.name)
                     .font(.footnote).foregroundStyle(.secondary)
                     .listRowSeparator(.hidden)
-                if let errorMessage {
+                if let errorMessage = inbox.errorMessage {
                     Text(errorMessage).font(.callout)
                     Button("Reconnect") { revision = UUID() }
-                } else if loading {
+                } else if inbox.link == .connecting {
                     Text("Connecting…")
-                } else if profiles.isEmpty {
+                } else if inbox.profiles.isEmpty {
                     Text("No bots found. Create one in Hermes Desktop, then refresh.")
                 }
                 ForEach(filteredProfiles) { profile in
                     NavigationLink {
                         BotChatView(server: server, connection: connection, profile: profile)
                             .id(profile.id + connection.id.uuidString)
+                            .onAppear { inbox.markSeen(profile) }
+                            .onDisappear { inbox.noteReturn(from: profile) }
                     } label: {
-                        BotInboxRow(profile: profile, avatar: avatars[profile.id])
+                        BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id])
                     }
                     .listRowSeparator(.hidden)
                     .padding(.vertical, 10)
@@ -68,44 +69,15 @@ import SwiftUI
         .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
             NavigationStack { BotConnectionView(server: server) }
         }
-        .task(id: revision) { await load() }
-        .refreshable { await load() }
+        // The subscription lives while the inbox is on screen and the app is active;
+        // returning, refreshing and reconnecting all go through the same open().
+        .task(id: revision) { await inbox.open() }
+        .refreshable { await inbox.open() }
         .onChange(of: scenePhase) {
             if scenePhase == .active { revision = UUID() }
-            else { wire?.close() }
+            else { inbox.close() }
         }
-        .onDisappear { loadOwner = UUID(); wire?.close(); wire = nil }
-    }
-
-    private func load() async {
-        wire?.close()
-        let owner = UUID()
-        loadOwner = owner
-        // The stored client identity is the load owner; a replacement invalidates late results.
-        do {
-            let saved = try store.load(server: server)
-            if connection?.id != saved?.id { profiles = []; avatars = [:] }
-            connection = saved
-            guard let saved else { return }
-            let client = BotClient(connection: saved)
-            wire = client; loading = true; errorMessage = nil
-            defer { if wire === client { loading = false } }
-            try await client.connect()
-            guard !Task.isCancelled, wire === client else { return }
-            let roster = try await client.call("profiles.list", ["include_sessions": .bool(true)])
-            guard !Task.isCancelled, wire === client else { return }
-            guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
-            var seen = Set<String>()
-            profiles = rows.compactMap(BotProfile.init).filter { seen.insert($0.id).inserted }
-            await BotAvatarStore.shared.refresh(profiles, connectionID: saved.id, using: client) {
-                if wire === client { avatars = BotAvatarStore.shared.images(connectionID: saved.id) }
-            }
-            client.close()
-        } catch {
-            guard !Task.isCancelled, loadOwner == owner else { return }
-            errorMessage = (error as? BotFailure ?? .transport).localizedDescription
-            loading = false
-        }
+        .onDisappear { inbox.close() }
     }
 }
 
