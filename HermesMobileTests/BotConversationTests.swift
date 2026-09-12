@@ -187,6 +187,19 @@ import Vision
         model.suspend()
     }
 
+    func testVoiceStopReceiptSurvivesItsIdleSnapshot() async throws {
+        let wire = BotFixtureWire()
+        wire.promptReply = .object(["voice_stopped": .bool(true)])
+        let model = make(wire); await model.recover(); model.editDraft("stop speaking")
+        await model.submit(try XCTUnwrap(model.preparePrompt(.send)))
+        wire.running = false
+        await model.recover()
+
+        XCTAssertEqual(model.promptReceipt, BotPromptOutcome.voiceStopped.receipt)
+        XCTAssertEqual(model.turn, .idle)
+        model.suspend()
+    }
+
     func testEditingDraftOrChangingConnectionInvalidatesRedirectConfirmation() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover(); model.editDraft("first")

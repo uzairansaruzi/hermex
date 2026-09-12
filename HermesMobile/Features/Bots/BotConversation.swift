@@ -60,6 +60,7 @@ import Observation
     private var fullSnapshotNeeded = false
     private var refreshTask: Task<Void, Never>?
     private var stopAcknowledged = false
+    private var promptReceiptPersistsWhileIdle = false
     private var localOperation = false
     private var hydrated = false
     private let wire: any BotTransport
@@ -293,7 +294,7 @@ import Observation
         let busy = running || continuation || queued || attention
         // Receipts confirm admission; the snapshot owns whether that admitted work
         // is still active. Do not leave an old confirmation above an idle composer.
-        if !busy { promptReceipt = nil }
+        if !busy && !promptReceiptPersistsWhileIdle { promptReceipt = nil }
         if snapshotIsBusy != busy { turnRevision += 1; snapshotIsBusy = busy }
         if attention { turn = .needsAttention }
         else if uncertainStop && stopAcknowledged { turn = .stopping }
@@ -330,7 +331,7 @@ import Observation
         guard action == preparePrompt(action.mode) else { return }
         let owner = action.generation
         localOperation = true; uncertainSend = true; submittingPrompt = action.mode
-        promptReceipt = nil; errorMessage = nil
+        promptReceipt = nil; promptReceiptPersistsWhileIdle = false; errorMessage = nil
         defer { if generation == owner { submittingPrompt = nil } }
         drafts.setBotSubmissionUncertain(true, for: draftKey)
         do {
@@ -365,6 +366,7 @@ import Observation
             try check(owner)
             draft = ""; uncertainSend = false; localOperation = false
             promptReceipt = receipt
+            promptReceiptPersistsWhileIdle = outcome == .voiceStopped
             refreshAfterPrompt()
         } catch {
             guard owner == generation, !Task.isCancelled else { return }
@@ -427,7 +429,7 @@ import Observation
         guard mayStop, action == prepareStop() else { return }
         let owner = generation
         localOperation = true; uncertainStop = true; turn = .stopping; turnRevision += 1
-        promptReceipt = nil
+        promptReceipt = nil; promptReceiptPersistsWhileIdle = false
         let revision = turnRevision
         do {
             _ = try await request("session.interrupt", ["session_id": .string(action.runtime)], owner: owner) { [weak self] in
