@@ -302,6 +302,7 @@ enum SectionVisibilitySettings {
     static let skillsKey = "sectionVisibility.skills"
     static let memoryKey = "sectionVisibility.memory"
     static let insightsKey = "sectionVisibility.insights"
+    static let filesKey = "sectionVisibility.files"
     static let activeProfileKey = "sectionVisibility.activeProfile"
     static let projectsKey = "sectionVisibility.projects"
     static let chatFilesKey = "sectionVisibility.chatFiles"

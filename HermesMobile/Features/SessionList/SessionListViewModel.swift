@@ -46,6 +46,18 @@ enum ActiveSessionStateRefreshResult: Equatable {
 @Observable
 final class SessionListViewModel {
     private(set) var sessions: [SessionSummary] = []
+
+    /// Newest session that can drive the workspace file browser: has a session
+    /// id, and a workspace binding is preferred (the file browser reads the
+    /// workspace of whatever session it is handed). Falls back to the newest
+    /// session even without a workspace so the Files entry still opens.
+    var mostRecentUsableSession: SessionSummary? {
+        let usable = sessions.filter { ($0.sessionId ?? "").isEmpty == false }
+        guard !usable.isEmpty else { return nil }
+        let newest = usable.sorted { timestamp(for: $0) > timestamp(for: $1) }
+        return newest.first { $0.workspace != nil } ?? newest.first
+    }
+
     private(set) var isLoading = false
     private(set) var isCreatingSession = false
     private(set) var isCreatingProject = false

@@ -83,6 +83,7 @@ struct SidebarSectionVisibility: Equatable {
     var skills: Bool
     var memory: Bool
     var insights: Bool
+    var files: Bool
     var activeProfile: Bool
     var projects: Bool
 
@@ -93,14 +94,15 @@ struct SidebarSectionVisibility: Equatable {
         skills: true,
         memory: true,
         insights: true,
+        files: true,
         activeProfile: true,
         projects: true
     )
 
-    /// The five plain links share one List row, so that row is dropped entirely
+    /// The six plain links share one List row, so that row is dropped entirely
     /// once all of them are hidden rather than leaving an empty padded gap.
     var showsAnyUtilityLink: Bool {
-        tasks || kanban || skills || memory || insights
+        tasks || kanban || skills || memory || insights || files
     }
 }
 
@@ -205,6 +207,12 @@ struct SessionSidebarUtilityRows: View {
             if sectionVisibility.memory {
                 SidebarNavButton(title: String(localized: "Memory"), assetImage: "LucideBrain") {
                     openDestination(.memory)
+                }
+            }
+
+            if sectionVisibility.files {
+                SidebarNavButton(title: String(localized: "Files"), assetImage: "LucideFolder") {
+                    openDestination(.files)
                 }
             }
 
