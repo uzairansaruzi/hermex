@@ -1511,7 +1511,16 @@ private struct FilesDestinationView: View {
     var body: some View {
         Group {
             if let session = viewModel.mostRecentUsableSession {
+                // Identified by session: the file API is session-scoped, so a
+                // refresh that swaps `mostRecentUsableSession` has to rebuild the
+                // browser rather than let its existing state keep reading the
+                // previous session's workspace.
                 FileBrowserView(session: session, server: server, onAPIError: onAPIError)
+                    .id(session.sessionId)
+            } else if isLoadingSessions {
+                // Without this the first load reads as "No Session Yet" before the
+                // session list has answered.
+                ProgressView("Loading sessions...")
             } else {
                 ContentUnavailableView {
                     Label("No Session Yet", systemImage: "folder")
@@ -1520,6 +1529,13 @@ private struct FilesDestinationView: View {
                 }
             }
         }
+        // FileBrowserView titles itself, but the loading and empty states show
+        // without it.
+        .navigationTitle("Files")
+    }
+
+    private var isLoadingSessions: Bool {
+        viewModel.isLoading && viewModel.sessions.isEmpty
     }
 }
 
