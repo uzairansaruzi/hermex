@@ -234,6 +234,15 @@ import XCTest
         XCTAssertNil(inbox.errorMessage)
     }
 
+    func testUnreadableSavedConnectionShowsTheFailureInsteadOfAStaleRoster() async throws {
+        let keychain = InMemoryKeychainStore()
+        try keychain.save("not json", forKey: .botConnection, scope: server.absoluteString)
+        let inbox = try makeInbox(wires: [], store: BotConnectionStore(keychain: keychain))
+        await inbox.open()
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertNotNil(inbox.errorMessage)
+    }
+
     func testActivityLabelUsesTimeTodayWeekdayThisWeekThenMonthAndDay() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!

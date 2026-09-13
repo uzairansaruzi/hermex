@@ -42,8 +42,10 @@ import SwiftUI
                     Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
                 }
                 if !rows.pinned.isEmpty {
-                    // Pinned bots sit above the list as large tiles, as in Desktop's mobile roster.
-                    HStack(alignment: .top, spacing: 32) {
+                    // Pinned bots sit above the list as large tiles: as many columns as
+                    // there are pinned bots, up to three, so one or two sit centered and
+                    // four or more wrap instead of being clipped away.
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(rows.pinned.count, 3)), spacing: 24) {
                         ForEach(rows.pinned) { profile in
                             Button { openProfile = profile } label: {
                                 BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
@@ -52,7 +54,6 @@ import SwiftUI
                             .contextMenu { organizeMenu(profile) }
                         }
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
                     .listRowSeparator(.hidden)
                 }
@@ -120,16 +121,18 @@ import SwiftUI
 
     /// Pin and hide write Desktop's own roster fields; both stay inert until the
     /// inbox is live and no write for this bot is in flight.
-    @ViewBuilder private func organizeMenu(_ profile: BotProfile) -> some View {
-        Button {
-            Task { await inbox.setPinned(!profile.pinned, profile) }
-        } label: {
-            Label(profile.pinned ? "Unpin" : "Pin", systemImage: profile.pinned ? "pin.slash" : "pin")
-        }
-        Button {
-            Task { await inbox.setHidden(!profile.hidden, profile) }
-        } label: {
-            Label(profile.hidden ? "Unhide" : "Hide bot", systemImage: profile.hidden ? "eye" : "eye.slash")
+    private func organizeMenu(_ profile: BotProfile) -> some View {
+        Group {
+            Button {
+                Task { await inbox.setPinned(!profile.pinned, profile) }
+            } label: {
+                Label(profile.pinned ? "Unpin" : "Pin", systemImage: profile.pinned ? "pin.slash" : "pin")
+            }
+            Button {
+                Task { await inbox.setHidden(!profile.hidden, profile) }
+            } label: {
+                Label(profile.hidden ? "Unhide" : "Hide bot", systemImage: profile.hidden ? "eye" : "eye.slash")
+            }
         }
         .disabled(!inbox.mayEdit(profile))
     }
@@ -144,10 +147,11 @@ private struct BotHeroTile: View {
         VStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
             HStack(spacing: 6) {
-                Text(profile.name).font(.body).foregroundStyle(.secondary)
+                Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
                 if unread { BotUnreadDot() }
             }
         }
+        .frame(maxWidth: 132)
         .accessibilityElement(children: .combine)
     }
 }

@@ -111,8 +111,12 @@ import UIKit
             link = .live
             await refreshAvatars(client)
         } catch {
-            guard let client = wire, !Task.isCancelled else { return }
-            drop(client, message: (error as? BotFailure ?? .transport).localizedDescription)
+            guard !Task.isCancelled else { return }
+            let message = (error as? BotFailure ?? .transport).localizedDescription
+            // A saved-connection read can fail before any client exists; that is still
+            // a visible failure with the Reconnect path, not a quiet stale roster.
+            if let client = wire { drop(client, message: message) }
+            else { link = .disconnected; errorMessage = message }
         }
     }
 
