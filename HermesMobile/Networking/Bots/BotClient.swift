@@ -128,7 +128,7 @@ import Foundation
     }
 
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
-        guard ["profiles.list", "profiles.get_asset", "session.list", "session.resume", "session.events.since",
+        guard ["profiles.list", "profiles.get_asset", "profiles.configure", "session.list", "session.resume", "session.events.since",
                "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond", "clarify.respond",
                "sudo.respond", "secret.respond", "mcp.setup.respond"].contains(method)
         else { throw BotFailure.unsupported }

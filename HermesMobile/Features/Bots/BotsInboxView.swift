@@ -4,23 +4,23 @@ import SwiftUI
     @Environment(\.scenePhase) private var scenePhase
     let server: URL
     let showSessions: () -> Void
-    @State private var connection: BotConnection?
-    @State private var profiles: [BotProfile] = []
-    @State private var avatars: [String: UIImage] = [:]
+    @State private var inbox: BotInbox
     @State private var search = ""
-    @State private var errorMessage: String?
-    @State private var loading = false
     @State private var showingSetup = false
     @State private var revision = UUID()
-    @State private var loadOwner = UUID()
-    @State private var wire: BotClient?
-    private let store = BotConnectionStore()
+    /// The bot whose chat is open. One destination serves the hero tiles and the
+    /// rows, so a row shows no disclosure accessory and tiles sharing a row keep
+    /// separate tap targets.
+    @State private var openProfile: BotProfile?
 
-    private var filteredProfiles: [BotProfile] {
-        profiles.filter { search.isEmpty || $0.name.localizedStandardContains(search) }
+    init(server: URL, showSessions: @escaping () -> Void) {
+        self.server = server
+        self.showSessions = showSessions
+        _inbox = State(initialValue: BotInbox(server: server))
     }
 
     var body: some View {
+        let rows = inbox.rows(matching: search)
         List {
             Picker("Screen", selection: Binding(get: { true }, set: { if !$0 { showSessions() } })) {
                 Text("Sessions").tag(false)
@@ -29,27 +29,46 @@ import SwiftUI
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
 
-            if let connection {
-                Text(connection.name)
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .listRowSeparator(.hidden)
-                if let errorMessage {
+            if inbox.connection != nil {
+                if let errorMessage = inbox.errorMessage {
                     Text(errorMessage).font(.callout)
                     Button("Reconnect") { revision = UUID() }
-                } else if loading {
+                } else if inbox.link == .connecting && inbox.profiles.isEmpty {
                     Text("Connecting…")
-                } else if profiles.isEmpty {
+                } else if inbox.profiles.isEmpty && inbox.link == .live {
                     Text("No bots found. Create one in Hermes Desktop, then refresh.")
                 }
-                ForEach(filteredProfiles) { profile in
-                    NavigationLink {
-                        BotChatView(server: server, connection: connection, profile: profile)
-                            .id(profile.id + connection.id.uuidString)
-                    } label: {
-                        BotInboxRow(profile: profile, avatar: avatars[profile.id])
+                if let notice = inbox.notice {
+                    Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
+                }
+                if !rows.pinned.isEmpty {
+                    // Pinned bots sit above the list as large tiles: as many columns as
+                    // there are pinned bots, up to three, so one or two sit centered and
+                    // four or more wrap instead of being clipped away.
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(rows.pinned.count, 3)), spacing: 24) {
+                        ForEach(rows.pinned) { profile in
+                            Button { openProfile = profile } label: {
+                                BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu { organizeMenu(profile) }
+                        }
                     }
+                    .padding(.vertical, 20)
                     .listRowSeparator(.hidden)
-                    .padding(.vertical, 10)
+                }
+                ForEach(rows.others) { profile in
+                    row(profile, dimmed: false)
+                }
+                ForEach(rows.hidden) { profile in
+                    row(profile, dimmed: true)
+                }
+                if inbox.hiddenCount > 0 && search.isEmpty {
+                    Button(inbox.showsHidden ? "Hide hidden bots" : "Show hidden bots (\(inbox.hiddenCount))") {
+                        inbox.showsHidden.toggle()
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
                 }
             } else {
                 ContentUnavailableView("Connect to Hermes", systemImage: "bubble.left.and.bubble.right",
@@ -68,89 +87,165 @@ import SwiftUI
         .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
             NavigationStack { BotConnectionView(server: server) }
         }
-        .task(id: revision) { await load() }
-        .refreshable { await load() }
+        .navigationDestination(item: $openProfile) { profile in
+            if let connection = inbox.connection { chat(profile, connection) }
+        }
+        // The subscription lives while the inbox is on screen and the app is active;
+        // returning, refreshing and reconnecting all go through the same open().
+        .task(id: revision) { await inbox.open() }
+        .refreshable { await inbox.open() }
         .onChange(of: scenePhase) {
             if scenePhase == .active { revision = UUID() }
-            else { wire?.close() }
+            else { inbox.close() }
         }
-        .onDisappear { loadOwner = UUID(); wire?.close(); wire = nil }
+        .onDisappear { inbox.close() }
     }
 
-    private func load() async {
-        wire?.close()
-        let owner = UUID()
-        loadOwner = owner
-        // The stored client identity is the load owner; a replacement invalidates late results.
-        do {
-            let saved = try store.load(server: server)
-            if connection?.id != saved?.id { profiles = []; avatars = [:] }
-            connection = saved
-            guard let saved else { return }
-            let client = BotClient(connection: saved)
-            wire = client; loading = true; errorMessage = nil
-            defer { if wire === client { loading = false } }
-            try await client.connect()
-            guard !Task.isCancelled, wire === client else { return }
-            let roster = try await client.call("profiles.list", ["include_sessions": .bool(true)])
-            guard !Task.isCancelled, wire === client else { return }
-            guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
-            var seen = Set<String>()
-            profiles = rows.compactMap(BotProfile.init).filter { seen.insert($0.id).inserted }
-            await BotAvatarStore.shared.refresh(profiles, connectionID: saved.id, using: client) {
-                if wire === client { avatars = BotAvatarStore.shared.images(connectionID: saved.id) }
-            }
-            client.close()
-        } catch {
-            guard !Task.isCancelled, loadOwner == owner else { return }
-            errorMessage = (error as? BotFailure ?? .transport).localizedDescription
-            loading = false
+    private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
+        Button { openProfile = profile } label: {
+            BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
         }
+        .buttonStyle(.plain)
+        .opacity(dimmed ? 0.5 : 1)
+        .contextMenu { organizeMenu(profile) }
+        .listRowSeparator(.hidden)
+        .padding(.vertical, 12)
+    }
+
+    private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
+        BotChatView(server: server, connection: connection, profile: profile)
+            .id(profile.id + connection.id.uuidString)
+            .onAppear { inbox.markSeen(profile) }
+            .onDisappear { inbox.noteReturn(from: profile) }
+    }
+
+    /// Pin and hide write Desktop's own roster fields; both stay inert until the
+    /// inbox is live and no write for this bot is in flight.
+    private func organizeMenu(_ profile: BotProfile) -> some View {
+        Group {
+            Button {
+                Task { await inbox.setPinned(!profile.pinned, profile) }
+            } label: {
+                Label(profile.pinned ? "Unpin" : "Pin", systemImage: profile.pinned ? "pin.slash" : "pin")
+            }
+            Button {
+                Task { await inbox.setHidden(!profile.hidden, profile) }
+            } label: {
+                Label(profile.hidden ? "Unhide" : "Hide bot", systemImage: profile.hidden ? "eye" : "eye.slash")
+            }
+        }
+        .disabled(!inbox.mayEdit(profile))
     }
 }
 
-/// One roster row: the Desktop avatar when the host has one, otherwise a letter
-/// tile; the server name; and the canonical preview, else the description, else
-/// the Profile name. The avatar is decorative; VoiceOver reads the text as one element.
+/// A pinned bot: the avatar large and centered with the name beneath it.
+private struct BotHeroTile: View {
+    let profile: BotProfile
+    let avatar: UIImage?
+    let unread: Bool
+    var body: some View {
+        VStack(spacing: 14) {
+            BotAvatarView(profile: profile, avatar: avatar, size: 84)
+            HStack(spacing: 6) {
+                Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                if unread { BotUnreadDot() }
+            }
+        }
+        .frame(maxWidth: 132)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// One roster row: avatar, name with an optional short Desktop description chip,
+/// the last activity, then the canonical preview with a trailing unread mark.
+/// The avatar is decorative; VoiceOver reads the text as one element.
 private struct BotInboxRow: View {
     let profile: BotProfile
     let avatar: UIImage?
-    private var color: Color {
-        let colors: [Color] = [.green, .orange, .purple, .pink, .blue, .teal]
-        let value = profile.id.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
-        return colors[value]
+    let unread: Bool
+    /// A description short enough to read as a role sits beside the name; a
+    /// longer one only stands in for the preview when the chat has none.
+    private var chip: String? {
+        guard let description = profile.description, description.count <= 24,
+              profile.preview?.isEmpty == false else { return nil }
+        return description
     }
     private var subline: String {
         if let preview = profile.preview, !preview.isEmpty { return preview }
         return profile.description ?? profile.id
     }
     var body: some View {
-        HStack(spacing: 16) {
-            tile
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(profile.name).font(.headline)
-                    Spacer()
+        HStack(spacing: 14) {
+            BotAvatarView(profile: profile, avatar: avatar, size: 44)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(profile.name).font(.headline).lineLimit(1)
+                    if let chip {
+                        Text(chip).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
+                            .layoutPriority(-1)
+                    }
+                    Spacer(minLength: 8)
                     if let date = profile.lastActive {
-                        Text(SessionRelativeDateFormatter.shared.localizedString(for: date, relativeTo: Date())).font(.caption).foregroundStyle(.secondary)
+                        Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
-                Text(subline).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(subline).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if unread { BotUnreadDot() }
+                }
             }
         }
         .accessibilityElement(children: .combine)
     }
-    @ViewBuilder private var tile: some View {
+}
+
+/// The Desktop avatar fitted into a square, or a letter tile on a tinted circle.
+/// Desktop assets are shapes on a transparent background, so they are not clipped.
+private struct BotAvatarView: View {
+    let profile: BotProfile
+    let avatar: UIImage?
+    let size: CGFloat
+    private var color: Color {
+        let colors: [Color] = [.green, .orange, .purple, .pink, .blue, .teal]
+        let value = profile.id.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
+        return colors[value]
+    }
+    var body: some View {
         if let avatar {
-            Image(uiImage: avatar).resizable().scaledToFill()
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            Image(uiImage: avatar).resizable().scaledToFit()
+                .frame(width: size, height: size)
                 .accessibilityHidden(true)
         } else {
-            Text(String(profile.name.prefix(1))).font(.title2.weight(.semibold))
-                .frame(width: 48, height: 48)
-                .background(color.opacity(0.2), in: RoundedRectangle(cornerRadius: 16))
+            Text(String(profile.name.prefix(1))).font(.system(size: size * 0.42, weight: .semibold))
+                .frame(width: size, height: size)
+                .background(color.opacity(0.2), in: Circle())
                 .foregroundStyle(color).accessibilityHidden(true)
         }
+    }
+}
+
+/// Static unread mark. It never animates; VoiceOver reads it as "Unread".
+private struct BotUnreadDot: View {
+    var body: some View {
+        Circle().fill(Color.accentColor).frame(width: 10, height: 10)
+            .accessibilityLabel("Unread")
+    }
+}
+
+/// Last-activity label in the roster's style: the time today, the weekday within
+/// the past week, otherwise the month and day.
+enum BotInboxDateLabel {
+    static func text(for date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+        if calendar.isDate(date, inSameDayAs: now) {
+            return date.formatted(style.hour().minute())
+        }
+        if let weekAgo = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)), date >= weekAgo, date < now {
+            return date.formatted(style.weekday(.wide))
+        }
+        return date.formatted(style.month(.abbreviated).day())
     }
 }

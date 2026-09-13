@@ -56,12 +56,20 @@ struct BotConnection: Codable, Equatable, Identifiable {
 /// One `profiles.list` row. Identity comes only from server fields: the Desktop
 /// title, then the core `display_name`, then the Profile name (`default` reads as
 /// Hermes, as in Desktop). Description follows the same Desktop-then-core order.
+/// Pinned and hidden are Desktop's roster organization; its user sections are
+/// not here because their catalog lives in Desktop's local storage, so a bare
+/// `sectionId` cannot be named, and `groups` are executable group rooms, not sections.
 struct BotProfile: Identifiable, Hashable {
     let id: String
     let name: String
     let description: String?
     let preview: String?
     let lastActive: Date?
+    let pinned: Bool
+    let hidden: Bool
+    /// Desktop's `ui_meta["hermes-bots"]` object as received. A pin or hide write
+    /// sends it back whole with one field changed, so Desktop-only fields survive.
+    let look: [String: BotJSON]
     /// True when the host has an avatar asset, so the inbox fetches only rows that have one.
     let hasAvatar: Bool
     /// Desktop's compare-and-swap revision for this bot's look
@@ -77,6 +85,9 @@ struct BotProfile: Identifiable, Hashable {
         description = Self.firstText(look["description"], row["description"])
         preview = row["canonical_session"]["preview"].text
         lastActive = row["canonical_session"]["last_active"].number.map(Date.init(timeIntervalSince1970:))
+        pinned = look["pinned"].flag == true
+        hidden = look["hidden"].flag == true
+        self.look = look.fields ?? [:]
         hasAvatar = row["has_avatar"].flag == true
         lookRevision = row["ui_meta_revisions"]["hermes-bots"].integer
     }

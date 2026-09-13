@@ -2,7 +2,7 @@ import Foundation
 
 /// Direct Hermes payloads deliberately stay separate from webui endpoint models.
 /// Accessors tolerate absent and future fields; required capabilities are checked at use.
-indirect enum BotJSON: Codable, Equatable, Sendable {
+indirect enum BotJSON: Codable, Hashable, Sendable {
     case object([String: BotJSON]), array([BotJSON]), string(String), number(Double), bool(Bool), null
 
     init(from decoder: Decoder) throws {
@@ -30,6 +30,7 @@ indirect enum BotJSON: Codable, Equatable, Sendable {
     subscript(_ key: String) -> BotJSON { if case .object(let v) = self { return v[key] ?? .null }; return .null }
     var text: String? { if case .string(let v) = self { return v }; return nil }
     var list: [BotJSON]? { if case .array(let v) = self { return v }; return nil }
+    var fields: [String: BotJSON]? { if case .object(let v) = self { return v }; return nil }
     var flag: Bool? { if case .bool(let v) = self { return v }; return nil }
     var integer: Int? { if case .number(let v) = self { return Int(exactly: v) }; return nil }
     var number: Double? { if case .number(let v) = self { return v }; return nil }
