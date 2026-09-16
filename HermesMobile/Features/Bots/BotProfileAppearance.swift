@@ -11,13 +11,17 @@ struct BotProfileAppearance: Equatable, Sendable {
     var custom: Bool
     var imageKind: String?
 
-    init(profile: BotProfile) {
-        let storedTitle = profile.look["title"]?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        title = storedTitle.isEmpty ? profile.name : storedTitle
-        shape = profile.look["shape"]?.text
-        color = profile.look["color"]?.text
-        custom = profile.look["custom"]?.flag == true || shape != nil || color != nil
-        imageKind = profile.look["imageKind"]?.text
+    init(profile: BotProfile) { self.init(look: profile.look, fallbackTitle: profile.name) }
+
+    /// Reads a look object directly, so the editor can rebuild its appearance from the
+    /// look it last saved instead of the roster row it was opened with.
+    init(look: [String: BotJSON], fallbackTitle: String) {
+        let storedTitle = look["title"]?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        title = storedTitle.isEmpty ? fallbackTitle : storedTitle
+        shape = look["shape"]?.text
+        color = look["color"]?.text
+        custom = look["custom"]?.flag == true || shape != nil || color != nil
+        imageKind = look["imageKind"]?.text
     }
 
     /// Applies only the compatible static appearance fields while retaining

@@ -22,7 +22,8 @@ import Observation
     private(set) var promptReceipt: String?
     private(set) var unavailablePromptModes: Set<BotPromptMode> = []
 
-    let profile: BotProfile
+    /// Re-read after the profile editor saves, so the title and face do not lie.
+    private(set) var profile: BotProfile
     let connection: BotConnection
     let server: URL
     private(set) var connectionState = ConnectionState.disconnected
@@ -176,6 +177,17 @@ import Observation
         suspend()
         isActive = true
         await recoverConnection()
+    }
+
+    /// Re-reads this bot's roster row after an edit. A missing row or a lost
+    /// connection leaves the current profile in place.
+    func refreshProfile() async {
+        guard connectionState == .connected else { return }
+        let owner = generation
+        guard let roster = try? await request("profiles.list", ["include_sessions": .bool(false)], owner: owner),
+              let row = roster["profiles"].list?.first(where: { $0["name"].text == profile.id }),
+              let fresh = BotProfile(row) else { return }
+        profile = fresh
     }
 
     private func recoverConnection() async {
