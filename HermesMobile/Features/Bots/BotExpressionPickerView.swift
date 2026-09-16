@@ -14,6 +14,7 @@ import SwiftUI
             VStack(spacing: 20) {
                 BotAvatarMarkView(name: editor.profile.id, appearance: editor.draft.appearance, size: 132)
                     .padding(.top, 20)
+                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel(selected.localizedName)
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(BotAvatarExpression.allCases) { expression in
@@ -47,7 +48,7 @@ import SwiftUI
 
     private func appearance(_ expression: BotAvatarExpression) -> BotProfileAppearance {
         var appearance = editor.draft.appearance
-        appearance.expression = expression.rawValue; appearance.custom = true; appearance.imageKind = "shape"
+        appearance.expression = expression.rawValue
         return appearance
     }
 }

@@ -246,7 +246,8 @@ import XCTest
         XCTAssertEqual(editor.draft.appearance.expression, "happy")
 
         editor.setExpression(.curious)
-        XCTAssertTrue(editor.dirtyFields.contains(.appearance))
+        XCTAssertEqual(editor.dirtyFields, [.appearance], "an expression never touches the photo")
+        XCTAssertFalse(editor.draft.appearance.custom, "the default look is not claimed as custom")
         var sent: [String: BotJSON]?
         wire.configure = { params in
             sent = params["ui_meta"]?["hermes-bots"].fields
@@ -261,6 +262,21 @@ import XCTest
         editor.setExpression(.sleepy)
         editor.resetAppearance()
         XCTAssertNil(editor.draft.appearance.expression)
+    }
+
+    func testExpressionKeepsAnUploadedPhoto() async throws {
+        let connection = connection(name: "Mac")
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { _ in }
+        let editor = BotProfileEditor(server: server, connection: connection, profile: profile(), avatar: photo,
+                                      store: store, avatarStore: BotAvatarStore(), makeWire: { _ in BotProfileEditorWire(details: self.details()) })
+        await editor.load()
+
+        editor.setExpression(.happy)
+
+        XCTAssertNotNil(editor.avatar)
+        XCTAssertFalse(editor.dirtyFields.contains(.avatar))
     }
 
     func testUnknownStoredExpressionReadsAsNeutral() {
