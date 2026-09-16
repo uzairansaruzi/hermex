@@ -2104,6 +2104,72 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertNil(coordinator.activeStreamID)
     }
 
+    @MainActor
+    func testRatingCounterCountsCompletionOnceAndExcludesCancelledOrFailedResponses() throws {
+        let state = try makeRatingState()
+        let stream = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(streamClient: stream, ratingPromptState: state)
+        coordinator.start(streamID: "complete")
+        stream.emit(.done(DoneStreamEvent()))
+        stream.emit(.done(DoneStreamEvent()))
+        stream.emit(.streamEnd)
+        stream.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(state.policy.completedResponses, 11)
+
+        for event in [SSEEvent.cancelled, .error("failed"), .streamEnd] {
+            coordinator.prepareForNewResponse()
+            coordinator.start(streamID: UUID().uuidString)
+            stream.emit(event)
+        }
+        XCTAssertEqual(state.policy.completedResponses, 11)
+        coordinator.prepareForNewResponse()
+        coordinator.start(streamID: "second-complete")
+        stream.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(state.policy.completedResponses, 12)
+    }
+
+    @MainActor
+    func testRatingStreamGuardIsServerScopedAndDoesNotRetainCoordinator() throws {
+        let state = try makeRatingState()
+        let server = URL(staticString: "https://example.test")
+        var coordinator: ChatStreamCoordinator? = makeCoordinator(ratingPromptState: state)
+        coordinator?.start(streamID: "running")
+        coordinator?.suspendActiveStreamConnection()
+        XCTAssertTrue(state.hasActiveStream(on: server), "Suspending transport does not finish the stream")
+        XCTAssertFalse(state.hasActiveStream(on: URL(staticString: "https://other.test")))
+        weak var weakCoordinator = coordinator
+        coordinator = nil
+        XCTAssertNil(weakCoordinator)
+        XCTAssertFalse(state.hasActiveStream(on: server))
+    }
+
+    @MainActor
+    func testRatingRequestRechecksCoordinatorAfterServerRefresh() async throws {
+        let state = try makeRatingState()
+        let coordinator = makeCoordinator(ratingPromptState: state)
+        await state.requestWhenQuiet(
+            moment: .foreground,
+            server: URL(staticString: "https://example.test"),
+            isSessionListVisible: { true },
+            loadSessions: {
+                coordinator.start(streamID: "started-during-fetch")
+                return []
+            },
+            request: { XCTFail("A newly active coordinator must suppress the request") }
+        )
+        XCTAssertNil(state.policy.lastRequestDate)
+    }
+
+    @MainActor
+    private func makeRatingState() throws -> RatingPromptState {
+        let suite = "ChatStreamRatingTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(Date().addingTimeInterval(-4 * RatingPromptPolicy.day), forKey: RatingPromptSettings.firstLaunchDateKey)
+        defaults.set(10, forKey: TipJar.completedResponseCountKey)
+        return RatingPromptState(defaults: defaults)
+    }
+
     private func makeModelContext() throws -> ModelContext {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
@@ -2120,6 +2186,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         liveActivityManager: CoordinatorSpyLiveActivityManager? = nil,
         delegate: CoordinatorDelegateSpy? = nil,
         timing: ChatStreamCoordinatorTiming = .standard,
+        ratingPromptState: RatingPromptState? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data) = { request in
             apiTestJSONResponse(#"{"active": true}"#, for: request)
         }
@@ -2132,7 +2199,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             streamClient: streamClient,
             liveActivityManager: liveActivityManager,
             showsLiveActivityResponseExcerpts: false,
-            timing: timing
+            timing: timing,
+            ratingPromptState: ratingPromptState ?? .shared
         )
         coordinator.attach(delegate: delegate)
         return coordinator

@@ -579,10 +579,38 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Support")
+
+                    SettingsDivider()
+
+                    Link(destination: AppConfig.writeReviewURL) {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Rate Hermex"),
+                            systemImage: "star",
+                            accessorySystemImage: "arrow.up.forward"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Rate Hermex, opens the App Store")
+
+                    SettingsDivider()
+
+                    Link(destination: AppConfig.reportProblemURL) {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Report a Problem"),
+                            systemImage: "ladybug",
+                            accessorySystemImage: "arrow.up.forward"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Report a Problem, opens in browser")
                 }
 
                 #if DEBUG
                 SettingsCard(title: String(localized: "Developer")) {
+                    SettingsButton(String(localized: "Reset rating prompt state")) {
+                        RatingPromptState.shared.reset()
+                    }
+
                     NavigationLink {
                         StreamingLabView()
                     } label: {

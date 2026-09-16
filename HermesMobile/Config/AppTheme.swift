@@ -5,6 +5,17 @@ import UserNotifications
 import UIKit
 #endif
 
+// Device-wide engagement keys shared by the rating prompt and the future tip card (#531).
+enum TipJar {
+    static let completedResponseCountKey = "engagement.completedResponseCount"
+}
+
+enum RatingPromptSettings {
+    static let firstLaunchDateKey = "ratingPrompt.firstLaunchDate"
+    static let lastRequestDateKey = "ratingPrompt.lastRequestDate"
+    static let responseCountAtLastRequestKey = "ratingPrompt.responseCountAtLastRequest"
+}
+
 enum AppTheme: String, CaseIterable, Identifiable {
     case system
     case light

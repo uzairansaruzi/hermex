@@ -103,6 +103,7 @@ final class ChatStreamCoordinator {
     private let client: APIClient
     private let streamClient: SSEStreamingClient
     private let liveActivityManager: any AgentLiveActivityManaging
+    private let ratingPromptState: RatingPromptState
     private let timing: ChatStreamCoordinatorTiming
     private var showsLiveActivityResponseExcerpts: Bool
 
@@ -168,13 +169,16 @@ final class ChatStreamCoordinator {
         streamClient: SSEStreamingClient,
         liveActivityManager: any AgentLiveActivityManaging,
         showsLiveActivityResponseExcerpts: Bool,
-        timing: ChatStreamCoordinatorTiming = .standard
+        timing: ChatStreamCoordinatorTiming = .standard,
+        ratingPromptState: RatingPromptState? = nil
     ) {
         self.client = client
         self.streamClient = streamClient
         self.liveActivityManager = liveActivityManager
         self.showsLiveActivityResponseExcerpts = showsLiveActivityResponseExcerpts
         self.timing = timing
+        self.ratingPromptState = ratingPromptState ?? .shared
+        self.ratingPromptState.register(self, server: client.baseURL)
     }
 
     func attach(delegate: any ChatStreamCoordinatorDelegate) {
@@ -888,6 +892,9 @@ final class ChatStreamCoordinator {
     }
 
     private func completeCurrentResponse(needsTranscriptRefresh: Bool) {
+        if !hasCompletedCurrentResponse {
+            ratingPromptState.recordCompletedResponse()
+        }
         runGeneration &+= 1
         invalidateReconnectTask()
         liveActivityManager.end(status: .complete, activity: String(localized: "Response complete"), errorSummary: nil)

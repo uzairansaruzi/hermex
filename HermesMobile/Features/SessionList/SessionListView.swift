@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import StoreKit
 
 @MainActor
 struct SessionListView: View {
@@ -17,6 +18,11 @@ struct SessionListView: View {
     @Binding private var pendingDeepLinkedSessionID: String?
     @Binding private var requestedNewChat: NewChatRequest?
 
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
+    @State private var wasBackgrounded = false
+    @State private var ratingRequestID: UUID?
+    @State private var ratingMoment: RatingPromptMoment = .coldLaunch
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -113,6 +119,28 @@ struct SessionListView: View {
 
     var body: some View {
         navigationContainer
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background {
+                    wasBackgrounded = true
+                }
+                if phase == .active, wasBackgrounded {
+                    wasBackgrounded = false
+                    ratingMoment = .foreground
+                    ratingRequestID = UUID()
+                } else if phase != .active {
+                    ratingRequestID = nil
+                }
+            }
+            .task(id: ratingRequestID) {
+                guard ratingRequestID != nil else { return }
+                await RatingPromptState.shared.requestWhenQuiet(
+                    moment: ratingMoment,
+                    server: server,
+                    isSessionListVisible: { isQuietSessionListVisible },
+                    loadSessions: { try await APIClient(baseURL: server).sessions().sessions },
+                    request: { requestReview() }
+                )
+            }
             .onChange(of: pendingDeepLinkedSessionID) { if pendingDeepLinkedSessionID != nil { showsBots = false } }
             .onChange(of: requestedNewChat) { if requestedNewChat != nil { showsBots = false } }
             .onChange(of: pendingSharedImport?.reservationID) { if pendingSharedImport != nil { showsBots = false } }
@@ -263,6 +291,7 @@ struct SessionListView: View {
                 refreshAfterReturningIfNeeded()
             }
             .onDisappear {
+                ratingRequestID = nil
                 sessionOpenTask?.cancel()
                 viewModel.invalidateSessionOpening()
             }
@@ -283,6 +312,11 @@ struct SessionListView: View {
                 selectedProjectID = nil
             }
             .onChange(of: navigationState.destination) { oldValue, newValue in
+                ratingRequestID = nil
+                if oldValue != nil, newValue == nil {
+                    ratingMoment = .returnedToSessionList
+                    ratingRequestID = UUID()
+                }
                 SessionListDestinationReturn.run(
                     from: oldValue,
                     to: newValue,
@@ -304,6 +338,20 @@ struct SessionListView: View {
                 )
             )
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
+    }
+
+    private var isQuietSessionListVisible: Bool {
+        guard case .loggedIn(let activeServer) = authManager.state, activeServer == server else { return false }
+        return scenePhase == .active && didCompleteInitialLoad
+            && navigationState.destination == nil && !showsBotsInbox
+            && pendingDeepLinkedSessionID == nil && requestedNewChat == nil
+            && pendingSharedImport == nil && !hasWaitingSharedImport
+            && !isSearchingSessions && !viewModel.isViewingCachedData
+            && sessionExportShareItem == nil && sessionPendingRename == nil
+            && sessionPendingProjectCreation == nil && sessionPendingDeletion == nil
+            && projectPendingRename == nil && projectPendingDeletion == nil
+            && !isPresentingProjectCreation && !isPresentingAddServer
+            && sessionOpenErrorMessage == nil && !viewModel.isCreatingSession
     }
 
     private var waitingSharedImportBanner: some View {

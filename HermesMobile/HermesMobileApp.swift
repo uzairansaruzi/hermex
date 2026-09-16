@@ -45,6 +45,11 @@ struct HermesMobileApp: App {
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 
+    init() {
+        // Record installation age even before a server has been configured.
+        _ = RatingPromptState.shared
+    }
+
     var body: some Scene {
         WindowGroup {
             #if DEBUG
