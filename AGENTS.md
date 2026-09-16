@@ -113,6 +113,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 - Body: follow the PR template. `Fixes #<n>`, the problem in a sentence or two, then how you fixed it and exactly how it was tested. End with the model and harness that did the work.
 - UI changes need before/after images. Motion or timing needs a short video.
 - Upload PR evidence to GitHub. Never commit PR-only screenshots or assets.
+- Prefer `gh --attach` to upload PR/issue screenshots and videos; check the relevant command's `--help` before trying browser upload.
 - One concern per PR. If the description says "also", split it.
 - When babysitting: poll checks and comments newer than the last push, verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
 
