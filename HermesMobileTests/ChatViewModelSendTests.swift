@@ -10263,6 +10263,11 @@ final class ChatViewModelSendTests: XCTestCase {
         let chatStartBodies = makeModelRouteRecorder()
         let profileSwitches = makeModelRouteRecorder()
         let profilesLoads = makeModelRouteRecorder()
+        // Keep title-generation state across both turns, not one factory per request.
+        let fallbackHandler = modelRouteTestResponse(
+            chatStartBodies: chatStartBodies,
+            streamIDPrefix: "stream-roundtrip"
+        )
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -10339,10 +10344,7 @@ final class ChatViewModelSendTests: XCTestCase {
                         for: request
                     )
                 default:
-                    return try self.modelRouteTestResponse(
-                        chatStartBodies: chatStartBodies,
-                        streamIDPrefix: "stream-roundtrip"
-                    )(request)
+                    return try fallbackHandler(request)
                 }
             }
         )
