@@ -7,6 +7,7 @@ import SwiftUI
     @State private var showsModels = false
     @State private var photoItem: PhotosPickerItem?
     @State private var showsPhotoPicker = false
+    @State private var showsExpressions = false
     @State private var imageError: String?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -65,6 +66,7 @@ import SwiftUI
         }
         .sheet(item: $capabilitySheet) { field in capabilityPicker(field) }
         .sheet(isPresented: $showsModels) { modelPicker }
+        .navigationDestination(isPresented: $showsExpressions) { BotExpressionPickerView(editor: editor) }
         .photosPicker(isPresented: $showsPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in loadPhoto(item) }
         .alert("Could not decode this image.", isPresented: Binding(
@@ -231,7 +233,11 @@ import SwiftUI
                     .accessibilityAddTraits(editor.draft.appearance.color == color.hex ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, 16).padding(.bottom, 14)
+            .padding(.horizontal, 16).padding(.bottom, 10)
+            Divider().padding(.leading, 16)
+            navigationRow(String(localized: "Expression"), subtitle: nil,
+                          value: BotAvatarExpression.resolve(editor.draft.appearance.expression).localizedName,
+                          systemImage: "face.smiling") { showsExpressions = true }
             Button("Reset to default", systemImage: "arrow.counterclockwise") { editor.resetAppearance() }
                 .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
                 .tint(.secondary)

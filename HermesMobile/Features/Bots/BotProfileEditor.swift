@@ -218,8 +218,16 @@ struct BotProfileDetails: Equatable, Sendable {
         clearOutcome(.avatar)
     }
 
+    func setExpression(_ expression: BotAvatarExpression) {
+        draft.appearance.expression = expression == .neutral ? nil : expression.rawValue
+        draft.appearance.custom = true
+        draft.appearance.imageKind = "shape"
+        avatar = nil; avatarChange = .remove
+        clearOutcome(.appearance); clearOutcome(.avatar)
+    }
+
     func resetAppearance() {
-        draft.appearance.shape = nil; draft.appearance.color = nil
+        draft.appearance.shape = nil; draft.appearance.color = nil; draft.appearance.expression = nil
         draft.appearance.custom = false; draft.appearance.imageKind = nil
         avatar = nil; avatarChange = .remove
         clearOutcome(.appearance); clearOutcome(.avatar)

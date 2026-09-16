@@ -299,6 +299,11 @@ its entries, so equal Profile names on two hosts never share a picture. A
 malformed, oversized or missing asset leaves the row on its static shape fallback.
 Hermex renders Desktop's compatible classic shape and color metadata without an
 animation loop; blobatars, pets and other Desktop renderers remain Desktop-owned.
+The drawn face's rest `expression` (sixteen Bloub-derived eye geometries in
+`BotAvatarExpression`) is a Hermex-owned key in the same look object: Desktop's
+`saveBotMeta` spreads server keys into its local copy and re-sends the whole
+object, so the key survives a Desktop save, and Desktop ignores it when drawing.
+Unknown values read as neutral.
 
 `BotInbox` owns the roster for one configured server and one live subscription
 that lasts while the inbox is on screen. `open()` connects, reads

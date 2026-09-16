@@ -10,6 +10,8 @@ struct BotProfileAppearance: Equatable, Sendable {
     var color: String?
     var custom: Bool
     var imageKind: String?
+    /// A `BotAvatarExpression` raw value. Hermex-owned: Desktop keeps the key but renders its own eyes.
+    var expression: String?
 
     init(profile: BotProfile) {
         let storedTitle = profile.look["title"]?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -18,6 +20,7 @@ struct BotProfileAppearance: Equatable, Sendable {
         color = profile.look["color"]?.text
         custom = profile.look["custom"]?.flag == true || shape != nil || color != nil
         imageKind = profile.look["imageKind"]?.text
+        expression = profile.look["expression"]?.text
     }
 
     /// Applies only the compatible static appearance fields while retaining
@@ -25,6 +28,7 @@ struct BotProfileAppearance: Equatable, Sendable {
     func merging(into received: [String: BotJSON]) -> [String: BotJSON] {
         var result = received
         Self.set(title, key: "title", in: &result)
+        if let expression { result["expression"] = .string(expression) } else { result.removeValue(forKey: "expression") }
         if custom {
             result["custom"] = .bool(true)
             if let shape { result["shape"] = .string(shape) } else { result.removeValue(forKey: "shape") }
@@ -61,6 +65,66 @@ enum BotAvatarShape: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The rest expression of a drawn face: eye size, lean and spacing, after Bloub's
+/// measured catalogue (MIT, jeremy-prt/bloub). Values are in Bloub's units of body
+/// radius and degrees; `BotAvatarMarkView` scales them onto the mark.
+enum BotAvatarExpression: String, CaseIterable, Identifiable, Sendable {
+    case neutral, attentive, surprised, excited, happy, laughing, angry, sad
+    case scared, wary, confused, curious, proud, shy, bored, sleepy
+    var id: String { rawValue }
+
+    struct Eye: Equatable { let width: Double; let height: Double; let tilt: Double }
+    struct Geometry: Equatable { let left: Eye; let right: Eye; let split: Double }
+
+    /// An unknown or missing stored value reads as neutral rather than failing the row.
+    static func resolve(_ raw: String?) -> BotAvatarExpression { raw.flatMap(BotAvatarExpression.init(rawValue:)) ?? .neutral }
+
+    var geometry: Geometry {
+        func pair(_ w: Double, _ h: Double, _ tilt: Double = 0, split: Double) -> Geometry {
+            Geometry(left: Eye(width: w, height: h, tilt: tilt), right: Eye(width: w, height: h, tilt: -tilt), split: split)
+        }
+        switch self {
+        case .neutral: return pair(0.186, 0.412, split: 15.46)
+        case .attentive: return pair(0.21, 0.44, split: 16)
+        case .surprised: return pair(0.45, 0.47, split: 19)
+        case .excited: return pair(0.4, 0.56, -10, split: 19.5)
+        case .happy: return pair(0.27, 0.17, 14, split: 17)
+        case .laughing: return pair(0.34, 0.13, 20, split: 18)
+        case .angry: return pair(0.34, 0.15, 30, split: 17)
+        case .sad: return pair(0.22, 0.4, -28, split: 16)
+        case .scared: return pair(0.4, 0.6, split: 20.5)
+        case .wary: return Geometry(left: Eye(width: 0.21, height: 0.4, tilt: 0), right: Eye(width: 0.22, height: 0.15, tilt: 0), split: 16)
+        case .confused: return Geometry(left: Eye(width: 0.2, height: 0.44, tilt: -18), right: Eye(width: 0.28, height: 0.17, tilt: 14), split: 16.5)
+        case .curious: return Geometry(left: Eye(width: 0.24, height: 0.46, tilt: -8), right: Eye(width: 0.2, height: 0.38, tilt: -8), split: 16.5)
+        case .proud: return pair(0.3, 0.15, 18, split: 17)
+        case .shy: return pair(0.17, 0.3, split: 14)
+        case .bored: return pair(0.3, 0.12, split: 16)
+        case .sleepy: return pair(0.2, 0.42 * 0.42, split: 16)
+        }
+    }
+
+    var localizedName: String {
+        switch self {
+        case .neutral: return String(localized: "Neutral")
+        case .attentive: return String(localized: "Attentive")
+        case .surprised: return String(localized: "Surprised")
+        case .excited: return String(localized: "Excited")
+        case .happy: return String(localized: "Happy")
+        case .laughing: return String(localized: "Laughing")
+        case .angry: return String(localized: "Angry")
+        case .sad: return String(localized: "Sad")
+        case .scared: return String(localized: "Scared")
+        case .wary: return String(localized: "Wary")
+        case .confused: return String(localized: "Confused")
+        case .curious: return String(localized: "Curious")
+        case .proud: return String(localized: "Proud")
+        case .shy: return String(localized: "Shy")
+        case .bored: return String(localized: "Bored")
+        case .sleepy: return String(localized: "Sleepy")
+        }
+    }
+}
+
 /// A static rendering of Desktop's classic shape vocabulary. It never animates,
 /// so inbox scrolling and Reduce Motion behave identically.
 struct BotAvatarMarkView: View {
@@ -76,14 +140,23 @@ struct BotAvatarMarkView: View {
         ZStack {
             BotAvatarBody(shape: presentation.shape)
                 .fill(presentation.color)
-            HStack(spacing: size * 0.1) {
-                Capsule().fill(presentation.eyeColor).frame(width: size * 0.075, height: size * 0.22).rotationEffect(.degrees(-18))
-                Capsule().fill(presentation.eyeColor).frame(width: size * 0.075, height: size * 0.22).rotationEffect(.degrees(-18))
+            let geometry = BotAvatarExpression.resolve(appearance.expression).geometry
+            HStack(spacing: size * 0.1 * geometry.split / 15.46) {
+                eye(geometry.left)
+                eye(geometry.right)
             }
             .offset(x: size * 0.12, y: -size * 0.08)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    /// Bloub measures eyes against the body radius; the neutral eye maps onto the
+    /// mark's original 0.075 x 0.22 capsule with its 18 degree lean.
+    private func eye(_ eye: BotAvatarExpression.Eye) -> some View {
+        Capsule().fill(presentation.eyeColor)
+            .frame(width: size * 0.075 * eye.width / 0.186, height: size * 0.22 * eye.height / 0.412)
+            .rotationEffect(.degrees(-18 + eye.tilt))
     }
 }
 

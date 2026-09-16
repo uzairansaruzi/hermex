@@ -239,6 +239,37 @@ import XCTest
         XCTAssertNotEqual(first.connection.id, second.connection.id)
     }
 
+    func testExpressionRoundTripsThroughTheLookMergeAndClearsOnReset() async throws {
+        let profile = self.profile(look: ["expression": .string("happy"), "sectionId": .string("desktop-section")], revision: 1)
+        let (editor, wire, _) = try makeEditor(profile: profile, details: details())
+        await editor.load()
+        XCTAssertEqual(editor.draft.appearance.expression, "happy")
+
+        editor.setExpression(.curious)
+        XCTAssertTrue(editor.dirtyFields.contains(.appearance))
+        var sent: [String: BotJSON]?
+        wire.configure = { params in
+            sent = params["ui_meta"]?["hermes-bots"].fields
+            return .object(["ok": .bool(true), "applied": .object(["ui_meta": .bool(true)])])
+        }
+        await editor.save()
+        XCTAssertEqual(sent?["expression"], .string("curious"))
+        XCTAssertEqual(sent?["sectionId"], .string("desktop-section"))
+
+        editor.setExpression(.neutral)
+        XCTAssertNil(editor.draft.appearance.expression, "neutral is the absence of the key")
+        editor.setExpression(.sleepy)
+        editor.resetAppearance()
+        XCTAssertNil(editor.draft.appearance.expression)
+    }
+
+    func testUnknownStoredExpressionReadsAsNeutral() {
+        XCTAssertEqual(BotAvatarExpression.resolve(nil), .neutral)
+        XCTAssertEqual(BotAvatarExpression.resolve("grumpy"), .neutral)
+        XCTAssertEqual(BotAvatarExpression.resolve("sleepy"), .sleepy)
+        XCTAssertEqual(BotAvatarExpression.allCases.count, 16)
+    }
+
     private func makeEditor(profile: BotProfile? = nil, details: BotJSON) throws -> (BotProfileEditor, BotProfileEditorWire, BotConnectionStore) {
         let connection = connection(name: "Mac")
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())

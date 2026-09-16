@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B48200000000000000000002 /* BotProfileAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000001 /* BotProfileAppearance.swift */; };
+		B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000011 /* BotExpressionPickerView.swift */; };
 		B48200000000000000000004 /* BotProfileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000003 /* BotProfileEditor.swift */; };
 		B48200000000000000000006 /* BotProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000005 /* BotProfileEditorView.swift */; };
 		B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000007 /* BotProfileEditorTests.swift */; };
@@ -517,6 +518,7 @@
 
 /* Begin PBXFileReference section */
 		B48200000000000000000001 /* BotProfileAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileAppearance.swift; sourceTree = "<group>"; };
+		B48200000000000000000011 /* BotExpressionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotExpressionPickerView.swift; sourceTree = "<group>"; };
 		B48200000000000000000003 /* BotProfileEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileEditor.swift; sourceTree = "<group>"; };
 		B48200000000000000000005 /* BotProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileEditorView.swift; sourceTree = "<group>"; };
 		B48200000000000000000007 /* BotProfileEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotProfileEditorTests.swift; sourceTree = "<group>"; };
@@ -1313,6 +1315,7 @@
 			isa = PBXGroup;
 			children = (
 				B48200000000000000000001 /* BotProfileAppearance.swift */,
+				B48200000000000000000011 /* BotExpressionPickerView.swift */,
 				B48200000000000000000003 /* BotProfileEditor.swift */,
 				B48200000000000000000005 /* BotProfileEditorView.swift */,
 				5B87CE542BE84D09A7D1E276 /* BotChatComposerView.swift */,
@@ -1923,6 +1926,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B48200000000000000000002 /* BotProfileAppearance.swift in Sources */,
+				B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */,
 				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
 				B48200000000000000000006 /* BotProfileEditorView.swift in Sources */,
 				D4E8321C0A744DE3A5B8C997 /* ChatComposerPresentation.swift in Sources */,
