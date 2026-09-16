@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// How a drawn bot face moves. `.still` is one frozen frame, used by tile grids,
-/// Reduce Motion and the extensions. `.idle` blinks on a sparse schedule. `.working`
+/// How a drawn bot face moves. `.still` is one frozen frame, used by the picker
+/// tiles, Reduce Motion and the extensions. `.idle` blinks on a sparse schedule. `.working`
 /// is Desktop's lean-and-sway pose, only for the open bot while its turn is live.
 enum BotFaceMotion: Equatable, Sendable {
     case still, idle, working
@@ -54,16 +54,21 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
     }
 
     func entries(from start: Date, mode: Mode) -> AnySequence<Date> {
-        let period = period, phase = phase
+        let period = period, shut = Self.shutDuration
         let base = start.timeIntervalSinceReferenceDate
         let firstShut = phase + (floor((base - phase) / period) + 1) * period
+        // Starting inside a blink still needs that blink's open edge, or the eyes
+        // would stay shut until the next cycle.
+        let pendingOpen: Date? = isShut(at: start) ? Date(timeIntervalSinceReferenceDate: firstShut - period + shut) : nil
         return AnySequence { () -> AnyIterator<Date> in
             var index = -1
+            let edges = [start] + (pendingOpen.map { [$0] } ?? [])
             return AnyIterator {
                 index += 1
-                if index == 0 { return start }
-                let blink = firstShut + Double((index - 1) / 2) * period
-                return Date(timeIntervalSinceReferenceDate: (index - 1).isMultiple(of: 2) ? blink : blink + Self.shutDuration)
+                if index < edges.count { return edges[index] }
+                let step = index - edges.count
+                let blink = firstShut + Double(step / 2) * period
+                return Date(timeIntervalSinceReferenceDate: step.isMultiple(of: 2) ? blink : blink + shut)
             }
         }
     }

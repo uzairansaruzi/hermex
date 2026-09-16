@@ -18,6 +18,20 @@ final class BotFaceMotionTests: XCTestCase {
         XCTAssertTrue((3...5).contains(schedule.period))
     }
 
+    func testStartingInsideABlinkStillEmitsThatBlinksOpenEdge() {
+        let schedule = BotBlinkSchedule(seed: "inbox-triage")
+        let shut = Date(timeIntervalSinceReferenceDate: schedule.phase + schedule.period * 3)
+        let start = shut.addingTimeInterval(0.05)
+        XCTAssertTrue(schedule.isShut(at: start))
+        let entries = Array(schedule.entries(from: start, mode: .normal).prefix(4))
+
+        XCTAssertEqual(entries[0], start)
+        XCTAssertEqual(entries[1].timeIntervalSince(shut), BotBlinkSchedule.shutDuration, accuracy: 0.0001)
+        XCTAssertFalse(schedule.isShut(at: entries[1]), "the eyes reopen at the end of the current blink")
+        XCTAssertEqual(entries[2].timeIntervalSince(shut), schedule.period, accuracy: 0.0001)
+        XCTAssertTrue(schedule.isShut(at: entries[2]))
+    }
+
     func testBlinkPhaseIsSeededPerBot() {
         let a = BotBlinkSchedule(seed: "inbox-triage"), b = BotBlinkSchedule(seed: "researcher")
         XCTAssertNotEqual(a.phase, b.phase)

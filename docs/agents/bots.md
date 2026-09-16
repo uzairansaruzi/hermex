@@ -302,7 +302,8 @@ pets and other Desktop renderers remain Desktop-owned. Drawn faces blink on a
 sparse `BotBlinkSchedule` (shut and open entries every 3 to 5 s, phase seeded by
 Profile name) so nothing repaints between blinks; only the open bot's face in the
 chat title takes Desktop's 15 fps working pose, and only while its turn is live.
-Reduce Motion, tile grids, photos and the extensions render one still frame.
+Reduce Motion, the shape and expression picker tiles, photos and the extensions
+render one still frame; inbox rows and pinned tiles blink.
 The drawn face's rest `expression` (sixteen Bloub-derived eye geometries in
 `BotAvatarExpression`) is a Hermex-owned key in the same look object: Desktop's
 `saveBotMeta` spreads server keys into its local copy and re-sends the whole
