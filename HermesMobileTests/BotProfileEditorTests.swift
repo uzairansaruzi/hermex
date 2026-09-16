@@ -268,6 +268,53 @@ import XCTest
         XCTAssertEqual(BotAvatarExpression.resolve("grumpy"), .neutral)
         XCTAssertEqual(BotAvatarExpression.resolve("sleepy"), .sleepy)
         XCTAssertEqual(BotAvatarExpression.allCases.count, 16)
+    func testReloadingAConflictRefetchesOnlyThisBotsAvatar() async throws {
+        let avatars = BotAvatarStore()
+        let connection = connection(name: "Mac")
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let other = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { _ in }
+        avatars.setImage(other, connectionID: connection.id, profile: "other", revision: 1)
+        let wire = BotProfileEditorWire(details: details())
+        wire.roster = .object(["profiles": .array([
+            .object(["name": .string("same"), "ui_meta_revisions": .object(["hermes-bots": .number(5)])])
+        ])])
+        let editor = BotProfileEditor(server: server, connection: connection, profile: profile(revision: 4), avatar: nil,
+                                      store: store, avatarStore: avatars, makeWire: { _ in wire })
+        await editor.load()
+
+        await editor.reloadAppearance()
+
+        XCTAssertNotNil(avatars.images(connectionID: connection.id)["other"], "another bot's image must survive a one-bot reload")
+        XCTAssertFalse(wire.calls.contains { $0.0 == "profiles.get_asset" }, "a row without an avatar fetches nothing")
+        XCTAssertNil(editor.avatar)
+    }
+
+    func testReloadAfterASaveKeepsTheSavedAppearance() async throws {
+        let (editor, wire, _) = try makeEditor(details: details())
+        await editor.load()
+        editor.setTitle("Renamed")
+        editor.setShape(.hexagon)
+        wire.configure = { _ in
+            .object(["ok": .bool(true), "applied": .object([
+                "ui_meta": .bool(true), "ui_meta_revisions": .object(["hermes-bots": .number(2)])
+            ])])
+        }
+        await editor.save()
+
+        await editor.load()
+
+        XCTAssertEqual(editor.draft.appearance.title, "Renamed")
+        XCTAssertEqual(editor.draft.appearance.shape, "hexagon")
+        XCTAssertTrue(editor.dirtyFields.isEmpty)
+    }
+
+    func testStoredAvatarIsBoundedToTheStoresThumbnailSize() {
+        let large = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400)).image { _ in }
+        let thumbnail = try? XCTUnwrap(BotAvatarStore.thumbnail(large))
+        XCTAssertEqual(thumbnail.map { max($0.size.width * $0.scale, $0.size.height * $0.scale) }, CGFloat(BotAvatarStore.maxPixelSize))
+        let small = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { _ in }
+        XCTAssertEqual(BotAvatarStore.thumbnail(small)?.size, small.size)
     }
 
     private func makeEditor(profile: BotProfile? = nil, details: BotJSON) throws -> (BotProfileEditor, BotProfileEditorWire, BotConnectionStore) {

@@ -160,7 +160,10 @@ struct BotProfileDetails: Equatable, Sendable {
                 try ensureOwner(owner, client)
                 modelGroups = []
             }
-            let loaded = Draft(appearance: BotProfileAppearance(profile: profile), description: details.description,
+            // The look comes from what was last received or saved, not the roster row the
+            // editor opened with, so a foreground reload after a save keeps the saved look.
+            let loaded = Draft(appearance: BotProfileAppearance(look: receivedLook, fallbackTitle: profile.name),
+                               description: details.description,
                                instructions: details.instructions, model: details.model, skills: details.skills,
                                toolsets: details.toolsets, mcpServers: details.mcpServers)
             baseline = loaded; draft = loaded; state = .loaded
@@ -286,10 +289,16 @@ struct BotProfileDetails: Equatable, Sendable {
             let appearance = BotProfileAppearance(profile: fresh)
             baseline.appearance = appearance; draft.appearance = appearance
             avatarChange = .unchanged; outcomes.removeValue(forKey: .appearance); outcomes.removeValue(forKey: .avatar)
-            await avatarStore.refresh([fresh], connectionID: connection.id, using: client,
-                                      validateDispatch: validate(owner)) {}
+            // One bot's asset only: a roster-wide refresh would drop every other bot's image.
+            var image: UIImage?
+            if fresh.hasAvatar {
+                let reply = try await client.call("profiles.get_asset", ["name": .string(fresh.id), "asset": .string("avatar")],
+                                                  validateDispatch: validate(owner))
+                image = await Task.detached(priority: .utility) { BotAvatarStore.decode(reply) }.value
+            }
             try ensureOwner(owner, client)
-            avatar = avatarStore.images(connectionID: connection.id)[fresh.id]
+            avatarStore.setImage(image, connectionID: connection.id, profile: fresh.id, revision: fresh.lookRevision)
+            avatar = image
         } catch {
             guard generation == owner, wire === client else { return }
             outcomes[.appearance] = .failed(error.localizedDescription)
@@ -413,7 +422,8 @@ struct BotProfileDetails: Equatable, Sendable {
         let reply = try await client.call("profiles.set_asset", params, validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard reply["ok"].flag == true, reply["asset"].text == "avatar" else { throw BotFailure.unsupported }
-        avatarStore.setImage(avatar, connectionID: connection.id, profile: profile.id, revision: lookRevision)
+        // The shared store holds thumbnails only; the full picture stays with this editor.
+        avatarStore.setImage(avatar.flatMap(BotAvatarStore.thumbnail), connectionID: connection.id, profile: profile.id, revision: lookRevision)
         avatarChange = .unchanged; outcomes[.avatar] = .saved
     }
 
