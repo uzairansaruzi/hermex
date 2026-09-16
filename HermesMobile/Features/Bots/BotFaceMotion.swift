@@ -220,8 +220,7 @@ struct BotInteractiveFaceView: View {
         return Group {
             if let playing, !reduceMotion {
                 TimelineView(.animation(minimumInterval: 1 / 60)) { context in
-                    let progress = context.date.timeIntervalSince(playing.start) / playing.bit.duration
-                    BotAvatarMarkView(name: name, appearance: shown, size: size, pose: playing.bit.pose(at: progress))
+                    BotAvatarMarkView(name: name, appearance: shown, size: size, pose: bitPose(playing, at: context.date))
                 }
             } else {
                 BotAnimatedFaceView(name: name, appearance: shown, size: size, gaze: gaze)
@@ -266,6 +265,13 @@ struct BotInteractiveFaceView: View {
 
     /// A cue for the bit already on screen is ignored, so fast typing looks down
     /// once for the whole burst instead of jittering with every letter.
+    /// The bit's pose at `date`, with a finger on the face still steering the eyes.
+    private func bitPose(_ playing: (bit: BotFaceBit, start: Date), at date: Date) -> BotFacePose {
+        var pose = playing.bit.pose(at: date.timeIntervalSince(playing.start) / playing.bit.duration)
+        pose.gazeX += gaze.width; pose.gazeY += gaze.height
+        return pose
+    }
+
     private func play(_ bit: BotFaceBit) {
         guard !reduceMotion, playing?.bit != bit else { return }
         let start = Date()
