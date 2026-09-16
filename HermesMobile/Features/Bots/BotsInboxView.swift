@@ -9,6 +9,7 @@ import SwiftUI
     @State private var searchedProfile: (connectionID: UUID, profileID: String)?
     @State private var showingSetup = false
     @State private var revision = UUID()
+    @State private var editSelection: BotProfileEditSelection?
     /// The bot whose chat is open. One destination serves the hero tiles and the
     /// rows, so a row shows no disclosure accessory and tiles sharing a row keep
     /// separate tap targets.
@@ -98,12 +99,16 @@ import SwiftUI
         .onChange(of: inbox.connection?.id) {
             showingSearch = false
             searchedProfile = nil
+            editSelection = nil
         }
         .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
             NavigationStack { BotConnectionView(server: server) }
         }
         .navigationDestination(item: $openProfile) { profile in
             if let connection = inbox.connection { chat(profile, connection) }
+        }
+        .navigationDestination(item: $editSelection) { selection in
+            editProfile(selection)
         }
         // The subscription lives while the inbox is on screen and the app is active;
         // returning, refreshing and reconnecting all go through the same open().
@@ -142,10 +147,27 @@ import SwiftUI
             .onDisappear { inbox.noteReturn(from: profile) }
     }
 
+    @ViewBuilder private func editProfile(_ selection: BotProfileEditSelection) -> some View {
+        if let connection = inbox.connection, connection.id == selection.connectionID,
+           let profile = inbox.profiles.first(where: { $0.id == selection.profileID }) {
+            BotProfileEditorView(server: server, connection: connection, profile: profile,
+                                 avatar: inbox.avatars[profile.id]) { revision = UUID() }
+                .id(connection.id.uuidString + profile.id)
+        } else {
+            ContentUnavailableView("Could Not Load Profiles", systemImage: "person.crop.circle.badge.questionmark")
+        }
+    }
+
     /// Pin and hide write Desktop's own roster fields; both stay inert until the
     /// inbox is live and no write for this bot is in flight.
     private func organizeMenu(_ profile: BotProfile) -> some View {
         Group {
+            Button {
+                guard let connection = inbox.connection else { return }
+                editSelection = BotProfileEditSelection(connectionID: connection.id, profileID: profile.id)
+            } label: {
+                Label("Edit", systemImage: "slider.horizontal.3")
+            }
             Button {
                 Task { await inbox.setPinned(!profile.pinned, profile) }
             } label: {
@@ -159,6 +181,12 @@ import SwiftUI
         }
         .disabled(!inbox.mayEdit(profile))
     }
+}
+
+private struct BotProfileEditSelection: Identifiable, Hashable {
+    let connectionID: UUID
+    let profileID: String
+    var id: String { connectionID.uuidString + "|" + profileID }
 }
 
 /// A pinned bot: the avatar large and centered with the name beneath it.
@@ -222,31 +250,6 @@ private struct BotInboxRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-/// The Desktop avatar fitted into a square, or a letter tile on a tinted circle.
-/// Desktop assets are shapes on a transparent background, so they are not clipped.
-struct BotAvatarView: View {
-    let profile: BotProfile
-    let avatar: UIImage?
-    let size: CGFloat
-    private var color: Color {
-        let colors: [Color] = [.green, .orange, .purple, .pink, .blue, .teal]
-        let value = profile.id.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
-        return colors[value]
-    }
-    var body: some View {
-        if let avatar {
-            Image(uiImage: avatar).resizable().scaledToFit()
-                .frame(width: size, height: size)
-                .accessibilityHidden(true)
-        } else {
-            Text(String(profile.name.prefix(1))).font(.system(size: size * 0.42, weight: .semibold))
-                .frame(width: size, height: size)
-                .background(color.opacity(0.2), in: Circle())
-                .foregroundStyle(color).accessibilityHidden(true)
-        }
     }
 }
 

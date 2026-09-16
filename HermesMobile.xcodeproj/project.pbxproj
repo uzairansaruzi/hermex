@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B48200000000000000000002 /* BotProfileAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000001 /* BotProfileAppearance.swift */; };
+		B48200000000000000000004 /* BotProfileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000003 /* BotProfileEditor.swift */; };
+		B48200000000000000000006 /* BotProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000005 /* BotProfileEditorView.swift */; };
+		B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000007 /* BotProfileEditorTests.swift */; };
 		C72A6DDA681F4CDABE7445DD /* BotHistoryCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE3A09625987439BABF6BC8C /* BotHistoryCacheTests.swift */; };
 		1F2596DE21154F7082ED4412 /* BotCachedHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6CF5956C3F148A081DD56F0 /* BotCachedHistoryView.swift */; };
 		F0907446778F4FBEBAEEC2B9 /* BotHistoryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FCCA0BACC647998F9CC3D0 /* BotHistoryCache.swift */; };
@@ -512,6 +516,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B48200000000000000000001 /* BotProfileAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileAppearance.swift; sourceTree = "<group>"; };
+		B48200000000000000000003 /* BotProfileEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileEditor.swift; sourceTree = "<group>"; };
+		B48200000000000000000005 /* BotProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileEditorView.swift; sourceTree = "<group>"; };
+		B48200000000000000000007 /* BotProfileEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotProfileEditorTests.swift; sourceTree = "<group>"; };
 		FE3A09625987439BABF6BC8C /* BotHistoryCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotHistoryCacheTests.swift; sourceTree = "<group>"; };
 		C6CF5956C3F148A081DD56F0 /* BotCachedHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotCachedHistoryView.swift; sourceTree = "<group>"; };
 		41FCCA0BACC647998F9CC3D0 /* BotHistoryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotHistoryCache.swift; sourceTree = "<group>"; };
@@ -1071,6 +1079,7 @@
 		1A2B3C4D5E6F700000000034 /* HermesMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				B48200000000000000000007 /* BotProfileEditorTests.swift */,
 				26C849A9CE6B47E79695E069 /* BotChatPresentationTests.swift */,
 				B0B04ED8E6164A75B069773D /* BotClientTests.swift */,
 				7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */,
@@ -1303,6 +1312,9 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				B48200000000000000000001 /* BotProfileAppearance.swift */,
+				B48200000000000000000003 /* BotProfileEditor.swift */,
+				B48200000000000000000005 /* BotProfileEditorView.swift */,
 				5B87CE542BE84D09A7D1E276 /* BotChatComposerView.swift */,
 				9FE221A56F264309AF71E18B /* BotsInboxView.swift */,
 				AF0AA6F787074B4A8DC903FF /* BotSearchView.swift */,
@@ -1910,6 +1922,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B48200000000000000000002 /* BotProfileAppearance.swift in Sources */,
+				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
+				B48200000000000000000006 /* BotProfileEditorView.swift in Sources */,
 				D4E8321C0A744DE3A5B8C997 /* ChatComposerPresentation.swift in Sources */,
 				785784DE20094BA78F432A9A /* BotChatComposerView.swift in Sources */,
 				A990ABE1D2654992AD262B77 /* BotProtocol.swift in Sources */,
@@ -2208,6 +2223,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */,
 				A4C0A37288B742B9B284A67E /* BotChatPresentationTests.swift in Sources */,
 				D885F4C0DA3A438B8CE92635 /* BotClientTests.swift in Sources */,
 				127110E3C3924333B7967315 /* BotAttachmentSendingTests.swift in Sources */,

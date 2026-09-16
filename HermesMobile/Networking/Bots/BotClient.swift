@@ -131,11 +131,13 @@ import Foundation
     }
 
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
-        guard ["profiles.list", "profiles.get_asset", "profiles.configure", "session.list", "session.resume", "session.events.since",
+        guard ["profiles.list", "profiles.get_asset", "profiles.describe", "profiles.configure", "profiles.set_asset",
+               "session.list", "session.resume", "session.events.since",
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond", "clarify.respond",
                "sudo.respond", "secret.respond", "mcp.setup.respond",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control"].contains(method)
         else { throw BotFailure.unsupported }
+        try Self.validateProfileEditorCall(method, params)
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
@@ -202,6 +204,58 @@ import Foundation
                     self.pending.removeValue(forKey: id)?.resume(throwing: CancellationError())
                 } else { self.close() }
             }
+        }
+    }
+
+    /// Profile writes stay a typed exception to the small RPC allowlist. This
+    /// prevents the editor from becoming a generic gateway command surface.
+    private static func validateProfileEditorCall(_ method: String, _ params: [String: BotJSON]) throws {
+        guard ["profiles.describe", "profiles.configure", "profiles.set_asset"].contains(method) else { return }
+        guard params["name"]?.text?.isEmpty == false else { throw BotFailure.unsupported }
+
+        if method == "profiles.describe" {
+            guard Set(params.keys) == ["name"] else { throw BotFailure.unsupported }
+            return
+        }
+
+        if method == "profiles.set_asset" {
+            guard Set(params.keys).isSubset(of: ["name", "asset", "data", "clear"]),
+                  params["asset"]?.text == "avatar" else { throw BotFailure.unsupported }
+            let clear = params["clear"]?.flag == true
+            let data = params["data"]?.text
+            // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.
+            guard clear != (data != nil), data?.isEmpty != true,
+                  data == nil || data!.utf8.count <= 3_000_000 else {
+                throw BotFailure.unsupported
+            }
+            return
+        }
+
+        let allowed = Set(["name", "description", "soul", "model", "provider", "confirm_expensive_model",
+                           "disabled_skills", "enabled_toolsets", "enabled_mcp_servers",
+                           "ui_meta", "ui_meta_expected_revisions"])
+        guard Set(params.keys).isSubset(of: allowed), params.count > 1 else { throw BotFailure.unsupported }
+        if params["description"] != nil, params["description"]?.text == nil { throw BotFailure.unsupported }
+        if params["soul"] != nil, params["soul"]?.text == nil { throw BotFailure.unsupported }
+        let model = params["model"]?.text
+        let provider = params["provider"]?.text
+        guard (model == nil) == (provider == nil), model?.isEmpty != true, provider?.isEmpty != true else { throw BotFailure.unsupported }
+        if params["confirm_expensive_model"] != nil {
+            guard model != nil, params["confirm_expensive_model"]?.flag != nil else { throw BotFailure.unsupported }
+        }
+        for key in ["disabled_skills", "enabled_toolsets", "enabled_mcp_servers"] where params[key] != nil {
+            guard let list = params[key]?.list, list.allSatisfy({ $0.text?.isEmpty == false }) else { throw BotFailure.unsupported }
+        }
+        if params["ui_meta"] != nil {
+            guard let metadata = params["ui_meta"]?.fields, Set(metadata.keys) == ["hermes-bots"],
+                  metadata["hermes-bots"]?.fields != nil,
+                  let expected = params["ui_meta_expected_revisions"]?.fields,
+                  Set(expected.keys) == ["hermes-bots"],
+                  let revision = expected["hermes-bots"]?.integer, revision >= 0 else {
+                throw BotFailure.unsupported
+            }
+        } else if params["ui_meta_expected_revisions"] != nil {
+            throw BotFailure.unsupported
         }
     }
 

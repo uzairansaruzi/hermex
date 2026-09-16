@@ -30,20 +30,33 @@ import UIKit
         entries = entries.filter { $0.key.connectionID != connectionID }
     }
 
+    /// Applies an acknowledged editor write immediately. Keeping the current
+    /// look revision is intentional: replacing only the asset does not advance
+    /// UI metadata, so a later roster refresh must retain this new thumbnail.
+    func setImage(_ image: UIImage?, connectionID: UUID, profile: String, revision: Int?) {
+        let key = Key(connectionID: connectionID, profile: profile)
+        if let image { entries[key] = Entry(revision: revision, image: image) }
+        else { entries.removeValue(forKey: key) }
+    }
+
     /// Brings the store in line with a fresh roster for one connection. Every other
     /// connection's images and rows no longer flagged `has_avatar` drop first, then
     /// `onUpdate` fires so cached images paint before any fetch. Images whose look
     /// revision is unchanged are kept; the rest, including entries without a
     /// revision, are fetched one at a time and `onUpdate` fires after each decode.
     /// The first failed call ends the pass silently: the roster never depends on it.
-    func refresh(_ profiles: [BotProfile], connectionID: UUID, using transport: any BotTransport, onUpdate: () -> Void) async {
+    func refresh(_ profiles: [BotProfile], connectionID: UUID, using transport: any BotTransport,
+                 validateDispatch: (() throws -> Void)? = nil, onUpdate: () -> Void) async {
         let wanted = Set(profiles.filter(\.hasAvatar).map(\.id))
         entries = entries.filter { $0.key.connectionID == connectionID && wanted.contains($0.key.profile) }
         onUpdate()
         for profile in profiles where wanted.contains(profile.id) {
             let key = Key(connectionID: connectionID, profile: profile.id)
             if let revision = entries[key]?.revision, revision == profile.lookRevision { continue }
-            guard let reply = try? await transport.call("profiles.get_asset", ["name": .string(profile.id), "asset": .string("avatar")]),
+            guard let reply = try? await transport.call(
+                "profiles.get_asset", ["name": .string(profile.id), "asset": .string("avatar")],
+                validateDispatch: validateDispatch
+            ),
                   !Task.isCancelled else { return }
             let image = await Task.detached(priority: .utility) { Self.decode(reply) }.value
             guard !Task.isCancelled else { return }
@@ -55,7 +68,7 @@ import UIKit
 
     /// Decodes a `profiles.get_asset` reply into a bounded thumbnail. Anything other
     /// than a found, base64 image data URL within the size cap decodes to nil, and a
-    /// nil avatar means the row keeps its letter tile.
+    /// nil avatar means the row keeps its static shape fallback.
     nonisolated static func decode(_ reply: BotJSON) -> UIImage? {
         guard reply["found"].flag == true, let text = reply["data"].text, text.utf8.count <= maxPayloadBytes,
               text.hasPrefix("data:image/"), let comma = text.firstIndex(of: ","),

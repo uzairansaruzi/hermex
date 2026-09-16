@@ -296,8 +296,9 @@ revision (`ui_meta_revisions["hermes-bots"]`). An unchanged revision skips the
 fetch; a missing revision refetches on every roster load. Loading a roster drops
 every other connection's images, and removing or replacing a connection purges
 its entries, so equal Profile names on two hosts never share a picture. A
-malformed, oversized or missing asset leaves the row on its letter tile. Desktop's
-animated faces are not ported; the phone shows the static asset only.
+malformed, oversized or missing asset leaves the row on its static shape fallback.
+Hermex renders Desktop's compatible classic shape and color metadata without an
+animation loop; blobatars, pets and other Desktop renderers remain Desktop-owned.
 
 `BotInbox` owns the roster for one configured server and one live subscription
 that lasts while the inbox is on screen. `open()` connects, reads
@@ -330,8 +331,43 @@ row's `ui_meta_revisions["hermes-bots"]` (0 when absent), which is how the
 gateway's key-wise merge keeps Desktop-only fields intact. Nothing moves until
 `applied.ui_meta` is true and the roster is re-read; a conflict re-reads the
 roster, shows the fresh state and a one-line notice, and never claims success.
-`profiles.configure` is on the allowlist for this use only; the phone sends no
-`soul`, `model` or capability fields through it.
+The Profile editor is reachable from a bot row's context menu and the bot chat
+toolbar. It is bound to the exact configured-server URL, Bot connection UUID and
+Profile name for its whole lifetime. `profiles.describe({name})` supplies the
+role, full SOUL instructions, pinned model, installed skills, configurable
+toolsets and configured MCP servers. `model.options` supplies only the picker
+inventory. Equal Profile names on different Bot connections never share state,
+and every dispatch plus every reply revalidates the current Keychain connection.
+
+Save is explicit. One `profiles.configure({name,...})` request carries only dirty
+sections and interprets `applied` per section, so successes advance their own
+baseline while failed or model-confirmation sections remain visibly unsaved. A
+guarded model is resent by itself with `confirm_expensive_model` only after a
+second user confirmation. A disconnect never causes an automatic retry.
+
+Appearance writes merge the received `ui_meta["hermes-bots"]` object, changing
+only title and compatible static avatar keys while retaining Desktop-owned keys.
+They include `ui_meta_expected_revisions["hermes-bots"]`; a conflict leaves the
+phone's edit dirty until the user explicitly reloads Desktop's latest appearance.
+Avatar bytes are a separate `profiles.set_asset` write after that metadata write
+has succeeded. Uploads are normalized to JPEG, capped to the host's 2 MB decoded
+limit, and replacing only the asset updates the in-memory avatar even though the
+look revision does not advance.
+
+Capability pickers edit only rows returned by `profiles.describe`: disabled skill
+names, the enabled toolset pin and configured MCP servers. They do not expose a
+second skills marketplace, Tasks implementation or global server settings. The
+existing webui Tasks, Skills and Settings screens are not linked from this editor
+because there is no verified identity mapping from a direct-Hermes connection and
+Profile to those separate webui contracts.
+
+The typed BotClient exception for this editor admits `profiles.describe`, the
+documented `profiles.configure` fields and avatar-only `profiles.set_asset`; it is
+not a generic Profile or gateway command surface. These handler shapes were
+verified against the compatibility pin `ee35a4624fa22237a90426f5e21d8b4f2ce3a49b`
+(`profiles.describe`, `profiles.configure`, `profiles.set_asset`) without a live
+mutation. The local upstream checkout at `cd2bd160579d5240e52d01e2f735da55ff4242ef`
+was also inspected for drift; the editor contract remains present.
 
 Unread is device-local. `BotUnreadStore` keeps, per connection UUID and Profile,
 the canonical `last_active` the user last saw, in `UserDefaults` because the

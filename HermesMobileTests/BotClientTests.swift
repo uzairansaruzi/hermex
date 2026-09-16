@@ -86,7 +86,7 @@ import XCTest
         XCTAssertEqual(socket.sentRequests.last?["method"].text, "profiles.list")
     }
 
-    func testAllowlistAdmitsAvatarReadsButNoAssetWrites() async throws {
+    func testProfileEditorAllowlistAdmitsOnlyTypedScopedCalls() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
             case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
@@ -101,14 +101,40 @@ import XCTest
         let socket = BotScriptedSocket()
         let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
         try await client.connect()
+        defer { client.close() }
         _ = try await client.call("profiles.get_asset", ["name": .string("inbox-triage"), "asset": .string("avatar")])
         XCTAssertEqual(socket.sentTextFrames, 1)
-        _ = try await client.call("profiles.configure", ["name": .string("inbox-triage"), "ui_meta": .object([:])])
-        XCTAssertEqual(socket.sentTextFrames, 2, "the inbox's pin and hide writes go through profiles.configure")
-        do { _ = try await client.call("profiles.set_asset", ["name": .string("inbox-triage"), "clear": .bool(true)]); XCTFail("Writes stay off the allowlist") }
-        catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
-        XCTAssertEqual(socket.sentTextFrames, 2)
-        client.close()
+        _ = try await client.call("profiles.describe", ["name": .string("inbox-triage")])
+        _ = try await client.call("profiles.configure", [
+            "name": .string("inbox-triage"),
+            "ui_meta": .object(["hermes-bots": .object(["title": .string("Triage")])]),
+            "ui_meta_expected_revisions": .object(["hermes-bots": .number(0)])
+        ])
+        _ = try await client.call("profiles.set_asset", [
+            "name": .string("inbox-triage"), "asset": .string("avatar"), "clear": .bool(true)
+        ])
+        XCTAssertEqual(socket.sentTextFrames, 4)
+
+        let rejected: [(String, [String: BotJSON])] = [
+            ("profiles.describe", ["name": .string("inbox-triage"), "extra": .bool(true)]),
+            ("profiles.configure", ["name": .string("inbox-triage"), "ui_meta": .object(["hermes-bots": .object([:])])]),
+            ("profiles.configure", ["name": .string("inbox-triage"), "command": .string("raw")]),
+            ("profiles.set_asset", ["name": .string("inbox-triage"), "clear": .bool(true)]),
+            ("profiles.set_asset", ["name": .string("inbox-triage"), "asset": .string("soul"), "clear": .bool(true)]),
+            ("profiles.set_asset", [
+                "name": .string("inbox-triage"), "asset": .string("avatar"),
+                "data": .string("data:image/jpeg;base64,YQ=="), "clear": .bool(true)
+            ])
+        ]
+        for (method, params) in rejected {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Invalid \(method) call dispatched")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 4)
     }
 
     func testPromptActionsUseExplicitMethodsAndQueueParameters() async throws {

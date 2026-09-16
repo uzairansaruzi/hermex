@@ -15,6 +15,7 @@ import SwiftUI
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     /// Bumped by the status line's Review action; the transcript scrolls on change.
     @State private var showRequestID = UUID()
+    @State private var showingProfileEditor = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(server: URL, connection: BotConnection, profile: BotProfile) {
@@ -130,6 +131,14 @@ import SwiftUI
             if !model.chatControls.controls.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { BotSessionControlMenu(settings: model.chatControls) }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit", systemImage: "info.circle") { showingProfileEditor = true }
+            }
+        }
+        .navigationDestination(isPresented: $showingProfileEditor) {
+            BotProfileEditorView(server: model.server, connection: model.connection, profile: model.profile,
+                                 avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id])
+                .id(model.connection.id.uuidString + model.profile.id)
         }
         .task(id: recoveryID) {
             if scenePhase == .active { await model.recover() }
