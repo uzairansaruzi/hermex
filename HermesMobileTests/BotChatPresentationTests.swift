@@ -7,7 +7,7 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotChatPresentationTests: XCTestCase {
-    func testRoomViewerShowsMemberMessagesWithoutComposer() async throws {
+    func testRoomShowsMemberMessagesAndTextOnlyComposer() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
         let wire = RoomWire(); wire.latest = 3; wire.kind = "message.member"
@@ -20,11 +20,21 @@ import XCTest
         defer { reader.close(); close(window) }
         await reader.open()
         await renderFrames(8)
-        let text = try screenshot(window, name: "486-room-viewer")
+        let text = try screenshot(window, name: "527-room-participant")
         XCTAssertTrue(text.contains("Comms"), text)
         XCTAssertTrue(text.contains("chief-of-staff"), text)
         XCTAssertTrue(text.contains("Message 3"), text)
-        XCTAssertFalse(descendants(window).contains { $0 is UITextView || $0 is UITextField }, "Viewer has no composer")
+        XCTAssertTrue(descendants(window).contains { $0 is UITextView }, "Participant has the shared text editor")
+        XCTAssertTrue(text.contains("Message Comms"), text)
+        wire.driverStatus = RoomFixture.status(running: 1, actions: [RoomFixture.approval])
+        await reader.poll()
+        await renderFrames(8)
+        let approval = try screenshot(window, name: "527-room-approval")
+        XCTAssertTrue(approval.contains("Approval required"), approval)
+        await reader.stop()
+        await renderFrames(8)
+        let stopping = try screenshot(window, name: "527-room-stopping")
+        XCTAssertTrue(stopping.contains("Stopping"), stopping)
     }
 
     func testLocalBotSearchShowsBotNamesAndNeverResumesWhileBrowsing() async throws {

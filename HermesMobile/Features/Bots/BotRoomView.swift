@@ -33,6 +33,9 @@ import SwiftUI
                     if reader.events.isEmpty && reader.link == .live {
                         Text("No messages yet.").foregroundStyle(.secondary)
                     }
+                    ForEach(Array(reader.status.actions.enumerated()), id: \.offset) { _, action in
+                        BotRoomActionCard(reader: reader, action: action)
+                    }
                     Color.clear.frame(height: 1).id("room-bottom")
                 }
                 .padding(16)
@@ -54,7 +57,12 @@ import SwiftUI
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) { status }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                status
+                if reader.showsComposer { BotRoomComposerView(reader: reader, avatars: avatars) }
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .toolbar {
@@ -108,12 +116,7 @@ import SwiftUI
             } else if reader.link == .connecting {
                 Text("Connecting…").font(.callout)
             } else if reader.link == .live {
-                if reader.status.blocked { Text("Waiting for you").font(.callout) }
-                else if reader.status.working { Text("Working…").font(.callout) }
-                if reader.status.pending {
-                    Label("Needs attention. Answer the request in Hermes Desktop on this same connection.", systemImage: "desktopcomputer")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                if let text = reader.statusText { Text(text).font(.callout) }
             }
         }
         .frame(maxWidth: .infinity).padding(.horizontal, 16).padding(.vertical, 8)

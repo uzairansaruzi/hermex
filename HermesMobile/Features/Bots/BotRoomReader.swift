@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// One visible room owns one read-only socket. Closing invalidates replies before
+/// One visible room owns one socket. Closing invalidates replies before
 /// cancelling transport; backgrounding keeps the loaded window but stops all reads.
 @MainActor @Observable final class BotRoomReader {
     enum Link: Equatable { case idle, connecting, live, stopped }
@@ -15,6 +15,22 @@ import Observation
     private(set) var hasEarlier = false
     private(set) var loadingEarlier = false
     private(set) var foreignAuthority = false
+    var draft = ""
+    private(set) var commandMessage: String?
+    private(set) var uncertainSend: Send?
+    private(set) var busy = false
+    private(set) var awaitingStop = false
+    private(set) var inactiveActions = Set<BotRoomAction.Identity>()
+    struct Send: Equatable {
+        let text: String
+        let eventID: String
+        let threadID: String
+        init(text: String) { self.text = text; eventID = UUID().uuidString; threadID = UUID().uuidString }
+    }
+    @ObservationIgnored private var commandID: UUID?
+    @ObservationIgnored private var dispatched = false
+    @ObservationIgnored private var sending: Send?
+    @ObservationIgnored private var stateRevision = 0
     @ObservationIgnored private var log = BotRoomLog()
     @ObservationIgnored private var wire: (any BotTransport)?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
@@ -93,6 +109,11 @@ import Observation
     }
 
     func suspend() {
+        if busy && dispatched {
+            uncertainSend = sending ?? uncertainSend
+            commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
+        }
+        commandID = nil; busy = false; sending = nil; dispatched = false
         let old = wire; wire = nil
         pollTask?.cancel(); pollTask = nil
         old?.onDisconnect = nil; old?.onEvent = nil
@@ -104,18 +125,123 @@ import Observation
         status = BotRoomStatus(.null); lastAuthority = nil
     }
 
+    var canParticipate: Bool {
+        link == .live && !foreignAuthority && capabilities.authority != nil && room.authority == capabilities.authority
+    }
+    var showsComposer: Bool { !foreignAuthority }
+    var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
+    var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
+    var mayEditDraft: Bool { !busy && uncertainSend == nil }
+    var maySend: Bool { allows("groups.send") && !busy && uncertainSend == nil && BotRoomRPC.validText(draft) }
+    var mayResend: Bool { allows("groups.send") && !busy && uncertainSend != nil }
+    var statusText: String? {
+        if status.stopping > 0 || awaitingStop { return String(localized: "Stopping…") }
+        if status.blocked { return String(localized: "Waiting for you") }
+        if status.working { return String(localized: "Working…") }
+        return nil
+    }
+    private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
+    func mayAct(_ action: BotRoomAction) -> Bool {
+        !busy && action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
+            && allows(action.isRetry ? "groups.retry" : "groups.approve")
+    }
+
+    /// Every explicit Send mints a thread so it queues instead of superseding work.
+    /// Only the dedicated retry button reuses an uncertain send's id and payload.
+    func send(retry: Bool = false) async {
+        guard retry ? mayResend : maySend else { return }
+        let request = retry ? uncertainSend! : Send(text: draft)
+        sending = request
+        let params: [String: BotJSON] = ["room_id": .string(key.roomID), "event_id": .string(request.eventID),
+            "payload": .object(["text": .string(request.text), "thread_id": .string(request.threadID)])]
+        await command("groups.send", params: params, validate: {}, accept: { result in
+            guard result["accepted"].flag == true, result["client_event_id"].text == request.eventID,
+                  result["event"]["room_id"].text == self.key.roomID,
+                  result["event"]["kind"].text == "message.user",
+                  result["event"]["payload"]["thread_id"].text == request.threadID,
+                  result["event"]["payload"]["text"].text != nil,
+                  BotRoomEvent(result["event"]) != nil else { throw BotFailure.unsupported }
+            self.log.acknowledge(result["event"])
+            self.uncertainSend = nil; self.sending = nil
+            if self.draft == request.text { self.draft = "" }
+            self.publishLog()
+        })
+    }
+
+    func stop() async {
+        guard mayStop else { return }
+        await command("groups.stop", params: ["room_id": .string(key.roomID), "cancel_id": .string(UUID().uuidString)],
+                      validate: { guard self.status.stoppable > 0 else { throw BotFailure.stale } }, accept: { result in
+            guard result["cancelled"].integer != nil else { throw BotFailure.unsupported }
+            self.awaitingStop = true
+        })
+    }
+
+    func act(_ action: BotRoomAction, choice: BotApprovalRequest.Choice? = nil) async {
+        guard mayAct(action), let params = action.parameters(roomID: key.roomID, choice: choice) else { return }
+        let method = action.isRetry ? "groups.retry" : "groups.approve"
+        await command(method, params: params, validate: {
+            guard self.status.actions.contains(action), !self.inactiveActions.contains(action.id) else { throw BotFailure.stale }
+            self.inactiveActions.insert(action.id)
+        }, accept: { result in
+            guard result[action.isRetry ? "retried" : "approved"].flag == true else { throw BotFailure.unsupported }
+        })
+    }
+
+    /// Ownership and the pending tuple are checked in BotClient's actual socket
+    /// write closure. A lost reply never starts another command.
+    private func command(_ method: String, params: [String: BotJSON], validate: @escaping () throws -> Void,
+                         accept: (BotJSON) throws -> Void) async {
+        guard let client = wire, allows(method), !busy else { sending = nil; return }
+        let token = UUID(), epoch = room.epoch
+        commandID = token; busy = true; dispatched = false; commandMessage = nil
+        do {
+            let result = try await client.call(method, params, validateDispatch: { [weak self] in
+                guard let self, self.commandID == token, self.wire === client, self.allows(method),
+                      self.room.epoch == epoch, !Task.isCancelled else { throw BotFailure.stale }
+                try validate()
+                self.dispatched = true
+                self.stateRevision += 1
+            })
+            guard commandID == token, wire === client else { return }
+            try check(client)
+            try accept(result)
+        } catch {
+            guard commandID == token, wire === client else { return }
+            if let rejection = error as? BotRoomFailure {
+                commandMessage = rejection.localizedDescription
+                if rejection.reason == "authority_conflict" { foreignAuthority = true }
+                if rejection.expired { close(); onExpired(); return }
+                // A rejected retry does not erase the uncertainty of the original send.
+            } else if dispatched {
+                uncertainSend = sending ?? uncertainSend
+                commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
+            } else { commandMessage = error.localizedDescription }
+        }
+        commandID = nil; busy = false; dispatched = false; sending = nil
+        // Read after every acknowledgment or rejection (including 5118/5119).
+        // Inactive tuples stay inert even if a stale server snapshot repeats them.
+        await poll()
+    }
+
     private func check(_ client: any BotTransport) throws {
         guard wire === client, !Task.isCancelled else { throw BotFailure.stale }
     }
 
     private func readState(_ client: any BotTransport) async throws -> Int {
+        stateRevision += 1
+        let revision = stateRevision
         let value = try await client.call("groups.state", ["room_id": .string(key.roomID)])
         try check(client)
         guard let updated = BotGroupRoom(value["room"]), updated.id == key.roomID else { throw BotFailure.unsupported }
+        guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
         if room != updated { room = updated }
         let nextStatus = BotRoomStatus(value["driver_status"])
         if status != nextStatus { status = nextStatus }
+        if !busy && nextStatus.stopping == 0 { awaitingStop = false }
+        let pendingIDs = Set(nextStatus.actions.map(\.id))
+        inactiveActions = inactiveActions.filter { $0.kind != "retry" || pendingIDs.contains($0) }
         let foreign = updated.isForeign(to: capabilities.authority)
         if foreignAuthority != foreign { foreignAuthority = foreign }
         return updated.latestSeq
@@ -153,7 +279,13 @@ import Observation
     }
 
     private func publishLog() {
-        if events != log.events { events = log.events }
+        // A poll can race the send acknowledgment. Do not publish our own pending
+        // message as sent until the RPC result has been validated.
+        let visible = log.events.filter { event in
+            guard let sending else { return true }
+            return event.kind != "message.user" || event.payload["thread_id"].text != sending.threadID
+        }
+        if events != visible { events = visible }
         hasEarlier = log.earlierBoundary > 0
     }
 

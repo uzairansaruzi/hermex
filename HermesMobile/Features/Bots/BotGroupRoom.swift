@@ -12,8 +12,10 @@ struct BotRoomCapabilities: Equatable {
     let enabled: Bool
     let authority: String?
     let pageLimit: Int
+    let methods: Set<String>
     init(_ value: BotJSON) {
         let methods = Set(value["methods"].list?.compactMap(\.text) ?? [])
+        self.methods = methods
         enabled = value["driver"].flag == true && Set(["groups.list", "groups.state", "groups.log"]).isSubset(of: methods)
         authority = value["authority_gateway_id"].text
         pageLimit = min(200, max(1, value["max_log_limit"].integer ?? 200))
@@ -59,13 +61,18 @@ struct BotGroupRoom: Hashable {
 struct BotRoomStatus: Equatable {
     let working: Bool
     let blocked: Bool
-    let pending: Bool
+    let stopping: Int
+    let stoppable: Int
+    let actions: [BotRoomAction]
+    var pending: Bool { !actions.isEmpty }
     init(_ value: BotJSON) {
         working = value["working"].flag == true
         blocked = value["blocked"].flag == true
-        pending = !(value["pending_actions"].list ?? []).isEmpty
+        stopping = max(0, value["counts"]["stopping"].integer ?? 0)
+        stoppable = max(0, value["counts"]["queued"].integer ?? 0) + max(0, value["counts"]["running"].integer ?? 0)
+        actions = (value["pending_actions"].list ?? []).map(BotRoomAction.init)
     }
-    var interval: Duration { working || blocked ? .seconds(2) : .seconds(10) }
+    var interval: Duration { working || blocked || stopping > 0 ? .seconds(2) : .seconds(10) }
 }
 
 struct BotRoomEvent: Identifiable, Equatable {
@@ -113,6 +120,13 @@ struct BotRoomLog {
         self = Self(); cursor = Self.windowStart(before: latest); earlierBoundary = cursor
     }
     mutating func loadedEarlier(from start: Int) { earlierBoundary = start }
+    /// An acknowledgment can arrive ahead of unread log events. Insert its bubble
+    /// without skipping those events on the next log read.
+    mutating func acknowledge(_ event: BotJSON) {
+        let previous = cursor
+        apply(.object(["events": .array([event])]))
+        cursor = previous
+    }
     mutating func apply(_ page: BotJSON) {
         let fresh = (page["events"].list ?? []).compactMap(BotRoomEvent.init).filter { seen.insert($0.seq).inserted }
         cursor = max(cursor, page["cursor"].integer ?? 0, fresh.map(\.seq).max() ?? 0)
@@ -121,11 +135,15 @@ struct BotRoomLog {
     }
 }
 
-/// Only these four read methods may cross the Bot socket boundary.
+/// Room reads and the four participant commands are the only room RPCs allowed.
 enum BotRoomRPC {
-    static let methods = ["groups.capabilities", "groups.list", "groups.state", "groups.log"]
+    static let methods = ["groups.capabilities", "groups.list", "groups.state", "groups.log",
+                          "groups.send", "groups.stop", "groups.approve", "groups.retry"]
     static func validID(_ id: String) -> Bool {
         id.range(of: "\\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\\z", options: .regularExpression) != nil
+    }
+    static func validText(_ text: String) -> Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf8.count <= 64 * 1024
     }
     static func validate(_ method: String, _ params: [String: BotJSON]) throws {
         guard method.hasPrefix("groups.") else { return }
@@ -135,11 +153,35 @@ enum BotRoomRPC {
         case "groups.list": allowed = ["limit", "offset", "include_disbanded"]
         case "groups.state": allowed = ["room_id", "include_disbanded"]
         case "groups.log": allowed = ["room_id", "since_seq", "limit"]
+        case "groups.send": allowed = ["room_id", "event_id", "payload"]
+        case "groups.stop": allowed = ["room_id", "cancel_id"]
+        case "groups.approve": allowed = ["room_id", "member_id", "task_id", "execution_generation", "choice", "request_id"]
+        case "groups.retry": allowed = ["room_id", "task_id"]
         default: throw BotFailure.unsupported
         }
         guard Set(params.keys).isSubset(of: allowed) else { throw BotFailure.unsupported }
-        if method == "groups.state" || method == "groups.log" {
+        if method != "groups.capabilities" && method != "groups.list" {
             guard let id = params["room_id"]?.text, validID(id) else { throw BotFailure.unsupported }
+        }
+        switch method {
+        case "groups.send":
+            guard let eventID = params["event_id"]?.text, validID(eventID),
+                  let payload = params["payload"]?.fields, Set(payload.keys) == ["text", "thread_id"],
+                  let text = payload["text"]?.text, validText(text),
+                  let thread = payload["thread_id"]?.text, validID(thread) else { throw BotFailure.unsupported }
+        case "groups.stop":
+            if let cancel = params["cancel_id"] {
+                guard let id = cancel.text, validID(id) else { throw BotFailure.unsupported }
+            }
+        case "groups.approve":
+            guard let choice = params["choice"]?.text, ["once", "deny"].contains(choice),
+                  let generation = params["execution_generation"]?.integer, generation > 0 else { throw BotFailure.unsupported }
+            for key in ["member_id", "task_id", "request_id"] {
+                guard let id = params[key]?.text, validID(id) else { throw BotFailure.unsupported }
+            }
+        case "groups.retry":
+            guard let id = params["task_id"]?.text, validID(id) else { throw BotFailure.unsupported }
+        default: break
         }
         for key in ["limit", "offset", "since_seq"] where params[key] != nil {
             guard let n = params[key]?.integer, n >= (key == "limit" ? 1 : 0),

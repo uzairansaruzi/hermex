@@ -489,6 +489,8 @@
 		FB790728981341218BFA1099 /* BotRoomReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */; };
 		45873071A10F4B7A88AE16A8 /* BotRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D54869292B40D4B80EEC47 /* BotRoomView.swift */; };
 		902328F7C46D484784A92C52 /* BotRoomTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF16E9919604984868D037B /* BotRoomTests.swift */; };
+		13E546F5603145768F264AAD /* BotRoomAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */; };
+		EE59C61D9C83468A8D674EFD /* BotRoomComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D846D46BEF04DB99E7EADFB /* BotRoomComposerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1009,6 +1011,8 @@
 		5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomReader.swift"; sourceTree = "<group>"; };
 		04D54869292B40D4B80EEC47 /* BotRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomView.swift"; sourceTree = "<group>"; };
 		1AF16E9919604984868D037B /* BotRoomTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomTests.swift"; sourceTree = "<group>"; };
+		9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomAction.swift"; sourceTree = "<group>"; };
+		0D846D46BEF04DB99E7EADFB /* BotRoomComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomComposerView.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1367,6 +1371,8 @@
 				3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */,
 				5D7812D9F0554D6C9D205F6A /* BotRoomReader.swift */,
 				04D54869292B40D4B80EEC47 /* BotRoomView.swift */,
+				0D846D46BEF04DB99E7EADFB /* BotRoomComposerView.swift */,
+				9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */,
 				12E5E34669724EA0938CD493 /* BotInbox.swift */,
 				40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */,
 				0A712D3AE91645C9B8C27745 /* BotConnection.swift */,
@@ -1992,6 +1998,8 @@
 				1887ACCCA7594CEA88195FCD /* BotGroupRoom.swift in Sources */,
 				FB790728981341218BFA1099 /* BotRoomReader.swift in Sources */,
 				45873071A10F4B7A88AE16A8 /* BotRoomView.swift in Sources */,
+				EE59C61D9C83468A8D674EFD /* BotRoomComposerView.swift in Sources */,
+				13E546F5603145768F264AAD /* BotRoomAction.swift in Sources */,
 				880D30A697844D63B3EEDE4F /* BotInbox.swift in Sources */,
 				C2A87F2CDEB941BB825EABA5 /* BotConnectionView.swift in Sources */,
 				13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */,

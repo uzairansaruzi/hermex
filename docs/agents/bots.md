@@ -651,15 +651,48 @@ Bot markdown renderer; member messages include their sender and roster avatar.
 centered system lines. `room.activity`, `turn.settled`, `turn.deferred`,
 `authority.*`, and all unknown kinds remain invisible. Driver status reports
 room-wide working/blocked state, never an inferred active member. Pending actions
-show Desktop attention; the viewer has no composer, Stop, approval, retry, or room
-management commands. Room profiles are read-only and link to existing bot profiles.
+use the participant controls below; unknown kinds show Desktop attention. Room profiles are read-only and link to existing bot profiles.
 
-The socket allowlist admits exactly four room reads with typed parameter checks.
+The socket allowlist admits four room reads and four participant commands with typed parameter checks.
 Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 removes
-the room with a toast; 4123 asks for a gateway restart on the Mac. No room mutation,
+the room with a toast; 4123 asks for a gateway restart on the Mac. No room management,
 replica, peer, promotion, or demotion method is permitted.
 
 Contract: `tui_gateway/methods_groups.py` and `gateway/hosted_rooms.py` at
 `HERMES_AGENT_TESTED_SHA`; read-only tunnel checks on 2026-09-16 captured
 capabilities, the “Comms” list/state, and its empty log on 0.21.2. The checked-in
 fixture replaces the installation identity. Synthetic pages cover non-empty replay.
+
+### Room participation
+
+The text-only composer uses room member handles and display names for mention
+completion, plus `all` and `everyone`. Text is sent as typed, without the Bot Chat
+identification annotation. Each explicit send mints both an `event_id` and a fresh
+`thread_id`: sharing a thread would supersede work rather than queue it.
+`groups.send` acknowledges a durable append and admission, not a bot response.
+The result inserts one bubble by sequence without advancing the log read cursor;
+polling cannot duplicate that bubble or skip earlier events. The server may trim
+surrounding whitespace in its acknowledged text.
+
+A lost reply preserves the draft and reports an unknown outcome. Reconnect only
+reads state/history. Only the explicit Retry send button reuses the original id,
+thread and text; ordinary Send stays disabled while that outcome is unresolved.
+Pending commands are invalidated before a room closes or backgrounds. Drafts and
+uncertain commands stay with that room reader in memory, never another connection.
+
+Stop targets every bot in the room without confirmation. Its `cancelled` receipt
+is informational; the status stays Stopping until a subsequent state read reports
+no stopping tasks. Queued/running counts govern whether Stop can be tapped.
+
+Approvals use the existing request card with only `once` and `deny`. Dispatch
+revalidates the room, socket owner, authority epoch and exact member/task/generation/
+request tuple. Retry targets the pending task. Codes 5119 and 5118 re-read state;
+an addressed approval tuple stays inert, including across reconnect after an
+unknown outcome. Commands are never automatically resent. A retry becomes
+available for a later stalled attempt only after the previous pending action
+has disappeared. Unknown or incomplete pending kinds show Desktop attention.
+
+Foreign authority hides the composer. Missing authority or unadvertised methods
+cannot dispatch participant commands. No room lifecycle, peer or authority
+administration is exposed. These helpers belong only to the app target; share
+extension, Live Activities, App Intents and room caching remain outside this slice.

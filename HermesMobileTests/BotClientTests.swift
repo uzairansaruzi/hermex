@@ -395,7 +395,7 @@ import XCTest
         client.close()
     }
 
-    func testRoomReadAllowlistRejectsMutationsAndInvalidTypedParameters() async throws {
+    func testRoomAllowlistRejectsAdministrationAndInvalidTypedParameters() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
             case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
@@ -413,6 +413,10 @@ import XCTest
         let valid: [(String, [String: BotJSON])] = [
             ("groups.capabilities", [:]), ("groups.list", ["limit": .number(500), "offset": .number(0), "include_disbanded": .bool(false)]),
             ("groups.state", ["room_id": .string("room:1")]),
+            ("groups.send", ["room_id": .string("room"), "event_id": .string("event"), "payload": .object(["text": .string("hello"), "thread_id": .string("thread")])]),
+            ("groups.stop", ["room_id": .string("room")]),
+            ("groups.approve", ["room_id": .string("room"), "member_id": .string("member"), "task_id": .string("task"), "request_id": .string("request"), "execution_generation": .number(1), "choice": .string("once")]),
+            ("groups.retry", ["room_id": .string("room"), "task_id": .string("task")]),
             ("groups.log", ["room_id": .string("room:1"), "since_seq": .number(0), "limit": .number(200)])]
         for (method, params) in valid { _ = try await client.call(method, params) }
         var invalid: [(String, [String: BotJSON])] = [
@@ -424,7 +428,7 @@ import XCTest
             ("groups.state", ["room_id": .string(String(repeating: "a", count: 129))]),
             ("groups.log", ["room_id": .string("room"), "since_seq": .number(-1)]),
             ("groups.log", ["room_id": .string("room"), "limit": .bool(true)])]
-        invalid += ["send", "stop", "approve", "retry", "create", "rename", "disband", "promote", "demote", "replicate", "replica_state", "peer.invite", "peer.register", "peer.revoke"].map { ("groups." + $0, ["room_id": .string("room")]) }
+        invalid += ["send", "approve", "retry", "create", "rename", "disband", "promote", "demote", "replicate", "replica_state", "peer.invite", "peer.register", "peer.revoke"].map { ("groups." + $0, ["room_id": .string("room")]) }
         for (method, params) in invalid {
             do { _ = try await client.call(method, params); XCTFail("Invalid room call dispatched: " + method) }
             catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
@@ -434,6 +438,35 @@ import XCTest
             "code": .number(4112), "message": .string("Expired"), "data": .object(["reason": .string("room_history_expired")])])]) }
         do { _ = try await client.call("groups.log", ["room_id": .string("room")]); XCTFail("Expected room error") }
         catch { XCTAssertTrue((error as? BotRoomFailure)?.expired == true) }
+    }
+
+    func testRoomParticipantValidationRejectsOversizedTextAndIncompleteApprovalTuples() throws {
+        let send: [String: BotJSON] = ["room_id": .string("room"), "event_id": .string("event"),
+            "payload": .object(["text": .string(String(repeating: "é", count: 32768)), "thread_id": .string("thread")])]
+        XCTAssertNoThrow(try BotRoomRPC.validate("groups.send", send))
+        for text in [" \n", String(repeating: "é", count: 32769)] {
+            var invalid = send
+            invalid["payload"] = .object(["text": .string(text), "thread_id": .string("thread")])
+            XCTAssertThrowsError(try BotRoomRPC.validate("groups.send", invalid))
+        }
+        var invalid = send
+        invalid["payload"] = .object(["text": .string("hello"), "thread_id": .string("thread"), "attachments": .array([])])
+        XCTAssertThrowsError(try BotRoomRPC.validate("groups.send", invalid))
+        let approval: [String: BotJSON] = ["room_id": .string("room"), "member_id": .string("member"),
+            "task_id": .string("task"), "request_id": .string("request"), "execution_generation": .number(1), "choice": .string("once")]
+        for key in approval.keys {
+            var missing = approval; missing.removeValue(forKey: key)
+            XCTAssertThrowsError(try BotRoomRPC.validate("groups.approve", missing), key)
+        }
+        for value in [BotJSON.number(0), .number(-1), .number(1.5), .string("1")] {
+            var bad = approval; bad["execution_generation"] = value
+            XCTAssertThrowsError(try BotRoomRPC.validate("groups.approve", bad))
+        }
+        for value in ["session", "always", "future"] {
+            var bad = approval; bad["choice"] = .string(value)
+            XCTAssertThrowsError(try BotRoomRPC.validate("groups.approve", bad))
+        }
+        XCTAssertThrowsError(try BotRoomRPC.validate("groups.stop", ["room_id": .string("room"), "cancel_id": .number(1)]))
     }
 
     private func connection() -> BotConnection {
