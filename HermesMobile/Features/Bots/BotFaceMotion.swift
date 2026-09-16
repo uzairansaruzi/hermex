@@ -87,7 +87,9 @@ enum BotFaceBit: CaseIterable, Equatable, Sendable {
 
     var duration: Double {
         switch self {
-        case .glanceLeft, .glanceRight, .glanceDown: return 0.9
+        case .glanceLeft, .glanceRight: return 0.9
+        // Long enough to cover a burst of typing; repeated cues never restart it.
+        case .glanceDown: return 1.6
         case .doubleBlink: return 0.5
         case .wobble: return 0.7
         case .hop: return 0.55
@@ -147,7 +149,7 @@ struct BotPlayfulSchedule: Equatable {
 }
 
 /// A screen's request for one bit, such as a hop when a shape is picked. A new
-/// identity replays even the same bit.
+/// identity replays the same bit once the previous run has finished.
 struct BotFaceCue: Equatable {
     let id = UUID()
     let bit: BotFaceBit
@@ -261,8 +263,10 @@ struct BotInteractiveFaceView: View {
         }
     }
 
+    /// A cue for the bit already on screen is ignored, so fast typing looks down
+    /// once for the whole burst instead of jittering with every letter.
     private func play(_ bit: BotFaceBit) {
-        guard !reduceMotion else { return }
+        guard !reduceMotion, playing?.bit != bit else { return }
         let start = Date()
         playing = (bit, start)
         Task {

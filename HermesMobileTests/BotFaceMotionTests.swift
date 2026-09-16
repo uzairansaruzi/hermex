@@ -37,7 +37,7 @@ final class BotFaceMotionTests: XCTestCase {
             XCTAssertEqual(bit.pose(at: 0), .rest, "\(bit) starts at rest")
             XCTAssertEqual(bit.pose(at: 1), .rest, "\(bit) ends at rest")
             XCTAssertNotEqual(bit.pose(at: 0.5), .rest, "\(bit) does something in the middle")
-            XCTAssertTrue((0.4...1).contains(bit.duration), "\(bit) is a short burst")
+            XCTAssertTrue((0.4...1.6).contains(bit.duration), "\(bit) is a short burst")
         }
         XCTAssertEqual(BotFaceBit.hop.pose(at: 0.5).lift, 0.16, accuracy: 0.001)
         XCTAssertEqual(BotFaceBit.hop.pose(at: 0.05).scaleY, 1 - 0.12 * sin(0.05 / 0.15 * .pi), accuracy: 0.001)
