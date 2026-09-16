@@ -15,7 +15,11 @@ struct BotMentions {
     private static let tokens = try! NSRegularExpression(pattern: #"(^|\s)@([a-z0-9][a-z0-9_-]*)"#, options: .caseInsensitive)
     private static let fences = try! NSRegularExpression(pattern: #"```[\s\S]*?```"#)
     private static let inlineCode = try! NSRegularExpression(pattern: #"`[^`\n]*`"#)
-    private static let trailingNote = try! NSRegularExpression(pattern: #"\n\n\[@mentions resolved from the Bot Mode roster[\s\S]*\]\s*$"#)
+    private static let notePrefix = "\n\n[@mentions resolved from the Bot Mode roster — the user is referring to: "
+    private static let noteSuffix = ". If they want one of these agents contacted, compose your own message and send it with your message_agent tool (agents on other connected machines are reachable too — the Desktop relays it); never forward the user’s text verbatim. If this session has no message_agent tool, agent messaging is unavailable here — say so.]"
+    private static let noteLines = try! NSRegularExpression(
+        pattern: #"\A@[a-zA-Z0-9][a-zA-Z0-9_-]* = agent profile "[^"\r\n]+"(?: \("[\s\S]*?"\))?(?:; @[a-zA-Z0-9][a-zA-Z0-9_-]* = agent profile "[^"\r\n]+"(?: \("[\s\S]*?"\))?)*\z"#
+    )
 
     init(roster: [BotProfile], excluding active: String) {
         var candidates: [Completion] = []
@@ -31,7 +35,12 @@ struct BotMentions {
             }
         }
         for form in ambiguous { byForm.removeValue(forKey: form) }
-        self.candidates = candidates
+        self.candidates = candidates.compactMap { candidate in
+            let bot = candidate.profile
+            let forms = [candidate.tag, Self.handle(bot), bot.id]
+            guard let tag = forms.first(where: { byForm[$0.lowercased()]?.id == bot.id }) else { return nil }
+            return Completion(profile: bot, tag: tag)
+        }
         self.byForm = byForm
     }
 
@@ -94,17 +103,20 @@ struct BotMentions {
         let lines = bots.map { bot in
             "@\(Self.handle(bot)) = agent profile \"\(bot.id)\"" + (bot.title.map { " (\"\($0)\")" } ?? "")
         }.joined(separator: "; ")
-        return "\n\n[@mentions resolved from the Bot Mode roster — the user is referring to: \(lines). If they want one of these agents contacted, compose your own message and send it with your message_agent tool (agents on other connected machines are reachable too — the Desktop relays it); never forward the user’s text verbatim. If this session has no message_agent tool, agent messaging is unavailable here — say so.]"
+        return Self.notePrefix + lines + Self.noteSuffix
     }
 
     /// Hide only a trailing identification note in user presentation. Drafts and
     /// transport text retain their original bytes, including whitespace.
     static func displayText(_ text: String) -> String {
-        replacing(trailingNote, in: text, with: "")
-    }
-
-    private static func replacing(_ regex: NSRegularExpression, in text: String, with replacement: String) -> String {
-        regex.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: replacement)
+        guard let start = text.range(of: notePrefix, options: .backwards),
+              text.hasSuffix(noteSuffix) else { return text }
+        let end = text.index(text.endIndex, offsetBy: -noteSuffix.count)
+        guard start.upperBound <= end else { return text }
+        let lines = String(text[start.upperBound..<end])
+        let range = NSRange(lines.startIndex..., in: lines)
+        guard noteLines.firstMatch(in: lines, range: range)?.range == range else { return text }
+        return String(text[..<start.lowerBound])
     }
 }
 

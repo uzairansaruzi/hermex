@@ -505,7 +505,10 @@ ambiguous and code-span mentions stay plain text. Friendly titles and core
 `display_name` values supply slug/collapsed aliases; the Profile handle remains
 valid, with `default` exposed as `hermes`. Reserved friendly aliases cannot claim
 `hermes`, `default`, `all`, `everyone` or `user`. Any form claimed by multiple bots
-is unresolved, even if more than two bots claim it.
+is unresolved, even if more than two bots claim it. Autocomplete falls back to an
+unambiguous handle when a friendly tag collides, and omits bots with no usable
+tag. Transcript filtering validates the complete trailing identification note
+before hiding it; similar user-authored examples remain visible.
 
 Mentions identify agents; they do not deliver messages. At an explicit Send,
 Queue, Steer or Redirect, `BotMentions` ignores inline/fenced code and email

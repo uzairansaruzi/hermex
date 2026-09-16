@@ -34,9 +34,14 @@ final class BotMentionTests: XCTestCase {
         let mentions = BotMentions(roster: [bot("one", title: "Same Name"), bot("two", display: "Same Name"),
                                             bot("three", title: "Same Name")], excluding: "dev")
         XCTAssertTrue(mentions.resolve("@same-name @samename").isEmpty)
+        XCTAssertEqual(mentions.completions(query: "").map(\.tag), ["one", "two", "three"])
+        for completion in mentions.completions(query: "") {
+            XCTAssertEqual(mentions.resolve("@" + completion.tag).map(\.id), [completion.id])
+        }
         XCTAssertEqual(mentions.resolve("@one @two @three").map(\.id), ["one", "two", "three"])
         let handleCollision = BotMentions(roster: [bot("one"), bot("two", title: "One")], excluding: "dev")
         XCTAssertTrue(handleCollision.resolve("@one").isEmpty)
+        XCTAssertEqual(handleCollision.completions(query: "").map(\.tag), ["two"])
     }
 
     func testOpenBotExcludedAndRenamedDefaultRetainsHermesAlias() {
@@ -91,6 +96,16 @@ final class BotMentionTests: XCTestCase {
         }
         XCTAssertNil(BotMentionTrigger.detect(in: "@res", selection: NSRange(location: 1, length: 2)))
         XCTAssertNil(BotMentionTrigger.detect(in: "@res", selection: NSRange(location: 99, length: 0)))
+    }
+
+    func testAuthoredNoteLikeTextIsPreserved() {
+        let mentions = BotMentions(roster: [bot("research")], excluding: "dev")
+        let original = "@research explain this\n\n[@mentions resolved from the Bot Mode roster: my own example]"
+        XCTAssertEqual(BotMentions.displayText(original), original)
+        XCTAssertEqual(BotMentions.displayText(original + mentions.annotation(for: "@research")), original)
+        let malformed = mentions.annotation(for: "@research")
+            .replacingOccurrences(of: "@research = agent profile", with: "something else")
+        XCTAssertEqual(BotMentions.displayText(original + malformed), original + malformed)
     }
 
     func testTrailingAnnotationHiddenOnlyFromUserPresentation() {
