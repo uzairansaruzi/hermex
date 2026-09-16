@@ -214,14 +214,16 @@ import XCTest
         XCTAssertEqual(rows.hidden.map(\.id), ["gamma"], "a search names hidden bots too")
     }
 
-    func testSocketLossKeepsTheRosterAndBlocksEditsUntilReconnect() async throws {
+    func testSocketLossKeepsTheRosterAndReconnectsQuietly() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.configure = { _ in XCTFail("no write on a dead socket"); return .null }
-        let inbox = try makeInbox(wires: [wire, BotInboxFixtureWire(roster: [row("triage")])])
+        let second = BotInboxFixtureWire(roster: [row("triage", preview: "back")])
+        second.holdsConnect = true
+        let inbox = try makeInbox(wires: [wire, second])
         await inbox.open()
         wire.onDisconnect?(BotFailure.transport)
         XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertEqual(inbox.errorMessage, "Live updates stopped. Pull down to refresh.")
+        XCTAssertNil(inbox.errorMessage, "a lost socket is not the user's problem")
         XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
         XCTAssertFalse(inbox.mayEdit(inbox.profiles[0]))
         await inbox.setPinned(true, inbox.profiles[0])
@@ -229,9 +231,28 @@ import XCTest
         await Task.yield()
         XCTAssertEqual(wire.listCalls, 1)
 
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .live)
+        // The reconnect happens on its own; the roster stays up until it lands.
+        await settle(inbox) { $0.link == .connecting }
+        XCTAssertEqual(inbox.profiles.map(\.preview), ["hi"])
+        second.release()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertEqual(inbox.profiles.map(\.preview), ["back"])
         XCTAssertNil(inbox.errorMessage)
+    }
+
+    func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.rejected(401)
+        var spare = 0
+        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertEqual(inbox.errorMessage, BotFailure.rejected(401).localizedDescription)
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(spare, 1, "no automatic retry after a refusal")
     }
 
     func testUnreadableSavedConnectionShowsTheFailureInsteadOfAStaleRoster() async throws {
@@ -263,15 +284,17 @@ import XCTest
 
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil) throws -> BotInbox {
         let server = server ?? self.server
-        let store = try store ?? {
-            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
-            try store.save(BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!,
-                                         username: "u", password: "p", hermesVersion: nil), server: server)
-            return store
-        }()
+        let store = try store ?? connectedStore(server: server)
         var queue = wires
         return BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
-                        avatarStore: BotAvatarStore(), reloadSpacing: .zero) { _ in queue.removeFirst() }
+                        avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in queue.removeFirst() }
+    }
+
+    private func connectedStore(server: URL? = nil) throws -> BotConnectionStore {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!,
+                                     username: "u", password: "p", hermesVersion: nil), server: server ?? self.server)
+        return store
     }
 
     private func row(_ name: String, lastActive: Double? = 100, preview: String = "hi", tip: String = "tip",
@@ -318,6 +341,9 @@ import XCTest
     var onCall: ((String) -> Void)?
     /// While true, `profiles.list` waits for `release()`.
     var holdsList = false
+    /// While true, `connect()` waits for `release()`; `connectError` makes it throw instead.
+    var holdsConnect = false
+    var connectError: Error?
     private(set) var closed = 0
     private var held: [CheckedContinuation<Void, Never>] = []
 
@@ -325,7 +351,10 @@ import XCTest
 
     var listCalls: Int { calls.filter { $0.0 == "profiles.list" }.count }
 
-    func connect() async throws {}
+    func connect() async throws {
+        if holdsConnect { await withCheckedContinuation { held.append($0) } }
+        if let connectError { throw connectError }
+    }
     func close() { closed += 1 }
 
     func deleteProfile(_ name: String) async throws {

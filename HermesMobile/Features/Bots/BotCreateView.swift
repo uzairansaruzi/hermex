@@ -16,7 +16,7 @@ import SwiftUI
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    BotAvatarMarkView(name: creator.name, appearance: creator.draft.appearance, size: 150)
+                    BotInteractiveFaceView(name: creator.name, appearance: creator.draft.appearance, size: 150)
                         .padding(.top, 24).padding(.bottom, 20)
                     if creator.hasStarted { results }
                     card {
@@ -124,7 +124,7 @@ import SwiftUI
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
                 ForEach(BotAvatarColor.palette) { color in
                     Button { creator.setColor(color.hex) } label: {
-                        Circle().fill(Color(botHex: color.hex) ?? .purple).frame(width: 30, height: 30)
+                        Circle().fill(color.swatch).frame(width: 30, height: 30)
                             .overlay { if creator.draft.appearance.color == color.hex { Circle().stroke(.secondary, lineWidth: 3).padding(-5) } }
                             .frame(minWidth: 44, minHeight: 44)
                     }

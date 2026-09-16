@@ -81,23 +81,82 @@ struct BotAnimatedFaceView: View {
     let appearance: BotProfileAppearance
     let size: CGFloat
     var motion: BotFaceMotion = .idle
+    /// Extra gaze, as a fraction of the mark size, layered onto the motion's pose.
+    var gaze = CGSize.zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         switch motion.honoring(reduceMotion: reduceMotion) {
         case .still:
-            BotAvatarMarkView(name: name, appearance: appearance, size: size)
+            BotAvatarMarkView(name: name, appearance: appearance, size: size, pose: looking(.rest))
         case .idle:
             let schedule = BotBlinkSchedule(seed: name)
             TimelineView(schedule) { context in
                 BotAvatarMarkView(name: name, appearance: appearance, size: size,
-                                  pose: schedule.isShut(at: context.date) ? .blink : .rest)
+                                  pose: looking(schedule.isShut(at: context.date) ? .blink : .rest))
             }
         case .working:
             TimelineView(.animation(minimumInterval: 1 / 15)) { context in
                 BotAvatarMarkView(name: name, appearance: appearance, size: size,
-                                  pose: .working(at: context.date.timeIntervalSinceReferenceDate))
+                                  pose: looking(.working(at: context.date.timeIntervalSinceReferenceDate)))
             }
+        }
+    }
+
+    private func looking(_ pose: BotFacePose) -> BotFacePose {
+        var pose = pose
+        pose.gazeX += gaze.width; pose.gazeY += gaze.height
+        return pose
+    }
+}
+
+/// The hero face on the create and edit screens, after Bloub: it blinks on its own,
+/// its eyes follow a finger dragged over it, and a tap makes it squish and pull a
+/// surprised face for a moment. Every response is a discrete state change that
+/// settles on its own; nothing repaints while the face is left alone. Reduce
+/// Motion keeps the eyes still and drops the squish but still answers a tap.
+struct BotInteractiveFaceView: View {
+    let name: String
+    let appearance: BotProfileAppearance
+    let size: CGFloat
+    @State private var gaze = CGSize.zero
+    @State private var reaction = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// How far the eyes travel, as a fraction of the mark, and the reaction's length.
+    private static let reach = 0.07
+    private static let reactionDuration: Duration = .milliseconds(650)
+
+    var body: some View {
+        var shown = appearance
+        if reaction > 0 { shown.expression = BotAvatarExpression.surprised.rawValue }
+        return BotAnimatedFaceView(name: name, appearance: shown, size: size, gaze: gaze)
+            .scaleEffect(x: reaction > 0 && !reduceMotion ? 1.08 : 1, y: reaction > 0 && !reduceMotion ? 0.92 : 1)
+            .contentShape(Circle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard !reduceMotion else { return }
+                        let dx = (value.location.x - size / 2) / size, dy = (value.location.y - size / 2) / size
+                        let length = max(hypot(dx, dy), 0.001), clamp = min(length, 0.5) / length
+                        gaze = CGSize(width: dx * clamp * Self.reach * 2, height: dy * clamp * Self.reach * 2)
+                    }
+                    .onEnded { value in
+                        withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { gaze = .zero }
+                        let moved = hypot(value.translation.width, value.translation.height)
+                        if moved < 10 { react() }
+                    }
+            )
+            .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: reaction > 0)
+            .accessibilityHidden(true)
+    }
+
+    private func react() {
+        reaction += 1
+        let token = reaction
+        Task {
+            try? await Task.sleep(for: Self.reactionDuration)
+            if reaction == token { reaction = 0 }
         }
     }
 }

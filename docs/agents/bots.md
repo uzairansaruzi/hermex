@@ -379,6 +379,22 @@ verified against the compatibility pin `ee35a4624fa22237a90426f5e21d8b4f2ce3a49b
 mutation. The local upstream checkout at `cd2bd160579d5240e52d01e2f735da55ff4242ef`
 was also inspected for drift; the editor contract remains present.
 
+The inbox socket reconnects on its own. A lost socket or a failed roster read
+keeps the roster on screen and retries quietly with delays of 1, 2, 4, 8, 16
+and then 30 seconds for as long as the inbox is open; nothing is shown and no
+button is needed. Only a refusal the user must act on (sign-in, identity, an
+unsupported host, a 4xx) shows the message and the Reconnect button. Leaving
+the screen or backgrounding cancels the retry.
+
+The hero face on the create and edit screens is `BotInteractiveFaceView`, after
+Bloub: it blinks on the shared schedule, its eyes follow a finger dragged over
+it, and a tap squishes it into a surprised face for a moment. Each response is
+a discrete state change that settles by itself; Reduce Motion keeps the eyes
+still and drops the squish. The first swatch, stored as Desktop's `#ffffff`,
+is adaptive: `Color.botBody` paints it white in dark appearance and black in
+light, with eyes inverted to match, so the face and the swatch never vanish
+into the background.
+
 ## Bot lifecycle
 
 The inbox's `+` button and a row's context menu create, duplicate and delete

@@ -34,6 +34,8 @@ import UIKit
     private(set) var seen: [String: Double] = [:]
 
     private var wire: (any BotTransport)?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempts = 0
     private var reloadTask: Task<Void, Never>?
     private var reloadWanted = false
     private var reloadSerial = 0
@@ -47,13 +49,17 @@ import UIKit
     /// Minimum gap between event-driven roster reads; the host already floors
     /// `sessions.changed` at two seconds, this guards against a chattier one.
     private let reloadSpacing: Duration
+    /// Waits before each silent reconnect after a lost socket; the last one repeats.
+    private let reconnectDelays: [Duration]
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          avatarStore: BotAvatarStore? = nil, reloadSpacing: Duration = .seconds(1),
+         reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
+        self.reconnectDelays = reconnectDelays
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
             try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
@@ -108,29 +114,42 @@ import UIKit
                 guard let self, self.wire === client, event["type"].text == "sessions.changed" else { return }
                 self.noteChange()
             }
-            client.onDisconnect = { [weak self] _ in
+            client.onDisconnect = { [weak self] error in
                 guard let self, self.wire === client else { return }
-                self.drop(client, message: String(localized: "Live updates stopped. Pull down to refresh."))
+                self.drop(client, error: error)
             }
             try await client.connect()
             guard wire === client, !Task.isCancelled else { return }
             guard await reload(client) else { return }
             link = .live
+            reconnectAttempts = 0
             await refreshAvatars(client)
         } catch {
             guard !Task.isCancelled else { return }
-            let message = (error as? BotFailure ?? .transport).localizedDescription
             // A saved-connection read can fail before any client exists; that is still
             // a visible failure with the Reconnect path, not a quiet stale roster.
-            if let client = wire { drop(client, message: message) }
-            else { link = .disconnected; errorMessage = message }
+            if let client = wire { drop(client, error: error) }
+            else { link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription }
         }
     }
 
     func close() {
+        reconnectTask?.cancel(); reconnectTask = nil
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         wire?.close(); wire = nil
         link = .idle
+    }
+
+    /// A lost socket or a failed read is retried quietly, with growing delays, for
+    /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
+    /// a refusal the user has to act on (sign-in, identity, unsupported host)
+    /// shows a message and the Reconnect button.
+    private static func isRetryable(_ error: Error) -> Bool {
+        switch error as? BotFailure {
+        case nil, .transport, .stale, .missingChat: return true
+        case .rejected(let code): return code >= 500
+        default: return false
+        }
     }
 
     func mayEdit(_ profile: BotProfile) -> Bool { link == .live && !editing.contains(profile.id) }
@@ -237,7 +256,7 @@ import UIKit
             return true
         } catch {
             guard wire === client, serial == reloadSerial else { return false }
-            drop(client, message: (error as? BotFailure ?? .transport).localizedDescription)
+            drop(client, error: error)
             return false
         }
     }
@@ -249,11 +268,22 @@ import UIKit
         }
     }
 
-    private func drop(_ client: any BotTransport, message: String) {
+    private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         client.close(); wire = nil
         link = .disconnected
-        errorMessage = message
+        guard Self.isRetryable(error) else {
+            errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+            return
+        }
+        let delay = reconnectDelays[min(reconnectAttempts, reconnectDelays.count - 1)]
+        reconnectAttempts += 1
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            guard (try? await Task.sleep(for: delay)) != nil, let self, !Task.isCancelled else { return }
+            self.reconnectTask = nil
+            await self.open()
+        }
     }
 
     private func persistSeen() {

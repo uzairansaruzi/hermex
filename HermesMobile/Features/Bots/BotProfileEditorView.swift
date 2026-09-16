@@ -153,7 +153,7 @@ import SwiftUI
                     if let avatar = editor.avatar {
                         Image(uiImage: avatar).resizable().scaledToFit()
                     } else {
-                        BotAnimatedFaceView(name: editor.profile.id, appearance: editor.draft.appearance, size: 96)
+                        BotInteractiveFaceView(name: editor.profile.id, appearance: editor.draft.appearance, size: 96)
                     }
                 }
                 .frame(width: 96, height: 96)
@@ -217,7 +217,7 @@ import SwiftUI
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
                 ForEach(colors) { color in
                     Button { editor.setColor(color.hex) } label: {
-                        Circle().fill(Color(botHex: color.hex) ?? .purple).frame(width: 30, height: 30)
+                        Circle().fill(color.swatch).frame(width: 30, height: 30)
                             .overlay { if editor.draft.appearance.color == color.hex { Circle().stroke(.secondary, lineWidth: 3).padding(-5) } }
                             .frame(minWidth: 44, minHeight: 44)
                     }
