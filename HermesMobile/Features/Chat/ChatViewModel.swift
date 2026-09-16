@@ -562,6 +562,10 @@ final class ChatViewModel {
     private var latestServerLoadHadAssistantResponseAfterLatestUser = false
     private var needsComposerConfigurationReload = false
     private var pendingExplicitModelPick = false
+    /// The model/provider the session arrived with, kept so later sends can
+    /// tell a deliberate restored route from a profile-default seed.
+    private var restoredSessionModel: String?
+    private var restoredSessionModelProvider: String?
     private(set) var composerConfigurationInteractionGeneration = 0
 
     init(
@@ -593,6 +597,8 @@ final class ChatViewModel {
         currentModel = session.model
         currentModelProvider = session.modelProvider
         currentProfile = session.profile
+        restoredSessionModel = Self.nonEmpty(session.model)
+        restoredSessionModelProvider = Self.nonEmpty(session.modelProvider)
         isCLISession = session.isCliSession == true
         self.server = server
         let resolvedClient = client ?? APIClient(baseURL: server)
@@ -828,13 +834,68 @@ final class ChatViewModel {
     }
 
     private func explicitModelPickForChatStart() -> Bool {
-        pendingExplicitModelPick && Self.nonEmpty(currentModel) != nil
+        guard Self.nonEmpty(currentModel) != nil else { return false }
+
+        // A picker write made in this chat is always deliberate. Do not let an
+        // older response landing late (or anything else) consume it (the
+        // generation check orders picker writes against concurrent sends).
+        if pendingExplicitModelPick {
+            return true
+        }
+
+        // A session restored with its own saved route is deliberate for the
+        // life of that session. It stops being the session's own choice only
+        // when the current route matches the owning profile's default seed
+        // (profile metadata loaded) or when the session carries no saved
+        // route of its own. A picker write also refreshes the snapshot, so
+        // the comparison stays against what the user actually chose.
+        guard let restoredModel = restoredSessionModel, let currentModel else {
+            return false
+        }
+
+        if let profileDefault = Self.nonEmpty(profileDefaultSeedModel()) {
+            // Catalog/owning-profile defaults are known: an override is
+            // deliberate only when it differs from that seed (same provider
+            // model overrides included).
+            let sameModel = currentModel == profileDefault
+            let sameProvider = restoredSessionModelProvider == nil
+                || Self.nonEmpty(currentModelProvider) == nil
+                || Self.nonEmpty(currentModelProvider) == restoredSessionModelProvider
+            return !(sameModel && sameProvider)
+        }
+
+        // Profile default is not resolved yet: fall back to the saved
+        // provider metadata. A qualified route (named custom provider, or the
+        // `@provider:` model spelling) is deliberate on its own; a plain
+        // provider id without loaded profile metadata can't be told apart
+        // from a default seed, so it is not treated as deliberate.
+        guard let restoredProvider = restoredSessionModelProvider else {
+            return restoredModel.modelIDProviderPrefix != nil
+        }
+
+        let restoredIsQualified = restoredModel.hasPrefix("@")
+            || restoredProvider.contains(":")
+        guard restoredIsQualified else { return false }
+        let currentProvider = Self.nonEmpty(currentModelProvider)
+        return currentProvider == nil || currentProvider == restoredProvider
     }
 
+    /// The owning profile's default model when its metadata is loaded
+    /// (`profileOptions` from the composer configuration), else nil.
+    private func profileDefaultSeedModel() -> String? {
+        let profileName = Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile)
+        guard let profileName,
+              let option = profileOptions.first(where: { $0.normalizedName == profileName })
+        else { return nil }
+        return Self.nonEmpty(option.model)
+    }
+
+    /// A picker-persisted selection (or its absence after a profile switch /
+    /// new session) is the state to keep — successful sends never consume it.
     private func completeExplicitModelPickForChatStart(_ explicitModelPick: Bool) {
-        if explicitModelPick {
-            pendingExplicitModelPick = false
-        }
+        // Intentionally no reset: the pick stays attached to its
+        // model+provider until the user changes it via the picker, switches
+        // profile, or starts a new session, all of which reset the flag.
     }
 
     func loadComposerConfiguration() async {
@@ -860,7 +921,16 @@ final class ChatViewModel {
                 continue
             }
 
+            let hadExplicitPick = pendingExplicitModelPick
             applyComposerConfigurationState(result.state)
+            if !hadExplicitPick {
+                // A configuration seed that produced a profile-default route
+                // (fresh profile switch, brand-new chat with no saved session
+                // override) is context, not a deliberate pick, so re-derive.
+                // A restored session override survives: it is compared against
+                // the freshly loaded profile default below.
+                pendingExplicitModelPick = explicitModelPickForChatStart()
+            }
 
             if let error = result.configurationError {
                 lastError = error
@@ -938,12 +1008,7 @@ final class ChatViewModel {
             return false
         }
 
-        guard !isViewingCachedData else {
-            composerConfigurationErrorMessage = String(localized: "Reconnect to the server to change models.")
-            return false
-        }
-
-        guard activeStreamID == nil else {
+        guard activeStreamID == nil, !isStartingChat, !isViewingCachedData else {
             composerConfigurationErrorMessage = String(localized: "Wait for the current response to finish before changing models.")
             return false
         }
@@ -970,6 +1035,10 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? option.providerID
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            // The picker write is the session's route intent from now on; the
+            // restored-era snapshot no longer decides.
+            restoredSessionModel = currentModel
+            restoredSessionModelProvider = Self.nonEmpty(currentModelProvider)
             // Still inside the isUpdatingComposerConfiguration window, so the
             // effort menu stays disabled until the new model's gating lands —
             // no interactable flash of the previous model's options (issue #18).
@@ -1222,7 +1291,11 @@ final class ChatViewModel {
                 currentModel = defaultModel
                 currentModelProvider = Self.nonEmpty(profile.provider)
             }
+            // Switching profiles drops the old session's route intent: the new
+            // default is a seed, not a pick, until the user chooses again.
             pendingExplicitModelPick = false
+            restoredSessionModel = nil
+            restoredSessionModelProvider = nil
 
             await loadComposerConfiguration()
 
@@ -3096,6 +3169,8 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? match?.providerID ?? currentModelProvider
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            restoredSessionModel = currentModel
+            restoredSessionModelProvider = Self.nonEmpty(currentModelProvider)
             await refreshReasoningEffortGating()
             return .executed(message: nil)
         } catch {
@@ -3613,6 +3688,10 @@ final class ChatViewModel {
             guard let session = response.session else {
                 return .unsupported(friendlyMessage: String(localized: "The server did not return the new session."))
             }
+
+            // A fresh session seeded from the profile default is context, not
+            // a deliberate pick — only a real picker write makes it explicit.
+            pendingExplicitModelPick = false
 
             return .openedSession(SessionSummary(from: session))
         } catch {
