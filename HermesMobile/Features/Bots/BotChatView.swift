@@ -151,8 +151,10 @@ import SwiftUI
         .toolbar(removing: .title)
         .navigationDestination(isPresented: $showingProfileEditor) {
             BotProfileEditorView(server: model.server, connection: model.connection, profile: model.profile,
-                                 avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id])
-                .id(model.connection.id.uuidString + model.profile.id)
+                                 avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id]) {
+                Task { await model.refreshProfile() }
+            }
+            .id(model.connection.id.uuidString + model.profile.id)
         }
         .task(id: recoveryID) {
             if scenePhase == .active { await model.recover() }

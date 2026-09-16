@@ -66,6 +66,16 @@ import UIKit
         }
     }
 
+    /// Bounds a picked image to the same size the store keeps for fetched assets.
+    nonisolated static func thumbnail(_ image: UIImage) -> UIImage? {
+        let longest = max(image.size.width * image.scale, image.size.height * image.scale)
+        guard longest > CGFloat(maxPixelSize) else { return image }
+        let scale = CGFloat(maxPixelSize) / longest
+        let size = CGSize(width: image.size.width * image.scale * scale, height: image.size.height * image.scale * scale)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+    }
+
     /// Decodes a `profiles.get_asset` reply into a bounded thumbnail. Anything other
     /// than a found, base64 image data URL within the size cap decodes to nil, and a
     /// nil avatar means the row keeps its static shape fallback.
