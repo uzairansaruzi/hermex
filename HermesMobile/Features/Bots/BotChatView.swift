@@ -16,6 +16,8 @@ import SwiftUI
     /// Bumped by the status line's Review action; the transcript scrolls on change.
     @State private var showRequestID = UUID()
     @State private var showingProfileEditor = false
+    /// Measured composer height; sizes the material fade behind it, as the main chat does.
+    @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(server: URL, connection: BotConnection, profile: BotProfile) {
@@ -70,7 +72,8 @@ import SwiftUI
                         Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
                     .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
-                    .padding(.vertical, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 44)
                     // A tapped row must stay under the finger: stop following so
                     // neither the size-change anchor nor the next activity update
                     // moves the reader. Latest brings them back.
@@ -119,27 +122,33 @@ import SwiftUI
                         .allowsHitTesting(false)
                     }
                 }
+                .adaptiveSoftScrollEdges(.top)
                 .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             }
         }
         .navigationTitle(model.profile.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 8) {
-                    BotAvatarView(profile: model.profile,
-                                  avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id],
-                                  size: 30, motion: isStreaming ? .working : .idle)
-                    ChatToolbarTitleLabel(title: model.profile.name, subtitle: model.chatControls.workspace?.lastPathComponentFallback)
+            // The bot's face and name sit in one pill beside Back, and that pill is the
+            // way into its profile. iOS 26 draws the toolbar glass; older systems get a material.
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showingProfileEditor = true } label: {
+                    HStack(spacing: 8) {
+                        BotAvatarView(profile: model.profile,
+                                      avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id],
+                                      size: 30, motion: isStreaming ? .working : .idle)
+                        Text(model.profile.name).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                    }
+                    .modifier(BotChatTitlePillFallback())
                 }
+                .accessibilityLabel(model.profile.name)
+                .accessibilityHint(Text("Opens this bot’s profile."))
             }
             if !model.chatControls.controls.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { BotSessionControlMenu(settings: model.chatControls) }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Edit", systemImage: "info.circle") { showingProfileEditor = true }
-            }
         }
+        .toolbar(removing: .title)
         .navigationDestination(isPresented: $showingProfileEditor) {
             BotProfileEditorView(server: model.server, connection: model.connection, profile: model.profile,
                                  avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id])
@@ -246,6 +255,8 @@ import SwiftUI
         proxy.scrollTo("bot-transcript-bottom", anchor: .bottom)
     }
 
+    /// The composer over the same bottom fade the main chat uses, so the two
+    /// transcripts end identically. The fade reaches 34 pt above the composer.
     private var composer: some View {
         BotChatComposerView(
             model: model,
@@ -253,5 +264,23 @@ import SwiftUI
             onReconnect: { recoveryID = UUID() },
             onShowRequest: { showRequestID = UUID() }
         )
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
+        .background(alignment: .bottom) {
+            BottomComposerMaterialFade(composerHeight: composerHeight)
+                .frame(height: max(96, composerHeight + 34))
+        }
+    }
+}
+
+
+/// Before iOS 26 the toolbar draws no glass of its own, so the pill supplies a material.
+private struct BotChatTitlePillFallback: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+        } else {
+            content.padding(.leading, 4).padding(.trailing, 12).padding(.vertical, 4)
+                .background(.regularMaterial, in: Capsule())
+        }
     }
 }
