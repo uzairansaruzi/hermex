@@ -221,12 +221,11 @@ struct BotProfileDetails: Equatable, Sendable {
         clearOutcome(.avatar)
     }
 
+    /// Only the eyes change: an uploaded photo, the `custom` flag and the default
+    /// bot's fixed look are left alone, so the expression shows once no photo covers it.
     func setExpression(_ expression: BotAvatarExpression) {
         draft.appearance.expression = expression == .neutral ? nil : expression.rawValue
-        draft.appearance.custom = true
-        draft.appearance.imageKind = "shape"
-        avatar = nil; avatarChange = .remove
-        clearOutcome(.appearance); clearOutcome(.avatar)
+        clearOutcome(.appearance)
     }
 
     func resetAppearance() {
