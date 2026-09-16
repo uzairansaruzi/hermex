@@ -9349,6 +9349,7 @@ final class ChatViewModelSendTests: XCTestCase {
         chatStartBodies: NSLockBox,
         streamIDPrefix: String
     ) -> (URLRequest) throws -> (HTTPURLResponse, Data) {
+        let sessionRequests = NSLockBox()
         return { request in
             switch request.url?.path {
             case "/api/chat/start":
@@ -9383,7 +9384,11 @@ final class ChatViewModelSendTests: XCTestCase {
                 return apiTestJSONResponse(#"{"commands": []}"#, for: request)
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "@custom:opencode-go:deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: "@custom:opencode-go:deepseek-v4.1-flash",
+                        provider: "custom:opencode-go"
+                    ),
                     for: request
                 )
             default:
@@ -9394,19 +9399,49 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     /// Completes the in-flight turn the way the real stream lifecycle does:
-    /// token → done → stream_end through the spy, then yields until the view
-    /// model is idle, so a follow-up send is a genuinely second send.
+    /// token → done → stream_end through the spy, then fences on the per-turn
+    /// follow-up work the finish triggers. Finishing a normally completed
+    /// stream makes the view model fire a completed-response title refresh
+    /// (`GET /api/session`) on an unstructured task — actor yields and even
+    /// `activeStreamID == nil` cannot order against it, and that request is
+    /// what used to leak into the NEXT test's MockURLProtocol handler. The
+    /// route fixtures therefore serve a rotating title, and this helper waits
+    /// for it to land in `displayTitle`: proof the refresh request was made
+    /// AND its response fully consumed. Only then is the view model
+    /// network-idle and a follow-up send a genuinely second send.
     @MainActor
     private func completeStreamingTurn(
         _ streamClient: SpySSEStreamingClient,
         thenDrain viewModel: ChatViewModel
-    ) async {
+    ) async throws {
+        let titleBefore = viewModel.displayTitle
         streamClient.emit(.token("Partial answer."))
         streamClient.emit(.done(DoneStreamEvent(session: nil)))
         streamClient.emit(.streamEnd)
-        for _ in 0..<3 { await Task.yield() }
-        await Task { @MainActor in }.value
+        try await waitUntil { viewModel.displayTitle != titleBefore }
+        XCTAssertNotEqual(
+            viewModel.displayTitle,
+            titleBefore,
+            "The completed-response title refresh did not settle; per-turn follow-up work is still in flight."
+        )
         XCTAssertNil(viewModel.activeStreamID)
+    }
+
+    /// Real `/api/session` reload payload for the route-intent fixtures. The
+    /// title rotates per request so `completeStreamingTurn`'s settle fence
+    /// observes a `displayTitle` change for every completed turn, even
+    /// back-to-back within one test. The recorder keeps the count by live
+    /// reference (MockURLProtocol handlers cannot capture a mutating var).
+    private func modelRouteSessionReloadJSON(
+        sessionRequests: NSLockBox,
+        model: String,
+        provider: String?
+    ) -> String {
+        sessionRequests.append([:])
+        let providerJSON = provider.map { ", \"model_provider\": \"\($0)\"" } ?? ""
+        return """
+        {"session": {"session_id": "session-abc", "title": "Completed Turn \(sessionRequests.all.count)", "workspace": "/tmp/workspace", "model": "\(model)"\(providerJSON), "messages": []}}
+        """
     }
 
     @MainActor
@@ -9429,11 +9464,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let didStartFirst = await viewModel.sendMessage("Continue with the restored route")
         XCTAssertTrue(didStartFirst)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let didStartSecond = await viewModel.sendMessage("Keep going")
         XCTAssertTrue(didStartSecond)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 2)
@@ -9453,6 +9488,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // A deliberate picker choice must carry explicit-pick intent into both
         // the first and a later fully-completed send in the same chat.
         let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -9480,7 +9516,7 @@ final class ChatViewModelSendTests: XCTestCase {
                     )
                 case "/api/session":
                     return apiTestJSONResponse(
-                        #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "messages": []}}"#,
+                        self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "deepseek-v4.1-flash", provider: "custom:opencode-go"),
                         for: request
                     )
                 default:
@@ -9501,11 +9537,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let didStartFirst = await viewModel.sendMessage("Use the picked model")
         XCTAssertTrue(didStartFirst)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let didStartSecond = await viewModel.sendMessage("Continue with it")
         XCTAssertTrue(didStartSecond)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 2)
@@ -9592,6 +9628,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // session, but after a deliberate picker write, sends DO carry
         // explicit intent — separate rule from the default-seed control.
         let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
         let pickedOption = ModelCatalogOption(
             id: "deepseek-v4.1-flash",
             displayName: "DeepSeek v4.1 Flash",
@@ -9624,7 +9661,7 @@ final class ChatViewModelSendTests: XCTestCase {
                     )
                 case "/api/session":
                     return apiTestJSONResponse(
-                        #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "messages": []}}"#,
+                        self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "deepseek-v4.1-flash", provider: "custom:opencode-go"),
                         for: request
                     )
                 default:
@@ -9639,11 +9676,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let didStartFirst = await viewModel.sendMessage("Use the picked model")
         XCTAssertTrue(didStartFirst)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let didStartSecond = await viewModel.sendMessage("Keep going with it")
         XCTAssertTrue(didStartSecond)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 2)
@@ -9713,7 +9750,7 @@ final class ChatViewModelSendTests: XCTestCase {
         await viewModel.loadComposerConfiguration()
         let didStart = await viewModel.sendMessage("Use the profile default")
         XCTAssertTrue(didStart)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 1)
@@ -9729,6 +9766,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // authoritative for the next send. No invented seam: asserts
         // `pinnedLocalNotices` and `selectedModelID` only.
         let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let sessionRequests = makeModelRouteRecorder()
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -9749,7 +9787,11 @@ final class ChatViewModelSendTests: XCTestCase {
                 )
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "@custom:opencode-go:deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: "@custom:opencode-go:deepseek-v4.1-flash",
+                        provider: "custom:opencode-go"
+                    ),
                     for: request
                 )
             default:
@@ -9772,13 +9814,14 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedModelProviderID, "custom:opencode-go")
 
         // End idle: finish the stream so no live work leaks into the next test.
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
     @MainActor
     func testLegacyChatStartWithoutEffectiveFieldsPinsNoRouteNotice() async throws {
         // Older servers omit both effective fields: no notice, nothing to
         // disclose.
+        let sessionRequests = makeModelRouteRecorder()
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -9792,7 +9835,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 )
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "gpt-5.4", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-5.4", provider: nil),
                     for: request
                 )
             default:
@@ -9810,7 +9853,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
 
         // End idle: finish the stream so no live work leaks into the next test.
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
     @MainActor
@@ -9824,6 +9867,7 @@ final class ChatViewModelSendTests: XCTestCase {
             providerID: "openai-codex"
         )
         let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let sessionRequests = makeModelRouteRecorder()
         // Real gate: the synchronous MockURLProtocol handler blocks its
         // loading-thread work on a semaphore (the established pattern in this
         // suite), so the chat-start reply genuinely arrives AFTER the picker
@@ -9859,7 +9903,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "gpt-6-astra", "model_provider": "openai-codex", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-6-astra", provider: "openai-codex"),
                     for: request
                 )
             default:
@@ -9891,7 +9935,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
 
         // End idle: finish the stream so no live work leaks into the next test.
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
     @MainActor
@@ -9959,7 +10003,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let didStart = await viewModel.sendMessage("Continue with the restored route")
         XCTAssertTrue(didStart)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 1)
@@ -9979,6 +10023,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // live — its picker-established intent must not have been cleared as
         // a side effect of creating the other session.
         let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -10005,7 +10050,7 @@ final class ChatViewModelSendTests: XCTestCase {
                     )
                 case "/api/session":
                     return apiTestJSONResponse(
-                        #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "gpt-5.5", "model_provider": "openai", "messages": []}}"#,
+                        self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-5.5", provider: "openai"),
                         for: request
                     )
                 default:
@@ -10032,7 +10077,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // pick must still be explicit.
         let didStart = await viewModel.sendMessage("Still on the old session")
         XCTAssertTrue(didStart)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 1)
@@ -10050,6 +10095,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // The server resolving the SAME route under a different spelling
         // (`@provider:` prefix carried in the model id instead of the
         // provider field) is not a mismatch: no warning.
+        let sessionRequests = makeModelRouteRecorder()
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -10069,7 +10115,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 )
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "deepseek-v4.1-flash", provider: "custom:opencode-go"),
                     for: request
                 )
             default:
@@ -10087,7 +10133,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedModelProviderID, "custom:opencode-go")
 
         // End idle: finish the stream so no live work leaks into the next test.
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
     @MainActor
@@ -10097,6 +10143,7 @@ final class ChatViewModelSendTests: XCTestCase {
         // and only THIS feature's notice is removed; unrelated pinned notices
         // survive.
         let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
         let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
@@ -10133,7 +10180,11 @@ final class ChatViewModelSendTests: XCTestCase {
                 )
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "@custom:opencode-go:deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: "@custom:opencode-go:deepseek-v4.1-flash",
+                        provider: "custom:opencode-go"
+                    ),
                     for: request
                 )
             default:
@@ -10146,7 +10197,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStartFirst)
         XCTAssertEqual(viewModel.pinnedLocalNotices.count, 1)
         XCTAssertTrue(viewModel.pinnedLocalNotices.first?.contains("gpt-6-astra") == true)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         viewModel.pinLocalNoticeMessage("Unrelated note.")
 
@@ -10163,13 +10214,14 @@ final class ChatViewModelSendTests: XCTestCase {
 
         // End idle: finish the second stream so no live work (or queued
         // transcript reload) leaks into the next test's handler.
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
     @MainActor
     func testMalformedEffectiveFieldsPinNoNotice() async throws {
         // A malformed effective_model (wrong JSON type) decodes lossily to
         // nil: no crash, no notice, no invented route.
+        let sessionRequests = makeModelRouteRecorder()
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -10183,7 +10235,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 )
             case "/api/session":
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "gpt-5.4", "messages": []}}"#,
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-5.4", provider: nil),
                     for: request
                 )
             default:
@@ -10200,7 +10252,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
 
         // End idle: finish the stream so no live work leaks into the next test.
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
     @MainActor
@@ -10310,13 +10362,13 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNotNil(firstOutcome)
         let didStartFirst = await viewModel.sendMessage("Send on the research default")
         XCTAssertTrue(didStartFirst)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let secondOutcome = await viewModel.switchProfile(poolopsProfile, startNewSession: false)
         XCTAssertNotNil(secondOutcome)
         let didStartSecond = await viewModel.sendMessage("Send back on the poolops default")
         XCTAssertTrue(didStartSecond)
-        await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
 
         let bodies = chatStartBodies.all
         XCTAssertEqual(bodies.count, 2)
