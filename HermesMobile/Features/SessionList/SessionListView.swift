@@ -137,7 +137,7 @@ struct SessionListView: View {
                     moment: ratingMoment,
                     server: server,
                     isSessionListVisible: { isQuietSessionListVisible },
-                    loadSessions: { try await APIClient(baseURL: server).sessions().sessions },
+                    loadSessions: { try await APIClient(baseURL: server).sessions(includeArchived: true).sessions },
                     request: { requestReview() }
                 )
             }
