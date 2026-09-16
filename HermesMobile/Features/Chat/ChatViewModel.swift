@@ -566,6 +566,10 @@ final class ChatViewModel {
     /// tell a deliberate restored route from a profile-default seed.
     private var restoredSessionModel: String?
     private var restoredSessionModelProvider: String?
+    /// The exact effective-route notice this view model pinned, so a later
+    /// start reply or selection change replaces/clears ONLY its own notice and
+    /// never an unrelated pinned one.
+    private var pinnedEffectiveRouteNotice: String?
     private(set) var composerConfigurationInteractionGeneration = 0
 
     init(
@@ -853,15 +857,16 @@ final class ChatViewModel {
             return false
         }
 
-        if let profileDefault = Self.nonEmpty(profileDefaultSeedModel()) {
-            // Catalog/owning-profile defaults are known: an override is
-            // deliberate only when it differs from that seed (same provider
-            // model overrides included).
-            let sameModel = currentModel == profileDefault
-            let sameProvider = restoredSessionModelProvider == nil
-                || Self.nonEmpty(currentModelProvider) == nil
-                || Self.nonEmpty(currentModelProvider) == restoredSessionModelProvider
-            return !(sameModel && sameProvider)
+        if let seed = profileDefaultSeedRoute() {
+            // Owning-profile metadata is loaded: the route is deliberate
+            // exactly when it differs from that default — in model OR in
+            // provider. The provider is part of the route: the same model
+            // text served by another provider is an override, not the
+            // default.
+            return !Self.sameModelRoute(
+                currentModel, provider: Self.nonEmpty(currentModelProvider),
+                seed.model, provider: seed.provider
+            )
         }
 
         // Profile default is not resolved yet: fall back to the saved
@@ -880,22 +885,86 @@ final class ChatViewModel {
         return currentProvider == nil || currentProvider == restoredProvider
     }
 
-    /// The owning profile's default model when its metadata is loaded
-    /// (`profileOptions` from the composer configuration), else nil.
-    private func profileDefaultSeedModel() -> String? {
+    /// The owning profile's default route (model + provider) when its
+    /// metadata is loaded (`profileOptions` from the composer configuration),
+    /// else nil.
+    private func profileDefaultSeedRoute() -> (model: String, provider: String?)? {
         let profileName = Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile)
         guard let profileName,
-              let option = profileOptions.first(where: { $0.normalizedName == profileName })
+              let option = profileOptions.first(where: { $0.normalizedName == profileName }),
+              let model = Self.nonEmpty(option.model)
         else { return nil }
-        return Self.nonEmpty(option.model)
+        return (model, Self.nonEmpty(option.provider))
     }
 
-    /// A picker-persisted selection (or its absence after a profile switch /
-    /// new session) is the state to keep — successful sends never consume it.
-    private func completeExplicitModelPickForChatStart(_ explicitModelPick: Bool) {
-        // Intentionally no reset: the pick stays attached to its
-        // model+provider until the user changes it via the picker, switches
-        // profile, or starts a new session, all of which reset the flag.
+    /// Canonical route identity: bare model ids must match and any provider
+    /// named on either side (argument or `@provider:` spelling) must agree.
+    /// A side that names no provider cannot disprove a match.
+    private static func sameModelRoute(
+        _ lhsModel: String, provider lhsProvider: String?,
+        _ rhsModel: String, provider rhsProvider: String?
+    ) -> Bool {
+        let lhsNamedProvider = nonEmpty(lhsProvider) ?? lhsModel.modelIDProviderPrefix
+        let rhsNamedProvider = nonEmpty(rhsProvider) ?? rhsModel.modelIDProviderPrefix
+        if let lhsNamedProvider, let rhsNamedProvider, lhsNamedProvider != rhsNamedProvider {
+            return false
+        }
+        return lhsModel.bareModelID == rhsModel.bareModelID
+    }
+
+    /// Surfaces the server-resolved START route when a successful chat/start
+    /// reply says it differs from the route the send requested. The reply's
+    /// effective route is the route the start was resolved with — not a
+    /// confirmed inference route — so the notice says exactly that, and the
+    /// requested selection stays authoritative for the next send.
+    ///
+    /// Stale replies are dropped: a picker/profile write or a session change
+    /// after the send was dispatched means the reply no longer describes the
+    /// current selection, so it must not pin a notice or clear newer intent.
+    private func applyEffectiveRouteNotice(
+        from response: ChatStartResponse,
+        requestedModel: String?,
+        requestedProvider: String?,
+        sessionID expectedSessionID: String,
+        selectionGeneration: Int
+    ) {
+        guard sessionID == expectedSessionID,
+              composerConfigurationInteractionGeneration == selectionGeneration
+        else { return }
+
+        // Older servers omit the fields and malformed values decode to nil:
+        // nothing to disclose, and an existing notice is left alone rather
+        // than replaced by an invented route.
+        guard let effectiveModel = Self.nonEmpty(response.effectiveModel),
+              let requestedModel = Self.nonEmpty(requestedModel)
+        else { return }
+
+        let effectiveProvider = Self.nonEmpty(response.effectiveModelProvider)
+        if Self.sameModelRoute(
+            requestedModel, provider: requestedProvider,
+            effectiveModel, provider: effectiveProvider
+        ) {
+            // The server confirms the requested route; any mismatch notice
+            // this feature pinned earlier is outdated.
+            clearEffectiveRouteNotice()
+            return
+        }
+
+        let requestedRoute = requestedModel + (requestedProvider.map { " (\($0))" } ?? "")
+        let effectiveRoute = effectiveModel + (effectiveProvider.map { " (\($0))" } ?? "")
+        let notice = String(localized: "Requested \(requestedRoute) but the server started this response with \(effectiveRoute). Your model selection is unchanged and will be used for the next send.")
+        guard pinnedEffectiveRouteNotice != notice else { return }
+        clearEffectiveRouteNotice()
+        pinLocalNoticeMessage(notice)
+        pinnedEffectiveRouteNotice = notice
+    }
+
+    /// Removes ONLY this feature's own pinned notice; unrelated pinned
+    /// notices are never touched.
+    private func clearEffectiveRouteNotice() {
+        guard let notice = pinnedEffectiveRouteNotice else { return }
+        pinnedEffectiveRouteNotice = nil
+        pinnedLocalNotices.removeAll { $0 == notice }
     }
 
     func loadComposerConfiguration() async {
@@ -1008,7 +1077,12 @@ final class ChatViewModel {
             return false
         }
 
-        guard activeStreamID == nil, !isStartingChat, !isViewingCachedData else {
+        guard !isViewingCachedData else {
+            composerConfigurationErrorMessage = String(localized: "Reconnect to the server to change models.")
+            return false
+        }
+
+        guard activeStreamID == nil else {
             composerConfigurationErrorMessage = String(localized: "Wait for the current response to finish before changing models.")
             return false
         }
@@ -1039,6 +1113,8 @@ final class ChatViewModel {
             // restored-era snapshot no longer decides.
             restoredSessionModel = currentModel
             restoredSessionModelProvider = Self.nonEmpty(currentModelProvider)
+            // A start reply describing the previous route is outdated now.
+            clearEffectiveRouteNotice()
             // Still inside the isUpdatingComposerConfiguration window, so the
             // effort menu stays disabled until the new model's gating lands —
             // no interactable flash of the previous model's options (issue #18).
@@ -1296,6 +1372,7 @@ final class ChatViewModel {
             pendingExplicitModelPick = false
             restoredSessionModel = nil
             restoredSessionModelProvider = nil
+            clearEffectiveRouteNotice()
 
             await loadComposerConfiguration()
 
@@ -2660,6 +2737,9 @@ final class ChatViewModel {
 
         do {
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let response = try await client.startChat(
                 sessionID: sessionID,
@@ -2680,7 +2760,13 @@ final class ChatViewModel {
                 return false
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: response,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             streamCoordinator.start(
                 streamID: streamID,
                 runStartedAt: response.runStartedAt(sentAt: sentAt)
@@ -3171,6 +3257,10 @@ final class ChatViewModel {
             pendingExplicitModelPick = true
             restoredSessionModel = currentModel
             restoredSessionModelProvider = Self.nonEmpty(currentModelProvider)
+            // Same ordering guarantee as the picker: a /model write invalidates
+            // any start reply still in flight for the previous route.
+            composerConfigurationInteractionGeneration &+= 1
+            clearEffectiveRouteNotice()
             await refreshReasoningEffortGating()
             return .executed(message: nil)
         } catch {
@@ -3689,10 +3779,11 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: String(localized: "The server did not return the new session."))
             }
 
-            // A fresh session seeded from the profile default is context, not
-            // a deliberate pick — only a real picker write makes it explicit.
-            pendingExplicitModelPick = false
-
+            // The old view model keeps its route intent: creating the new
+            // session succeeded, but if the navigation to it fails or is not
+            // adopted, this view model is still the live one and its pick
+            // must survive. The new session's own view model derives intent
+            // from its restored session summary instead.
             return .openedSession(SessionSummary(from: session))
         } catch {
             lastError = error
@@ -3977,6 +4068,9 @@ final class ChatViewModel {
             attachmentCoordinator.removeAllLocalPreviews()
 
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let chatResponse = try await client.startChat(
                 sessionID: sessionID,
@@ -3992,7 +4086,13 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: chatResponse.error ?? String(localized: "The server did not return a stream ID after retrying."))
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: chatResponse,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             messages.append(
                 ChatMessage(
                     role: "user",
@@ -4264,6 +4364,9 @@ final class ChatViewModel {
 
             // Now send the edited text through the normal chat flow
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let chatResponse = try await client.startChat(
                 sessionID: sessionID,
@@ -4280,7 +4383,13 @@ final class ChatViewModel {
                 return false
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: chatResponse,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             // Append the optimistic user message
             messages.append(
                 ChatMessage(
@@ -4370,6 +4479,9 @@ final class ChatViewModel {
             }
 
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let chatResponse = try await client.startChat(
                 sessionID: sessionID,
@@ -4386,7 +4498,13 @@ final class ChatViewModel {
                 return false
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: chatResponse,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             streamCoordinator.prepareForNewResponse()
             responseCompletionNeedsTranscriptRefresh = false
             streamCoordinator.start(

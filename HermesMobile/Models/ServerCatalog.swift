@@ -7,12 +7,20 @@ struct ChatStartResponse: Decodable, Equatable {
     /// (`pending_started_at`), matching the value `/api/sessions/<id>` reports
     /// while the turn is in flight. Absent on servers that do not send it.
     let pendingStartedAt: Double?
+    /// The route the server resolved THIS start with (`effective_model`) —
+    /// the server-resolved START route only, not a confirmed inference route
+    /// and not a midstream fallback. Absent on older servers.
+    let effectiveModel: String?
+    /// The provider half of the server-resolved start route, when reported.
+    let effectiveModelProvider: String?
     let error: String?
 
     enum CodingKeys: String, CodingKey {
         case streamId
         case sessionId
         case pendingStartedAt
+        case effectiveModel
+        case effectiveModelProvider
         case error
     }
 
@@ -21,6 +29,8 @@ struct ChatStartResponse: Decodable, Equatable {
         streamId = container.decodeLossyStringIfPresent(forKey: .streamId)
         sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
         pendingStartedAt = container.decodeLossyDoubleIfPresent(forKey: .pendingStartedAt)
+        effectiveModel = container.decodeLossyStringIfPresent(forKey: .effectiveModel)
+        effectiveModelProvider = container.decodeLossyStringIfPresent(forKey: .effectiveModelProvider)
         error = container.decodeLossyStringIfPresent(forKey: .error)
     }
 
