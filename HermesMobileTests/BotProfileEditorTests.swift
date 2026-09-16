@@ -268,6 +268,8 @@ import XCTest
         XCTAssertEqual(BotAvatarExpression.resolve("grumpy"), .neutral)
         XCTAssertEqual(BotAvatarExpression.resolve("sleepy"), .sleepy)
         XCTAssertEqual(BotAvatarExpression.allCases.count, 16)
+    }
+
     func testReloadingAConflictRefetchesOnlyThisBotsAvatar() async throws {
         let avatars = BotAvatarStore()
         let connection = connection(name: "Mac")
