@@ -388,9 +388,16 @@ the screen or backgrounding cancels the retry.
 
 The hero face on the create and edit screens is `BotInteractiveFaceView`, after
 Bloub: it blinks on the shared schedule, its eyes follow a finger dragged over
-it, and a tap squishes it into a surprised face for a moment. Each response is
-a discrete state change that settles by itself; Reduce Motion keeps the eyes
-still and drops the squish. The first swatch, stored as Desktop's `#ffffff`,
+it, a tap squishes it into a surprised face for a moment, and it plays short
+bits on its own. `BotFaceBit` is the repertoire (glance left, right or down,
+double blink, wobble, hop, spin), each 0.5 to 0.9 s of ease-out poses that start
+and end exactly at rest. `BotPlayfulSchedule` picks one every 4 to 9 s, seeded
+by the bot's name, with a spin at most every tenth slot; a screen can also cue
+a bit for what the user just did (hop for a shape, wobble for a color, glance
+down while typing the name). A bit runs its own 60 fps timeline for its
+duration and then hands back to the blink schedule, so nothing repaints while
+the face is left alone. Only the hero moves; picker tiles and rows stay still.
+Reduce Motion keeps the eyes still, plays no bits and drops the squish. The first swatch, stored as Desktop's `#ffffff`,
 is adaptive: `Color.botBody` paints it white in dark appearance and black in
 light, with eyes inverted to match, so the face and the swatch never vanish
 into the background.

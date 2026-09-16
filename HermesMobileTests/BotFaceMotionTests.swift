@@ -32,6 +32,33 @@ final class BotFaceMotionTests: XCTestCase {
         XCTAssertTrue(schedule.isShut(at: entries[2]))
     }
 
+    func testEveryBitStartsAndEndsAtRestSoItCutsCleanlyIntoTheBlinkSchedule() {
+        for bit in BotFaceBit.allCases {
+            XCTAssertEqual(bit.pose(at: 0), .rest, "\(bit) starts at rest")
+            XCTAssertEqual(bit.pose(at: 1), .rest, "\(bit) ends at rest")
+            XCTAssertNotEqual(bit.pose(at: 0.5), .rest, "\(bit) does something in the middle")
+            XCTAssertTrue((0.4...1).contains(bit.duration), "\(bit) is a short burst")
+        }
+        XCTAssertEqual(BotFaceBit.hop.pose(at: 0.5).lift, 0.16, accuracy: 0.001)
+        XCTAssertEqual(BotFaceBit.hop.pose(at: 0.05).scaleY, 1 - 0.12 * sin(0.05 / 0.15 * .pi), accuracy: 0.001)
+        XCTAssertEqual(BotFaceBit.doubleBlink.pose(at: 0.1).lid, 0.06)
+        XCTAssertEqual(BotFaceBit.doubleBlink.pose(at: 0.35).lid, 1)
+        XCTAssertEqual(BotFaceBit.doubleBlink.pose(at: 0.6).lid, 0.06)
+        XCTAssertEqual(BotFaceBit.spin.pose(at: 0.999).roll, 360, accuracy: 0.01, "a full turn lands where it started")
+    }
+
+    func testPlayfulScheduleIsSparseSeededAndRarelySpins() {
+        let schedule = BotPlayfulSchedule(seed: "inbox-triage")
+        let entries = (0..<60).map(schedule.entry)
+        for entry in entries { XCTAssertTrue((4...9).contains(entry.delay)) }
+        XCTAssertEqual(entries.map(\.bit), (0..<60).map(schedule.entry).map(\.bit), "the same bot repeats its repertoire")
+        XCTAssertNotEqual(entries.map(\.bit), (0..<60).map(BotPlayfulSchedule(seed: "researcher").entry).map(\.bit))
+        let spins = entries.enumerated().filter { $0.element.bit == .spin }.map(\.offset)
+        XCTAssertEqual(spins, [10, 20, 30, 40, 50], "a spin only every tenth slot, so at least 40 seconds apart")
+        XCTAssertFalse(entries.contains { $0.bit == .glanceDown }, "looking down is for typing, not idling")
+        XCTAssertGreaterThan(Set(entries.map(\.bit)).count, 3)
+    }
+
     func testBlinkPhaseIsSeededPerBot() {
         let a = BotBlinkSchedule(seed: "inbox-triage"), b = BotBlinkSchedule(seed: "researcher")
         XCTAssertNotEqual(a.phase, b.phase)

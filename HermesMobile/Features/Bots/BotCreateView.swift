@@ -7,6 +7,9 @@ import SwiftUI
     @State private var creator: BotCreator
     @State private var showsModels = false
     @State private var showsExpressions = false
+    /// What the face should do about the last edit: a hop for a shape, a wobble
+    /// for a color, a glance down while the name is typed.
+    @State private var cue: BotFaceCue?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -16,11 +19,11 @@ import SwiftUI
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    BotInteractiveFaceView(name: creator.name, appearance: creator.draft.appearance, size: 150)
+                    BotInteractiveFaceView(name: creator.name, appearance: creator.draft.appearance, size: 150, cue: cue)
                         .padding(.top, 24).padding(.bottom, 20)
                     if creator.hasStarted { results }
                     card {
-                        TextField("Name your bot", text: Binding(get: { creator.draft.title }, set: { creator.setTitle($0) }))
+                        TextField("Name your bot", text: Binding(get: { creator.draft.title }, set: { creator.setTitle($0); cue = BotFaceCue(.glanceDown) }))
                             .font(.title3).multilineTextAlignment(.center)
                             .textInputAutocapitalization(.words)
                             .submitLabel(.done)
@@ -106,7 +109,7 @@ import SwiftUI
         card {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
                 ForEach(BotAvatarShape.allCases) { shape in
-                    Button { creator.setShape(shape) } label: {
+                    Button { creator.setShape(shape); cue = BotFaceCue(.hop) } label: {
                         BotAvatarMarkView(name: creator.name, appearance: appearance(for: shape), size: 42)
                             .frame(maxWidth: .infinity, minHeight: 50)
                             .overlay {
@@ -123,7 +126,7 @@ import SwiftUI
             .padding(16)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
                 ForEach(BotAvatarColor.palette) { color in
-                    Button { creator.setColor(color.hex) } label: {
+                    Button { creator.setColor(color.hex); cue = BotFaceCue(.wobble) } label: {
                         Circle().fill(color.swatch).frame(width: 30, height: 30)
                             .overlay { if creator.draft.appearance.color == color.hex { Circle().stroke(.secondary, lineWidth: 3).padding(-5) } }
                             .frame(minWidth: 44, minHeight: 44)

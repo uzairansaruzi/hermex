@@ -176,6 +176,8 @@ struct BotAvatarMarkView: View {
             .offset(x: size * (0.12 + pose.gazeX), y: size * (-0.08 + pose.gazeY))
         }
         .rotationEffect(.degrees(pose.roll))
+        .scaleEffect(x: pose.scaleX, y: pose.scaleY, anchor: .bottom)
+        .offset(y: -size * pose.lift)
         .frame(width: size, height: size)
         .accessibilityHidden(true)
     }
