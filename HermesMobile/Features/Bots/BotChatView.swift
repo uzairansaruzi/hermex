@@ -126,7 +126,12 @@ import SwiftUI
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ChatToolbarTitleLabel(title: model.profile.name, subtitle: model.chatControls.workspace?.lastPathComponentFallback)
+                HStack(spacing: 8) {
+                    BotAvatarView(profile: model.profile,
+                                  avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id],
+                                  size: 30, motion: isStreaming ? .working : .idle)
+                    ChatToolbarTitleLabel(title: model.profile.name, subtitle: model.chatControls.workspace?.lastPathComponentFallback)
+                }
             }
             if !model.chatControls.controls.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { BotSessionControlMenu(settings: model.chatControls) }

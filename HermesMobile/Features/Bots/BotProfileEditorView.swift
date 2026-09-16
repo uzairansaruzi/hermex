@@ -160,7 +160,7 @@ import SwiftUI
                     if let avatar = editor.avatar {
                         Image(uiImage: avatar).resizable().scaledToFit()
                     } else {
-                        BotAvatarMarkView(name: editor.profile.id, appearance: editor.draft.appearance, size: 96)
+                        BotAnimatedFaceView(name: editor.profile.id, appearance: editor.draft.appearance, size: 96)
                     }
                 }
                 .frame(width: 96, height: 96)
