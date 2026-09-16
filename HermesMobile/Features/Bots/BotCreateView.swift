@@ -22,6 +22,9 @@ import SwiftUI
                     BotInteractiveFaceView(name: creator.name, appearance: creator.draft.appearance, size: 150, cue: cue)
                         .padding(.top, 24).padding(.bottom, 20)
                     if creator.hasStarted { results }
+                    // Once the Profile write has been dispatched these values are on the
+                    // host; a retry only finishes the remaining steps, so editing them
+                    // here would be a lie. Edit the bot afterwards instead.
                     card {
                         TextField("Name your bot", text: Binding(get: { creator.draft.title }, set: { creator.setTitle($0); cue = BotFaceCue(.glanceDown) }))
                             .font(.title3).multilineTextAlignment(.center)
@@ -41,7 +44,7 @@ import SwiftUI
                             .padding(.top, 10).padding(.horizontal, 12)
                     }
 
-                    lookCard.padding(.top, 20)
+                    lookCard.padding(.top, 20).disabled(creator.hasStarted)
 
                     sectionLabel("Setup")
                     card {
@@ -61,6 +64,7 @@ import SwiftUI
                         }
                         .padding(16)
                     }
+                    .disabled(creator.hasStarted)
                     Text(creator.draft.sharesCredentials
                          ? "The bot signs in with the keys already saved on the host. Nothing is copied to this phone."
                          : "The bot starts with no API keys. Add them in Hermes Desktop before it can answer.")
@@ -71,19 +75,20 @@ import SwiftUI
             }
             .background(Color(uiColor: .systemBackground))
             .scrollDismissesKeyboard(.interactively)
-            .disabled(creator.phase != .editing)
+            .disabled(creator.phase == .creating)
             .safeAreaInset(edge: .bottom) {
                 Button {
-                    Task { await creator.create() }
+                    if creator.phase == .created { dismiss() } else { Task { await creator.create() } }
                 } label: {
                     Group {
                         if creator.phase == .creating { ProgressView().tint(.primary) }
+                        else if creator.phase == .created { Text("Done") }
                         else { Text(creator.hasStarted ? "Try Again" : creator.isDuplicate ? "Duplicate" : "Create") }
                     }
                     .font(.headline).frame(maxWidth: .infinity).frame(height: 30)
                 }
                 .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
-                .disabled(!creator.canCreate)
+                .disabled(!creator.canCreate && creator.phase != .created)
                 .padding(.horizontal, 24).padding(.vertical, 12)
                 .background(.bar)
             }
@@ -102,7 +107,9 @@ import SwiftUI
         .task { await creator.load() }
         .onDisappear { creator.close() }
         .onChange(of: scenePhase) { if scenePhase != .active { creator.close() } }
-        .onChange(of: creator.phase) { if creator.phase == .created { dismiss() } }
+        // A clean create closes on its own; one with leftovers stays up so the
+        // results and the note are read before Done.
+        .onChange(of: creator.phase) { if creator.phase == .created, !creator.needsAttention { dismiss() } }
     }
 
     private var lookCard: some View {
@@ -147,7 +154,7 @@ import SwiftUI
     /// Per-step outcomes after an attempt, mirroring the editor's save results.
     private var results: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Needs Attention").font(.headline)
+            Text(creator.phase == .created ? (creator.needsAttention ? "Created, with a note" : "Created") : "Needs Attention").font(.headline)
             ForEach(BotCreator.Step.allCases.filter { creator.outcomes[$0] != nil }) { step in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: icon(creator.outcomes[step]!)).foregroundStyle(color(creator.outcomes[step]!)).frame(width: 20)

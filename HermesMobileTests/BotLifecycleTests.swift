@@ -216,6 +216,37 @@ import XCTest
         XCTAssertEqual(creator.phase, .editing)
     }
 
+    func testDisconnectDuringCreateReleasesTheSheetWithAnUncertainStep() async throws {
+        let (creator, wire) = try makeCreator(roster: [])
+        creator.setTitle("Fresh")
+        // BotClient closes and reports the disconnect before the suspended call throws.
+        wire.create = { _ in
+            wire.onDisconnect?(BotFailure.transport)
+            throw BotFailure.transport
+        }
+
+        await creator.create()
+
+        XCTAssertEqual(creator.phase, .editing, "the spinner must not stay up")
+        XCTAssertEqual(creator.outcomes[.profile], .uncertain)
+        XCTAssertTrue(creator.canCreate)
+    }
+
+    func testCreateWithLeftoversStaysUpAndACleanOneIsComplete() async throws {
+        let (creator, wire) = try makeCreator(roster: [])
+        creator.setTitle("Fresh")
+        wire.configure = { _ in throw BotFailure.rejected(5064) }
+        await creator.create()
+        XCTAssertEqual(creator.phase, .created)
+        XCTAssertTrue(creator.needsAttention, "a look that did not save is worth reading before Done")
+
+        let (clean, _) = try makeCreator(roster: [])
+        clean.setTitle("Fresh")
+        await clean.create()
+        XCTAssertEqual(clean.phase, .created)
+        XCTAssertFalse(clean.needsAttention)
+    }
+
     func testLeavingMidCreateMarksPendingStepsUncertain() async throws {
         let (creator, wire) = try makeCreator(roster: [])
         creator.setTitle("Fresh")
@@ -283,6 +314,27 @@ import XCTest
         XCTAssertEqual(inbox.notice, "Could not confirm whether the bot was deleted. Pull down to refresh.")
         XCTAssertEqual(purged, 0)
         XCTAssertEqual(wire.listCalls, 1, "no automatic retry or re-read")
+
+        // The bot survived: the next roster read keeps its local state.
+        wire.emit("sessions.changed")
+        await settle(inbox) { $0.profiles.map(\.id) == ["triage"] && wire.listCalls == 2 }
+        XCTAssertEqual(purged, 0)
+    }
+
+    func testLostDeleteReplyIsSettledByTheNextRosterRead() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
+        wire.delete = { _ in wire.roster = [self.row("keep")]; throw BotFailure.transport }
+        var purged: [String] = []
+        let inbox = try makeInbox(wires: [wire]) { purged.append($1) }
+        await inbox.open()
+
+        await inbox.delete(inbox.profiles[0])
+        XCTAssertEqual(purged, [], "nothing is dropped on a guess")
+
+        wire.emit("sessions.changed")
+        await settle(inbox) { $0.profiles.map(\.id) == ["keep"] }
+        XCTAssertEqual(purged, ["triage"], "the host confirmed the bot is gone, so its drafts and cache go too")
+        XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id).keys.sorted(), ["keep"])
     }
 
     // MARK: - Helpers
@@ -302,13 +354,27 @@ import XCTest
         return (creator, wire)
     }
 
+    /// Waits for `condition` through Observation rather than sleeping.
+    private func settle(_ inbox: BotInbox, until condition: @escaping @MainActor (BotInbox) -> Bool) async {
+        let done = expectation(description: "inbox settled")
+        Task { @MainActor in
+            while !condition(inbox) {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    withObservationTracking { _ = condition(inbox) } onChange: { continuation.resume() }
+                }
+            }
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 5)
+    }
+
     private func makeInbox(wires: [BotInboxFixtureWire], purge: @escaping @MainActor (UUID, String) async -> Void) throws -> BotInbox {
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())
         try store.save(BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!,
                                      username: "u", password: "p", hermesVersion: nil), server: server)
         var queue = wires
         return BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
-                        avatarStore: BotAvatarStore(), reloadSpacing: .zero,
+                        avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero],
                         makeWire: { _ in queue.removeFirst() }, purgeLocalState: purge)
     }
 

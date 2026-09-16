@@ -122,6 +122,9 @@ enum BotProfileName {
         phase == .editing && !isLoading && BotProfileName.isValid(name) && (hasStarted || !nameIsTaken)
     }
     var isDuplicate: Bool { source != nil }
+    /// True after a create that finished with something left to do: a look that
+    /// did not save or a bot with no model. The sheet stays up to say so.
+    var needsAttention: Bool { note != nil || outcomes.values.contains { $0 != .done } }
 
     func setTitle(_ value: String) { draft.title = value; draft.appearance.title = value }
     func setRole(_ value: String) { draft.role = value }
@@ -197,7 +200,9 @@ enum BotProfileName {
             phase = .created
             onCreated(name)
         } catch {
-            guard generation == owner, wire === client else { return }
+            // A disconnect clears `wire` before the suspended call throws, so only the
+            // generation decides whether this attempt still owns the sheet.
+            guard generation == owner else { return }
             if !(error is BotCreatorStop), let step = Step.allCases.first(where: { outcomes[$0] == nil }) {
                 // A dropped connection mid-write leaves that write's fate unknown; the
                 // next attempt re-reads the host before writing again.
