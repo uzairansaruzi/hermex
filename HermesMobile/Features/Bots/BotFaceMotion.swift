@@ -268,7 +268,9 @@ struct BotInteractiveFaceView: View {
     /// The bit's pose at `date`, with a finger on the face still steering the eyes.
     private func bitPose(_ playing: (bit: BotFaceBit, start: Date), at date: Date) -> BotFacePose {
         var pose = playing.bit.pose(at: date.timeIntervalSince(playing.start) / playing.bit.duration)
-        pose.gazeX += gaze.width; pose.gazeY += gaze.height
+        // A glance plus a drag stays within the eyes' travel, so they never leave the body.
+        pose.gazeX = max(-Self.reach, min(Self.reach, pose.gazeX + gaze.width))
+        pose.gazeY = max(-Self.reach, min(Self.reach, pose.gazeY + gaze.height))
         return pose
     }
 
