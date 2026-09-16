@@ -437,7 +437,13 @@ and cannot be undone. On success the phone drops its unread mark, avatar,
 drafts (`ChatDraftStore.discardBotDrafts(profile:)`) and cached history
 (`BotHistoryCache.removeProfile`) for that bot, then re-reads the roster. A
 refused delete leaves everything; a lost reply is reported as uncertain and
-settled by the next roster read. `default` is never deletable.
+settled by the next roster read, which purges the phone's state for a bot the
+host no longer lists and keeps it for one that survived. `default` is never
+deletable. Once the Profile write has been dispatched the sheet locks the name,
+role, model, credential switch and look: a retry finishes the remaining steps
+with the values already on the host. A create that finished with leftovers (a
+look that did not save, no model) stays up with the results until Done; a clean
+one closes on its own.
 
 `BotClient` admits `profiles.create`, `session.create` and `session.title` as a
 second typed exception: the create shape above, exactly the canonical-chat

@@ -27,6 +27,9 @@ import UIKit
     private(set) var notice: String?
     /// Profiles with a pin or hide write in flight; their actions stay inert.
     private(set) var editing: Set<String> = []
+    /// Deletes whose reply was lost. The next roster read settles them: a bot that
+    /// is gone gets its local state purged then, one that is still there is kept.
+    private var uncertainDeletions: Set<String> = []
     /// Session-only reveal of hidden bots, as in Desktop. Never persisted.
     var showsHidden = false
     /// Device-local watermarks for the current connection: the canonical
@@ -161,15 +164,13 @@ import UIKit
     /// delete leaves everything in place; a lost reply is reported as uncertain and
     /// never retried on its own, because the next roster read settles it.
     func delete(_ profile: BotProfile) async {
-        guard mayDelete(profile), let client = wire, let connection else { return }
+        guard mayDelete(profile), let client = wire else { return }
         editing.insert(profile.id); notice = nil
         defer { editing.remove(profile.id) }
         do {
             try await client.deleteProfile(profile.id)
             guard wire === client else { return }
-            seen.removeValue(forKey: profile.id); persistSeen()
-            avatarStore.setImage(nil, connectionID: connection.id, profile: profile.id, revision: nil)
-            await purgeLocalState(connection.id, profile.id)
+            await forget(profile.id)
             guard wire === client else { return }
             _ = await reload(client)
         } catch {
@@ -177,9 +178,18 @@ import UIKit
             if case BotFailure.rejected = error {
                 notice = String(localized: "Hermes did not delete this bot. It is still on the host.")
             } else {
+                uncertainDeletions.insert(profile.id)
                 notice = String(localized: "Could not confirm whether the bot was deleted. Pull down to refresh.")
             }
         }
+    }
+
+    /// Drops everything this phone kept for a bot that no longer exists on the host.
+    private func forget(_ profile: String) async {
+        guard let connection else { return }
+        seen.removeValue(forKey: profile); persistSeen()
+        avatarStore.setImage(nil, connectionID: connection.id, profile: profile, revision: nil)
+        await purgeLocalState(connection.id, profile)
     }
 
     func setPinned(_ pinned: Bool, _ profile: BotProfile) async { await configure(profile, "pinned", .bool(pinned)) }
@@ -253,6 +263,13 @@ import UIKit
             }
             returnedFrom = nil
             if changed { persistSeen() }
+            let present = Set(profiles.map(\.id))
+            let settled = uncertainDeletions
+            uncertainDeletions = []
+            for name in settled where !present.contains(name) {
+                await forget(name)
+                guard wire === client, serial == reloadSerial else { return false }
+            }
             return true
         } catch {
             guard wire === client, serial == reloadSerial else { return false }
