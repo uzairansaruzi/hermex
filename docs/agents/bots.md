@@ -391,7 +391,8 @@ Bloub: it blinks on the shared schedule, its eyes follow a finger dragged over
 it, a tap squishes it into a surprised face for a moment, and it plays short
 bits on its own. `BotFaceBit` is the repertoire (glance left, right or down,
 double blink, wobble, hop, spin), each 0.5 to 0.9 s of ease-out poses that start
-and end exactly at rest. `BotPlayfulSchedule` picks one every 4 to 9 s, seeded
+and end exactly at rest; the typing glance alone runs 1.6 s so one glance covers
+a burst, and a cue for the bit already playing is ignored. `BotPlayfulSchedule` picks one every 4 to 9 s, seeded
 by the bot's name, with a spin at most every tenth slot; a screen can also cue
 a bit for what the user just did (hop for a shape, wobble for a color, glance
 down while typing the name). A bit runs its own 60 fps timeline for its

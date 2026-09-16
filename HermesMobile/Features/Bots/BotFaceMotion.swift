@@ -246,7 +246,8 @@ struct BotInteractiveFaceView: View {
             .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: reaction > 0)
             .accessibilityHidden(true)
             .onChange(of: cue?.id) { if let cue { play(cue.bit) } }
-            .task(id: name) { await playIdleBits() }
+            // Reduce Motion is part of the identity so flipping it restarts, or stops, the idle loop.
+            .task(id: "\(name)|\(reduceMotion)") { await playIdleBits() }
     }
 
     /// Runs the seeded idle repertoire while the face is on screen. A slot whose
