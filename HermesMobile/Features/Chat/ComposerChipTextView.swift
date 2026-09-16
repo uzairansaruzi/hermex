@@ -38,6 +38,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
     }
 
+    /// Resolvable bot aliases from this composer's connection, including avatars.
+    var chipBots: [String: ComposerBotReference] = [:] {
+        didSet {
+            guard chipBots != oldValue else { return }
+            rebuildChipCatalog()
+        }
+    }
+
     private var chipCatalog = ComposerChipCatalog.empty
     /// The chips currently on screen. The collapsed pill reads this rather than
     /// re-deriving it, because `preservingTrailing` makes the set depend on what
@@ -139,7 +147,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     private func rebuildChipCatalog() {
-        chipCatalog = ComposerChipCatalog(skills: chipSkills, filePaths: chipFilePaths)
+        chipCatalog = ComposerChipCatalog(skills: chipSkills, filePaths: chipFilePaths, bots: chipBots)
     }
 
     @objc private func handleChipTap(_ recognizer: UITapGestureRecognizer) {

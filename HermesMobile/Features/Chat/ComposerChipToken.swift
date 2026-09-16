@@ -2,10 +2,11 @@ import Foundation
 import SwiftUI
 
 /// What a chip stands for. The kind picks the glyph and decides whether tapping
-/// the chip does anything: a file opens on the source viewer, a skill is inert.
+/// the chip does anything: a file opens on the source viewer; skills and bots are inert.
 enum ComposerChipKind: Equatable {
     case skill
     case file
+    case bot(ComposerBotReference)
 }
 
 /// The picture inside a chip.
@@ -16,19 +17,32 @@ enum ComposerChipKind: Equatable {
 enum ComposerChipIcon: Equatable {
     case symbol(String)
     case asset(String)
+    case bot(ComposerBotReference)
 
-    /// Stable text for the renderer's image cache key.
-    var cacheKey: String {
+    /// Value key for the renderer. Image keys retain the actual image so two
+    /// connections or an updated avatar cannot reuse another chip's pixels.
+    var cacheKey: NSObject {
         switch self {
         case let .symbol(name):
-            return "symbol:\(name)"
+            return "symbol:\(name)" as NSString
         case let .asset(name):
-            return "asset:\(name)"
+            return "asset:\(name)" as NSString
+        case let .bot(reference):
+            let look = BotProfileAppearance(profile: reference.profile)
+            return ["kind": "bot", "profile": reference.profile.id,
+                    "shape": look.shape ?? "", "color": look.color ?? "", "custom": look.custom,
+                    "expression": look.expression ?? "", "image": (reference.avatar as NSObject?) ?? NSNull()] as NSDictionary
         }
     }
 }
 
-/// A skill or workspace-file reference in the draft that the composer draws as
+/// A connection-local bot identity and its already-decoded inbox thumbnail.
+struct ComposerBotReference: Equatable {
+    let profile: BotProfile
+    let avatar: UIImage?
+}
+
+/// A skill, bot or workspace-file reference in the draft that the composer draws as
 /// one atomic chip.
 ///
 /// `range` and `source` are always in draft coordinates. The chip is a picture
@@ -40,7 +54,7 @@ struct ComposerChipToken: Equatable {
     /// The exact draft substring the chip stands for, `/` or `@` included.
     let source: String
     /// What the chip reads on screen: a skill's name, or a file's last path
-    /// component.
+    /// component, or a bot's display name.
     let label: String
     let kind: ComposerChipKind
 
@@ -56,10 +70,12 @@ struct ComposerChipToken: Equatable {
             return .symbol(Self.skillSymbol)
         case .file:
             return .asset(FileIcon.resolve(label).assetName)
+        case let .bot(reference):
+            return .bot(reference)
         }
     }
 
-    /// The workspace-relative path a file chip names, or `nil` for a skill.
+    /// The workspace-relative path a file chip names, or `nil` for a skill or bot.
     var filePath: String? {
         guard kind == .file else { return nil }
         return String(source.dropFirst())
@@ -68,25 +84,27 @@ struct ComposerChipToken: Equatable {
 
 /// The references a draft can draw as chips, in the shape the tokenizer needs.
 ///
-/// Built from the composer's skill suggestions and the workspace files the user
-/// has picked, and compared by value, so the editor only redraws when one of
-/// those two lists has actually changed.
+/// Built from the composer's skills, picked workspace files and bot roster,
+/// and compared by value so the editor redraws only when a reference changes.
 struct ComposerChipCatalog: Equatable {
     /// Lowercased slug to chip label.
     private let labelsBySlug: [String: String]
     /// Workspace-relative paths, exactly as the server spells them.
     private let filePaths: Set<String>
+    let bots: [String: ComposerBotReference]
 
     static let empty = ComposerChipCatalog(labelsBySlug: [:], filePaths: [])
 
-    private init(labelsBySlug: [String: String], filePaths: Set<String>) {
+    private init(labelsBySlug: [String: String], filePaths: Set<String>, bots: [String: ComposerBotReference] = [:]) {
+        self.bots = bots
         self.labelsBySlug = labelsBySlug
         self.filePaths = filePaths
     }
 
     /// A slug that is also a built-in command is left out: `/model` is the
     /// command, whatever a server happens to call its skills.
-    init(skills: [SkillSlashSuggestion], filePaths: Set<String> = []) {
+    init(skills: [SkillSlashSuggestion], filePaths: Set<String> = [], bots: [String: ComposerBotReference] = [:]) {
+        self.bots = bots
         var labels: [String: String] = [:]
         for skill in skills {
             let slug = skill.slashName.lowercased()
@@ -97,7 +115,7 @@ struct ComposerChipCatalog: Equatable {
         self.filePaths = filePaths
     }
 
-    var isEmpty: Bool { labelsBySlug.isEmpty && filePaths.isEmpty }
+    var isEmpty: Bool { labelsBySlug.isEmpty && filePaths.isEmpty && bots.isEmpty }
 
     func label(forSlug slug: String) -> String? {
         labelsBySlug[slug.lowercased()]
@@ -111,7 +129,7 @@ struct ComposerChipCatalog: Equatable {
 
     /// The same skills with `paths` as the files a chip may be drawn for.
     func withFilePaths(_ paths: Set<String>) -> ComposerChipCatalog {
-        ComposerChipCatalog(labelsBySlug: labelsBySlug, filePaths: paths)
+        ComposerChipCatalog(labelsBySlug: labelsBySlug, filePaths: paths, bots: bots)
     }
 }
 
@@ -193,6 +211,21 @@ enum ComposerChipTokenizer {
             tokens.append(ComposerChipToken(range: range, source: source, label: label, kind: kind))
         }
 
+        if !catalog.bots.isEmpty {
+            for mention in BotMentions.proseMentions(in: draft) {
+                guard let bot = catalog.bots[mention.form] else { continue }
+                let range = mention.range
+                let source = text.substring(with: range)
+                let end = range.upperBound
+                let isClosed = end < text.length && isWhitespaceOrNewline(text.character(at: end))
+                let isPreservedTail = end == text.length
+                    && (isComplete || previous.contains { $0.range == range && $0.source == source })
+                guard isClosed || isPreservedTail,
+                      !tokens.contains(where: { NSIntersectionRange($0.range, range).length > 0 }) else { continue }
+                tokens.append(ComposerChipToken(range: range, source: source, label: bot.profile.name, kind: .bot(bot)))
+            }
+            tokens.sort { $0.range.location < $1.range.location }
+        }
         return tokens
     }
 

@@ -490,6 +490,47 @@ test results, and remaining manual gates. Physical-phone transport, native
 accessibility and integrated live behavior must be validated before declaring
 the MVP complete. Simulator or isolated fixtures are not physical-phone evidence.
 
+## Bot mentions
+
+The Bot Chat composer offers up to eight `@` completions from the inbox roster
+for its own connection, excluding the open bot. It reuses the slash panel's
+presentation and caret-local replacement behavior. Rows show a small static avatar
+from the inbox's connection-scoped image cache, falling back to the bot's existing
+face; opening or filtering the picker never fetches images. Once selected or
+followed by whitespace, a recognized mention becomes the shared composer's
+atomic chip with the bot's avatar and display name. The expanded editor and
+collapsed pill use the same cached rendering; copy, cut, draft storage and send
+retain the original `@tag`. Backspace removes the reference as one unit. Unknown,
+ambiguous and code-span mentions stay plain text. Friendly titles and core
+`display_name` values supply slug/collapsed aliases; the Profile handle remains
+valid, with `default` exposed as `hermes`. Reserved friendly aliases cannot claim
+`hermes`, `default`, `all`, `everyone` or `user`. Any form claimed by multiple bots
+is unresolved, even if more than two bots claim it.
+
+Mentions identify agents; they do not deliver messages. At an explicit Send,
+Queue, Steer or Redirect, `BotMentions` ignores inline/fenced code and email
+addresses, resolves the original draft, and appends Desktop's identification
+note to the existing prompt payload. Attachment references are not scanned for
+mentions. Each resolved bot appears once, in mention order. The draft stays as
+typed; live and restored user bubbles hide the trailing note. The agent decides
+whether to call its server-side `message_agent` tool, which owns attribution and
+delivery. A session without that tool is instructed to say messaging is
+unavailable. Existing admission, error, cancellation and no-retry rules apply.
+The webui Sessions composer and `BotClient` method allowlist are unchanged.
+
+Contract checked against the compatibility pin's Desktop `hermes-bots/data.ts`
+(`mentionNameForms`, `botMentionTag`, `resolveRosterMentions`) and `plugin.tsx`
+mention middleware. No live prompt or relay mutation was used for validation.
+
+Cross-connection messaging remains an upstream gap. The phone never calls
+`bot_relay.roster.sync`, `outbox.drain`, `deliver` or `reply`: taking over Desktop's
+roster or draining its envelopes from a suspendable phone could strand work.
+A manually typed `@name@connection` can be interpreted by `message_agent` when
+Desktop has synced the peer roster within ten minutes, and delivery requires
+that Desktop to remain running. The phone cannot autocomplete remote bots
+because there is no read-only remote-roster RPC. Real phone support needs that
+RPC and a relay owner independent of a Desktop renderer.
+
 ## Chat controls
 
 The Bot composer reuses Sessions' model/effort menu, model sheet, workspace picker

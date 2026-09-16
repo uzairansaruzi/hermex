@@ -26,6 +26,7 @@ import Observation
 
     /// Re-read after the profile editor saves, so the title and face do not lie.
     private(set) var profile: BotProfile
+    private(set) var mentions: BotMentions
     let connection: BotConnection
     let server: URL
     private(set) var connectionState = ConnectionState.disconnected
@@ -81,11 +82,12 @@ import Observation
     private(set) var historyCacheTask: Task<Void, Never>?
     private let drafts: ChatDraftStore
 
-    init(server: URL, connection: BotConnection, profile: BotProfile,
+    init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile] = [],
          historyCache: BotHistoryCache? = nil, wire: (any BotTransport)? = nil, drafts: ChatDraftStore? = nil,
          attachmentCopies: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
          reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.server = server; self.connection = connection; self.profile = profile
+        self.mentions = BotMentions(roster: roster, excluding: profile.id)
         self.reconnectDelay = reconnectDelay
         self.wire = wire ?? BotClient(connection: connection)
         self.historyCache = historyCache
@@ -187,9 +189,10 @@ import Observation
         guard connectionState == .connected else { return }
         let owner = generation
         guard let roster = try? await request("profiles.list", ["include_sessions": .bool(false)], owner: owner),
-              let row = roster["profiles"].list?.first(where: { $0["name"].text == profile.id }),
-              let fresh = BotProfile(row) else { return }
-        profile = fresh
+              let rows = roster["profiles"].list else { return }
+        let profiles = rows.compactMap(BotProfile.init)
+        mentions = BotMentions(roster: profiles, excluding: profile.id)
+        if let fresh = profiles.first(where: { $0.id == profile.id }) { profile = fresh }
     }
 
     private func recoverConnection() async {
@@ -352,7 +355,7 @@ import Observation
         if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt }
         liveMessages = []
         if let text = inflight["user"].text, !text.isEmpty {
-            liveMessages.append(ChatMessage(role: "user", content: text, timestamp: nil, messageId: "live-user"))
+            liveMessages.append(ChatMessage(role: "user", content: BotMentions.displayText(text), timestamp: nil, messageId: "live-user"))
         }
         if let text = inflight["assistant"].text, !text.isEmpty {
             liveMessages.append(ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "live-assistant"))
@@ -415,6 +418,7 @@ import Observation
     func submit(_ action: PromptAction) async {
         guard action == preparePrompt(action.mode) else { return }
         let owner = action.generation
+        let mentionNote = mentions.annotation(for: action.text)
         localOperation = true; submittingPrompt = action.mode
         promptReceipt = nil; promptReceiptPersistsWhileIdle = false; errorMessage = nil
         defer { if generation == owner { submittingPrompt = nil; localOperation = false } }
@@ -449,7 +453,7 @@ import Observation
             try await drafts.flush()
             try check(owner)
             uncertainSend = true
-            let reply = try await request(action.mode.method, action.mode.params(runtime: action.runtime, text: text), owner: owner) { [weak self] in
+            let reply = try await request(action.mode.method, action.mode.params(runtime: action.runtime, text: text + mentionNote), owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
                 guard self.connectionState == .connected, self.runtime == action.runtime,

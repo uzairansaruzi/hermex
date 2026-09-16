@@ -6,6 +6,7 @@ import SwiftUI
     fileprivate static let requestAnchor = "bot-pending-request"
 
     @Environment(\.scenePhase) private var scenePhase
+    private let mentionAvatars: [String: UIImage]
     @State private var model: BotConversation
     @State private var stopAction: BotConversation.StopAction?
     @State private var recoveryID = UUID()
@@ -20,11 +21,13 @@ import SwiftUI
     @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    init(server: URL, connection: BotConnection, profile: BotProfile) {
-        _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile, historyCache: .shared))
+    init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile], avatars: [String: UIImage]) {
+        mentionAvatars = avatars
+        _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile, roster: roster, historyCache: .shared))
     }
 
     init(model: BotConversation) {
+        mentionAvatars = [:]
         _model = State(initialValue: model)
     }
 
@@ -261,7 +264,7 @@ import SwiftUI
     /// transcripts end identically. The fade reaches 34 pt above the composer.
     private var composer: some View {
         BotChatComposerView(
-            model: model,
+            model: model, mentionAvatars: mentionAvatars,
             onStop: { stopAction = model.prepareStop() },
             onReconnect: { recoveryID = UUID() },
             onShowRequest: { showRequestID = UUID() }

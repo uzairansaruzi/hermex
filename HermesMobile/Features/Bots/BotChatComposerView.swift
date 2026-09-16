@@ -5,6 +5,7 @@ import UIKit
 /// stays mounted through focus changes; no webui runtime controls are involved.
 struct BotChatComposerView: View {
     let model: BotConversation
+    var mentionAvatars: [String: UIImage] = [:]
     let onStop: () -> Void
     let onReconnect: () -> Void
     /// Scrolls the transcript back to the pending request card.
@@ -75,6 +76,19 @@ struct BotChatComposerView: View {
                 if model.attachments.isImporting {
                     Text("Adding attachment…").font(AppFont.footnote()).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
+                }
+
+                if isFocused, model.mayEditDraft,
+                   let trigger = BotMentionTrigger.detect(in: model.draft, selection: selection.range) {
+                    let completions = model.mentions.completions(query: trigger.query)
+                    if !completions.isEmpty {
+                        BotMentionAutocompleteView(completions: completions, avatars: mentionAvatars) { item in
+                            let result = trigger.applying(tag: item.tag, to: model.draft)
+                            model.editDraft(result.draft)
+                            selection = selection.moved(to: result.selection)
+                        }
+                        .padding(.horizontal, 16).padding(.bottom, 8)
+                    }
                 }
 
                 composerSurface.padding(.horizontal, 16)
@@ -181,7 +195,8 @@ struct BotChatComposerView: View {
                     inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                     isDisabled: !model.mayEditDraft, isCollapsed: !isExpanded,
                     isKeyboardSendEnabled: canSend, verticalPadding: 12,
-                    chipSkills: [], chipFilePaths: [], quotes: [],
+                    chipSkills: [], chipFilePaths: [],
+                    chipBots: model.mentions.chipReferences(avatars: mentionAvatars), quotes: [],
                     onKeyboardSend: send,
                     onPasteFileProviders: { BotAttachmentPaste.providers($0, model: model) },
                     onPasteFileURLs: { BotAttachmentPaste.files($0, model: model) },

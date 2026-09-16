@@ -27,6 +27,7 @@ struct ComposerTextInputView: View {
     /// The workspace files picked in this chat, whose `@path` references the
     /// editor draws as chips.
     let chipFilePaths: Set<String>
+    var chipBots: [String: ComposerBotReference] = [:]
     let quotes: [ComposerQuote]
     let onKeyboardSend: () -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
@@ -54,6 +55,7 @@ struct ComposerTextInputView: View {
                 isKeyboardSendEnabled: isKeyboardSendEnabled,
                 chipSkills: chipSkills,
                 chipFilePaths: chipFilePaths,
+                chipBots: chipBots,
                 quotes: quotes,
                 renderedChips: $renderedChips,
                 onTapChip: onTapChip,
@@ -177,6 +179,7 @@ private struct ComposerTextView: UIViewRepresentable {
     let isKeyboardSendEnabled: Bool
     let chipSkills: [SkillSlashSuggestion]
     let chipFilePaths: Set<String>
+    let chipBots: [String: ComposerBotReference]
     let quotes: [ComposerQuote]
     @Binding var renderedChips: [ComposerChipToken]
     let onTapChip: (ComposerChipToken) -> Void
@@ -263,6 +266,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.quotes = quotes
         textView.chipSkills = chipSkills
         textView.chipFilePaths = chipFilePaths
+        textView.chipBots = chipBots
         context.coordinator.onDropFileProviders = onPasteFileProviders
         context.coordinator.onDropImageProviders = onPasteImageProviders
         context.coordinator.applyBoundText(text, generation: selection.publishGeneration, to: textView)

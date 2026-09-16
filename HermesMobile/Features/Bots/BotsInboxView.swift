@@ -164,7 +164,7 @@ import SwiftUI
     }
 
     private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
-        BotChatView(server: server, connection: connection, profile: profile)
+        BotChatView(server: server, connection: connection, profile: profile, roster: inbox.profiles, avatars: inbox.avatars)
             .id(profile.id + connection.id.uuidString)
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }

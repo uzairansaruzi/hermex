@@ -190,7 +190,7 @@ enum BotTranscriptProjection {
                 guard let text = row["text"].text else { continue }
                 let id = "\(root)/\(index)"
                 flush(anchor: id)
-                messages.append(ChatMessage(role: role, content: text, timestamp: nil, messageId: id))
+                messages.append(ChatMessage(role: role, content: role == "user" ? BotMentions.displayText(text) : text, timestamp: nil, messageId: id))
             default:
                 continue
             }

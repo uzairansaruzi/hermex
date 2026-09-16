@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The chip a skill reference is drawn as: one attachment glyph that stands for
+/// The chip a skill, file or bot reference is drawn as: one attachment glyph that stands for
 /// the whole `source` string.
 ///
 /// Everything that leaves the editor - what is sent, copied, cut, or saved as a
@@ -87,13 +87,29 @@ struct ComposerChipMetrics: Equatable {
 
 /// Draws the chip. The image is baked against a trait collection, so the editor
 /// re-renders it when the appearance or the content size category changes.
-enum ComposerChipRenderer {
+@MainActor enum ComposerChipRenderer {
     /// Baked chips, keyed by everything that changes one. The editor redraws
     /// only when its chips or its style move, but the collapsed composer draws
     /// from `body`, which runs again on every parent update — including each
     /// token of a live stream. Baking there uncached would burn a render pass
     /// per frame for a picture that never changed.
-    private static let cache = NSCache<NSString, UIImage>()
+    private static let cache = NSCache<CacheKey, UIImage>()
+
+    /// Retain image-valued keys and hash every component. NSArray's own hash
+    /// only reflects its count, which would put every chip in the same bucket.
+    private final class CacheKey: NSObject {
+        let values: [NSObject]
+        init(_ values: [NSObject]) { self.values = values }
+        override var hash: Int {
+            var hasher = Hasher()
+            for value in values { hasher.combine(value.hash) }
+            return hasher.finalize()
+        }
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? CacheKey else { return false }
+            return values == other.values
+        }
+    }
 
     static func image(
         label: String,
@@ -104,17 +120,18 @@ enum ComposerChipRenderer {
         maximumWidth: CGFloat? = nil,
         usesAccentIcon: Bool = false
     ) -> UIImage {
-        let key = [
-            label,
+        let values: [NSObject] = [
+            label as NSString,
             icon.cacheKey,
-            String(describing: metrics.labelFont.pointSize),
-            String(describing: metrics.height),
-            String(traits.userInterfaceStyle.rawValue),
-            String(traits.accessibilityContrast.rawValue),
-            isRightToLeft ? "rtl" : "ltr",
-            maximumWidth.map(String.init(describing:)) ?? "unbounded",
-            usesAccentIcon ? "accent" : "secondary"
-        ].joined(separator: "|") as NSString
+            String(describing: metrics.labelFont.pointSize) as NSString,
+            String(describing: metrics.height) as NSString,
+            String(traits.userInterfaceStyle.rawValue) as NSString,
+            String(traits.accessibilityContrast.rawValue) as NSString,
+            (isRightToLeft ? "rtl" : "ltr") as NSString,
+            (maximumWidth.map(String.init(describing:)) ?? "unbounded") as NSString,
+            (usesAccentIcon ? "accent" : "secondary") as NSString
+        ]
+        let key = CacheKey(values)
 
         if let cached = cache.object(forKey: key) {
             return cached
@@ -155,6 +172,12 @@ enum ComposerChipRenderer {
             )?.withTintColor(tint, renderingMode: .alwaysOriginal)
         case let .asset(name):
             return UIImage(named: name)
+        case let .bot(reference):
+            let view = BotAvatarView(profile: reference.profile, avatar: reference.avatar, size: metrics.iconSize, motion: .still)
+                .environment(\.colorScheme, traits.userInterfaceStyle == .dark ? .dark : .light)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = traits.displayScale > 0 ? traits.displayScale : UIScreen.main.scale
+            return renderer.uiImage
         }
     }
 
@@ -290,7 +313,7 @@ enum ComposerChipTextLine {
 
     /// `text` with every token replaced by its chip picture and the rest left
     /// verbatim, so nothing in a message is read as markdown or a format string.
-    static func text(
+    @MainActor static func text(
         _ text: String,
         tokens: [ComposerChipToken],
         style: ComposerChipTextStyle

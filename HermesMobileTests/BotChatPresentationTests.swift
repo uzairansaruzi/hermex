@@ -122,7 +122,12 @@ import XCTest
         window.overrideUserInterfaceStyle = .dark
         defer { close(window); model.suspend() }
         await renderFrames(30)
-        XCTAssertNotNil(descendants(window).compactMap { $0 as? ChatScrollObserver.ObserverView }.first)
+        let observer = try XCTUnwrap(descendants(window).compactMap { $0 as? ChatScrollObserver.ObserverView }.first)
+        // Model the drag that takes the reader into history. A bare UIKit offset
+        // write leaves auto-follow armed while SwiftUI's lazy rows finish sizing.
+        let coordinator = try XCTUnwrap(observer.coordinator)
+        coordinator.onFollowEvent(.userScrollBegin)
+        await renderFrames()
         let scroll = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first {
             $0.bounds.width > 300 && $0.contentSize.height > $0.bounds.height
         })
