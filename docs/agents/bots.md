@@ -379,6 +379,59 @@ verified against the compatibility pin `ee35a4624fa22237a90426f5e21d8b4f2ce3a49b
 mutation. The local upstream checkout at `cd2bd160579d5240e52d01e2f735da55ff4242ef`
 was also inspected for drift; the editor contract remains present.
 
+## Bot lifecycle
+
+The inbox's `+` button and a row's context menu create, duplicate and delete
+bots on the current Bot connection (#483). Hide stays the non-destructive
+alternative and is offered again inside the delete confirmation.
+
+`BotCreator` owns one create or duplicate for one connection. The Profile name
+is the slug of the typed display name under the host's rule
+(`[a-z0-9][a-z0-9_-]{0,63}`, never `default` or another reserved word); a name
+already on the roster is refused before any write. Setup is three host writes
+in order, each with its own outcome: `profiles.create` (name, optional
+description, optional `model` + `provider`, `clone_from` when duplicating),
+`profiles.configure` with the drawn look under `ui_meta_expected_revisions` 0,
+then the canonical chat: an exact-title `session.list` first (adopt before
+mint, as Desktop), and only on a confirmed absence `session.create({profile,
+title: "Bot Chat", hidden, follow_profile_config})` followed by `session.title`
+on the runtime id so the lazy row is persisted before any prompt; a `4022`
+title collision re-reads and adopts the winner. No kickoff prompt is sent.
+Try Again repeats only steps that are not done, and a step whose reply was
+lost re-reads the host (`profiles.list`, `session.list`) before writing again,
+so a retry never mints a second Profile or chat. A look failure is reported
+and the chat step still runs; the Edit screen fixes the look later. Leaving
+the sheet mid-write marks pending steps uncertain; nothing retries on its own.
+
+Credential inheritance is one explicit switch, on by default: on sends
+`share_auth: true` so the bot reads the host's `auth.json` in place (one token
+pool, no forked refresh), off sends `mirror_credentials: false` so the bot
+starts with no keys. Secret values never reach the phone. A create whose reply
+reports neither `model_set` nor `mirrored.model_inherited` shows a one-line
+note to pick a model. Duplicates clone config, skills and `SOUL.md` through
+`clone_from`; the drawn look is copied, the photo asset and Desktop
+organization (`pinned`, `sectionId`) are not, and the chat stays with the
+original. Create-from-description (`llm.oneshot`) is not offered.
+
+Delete is `DELETE /api/profiles/{name}` over the client's authenticated cookie
+session, because the gateway has no `profiles.delete` RPC; only a 200 with
+`ok` counts. The confirmation names the host and states that the Profile
+folder (instructions, settings, skills, saved keys, chat history) is removed
+and cannot be undone. On success the phone drops its unread mark, avatar,
+drafts (`ChatDraftStore.discardBotDrafts(profile:)`) and cached history
+(`BotHistoryCache.removeProfile`) for that bot, then re-reads the roster. A
+refused delete leaves everything; a lost reply is reported as uncertain and
+settled by the next roster read. `default` is never deletable.
+
+`BotClient` admits `profiles.create`, `session.create` and `session.title` as a
+second typed exception: the create shape above, exactly the canonical-chat
+parameters, and nothing else. Handler shapes were verified against the
+compatibility pin `ee35a4624fa22237a90426f5e21d8b4f2ce3a49b`
+(`tui_gateway/methods_profiles.py` `profiles.create`,
+`tui_gateway/methods_session.py` `session.create` and `session.title`,
+`hermes_cli/web_routers/profiles.py` `delete_profile_endpoint`,
+`hermes_cli/profiles.py` name rules) without a live mutation.
+
 Unread is device-local. `BotUnreadStore` keeps, per connection UUID and Profile,
 the canonical `last_active` the user last saw, in `UserDefaults` because the
 values are timestamps and never leave the phone. The first roster load seeds a

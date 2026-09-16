@@ -2,6 +2,8 @@ import Foundation
 import Observation
 
 @MainActor @Observable final class BotConversation {
+    /// The exact title of a bot's one canonical chat, as Desktop names it.
+    static let canonicalTitle = "Bot Chat"
     enum ConnectionState { case disconnected, recovering, connected }
     enum TurnState { case unknown, idle, submitting, running, needsAttention, stopping, uncertain, interrupted }
     struct StopAction: Equatable { let generation: Int; let revision: Int; let runtime: String }
@@ -210,7 +212,7 @@ import Observation
             if uncertainSend { try await releasePromptMarker(owner: owner) }
             try await wire.connect()
             try check(owner)
-            let lookup = try await request("session.list", ["profile": .string(profile.id), "title": .string("Bot Chat"), "include_hidden": .bool(true)], owner: owner)
+            let lookup = try await request("session.list", ["profile": .string(profile.id), "title": .string(Self.canonicalTitle), "include_hidden": .bool(true)], owner: owner)
             guard let rows = lookup["sessions"].list else { throw BotFailure.unsupported }
             guard rows.count == 1 else { throw BotFailure.missingChat }
             guard let foundRoot = rows[0]["id"].text, !foundRoot.isEmpty,

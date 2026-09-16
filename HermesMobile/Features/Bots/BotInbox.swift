@@ -42,16 +42,23 @@ import UIKit
     private let unread: BotUnreadStore
     private let avatarStore: BotAvatarStore
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
+    /// Drops this phone's drafts and cached history for one deleted bot.
+    private let purgeLocalState: @MainActor (UUID, String) async -> Void
     /// Minimum gap between event-driven roster reads; the host already floors
     /// `sessions.changed` at two seconds, this guards against a chattier one.
     private let reloadSpacing: Duration
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          avatarStore: BotAvatarStore? = nil, reloadSpacing: Duration = .seconds(1),
-         makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil) {
+         makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
+         purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
+        self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
+            try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
+            await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: connectionID, profile: profile)
+        }
     }
 
     var hiddenCount: Int { profiles.filter(\.hidden).count }
@@ -127,6 +134,34 @@ import UIKit
     }
 
     func mayEdit(_ profile: BotProfile) -> Bool { link == .live && !editing.contains(profile.id) }
+
+    /// The built-in Profile is the host itself; Hermes refuses to delete it.
+    func mayDelete(_ profile: BotProfile) -> Bool { profile.id != "default" && mayEdit(profile) }
+
+    /// Deletes the Profile on the host, then this phone's state for it. A refused
+    /// delete leaves everything in place; a lost reply is reported as uncertain and
+    /// never retried on its own, because the next roster read settles it.
+    func delete(_ profile: BotProfile) async {
+        guard mayDelete(profile), let client = wire, let connection else { return }
+        editing.insert(profile.id); notice = nil
+        defer { editing.remove(profile.id) }
+        do {
+            try await client.deleteProfile(profile.id)
+            guard wire === client else { return }
+            seen.removeValue(forKey: profile.id); persistSeen()
+            avatarStore.setImage(nil, connectionID: connection.id, profile: profile.id, revision: nil)
+            await purgeLocalState(connection.id, profile.id)
+            guard wire === client else { return }
+            _ = await reload(client)
+        } catch {
+            guard wire === client else { return }
+            if case BotFailure.rejected = error {
+                notice = String(localized: "Hermes did not delete this bot. It is still on the host.")
+            } else {
+                notice = String(localized: "Could not confirm whether the bot was deleted. Pull down to refresh.")
+            }
+        }
+    }
 
     func setPinned(_ pinned: Bool, _ profile: BotProfile) async { await configure(profile, "pinned", .bool(pinned)) }
     func setHidden(_ hidden: Bool, _ profile: BotProfile) async { await configure(profile, "hidden", .bool(hidden)) }

@@ -59,6 +59,11 @@ enum BotEndpoint: String {
     case ticket = "api/auth/ws-ticket", socket = "api/ws"
     case imageUpload = "api/chat/image-upload"
     func url(base: URL) -> URL { base.appendingPathComponent(rawValue) }
+    /// `DELETE /api/profiles/{name}`, the only Profile removal the host exposes; the
+    /// gateway has no `profiles.delete` RPC. `name` is a validated Profile slug.
+    static func profileURL(base: URL, name: String) -> URL {
+        base.appendingPathComponent("api/profiles").appendingPathComponent(name)
+    }
 }
 
 @MainActor protocol BotTransport: AnyObject {
@@ -69,6 +74,9 @@ enum BotEndpoint: String {
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String
     func artifactData(path: String, context: BotArtifactContext) async throws -> Data
+    /// Removes a Profile on the host over the authenticated HTTP session. Only
+    /// a 200 with `ok` counts as deleted; anything else leaves the bot in place.
+    func deleteProfile(_ name: String) async throws
     func close()
 }
 
@@ -79,6 +87,10 @@ extension BotTransport {
 
     func artifactData(path: String, context: BotArtifactContext) async throws -> Data {
         throw BotArtifactFailure.unavailable
+    }
+
+    func deleteProfile(_ name: String) async throws {
+        throw BotFailure.unsupported
     }
 
     func call(_ method: String, _ params: [String: BotJSON]) async throws -> BotJSON {

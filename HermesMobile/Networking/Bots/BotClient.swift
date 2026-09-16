@@ -132,12 +132,14 @@ import Foundation
 
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
         guard ["profiles.list", "profiles.get_asset", "profiles.describe", "profiles.configure", "profiles.set_asset",
+               "profiles.create", "session.create", "session.title",
                "session.list", "session.resume", "session.events.since",
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond", "clarify.respond",
                "sudo.respond", "secret.respond", "mcp.setup.respond",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control"].contains(method)
         else { throw BotFailure.unsupported }
         try Self.validateProfileEditorCall(method, params)
+        try Self.validateLifecycleCall(method, params)
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
@@ -259,6 +261,33 @@ import Foundation
         }
     }
 
+    /// Bot creation is the second typed exception: one `profiles.create` shape and the
+    /// two calls that mint a bot's canonical "Bot Chat". Any other session creation,
+    /// retitling or clone flag is refused before dispatch.
+    private static func validateLifecycleCall(_ method: String, _ params: [String: BotJSON]) throws {
+        switch method {
+        case "profiles.create":
+            guard let name = params["name"]?.text, BotProfileName.isValid(name) else { throw BotFailure.unsupported }
+            let allowed: Set<String> = ["name", "description", "clone_from", "soul", "model", "provider", "share_auth", "mirror_credentials"]
+            guard allowed.isSuperset(of: params.keys) else { throw BotFailure.unsupported }
+            for key in ["description", "clone_from", "soul", "model", "provider"] where params[key] != nil {
+                guard params[key]?.text?.isEmpty == false else { throw BotFailure.unsupported }
+            }
+            for key in ["share_auth", "mirror_credentials"] where params[key] != nil {
+                guard params[key]?.flag != nil else { throw BotFailure.unsupported }
+            }
+            guard (params["model"] == nil) == (params["provider"] == nil) else { throw BotFailure.unsupported }
+        case "session.create":
+            guard params["profile"]?.text?.isEmpty == false, params["title"]?.text == BotConversation.canonicalTitle,
+                  params["hidden"]?.flag == true, params["follow_profile_config"]?.flag == true,
+                  Set(params.keys) == ["profile", "title", "hidden", "follow_profile_config"] else { throw BotFailure.unsupported }
+        case "session.title":
+            guard params["session_id"]?.text?.isEmpty == false, params["title"]?.text == BotConversation.canonicalTitle,
+                  Set(params.keys) == ["session_id", "title"] else { throw BotFailure.unsupported }
+        default: return
+        }
+    }
+
     private func consume(_ frame: BotJSON) {
         if frame["method"].text == "event" { onEvent?(frame["params"]); return }
         guard let id = frame["id"].integer, let continuation = pending.removeValue(forKey: id) else { return }
@@ -285,6 +314,18 @@ import Foundation
             guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
             return data
         } onCancel: { task.cancel() }
+    }
+
+    func deleteProfile(_ name: String) async throws {
+        guard socket != nil, BotProfileName.isValid(name) else { throw BotFailure.stale }
+        let owner = generation
+        var request = URLRequest(url: BotEndpoint.profileURL(base: connection.address, name: name))
+        request.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: request)
+        guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
+        guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
+        guard response.statusCode == 200 else { throw BotFailure.rejected(response.statusCode) }
+        guard (try? JSONDecoder().decode(BotJSON.self, from: data))?["ok"].flag == true else { throw BotFailure.unsupported }
     }
 
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {

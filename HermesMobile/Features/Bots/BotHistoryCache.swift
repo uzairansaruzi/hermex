@@ -118,6 +118,14 @@ actor BotHistoryCache {
         try persist()
     }
 
+    /// Drops one deleted bot's snapshots. The scope stays writable for the other bots.
+    func removeProfile(server: URL, connectionID: UUID, profileID: String) throws {
+        let scope = Scope(server: server, connectionID: connectionID)
+        try load()
+        snapshots.removeAll { $0.scope == scope && $0.profileID == profileID }
+        try persist()
+    }
+
     func removeServer(_ server: URL, activeConnectionID: UUID?) throws {
         let key = Scope.key(server)
         if let activeConnectionID { removed.insert(Scope(server: server, connectionID: activeConnectionID)) }

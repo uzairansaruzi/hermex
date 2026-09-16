@@ -10,6 +10,8 @@ import SwiftUI
     @State private var showingSetup = false
     @State private var revision = UUID()
     @State private var editSelection: BotProfileEditSelection?
+    @State private var creation: BotCreationIntent?
+    @State private var deleting: BotProfile?
     /// The bot whose chat is open. One destination serves the hero tiles and the
     /// rows, so a row shows no disclosure accessory and tiles sharing a row keep
     /// separate tap targets.
@@ -38,7 +40,7 @@ import SwiftUI
                 } else if inbox.link == .connecting && inbox.profiles.isEmpty {
                     Text("Connecting…")
                 } else if inbox.profiles.isEmpty && inbox.link == .live {
-                    Text("No bots found. Create one in Hermes Desktop, then refresh.")
+                    Text("No bots yet. Tap + to create one.")
                 }
                 if let notice = inbox.notice {
                     Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
@@ -85,10 +87,29 @@ import SwiftUI
                 Button("Search bots and messages", systemImage: "magnifyingglass") { showingSearch = true }
                     .disabled(inbox.connection == nil)
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("New bot", systemImage: "plus") { creation = .new }
+                    .disabled(inbox.link != .live)
+            }
             if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
             }
+        }
+        .sheet(item: $creation) { intent in
+            if let connection = inbox.connection {
+                BotCreateView(creator: BotCreator(server: server, connection: connection, roster: inbox.profiles,
+                                                  source: intent.source, onCreated: { _ in revision = UUID() }))
+            }
+        }
+        .confirmationDialog(Text("Delete “\(deleting?.name ?? "")”?"), isPresented: Binding(
+            get: { deleting != nil }, set: { if !$0 { deleting = nil } }
+        ), titleVisibility: .visible, presenting: deleting) { profile in
+            Button("Delete Bot", role: .destructive) { Task { await inbox.delete(profile) } }
+            Button("Hide Instead") { Task { await inbox.setHidden(true, profile) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { profile in
+            Text("Deletes this bot’s Profile on \(inbox.connection?.name ?? "Hermes"): its instructions, settings, skills, saved keys and chat history. Drafts on this phone are removed too. This cannot be undone. Hiding keeps everything and only removes it from the list.")
         }
         .sheet(isPresented: $showingSearch, onDismiss: openSearchSelection) {
             BotSearchView(inbox: inbox) { profile in
@@ -100,6 +121,8 @@ import SwiftUI
             showingSearch = false
             searchedProfile = nil
             editSelection = nil
+            creation = nil
+            deleting = nil
         }
         .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
             NavigationStack { BotConnectionView(server: server) }
@@ -178,9 +201,24 @@ import SwiftUI
             } label: {
                 Label(profile.hidden ? "Unhide" : "Hide bot", systemImage: profile.hidden ? "eye" : "eye.slash")
             }
+            Button { creation = .duplicate(profile) } label: {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+            if inbox.mayDelete(profile) {
+                Button(role: .destructive) { deleting = profile } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
         }
         .disabled(!inbox.mayEdit(profile))
     }
+}
+
+/// What the create sheet is for: a fresh bot or a copy of one on this connection.
+private enum BotCreationIntent: Identifiable {
+    case new, duplicate(BotProfile)
+    var id: String { source?.id ?? "" }
+    var source: BotProfile? { if case .duplicate(let profile) = self { return profile }; return nil }
 }
 
 private struct BotProfileEditSelection: Identifiable, Hashable {

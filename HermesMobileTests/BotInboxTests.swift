@@ -312,6 +312,8 @@ import XCTest
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]
     var configure: (([String: BotJSON]) -> BotJSON)?
+    var delete: ((String) throws -> Void)?
+    var deleted: [String] = []
     var calls: [(String, [String: BotJSON])] = []
     var onCall: ((String) -> Void)?
     /// While true, `profiles.list` waits for `release()`.
@@ -325,6 +327,12 @@ import XCTest
 
     func connect() async throws {}
     func close() { closed += 1 }
+
+    func deleteProfile(_ name: String) async throws {
+        guard let delete else { throw BotFailure.unsupported }
+        try delete(name)
+        deleted.append(name)
+    }
 
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         try validateDispatch?()

@@ -137,6 +137,68 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 4)
     }
 
+    func testLifecycleAllowlistAdmitsOnlyTheCreateShapeAndCanonicalChatCalls() async throws {
+        var deletes: [(String, String)] = []
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            case "/api/profiles/home-hunter":
+                deletes.append((request.httpMethod ?? "", request.url!.path))
+                return deletes.count == 1 ? (200, .object(["ok": .bool(true), "path": .string("/p")])) : (400, .object(["detail": .string("no")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+        _ = try await client.call("profiles.create", [
+            "name": .string("home-hunter"), "description": .string("Finds flats"), "clone_from": .string("inbox-triage"),
+            "model": .string("gpt-6"), "provider": .string("openai"), "share_auth": .bool(true)
+        ])
+        _ = try await client.call("session.create", [
+            "profile": .string("home-hunter"), "title": .string("Bot Chat"), "hidden": .bool(true), "follow_profile_config": .bool(true)
+        ])
+        _ = try await client.call("session.title", ["session_id": .string("runtime"), "title": .string("Bot Chat")])
+        XCTAssertEqual(socket.sentTextFrames, 3)
+
+        let rejected: [(String, [String: BotJSON])] = [
+            ("profiles.create", ["name": .string("default")]),
+            ("profiles.create", ["name": .string("Home Hunter")]),
+            ("profiles.create", ["name": .string("home-hunter"), "clone_all": .bool(true)]),
+            ("profiles.create", ["name": .string("home-hunter"), "model": .string("gpt-6")]),
+            ("session.create", ["profile": .string("home-hunter"), "title": .string("Scratch"), "hidden": .bool(true), "follow_profile_config": .bool(true)]),
+            ("session.create", ["profile": .string("home-hunter"), "title": .string("Bot Chat"), "hidden": .bool(true), "follow_profile_config": .bool(true), "messages": .array([])]),
+            ("session.title", ["session_id": .string("runtime"), "title": .string("Renamed")])
+        ]
+        for (method, params) in rejected {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Invalid \(method) call dispatched")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 3)
+
+        try await client.deleteProfile("home-hunter")
+        XCTAssertEqual(deletes.map(\.0), ["DELETE"]); XCTAssertEqual(deletes.first?.1, "/api/profiles/home-hunter")
+        do {
+            try await client.deleteProfile("home-hunter")
+            XCTFail("a refused delete must throw")
+        } catch { XCTAssertEqual(error as? BotFailure, .rejected(400)) }
+        do {
+            try await client.deleteProfile("../etc")
+            XCTFail("an invalid name never reaches the wire")
+        } catch { XCTAssertEqual(error as? BotFailure, .stale) }
+        XCTAssertEqual(deletes.count, 2)
+    }
+
     func testPromptActionsUseExplicitMethodsAndQueueParameters() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

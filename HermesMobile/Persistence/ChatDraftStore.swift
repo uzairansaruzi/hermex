@@ -579,12 +579,13 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
     }
 
-    func discardBotDrafts(server: URL, connectionID: UUID? = nil) async {
+    /// Drops Bot drafts for a server, one connection, or one deleted bot on it.
+    func discardBotDrafts(server: URL, connectionID: UUID? = nil, profile: String? = nil) async {
         await loadIfNeeded()
         await discardDrafts { key in
             guard key.serverID == server.absoluteString,
-                  case .bot(let id, _) = key.context else { return false }
-            return connectionID == nil || id == connectionID
+                  case .bot(let id, let name) = key.context else { return false }
+            return (connectionID == nil || id == connectionID) && (profile == nil || name == profile)
         }
     }
 
