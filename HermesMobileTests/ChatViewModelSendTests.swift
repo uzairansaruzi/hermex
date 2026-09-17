@@ -10456,6 +10456,466 @@ final class ChatViewModelSendTests: XCTestCase {
         try await completeStreamingTurn(streamClient, thenDrain: viewModel)
     }
 
+    // MARK: - Wholesale transcript replacements (round 3)
+
+    /// `/api/session` payload for the wholesale-replacement probes: the real
+    /// reload shape (`modelRouteSessionReloadJSON`'s rotating completion title
+    /// plus the session's own route) with a transcript attached, which the
+    /// edit / regenerate / retry paths need in order to have a target row.
+    private func routeFixtureSessionWithTranscript(
+        sessionRequests: NSLockBox,
+        model: String,
+        provider: String?,
+        messagesJSON: String
+    ) -> String {
+        sessionRequests.append([:])
+        let providerJSON = provider.map { ", \"model_provider\": \"\($0)\"" } ?? ""
+        return """
+        {"session": {"session_id": "session-abc", "title": "Completed Turn \(sessionRequests.all.count)", "workspace": "/tmp/workspace", "model": "\(model)"\(providerJSON), "_messages_offset": 0, "messages": [\(messagesJSON)]}}
+        """
+    }
+
+    /// The transcript the replacement probes start from. Indices matter: 2 is a
+    /// user row (editable) and 3 an assistant row (regenerable).
+    private var replacementProbeTranscriptJSON: String {
+        """
+        {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-1"},
+        {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-2"},
+        {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-3"},
+        {"role": "assistant", "content": "Original answer", "timestamp": 4, "message_id": "a-4"}
+        """
+    }
+
+    /// Sends one turn, takes the standing mismatch disclosure through its
+    /// promotion into the transcript, and returns that notice's text. Used by
+    /// every round-3 probe so they all start from the same real state: a
+    /// disclosure that is visible only as a promoted `local_notice` row, with the
+    /// dedupe pointer set.
+    @MainActor
+    private func pinAndPromoteMismatchNotice(
+        _ streamClient: SpySSEStreamingClient,
+        in viewModel: ChatViewModel
+    ) async throws -> String {
+        let didStart = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStart)
+        let notice = try XCTUnwrap(
+            viewModel.pinnedLocalNotices.first,
+            "A mismatch reply must pin the disclosure."
+        )
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        XCTAssertTrue(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "Precondition: the completed turn promotes the pinned notice into the transcript."
+        )
+        return notice
+    }
+
+    @MainActor
+    func testCompressReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: `/compress` adopts the server's compressed transcript
+        // wholesale, which keeps no promoted `local_notice` copy. Without the
+        // pointer reconcile the standing disclosure disappears for good and the
+        // next identical mismatch is deduped against a notice nobody can see.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/compress":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 0,
+                        "messages": [
+                          {"role": "user", "content": "Compressed question", "timestamp": 1, "message_id": "c-1"},
+                          {"role": "assistant", "content": "Compressed answer", "timestamp": 2, "message_id": "c-2"}
+                        ]
+                      }
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-compress-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "compress"))
+        )
+        XCTAssertEqual(result, .executed(message: "Context compressed."))
+        XCTAssertEqual(chatStartCount.count, 1, "The compress path does not send.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The compressed transcript keeps no promoted notice copy."
+        )
+
+        let didStartAgain = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStartAgain)
+        XCTAssertEqual(chatStartCount.count, 2)
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testRetryReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: the `/retry` transcript reload replaces `messages` wholesale.
+        // Its own follow-up send is the subsequent identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/retry":
+                return apiTestJSONResponse(
+                    #"{"ok": true, "last_user_text": "Original question", "removed_count": 2}"#,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-retry-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "retry"))
+        )
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chatStartCount.count, 2, "The retry path sends the recovered user text itself.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The reloaded transcript keeps no promoted notice copy."
+        )
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testEditReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: the edit path's truncate response replaces `messages`
+        // wholesale. Its own follow-up send is the subsequent identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/truncate":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 0,
+                        "messages": [
+                          {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-1"},
+                          {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-2"}
+                        ]
+                      }
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-edit-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[2], visibleIndex: 2))
+        let didEdit = await viewModel.editMessage(context, newText: "Edited question")
+        XCTAssertTrue(didEdit)
+        XCTAssertEqual(chatStartCount.count, 2, "The edit path sends the edited text itself.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The truncated transcript keeps no promoted notice copy."
+        )
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testRegenerateReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: the regenerate path's truncate response replaces `messages`
+        // wholesale. Its own follow-up send is the subsequent identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/truncate":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 0,
+                        "messages": [
+                          {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-1"},
+                          {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-2"},
+                          {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-3"}
+                        ]
+                      }
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-regen-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[3], visibleIndex: 3))
+        let didRegenerate = await viewModel.regenerateAssistantResponse(context)
+        XCTAssertTrue(didRegenerate)
+        XCTAssertEqual(chatStartCount.count, 2, "The regenerate path sends the preceding user text itself.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The truncated transcript keeps no promoted notice copy."
+        )
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testDoneCarriedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3.5: a completed turn whose `done` frame CARRIES a transcript
+        // takes `applyCompletedStreamSession`'s non-empty-messages branch, which
+        // replaces `messages` via `mergingLoadedMessages` — that merge keeps only
+        // local `-user` rows, so a promoted `local_notice` copy is dropped. This
+        // is the fifth wholesale replacement, and without the pointer reconcile
+        // the standing disclosure vanishes for good while the pointer keeps
+        // suppressing every later identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-done-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+        XCTAssertEqual(chatStartCount.count, 1)
+
+        // Drive the fifth site: the in-flight turn completes with a `done` frame
+        // whose transcript cannot contain the promoted copy.
+        let didStart = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(chatStartCount.count, 2)
+
+        let revisionBeforeDone = viewModel.transcriptRevision
+        try await completeStreamingTurnReportingCompletedSession(
+            streamClient,
+            completedSessionJSON: completedSessionReportingProfileRoute(
+                turn: 1,
+                userText: "Same route again"
+            ),
+            sessionLoads: sessionRequests,
+            thenDrain: viewModel
+        )
+
+        // Positive control: the path really did adopt the done-carried transcript,
+        // so a silently non-firing branch fails the probe instead of passing it.
+        XCTAssertTrue(
+            viewModel.messages.contains { $0.messageId == "assistant-1" },
+            "Positive control: the done-carried transcript must replace the transcript."
+        )
+        XCTAssertGreaterThan(
+            viewModel.transcriptRevision,
+            revisionBeforeDone,
+            "Positive control: adopting the done-carried transcript bumps the revision."
+        )
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The done-carried transcript keeps no promoted notice copy."
+        )
+
+        // The identical mismatch again must re-show the disclosure.
+        let didStartAgain = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStartAgain)
+        XCTAssertEqual(chatStartCount.count, 3)
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the done-carried replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
     @MainActor
     func testFreshPickerChoiceStaysExplicitAcrossCompletedSends() async throws {
         // A deliberate picker choice must carry explicit-pick intent into both

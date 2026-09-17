@@ -4007,6 +4007,9 @@ final class ChatViewModel {
             streamCoordinator.prepareForNewResponse()
             responseCompletionNeedsTranscriptRefresh = false
             attachmentCoordinator.removeAllLocalPreviews()
+            // A wholesale replacement keeps no promoted notice copy; reconcile the
+            // pointer so a hidden disclosure can re-show on the next identical mismatch.
+            discardPinnedLocalNotices(ownedAtLoadStart: [])
 
             let headline = response.summary?.headline?.trimmingCharacters(in: .whitespacesAndNewlines)
             let tokenLine = response.summary?.tokenLine?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4200,6 +4203,9 @@ final class ChatViewModel {
                     messageOffset: messagesOffset
                 ))
                 completedReasoningGroups = []
+                // A wholesale replacement keeps no promoted notice copy; reconcile the
+                // pointer so a hidden disclosure can re-show on the next identical mismatch.
+                discardPinnedLocalNotices(ownedAtLoadStart: [])
             } else {
                 await loadMessages()
                 if let lastError {
@@ -4506,6 +4512,9 @@ final class ChatViewModel {
                         cacheErrorMessage = error.localizedDescription
                     }
                 }
+                // A wholesale replacement keeps no promoted notice copy; reconcile the
+                // pointer so a hidden disclosure can re-show on the next identical mismatch.
+                discardPinnedLocalNotices(ownedAtLoadStart: [])
             }
 
             // Now send the edited text through the normal chat flow
@@ -4622,6 +4631,9 @@ final class ChatViewModel {
                         cacheErrorMessage = error.localizedDescription
                     }
                 }
+                // A wholesale replacement keeps no promoted notice copy; reconcile the
+                // pointer so a hidden disclosure can re-show on the next identical mismatch.
+                discardPinnedLocalNotices(ownedAtLoadStart: [])
             }
 
             let explicitModelPick = explicitModelPickForChatStart()
@@ -5167,6 +5179,9 @@ final class ChatViewModel {
                 previousMessagesOffset: previousMessagesOffset
             )
             didApplyCompletedTranscript = true
+            // A wholesale replacement keeps no promoted notice copy; reconcile the
+            // pointer so a hidden disclosure can re-show on the next identical mismatch.
+            discardPinnedLocalNotices(ownedAtLoadStart: [])
         }
 
         if let title = completedSession.title {
