@@ -214,6 +214,47 @@ import XCTest
         XCTAssertEqual(rows.hidden.map(\.id), ["gamma"], "a search names hidden bots too")
     }
 
+    func testChatsMixRoomsAndBotsByActivityWhileRespectingPinAndHiddenState() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("pinned", lastActive: 600, look: ["pinned": .bool(true)]),
+            row("hidden", lastActive: 500, look: ["hidden": .bool(true)]),
+            row("older", lastActive: 100),
+            row("shared", lastActive: 300),
+            row("undated", lastActive: nil)
+        ])
+        wire.rooms = [
+            .object(["room_id": .string("shared"), "updated_at": .number(400)]),
+            .object(["room_id": .string("middle"), "updated_at": .number(200)]),
+            .object(["room_id": .string("undated")])
+        ]
+        let inbox = try makeInbox(wires: [wire, wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.chats.map(\.id), [
+            "room:shared", "bot:shared", "room:middle", "bot:older", "bot:undated", "room:undated"
+        ])
+        XCTAssertEqual(inbox.rows(matching: "").pinned.map(\.id), ["pinned"])
+        inbox.showsHidden = true
+        XCTAssertEqual(inbox.chats.first?.id, "bot:hidden")
+        inbox.showsHidden = false
+        XCTAssertFalse(inbox.chats.contains { $0.id == "bot:hidden" })
+
+        // A host losing room support must remove its rooms from the timeline.
+        wire.rooms = nil
+        await inbox.open()
+        XCTAssertEqual(inbox.chats.map(\.id), ["bot:shared", "bot:older", "bot:undated"])
+    }
+
+    func testEqualChatTimesUseStableDistinctIdentities() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("z"), row("a")])
+        wire.rooms = [
+            .object(["room_id": .string("z"), "updated_at": .number(100)]),
+            .object(["room_id": .string("a"), "updated_at": .number(100)])
+        ]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.chats.map(\.id), ["bot:a", "bot:z", "room:a", "room:z"])
+    }
+
     func testSocketLossKeepsTheRosterAndReconnectsQuietly() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.configure = { _ in XCTFail("no write on a dead socket"); return .null }
@@ -334,6 +375,7 @@ import XCTest
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]
+    var rooms: [BotJSON]?
     var configure: (([String: BotJSON]) -> BotJSON)?
     var delete: ((String) throws -> Void)?
     var deleted: [String] = []
@@ -368,6 +410,12 @@ import XCTest
         calls.append((method, params))
         onCall?(method)
         switch method {
+        case "groups.capabilities":
+            guard rooms != nil else { throw BotFailure.unsupported }
+            return .object(["driver": .bool(true), "methods": .array(
+                ["groups.list", "groups.state", "groups.log"].map(BotJSON.string))])
+        case "groups.list":
+            return .object(["rooms": .array(rooms ?? [])])
         case "profiles.list":
             if holdsList { await withCheckedContinuation { held.append($0) } }
             return .object(["profiles": .array(roster), "bot_mode_protocol": .bool(true)])

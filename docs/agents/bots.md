@@ -626,7 +626,10 @@ it never orchestrates member turns, retries work, or opens the hidden
 On inbox open and pull to refresh, `groups.capabilities` gates room rows: `driver`
 must be true and `methods` must include `groups.list`,
 `groups.state`, and `groups.log`. Missing capabilities hide rooms, including name
-search. Group rooms share the ordinary chat list without a separate section.
+search. Group rooms and unpinned bots share one newest-first list, using room
+updated time and bot last activity. Undated chats sort last; ties use stable chat
+identity. Revealed hidden bots join that order, with the reveal control at the
+bottom. Pinned bot tiles remain above the list.
 The top-right + menu offers New Bot and New Group Chat; group creation is disabled
 when the host lacks its capability. `groups.list` pages all active
 rooms; disbanded entries are excluded. Identity is configured server URL + Bot

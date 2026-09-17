@@ -66,21 +66,11 @@ import SwiftUI
                     .padding(.vertical, 20)
                     .listRowSeparator(.hidden)
                 }
-                ForEach(rows.others) { profile in
-                    row(profile, dimmed: false)
-                }
-                ForEach(rows.hidden) { profile in
-                    row(profile, dimmed: true)
-                }
-                if inbox.hiddenCount > 0 {
-                    Button(inbox.showsHidden ? "Hide hidden bots" : "Show hidden bots (\(inbox.hiddenCount))") {
-                        inbox.showsHidden.toggle()
-                    }
-                    .font(.subheadline).foregroundStyle(.secondary)
-                    .listRowSeparator(.hidden)
-                }
-                if inbox.roomCapabilities.enabled {
-                    ForEach(inbox.rooms, id: \.id) { room in
+                ForEach(inbox.chats) { chat in
+                    switch chat {
+                    case .bot(let profile):
+                        row(profile, dimmed: profile.hidden)
+                    case .room(let room):
                         if let key = inbox.roomKey(room) {
                             Button { openRoom = key } label: {
                                 BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
@@ -88,6 +78,13 @@ import SwiftUI
                             .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
                         }
                     }
+                }
+                if inbox.hiddenCount > 0 {
+                    Button(inbox.showsHidden ? "Hide hidden bots" : "Show hidden bots (\(inbox.hiddenCount))") {
+                        inbox.showsHidden.toggle()
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
                 }
             } else {
                 ContentUnavailableView("Connect to Hermes", systemImage: "bubble.left.and.bubble.right",

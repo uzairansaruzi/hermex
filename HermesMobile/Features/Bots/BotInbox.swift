@@ -17,6 +17,40 @@ import UIKit
         var hidden: [BotProfile] = []
     }
 
+    enum ChatRow: Identifiable {
+        case bot(BotProfile)
+        case room(BotGroupRoom)
+
+        var id: String {
+            switch self {
+            case .bot(let profile): return "bot:" + profile.id
+            case .room(let room): return "room:" + room.id
+            }
+        }
+
+        var activity: Date? {
+            switch self {
+            case .bot(let profile): return profile.lastActive
+            case .room(let room): return room.updatedAt
+            }
+        }
+    }
+
+    /// Pinned tiles stay separate; all other visible chats share one timeline.
+    var chats: [ChatRow] {
+        let rows = rows(matching: "")
+        let bots = (rows.others + rows.hidden).map(ChatRow.bot)
+        let groups = roomCapabilities.enabled ? rooms.map(ChatRow.room) : []
+        return (bots + groups).sorted {
+            switch ($0.activity, $1.activity) {
+            case let (lhs?, rhs?) where lhs != rhs: return lhs > rhs
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return $0.id < $1.id
+            }
+        }
+    }
+
     let server: URL
     private(set) var connection: BotConnection?
     private(set) var profiles: [BotProfile] = []
