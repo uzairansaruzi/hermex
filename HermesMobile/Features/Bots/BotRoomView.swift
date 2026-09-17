@@ -202,4 +202,3 @@ struct BotRoomInboxRow: View {
         .accessibilityElement(children: .combine)
     }
 }
-

@@ -179,11 +179,11 @@ import Observation
             self.stateRevision += 1
             self.room = updated; self.onChanged(updated)
         })
-        renaming = false
     }
 
     func disband() async {
         guard mayDisband else { return }
+        let owner = viewOwner
         await command("groups.disband", params: ["room_id": .string(key.roomID)], validate: {
             guard !self.finishingStop else { throw BotFailure.stale }
             self.uncertainDisband = true
@@ -194,7 +194,7 @@ import Observation
         })
         // A disconnect may invalidate the write's continuation. Recover with reads
         // only while still visible; background/close leaves link idle.
-        if uncertainDisband && link == .stopped { await open(owner: viewOwner) }
+        if viewOwner == owner && uncertainDisband && link == .stopped { await open(owner: owner) }
     }
 
     private func finishDisband() {

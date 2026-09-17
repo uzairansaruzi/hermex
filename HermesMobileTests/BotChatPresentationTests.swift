@@ -7,6 +7,47 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotChatPresentationTests: XCTestCase {
+    func testRoomManagementShowsMemberChipsAndStoppingReason() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let roster = [
+            BotProfile(.object(["name": .string("chief-of-staff"), "display_name": .string("Chief of Staff")]))!,
+            BotProfile(.object(["name": .string("inbox-triage"), "display_name": .string("Inbox")]))!,
+            BotProfile(.object(["name": .string("dev"), "display_name": .string("Developer")]))!
+        ]
+        let creator = BotRoomCreator(server: server, connection: connection, roster: roster)
+        creator.select(roster[0]); creator.select(roster[1])
+        let picker = try show(BotRoomCreateView(creator: creator, avatars: [:], onCreated: { _ in
+            XCTFail("Rendering must never create a room")
+        }).environment(\.scenePhase, .inactive))
+        picker.overrideUserInterfaceStyle = .dark
+        let selected = try await screenshot(picker, name: "529-member-picker", awaiting: ["Chief of Staff", "Inbox"])
+        XCTAssertTrue(selected.contains("Chief of Staff"), selected)
+        XCTAssertTrue(selected.contains("Inbox"), selected)
+        close(picker)
+
+        let wire = RoomWire(); wire.driverStatus = RoomFixture.status(stopping: 1)
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: "fixture-room"),
+            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, makeWire: { _ in wire })
+        let window = try show(NavigationStack {
+            BotRoomProfileView(reader: reader, roster: roster, avatars: [:])
+        }.environment(\.scenePhase, .inactive))
+        defer { reader.close(); close(window) }
+        await renderFrames(4)
+        await reader.open()
+        window.overrideUserInterfaceStyle = .dark
+        let stopping = try await screenshot(window, name: "529-room-profile", awaiting: ["Comms", "Finishing stop"])
+        XCTAssertTrue(stopping.contains("Finishing stop"), stopping)
+        XCTAssertFalse(reader.mayDisband)
+        XCTAssertTrue(descendants(window).contains { $0 is UITextField }, "Local room name is editable")
+        wire.authority = "foreign"
+        await reader.poll(); await renderFrames(8)
+        let foreign = try screenshot(window, name: "529-foreign-room-profile")
+        XCTAssertTrue(foreign.contains("Managed by another Hermes"), foreign)
+        XCTAssertFalse(descendants(window).contains { $0 is UITextField }, "Foreign rooms have no rename field")
+        XCTAssertTrue(wire.writes.isEmpty)
+    }
+
     func testRoomMentionPanelUsesRoomRoster() async throws {
         let names = ["chief-of-staff", "inbox-triage"]
         let roster = try names.enumerated().map { index, name in
