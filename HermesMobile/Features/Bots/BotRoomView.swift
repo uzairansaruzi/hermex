@@ -60,7 +60,7 @@ import SwiftUI
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 if reader.link == .connecting || reader.link == .stopped || reader.statusText != nil { status }
-                if reader.showsComposer { BotRoomComposerView(reader: reader, avatars: avatars) }
+                if reader.showsComposer { BotRoomComposerView(reader: reader, roster: roster, avatars: avatars) }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -169,7 +169,7 @@ struct BotRoomAvatars: View {
     }
 }
 
-private struct BotRoomMemberAvatar: View {
+struct BotRoomMemberAvatar: View {
     let member: BotGroupRoom.Member?
     let roster: [BotProfile]
     let avatars: [String: UIImage]

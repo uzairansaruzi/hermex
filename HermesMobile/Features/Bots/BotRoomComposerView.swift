@@ -3,6 +3,7 @@ import SwiftUI
 /// The Bot editor and mention panel, with only the controls rooms support.
 struct BotRoomComposerView: View {
     @Bindable var reader: BotRoomReader
+    let roster: [BotProfile]
     let avatars: [String: UIImage]
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
@@ -28,7 +29,7 @@ struct BotRoomComposerView: View {
                    let trigger = BotMentionTrigger.detect(in: reader.draft, selection: selection.range) {
                     let completions = BotRoomMentions.completions(room: reader.room, query: trigger.query)
                     if !completions.isEmpty {
-                        BotMentionAutocompleteView(completions: completions, avatars: mentionAvatars) { item in
+                        BotMentionAutocompleteView(completions: completions, avatars: avatars, room: reader.room, roster: roster) { item in
                             let result = trigger.applying(tag: item.tag, to: reader.draft)
                             reader.draft = result.draft
                             selection = selection.moved(to: result.selection)
@@ -54,13 +55,6 @@ struct BotRoomComposerView: View {
             }
         }
         .padding(.horizontal, 16).padding(.bottom, 8)
-    }
-
-    private var mentionAvatars: [String: UIImage] {
-        Dictionary(reader.room.members.compactMap { member in
-            guard let profile = member.profile, let avatar = avatars[profile] else { return nil }
-            return (member.id, avatar)
-        }, uniquingKeysWith: { first, _ in first })
     }
 
     private var actionButton: some View {

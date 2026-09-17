@@ -7,6 +7,43 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotChatPresentationTests: XCTestCase {
+    func testRoomMentionPanelUsesRoomRoster() async throws {
+        let names = ["chief-of-staff", "inbox-triage"]
+        let roster = try names.enumerated().map { index, name in
+            try XCTUnwrap(BotProfile(.object([
+                "name": .string(name),
+                "ui_meta": .object(["hermes-bots": .object([
+                    "shape": .string(index == 0 ? "circle" : "triangle"),
+                    "color": .string(index == 0 ? "#f97316" : "#22c55e")
+                ])])
+            ])))
+        }
+        var value = try XCTUnwrap(RoomFixture.room(latest: 0).fields)
+        value["members"] = .array(names.enumerated().map { index, name in
+            .object(["member_id": .string("member-\(index)"), "profile": .string(name),
+                     "handle": .string(name), "display_name": .string(name)])
+        })
+        let room = try XCTUnwrap(BotGroupRoom(.object(value)))
+        let completions = BotRoomMentions.completions(room: room, query: "")
+        var selected: String?
+        let window = try show(VStack(spacing: 24) {
+            HStack {
+                BotRoomAvatars(room: room, roster: roster, avatars: [:], size: 30)
+                Text(verbatim: room.name)
+            }
+            BotMentionAutocompleteView(completions: completions, avatars: [:], room: room, roster: roster) {
+                selected = $0.tag
+            }
+        }.padding())
+        window.overrideUserInterfaceStyle = .dark
+        defer { close(window) }
+        await renderFrames(8)
+        let text = try screenshot(window, name: "527-room-mention-avatars")
+        XCTAssertTrue(text.contains("@all"), text)
+        XCTAssertTrue(text.contains("@everyone"), text)
+        XCTAssertNil(selected, "Rendering suggestions must not insert a mention")
+    }
+
     func testRoomShowsMemberMessagesAndTextOnlyComposer() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
@@ -20,7 +57,7 @@ import XCTest
         defer { reader.close(); close(window) }
         await reader.open()
         await renderFrames(8)
-        let text = try screenshot(window, name: "527-room-participant")
+        let text = try await screenshot(window, name: "527-room-participant", awaiting: ["Comms", "Message Comms"])
         XCTAssertTrue(text.contains("Comms"), text)
         XCTAssertTrue(text.contains("chief-of-staff"), text)
         XCTAssertTrue(text.contains("Message 3"), text)
