@@ -400,6 +400,7 @@ enum RoomFixture {
     var capabilities = RoomFixture.capabilities
     var disbanded = false
     var roomName = "Comms"
+    var listedRooms: [BotJSON]?
     var listCalls = 0
     var authority = "fixture-install"
     var epoch = 1
@@ -476,6 +477,7 @@ enum RoomFixture {
         case "groups.capabilities": return capabilities
         case "groups.list":
             listCalls += 1
+            if let listedRooms { return .object(["rooms": .array(listedRooms), "next_offset": .null]) }
             var room = RoomFixture.room(latest: latest).fields!
             room["name"] = .string(roomName)
             if disbanded { room["disbanded_at"] = .number(100) }

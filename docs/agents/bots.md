@@ -707,7 +707,9 @@ so all three identifiers use the Profile name, including `default`.
 
 The first dispatched attempt freezes its ID and payload. Try Again explicitly
 reuses both, even after a lost reply; it cannot create a second room. Error 4110
-re-reads the active list, while 4123 asks for a gateway restart on the Mac.
+re-reads the active list; a room with the attempted ID, same authority and frozen
+member identities completes creation even if another client renamed it after a
+lost reply. Other conflicts stay errors. Code 4123 asks for a gateway restart on the Mac.
 Closing or backgrounding the sheet invalidates late replies. Success opens the
 acknowledged room under the same configured server and connection identity.
 

@@ -63,6 +63,7 @@ import Observation
         let owner = UUID(); generation = owner
         let client = makeWire(connection); wire = client; busy = true; message = nil
         var dispatched = false
+        var authority: String?
         defer {
             client.onDisconnect = nil; client.close()
             if generation == owner { wire = nil; busy = false }
@@ -73,6 +74,7 @@ import Observation
             let caps = BotRoomCapabilities(try await client.call("groups.capabilities", [:]))
             try check(owner, client)
             guard caps.enabled, caps.methods.contains("groups.create"), caps.authority != nil else { throw BotFailure.unsupported }
+            authority = caps.authority
             let params = attempt ?? ["room_id": .string(UUID().uuidString), "name": .string(name),
                                      "members": .array(selected.map(Self.member))]
             try BotRoomRPC.validate("groups.create", params)
@@ -93,6 +95,19 @@ import Observation
                     do {
                         let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
                         try check(owner, client); onReconciled(rooms)
+                        // Another client can rename the room between a lost create
+                        // reply and retry. Its permanent ID and frozen members still
+                        // identify our successful creation; the name may differ.
+                        if let attempt, let members = attempt["members"]?.list,
+                           let room = rooms.first(where: { $0.id == attempt["room_id"]?.text }),
+                           room.authority == authority, authority != nil,
+                           room.members.count == members.count,
+                           zip(room.members, members).allSatisfy({ actual, expected in
+                               actual.id == expected["member_id"].text && actual.profile == expected["profile"].text
+                                   && actual.handle == expected["handle"].text
+                           }) {
+                            created = room; message = nil
+                        }
                     } catch { /* Keep the original rejection; a failed read is not success. */ }
                 }
             } else {

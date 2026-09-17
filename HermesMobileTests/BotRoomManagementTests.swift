@@ -73,6 +73,32 @@ import XCTest
         XCTAssertNil(creator.created)
     }
 
+    func testConflictRecoversRenamedRoomOnlyWithMatchingMembersAndAuthority() async throws {
+        for mismatch in ["none", "id", "members", "authority"] {
+            let wire = RoomWire(), creator = try creator(wire)
+            creator.select(creator.roster[0]); creator.select(creator.roster[1])
+            wire.loseWrite = true
+            await creator.create()
+            let attempt = try XCTUnwrap(creator.attempt)
+            var room = RoomFixture.room(latest: 0).fields!
+            room["room_id"] = mismatch == "id" ? .string("other-room") : attempt["room_id"]
+            room["members"] = mismatch == "members" ? .array([]) : attempt["members"]
+            room["name"] = .string("Renamed on Desktop")
+            if mismatch == "authority" { room["authority_gateway_id"] = .string("foreign") }
+            wire.listedRooms = [.object(room)]
+            wire.loseWrite = false; wire.writeFailure = BotRoomFailure(code: 4110, reason: nil)
+            await creator.create()
+            XCTAssertEqual(wire.writes.count, 2)
+            XCTAssertEqual(wire.writes[0].1, wire.writes[1].1)
+            XCTAssertEqual(wire.listCalls, 1)
+            if mismatch == "none" {
+                XCTAssertEqual(creator.created?.name, "Renamed on Desktop")
+                XCTAssertNil(creator.message)
+                await creator.create(); XCTAssertEqual(wire.writes.count, 2)
+            } else { XCTAssertNil(creator.created, mismatch) }
+        }
+    }
+
     func testCreationRejectsReplacedConnectionAtDispatch() async throws {
         let wire = RoomWire(), store = BotConnectionStore(keychain: InMemoryKeychainStore())
         let creator = try creator(wire, store: store)
