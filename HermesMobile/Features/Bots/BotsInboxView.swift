@@ -20,6 +20,8 @@ import SwiftUI
     @State private var openProfile: BotProfile?
     @State private var openRoom: BotRoomKey?
     @State private var searchedRoom: BotRoomKey?
+    @State private var searchedSequence: Int?
+    @State private var roomSequence: Int?
     @State private var expiredRoomToast: String?
 
     init(server: URL, showSessions: @escaping () -> Void) {
@@ -72,7 +74,7 @@ import SwiftUI
                         row(profile, dimmed: profile.hidden)
                     case .room(let room):
                         if let key = inbox.roomKey(room) {
-                            Button { openRoom = key } label: {
+                            Button { roomSequence = nil; openRoom = key } label: {
                                 BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
                             }
                             .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
@@ -129,7 +131,7 @@ import SwiftUI
             }
         }
         .sheet(isPresented: Binding(get: { roomCreator != nil }, set: { if !$0 { roomCreator = nil } }), onDismiss: {
-            if let key = createdRoom, key.connectionID == inbox.connection?.id { openRoom = key }
+            if let key = createdRoom, key.connectionID == inbox.connection?.id { roomSequence = nil; openRoom = key }
             createdRoom = nil
         }) {
             if let creator = roomCreator {
@@ -156,8 +158,8 @@ import SwiftUI
             Text("Deletes this bot’s Profile on \(inbox.connection?.name ?? "Hermes"): its instructions, settings, skills, saved keys and chat history. Drafts on this phone are removed too. This cannot be undone. Hiding keeps everything and only removes it from the list.")
         }
         .sheet(isPresented: $showingSearch, onDismiss: openSearchSelection) {
-            BotSearchView(inbox: inbox, onSelectRoom: { room in
-                searchedRoom = inbox.roomKey(room)
+            BotSearchView(inbox: inbox, onSelectRoom: { room, sequence in
+                searchedRoom = inbox.roomKey(room); searchedSequence = sequence
             }) { profile in
                 guard let connection = inbox.connection else { return }
                 searchedProfile = (connection.id, profile.id)
@@ -166,7 +168,7 @@ import SwiftUI
         .onChange(of: inbox.connection?.id) {
             showingSearch = false
             searchedProfile = nil
-            searchedRoom = nil
+            searchedRoom = nil; searchedSequence = nil; roomSequence = nil
             openRoom = nil
             editSelection = nil
             creation = nil
@@ -182,7 +184,7 @@ import SwiftUI
         .navigationDestination(item: $openRoom) { key in
             if let connection = inbox.connection, connection.id == key.connectionID,
                let room = inbox.rooms.first(where: { $0.id == key.roomID }) {
-                BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, onExpired: {
+                BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, initialSequence: roomSequence, onExpired: {
                     inbox.expireRoom(key); openRoom = nil
                     expiredRoomToast = String(localized: "This room’s history is no longer available.")
                 }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
@@ -208,9 +210,9 @@ import SwiftUI
     /// Resolve the selection again after the sheet closes so a refreshed roster
     /// or changed connection cannot open an old bot under a new identity.
     private func openSearchSelection() {
-        defer { searchedProfile = nil; searchedRoom = nil }
+        defer { searchedProfile = nil; searchedRoom = nil; searchedSequence = nil }
         if let key = searchedRoom, key.connectionID == inbox.connection?.id,
-           inbox.rooms.contains(where: { $0.id == key.roomID }) { openRoom = key; return }
+           inbox.rooms.contains(where: { $0.id == key.roomID }) { roomSequence = searchedSequence; openRoom = key; return }
         guard let selection = searchedProfile, inbox.connection?.id == selection.connectionID else { return }
         openProfile = inbox.profiles.first { $0.id == selection.profileID }
     }

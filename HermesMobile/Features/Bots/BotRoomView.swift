@@ -9,12 +9,14 @@ import SwiftUI
     @State private var owner = UUID()
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var isNearBottom = true
+    @State private var pendingSequence: Int?
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
 
     init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage]) {
         _reader = State(initialValue: reader); self.roster = roster; self.avatars = avatars
+        _pendingSequence = State(initialValue: reader.initialSequence)
     }
 
     var body: some View {
@@ -47,8 +49,11 @@ import SwiftUI
             }
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
-            .onChange(of: reader.events.last?.seq) {
-                if followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
+            .onChange(of: reader.events.map(\.seq)) {
+                if let sequence = pendingSequence, reader.events.contains(where: { $0.seq == sequence }) {
+                    handleFollowEvent(.userScrollBegin)
+                    proxy.scrollTo(sequence, anchor: .center); pendingSequence = nil
+                } else if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
             }
             .overlay(alignment: .bottom) {
                 if !isNearBottom && !reader.events.isEmpty {
