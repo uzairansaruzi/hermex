@@ -806,6 +806,8 @@ private struct ChatTranscriptMessageRow: View {
     }
 
     private var metaTimeText: String? {
+        // Steer rows carry their own caption; no timestamp or copy actions.
+        guard !message.isSteerMessage else { return nil }
         guard showsTimestamps, isUserMessage || (isTerminalReply && !isStreaming) else { return nil }
         return ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: message.timestamp)
     }
@@ -824,7 +826,7 @@ private struct ChatTranscriptMessageRow: View {
             isStreaming: isStreaming,
             liveTokensPerSecond: liveTokensPerSecond,
             onAskHermex: onAskHermex,
-            contextMenu: isUserMessage ? actionMenu : nil
+            contextMenu: isUserMessage && !message.isSteerMessage ? actionMenu : nil
         )
     }
 

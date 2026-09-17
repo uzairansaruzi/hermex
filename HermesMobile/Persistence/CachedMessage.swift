@@ -20,6 +20,9 @@ final class CachedMessage {
     var attachmentsData: Data?
     var turnTps: Double?
     var turnDuration: Double?
+    /// Optional server display hint (e.g. `"steer"`). Added after the initial
+    /// schema; SwiftData migrates it as a nullable column on existing stores.
+    var displayKind: String?
     var cachedAt: Date
     var expiresAt: Date
 
@@ -76,6 +79,7 @@ final class CachedMessage {
         reasoning = message.reasoning
         turnTps = message.turnTps
         turnDuration = message.turnDuration
+        displayKind = message.displayKind
         if let attachments = message.attachments, !attachments.isEmpty {
             attachmentsData = try? JSONEncoder().encode(attachments)
         } else {

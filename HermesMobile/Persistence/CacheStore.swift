@@ -347,7 +347,8 @@ private extension ChatMessage {
             reasoning: cachedMessage.reasoning,
             attachments: attachments,
             turnTps: cachedMessage.turnTps,
-            turnDuration: cachedMessage.turnDuration
+            turnDuration: cachedMessage.turnDuration,
+            displayKind: cachedMessage.displayKind
         )
     }
 }

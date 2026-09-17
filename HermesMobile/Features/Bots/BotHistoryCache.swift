@@ -19,6 +19,16 @@ actor BotHistoryCache {
         let id: String
         let role: String
         let text: String
+        /// Optional server display hint (e.g. `"steer"`). Absent on snapshots
+        /// saved before steering hints existed; decodes as nil.
+        let displayKind: String?
+
+        init(id: String, role: String, text: String, displayKind: String? = nil) {
+            self.id = id
+            self.role = role
+            self.text = text
+            self.displayKind = displayKind
+        }
     }
     struct Snapshot: Codable, Equatable, Identifiable, Sendable {
         let id: UUID
@@ -68,7 +78,7 @@ actor BotHistoryCache {
             guard let role = message.role, ["user", "assistant"].contains(role),
                   let text = message.content, !text.isEmpty,
                   text.utf8.count <= Self.maximumMessageBytes, seen.insert(message.id).inserted else { return nil }
-            return Message(id: message.id, role: role, text: text)
+            return Message(id: message.id, role: role, text: text, displayKind: message.displayKind)
         }
         if let previous = snapshots.first(where: { $0.scope == scope && $0.profileID == profileID }),
            previous.root == root, previous.tip == tip, previous.messages == rows,

@@ -77304,6 +77304,7 @@
         }
       }
     },
+    "Steering hint" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Steuerungshinweis"}},"es":{"stringUnit":{"state":"needs_review","value":"Sugerencia de dirección"}},"fr":{"stringUnit":{"state":"needs_review","value":"Indication d'orientation"}},"it":{"stringUnit":{"state":"needs_review","value":"Suggerimento di guida"}},"pl":{"stringUnit":{"state":"needs_review","value":"Wskazówka sterowania"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Dica de direcionamento"}},"nl":{"stringUnit":{"state":"needs_review","value":"Bijstuurhint"}},"tr":{"stringUnit":{"state":"needs_review","value":"Yönlendirme ipucu"}},"ru":{"stringUnit":{"state":"needs_review","value":"Подсказка для направления"}},"ja":{"stringUnit":{"state":"needs_review","value":"誘導ヒント"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"引导提示"}},"ko":{"stringUnit":{"state":"needs_review","value":"유도 힌트"}},"ar":{"stringUnit":{"state":"needs_review","value":"تلميح التوجيه"}},"he":{"stringUnit":{"state":"needs_review","value":"רמז ההכוונה"}},"ur":{"stringUnit":{"state":"needs_review","value":"رہنمائی کا اشارہ"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"引導提示"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"引導提示"}}}},
     "Steering hint was not consumed before the response ended, so it was queued for the next turn." : {
       "localizations" : {
         "ar" : {

@@ -22,16 +22,29 @@ struct BotCachedHistoryView: View {
                     Text(hit.snapshot.savedAt, format: .dateTime.month().day().hour().minute())
                         .font(.footnote).foregroundStyle(.secondary)
                     ForEach(hit.snapshot.messages) { message in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(message.role == "user" ? String(localized: "You") : profile.name)
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                            Text(message.text).textSelection(.enabled)
+                        let chatMessage = ChatMessage(
+                            role: message.role,
+                            content: message.text,
+                            timestamp: nil,
+                            messageId: message.id,
+                            displayKind: message.displayKind
+                        )
+                        if chatMessage.isSteerMessage {
+                            // The same steer bubble as live Bot history.
+                            MessageBubbleView(message: chatMessage, textOnly: true)
+                                .id(message.id)
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(message.role == "user" ? String(localized: "You") : profile.name)
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                                Text(message.text).textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(message.id == hit.message.id ? Color.accentColor.opacity(0.12) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 12))
+                            .id(message.id)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(message.id == hit.message.id ? Color.accentColor.opacity(0.12) : Color.clear,
-                                    in: RoundedRectangle(cornerRadius: 12))
-                        .id(message.id)
                     }
                 }
                 .scrollTargetLayout()

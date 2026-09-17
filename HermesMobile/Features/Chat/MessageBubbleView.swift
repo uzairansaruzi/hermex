@@ -68,6 +68,8 @@ struct MessageBubbleView: View {
             localNoticeRow
         } else if isLocalAssistant {
             localAssistantRow
+        } else if message.isSteerMessage {
+            steerBubble
         } else if isUserMessage {
             userMessageRow
         } else if textOnly {
@@ -101,6 +103,46 @@ struct MessageBubbleView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    /// A mid-turn steering hint: compact and visually distinct from the user's
+    /// own messages, with the server's out-of-band wrapper stripped. Steer
+    /// rows are annotations on the active turn, not user-editable content, so
+    /// they carry no context menu or meta row.
+    private var steerBubble: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            Label {
+                Text("Steer")
+                    .font(.caption.weight(.semibold))
+            } icon: {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.secondary)
+
+            if !message.steerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(message.steerText)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Color.accentColor.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(
+                                Color.accentColor.opacity(colorScheme == .dark ? 0.45 : 0.3),
+                                lineWidth: 0.5
+                            )
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(String(localized: "Steering hint"))
+        .accessibilityValue(message.steerText.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private var assistantMessageRow: some View {
