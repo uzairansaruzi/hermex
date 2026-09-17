@@ -147,6 +147,13 @@ import XCTest
         XCTAssertTrue(after.contains("Comms"), after)
         XCTAssertTrue(after.contains("chief-of-staff"), after)
         XCTAssertFalse(after.contains("No saved messages found"), after)
+        wire.listFailure = BotFailure.transport
+        await inbox.open()
+        await renderFrames(40)
+        let offline = try screenshot(window, name: "528-room-search-list-unavailable")
+        XCTAssertTrue(offline.contains("Comms"), offline)
+        XCTAssertTrue(offline.contains("chief-of-staff"), offline)
+        XCTAssertFalse(offline.contains("No saved messages found"), offline)
     }
 
     func testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages() async throws {

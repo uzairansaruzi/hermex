@@ -4,6 +4,43 @@ import XCTest
 @MainActor final class BotRoomTests: XCTestCase {
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!, username: "u", password: "p")
 
+    func testCachedRoomSearchSurvivesColdStartAndListFailureButFreshListAndIdentityWin() async throws {
+        for offline in [true, false] {
+            let cache = BotHistoryCache(), wire = RoomWire()
+            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+            try store.save(connection, server: key().server)
+            let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 1)))
+            try await cache.appendRoom(key: key(), room: room,
+                page: RoomFixture.page([RoomFixture.event(1, kind: "message.member")], cursor: 1), since: 0)
+            if offline { wire.connectFailure = BotFailure.transport }
+            else { wire.listFailure = BotFailure.transport }
+            let inbox = BotInbox(server: key().server, store: store, historyCache: cache, makeWire: { _ in wire })
+            await inbox.open()
+            XCTAssertTrue(inbox.rooms.isEmpty)
+            XCTAssertNil(inbox.searchableRoomIDs)
+            let hits = try await cache.search("Message", scope: .init(server: key().server, connectionID: connection.id),
+                                             profileIDs: [], roomIDs: inbox.searchableRoomIDs)
+            let hit = try XCTUnwrap(hits.first)
+            XCTAssertEqual(inbox.roomForSearch(hit)?.name, "Comms")
+            XCTAssertEqual(inbox.selectRoomSearchHit(hit)?.id, room.id)
+            XCTAssertEqual(inbox.rooms.first?.id, room.id, "The existing room destination can open cached identity")
+            let wrongServer = BotInbox(server: URL(string: "https://other.example")!, store: store)
+            XCTAssertNil(wrongServer.selectRoomSearchHit(hit))
+            wire.connectFailure = nil; wire.listFailure = nil; wire.listedRooms = []
+            await inbox.open()
+            XCTAssertEqual(inbox.searchableRoomIDs, [])
+            XCTAssertNil(inbox.roomForSearch(hit), "An authoritative empty list hides a removed room")
+            XCTAssertNil(inbox.selectRoomSearchHit(hit), "A queued tap cannot resurrect a removed room")
+            let removed = try await cache.roomHistory(key()); XCTAssertNil(removed)
+            let replacement = BotConnection(id: UUID(), name: "Other", address: connection.address, username: "u", password: "p")
+            try store.save(replacement, server: key().server)
+            wire.connectFailure = BotFailure.transport
+            await inbox.open()
+            XCTAssertNil(inbox.selectRoomSearchHit(hit), "Offline fallback still revalidates connection identity")
+            inbox.close()
+        }
+    }
+
     func testRoomOpensFromCacheBeforeStateThenReadsOnlyNewSequences() async throws {
         let cache = BotHistoryCache(), wire = RoomWire()
         wire.latest = 3
@@ -493,6 +530,8 @@ enum RoomFixture {
     var roomName = "Comms"
     var listedRooms: [BotJSON]?
     var listCalls = 0
+    var listFailure: Error?
+    var connectFailure: Error?
     var authority = "fixture-install"
     var epoch = 1
     var logStarts: [Int] = []
@@ -513,7 +552,7 @@ enum RoomFixture {
     var holdState = false
     var onHeld: (() -> Void)?
     private var held: CheckedContinuation<BotJSON, Never>?
-    func connect() async throws {}
+    func connect() async throws { if let connectFailure { throw connectFailure } }
     func close() { closed += 1 }
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.create", "groups.rename", "groups.disband"].contains(method) {
@@ -568,6 +607,7 @@ enum RoomFixture {
         case "groups.capabilities": return capabilities
         case "groups.list":
             listCalls += 1
+            if let listFailure { throw listFailure }
             if let listedRooms { return .object(["rooms": .array(listedRooms), "next_offset": .null]) }
             var room = RoomFixture.room(latest: latest).fields!
             room["name"] = .string(roomName)

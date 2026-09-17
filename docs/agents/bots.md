@@ -610,7 +610,11 @@ are saved. The separate cursor includes invisible events. Cached coverage stays
 contiguous; eviction advances its earlier boundary. Bot and room results share
 the 100-hit limit and global storage budget. A room hit shows its room and sender
 and opens the normal room at the saved sequence, revalidating the connection and
-room after search dismisses. If the cache was evicted, the reader fetches that
+room after search dismisses. When the room list is unavailable (including cold
+start offline), saved room names and sender text remain searchable. Selecting a
+hit admits only that cached identity for navigation; runtime permissions and
+members still come from fresh state. A successful room list always wins over the
+cached fallback, including if it refreshes while search is dismissing. If the cache was evicted, the reader fetches that
 sequence again. Expiry/disband revokes late writes and removes the room rows;
 a complete active room list also removes cached rooms that have disappeared.
 

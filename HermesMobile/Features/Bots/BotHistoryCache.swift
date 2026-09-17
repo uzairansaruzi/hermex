@@ -47,6 +47,14 @@ actor BotHistoryCache {
         var cursor: Int? = nil
         var earlierBoundary: Int? = nil
 
+        /// Minimal identity for opening a saved room while its live list is unavailable.
+        /// Runtime authority, members and permissions always come from groups.state.
+        var cachedRoom: BotGroupRoom? {
+            guard let roomID else { return nil }
+            return BotGroupRoom(.object(["room_id": .string(roomID),
+                "name": .string(profileName ?? roomID), "latest_seq": .number(Double(cursor ?? 0))]))
+        }
+
         var replayPage: BotJSON {
             .object(["events": .array(messages.compactMap(\.roomEvent)),
                      "cursor": .number(Double(cursor ?? 0))])

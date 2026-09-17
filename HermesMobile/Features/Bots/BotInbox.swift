@@ -55,6 +55,7 @@ import UIKit
     private(set) var connection: BotConnection?
     private(set) var profiles: [BotProfile] = []
     private(set) var rooms: [BotGroupRoom] = []
+    private var hasRoomList = false
     private(set) var roomCapabilities = BotRoomCapabilities(.null)
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
@@ -141,7 +142,7 @@ import UIKit
     /// Connects, reads the roster and avatars, and keeps the socket for live
     /// `sessions.changed` reloads. Also the pull-to-refresh and Reconnect path.
     func open() async {
-        close()
+        close(); hasRoomList = false
         do {
             let saved = try store.load(server: server)
             if connection?.id != saved?.id { profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null) }
@@ -321,6 +322,26 @@ import UIKit
         connection.map { BotRoomKey(server: server, connectionID: $0.id, roomID: room.id) }
     }
 
+    /// A failed room read is not an authoritative empty list, even if the Bot roster is live.
+    var searchableRoomIDs: Set<String>? {
+        hasRoomList && link == .live ? Set(rooms.map(\.id)) : nil
+    }
+
+    func roomForSearch(_ hit: BotHistoryCache.Hit) -> BotGroupRoom? {
+        guard let connection, hit.snapshot.scope == BotHistoryCache.Scope(server: server, connectionID: connection.id),
+              let saved = hit.snapshot.cachedRoom else { return nil }
+        if let current = rooms.first(where: { $0.id == saved.id }) { return current }
+        return searchableRoomIDs == nil ? saved : nil
+    }
+
+    /// Admit a cached identity for navigation only while the live list is unavailable.
+    /// Search dismissal rechecks the room, so a fresh list or connection change still wins.
+    func selectRoomSearchHit(_ hit: BotHistoryCache.Hit) -> BotGroupRoom? {
+        guard let room = roomForSearch(hit) else { return nil }
+        if !rooms.contains(where: { $0.id == room.id }) { rooms.append(room) }
+        return room
+    }
+
     func rooms(matching query: String) -> [BotGroupRoom] {
         guard roomCapabilities.enabled else { return [] }
         return rooms.filter { query.isEmpty || $0.name.localizedStandardContains(query) }
@@ -354,7 +375,7 @@ import UIKit
             guard wire === client, !Task.isCancelled else { return }
             let capabilities = BotRoomCapabilities(value)
             roomCapabilities = capabilities
-            guard capabilities.enabled else { rooms = []; return }
+            guard capabilities.enabled else { rooms = []; hasRoomList = true; return }
             var found: [BotGroupRoom] = []
             var offset = 0
             while true {
@@ -367,13 +388,13 @@ import UIKit
                 offset = next
             }
             var ids = Set<String>()
-            rooms = found.filter { ids.insert($0.id).inserted }
+            rooms = found.filter { ids.insert($0.id).inserted }; hasRoomList = true
             if let connectionID = connection?.id {
                 try? await historyCache.retainRooms(ids, scope: .init(server: server, connectionID: connectionID))
             }
         } catch {
             guard wire === client, !Task.isCancelled else { return }
-            rooms = []; roomCapabilities = BotRoomCapabilities(.null)
+            rooms = []; hasRoomList = false; roomCapabilities = BotRoomCapabilities(.null)
             // Method absence is the expected gate on older Hermes hosts.
             if let failure = error as? BotRoomFailure, failure.code != -32601 {
                 notice = failure.localizedDescription

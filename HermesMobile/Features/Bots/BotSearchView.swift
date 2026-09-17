@@ -28,14 +28,14 @@ import SwiftUI
         let query: String
         let connectionID: UUID?
         let profiles: [String]
-        let rooms: [String]
+        let roomIDs: Set<String>?
         let hasLiveRoster: Bool
         let includesMessages: Bool
         let active: Bool
     }
     private var request: SearchRequest {
         SearchRequest(query: query.trimmingCharacters(in: .whitespacesAndNewlines),
-                      connectionID: inbox.connection?.id, profiles: inbox.profiles.map(\.id), rooms: inbox.rooms.map(\.id), hasLiveRoster: inbox.link == .live,
+                      connectionID: inbox.connection?.id, profiles: inbox.profiles.map(\.id), roomIDs: inbox.searchableRoomIDs, hasLiveRoster: inbox.link == .live,
                       includesMessages: scope != .bots, active: scenePhase == .active)
     }
     private var visibleHits: [BotHistoryCache.Hit] { hitRequest == request ? hits : [] }
@@ -90,13 +90,10 @@ import SwiftUI
                         .padding(.horizontal, 20).padding(.top, 16)
                     if !request.query.isEmpty {
                         ForEach(visibleHits) { hit in
-                            if let roomID = hit.snapshot.roomID,
-                               let room = inbox.rooms.first(where: { $0.id == roomID }) {
+                            if let room = inbox.roomForSearch(hit) {
                                 Button {
-                                    guard let connectionID = inbox.connection?.id,
-                                          hit.snapshot.scope == BotHistoryCache.Scope(server: inbox.server,
-                                              connectionID: connectionID) else { return }
-                                    searchFocused = false; onSelectRoom(room, hit.message.seq); dismiss()
+                                    guard let selected = inbox.selectRoomSearchHit(hit) else { return }
+                                    searchFocused = false; onSelectRoom(selected, hit.message.seq); dismiss()
                                 } label: { roomMessageResult(hit, room: room) }
                                 .buttonStyle(.plain)
                             } else if hit.snapshot.roomID == nil, let profile = profile(for: hit) {
@@ -251,7 +248,7 @@ import SwiftUI
         do {
             try await Task.sleep(for: .milliseconds(200))
             let found = try await cache.search(captured.query,
-                scope: .init(server: inbox.server, connectionID: connectionID), profileIDs: captured.hasLiveRoster ? Set(captured.profiles) : nil, roomIDs: Set(captured.rooms))
+                scope: .init(server: inbox.server, connectionID: connectionID), profileIDs: captured.hasLiveRoster ? Set(captured.profiles) : nil, roomIDs: captured.roomIDs)
             guard !Task.isCancelled, captured == request else { return }
             hits = found; hitRequest = captured; isSearching = false
         } catch {
