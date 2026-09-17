@@ -18,6 +18,8 @@ import Observation
     var draft = ""
     private(set) var commandMessage: String?
     private(set) var uncertainSend: Send?
+    private(set) var uncertainDisband = false
+    private var renaming = false
     private(set) var busy = false
     private(set) var awaitingStop = false
     private(set) var inactiveActions = Set<BotRoomAction.Identity>()
@@ -27,6 +29,7 @@ import Observation
         let threadID: String
         init(text: String) { self.text = text; eventID = UUID().uuidString; threadID = UUID().uuidString }
     }
+    @ObservationIgnored private var viewOwner: UUID?
     @ObservationIgnored private var commandID: UUID?
     @ObservationIgnored private var dispatched = false
     @ObservationIgnored private var sending: Send?
@@ -38,15 +41,23 @@ import Observation
     @ObservationIgnored private var lastAuthority: BotJSON?
     @ObservationIgnored private let makeWire: @MainActor (BotConnection) -> any BotTransport
     @ObservationIgnored private let onExpired: () -> Void
+    @ObservationIgnored private let onChanged: (BotGroupRoom) -> Void
+    @ObservationIgnored private let onDisbanded: () -> Void
 
     init(key: BotRoomKey, connection: BotConnection, room: BotGroupRoom,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
-         onExpired: @escaping () -> Void = {}) {
+         onExpired: @escaping () -> Void = {},
+         onChanged: @escaping (BotGroupRoom) -> Void = { _ in },
+         onDisbanded: @escaping () -> Void = {}) {
         self.key = key; self.connection = connection; self.room = room
+        self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(connection: $0) }; self.onExpired = onExpired
     }
 
-    func open() async {
+    /// Room and profile share state, but each visible screen claims async ownership.
+    /// Navigation callbacks can arrive in either order; the old screen cannot close the new socket.
+    func open(owner: UUID? = nil) async {
+        viewOwner = owner
         suspend()
         let client = makeWire(connection)
         wire = client; link = .connecting; errorMessage = nil
@@ -61,6 +72,7 @@ import Observation
             try check(client)
             capabilities = BotRoomCapabilities(value)
             guard capabilities.enabled else { throw BotFailure.unsupported }
+            if uncertainDisband, try await reconcileDisband(client) { return }
             let latest = try await readState(client)
             // Re-open from current server state, never from cached member sessions.
             var initial = BotRoomLog(); initial.begin(latest: latest)
@@ -108,12 +120,17 @@ import Observation
         } catch { fail(error, client) }
     }
 
+    func leave(owner: UUID) {
+        guard viewOwner == owner else { return }
+        close(); viewOwner = nil
+    }
+
     func suspend() {
         if busy && dispatched {
             uncertainSend = sending ?? uncertainSend
             commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
         }
-        commandID = nil; busy = false; sending = nil; dispatched = false
+        commandID = nil; busy = false; sending = nil; dispatched = false; renaming = false
         let old = wire; wire = nil
         pollTask?.cancel(); pollTask = nil
         old?.onDisconnect = nil; old?.onEvent = nil
@@ -126,7 +143,7 @@ import Observation
     }
 
     var canParticipate: Bool {
-        link == .live && !foreignAuthority && capabilities.authority != nil && room.authority == capabilities.authority
+        link == .live && !uncertainDisband && !foreignAuthority && capabilities.authority != nil && room.authority == capabilities.authority
     }
     var showsComposer: Bool { !foreignAuthority }
     var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
@@ -144,6 +161,52 @@ import Observation
     func mayAct(_ action: BotRoomAction) -> Bool {
         !busy && action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
             && allows(action.isRetry ? "groups.retry" : "groups.approve")
+    }
+
+    var showsRename: Bool { !foreignAuthority && capabilities.methods.contains("groups.rename") }
+    var showsDisband: Bool { !foreignAuthority && capabilities.methods.contains("groups.disband") }
+    var mayRename: Bool { allows("groups.rename") && !busy }
+    var finishingStop: Bool { status.stopping > 0 || awaitingStop }
+    var mayDisband: Bool { allows("groups.disband") && !busy && !finishingStop }
+
+    func rename(_ name: String) async {
+        guard mayRename, BotRoomRPC.validName(name), name != room.name else { return }
+        renaming = true
+        await command("groups.rename", params: ["room_id": .string(key.roomID),
+            "event_id": .string(UUID().uuidString), "name": .string(name)], validate: {}, accept: { result in
+            guard let updated = BotGroupRoom(result["room"]), updated.id == self.key.roomID,
+                  !updated.disbanded else { throw BotFailure.unsupported }
+            self.stateRevision += 1
+            self.room = updated; self.onChanged(updated)
+        })
+        renaming = false
+    }
+
+    func disband() async {
+        guard mayDisband else { return }
+        await command("groups.disband", params: ["room_id": .string(key.roomID)], validate: {
+            guard !self.finishingStop else { throw BotFailure.stale }
+            self.uncertainDisband = true
+        }, accept: { result in
+            guard result["tombstone"]["room_id"].text == self.key.roomID,
+                  result["tombstone"]["disbanded_at"].number != nil else { throw BotFailure.unsupported }
+            self.finishDisband()
+        })
+        // A disconnect may invalidate the write's continuation. Recover with reads
+        // only while still visible; background/close leaves link idle.
+        if uncertainDisband && link == .stopped { await open(owner: viewOwner) }
+    }
+
+    private func finishDisband() {
+        uncertainDisband = false; close(); onDisbanded()
+    }
+
+    private func reconcileDisband(_ client: any BotTransport) async throws -> Bool {
+        let rooms = try await BotRoomList.read(client) { try self.check(client) }
+        if !rooms.contains(where: { $0.id == key.roomID }) { finishDisband(); return true }
+        uncertainDisband = false
+        commandMessage = String(localized: "The room is still present. Disband was not confirmed.")
+        return false
     }
 
     /// Every explicit Send mints a thread so it queues instead of superseding work.
@@ -209,6 +272,7 @@ import Observation
         } catch {
             guard commandID == token, wire === client else { return }
             if let rejection = error as? BotRoomFailure {
+                if method == "groups.disband" { uncertainDisband = false }
                 commandMessage = rejection.localizedDescription
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
                 if rejection.expired { close(); onExpired(); return }
@@ -218,7 +282,12 @@ import Observation
                 commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
             } else { commandMessage = error.localizedDescription }
         }
-        commandID = nil; busy = false; dispatched = false; sending = nil
+        guard commandID == token, wire === client else { return }
+        commandID = nil; busy = false; dispatched = false; sending = nil; renaming = false
+        if uncertainDisband {
+            do { if try await reconcileDisband(client) { return } }
+            catch { fail(error, client); return }
+        }
         // Read after every acknowledgment or rejection (including 5118/5119).
         // Inactive tuples stay inert even if a stale server snapshot repeats them.
         await poll()
@@ -236,7 +305,7 @@ import Observation
         guard let updated = BotGroupRoom(value["room"]), updated.id == key.roomID else { throw BotFailure.unsupported }
         guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
-        if room != updated { room = updated }
+        if !renaming && room != updated { room = updated; onChanged(updated) }
         let nextStatus = BotRoomStatus(value["driver_status"])
         if status != nextStatus { status = nextStatus }
         if !busy && nextStatus.stopping == 0 { awaitingStop = false }

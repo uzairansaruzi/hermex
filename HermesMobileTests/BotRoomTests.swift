@@ -399,6 +399,7 @@ enum RoomFixture {
     var latest = 0
     var capabilities = RoomFixture.capabilities
     var disbanded = false
+    var roomName = "Comms"
     var listCalls = 0
     var authority = "fixture-install"
     var epoch = 1
@@ -423,7 +424,7 @@ enum RoomFixture {
     func connect() async throws {}
     func close() { closed += 1 }
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        if ["groups.send", "groups.stop", "groups.approve", "groups.retry"].contains(method) {
+        if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.create", "groups.rename", "groups.disband"].contains(method) {
             await beforeWrite?()
             try validateDispatch?()
             writes.append((method, params))
@@ -441,6 +442,21 @@ enum RoomFixture {
                     sentEvents[id] = .object(event)
                 }
                 result = .object(["accepted": .bool(true), "client_event_id": params["event_id"]!, "event": sentEvents[id]!])
+            case "groups.create":
+                var room = RoomFixture.room(latest: 0).fields!
+                room["room_id"] = params["room_id"]; room["name"] = params["name"]; room["members"] = params["members"]
+                result = .object(["room": .object(room)])
+            case "groups.rename":
+                roomName = params["name"]!.text!; latest += 1
+                var room = RoomFixture.room(latest: latest).fields!
+                room["name"] = .string(roomName)
+                var event = RoomFixture.event(latest, kind: "room.renamed").fields!
+                event["payload"] = .object(["name": .string(roomName)])
+                room["event"] = .object(event); sentEvents[params["event_id"]!.text!] = .object(event)
+                result = .object(["room": .object(room)])
+            case "groups.disband":
+                disbanded = true
+                result = .object(["tombstone": .object(["room_id": params["room_id"]!, "disbanded_at": .number(100)])])
             case "groups.stop":
                 driverStatus = RoomFixture.status(stopping: 1)
                 result = .object(["cancelled": .number(1)])
@@ -461,6 +477,7 @@ enum RoomFixture {
         case "groups.list":
             listCalls += 1
             var room = RoomFixture.room(latest: latest).fields!
+            room["name"] = .string(roomName)
             if disbanded { room["disbanded_at"] = .number(100) }
             return .object(["rooms": .array([.object(room)]), "next_offset": .null])
         case "groups.state":
@@ -468,6 +485,7 @@ enum RoomFixture {
             if let failure { throw failure }
             if holdState { return await withCheckedContinuation { held = $0; onHeld?() } }
             var room = RoomFixture.room(latest: latest).fields!
+            room["name"] = .string(roomName)
             room["authority_gateway_id"] = .string(authority); room["authority_epoch"] = .number(Double(epoch))
             return .object(["room": .object(room), "driver_status": driverStatus])
         case "groups.log":

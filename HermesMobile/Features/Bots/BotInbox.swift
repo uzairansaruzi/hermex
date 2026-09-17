@@ -291,6 +291,20 @@ import UIKit
         return rooms.filter { query.isEmpty || $0.name.localizedStandardContains(query) }
     }
 
+    func updateRoom(_ room: BotGroupRoom, connectionID: UUID) {
+        guard connection?.id == connectionID else { return }
+        if let index = rooms.firstIndex(where: { $0.id == room.id }) { rooms[index] = room }
+        else { rooms.insert(room, at: 0) }
+    }
+    func removeRoom(_ key: BotRoomKey) {
+        guard key.server == server, key.connectionID == connection?.id else { return }
+        rooms.removeAll { $0.id == key.roomID }
+    }
+    func reconcileRooms(_ values: [BotGroupRoom], connectionID: UUID) {
+        guard connection?.id == connectionID else { return }
+        rooms = values
+    }
+
     func expireRoom(_ key: BotRoomKey) {
         guard key.server == server, key.connectionID == connection?.id else { return }
         rooms.removeAll { $0.id == key.roomID }

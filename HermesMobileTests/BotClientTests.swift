@@ -417,6 +417,10 @@ import XCTest
             ("groups.stop", ["room_id": .string("room")]),
             ("groups.approve", ["room_id": .string("room"), "member_id": .string("member"), "task_id": .string("task"), "request_id": .string("request"), "execution_generation": .number(1), "choice": .string("once")]),
             ("groups.retry", ["room_id": .string("room"), "task_id": .string("task")]),
+            ("groups.disband", ["room_id": .string("room")]),
+            ("groups.rename", ["room_id": .string("room"), "event_id": .string("event"), "name": .string("Renamed")]),
+            ("groups.create", ["room_id": .string("room"), "name": .string("Created"), "members": .array(
+                ["default", "dev"].map { .object(["member_id": .string($0), "profile": .string($0), "handle": .string($0)]) })]),
             ("groups.log", ["room_id": .string("room:1"), "since_seq": .number(0), "limit": .number(200)])]
         for (method, params) in valid { _ = try await client.call(method, params) }
         var invalid: [(String, [String: BotJSON])] = [
@@ -428,7 +432,7 @@ import XCTest
             ("groups.state", ["room_id": .string(String(repeating: "a", count: 129))]),
             ("groups.log", ["room_id": .string("room"), "since_seq": .number(-1)]),
             ("groups.log", ["room_id": .string("room"), "limit": .bool(true)])]
-        invalid += ["send", "approve", "retry", "create", "rename", "disband", "promote", "demote", "replicate", "replica_state", "peer.invite", "peer.register", "peer.revoke"].map { ("groups." + $0, ["room_id": .string("room")]) }
+        invalid += ["send", "approve", "retry", "create", "rename", "promote", "demote", "replicate", "replica_state", "peer.invite", "peer.register", "peer.revoke"].map { ("groups." + $0, ["room_id": .string("room")]) }
         for (method, params) in invalid {
             do { _ = try await client.call(method, params); XCTFail("Invalid room call dispatched: " + method) }
             catch { XCTAssertEqual(error as? BotFailure, .unsupported) }

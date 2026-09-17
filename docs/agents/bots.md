@@ -626,7 +626,7 @@ it never orchestrates member turns, retries work, or opens the hidden
 On inbox open and pull to refresh, `groups.capabilities` gates the entire Groups
 section: `driver` must be true and `methods` must include `groups.list`,
 `groups.state`, and `groups.log`. Missing capabilities hide rooms, including name
-search. The viewer has no empty Groups header. `groups.list` pages all active
+search. A capable host shows the Groups header even when there are no rooms. `groups.list` pages all active
 rooms; disbanded entries are excluded. Identity is configured server URL + Bot
 connection UUID + `room_id`; names and member Profiles are never room keys.
 Avatars resolve against that connection’s roster, with a placeholder for unknown
@@ -651,12 +651,11 @@ Bot markdown renderer; member messages include their sender and roster avatar.
 centered system lines. `room.activity`, `turn.settled`, `turn.deferred`,
 `authority.*`, and all unknown kinds remain invisible. Driver status reports
 room-wide working/blocked state, never an inferred active member. Pending actions
-use the participant controls below; unknown kinds show Desktop attention. Room profiles are read-only and link to existing bot profiles.
+use the participant controls below; unknown kinds show Desktop attention. Room profiles link to existing bot profiles and expose the lifecycle controls below.
 
-The socket allowlist admits four room reads and four participant commands with typed parameter checks.
+The socket allowlist admits four room reads, four participant commands and three lifecycle commands with typed parameter checks.
 Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 removes
-the room with a toast; 4123 asks for a gateway restart on the Mac. No room management,
-replica, peer, promotion, or demotion method is permitted.
+the room with a toast; 4123 asks for a gateway restart on the Mac. No replica, peer, promotion, or demotion method is permitted.
 
 Contract: `tui_gateway/methods_groups.py` and `gateway/hosted_rooms.py` at
 `HERMES_AGENT_TESTED_SHA`; read-only tunnel checks on 2026-09-16 captured
@@ -693,6 +692,37 @@ available for a later stalled attempt only after the previous pending action
 has disappeared. Unknown or incomplete pending kinds show Desktop attention.
 
 Foreign authority hides the composer. Missing authority or unadvertised methods
-cannot dispatch participant commands. No room lifecycle, peer or authority
-administration is exposed. These helpers belong only to the app target; share
+cannot dispatch participant commands. No peer or authority administration is exposed. These helpers belong only to the app target; share
 extension, Live Activities, App Intents and room caching remain outside this slice.
+
+### Room lifecycle
+
+New Group Chat selects two to six bots from the current connection, including
+hidden bots when the filter names them, then asks for a name of up to 200 Unicode
+scalars (the server's character count). Members are frozen after creation.
+`groups.create` sends a device UUID `room_id`, `name`, and `members` containing
+`member_id`, `profile`, `handle`, and optional roster `display_name`; it never
+sends `target`. At the compatibility pin, `profiles.list` has no separate handle,
+so all three identifiers use the Profile name, including `default`.
+
+The first dispatched attempt freezes its ID and payload. Try Again explicitly
+reuses both, even after a lost reply; it cannot create a second room. Error 4110
+re-reads the active list, while 4123 asks for a gateway restart on the Mac.
+Closing or backgrounding the sheet invalidates late replies. Success opens the
+acknowledged room under the same configured server and connection identity.
+
+Inline rename sends `groups.rename {room_id, event_id, name}` with a new event
+UUID. The profile, pill and inbox update after acknowledgment; a concurrent poll
+cannot publish the pending name. At the pin the result is `{room}` with the event
+nested in `room.event`; the log renders `room.renamed` once by sequence.
+
+Disband permanently removes the room and history from every device and stops its
+bots. Its confirmation states those consequences. The control waits while Stop
+is finishing; a 5114 rejection refreshes state. `groups.disband {room_id}` succeeds
+only on a matching tombstone. A lost reply reads the complete active list, never
+resends disband; a failed read keeps the outcome unknown until Reconnect.
+A tombstoned room ID is permanently reserved and must never be reused.
+Foreign-authority rooms hide rename/disband; absent capabilities disable writes.
+The room and profile share state but claim separate view ownership so navigation
+cannot let an old screen close the new screen's socket. Lifecycle helpers belong
+only to the app target; the share extension and Live Activity do not manage rooms.

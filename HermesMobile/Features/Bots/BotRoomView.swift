@@ -6,6 +6,7 @@ import SwiftUI
     @State private var revision = UUID()
     @State private var showingProfile = false
     @State private var visible = false
+    @State private var owner = UUID()
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var isNearBottom = true
     private var followsLatest: Bool { followLatch.isFollowing }
@@ -79,18 +80,17 @@ import SwiftUI
             }
         }
         .navigationDestination(isPresented: $showingProfile) {
-            BotRoomProfileView(room: reader.room, key: reader.key, connection: reader.connection,
-                               roster: roster, avatars: avatars)
+            BotRoomProfileView(reader: reader, roster: roster, avatars: avatars)
         }
         .task(id: revision) {
             visible = true
-            if scenePhase == .active { await reader.open() }
+            if scenePhase == .active { await reader.open(owner: owner) }
         }
         .onChange(of: scenePhase) {
             if scenePhase == .active && visible { revision = UUID() }
-            else { reader.suspend() }
+            else if visible { reader.leave(owner: owner) }
         }
-        .onDisappear { visible = false; reader.close() }
+        .onDisappear { visible = false; reader.leave(owner: owner) }
     }
 
     private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
@@ -203,38 +203,3 @@ struct BotRoomInboxRow: View {
     }
 }
 
-private struct BotRoomProfileView: View {
-    let room: BotGroupRoom
-    let key: BotRoomKey
-    let connection: BotConnection
-    let roster: [BotProfile]
-    let avatars: [String: UIImage]
-    var body: some View {
-        List {
-            Section {
-                VStack(spacing: 24) {
-                    BotRoomAvatars(room: room, roster: roster, avatars: avatars, size: 84)
-                    Text(room.name).font(.title2.bold())
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 24)
-            }
-            Section {
-                ForEach(room.members) { member in
-                    if let profile = roster.first(where: { $0.id == member.profile }) {
-                        NavigationLink {
-                            BotProfileEditorView(server: key.server, connection: connection,
-                                                 profile: profile, avatar: avatars[profile.id])
-                        } label: { memberRow(member) }
-                    } else { memberRow(member) }
-                }
-            }
-        }
-        .navigationBarTitleDisplayMode(.inline)
-    }
-    private func memberRow(_ member: BotGroupRoom.Member) -> some View {
-        HStack(spacing: 14) {
-            BotRoomMemberAvatar(member: member, roster: roster, avatars: avatars, size: 36)
-            Text(member.name)
-        }
-    }
-}
