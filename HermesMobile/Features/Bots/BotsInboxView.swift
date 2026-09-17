@@ -80,22 +80,12 @@ import SwiftUI
                     .listRowSeparator(.hidden)
                 }
                 if inbox.roomCapabilities.enabled {
-                    Section("Groups") {
-                        if inbox.roomCapabilities.methods.contains("groups.create") {
-                            Button("New Group Chat", systemImage: "plus") {
-                                guard let connection = inbox.connection else { return }
-                                roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
-                                    onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
+                    ForEach(inbox.rooms, id: \.id) { room in
+                        if let key = inbox.roomKey(room) {
+                            Button { openRoom = key } label: {
+                                BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
                             }
-                            .disabled(inbox.link != .live)
-                        }
-                        ForEach(inbox.rooms, id: \.id) { room in
-                            if let key = inbox.roomKey(room) {
-                                Button { openRoom = key } label: {
-                                    BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
-                                }
-                                .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
-                            }
+                            .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
                         }
                     }
                 }
@@ -125,8 +115,16 @@ import SwiftUI
                     .disabled(inbox.connection == nil)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("New bot", systemImage: "plus") { creation = .new }
-                    .disabled(inbox.link != .live)
+                Menu {
+                    Button("New Bot", systemImage: "plus.bubble") { creation = .new }
+                    Button("New Group Chat", systemImage: "person.2") {
+                        guard let connection = inbox.connection else { return }
+                        roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
+                            onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
+                    }
+                    .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
+                } label: { Label("New chat", systemImage: "plus") }
+                .disabled(inbox.link != .live)
             }
             if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {

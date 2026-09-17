@@ -623,10 +623,12 @@ The gateway owns room execution. iOS may poll reads while a room is visible;
 it never orchestrates member turns, retries work, or opens the hidden
 `Group: <room_id>` sessions. There are no room push events at the tested pin.
 
-On inbox open and pull to refresh, `groups.capabilities` gates the entire Groups
-section: `driver` must be true and `methods` must include `groups.list`,
+On inbox open and pull to refresh, `groups.capabilities` gates room rows: `driver`
+must be true and `methods` must include `groups.list`,
 `groups.state`, and `groups.log`. Missing capabilities hide rooms, including name
-search. A capable host shows the Groups header even when there are no rooms. `groups.list` pages all active
+search. Group rooms share the ordinary chat list without a separate section.
+The top-right + menu offers New Bot and New Group Chat; group creation is disabled
+when the host lacks its capability. `groups.list` pages all active
 rooms; disbanded entries are excluded. Identity is configured server URL + Bot
 connection UUID + `room_id`; names and member Profiles are never room keys.
 Avatars resolve against that connection’s roster, with a placeholder for unknown
