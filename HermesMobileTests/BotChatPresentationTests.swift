@@ -38,7 +38,11 @@ import XCTest
         window.overrideUserInterfaceStyle = .dark
         defer { close(window) }
         await renderFrames(8)
-        let text = try screenshot(window, name: "527-room-mention-avatars")
+        let text = try screenshot(window, name: "527-room-mention-avatars") { image in
+            XCTAssertEqual(Self.roomAvatarColorBands(image), [
+                ["orange", "green"], ["orange"], ["green"], ["orange", "green"], ["orange", "green"]
+            ], "Header and broadcast rows show both avatars; each member row shows only its own")
+        }
         XCTAssertTrue(text.contains("@all"), text)
         XCTAssertTrue(text.contains("@everyone"), text)
         XCTAssertNil(selected, "Rendering suggestions must not insert a mention")
@@ -674,6 +678,47 @@ import XCTest
         XCTAssertTrue(hidden.contains("Plan"), "work progress stays visible with cards off: " + hidden)
     }
 
+    /// Finds the fixture's saturated avatar colors by row, without depending on
+    /// glyph pixels or exact screen coordinates. Short glass reflections are
+    /// excluded; full-height color bands identify each header or suggestion.
+    private static func roomAvatarColorBands(_ image: UIImage) -> [[String]] {
+        guard let cgImage = image.cgImage else { return [] }
+        let width = cgImage.width, height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(data: bytes.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return [] }
+        var bands: [[String]] = []
+        var colors = Set<String>()
+        var bandHeight = 0
+        let minimumHeight = Int(12 * image.scale)
+        for y in 0..<height {
+            var orange = 0, green = 0
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                let red = pixels[offset], g = pixels[offset + 1], blue = pixels[offset + 2]
+                if red > 180, g > 90, g < 145, blue < 90 { orange += 1 }
+                if red < 100, g > 130, blue < 150 { green += 1 }
+            }
+            if orange > 3 || green > 3 {
+                bandHeight += 1
+                if orange > 3 { colors.insert("orange") }
+                if green > 3 { colors.insert("green") }
+            } else if !colors.isEmpty {
+                if bandHeight >= minimumHeight { bands.append(["orange", "green"].filter(colors.contains)) }
+                colors.removeAll()
+                bandHeight = 0
+            }
+        }
+        if bandHeight >= minimumHeight { bands.append(["orange", "green"].filter(colors.contains)) }
+        return bands
+    }
+
     private func show<V: View>(_ view: V) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -726,10 +771,11 @@ import XCTest
     }
 
     @discardableResult
-    private func screenshot(_ window: UIWindow, name: String) throws -> String {
+    private func screenshot(_ window: UIWindow, name: String, inspecting: ((UIImage) -> Void)? = nil) throws -> String {
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
+        inspecting?(image)
         let attachment = XCTAttachment(image: image)
         attachment.name = name
         attachment.lifetime = .keepAlways
