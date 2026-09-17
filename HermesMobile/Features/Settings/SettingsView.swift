@@ -582,6 +582,22 @@ struct SettingsView: View {
 
                     SettingsDivider()
 
+                    Link(destination: AppConfig.tipURL) {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Buy Uzi a coffee"),
+                            systemImage: "cup.and.saucer",
+                            accessorySystemImage: "arrow.up.forward"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Buy Uzi a coffee, opens in browser")
+                    .environment(\.openURL, OpenURLAction { url in
+                        TipJarPromptState(defaults: .standard).recordLinkOpened()
+                        return .systemAction(url)
+                    })
+
+                    SettingsDivider()
+
                     Link(destination: AppConfig.writeReviewURL) {
                         SettingsAccessoryRow(
                             title: String(localized: "Rate Hermex"),

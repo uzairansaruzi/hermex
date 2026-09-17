@@ -5,8 +5,10 @@ import UserNotifications
 import UIKit
 #endif
 
-// Device-wide engagement keys shared by the rating prompt and the future tip card (#531).
+// Device-wide engagement and tip preferences, shared across every configured server.
 enum TipJar {
+    static let dismissedKey = "tipJar.dismissed"
+    static let linkOpenedKey = "tipJar.linkOpened"
     static let completedResponseCountKey = "engagement.completedResponseCount"
 }
 

@@ -20,6 +20,8 @@ struct SessionListView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
+    @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
+    @AppStorage(TipJar.dismissedKey) private var tipDismissed = false
     @State private var wasBackgrounded = false
     @State private var ratingRequestID: UUID?
     @State private var ratingMoment: RatingPromptMoment = .coldLaunch
@@ -136,7 +138,12 @@ struct SessionListView: View {
                 await RatingPromptState.shared.requestWhenQuiet(
                     moment: ratingMoment,
                     server: server,
-                    isSessionListVisible: { isQuietSessionListVisible },
+                    isSessionListVisible: {
+                        if showsTipCard && isQuietSessionListVisible {
+                            RatingPromptState.shared.recordTipCardShown()
+                        }
+                        return isQuietSessionListVisible
+                    },
                     loadSessions: { try await APIClient(baseURL: server).sessions(includeArchived: true).sessions },
                     request: { requestReview() }
                 )
@@ -340,6 +347,14 @@ struct SessionListView: View {
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
     }
 
+    private var showsTipCard: Bool {
+        !tipDismissed && TipJarPromptState(defaults: .standard).isEligible(
+            completedResponses: completedResponses,
+            hasSharedImport: hasWaitingSharedImport || pendingSharedImport != nil,
+            ratingPolicy: RatingPromptState.shared.policy
+        )
+    }
+
     private var isQuietSessionListVisible: Bool {
         guard case .loggedIn(let activeServer) = authManager.state, activeServer == server else { return false }
         return scenePhase == .active && didCompleteInitialLoad
@@ -522,6 +537,11 @@ struct SessionListView: View {
         List {
             header
                 .sessionsTopChromeListRow()
+
+            if showsTipCard {
+                TipJarCard()
+                    .sessionsScreenListRow()
+            }
 
             if isBotModeEnabled {
                 Picker("Screen", selection: $showsBots) {

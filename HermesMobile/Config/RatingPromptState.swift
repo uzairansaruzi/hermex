@@ -83,8 +83,8 @@ final class RatingPromptState {
         streamOwners.contains { $0.server == server && $0.coordinator?.activeStreamID != nil }
     }
 
-    // #531 should check policy.allowsTipCard(at:) before display and call this on display,
-    // so dismissing its card cannot allow a rating request later in the same launch.
+    // The list checks tip eligibility before rating requests and records display here,
+    // so dismissing the card cannot allow a rating request later in the same launch.
     func recordTipCardShown() {
         tipCardShownThisLaunch = true
     }
