@@ -853,7 +853,7 @@ final class ChatViewModel {
         // (profile metadata loaded) or when the session carries no saved
         // route of its own. A picker write also refreshes the snapshot, so
         // the comparison stays against what the user actually chose.
-        guard let restoredModel = restoredSessionModel, let currentModel else {
+        guard restoredSessionModel != nil, let currentModel else {
             return false
         }
 
@@ -869,20 +869,48 @@ final class ChatViewModel {
             )
         }
 
-        // Profile default is not resolved yet: fall back to the saved
-        // provider metadata. A qualified route (named custom provider, or the
-        // `@provider:` model spelling) is deliberate on its own; a plain
-        // provider id without loaded profile metadata can't be told apart
-        // from a default seed, so it is not treated as deliberate.
-        guard let restoredProvider = restoredSessionModelProvider else {
-            return restoredModel.modelIDProviderPrefix != nil
+        // Owning-profile metadata is not resolved yet, so there is no
+        // authoritative default to compare the saved route against. The saved
+        // route stays the session's own choice in that window — for EVERY
+        // spelling, including a bare model with an unprefixed provider — since
+        // demoting it to an implicit seed is what lets a cold backend
+        // re-resolve it to another provider. A brand-new chat has no saved
+        // route at all, so new-chat implicit profile-default seeding is
+        // unaffected.
+        if let restoredProvider = restoredSessionModelProvider,
+           let currentProvider = Self.nonEmpty(currentModelProvider),
+           currentProvider != restoredProvider {
+            // The provider no longer matches the one the session was restored
+            // with: a validated configuration seed replaced that route, so this
+            // is not the restored route any more.
+            return false
         }
 
-        let restoredIsQualified = restoredModel.hasPrefix("@")
-            || restoredProvider.contains(":")
-        guard restoredIsQualified else { return false }
-        let currentProvider = Self.nonEmpty(currentModelProvider)
-        return currentProvider == nil || currentProvider == restoredProvider
+        return true
+    }
+
+    /// Adopts the route a server response reported for THIS session — but only
+    /// when the composer has no route yet.
+    ///
+    /// `currentModel`/`currentModelProvider` are the app's single authoritative
+    /// route intent: the session's restored route, a picker choice, a typed
+    /// `/model`, a validated configuration seed, or a profile switch. Response
+    /// metadata describes what the server happened to run or hold — a fallback,
+    /// a cold catalog, a compressed or paginated session record — so it may
+    /// FILL a route the app does not know yet and must never REPLACE one it
+    /// does. Replacing it here is what let a completed turn adopt another
+    /// provider's model and send it on the next message.
+    private func adoptServerRouteMetadataIfUnset(model: String?, provider: String?) {
+        guard Self.nonEmpty(currentModel) == nil,
+              let model = Self.nonEmpty(model)
+        else { return }
+
+        currentModel = model
+        currentModelProvider = Self.nonEmpty(provider)
+        // A route learned from the owning server is this session's saved route,
+        // so the deliberate-route comparison has something to compare against.
+        restoredSessionModel = model
+        restoredSessionModelProvider = Self.nonEmpty(provider)
     }
 
     /// The owning profile's default route (model + provider) when its
@@ -910,6 +938,50 @@ final class ChatViewModel {
             return false
         }
         return lhsModel.bareModelID == rhsModel.bareModelID
+    }
+
+    /// Three-state route comparison for disclosure. `sameModelRoute` answers
+    /// "is this the same route?" for intent bookkeeping, where a side that names
+    /// no provider cannot disprove a match; confirming a REQUESTED provider is
+    /// stricter. A reply that omits the effective provider, and whose model
+    /// carries no `@provider:` qualifier either, has not confirmed anything —
+    /// that is `.unknown`, not `.match`.
+    private enum ModelRouteComparison {
+        case match
+        case mismatch
+        case unknown
+    }
+
+    private static func compareModelRoute(
+        _ lhsModel: String, provider lhsProvider: String?,
+        _ rhsModel: String, provider rhsProvider: String?
+    ) -> ModelRouteComparison {
+        guard lhsModel.bareModelID == rhsModel.bareModelID else { return .mismatch }
+
+        let lhsNamedProvider = nonEmpty(lhsProvider) ?? lhsModel.modelIDProviderPrefix
+        let rhsNamedProvider = nonEmpty(rhsProvider) ?? rhsModel.modelIDProviderPrefix
+        switch (lhsNamedProvider, rhsNamedProvider) {
+        case let (lhs?, rhs?):
+            return lhs == rhs ? .match : .mismatch
+        default:
+            // One side names no provider: not confirmed, nothing contradicted.
+            return .unknown
+        }
+    }
+
+    /// The provider identity of a route: the reported provider when the model
+    /// carries no `@provider:` qualifier, the qualifier when the report is
+    /// absent or contradicts it, and nothing when both are absent.
+    ///
+    /// A model's qualifier IS provider identity, so a contradicting field is
+    /// normalized to it rather than sent as an incoherent pair. With neither,
+    /// the provider is cleared rather than inherited from the model being
+    /// replaced.
+    private static func resolvedRouteProvider(reportedProvider: String?, model: String) -> String? {
+        let reported = nonEmpty(reportedProvider)
+        guard let qualifier = model.modelIDProviderPrefix else { return reported }
+        guard let reported else { return qualifier }
+        return reported == qualifier ? reported : qualifier
     }
 
     /// Surfaces the server-resolved START route when a successful chat/start
@@ -940,14 +1012,24 @@ final class ChatViewModel {
         else { return }
 
         let effectiveProvider = Self.nonEmpty(response.effectiveModelProvider)
-        if Self.sameModelRoute(
+        switch Self.compareModelRoute(
             requestedModel, provider: requestedProvider,
             effectiveModel, provider: effectiveProvider
         ) {
-            // The server confirms the requested route; any mismatch notice
-            // this feature pinned earlier is outdated.
+        case .match:
+            // The server confirms the requested route — the names have to
+            // agree, either as a reported provider or as the requested
+            // provider against the effective model's own qualifier. Only a
+            // known confirmation retires an earlier mismatch notice.
             clearEffectiveRouteNotice()
             return
+        case .unknown:
+            // A model but no provider anywhere: the requested provider is not
+            // confirmed. Omission is not confirmation, so an existing
+            // disclosure stays exactly as it was, and no new one is invented.
+            return
+        case .mismatch:
+            break
         }
 
         let requestedRoute = requestedModel + (requestedProvider.map { " (\($0))" } ?? "")
@@ -965,6 +1047,34 @@ final class ChatViewModel {
         guard let notice = pinnedEffectiveRouteNotice else { return }
         pinnedEffectiveRouteNotice = nil
         pinnedLocalNotices.removeAll { $0 == notice }
+    }
+
+    /// Drops the pinned notices a transcript load replaces, then reconciles this
+    /// feature's own dedupe pointer with what is still visible.
+    ///
+    /// Invariant: ownership follows visible state. A load owns only the notices
+    /// that existed when it began, so a notice pinned by a start reply landing
+    /// WHILE the load is in flight is newer than the state being replaced and
+    /// survives it. Conversely a notice with no copy left anywhere — not still
+    /// in `pinnedLocalNotices`, and not still in the replaced transcript, which
+    /// keeps no promoted `local_notice` — must release the pointer: otherwise
+    /// every later identical mismatch is deduplicated against a disclosure the
+    /// user can no longer see and never gets shown again.
+    private func discardPinnedLocalNotices(ownedAtLoadStart noticesAtLoadStart: [String]) {
+        if !noticesAtLoadStart.isEmpty {
+            // Only the notices this load started with belong to it.
+            pinnedLocalNotices.removeAll { noticesAtLoadStart.contains($0) }
+        }
+
+        // The pointer is reconciled on EVERY load, including one that began
+        // before anything was pinned: that case has nothing to remove, yet the
+        // load may just have replaced a promoted copy out of the transcript.
+        guard let pinnedNotice = pinnedEffectiveRouteNotice,
+              !pinnedLocalNotices.contains(pinnedNotice),
+              !messages.contains(where: { $0.role == "local_notice" && $0.content == pinnedNotice })
+        else { return }
+
+        pinnedEffectiveRouteNotice = nil
     }
 
     func loadComposerConfiguration() async {
@@ -1310,8 +1420,10 @@ final class ChatViewModel {
             )
 
             currentWorkspace = response.session?.workspace ?? workspace
-            currentModel = response.session?.model ?? currentModel
-            currentModelProvider = response.session?.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: response.session?.model,
+                provider: response.session?.modelProvider
+            )
             return true
         } catch {
             currentWorkspace = previousWorkspace
@@ -1363,9 +1475,19 @@ final class ChatViewModel {
                 currentWorkspace = defaultWorkspace
             }
 
-            if let defaultModel = response.defaultModel, !defaultModel.isEmpty {
+            if let defaultModel = Self.nonEmpty(response.defaultModel) {
                 currentModel = defaultModel
                 currentModelProvider = Self.nonEmpty(profile.provider)
+            } else {
+                // The switch reply omitted the new default. Never carry the
+                // previous profile's route across the switch: resolve the pair
+                // from the returned selected profile when the reply included
+                // it, otherwise clear BOTH so the new profile seeds from its
+                // own configuration below.
+                let returnedSelection = response.profiles?
+                    .first { $0.normalizedName == selectedProfileName }
+                currentModel = Self.nonEmpty(returnedSelection?.model)
+                currentModelProvider = Self.nonEmpty(returnedSelection?.provider)
             }
             // Switching profiles drops the old session's route intent: the new
             // default is a seed, not a pick, until the user chooses again.
@@ -1603,6 +1725,9 @@ final class ChatViewModel {
             cacheFirstPlaceholder = []
         }
         let renderedCacheFirst = !cacheFirstPlaceholder.isEmpty
+        // Notices this load owns: anything pinned after this point — by a start
+        // reply landing mid-load — is newer than the state being replaced.
+        let pinnedNoticesAtLoadStart = pinnedLocalNotices
 
         do {
             let response: SessionResponse
@@ -1689,7 +1814,7 @@ final class ChatViewModel {
             completedReasoningGroups = []
             liveToolCalls = []
             liveReasoningText = ""
-            pinnedLocalNotices = []
+            discardPinnedLocalNotices(ownedAtLoadStart: pinnedNoticesAtLoadStart)
             toolCallAnchorMessageID = nil
             reasoningAnchorMessageID = nil
             attachmentCoordinator.removeAllLocalPreviews()
@@ -1730,7 +1855,7 @@ final class ChatViewModel {
                         completedReasoningGroups = []
                         liveToolCalls = []
                         liveReasoningText = ""
-                        pinnedLocalNotices = []
+                        discardPinnedLocalNotices(ownedAtLoadStart: pinnedNoticesAtLoadStart)
                         toolCallAnchorMessageID = nil
                         reasoningAnchorMessageID = nil
                         streamingAssistantMessageID = nil
@@ -1959,8 +2084,10 @@ final class ChatViewModel {
                 displayTitle = Self.displayTitle(from: title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
-            currentModel = session.model ?? currentModel
-            currentModelProvider = session.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: session.model,
+                provider: session.modelProvider
+            )
             currentProfile = session.profile ?? currentProfile
             setCompletedToolCallGroups(ToolCallGroup.groups(
                 persistedToolCalls: session.toolCalls ?? [],
@@ -2933,6 +3060,10 @@ final class ChatViewModel {
         completedReasoningGroups = []
         liveToolCalls = []
         liveReasoningText = ""
+        // A full transcript reset drops the whole visible list, so this
+        // feature's dedupe pointer goes with it: otherwise an identical future
+        // mismatch would stay suppressed by a notice the user can no longer see.
+        clearEffectiveRouteNotice()
         pinnedLocalNotices = []
         dismissSteeringConfirmation()
         streamingAssistantMessageID = nil
@@ -3251,8 +3382,19 @@ final class ChatViewModel {
                 modelProvider: match?.providerID
             )
 
-            currentModel = response.session?.model ?? match?.id ?? requestedModel
-            currentModelProvider = response.session?.modelProvider ?? match?.providerID ?? currentModelProvider
+            let resolvedModel = Self.nonEmpty(response.session?.model)
+                ?? Self.nonEmpty(match?.id)
+                ?? requestedModel
+            currentModel = resolvedModel
+            // The provider has to belong to the NEW model: inheriting the
+            // replaced model's provider is what produced a contradictory pair
+            // (a custom-prefixed model sent with the previous model's provider)
+            // whenever the catalog was cold and the update reply omitted
+            // `model_provider`.
+            currentModelProvider = Self.resolvedRouteProvider(
+                reportedProvider: response.session?.modelProvider ?? match?.providerID,
+                model: resolvedModel
+            )
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
             restoredSessionModel = currentModel
@@ -3301,8 +3443,10 @@ final class ChatViewModel {
             )
 
             currentWorkspace = response.session?.workspace ?? workspace
-            currentModel = response.session?.model ?? currentModel
-            currentModelProvider = response.session?.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: response.session?.model,
+                provider: response.session?.modelProvider
+            )
             workspaceSuggestions = workspaceRoots.compactMap(\.path)
             return .executed(message: nil)
         } catch {
@@ -3844,8 +3988,10 @@ final class ChatViewModel {
                 displayTitle = Self.displayTitle(from: title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
-            currentModel = session.model ?? currentModel
-            currentModelProvider = session.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: session.model,
+                provider: session.modelProvider
+            )
             currentProfile = session.profile ?? currentProfile
             setCompletedToolCallGroups(ToolCallGroup.groups(
                 persistedToolCalls: session.toolCalls ?? [],
@@ -5028,8 +5174,15 @@ final class ChatViewModel {
         }
 
         currentWorkspace = completedSession.workspace ?? currentWorkspace
-        currentModel = completedSession.model ?? currentModel
-        currentModelProvider = completedSession.modelProvider ?? currentModelProvider
+        // The completed session's metadata reports what the server ran or
+        // holds, not what was asked for: it may fill a route the composer does
+        // not know yet, and must never replace the one the user (or the
+        // restored session) owns. Transcript, title and tool-call updates
+        // below are unaffected.
+        adoptServerRouteMetadataIfUnset(
+            model: completedSession.model,
+            provider: completedSession.modelProvider
+        )
         currentProfile = completedSession.profile ?? currentProfile
 
         contextWindowSnapshot = ContextWindowSnapshot(
