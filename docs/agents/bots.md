@@ -587,8 +587,8 @@ keep the previous value and preserve the host's error text.
 The top-right search button opens a sheet with a focused search field and an
 All / Bots / Messages filter. Bot names use the current roster, including hidden
 bots when a query matches. Message search is entirely local: it searches saved
-user/assistant text from full, identity-validated Bot snapshots this iPhone has
-loaded. It never uses webui history or calls a server search/resume endpoint.
+user/assistant text from full, identity-validated Bot snapshots and user/member
+messages from group room pages this iPhone has loaded. It never uses webui history or calls a server search/resume endpoint.
 The coverage label is “Messages saved on this iPhone.” There is no initial server
 crawl, attachment indexing, or live-token indexing.
 
@@ -598,11 +598,23 @@ canonical root and compression tip, but no runtime identifier. Refresh replaces
 the snapshot, so undo/compression cannot accumulate obsolete search rows. The
 cache is disposable, under Library/Caches with file protection: 30-day lifetime,
 100 snapshots, 8 MB encoded globally, and up to the latest 500 projected messages
-per bot. Messages over 16 KB are omitted. Search returns at most 100 matches and
+per bot or room. Messages over 16 KB are omitted. Search returns at most 100 matches and
 asks the user to refine at the cap. Unknown roles, tool output, credentials from
 prompt cards, inflight text, and drafts are not indexed.
 
-A message result holds the selected immutable snapshot and opens a read-only
+Room rows use configured server hash + connection UUID + room ID, never the room
+name or member Profile. Completed replay windows append by `seq`; overlaps do
+not replace existing messages. Pages in each window commit together so fetching
+earlier history preserves the newer cached window. Only `message.user` and `message.member` text, sender identity and time
+are saved. The separate cursor includes invisible events. Cached coverage stays
+contiguous; eviction advances its earlier boundary. Bot and room results share
+the 100-hit limit and global storage budget. A room hit shows its room and sender
+and opens the normal room at the saved sequence, revalidating the connection and
+room after search dismisses. If the cache was evicted, the reader fetches that
+sequence again. Expiry/disband revokes late writes and removes the room rows;
+a complete active room list also removes cached rooms that have disappeared.
+
+A Bot message result holds the selected immutable snapshot and opens a read-only
 text reader at its local message ID. Those IDs belong to the saved projection;
 they never become RPC targets. A bot result deliberately opens its normal chat
 only after the sheet dismisses and the connection/Profile selection is validated
@@ -635,11 +647,13 @@ when the host lacks its capability. `groups.list` pages all active
 rooms; disbanded entries are excluded. Identity is configured server URL + Bot
 connection UUID + `room_id`; names and member Profiles are never room keys.
 Avatars resolve against that connection’s roster, with a placeholder for unknown
-members. Search matches room names only; no room message cache exists yet.
+members. Search matches room names and previously loaded room messages through the local cache above.
 
 `BotRoomReader` owns an independent socket and in-memory `BotRoomLog`. Opening
-reads state, starts at `max(0, latest_seq - 200)`, and drains log pages until
-`has_more` is false. Load earlier reads the preceding 200-event window. Duplicate
+restores cached messages first, then reads state and drains pages from the saved
+cursor until `has_more` is false. Without cache it starts at
+`max(0, latest_seq - 200)` (or the selected search sequence). Each completed replay window
+updates the best-effort cache; cache read/write failures never stop live reading. Load earlier reads the preceding 200-event window. Duplicate
 `seq` values are ignored, events sort by sequence, and invisible/unknown kinds
 still advance the cursor. Authority epochs never reset the cursor. An authority
 change triggers a state read; a foreign gateway shows “Managed by another Hermes”.
@@ -648,7 +662,7 @@ While visible and foregrounded, state reads run every two seconds when working
 or blocked and every ten seconds when idle. Log reads happen only after sequence
 advancement. Unchanged polls do not assign the transcript. Backgrounding, closing,
 and socket loss stop polling and invalidate late replies. Reconnect closes the
-old transport before opening and re-reading state/history. Closing drops the log.
+old transport before opening and re-reading state/history. Closing drops the in-memory log; bounded cached messages remain for reopening.
 
 The transcript renders `message.user` and `message.member` with the existing
 Bot markdown renderer; member messages include their sender and roster avatar.
@@ -698,7 +712,7 @@ has disappeared. Unknown or incomplete pending kinds show Desktop attention.
 
 Foreign authority hides the composer. Missing authority or unadvertised methods
 cannot dispatch participant commands. No peer or authority administration is exposed. These helpers belong only to the app target; share
-extension, Live Activities, App Intents and room caching remain outside this slice.
+extension, Live Activities and App Intents do not participate in rooms.
 
 ### Room lifecycle
 

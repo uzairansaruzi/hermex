@@ -93,6 +93,9 @@ import SwiftUI
                             if let roomID = hit.snapshot.roomID,
                                let room = inbox.rooms.first(where: { $0.id == roomID }) {
                                 Button {
+                                    guard let connectionID = inbox.connection?.id,
+                                          hit.snapshot.scope == BotHistoryCache.Scope(server: inbox.server,
+                                              connectionID: connectionID) else { return }
                                     searchFocused = false; onSelectRoom(room, hit.message.seq); dismiss()
                                 } label: { roomMessageResult(hit, room: room) }
                                 .buttonStyle(.plain)

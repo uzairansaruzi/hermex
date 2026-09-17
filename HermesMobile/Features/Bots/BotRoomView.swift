@@ -49,11 +49,16 @@ import SwiftUI
             }
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
-            .onChange(of: reader.events.map(\.seq)) {
-                if let sequence = pendingSequence, reader.events.contains(where: { $0.seq == sequence }) {
+            .onChange(of: pendingSequence.flatMap { sequence in
+                reader.events.contains(where: { $0.seq == sequence }) ? sequence : nil
+            }) { _, sequence in
+                if let sequence {
                     handleFollowEvent(.userScrollBegin)
                     proxy.scrollTo(sequence, anchor: .center); pendingSequence = nil
-                } else if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
+                }
+            }
+            .onChange(of: reader.events.last?.seq) {
+                if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
             }
             .overlay(alignment: .bottom) {
                 if !isNearBottom && !reader.events.isEmpty {

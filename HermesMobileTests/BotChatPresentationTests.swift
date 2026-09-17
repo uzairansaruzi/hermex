@@ -28,7 +28,7 @@ import XCTest
 
         let wire = RoomWire(); wire.driverStatus = RoomFixture.status(stopping: 1)
         let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: "fixture-room"),
-            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, makeWire: { _ in wire })
+            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, cache: BotHistoryCache(), makeWire: { _ in wire })
         let window = try show(NavigationStack {
             BotRoomProfileView(reader: reader, roster: roster, avatars: [:])
         }.environment(\.scenePhase, .inactive))
@@ -95,7 +95,7 @@ import XCTest
         let wire = RoomWire(); wire.latest = 3; wire.kind = "message.member"
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 3)))
         let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
-                                   connection: connection, room: room, makeWire: { _ in wire })
+                                   connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire })
         let window = try show(NavigationStack {
             BotRoomView(reader: reader, roster: [], avatars: [:])
         }.environment(\.scenePhase, .inactive))
@@ -117,6 +117,60 @@ import XCTest
         await renderFrames(8)
         let stopping = try screenshot(window, name: "527-room-stopping")
         XCTAssertTrue(stopping.contains("Stopping"), stopping)
+    }
+
+    func testRoomMessageSearchShowsRoomAndSenderAfterOpeningTheRoom() async throws {
+        let server = URL(string: "https://search.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let cache = BotHistoryCache(), wire = RoomWire()
+        let inbox = BotInbox(server: server, store: store, historyCache: cache, makeWire: { _ in wire })
+        await inbox.open()
+        defer { inbox.close() }
+        let empty = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
+            .environment(\.scenePhase, .active))
+        await renderFrames(40)
+        let before = try screenshot(empty, name: "528-before-opening-room")
+        XCTAssertTrue(before.contains("No saved messages found"), before)
+        close(empty)
+        let room = try XCTUnwrap(inbox.rooms.first)
+        let roomWire = RoomWire(); roomWire.latest = 20; roomWire.kind = "message.member"
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+            connection: connection, room: room, cache: cache, makeWire: { _ in roomWire })
+        await reader.open(); reader.close()
+        let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
+            .environment(\.scenePhase, .active))
+        defer { close(window) }
+        await renderFrames(40)
+        let after = try screenshot(window, name: "528-after-opening-room")
+        XCTAssertTrue(after.contains("Comms"), after)
+        XCTAssertTrue(after.contains("chief-of-staff"), after)
+        XCTAssertFalse(after.contains("No saved messages found"), after)
+    }
+
+    func testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let wire = RoomWire(); wire.latest = 80; wire.kind = "message.member"
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 80)))
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+            connection: connection, room: room, cache: BotHistoryCache(), initialSequence: 20, makeWire: { _ in wire })
+        let window = try show(NavigationStack {
+            BotRoomView(reader: reader, roster: [], avatars: [:])
+        }.environment(\.scenePhase, .inactive))
+        defer { reader.close(); close(window) }
+        await renderFrames(4)
+        await reader.open()
+        await renderFrames(8)
+        let selected = try screenshot(window, name: "528-room-search-target")
+        XCTAssertTrue(selected.contains("Message 20"), selected)
+        XCTAssertFalse(selected.contains("Message 80"), selected)
+        wire.latest = 81; await reader.poll()
+        await renderFrames(8)
+        let updated = try screenshot(window, name: "528-room-search-target-after-update")
+        XCTAssertTrue(updated.contains("Message 20"), updated)
+        XCTAssertFalse(updated.contains("Message 81"), updated)
     }
 
     func testLocalBotSearchShowsBotNamesAndNeverResumesWhileBrowsing() async throws {

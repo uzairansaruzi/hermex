@@ -10,6 +10,109 @@ final class BotHistoryCacheTests: XCTestCase {
         ChatMessage(role: role, content: text, timestamp: nil, messageId: id)
     }
 
+    private func roomKey(connectionID: UUID? = nil, serverURL: URL? = nil) -> BotRoomKey {
+        BotRoomKey(server: serverURL ?? server, connectionID: connectionID ?? connection, roomID: "fixture-room")
+    }
+
+    private var room: BotGroupRoom { BotGroupRoom(RoomFixture.room(latest: 3))! }
+
+    func testRoomOverlapsAreIdempotentOnDiskAndOnlyMessagesAreSearchable() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = BotHistoryCache(directory: directory), key = roomKey()
+        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
+        let first = RoomFixture.page([RoomFixture.event(1), RoomFixture.event(2, kind: "message.member")], cursor: 2)
+        try await cache.appendRoom(key: key, room: room, page: first, since: 0)
+        let file = directory.appendingPathComponent("history.json")
+        let before = try Data(contentsOf: file)
+        try await cache.appendRoom(key: key, room: room, page: first, since: 0)
+        XCTAssertEqual(try Data(contentsOf: file), before, "Duplicate pages must not rewrite timestamps or rows")
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page([
+            RoomFixture.event(2, kind: "message.member"), RoomFixture.event(3, kind: "turn.failed"),
+            RoomFixture.event(4, kind: "future.event")], cursor: 4), since: 1)
+        let restored = BotHistoryCache(directory: directory)
+        let snapshot = try await restored.roomHistory(key)
+        XCTAssertEqual(snapshot?.messages.compactMap(\.seq), [1, 2])
+        XCTAssertEqual(snapshot?.cursor, 4, "Invisible events still advance the persisted cursor")
+        let hits = try await restored.search("Message", scope: scope, profileIDs: [], roomIDs: [key.roomID])
+        XCTAssertEqual(hits.map(\.message.seq), [2, 1])
+        XCTAssertEqual(hits.first?.message.sender, "chief-of-staff")
+        XCTAssertEqual(hits.first?.snapshot.profileName, "Comms")
+        XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains(server.absoluteString))
+    }
+
+    func testSameNamedRoomsStayScopedAndRemovalRejectsLatePages() async throws {
+        let cache = BotHistoryCache(), key = roomKey()
+        let otherConnection = roomKey(connectionID: UUID()), otherServer = roomKey(serverURL: otherServer)
+        let page = RoomFixture.page([RoomFixture.event(1)], cursor: 1)
+        for owner in [key, otherConnection, otherServer] {
+            try await cache.appendRoom(key: owner, room: room, page: page, since: 0)
+        }
+        try await cache.removeRoom(key)
+        try await cache.appendRoom(key: key, room: room, page: page, since: 0)
+        let removed = try await cache.roomHistory(key)
+        XCTAssertNil(removed)
+        for owner in [otherConnection, otherServer] {
+            let hits = try await cache.search("Message", scope: .init(server: owner.server, connectionID: owner.connectionID),
+                                              profileIDs: [], roomIDs: [owner.roomID])
+            XCTAssertEqual(hits.count, 1)
+        }
+        try await cache.remove(server: server, connectionID: otherConnection.connectionID)
+        try await cache.appendRoom(key: otherConnection, room: room, page: page, since: 0)
+        let removedConnection = try await cache.roomHistory(otherConnection)
+        XCTAssertNil(removedConnection)
+        let retainedServer = try await cache.roomHistory(otherServer)
+        XCTAssertNotNil(retainedServer)
+    }
+
+    func testRoomClearAndServerRemovalFollowBotHistoryRules() async throws {
+        let cache = BotHistoryCache(), key = roomKey(), now = Date()
+        let page = RoomFixture.page([RoomFixture.event(1)], cursor: 1)
+        try await cache.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: now)
+        try await cache.remove(server: server, now: now.addingTimeInterval(1))
+        try await cache.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: now)
+        let cleared = try await cache.roomHistory(key)
+        XCTAssertNil(cleared)
+        try await cache.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(2))
+        let fresh = try await cache.roomHistory(key)
+        XCTAssertEqual(fresh?.messages.count, 1)
+        try await cache.removeServer(server, activeConnectionID: connection)
+        try await cache.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(3))
+        let removed = try await cache.roomHistory(key)
+        XCTAssertNil(removed)
+    }
+
+    func testRoomSizeLimitAndSharedSearchCapAndRetentionBoundary() async throws {
+        let cache = BotHistoryCache(), key = roomKey(), now = Date()
+        var large = RoomFixture.event(601).fields!
+        large["payload"] = .object(["text": .string(String(repeating: "é", count: 8193))])
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page(
+            (1...600).map { RoomFixture.event($0) } + [.object(large)], cursor: 601), since: 0, receivedAt: now)
+        let saved = try await cache.roomHistory(key)
+        XCTAssertEqual(saved?.messages.count, 500)
+        XCTAssertEqual(saved?.earlierBoundary, 100)
+        XCTAssertEqual(saved?.cursor, 601)
+        XCTAssertFalse(saved?.messages.contains { $0.seq == 601 } ?? true)
+        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
+        try await cache.replace(scope: scope, profileID: "bot", root: "r", tip: "t", messages: [message("bot", "Message")])
+        let hits = try await cache.search("Message", scope: scope, profileIDs: nil, roomIDs: nil)
+        XCTAssertEqual(hits.count, 100, "Bot and room hits share one limit")
+        XCTAssertTrue(hits.contains { $0.snapshot.roomID == nil })
+        XCTAssertTrue(hits.contains { $0.snapshot.roomID == key.roomID })
+        let expired = try await cache.roomHistory(key, now: now.addingTimeInterval(BotHistoryCache.lifetime + 1))
+        XCTAssertNil(expired)
+    }
+
+    func testDisbandedRoomsDisappearAfterCompleteListAndOtherConnectionsRemain() async throws {
+        let cache = BotHistoryCache(), key = roomKey(), other = roomKey(connectionID: UUID())
+        let page = RoomFixture.page([RoomFixture.event(1)], cursor: 1)
+        for owner in [key, other] { try await cache.appendRoom(key: owner, room: room, page: page, since: 0) }
+        try await cache.retainRooms([], scope: .init(server: server, connectionID: connection))
+        try await cache.appendRoom(key: key, room: room, page: page, since: 0)
+        let removed = try await cache.roomHistory(key), retained = try await cache.roomHistory(other)
+        XCTAssertNil(removed); XCTAssertNotNil(retained)
+    }
+
     func testSearchReturnsIndividualIncomingAndOutgoingMessagesOnlyWithinCapturedIdentity() async throws {
         let cache = BotHistoryCache()
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)

@@ -32,6 +32,7 @@ import Observation
         let threadID: String
         init(text: String) { self.text = text; eventID = UUID().uuidString; threadID = UUID().uuidString }
     }
+    @ObservationIgnored private var didOpen = false
     @ObservationIgnored private var viewOwner: UUID?
     @ObservationIgnored private var commandID: UUID?
     @ObservationIgnored private var dispatched = false
@@ -89,13 +90,14 @@ import Observation
             if uncertainDisband, try await reconcileDisband(client) { return }
             let latest = try await readState(client)
             var initial = log
+            let target = didOpen ? nil : initialSequence
             if cached == nil {
                 initial.begin(latest: latest)
-                if let sequence = initialSequence, sequence > 0, sequence <= latest {
-                    initial.begin(latest: min(latest, sequence + 199))
+                if let sequence = target, sequence > 0, sequence <= latest {
+                    initial.begin(latest: latest - sequence < 199 ? latest : sequence + 199)
                 }
             }
-            if let sequence = initialSequence, sequence > 0, sequence <= initial.earlierBoundary {
+            if let sequence = target, sequence > 0, sequence <= initial.earlierBoundary {
                 let earlier = try await readPages(client, since: sequence - 1, through: initial.earlierBoundary)
                 try check(client)
                 for page in earlier { initial.apply(page) }
@@ -107,7 +109,7 @@ import Observation
             log = initial; publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
-            link = .live
+            link = .live; didOpen = true
             pollTask = Task { [weak self] in
                 while let self, self.wire === client, !Task.isCancelled {
                     do { try await Task.sleep(for: self.status.interval) } catch { return }
@@ -346,22 +348,28 @@ import Observation
     private func readPages(_ client: any BotTransport, since: Int, through: Int? = nil) async throws -> [BotJSON] {
         var cursor = since
         var pages: [BotJSON] = []
+        let receivedAt = Date()
         while true {
             let limit = min(capabilities.pageLimit, through.map { max(1, $0 - cursor) } ?? capabilities.pageLimit)
-            let receivedAt = Date()
             let page = try await client.call("groups.log", ["room_id": .string(key.roomID),
                 "since_seq": .number(Double(cursor)), "limit": .number(Double(limit))])
             try check(client)
             guard page["events"].list != nil, let next = page["cursor"].integer, next >= cursor,
                   let more = page["has_more"].flag else { throw BotFailure.unsupported }
             pages.append(page)
-            // Storage is best-effort. A failed disk write must not stop live reading.
-            try? await cache.appendRoom(key: key, room: room, page: page, since: cursor, receivedAt: receivedAt)
-            try check(client)
             if !more || through.map({ next >= $0 }) == true { break }
             guard next > cursor else { throw BotFailure.unsupported }
             cursor = next
         }
+        // Commit the complete contiguous window together. Saving earlier pages one
+        // at a time would temporarily leave a gap before the already-cached window.
+        // Storage is best-effort; failures never stop live reading.
+        let projection = BotJSON.object([
+            "events": .array(pages.flatMap { $0["events"].list ?? [] }),
+            "cursor": pages.last?["cursor"] ?? .number(Double(since))
+        ])
+        try? await cache.appendRoom(key: key, room: room, page: projection, since: since, receivedAt: receivedAt)
+        try check(client)
         return pages
     }
 

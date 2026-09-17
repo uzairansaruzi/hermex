@@ -82,6 +82,7 @@ import UIKit
     private let store: BotConnectionStore
     private let unread: BotUnreadStore
     private let avatarStore: BotAvatarStore
+    private let historyCache: BotHistoryCache
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
     /// Drops this phone's drafts and cached history for one deleted bot.
     private let purgeLocalState: @MainActor (UUID, String) async -> Void
@@ -92,13 +93,13 @@ import UIKit
     private let reconnectDelays: [Duration]
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
-         avatarStore: BotAvatarStore? = nil, reloadSpacing: Duration = .seconds(1),
+         avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
-        self.reconnectDelays = reconnectDelays
+        self.reconnectDelays = reconnectDelays; self.historyCache = historyCache
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
             try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
@@ -367,6 +368,9 @@ import UIKit
             }
             var ids = Set<String>()
             rooms = found.filter { ids.insert($0.id).inserted }
+            if let connectionID = connection?.id {
+                try? await historyCache.retainRooms(ids, scope: .init(server: server, connectionID: connectionID))
+            }
         } catch {
             guard wire === client, !Task.isCancelled else { return }
             rooms = []; roomCapabilities = BotRoomCapabilities(.null)
