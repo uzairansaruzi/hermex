@@ -59,7 +59,7 @@ import SwiftUI
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
-                status
+                if reader.link == .connecting || reader.link == .stopped || reader.statusText != nil { status }
                 if reader.showsComposer { BotRoomComposerView(reader: reader, avatars: avatars) }
             }
         }
