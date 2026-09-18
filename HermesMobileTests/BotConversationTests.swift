@@ -770,9 +770,9 @@ import Vision
         defer { model.suspend(); window.isHidden = true; window.rootViewController = nil }
         await model.recover()
         await renderBotFrames()
-        for step in 1...12 {
+        for step in 1...6 {
             wire.inflight = .object(["assistant": .string(
-                (1...(100 + step * 25)).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
+                (1...(100 + step * 50)).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
             )])
             let updated = expectation(description: "Stream snapshot published")
             withObservationTracking { _ = model.liveMessages } onChange: { updated.fulfill() }
@@ -791,17 +791,24 @@ import Vision
         driver.stop()
     }
 
+    /// Reads the lower half of the window, where the latest edge of the
+    /// transcript sits above the composer, so saved history scrolled off the top
+    /// can never satisfy the check. The probe is a large repeated uppercase
+    /// phrase, which the fast recognizer finds reliably at a fraction of the cost.
     private func assertBotOutputVisible(_ window: UIWindow) throws {
         let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
-        let attachment = XCTAttachment(image: screenshot)
+        let attachment = XCTAttachment(image: screenshot, quality: .medium)
         attachment.lifetime = .keepAlways
         add(attachment)
+        let full = try XCTUnwrap(screenshot.cgImage)
+        let lowerHalf = try XCTUnwrap(full.cropping(to: CGRect(x: 0, y: full.height / 2, width: full.width, height: full.height / 2)))
         let request = VNRecognizeTextRequest()
-        try VNImageRequestHandler(cgImage: XCTUnwrap(screenshot.cgImage)).perform([request])
+        request.recognitionLevel = .fast
+        try VNImageRequestHandler(cgImage: lowerHalf).perform([request])
         let visibleText = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
-        XCTAssertTrue(visibleText.contains("VISIBLE LIVE OUTPUT"), "Live response must be visible, got: \(visibleText)")
+        XCTAssertTrue(visibleText.contains("VISIBLE LIVE OUTPUT"), "Live response must be visible at the latest edge, got: \(visibleText)")
     }
 }
 

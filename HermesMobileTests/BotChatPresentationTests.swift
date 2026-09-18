@@ -315,7 +315,7 @@ import XCTest
         await renderFrames(30)
         let distance = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom - scroll.contentOffset.y
         XCTAssertLessThanOrEqual(distance, ChatScrollPolicy.followReArmThreshold)
-        _ = try screenshot(window, name: "479-latest-arrow-hidden-at-bottom")
+        capture(window, name: "479-latest-arrow-hidden-at-bottom")
     }
 
     func testMissingUsageUsesTheSessionsRing() async throws {
@@ -382,7 +382,7 @@ import XCTest
         XCTAssertGreaterThanOrEqual(descendants(window).compactMap { $0 as? UIButton }.filter { $0.menu != nil }.count, 1)
         editor.resignFirstResponder()
         await renderFrames()
-        _ = try screenshot(window, name: "478-composer-attachments-collapsed")
+        capture(window, name: "478-composer-attachments-collapsed")
         XCTAssertTrue(descendants(window).contains { $0 === editor })
         XCTAssertEqual(model.attachments.items.count, 2)
     }
@@ -693,13 +693,13 @@ import XCTest
                 await model.recover()
                 await renderFrames()
                 let name = "bot-\(dark ? "dark" : "light")-\(large ? "large" : "default")"
-                _ = try screenshot(window, name: name + "-closed")
+                capture(window, name: name + "-closed")
                 let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
                 XCTAssertTrue(editor.becomeFirstResponder())
                 await renderFrames()
                 editor.insertText("Draft a short reply.")
                 await renderFrames()
-                _ = try screenshot(window, name: name + "-keyboard")
+                capture(window, name: name + "-keyboard")
                 XCTAssertEqual(model.draft, "Draft a short reply.")
                 XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
                 close(window)
@@ -710,7 +710,7 @@ import XCTest
                     .preferredColorScheme(dark ? .dark : .light))
                 defer { close(reference) }
                 await renderFrames()
-                _ = try screenshot(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-closed")
+                capture(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-closed")
                 let referenceEditor = try XCTUnwrap(descendants(reference).compactMap { $0 as? ComposerChipTextView }.first)
                 XCTAssertTrue(referenceEditor.acceptsAttachments)
                 focus.isFocused = true
@@ -719,7 +719,7 @@ import XCTest
                 XCTAssertGreaterThan(referenceEditor.bounds.height, 44)
                 referenceEditor.insertText("Draft a short reply.")
                 await renderFrames()
-                _ = try screenshot(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-keyboard")
+                capture(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-keyboard")
             }
         }
     }
@@ -885,17 +885,27 @@ import XCTest
 
     @discardableResult
     private func screenshot(_ window: UIWindow, name: String, inspecting: ((UIImage) -> Void)? = nil) throws -> String {
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
+        let image = capture(window, name: name)
         inspecting?(image)
-        let attachment = XCTAttachment(image: image)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
         let request = VNRecognizeTextRequest()
         try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage)).perform([request])
         return request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+    }
+
+    /// Attaches a capture as review evidence without reading its text. Captures
+    /// whose words are never asserted on take this path, since text recognition
+    /// is most of what `screenshot` costs. Evidence is stored as JPEG: encoding
+    /// a PNG of the 3x window took six times longer than drawing it.
+    @discardableResult
+    private func capture(_ window: UIWindow, name: String) -> UIImage {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image, quality: .medium)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        return image
     }
 }
 

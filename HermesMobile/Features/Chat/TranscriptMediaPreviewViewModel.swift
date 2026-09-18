@@ -1,4 +1,4 @@
-import AVFoundation
+import AudioToolbox
 import Foundation
 import SwiftUI
 
@@ -186,8 +186,34 @@ final class TranscriptMediaPreviewViewModel {
         temporaryVideoURL = nil
     }
 
+    /// Whether `data` is an audio container AudioToolbox can parse. This reads
+    /// only the header: opening an `AVAudioPlayer` to ask the same question
+    /// spins up the audio hardware on first use, which takes seconds on a cold
+    /// simulator and is wasted work for a preview nobody has pressed play on.
     private static func isAudioData(_ data: Data) -> Bool {
-        (try? AVAudioPlayer(data: data)) != nil
+        final class Cursor { let data: Data; init(_ data: Data) { self.data = data } }
+        let cursor = Unmanaged.passRetained(Cursor(data))
+        defer { cursor.release() }
+        var fileID: AudioFileID?
+        let status = AudioFileOpenWithCallbacks(
+            cursor.toOpaque(),
+            { context, position, requestCount, buffer, actualCount in
+                let data = Unmanaged<Cursor>.fromOpaque(context).takeUnretainedValue().data
+                let start = min(max(Int(position), 0), data.count)
+                let end = min(start + Int(requestCount), data.count)
+                data.copyBytes(to: buffer.assumingMemoryBound(to: UInt8.self), from: start..<end)
+                actualCount.pointee = UInt32(end - start)
+                return noErr
+            },
+            nil,
+            { context in Int64(Unmanaged<Cursor>.fromOpaque(context).takeUnretainedValue().data.count) },
+            nil,
+            0,
+            &fileID
+        )
+        guard status == noErr, let fileID else { return false }
+        AudioFileClose(fileID)
+        return true
     }
 
     private var resolvedExportKind: TranscriptMediaResolvedExportKind? {
