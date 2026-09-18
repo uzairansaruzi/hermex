@@ -362,9 +362,20 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
     }
 
     func testExtensionlessRemoteAudioUsesAudioPreviewInsteadOfVideoFallback() async throws {
+        var t = Date(); var laps = ""; func lap(_ l: String) { laps += "\(l)=\(Int(Date().timeIntervalSince(t) * 1000)) "; t = Date() }
+        defer { XCTFail("TIMING-PROBE " + laps) }
+        _ = HTTPCookieStorage(); lap("cookieStorageInit")
+        _ = URLSessionConfiguration.ephemeral; lap("ephemeralConfig")
+        _ = URLSession(configuration: .ephemeral); lap("ephemeralSession")
+        _ = String(localized: "Preview is not available for this media type."); lap("localized")
+        _ = await ImagePreviewDownsampler.previewDataAsync(from: Data("video-bytes".utf8), maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize); lap("downsampleGarbage")
+        _ = await ImagePreviewDownsampler.previewDataAsync(from: Self.wavData(), maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize); lap("downsampleWav")
+        _ = await ImagePreviewDownsampler.previewDataAsync(from: Self.wavData(), maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize); lap("downsampleWavAgain")
+        _ = AttachmentAudioDetection.containerType(of: Self.wavData()); lap("sniff")
         let recorder = TranscriptMediaPreviewRequestRecorder()
         let audioData = Self.wavData()
         let remoteURL = try XCTUnwrap(URL(string: "https://cdn.example.test/media/voice123"))
+        lap("fixtures")
         let client = makeClient { request in
             recorder.record(request)
             XCTAssertEqual(request.httpMethod, "GET")
@@ -378,8 +389,10 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
             reference: .init(rawReference: remoteURL.absoluteString),
             apiClient: client
         )
+        lap("makeClient+vm")
 
         await viewModel.load()
+        lap("load")
 
         XCTAssertFalse(viewModel.isLoading)
         XCTAssertNil(viewModel.errorMessage)
@@ -391,13 +404,16 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canSaveMediaToPhotos)
         XCTAssertTrue(viewModel.canExportMedia)
         XCTAssertEqual(recorder.requestCount, 1)
+        lap("asserts")
 
         let payload = try await viewModel.exportPayload()
+        lap("exportPayload")
         XCTAssertEqual(payload.data, audioData)
         XCTAssertEqual(payload.filename, "voice123.wav")
         XCTAssertEqual(payload.contentType, .wav)
         XCTAssertFalse(payload.isImage)
         XCTAssertFalse(payload.isVideo)
+        lap("payloadAsserts")
     }
 
     func testMediaEndpointErrorIsCaptured() async {
