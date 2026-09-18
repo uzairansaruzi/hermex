@@ -38,6 +38,7 @@ to `CacheStore`. Two consequences:
 | Active project / session selection | View-local `@State` only | Not persisted. Destroyed and rebuilt on switch via `.id(server)`. |
 | Browsed Kanban Board | UserDefaults, per-server key (`KanbanBoardPreference.key(for:)` = `kanban.selectedBoard|<server absoluteString>`) | Per-server since #259: `KanbanFeatureState` restores the last locally browsed Board on load after validating it against the server's fresh Board list, and drops a stale slug silently. Local browsing never calls the server's switch endpoint. Tested in `KanbanFeatureStateTests` (`testBrowsedBoardIsRestoredForTheSameServerAndIsolatedFromOthers`). |
 | "Show CLI sessions" toggle | UserDefaults, per-server key (`SessionRowDisplaySettings.showCliSessionsKey(for:)` = `sessionRow.showCliSessions|<server absoluteString>`) | Per-server since #19: the toggle mirrors the server's own `show_cli_sessions` setting (adopted on Settings load, written back via `POST /api/settings`), so an adopted value on one server cannot leak to another. Reads fall back to the pre-#19 global key as a migration seed, then to shown-by-default. Tested in `CliSessionsSyncModelTests`. |
+| Chat attachment thumbnails | In-memory `AttachmentImageCache` (process-wide) | Keyed by `AttachmentImageCacheKey(namespace, path)` where `namespace` is `server.absoluteString|session`, matching `TranscriptMediaImageCache`. The cache survives `.id(server)` teardown, so the key—not view identity—is the isolation. Callers cannot default to an empty namespace. Tested in `TranscriptMediaParserTests.testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions`. |
 
 ### Offline cache keying (`Persistence/CacheStore.swift`)
 
@@ -108,6 +109,7 @@ server's content even if the purge fails.
 | Per-server custom headers | `CustomHeaderInjectionTests` (`testSSEStreamSourcesHeadersFromActiveServerStore`, `testLaunchMigratesLegacyGlobalHeadersToActiveServerScope`), `AuthManagerStateTests` (`testSignOutLeavesOtherServerHeadersAndRegistryIntact`, `testAddServerFailureKeepsActiveServerAndItsHeaders`) |
 | Per-server cookies | `AuthManagerStateTests` (`testSignOutClearsOnlyActiveServerCookies`, `testRemoveNonActiveServerClearsOnlyItsCookies`, `testUnauthorizedClearsOnlyActiveServerCookies`) |
 | Default model/profile | No persisted state to leak (server-fresh per active server); covered by the switch mechanism + `9.3` Settings tests. |
+| Chat attachment thumbnail cache (same path, two servers/sessions) | `TranscriptMediaParserTests.testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions` |
 
 ## Bot connection and drafts
 

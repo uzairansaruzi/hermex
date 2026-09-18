@@ -182,7 +182,7 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         }
         let host = UIHostingController(rootView: ScrollView {
             VStack {
-                ForEach(messages) { MessageBubbleView(message: $0) }
+                ForEach(messages) { MessageBubbleView(message: $0, transcriptMediaCacheNamespace: "https://webui.example|test") }
             }
             .padding(12)
         })

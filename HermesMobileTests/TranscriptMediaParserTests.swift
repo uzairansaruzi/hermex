@@ -327,6 +327,31 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertNotEqual(firstSessionKey, secondServerKey)
     }
 
+    func testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions() {
+        let path = "/tmp/workspace/photo.png"
+
+        let firstSessionKey = AttachmentImageCacheKey(
+            namespace: "https://one.example.test|session-a",
+            path: path
+        )
+        let secondSessionKey = AttachmentImageCacheKey(
+            namespace: "https://one.example.test|session-b",
+            path: path
+        )
+        let secondServerKey = AttachmentImageCacheKey(
+            namespace: "https://two.example.test|session-a",
+            path: path
+        )
+        let pathOnlyKey = AttachmentImageCacheKey(namespace: path, path: path)
+
+        XCTAssertNotEqual(firstSessionKey, secondSessionKey)
+        XCTAssertNotEqual(firstSessionKey, secondServerKey)
+        XCTAssertNotEqual(firstSessionKey, pathOnlyKey)
+        XCTAssertFalse(firstSessionKey.namespace.isEmpty)
+        XCTAssertTrue(firstSessionKey.namespace.contains("https://one.example.test"))
+        XCTAssertEqual(firstSessionKey.path, path)
+    }
+
     private func mediaReferences(in segments: [TranscriptMediaSegment]) -> [TranscriptMediaReference] {
         segments.compactMap { segment in
             if case let .media(reference) = segment {

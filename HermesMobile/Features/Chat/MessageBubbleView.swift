@@ -20,6 +20,8 @@ struct MessageBubbleView: View {
     let loadAttachmentData: ((String) async -> Data?)?
     let loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)?
+    /// Server (and session) identity for in-memory image caches. Required so
+    /// attachment thumbnails and transcript media cannot share an empty bucket.
     let transcriptMediaCacheNamespace: String
     let localAttachmentPreviews: [String: Data]?
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
@@ -37,7 +39,7 @@ struct MessageBubbleView: View {
         loadAttachmentData: ((String) async -> Data?)? = nil,
         loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)? = nil,
         loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)? = nil,
-        transcriptMediaCacheNamespace: String = "",
+        transcriptMediaCacheNamespace: String,
         localAttachmentPreviews: [String: Data]? = nil,
         onPreviewAttachment: ((MessageAttachment, Data?) -> Void)? = nil,
         onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
@@ -364,6 +366,7 @@ struct MessageBubbleView: View {
                         GridAttachmentCell(
                             attachment: item.attachment,
                             localData: item.localData,
+                            cacheNamespace: transcriptMediaCacheNamespace,
                             loadAttachmentImage: loadAttachmentImage,
                             onPreviewAttachment: onPreviewAttachment,
                             size: cellSize
@@ -484,6 +487,7 @@ private extension [TranscriptMediaSegment] {
 private struct GridAttachmentCell: View {
     let attachment: MessageAttachment
     let localData: Data?
+    let cacheNamespace: String
     let loadAttachmentImage: ((String) async -> Data?)?
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let size: CGFloat
@@ -544,6 +548,7 @@ private struct GridAttachmentCell: View {
             } else if let path = resolvedPath, let loadAttachmentImage {
                 RemoteAttachmentImage(
                     path: path,
+                    cacheNamespace: cacheNamespace,
                     loadAttachmentImage: loadAttachmentImage
                 )
                 .frame(width: size, height: size)
@@ -674,6 +679,7 @@ private struct GridAttachmentCell: View {
 /// cookie. Deduplicates concurrent requests and caches in memory.
 private struct RemoteAttachmentImage: View {
     let path: String
+    let cacheNamespace: String
     let loadAttachmentImage: (String) async -> Data?
     @State private var image: UIImage?
     @State private var didAttempt = false
@@ -690,9 +696,12 @@ private struct RemoteAttachmentImage: View {
                 fallbackImage
             }
         }
-        .task(id: path) {
+        .task(id: imageCacheKey) {
+            image = nil
+            didAttempt = false
             let loaded = await AttachmentImageCache.shared.image(
                 for: path,
+                cacheNamespace: cacheNamespace,
                 loadAttachmentImage: loadAttachmentImage
             )
             guard !Task.isCancelled else { return }
@@ -701,6 +710,10 @@ private struct RemoteAttachmentImage: View {
                 self.didAttempt = true
             }
         }
+    }
+
+    private var imageCacheKey: AttachmentImageCacheKey {
+        AttachmentImageCacheKey(namespace: cacheNamespace, path: path)
     }
 
     private var fallbackImage: some View {
@@ -724,22 +737,26 @@ private struct RemoteAttachmentImage: View {
 }
 
 /// In-memory image cache that delegates loading to the authenticated client.
-/// Deduplicates concurrent requests for the same path.
+/// Deduplicates concurrent requests for the same namespaced path. The cache is
+/// process-wide and survives `.id(server)` teardown, so keys include the
+/// server (and session) namespace rather than the relative path alone.
 private actor AttachmentImageCache {
     static let shared = AttachmentImageCache()
 
-    private var cache: [String: UIImage] = [:]
-    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private var cache: [AttachmentImageCacheKey: UIImage] = [:]
+    private var inFlight: [AttachmentImageCacheKey: Task<UIImage?, Never>] = [:]
 
     func image(
         for path: String,
+        cacheNamespace: String,
         loadAttachmentImage: @escaping (String) async -> Data?
     ) async -> UIImage? {
-        if let cached = cache[path] {
+        let key = AttachmentImageCacheKey(namespace: cacheNamespace, path: path)
+        if let cached = cache[key] {
             return cached
         }
 
-        if let task = inFlight[path] {
+        if let task = inFlight[key] {
             return await task.value
         }
 
@@ -754,15 +771,20 @@ private actor AttachmentImageCache {
             return UIImage(data: previewData)
         }
 
-        inFlight[path] = task
+        inFlight[key] = task
         let image = await task.value
-        inFlight[path] = nil
+        inFlight[key] = nil
 
         if let image {
-            cache[path] = image
+            cache[key] = image
         }
         return image
     }
+}
+
+struct AttachmentImageCacheKey: Hashable {
+    let namespace: String
+    let path: String
 }
 
 enum ResponseSpeedFormatter {

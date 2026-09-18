@@ -31,7 +31,13 @@ import SwiftUI
                         Text("Managed by another Hermes").font(.caption).foregroundStyle(.secondary)
                     }
                     ForEach(reader.events) { event in
-                        BotRoomEventView(event: event, room: reader.room, roster: roster, avatars: avatars)
+                        BotRoomEventView(
+                            event: event,
+                            room: reader.room,
+                            roster: roster,
+                            avatars: avatars,
+                            transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
+                        )
                     }
                     if reader.events.isEmpty && reader.link == .live {
                         Text("No messages yet.").foregroundStyle(.secondary)
@@ -139,10 +145,15 @@ private struct BotRoomEventView: View {
     let room: BotGroupRoom
     let roster: [BotProfile]
     let avatars: [String: UIImage]
+    let transcriptMediaCacheNamespace: String
     var body: some View {
         if event.kind == "message.user" {
-            MessageBubbleView(message: ChatMessage(role: "user", content: event.payload["text"].text,
-                timestamp: event.timestamp, messageId: String(event.seq)), textOnly: true)
+            MessageBubbleView(
+                message: ChatMessage(role: "user", content: event.payload["text"].text,
+                    timestamp: event.timestamp, messageId: String(event.seq)),
+                transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
+                textOnly: true
+            )
         } else if event.kind == "message.member" {
             HStack(alignment: .bottom, spacing: 8) {
                 BotRoomMemberAvatar(member: event.member(in: room), roster: roster, avatars: avatars, size: 26)

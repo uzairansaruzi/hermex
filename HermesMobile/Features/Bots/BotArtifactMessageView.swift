@@ -11,7 +11,11 @@ struct BotArtifactMessageView: View {
     var body: some View {
         Group {
             if message.role == "user" {
-                MessageBubbleView(message: message, textOnly: true)
+                MessageBubbleView(
+                    message: message,
+                    transcriptMediaCacheNamespace: "\(model.server.absoluteString)|bot:\(model.connection.id.uuidString)",
+                    textOnly: true
+                )
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(TranscriptMediaParser.segments(in: message.content ?? "", includesLocalFileLinks: true).enumerated()), id: \.offset) { _, segment in
