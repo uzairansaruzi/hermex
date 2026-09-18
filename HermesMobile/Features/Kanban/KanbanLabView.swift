@@ -1104,7 +1104,7 @@ struct KanbanStatusFocusView: View {
                 emptyContent
                     .listRowSeparator(.hidden)
             } else if model.groupByProfile {
-                ForEach(Array(model.groupedVisibleCards.enumerated()), id: \.offset) { _, group in
+                ForEach(model.groupedVisibleCards, id: \.profile) { group in
                     Section {
                         ForEach(group.cards, id: \.cardID) { card in
                             cardNavigationLink(card)

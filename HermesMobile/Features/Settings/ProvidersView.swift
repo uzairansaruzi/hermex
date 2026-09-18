@@ -35,7 +35,7 @@ struct ProvidersView: View {
                         .listRowSeparator(.hidden)
                 }
 
-                ForEach(Array(viewModel.providers.enumerated()), id: \.offset) { index, provider in
+                ForEach(Array(viewModel.providers.enumerated()), id: \.element.id) { index, provider in
                     let key = Self.expansionKey(for: provider, at: index)
                     ProviderDisclosure(
                         provider: provider,

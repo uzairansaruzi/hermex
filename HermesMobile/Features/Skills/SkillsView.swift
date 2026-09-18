@@ -128,7 +128,7 @@ private struct SkillCategorySection: View {
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
-                ForEach(Array(skills.enumerated()), id: \.offset) { index, skill in
+                ForEach(Array(skills.enumerated()), id: \.element.id) { index, skill in
                     NavigationLink {
                         SkillDetailView(
                             skill: skill,

@@ -12,7 +12,7 @@ struct UsageModelsCard: View {
     var body: some View {
         SectionCard(title: String(localized: "By model")) {
             VStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(models.enumerated()), id: \.offset) { _, model in
+                ForEach(models, id: \.model) { model in
                     UsageModelRow(model: model, hasCost: hasCost)
                 }
             }

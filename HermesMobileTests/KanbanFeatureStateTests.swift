@@ -290,6 +290,20 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(requestsAfterDraftChange, requestsBeforeToggle)
     }
 
+    func testGroupedVisibleCardsUseProfileAsStableSectionIdentity() async {
+        let state = KanbanFeatureState(
+            server: URL(string: "https://example.test")!,
+            client: KanbanClientStub(boardResult: .success(KanbanFixtures.richSnapshot))
+        )
+        await state.load()
+        state.selectedStatus = "ready"
+
+        let groups = state.groupedVisibleCards
+        XCTAssertEqual(groups.map(\.profile), ["builder"])
+        XCTAssertEqual(groups.first?.cards.map(\.cardID), ["CARD-1"])
+        XCTAssertEqual(Set(groups.map(\.profile)).count, groups.count)
+    }
+
     func testBoardSwitchClearsBoardScopedDataAndRevalidatesCompatibility() async {
         let client = DeferredBoardSwitchClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)

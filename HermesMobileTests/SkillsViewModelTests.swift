@@ -14,6 +14,8 @@ final class SkillsViewModelTests: APIClientTestCase {
         XCTAssertEqual(groups.map(\.category), ["coding", "Uncategorized"])
         XCTAssertEqual(groups.first?.skills.map(\.name), ["Alpha", "zed"])
         XCTAssertEqual(groups.last?.skills.map { $0.name ?? "Unnamed Skill" }, ["loose", "Unnamed Skill"])
+        XCTAssertEqual(groups.first?.skills.map(\.id), ["Alpha", "zed"])
+        XCTAssertEqual(groups.last?.skills.first?.id, "loose")
     }
 
     @MainActor
