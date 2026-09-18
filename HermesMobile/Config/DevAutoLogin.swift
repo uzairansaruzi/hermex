@@ -12,13 +12,26 @@ import Foundation
 ///   the Bot connection saved under that server. Also turns Bot Mode on.
 @MainActor
 enum DevAutoLogin {
+    /// The sign-in under way, if any. It is owned here rather than by the calling
+    /// view task, because the root view is rebuilt during launch and a cancelled
+    /// view task would cancel the login requests with it.
+    private static var inFlight: Task<Void, Never>?
+
     /// Called from the root view's `.task(id: authManager.state)`, so an expired
-    /// session signs back in. A failed login leaves the state unchanged and is
-    /// therefore not retried.
+    /// session signs back in. Concurrent calls share one attempt. A failed login
+    /// leaves the state unchanged and is therefore not retried.
     static func run(
         authManager: AuthManager,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async {
+        if let inFlight { return await inFlight.value }
+        let task = Task { await signIn(authManager: authManager, environment: environment) }
+        inFlight = task
+        await task.value
+        inFlight = nil
+    }
+
+    private static func signIn(authManager: AuthManager, environment: [String: String]) async {
         guard let serverText = environment["HERMEX_DEV_SERVER_URL"],
               let server = try? AuthManager.normalizedServerURL(from: serverText) else { return }
 
