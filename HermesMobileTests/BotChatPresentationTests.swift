@@ -84,8 +84,10 @@ import XCTest
                 ["orange", "green"], ["orange"], ["green"], ["orange", "green"], ["orange", "green"]
             ], "Header and broadcast rows show both avatars; each member row shows only its own")
         }
-        XCTAssertTrue(text.contains("@all"), text)
-        XCTAssertTrue(text.contains("@everyone"), text)
+        XCTAssertEqual(completions.map(\.tag), names + ["all", "everyone"])
+        // Vision reads the monospaced "@all" as "@a11" on iOS 27; either spelling is the row.
+        XCTAssertNotNil(text.range(of: "@a[l1][l1] Everyone", options: .regularExpression), text)
+        XCTAssertTrue(text.contains("@everyone Everyone"), text)
         XCTAssertNil(selected, "Rendering suggestions must not insert a mention")
     }
 
@@ -304,12 +306,12 @@ import XCTest
         let scroll = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first {
             $0.bounds.width > 300 && $0.contentSize.height > $0.bounds.height
         })
-        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        drag(scroll, to: -scroll.adjustedContentInset.top)
         await renderFrames(30)
         XCTAssertLessThan(scroll.contentOffset.y, 1)
         let above = try screenshot(window, name: "479-latest-arrow-above-bottom")
         XCTAssertFalse(above.contains("Latest"), above)
-        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom), animated: false)
+        drag(scroll, to: scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
         await renderFrames(30)
         let distance = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom - scroll.contentOffset.y
         XCTAssertLessThanOrEqual(distance, ChatScrollPolicy.followReArmThreshold)
@@ -839,6 +841,15 @@ import XCTest
 
     private func descendants(_ view: UIView) -> [UIView] {
         [view] + view.subviews.flatMap(descendants)
+    }
+
+    /// Moves a SwiftUI scroll view the way a finger would. iOS 27 restores its
+    /// own tracked position over a bare offset write on the next layout, so the
+    /// write is bracketed with the drag callbacks SwiftUI listens for.
+    private func drag(_ scroll: UIScrollView, to y: CGFloat) {
+        scroll.delegate?.scrollViewWillBeginDragging?(scroll)
+        scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+        scroll.delegate?.scrollViewDidEndDragging?(scroll, willDecelerate: false)
     }
 
     /// Waits for the conversation's coalesced snapshot read to land. Every
