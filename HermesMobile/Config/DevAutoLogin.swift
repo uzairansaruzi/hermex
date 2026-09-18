@@ -52,8 +52,12 @@ enum DevAutoLogin {
         let store = BotConnectionStore()
         guard let addressText = environment["HERMEX_DEV_BOT_ADDRESS"],
               let username = environment["HERMEX_DEV_BOT_USERNAME"],
-              let password = environment["HERMEX_DEV_BOT_PASSWORD"],
-              (try? store.load(server: server)) == nil else { return }
+              let password = environment["HERMEX_DEV_BOT_PASSWORD"] else { return }
+        // Turning Bot Mode off keeps the saved connection, so the gate is restored either way.
+        if (try? store.load(server: server)) != nil {
+            UserDefaults.standard.set(true, forKey: BotModeGate.isEnabledKey)
+            return
+        }
         do {
             let address = try BotConnection.address(addressText)
             var connection = BotConnection(id: UUID(), name: address.host ?? "Hermes",

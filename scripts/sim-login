@@ -15,9 +15,10 @@ set -euo pipefail
 udid="${1:?usage: scripts/sim-login <simulator-udid>}"
 bundle_id="${HERMEX_BUNDLE_ID:-com.uzairansar.hermesmobile}"
 
-# Prints one attribute ("acct" or "icmt") of a generic-password Keychain item.
+# Prints one attribute ("acct" or "icmt") of a generic-password Keychain item,
+# or nothing when the item is missing.
 attribute() {
-  security find-generic-password -s "$1" 2>/dev/null | sed -n "s/^ *\"$2\"<blob>=\"\(.*\)\"$/\1/p"
+  security find-generic-password -s "$1" 2>/dev/null | sed -n "s/^ *\"$2\"<blob>=\"\(.*\)\"$/\1/p" || true
 }
 
 host="$(attribute hermex-webui acct)"
