@@ -87,6 +87,10 @@ final class TranscriptMediaPreviewViewModel {
                 }
                 temporaryVideoURL = fileURL
                 videoFileURL = fileURL
+            } else if reference.isExtensionlessRemoteMediaCandidate, Self.isAudioData(data) {
+                // Sniffed before the image decode: a WAV header is a RIFF
+                // container, which sends ImageIO looking for a WebP codec.
+                audioData = data
             } else {
                 if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
                     from: data,
@@ -97,13 +101,9 @@ final class TranscriptMediaPreviewViewModel {
                 } else {
                     guard !Task.isCancelled, loadGeneration == generation else { return }
                     if reference.isExtensionlessRemoteMediaCandidate {
-                        if Self.isAudioData(data) {
-                            audioData = data
-                        } else {
-                            let fileURL = try writeTemporaryVideoFile(data)
-                            temporaryVideoURL = fileURL
-                            videoFileURL = fileURL
-                        }
+                        let fileURL = try writeTemporaryVideoFile(data)
+                        temporaryVideoURL = fileURL
+                        videoFileURL = fileURL
                     } else {
                         errorMessage = String(localized: "Could not decode this image.")
                     }
