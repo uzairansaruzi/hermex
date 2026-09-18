@@ -103,6 +103,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 - Behavior changes ship with focused tests for that behavior.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
 - UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
+- If the simulator lands on the login screen or Bots has no connection, run `scripts/sim-login <udid>` instead of stopping. It signs the installed Debug build in from the macOS Keychain (`DEVELOPMENT.md` § Signing a simulator in).
 - Run `scripts/check-swift-file-sizes` when a production Swift file grows. It is a warning, not a gate: use it to notice a missing seam, not to force unrelated refactors into the current issue.
 
 ## Pull requests
