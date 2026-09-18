@@ -18,9 +18,7 @@ actor APIClient {
     private let encoder: JSONEncoder
     /// Read when building each request so live edits apply without rebuilding the
     /// client. Defaults to the process-wide store; tests inject a fixed list (#255).
-    /// Internal, not private, because the upload and transcribe extensions build
-    /// their multipart requests by hand and need the same header injection (#61).
-    let customHeaderProvider: @Sendable () -> [CustomHeader]
+    private let customHeaderProvider: @Sendable () -> [CustomHeader]
 
     init(
         baseURL: URL,
@@ -177,6 +175,35 @@ actor APIClient {
             request.httpBody = encodedBody
         }
 
+        return try await sendPreparedRequest(request)
+    }
+
+    /// Multipart POST using the same URLSession + `APIError` mapping as `sendData`.
+    /// Custom headers first, then the multipart Content-Type so it always wins
+    /// over a caller-supplied `Content-Type` (#61).
+    ///
+    /// `requireSuccess` defaults to the sendData 2xx guard. Transcribe opts out
+    /// so it can decode `{error: ...}` bodies on non-2xx (except 401).
+    func sendMultipart(
+        endpoint: Endpoint,
+        body: Data,
+        contentType: String,
+        requireSuccess: Bool = true
+    ) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        customHeaderProvider().apply(to: &request)
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        return try await sendPreparedRequest(request, requireSuccess: requireSuccess)
+    }
+
+    /// Shared URLSession hop + status mapping for JSON and multipart sends.
+    private func sendPreparedRequest(
+        _ request: URLRequest,
+        requireSuccess: Bool = true
+    ) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
@@ -185,6 +212,20 @@ actor APIClient {
             throw APIError.network(underlying: error)
         }
 
+        return try Self.mappedHTTPResponse(
+            data: data,
+            response: response,
+            requireSuccess: requireSuccess
+        )
+    }
+
+    /// 401 → `.unauthorized`; other non-2xx → `.http` when `requireSuccess`.
+    /// Non-HTTP responses map to `.http(statusCode: -1)` like `sendData`.
+    private static func mappedHTTPResponse(
+        data: Data,
+        response: URLResponse,
+        requireSuccess: Bool
+    ) throws -> (Data, HTTPURLResponse) {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.http(statusCode: -1, body: nil)
         }
@@ -193,11 +234,13 @@ actor APIClient {
             throw APIError.unauthorized
         }
 
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw APIError.http(
-                statusCode: httpResponse.statusCode,
-                body: String(data: data, encoding: .utf8)
-            )
+        if requireSuccess {
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw APIError.http(
+                    statusCode: httpResponse.statusCode,
+                    body: String(data: data, encoding: .utf8)
+                )
+            }
         }
 
         return (data, httpResponse)

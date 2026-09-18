@@ -28,18 +28,7 @@ extension APIClient {
     }
 
     nonisolated func chatStreamURL(streamID: String, replayAfterSeq: Int? = nil) -> URL {
-        let url = Endpoint.chatStream(streamID: streamID).url(relativeTo: baseURL)
-        guard let replayAfterSeq,
-              var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        else {
-            return url
-        }
-
-        var queryItems = components.queryItems ?? []
-        queryItems.append(URLQueryItem(name: "replay", value: "1"))
-        queryItems.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
-        components.queryItems = queryItems
-        return components.url ?? url
+        Endpoint.chatStream(streamID: streamID, replayAfterSeq: replayAfterSeq).url(relativeTo: baseURL)
     }
 
     func cancelChat(streamID: String) async throws -> ChatCancelResponse {
