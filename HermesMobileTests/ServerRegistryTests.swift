@@ -104,7 +104,6 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertEqual(account.displayName, "Alice")
         XCTAssertEqual(account.initials, "AL")
         XCTAssertEqual(account.headerLogoColorHex, "#5B7CFF")
-        XCTAssertEqual(account.customHeadersRef, "https://example.test")
         XCTAssertEqual(account.createdAt, fixedDate)
         XCTAssertEqual(account.updatedAt, fixedDate)
     }
@@ -324,14 +323,18 @@ final class ServerRegistryTests: XCTestCase {
 
     func testServerAccountDecodesWithOnlyAnIdPresent() throws {
         // A minimal blob must still decode, defaulting the rest (CLAUDE.md rule 3).
-        let json = Data(#"{"id":"https://example.test"}"#.utf8)
+        // Legacy blobs may still carry `customHeadersRef`; ignore it on decode
+        // and never write it back (headers are scoped by URL in Keychain).
+        let json = Data(#"{"id":"https://example.test","customHeadersRef":"https://example.test"}"#.utf8)
         let account = try JSONDecoder().decode(ServerAccount.self, from: json)
 
         XCTAssertEqual(account.id, "https://example.test")
         XCTAssertEqual(account.urlString, "https://example.test")
         XCTAssertEqual(account.displayName, "")
         XCTAssertEqual(account.headerLogoColorHex, HeaderLogoColor.defaultHex)
-        XCTAssertNil(account.customHeadersRef)
+
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(account)) as? [String: Any]
+        XCTAssertNil(encoded?["customHeadersRef"])
     }
 
     // MARK: - Migration + lifecycle through AuthManager

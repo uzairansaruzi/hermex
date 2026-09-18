@@ -106,8 +106,6 @@ final class CustomHeaderAuthStatusDecodeTests: XCTestCase {
 
         XCTAssertEqual(status.authEnabled, true)
         XCTAssertEqual(status.passwordAuthEnabled, false)
-        XCTAssertEqual(status.passkeysEnabled, true)
-        XCTAssertEqual(status.passwordlessEnabled, true)
     }
 
     func testMissingNewFlagsDecodeToNil() throws {
@@ -115,8 +113,6 @@ final class CustomHeaderAuthStatusDecodeTests: XCTestCase {
 
         XCTAssertEqual(status.authEnabled, true)
         XCTAssertNil(status.passwordAuthEnabled)
-        XCTAssertNil(status.passkeysEnabled)
-        XCTAssertNil(status.passwordlessEnabled)
     }
 
     func testUnknownFieldsAreIgnored() throws {

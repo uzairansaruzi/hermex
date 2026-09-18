@@ -222,21 +222,6 @@ enum AgentRunActivitySanitizer {
     }
 }
 
-enum AgentRunElapsedTimeFormatter {
-    static func label(startedAt: Date, updatedAt: Date) -> String {
-        let elapsedSeconds = max(0, Int(updatedAt.timeIntervalSince(startedAt).rounded(.down)))
-        let hours = elapsedSeconds / 3_600
-        let minutes = (elapsedSeconds % 3_600) / 60
-        let seconds = elapsedSeconds % 60
-
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-}
-
 enum AgentLiveActivityReusePolicy {
     static func normalizedStreamID(_ streamID: String?) -> String? {
         guard let streamID else { return nil }
@@ -288,23 +273,6 @@ enum AgentRunActivityStateReducer {
             currentActivity: String(localized: "Starting response"),
             startedAt: startedAt,
             updatedAt: startedAt
-        )
-    }
-
-    static func appendingToken(
-        _ text: String,
-        to state: AgentRunActivityAttributes.ContentState,
-        now: Date = Date()
-    ) -> AgentRunActivityAttributes.ContentState {
-        guard !text.isEmpty else { return state }
-        return AgentRunActivityAttributes.ContentState(
-            sessionID: state.sessionID,
-            sessionTitle: state.sessionTitle,
-            status: .responding,
-            currentActivity: String(localized: "Writing response"),
-            responseExcerpt: state.responseExcerpt + text,
-            startedAt: state.startedAt,
-            updatedAt: now
         )
     }
 
