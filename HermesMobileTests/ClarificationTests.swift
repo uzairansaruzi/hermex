@@ -304,19 +304,6 @@ final class ClarificationTests: XCTestCase {
 
     @MainActor
     func testClarificationResponseFailureKeepsPromptAndPublishesActionError() async throws {
-        var t = Date(); var laps = ""; func lap(_ l: String) { laps += "\(l)=\(Int(Date().timeIntervalSince(t) * 1000)) "; t = Date() }
-        defer { XCTFail("TIMING-PROBE " + laps) }
-        _ = APIError.network(underlying: URLError(.timedOut)).localizedDescription; lap("localizedDescription")
-        do {
-            ClarificationMockURLProtocol.requestHandler = { _ in throw URLError(.badServerResponse) }
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.protocolClasses = [ClarificationMockURLProtocol.self]
-            let probeSession = URLSession(configuration: configuration)
-            _ = try? await probeSession.data(for: URLRequest(url: URL(string: "https://example.test/probe")!)); lap("rawBadResponse")
-            ClarificationMockURLProtocol.requestHandler = { _ in throw URLError(.timedOut) }
-            _ = try? await probeSession.data(for: URLRequest(url: URL(string: "https://example.test/probe2")!)); lap("rawTimedOut")
-            _ = try? await probeSession.data(for: URLRequest(url: URL(string: "https://example.test/probe3")!)); lap("rawTimedOutAgain")
-        }
         let streamClient = ClarificationSpySSEStreamingClient()
         let approvalStreamClient = ClarificationSpySSEStreamingClient()
         let clarifyStreamClient = ClarificationSpySSEStreamingClient()
@@ -336,9 +323,7 @@ final class ClarificationTests: XCTestCase {
             }
         }
 
-        lap("makeViewModel")
         let didStart = await viewModel.sendMessage("Continue")
-        lap("sendMessage")
         XCTAssertTrue(didStart)
         clarifyStreamClient.emit(.clarificationPending(ClarificationPendingResponse(
             pending: PendingClarification(
@@ -348,17 +333,14 @@ final class ClarificationTests: XCTestCase {
             ),
             pendingCount: 1
         )))
-        lap("emit")
 
         let didRespond = await viewModel.respondToClarification("Use main")
-        lap("respond")
 
         XCTAssertFalse(didRespond)
         XCTAssertEqual(viewModel.clarificationPrompt?.pending.clarifyId, "clarify-1")
         XCTAssertNotNil(viewModel.lastError)
         XCTAssertEqual(viewModel.clarificationErrorMessage, viewModel.sendErrorMessage)
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
-        lap("asserts")
     }
 
     @MainActor
