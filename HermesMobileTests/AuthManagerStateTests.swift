@@ -504,6 +504,25 @@ final class AuthManagerStateTests: XCTestCase {
         return (manager, aAccount, bAccount)
     }
 
+    func testDevAutoLoginSignsInFromLaunchEnvironment() async throws {
+        let manager = AuthManager(
+            keychain: InMemoryKeychainStore(),
+            clientFactory: { _ in
+                MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
+            },
+            serverRegistry: ServerRegistry.inMemory()
+        )
+
+        await DevAutoLogin.run(authManager: manager, environment: [:])
+        XCTAssertEqual(manager.state, .unconfigured)
+
+        await DevAutoLogin.run(authManager: manager, environment: [
+            "HERMEX_DEV_SERVER_URL": "https://example.test",
+            "HERMEX_DEV_PASSWORD": "secret"
+        ])
+        XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://example.test"))))
+    }
+
     private func makeLoggedInManager(
         keychain: InMemoryKeychainStore,
         serverURLString: String,

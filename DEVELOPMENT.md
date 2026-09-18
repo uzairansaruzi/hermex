@@ -77,6 +77,23 @@ xcodebuildmcp simulator build-and-run --output jsonl
 
 Update `.xcodebuildmcp/config.yaml` only when a new simulator should become the shared repo default.
 
+### Signing a simulator in
+
+Each simulator has its own Keychain, so a fresh or erased one starts logged out. When the installed Debug build shows the login screen (or Bots has no connection), run:
+
+```zsh
+scripts/sim-login <simulator-udid>
+```
+
+It relaunches the app with `HERMEX_DEV_*` environment variables read from the macOS Keychain; `DevAutoLogin.swift` (DEBUG builds only) signs in through the normal login paths. Nothing is printed and nothing is stored in the repo. One-time setup, prompting for each password:
+
+```zsh
+security add-generic-password -s hermex-webui -a <server-host> -w
+security add-generic-password -s hermex-bot -a <bot-username> -j <bot-address> -w
+```
+
+`hermex-bot` is optional; with it the script also saves the Bot connection and turns Bot Mode on.
+
 ## Swift File-Size Policy
 
 `scripts/check-swift-file-sizes` warns on production app Swift files (`HermesMobile/`) over 500 LOC; tests, generated files, preview files, the share extension, and the live activity widget are exempt. It exits successfully even with warnings — it makes drift visible without blocking current work. Override the threshold for local experiments with `HERMES_SWIFT_FILE_SIZE_LIMIT=300 scripts/check-swift-file-sizes`.

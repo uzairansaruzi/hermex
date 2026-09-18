@@ -259,6 +259,7 @@
 		1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */; };
 		1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */; };
 		532000000000000000000001 /* RatingPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000002 /* RatingPromptState.swift */; };
+		5320000000000000000000D1 /* DevAutoLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5320000000000000000000D2 /* DevAutoLogin.swift */; };
 		531000000000000000000001 /* TipJarPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* TipJarPromptState.swift */; };
 		C09200000000000000000001 /* AppFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000002 /* AppFont.swift */; };
 		1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000101 /* AppTheme.swift */; };
@@ -790,6 +791,7 @@
 		1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		532000000000000000000002 /* RatingPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptState.swift; sourceTree = "<group>"; };
+		5320000000000000000000D2 /* DevAutoLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevAutoLogin.swift; sourceTree = "<group>"; };
 		531000000000000000000002 /* TipJarPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptState.swift; sourceTree = "<group>"; };
 		C09200000000000000000002 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000101 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
@@ -1694,6 +1696,7 @@
 			children = (
 				1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */,
 				532000000000000000000002 /* RatingPromptState.swift */,
+				5320000000000000000000D2 /* DevAutoLogin.swift */,
 				531000000000000000000002 /* TipJarPromptState.swift */,
 				C09200000000000000000002 /* AppFont.swift */,
 				1A2B3C4D5E6F700000000101 /* AppTheme.swift */,
@@ -2166,6 +2169,7 @@
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
 				532000000000000000000001 /* RatingPromptState.swift in Sources */,
+				5320000000000000000000D1 /* DevAutoLogin.swift in Sources */,
 				531000000000000000000001 /* TipJarPromptState.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,
