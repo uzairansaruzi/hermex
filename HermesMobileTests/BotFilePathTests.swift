@@ -66,6 +66,30 @@ final class ComposerFilePathSearchLoadTests: XCTestCase {
         XCTAssertFalse(search.isLoading)
     }
 
+    func testANewerQueryDropsThePreviousRowsImmediately() async {
+        let search = ComposerFilePathSearch()
+        await search.search("first") { _ in [Self.match("first.md")] }
+        XCTAssertEqual(search.matches.map(\.path), ["first.md"])
+
+        let gate = QueryGate()
+        let started = expectation(description: "second query started")
+        let second = Task { @MainActor in
+            await search.search("second") { _ in
+                started.fulfill()
+                await gate.wait()
+                return [Self.match("second.md")]
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+
+        XCTAssertTrue(search.matches.isEmpty, "A previous query's rows must not stay selectable")
+        XCTAssertTrue(search.isLoading)
+
+        gate.open()
+        await second.value
+        XCTAssertEqual(search.matches.map(\.path), ["second.md"])
+    }
+
     func testResetDropsAReplyStillInFlight() async {
         let search = ComposerFilePathSearch()
         let gate = QueryGate()

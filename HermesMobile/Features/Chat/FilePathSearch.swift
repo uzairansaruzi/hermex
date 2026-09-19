@@ -107,10 +107,16 @@ final class ComposerFilePathSearch {
     /// to list or score here. The generation guard is the same one
     /// `search(_:sessionID:apiClient:)` runs under, so a reply that lands after
     /// a newer query, or after `reset()`, can never publish.
+    ///
+    /// The previous query's rows are dropped the moment a new one starts: they
+    /// are not this query's answer, and leaving them selectable would let a tap
+    /// insert a path the user is no longer typing. The webui engine clears the
+    /// same way whenever the folder it needs is not cached.
     func search(_ query: String, load: (String) async throws -> [Match]) async {
         generation &+= 1
         let generation = self.generation
         isLoading = true
+        matches = []
 
         do {
             let rows = try await load(query)
