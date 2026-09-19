@@ -140,6 +140,7 @@ Canonical vocabulary: `CONTEXT.md`.
 - `HermesMobile/Auth/` - authentication and Keychain access.
 - `HermesMobile/Persistence/` - SwiftData cache models and stores.
 - `HermesMobile/AppIntents/` and `HermesMobile/LiveActivities/` - system entry points and activity coordination.
+- `HermesMobile/Push/` - APNs registration: the build's push environment, per-server pairing keys in the shared Keychain access group, the relay client, and the app delegate that receives device tokens.
 - `HermesShareExtension/` and `HermesLiveActivityWidget/` - separate targets. Shared files need target-membership checks.
 - `HermesMobileTests/` - the XCTest suite, one target directory. Keep tests near the behavior in name and scope.
 - `Config/`, `ci/`, and `.github/workflows/` - signing, CI, and release configuration. Treat edits there as release-sensitive. App identity resolves through xcconfig and is not grep-able: bundle ID `com.uzairansar.hermesmobile`, tests `….tests`, Team `6GYD9C9N6R`, SKU `hermes-mobile-ios`.

@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A4790000000000000000E001 /* PushEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F001 /* PushEnvironment.swift */; };
+		A4790000000000000000E002 /* PushPairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F002 /* PushPairing.swift */; };
+		A4790000000000000000E003 /* PushRelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F003 /* PushRelayClient.swift */; };
+		A4790000000000000000E004 /* PushRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F004 /* PushRegistrar.swift */; };
+		A4790000000000000000E005 /* PushAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F005 /* PushAppDelegate.swift */; };
+		A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F006 /* PushRegistrationTests.swift */; };
 		B48200000000000000000002 /* BotProfileAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000001 /* BotProfileAppearance.swift */; };
 		B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000011 /* BotExpressionPickerView.swift */; };
 		B48200000000000000000032 /* BotCreator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000031 /* BotCreator.swift */; };
@@ -595,6 +601,12 @@
 		10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000015 /* HermesMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		A4790000000000000000F001 /* PushEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEnvironment.swift; sourceTree = "<group>"; };
+		A4790000000000000000F002 /* PushPairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPairing.swift; sourceTree = "<group>"; };
+		A4790000000000000000F003 /* PushRelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRelayClient.swift; sourceTree = "<group>"; };
+		A4790000000000000000F004 /* PushRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrar.swift; sourceTree = "<group>"; };
+		A4790000000000000000F005 /* PushAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushAppDelegate.swift; sourceTree = "<group>"; };
+		A4790000000000000000F006 /* PushRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B2 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		C04000000000000000000011 /* APIClient+Sessions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Sessions.swift"; sourceTree = "<group>"; };
@@ -1118,6 +1130,7 @@
 				A04500000000000000000020 /* LiveActivities */,
 				1A2B3C4D5E6F7000000000C0 /* Auth */,
 				1A2B3C4D5E6F7000000000C1 /* Networking */,
+				A4790000000000000000F000 /* Push */,
 				1A2B3C4D5E6F7000000000C2 /* Models */,
 				1A2B3C4D5E6F7000000000F0 /* Persistence */,
 				1A2B3C4D5E6F7000000000C3 /* Features */,
@@ -1317,8 +1330,21 @@
 				A04500000000000000000018 /* LiveActivityTests.swift */,
 				1A2B3C4D5E6F700000000340 /* AppIntentNewChatTests.swift */,
 				1A2B3C4D5E6F700000000344 /* AppIntentNewChatInProfileTests.swift */,
+				A4790000000000000000F006 /* PushRegistrationTests.swift */,
 			);
 			path = HermesMobileTests;
+			sourceTree = "<group>";
+		};
+		A4790000000000000000F000 /* Push */ = {
+			isa = PBXGroup;
+			children = (
+				A4790000000000000000F001 /* PushEnvironment.swift */,
+				A4790000000000000000F002 /* PushPairing.swift */,
+				A4790000000000000000F003 /* PushRelayClient.swift */,
+				A4790000000000000000F004 /* PushRegistrar.swift */,
+				A4790000000000000000F005 /* PushAppDelegate.swift */,
+			);
+			path = Push;
 			sourceTree = "<group>";
 		};
 		1A2B3C4D5E6F7000000000C0 /* Auth */ = {
@@ -2036,6 +2062,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A4790000000000000000E001 /* PushEnvironment.swift in Sources */,
+				A4790000000000000000E002 /* PushPairing.swift in Sources */,
+				A4790000000000000000E003 /* PushRelayClient.swift in Sources */,
+				A4790000000000000000E004 /* PushRegistrar.swift in Sources */,
+				A4790000000000000000E005 /* PushAppDelegate.swift in Sources */,
 				B48200000000000000000002 /* BotProfileAppearance.swift in Sources */,
 				B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */,
 				B48200000000000000000032 /* BotCreator.swift in Sources */,
@@ -2363,6 +2394,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */,
 				B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */,
 				B48200000000000000000036 /* BotLifecycleTests.swift in Sources */,
 				B48200000000000000000024 /* BotFaceMotionTests.swift in Sources */,
@@ -2576,6 +2608,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				APP_DISPLAY_NAME = Hermex;
 				APP_URL_SCHEME_SUFFIX = "";
+				APS_ENVIRONMENT = development;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -2643,6 +2676,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				APP_DISPLAY_NAME = Hermex;
 				APP_URL_SCHEME_SUFFIX = "";
+				APS_ENVIRONMENT = production;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";

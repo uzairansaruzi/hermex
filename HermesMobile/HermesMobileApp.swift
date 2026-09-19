@@ -42,6 +42,8 @@ struct HermexCommands: Commands {
 
 @main
 struct HermesMobileApp: App {
+    // APNs hands device tokens to a UIKit delegate and nowhere else.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 

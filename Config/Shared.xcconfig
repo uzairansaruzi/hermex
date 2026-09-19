@@ -10,6 +10,15 @@ APP_IDENTIFIER_SUFFIX =
 APP_BUNDLE_IDENTIFIER = com.uzairansar.hermesmobile$(APP_IDENTIFIER_SUFFIX)
 APP_GROUP_IDENTIFIER = group.com.uzairansar.hermesmobile$(APP_IDENTIFIER_SUFFIX)
 
+// Keychain access groups. The first entry of the entitlement's array is the
+// app's *default* group, so KEYCHAIN_DEFAULT_ACCESS_GROUP must stay first and
+// keep its current value: every credential saved before push existed lives
+// there, and moving it would sign users out. KEYCHAIN_ACCESS_GROUP is the
+// shared group the Notification Service Extension also joins, holding only the
+// per-server push pairing keys.
+KEYCHAIN_DEFAULT_ACCESS_GROUP = $(DEVELOPMENT_TEAM).$(APP_BUNDLE_IDENTIFIER)
+KEYCHAIN_ACCESS_GROUP = $(DEVELOPMENT_TEAM).$(APP_BUNDLE_IDENTIFIER).push
+
 // Optional per-machine overrides. This include must stay last: later
 // assignments win, so Local.xcconfig values override the defaults above.
 #include? "Local.xcconfig"
