@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import HermesMobile
 
@@ -357,6 +358,39 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(
             SessionNavigationPersistence.load(for: secondServer, defaults: defaults),
             "second-session"
+        )
+    }
+
+    func testCompletedSessionListRefreshesWhenTheAppReturnsToForeground() {
+        XCTAssertTrue(
+            SessionListForegroundRefreshPolicy.shouldRefresh(
+                previousPhase: .background,
+                currentPhase: .active,
+                didCompleteInitialLoad: true,
+                isLoading: false
+            )
+        )
+    }
+
+    func testInitialSceneActivationDoesNotDuplicateTheInitialLoad() {
+        XCTAssertFalse(
+            SessionListForegroundRefreshPolicy.shouldRefresh(
+                previousPhase: .inactive,
+                currentPhase: .active,
+                didCompleteInitialLoad: false,
+                isLoading: false
+            )
+        )
+    }
+
+    func testForegroundActivationDoesNotOverlapAnExistingRefresh() {
+        XCTAssertFalse(
+            SessionListForegroundRefreshPolicy.shouldRefresh(
+                previousPhase: .background,
+                currentPhase: .active,
+                didCompleteInitialLoad: true,
+                isLoading: true
+            )
         )
     }
 }
