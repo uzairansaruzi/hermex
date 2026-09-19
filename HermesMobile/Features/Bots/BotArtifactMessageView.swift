@@ -11,7 +11,9 @@ struct BotArtifactMessageView: View {
 
     var body: some View {
         Group {
-            if message.role == "user" {
+            if let completion = BotDelegationCompletion(message) {
+                BotDelegationCompletionCard(completion: completion)
+            } else if message.role == "user" {
                 MessageBubbleView(message: message, contextMenuActions: actions, textOnly: true)
             } else {
                 assistantContent

@@ -346,7 +346,7 @@ import Vision
         XCTAssertEqual(model.runtime, "runtime")
         XCTAssertTrue(model.maySend)
         XCTAssertEqual(model.messages.map(\.content), ["saved"])
-        XCTAssertEqual(wire.calls.map(\.0), ["session.list", "session.resume", "session.events.since", "session.resume", "model.options", "session.control.read"])
+        XCTAssertEqual(wire.calls.map(\.0), ["session.list", "session.resume", "session.events.since", "session.resume", "model.options", "session.control.read", "subagent.list"])
         XCTAssertEqual(wire.calls[1].1["session_id"], .string("tip"))
         XCTAssertEqual(wire.calls[1].1["close_on_disconnect"], .bool(false))
         model.suspend()
@@ -941,6 +941,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             if let respondFailure { throw respondFailure }
             return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay
+        case "subagent.list": return .object(["subagents": .array([]), "delegations": .array([])])
         case "commands.catalog":
             if let catalogFailure { throw catalogFailure }
             if !catalogQueue.isEmpty { return catalogQueue.removeFirst() }

@@ -21,6 +21,7 @@ import SwiftUI
     /// Bumped by the status line's Review action; the transcript scrolls on change.
     @State private var showRequestID = UUID()
     @State private var showingProfileEditor = false
+    @State private var showingDelegatedWork = false
     /// Measured composer height; sizes the material fade behind it, as the main chat does.
     @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -156,6 +157,26 @@ import SwiftUI
                 .accessibilityLabel(model.profile.name)
                 .accessibilityHint(Text("Opens this bot’s profile."))
             }
+            if model.delegatedWork.hasWorkers {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingDelegatedWork = true
+                        Task { await model.delegatedWork.refresh() }
+                    } label: {
+                        Image(systemName: "person.2")
+                            .overlay(alignment: .topTrailing) {
+                                Text("\(min(model.delegatedWork.activeCount, 99))")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.black)
+                                    .frame(minWidth: 15, minHeight: 15)
+                                    .background(.green, in: Capsule())
+                                    .offset(x: 7, y: -7)
+                            }
+                    }
+                    .accessibilityLabel("Delegated work, \(model.delegatedWork.activeCount) active workers")
+                    .accessibilityHint(Text("Shows worker status, recent output, and interrupt controls."))
+                }
+            }
             if !model.chatControls.controls.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { BotSessionControlMenu(settings: model.chatControls) }
             }
@@ -167,6 +188,11 @@ import SwiftUI
                 Task { await model.refreshProfile() }
             }
             .id(model.connection.id.uuidString + model.profile.id)
+        }
+        .sheet(isPresented: $showingDelegatedWork) {
+            BotDelegatedWorkView(work: model.delegatedWork)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .task(id: recoveryID) {
             if scenePhase == .active { await model.recover() }

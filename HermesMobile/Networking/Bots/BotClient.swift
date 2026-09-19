@@ -3,8 +3,14 @@ import Foundation
 /// One cookie jar and socket per connection owner. The receive loop multiplexes
 /// RPC replies and events, so a quiet tool never blocks a Stop request.
 @MainActor final class BotClient: BotTransport {
+    private static let cancellationSafeMethods: Set<String> = [
+        "file.attach", "complete.path", "subagent.list", "subagent.tail"
+    ]
+    private static let nonDisconnectingTimeoutMethods: Set<String> = ["subagent.list", "subagent.tail"]
+
     private let connection: BotConnection
     private let session: URLSession
+    private let rpcDeadline: Duration
     private var socket: (any BotSocket)?
     private let socketFactory: ((URL, [String]) -> any BotSocket)?
     private var reader: Task<Void, Never>?
@@ -23,9 +29,11 @@ import Foundation
     var onDisconnect: ((Error) -> Void)?
 
     init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral,
+         rpcDeadline: Duration = .seconds(30),
          socketFactory: ((URL, [String]) -> any BotSocket)? = nil) {
         self.socketFactory = socketFactory
         self.connection = connection
+        self.rpcDeadline = rpcDeadline
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 30
         session = URLSession(configuration: configuration)
@@ -138,13 +146,15 @@ import Foundation
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond", "clarify.respond",
                "sudo.respond", "secret.respond", "mcp.setup.respond", "request.answer", "clarify.lock",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control",
-               "commands.catalog", "command.dispatch", "complete.path"].contains(method) || BotRoomRPC.methods.contains(method)
+               "commands.catalog", "command.dispatch", "complete.path",
+               "subagent.list", "subagent.tail", "subagent.interrupt"].contains(method) || BotRoomRPC.methods.contains(method)
         else { throw BotFailure.unsupported }
         try BotRoomRPC.validate(method, params)
         try Self.validateProfileEditorCall(method, params)
         try Self.validateLifecycleCall(method, params)
         try Self.validateSlashCall(method, params)
         try Self.validateCompletionCall(method, params)
+        try Self.validateSubagentCall(method, params)
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
@@ -179,11 +189,17 @@ import Foundation
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 pending[id] = continuation
+                let rpcDeadline = self.rpcDeadline
                 deadlines[id] = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                    do { try await Task.sleep(for: rpcDeadline) } catch { return }
                     guard let self, self.generation == owner else { return }
-                    self.close()
-                    self.onDisconnect?(BotFailure.transport)
+                    if Self.nonDisconnectingTimeoutMethods.contains(method) {
+                        self.deadlines.removeValue(forKey: id)
+                        self.pending.removeValue(forKey: id)?.resume(throwing: BotFailure.transport)
+                    } else {
+                        self.close()
+                        self.onDisconnect?(BotFailure.transport)
+                    }
                 }
                 Task { [weak self] in
                     guard let self, self.generation == owner, self.pending[id] != nil else { return }
@@ -206,10 +222,10 @@ import Foundation
         } onCancel: {
             Task { @MainActor [weak self] in
                 guard let self, self.generation == owner else { return }
-                if method == "file.attach" || method == "complete.path" {
-                    // Read-only RPCs have no outcome to learn from a late reply:
-                    // one stores bytes and one reads a directory. Cancelling one
-                    // need not drop the conversation.
+                if Self.cancellationSafeMethods.contains(method) {
+                    // These calls never control agent execution. Cancelling one
+                    // can discard a late reply without making the conversation's
+                    // transport state ambiguous.
                     self.deadlines.removeValue(forKey: id)?.cancel()
                     self.pending.removeValue(forKey: id)?.resume(throwing: CancellationError())
                 } else { self.close() }
@@ -329,6 +345,23 @@ import Foundation
               params["session_id"]?.text?.isEmpty == false,
               params["profile"]?.text?.isEmpty == false
         else { throw BotFailure.unsupported }
+    }
+
+    /// Delegated work stays a narrow session-owned exception: list names only
+    /// the current runtime, while tail and interrupt add exactly one worker id.
+    /// Steering and the wider orchestration RPC surface remain unavailable.
+    private static func validateSubagentCall(_ method: String, _ params: [String: BotJSON]) throws {
+        switch method {
+        case "subagent.list":
+            guard Set(params.keys) == ["session_id"],
+                  params["session_id"]?.text?.isEmpty == false else { throw BotFailure.unsupported }
+        case "subagent.tail", "subagent.interrupt":
+            guard Set(params.keys) == ["session_id", "subagent_id"],
+                  params["session_id"]?.text?.isEmpty == false,
+                  params["subagent_id"]?.text?.isEmpty == false else { throw BotFailure.unsupported }
+        default:
+            return
+        }
     }
 
     private func consume(_ frame: BotJSON) {

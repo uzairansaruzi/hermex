@@ -90,6 +90,49 @@ output is text only. `message.react` and `learning.frames` are deliberately
 not wired: the snapshot carries no reactions to show back, and the frames are
 terminal-sized renders.
 
+Delegated work stays attached to its owning Bot conversation. A toolbar count
+appears only while `subagent.list({session_id})` reports live workers; it opens a
+sheet with at most 64 rows showing the host's hierarchy, goal, status, model and
+latest tool. The roster is read once after each connection, on an explicit
+refresh, and after coalesced `subagent.spawn_requested`, `subagent.start`,
+`subagent.progress`, `subagent.tool` or `subagent.complete` events. It is never
+polled, and token/reasoning events never trigger a read.
+
+A worker tail is loaded only when tapped through
+`subagent.tail({session_id, subagent_id})`. Both host and client cap it at the
+latest 16 KiB and say when earlier output was cut. Cancelling or timing out a
+list/tail read fails only that optional inspection request; it never closes an
+otherwise usable Bot conversation. Interrupt is the only worker write in this
+slice. The phone re-lists immediately before
+`subagent.interrupt({session_id, subagent_id})` and compares the row's
+`started_at` and `delegation_id`, so a worker that finished during confirmation
+or an id replaced between snapshots is not dispatched. Current hosts generate
+each `subagent_id` with a fresh UUID suffix; inside the interrupt handler they
+resolve the transport-owned record once and act on that exact agent object.
+The confirmation states that Hermex cannot resume the worker and that its parent
+and siblings continue. An interrupt is never retried; a lost reply has an
+unknown outcome. Ownership rejection asks for a reconnect, and hosts without
+the methods simply show no worker control.
+Steering and every wider delegation, process, spawn-tree and verification RPC
+remain outside the BotClient allowlist.
+
+Completed async delegation is durable transcript history, not user authorship.
+The gateway projects its delivery row with
+`display_kind: "async_delegation_complete"` plus display-only counts, duration
+and delegation id. Hermex renders that typed row as a compact timeline card and
+opens the untouched server report in a results sheet. It never recognizes
+completion prose by prefix. The worker toolbar remains live-only and disappears
+when `subagent.list` has no active rows; reopening the conversation restores
+the result card from the host transcript rather than a second local history.
+
+The three method names, exact parameters and result shapes were verified against
+`tui_gateway/methods_subagents.py` and
+`tests/tui_gateway/test_subagent_snapshot.py` at `HERMES_AGENT_TESTED_SHA`
+`3abeca16e66cad4875f7b40beb0eb54bc4a589d5`. No live worker was interrupted for
+validation. The completion display kind and metadata were verified at the same
+pin in `gateway/wake.py`, `hermes_state_messages.py` and
+`tui_gateway/session_history.py`.
+
 A blocking request is whatever has parked the bot. On 0.21.2, the gateway sends
 JSON-RPC server requests with string ids and methods such as `clarify`, `sudo`,
 `secret` and `mcp.setup`. `BotClient` forwards those envelopes separately from

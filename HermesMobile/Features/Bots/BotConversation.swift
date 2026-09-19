@@ -99,6 +99,7 @@ import Observation
     private var localOperation = false
     private var hydrated = false
     private let wire: any BotTransport
+    let delegatedWork: BotDelegatedWork
     private let historyCache: BotHistoryCache?
     private(set) var historyCacheTask: Task<Void, Never>?
     private let drafts: ChatDraftStore
@@ -108,11 +109,13 @@ import Observation
          historyCache: BotHistoryCache? = nil, wire: (any BotTransport)? = nil, drafts: ChatDraftStore? = nil,
          attachmentCopies: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
          reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        let resolvedWire = wire ?? BotClient(connection: connection)
         self.server = server; self.connection = connection; self.profile = profile
         self.linkedRoot = conversation; self.root = conversation
         self.mentions = BotMentions(roster: roster, excluding: profile.id)
         self.reconnectDelay = reconnectDelay
-        self.wire = wire ?? BotClient(connection: connection)
+        self.wire = resolvedWire
+        self.delegatedWork = BotDelegatedWork(wire: resolvedWire)
         self.historyCache = historyCache
         self.drafts = drafts ?? .shared
         self.attachments = BotAttachmentDraft(key: .bot(server: server, connectionID: connection.id, profile: profile.id),
@@ -329,6 +332,8 @@ import Observation
             chatControls.snapshot(current["info"], idle: [.idle, .interrupted].contains(turn))
             connectionState = .connected
             shouldRetryConnection = false
+            await delegatedWork.connect(.init(connectionID: connection.id, runtime: foundRuntime, generation: owner))
+            try check(owner)
             scheduleRefresh()
         } catch {
             guard owner == generation, !Task.isCancelled else { return }
@@ -976,6 +981,10 @@ import Observation
         }
         sequence = next
         let type = event["type"].text ?? ""
+        if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
+            "subagent.tool", "subagent.complete"].contains(type) {
+            delegatedWork.noteSubagentEvent()
+        }
         if ["session.info", "message.start", "message.complete", "session.control.update"].contains(type) {
             chatControls.refresh()
         }
@@ -1054,6 +1063,7 @@ import Observation
 
     private func disconnected(_ error: Error) {
         chatControls.disconnect()
+        delegatedWork.disconnect()
         wire.close()
         refreshTask?.cancel(); refreshTask = nil
         // A stream request lives only in the stream, so a lost socket makes its
@@ -1104,6 +1114,7 @@ import Observation
 
     private func resetConnection() {
         chatControls.disconnect()
+        delegatedWork.disconnect()
         attachmentUploadTask?.cancel(); attachmentUploadTask = nil; isUploadingAttachments = false
         attachments.cancelImport()
         generation += 1; turnRevision += 1

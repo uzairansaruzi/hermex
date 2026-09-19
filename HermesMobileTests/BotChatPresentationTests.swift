@@ -869,6 +869,51 @@ import XCTest
         XCTAssertTrue(hidden.contains("Plan"), "work progress stays visible with cards off: " + hidden)
     }
 
+    func testDelegationCompletionCardKeepsTheFullReportInItsSheet() async throws {
+        let report = """
+        [ASYNC DELEGATION BATCH COMPLETE — deleg_fixture]
+
+        Unique full worker result body.
+        """
+        let message = ChatMessage(
+            role: "delegation_completion",
+            content: report,
+            timestamp: nil,
+            messageId: "delivery",
+            displayKind: BotDelegationCompletion.displayKind,
+            displayMetadata: [
+                "delegation_id": .string("deleg_fixture"),
+                "task_count": .number(2),
+                "completed_count": .number(2),
+                "failed_count": .number(0),
+                "duration_seconds": .number(8.48)
+            ]
+        )
+        let completion = try XCTUnwrap(BotDelegationCompletion(message))
+
+        let card = try show(VStack {
+            BotDelegationCompletionCard(completion: completion)
+                .padding(16)
+            Spacer()
+        })
+        card.overrideUserInterfaceStyle = .dark
+        let compact = try screenshot(card, name: "477-delegation-completion-card")
+        XCTAssertTrue(compact.contains("2 workers completed"), compact)
+        XCTAssertTrue(compact.contains("View results"), compact)
+        XCTAssertFalse(compact.contains("Unique full worker result body"), compact)
+        close(card)
+
+        let sheet = try show(BotDelegationResultsSheet(completion: completion))
+        sheet.overrideUserInterfaceStyle = .dark
+        defer { close(sheet) }
+        await renderFrames(8)
+        let expanded = try screenshot(sheet, name: "477-delegation-results-sheet")
+        XCTAssertTrue(expanded.contains("Delegated work"), expanded)
+        XCTAssertTrue(expanded.contains("Unique full worker result body"), expanded)
+        XCTAssertTrue(descendants(sheet).contains { $0.accessibilityLabel == "Copy" },
+                      "The icon-only toolbar action must remain named for VoiceOver")
+    }
+
     /// Finds the fixture's saturated avatar colors by row, without depending on
     /// glyph pixels or exact screen coordinates. Short glass reflections are
     /// excluded; full-height color bands identify each header or suggestion.
