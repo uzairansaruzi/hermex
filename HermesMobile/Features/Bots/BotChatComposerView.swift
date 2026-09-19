@@ -130,6 +130,7 @@ struct BotChatComposerView: View {
             }
         }
         .task(id: model.connectionState) { await model.loadSlashCatalog() }
+        .onChange(of: model.chatControls.workspace) { _, _ in model.resetFileReferences() }
         .task(id: picker) {
             guard picker == nil, shouldRestoreFocusAfterPicker else { return }
             // Match Sessions' short delay while the native picker dismisses.
@@ -168,21 +169,42 @@ struct BotChatComposerView: View {
         }
     }
 
-    /// The one panel the caret can open: bots for an `@`, this connection's
-    /// skills for a `/` that opens the draft. A mention wins, so the two can
-    /// never stack. The skill panel stays closed for Steer and Redirect, where
-    /// the host will not expand an invocation.
+    /// The one panel the caret can open: bots and workspace files for an `@`,
+    /// this connection's skills for a `/` that opens the draft. The `@` panel
+    /// wins, so the two can never stack. The skill panel stays closed for Steer
+    /// and Redirect, where the host will not expand an invocation.
+    ///
+    /// The `@` container stands whenever the caret sits in a reference, even
+    /// while the panel itself is still empty: its task is what asks the host
+    /// for rows, and the first answer is what makes the panel appear.
     @ViewBuilder private var autocomplete: some View {
-        if let trigger = BotMentionTrigger.detect(in: model.draft, selection: selection.range) {
-            let completions = model.mentions.completions(query: trigger.query)
-            if !completions.isEmpty {
-                BotMentionAutocompleteView(completions: completions, avatars: mentionAvatars) { item in
-                    let result = trigger.applying(tag: item.tag, to: model.draft)
-                    model.editDraft(result.draft)
-                    selection = selection.moved(to: result.selection)
+        if let trigger = ComposerFileTrigger.detect(in: model.draft, selection: selection.range) {
+            let botCompletions = model.mentions.completions(query: trigger.query)
+            Group {
+                if !botCompletions.isEmpty || !model.filePathSearch.matches.isEmpty || model.filePathSearch.isLoading {
+                    BotAtAutocompleteView(
+                        botCompletions: botCompletions,
+                        avatars: mentionAvatars,
+                        fileMatches: model.filePathSearch.matches,
+                        isLoadingFiles: model.filePathSearch.isLoading,
+                        onSelectBot: { item in
+                            let result = trigger.applying("@" + item.tag + " ", to: model.draft)
+                            model.editDraft(result.draft)
+                            selection = selection.moved(to: result.selection)
+                        },
+                        onSelectFile: { match in
+                            let result = trigger.applying(
+                                match.isDirectory ? "@\(match.path)/" : "@\(match.path) ", to: model.draft
+                            )
+                            model.editDraft(result.draft)
+                            selection = selection.moved(to: result.selection)
+                            if !match.isDirectory { model.recordFileChipReference(match.path) }
+                        }
+                    )
+                    .padding(.horizontal, 16).padding(.bottom, 8)
                 }
-                .padding(.horizontal, 16).padding(.bottom, 8)
             }
+            .task(id: trigger.query) { await model.searchFilePaths(trigger.query) }
         } else if mode.startsTurn,
                   let trigger = BotSlashTrigger.detect(in: model.draft, selection: selection.range) {
             let matches = SlashSkillFormatter.matching(trigger.query, in: model.slashSkills)
@@ -217,7 +239,7 @@ struct BotChatComposerView: View {
                     inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                     isDisabled: !model.mayEditDraft, isCollapsed: !isExpanded,
                     isKeyboardSendEnabled: canSend, verticalPadding: 12,
-                    chipSkills: model.slashSkills, chipFilePaths: [],
+                    chipSkills: model.slashSkills, chipFilePaths: model.fileChipPaths,
                     chipBots: model.mentions.chipReferences(avatars: mentionAvatars), quotes: [],
                     onKeyboardSend: send,
                     onPasteFileProviders: { BotAttachmentPaste.providers($0, model: model) },

@@ -11,10 +11,11 @@ struct FilePathAutocompleteView: View {
 
     /// The path typed after the `@`, without it.
     let query: String
-    let sessionID: String
-    let apiClient: APIClient
     /// Owned by the composer, so its directory listings outlive one open panel.
     let search: ComposerFilePathSearch
+    /// Answers one query with rows. Sessions lists the workspace folder the
+    /// query names; Bot Chats complete the word through `complete.path`.
+    let load: (String) async -> Void
     let onSelect: (ComposerFilePathSearch.Match) -> Void
 
     var body: some View {
@@ -29,7 +30,7 @@ struct FilePathAutocompleteView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(search.matches.enumerated()), id: \.element.id) { index, match in
-                            row(match)
+                            FilePathRow(match: match, onSelect: onSelect)
 
                             if index < search.matches.count - 1 {
                                 Divider()
@@ -49,7 +50,7 @@ struct FilePathAutocompleteView: View {
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
         .frame(height: panelHeight)
         .task(id: query) {
-            await search.search(query, sessionID: sessionID, apiClient: apiClient)
+            await load(query)
         }
     }
 
@@ -68,11 +69,17 @@ struct FilePathAutocompleteView: View {
         guard !search.matches.isEmpty else { return emptyPanelHeight }
         return min(maxPanelHeight, CGFloat(search.matches.count) * rowHeight)
     }
+}
 
-    /// One row: the entry's own glyph, its name, and the folder it sits in.
-    /// A folder ends in a chevron, because picking one goes deeper rather than
-    /// finishing the reference.
-    private func row(_ match: ComposerFilePathSearch.Match) -> some View {
+/// One file or folder row: the entry's own glyph, its name, and the folder it
+/// sits in. A folder ends in a chevron, because picking one goes deeper rather
+/// than finishing the reference. The Sessions panel and the Bot `@` panel draw
+/// the same row.
+struct FilePathRow: View {
+    let match: ComposerFilePathSearch.Match
+    let onSelect: (ComposerFilePathSearch.Match) -> Void
+
+    var body: some View {
         Button {
             onSelect(match)
         } label: {

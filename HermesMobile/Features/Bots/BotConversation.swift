@@ -42,6 +42,13 @@ import Observation
     /// the panel simply does not open, and typing and sending never wait on it.
     private(set) var slashSkills: [SkillSlashSuggestion] = []
     private var slashCatalogLoaded = false
+    /// Workspace files picked from the composer's `@` panel, so a sent `@path`
+    /// draws as the shared composer chip. A conversation is one
+    /// server/connection/Profile lifetime, so a path never reaches another bot.
+    private(set) var fileChipPaths: Set<String> = []
+    /// The `@` panel's rows, owned here rather than by the composer so they
+    /// outlive one open panel and die with the conversation.
+    @ObservationIgnored let filePathSearch = ComposerFilePathSearch()
     private(set) var uncertainSend = false
     private(set) var uncertainStop = false
     private(set) var root: String?
@@ -208,6 +215,43 @@ import Observation
         guard let reply = try? await request("commands.catalog", [:], owner: owner), generation == owner else { return }
         slashCatalogLoaded = true
         slashSkills = BotSlashCatalog.skills(from: reply)
+    }
+
+    /// One query's rows for the composer's `@` panel.
+    ///
+    /// `complete.path` answers against the live session's working directory and
+    /// ranks its own rows, so a disconnected conversation has nothing to ask.
+    /// The panel's generation guard drops a reply a newer query replaced.
+    func searchFilePaths(_ query: String) async {
+        await filePathSearch.search(query) { [weak self] query in
+            guard let self else { throw BotFailure.stale }
+            return try await self.completeFileMatches(for: query)
+        }
+    }
+
+    /// Remembers a file the `@` panel inserted, so the composer draws its chip
+    /// with the insertion instead of a beat later.
+    func recordFileChipReference(_ path: String) {
+        let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        fileChipPaths.insert(path)
+    }
+
+    /// Forgets picked paths and rows because the workspace moved: a path is
+    /// only a file inside the workspace it was found in.
+    func resetFileReferences() {
+        filePathSearch.reset()
+        fileChipPaths.removeAll()
+    }
+
+    private func completeFileMatches(for query: String) async throws -> [ComposerFilePathSearch.Match] {
+        guard connectionState == .connected, let runtime else { throw BotFailure.stale }
+        let reply = try await request("complete.path", [
+            "word": .string(BotFilePathSearch.word(for: query)),
+            "session_id": .string(runtime),
+            "profile": .string(profile.id)
+        ], owner: generation)
+        return BotFilePathSearch.matches(from: reply)
     }
 
     func recover() async {

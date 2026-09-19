@@ -138,12 +138,13 @@ import Foundation
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond", "clarify.respond",
                "sudo.respond", "secret.respond", "mcp.setup.respond", "request.answer", "clarify.lock",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control",
-               "commands.catalog", "command.dispatch"].contains(method) || BotRoomRPC.methods.contains(method)
+               "commands.catalog", "command.dispatch", "complete.path"].contains(method) || BotRoomRPC.methods.contains(method)
         else { throw BotFailure.unsupported }
         try BotRoomRPC.validate(method, params)
         try Self.validateProfileEditorCall(method, params)
         try Self.validateLifecycleCall(method, params)
         try Self.validateSlashCall(method, params)
+        try Self.validateCompletionCall(method, params)
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
@@ -205,9 +206,10 @@ import Foundation
         } onCancel: {
             Task { @MainActor [weak self] in
                 guard let self, self.generation == owner else { return }
-                if method == "file.attach" {
-                    // This RPC only stores bytes. A late reply must not enter a
-                    // prompt, but cancelling it need not drop the conversation.
+                if method == "file.attach" || method == "complete.path" {
+                    // Read-only RPCs have no outcome to learn from a late reply:
+                    // one stores bytes and one reads a directory. Cancelling one
+                    // need not drop the conversation.
                     self.deadlines.removeValue(forKey: id)?.cancel()
                     self.pending.removeValue(forKey: id)?.resume(throwing: CancellationError())
                 } else { self.close() }
@@ -312,6 +314,21 @@ import Foundation
             else { throw BotFailure.unsupported }
         default: return
         }
+    }
+
+    /// The composer's `@` panel is the fourth typed exception. `complete.path`
+    /// carries exactly one bare path word, the live session it completes
+    /// against, and the Profile that session belongs to. It reads a directory;
+    /// it cannot name a root of the caller's choosing, and no other completion
+    /// or directive reaches the host through this client.
+    private static func validateCompletionCall(_ method: String, _ params: [String: BotJSON]) throws {
+        guard method == "complete.path" else { return }
+        guard Set(params.keys) == ["word", "session_id", "profile"],
+              let word = params["word"]?.text, !word.isEmpty,
+              !word.contains(where: \.isWhitespace),
+              params["session_id"]?.text?.isEmpty == false,
+              params["profile"]?.text?.isEmpty == false
+        else { throw BotFailure.unsupported }
     }
 
     private func consume(_ frame: BotJSON) {

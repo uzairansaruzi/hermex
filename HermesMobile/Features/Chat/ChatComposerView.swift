@@ -394,9 +394,10 @@ struct MessageComposerView: View {
                     if let fileTrigger, let sessionID = fileReferenceSessionID, let apiClient {
                         FilePathAutocompleteView(
                             query: fileTrigger.query,
-                            sessionID: sessionID,
-                            apiClient: apiClient,
                             search: filePathSearch,
+                            load: { query in
+                                await filePathSearch.search(query, sessionID: sessionID, apiClient: apiClient)
+                            },
                             onSelect: applyFileCompletion
                         )
                         .padding(.horizontal)

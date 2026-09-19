@@ -525,8 +525,9 @@ the MVP complete. Simulator or isolated fixtures are not physical-phone evidence
 ## Bot mentions
 
 The Bot Chat composer offers up to eight `@` completions from the inbox roster
-for its own connection, excluding the open bot. It reuses the slash panel's
-presentation and caret-local replacement behavior. Rows show a small static avatar
+for its own connection, excluding the open bot. The same panel also lists this
+conversation's workspace files below the roster; see File references. It reuses
+the slash panel's presentation and caret-local replacement behavior. Rows show a small static avatar
 from the inbox's connection-scoped image cache, falling back to the bot's existing
 face; opening or filtering the picker never fetches images. Once selected or
 followed by whitespace, a recognized mention becomes the shared composer's
@@ -565,6 +566,52 @@ Desktop has synced the peer roster within ten minutes, and delivery requires
 that Desktop to remain running. The phone cannot autocomplete remote bots
 because there is no read-only remote-roster RPC. Real phone support needs that
 RPC and a relay owner independent of a Desktop renderer.
+
+## File references
+
+The `@` panel is one panel with two groups: the roster above (see Bot mentions),
+then this conversation's workspace files. With no roster the panel is files
+alone; with no file rows (a failed or empty lookup) it is the roster alone. One
+gesture, no mode rules: a mention-shaped word (`@res`) can offer both, and a
+path-shaped one (`@src/Ch`) can only match files, because bot tags contain no
+slash. `BotAtPanelSection` owns that ordering, and a lookup still in flight
+shows the Files group with no rows yet so the first answer can appear.
+
+File rows come from the direct connection's `complete.path` (#552; the epic's
+exclusion was reversed 2026-09-17). The client sends `{word, session_id,
+profile}`: `word` is the path being typed — a bare `@` sends `.`, because the
+host answers an empty word with no items — and `session_id` is the live runtime,
+so rows resolve against the session's working directory (`session.cwd.set`). The
+reply's `items` rows are plain relative paths or the host's `@file:`/`@folder:`
+directive spellings; directories end in `/` and carry `meta: "dir"`. Rows a
+`@path` reference cannot carry — directives, whitespace, `..`, absolute paths —
+are dropped. The host ranks and caps its own rows (30), so the phone neither
+relists nor rescores them.
+
+Picking a file inserts `@path` plus the trailing space and draws the same chip
+the Sessions composer draws; picking a folder inserts `@path/` and leaves the
+panel open on its contents. A picked path is remembered for the conversation's
+lifetime so its chip draws, and is forgotten when the workspace moves: a path is
+only a file inside the workspace it was found in. A failed lookup hides the
+Files group and never blocks typing; a reply that lands after a newer query is
+dropped by the panel's generation guard, the same one the Sessions panel runs
+under.
+
+`BotClient` admits `complete.path` as a fourth typed exception: exactly `word`,
+`session_id` and `profile`, one bare word with no whitespace and both ids
+non-empty. Cancelling a completion drops its reply without dropping the
+conversation, because a completion has no outcome to recover. Group rooms are
+untouched: `BotRoomComposerView` keeps its members-only mention panel and never
+gets the Files group.
+
+Contract verified read-only against the live host on 2026-09-18 (the host
+reported 0.21.3; `HERMES_AGENT_TESTED_SHA` is 0.21.2) with authenticated
+`complete.path` calls: `word: ""` answers `{items: []}`, `word: "."` lists the
+root, directories carry a trailing `/` and `meta: "dir"`, and the listing caps
+at 30. The shape matches the pin's
+`tui_gateway/methods_complete.py::complete.path`; the listing root resolves as
+`cwd` → live session cwd → profile-configured cwd → launch cwd. No resume,
+prompt or mutation was executed.
 
 ## Slash suggestions
 

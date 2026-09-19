@@ -492,6 +492,9 @@
 		A48400000000000000000901 /* BotSlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000902 /* BotSlashCommands.swift */; };
 		A48400000000000000000903 /* BotSlashAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000904 /* BotSlashAutocompleteView.swift */; };
 		A48400000000000000000201 /* BotMentionAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000202 /* BotMentionAutocompleteView.swift */; };
+		A48400000000000000000A01 /* BotFilePathSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000A02 /* BotFilePathSearch.swift */; };
+		A48400000000000000000B01 /* BotAtAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000B02 /* BotAtAutocompleteView.swift */; };
+		A48400000000000000000C01 /* BotFilePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000C02 /* BotFilePathTests.swift */; };
 		A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000906 /* BotSlashCommandTests.swift */; };
 		A48400000000000000000301 /* BotMentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000302 /* BotMentionTests.swift */; };
 		1887ACCCA7594CEA88195FCD /* BotGroupRoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */; };
@@ -1029,6 +1032,9 @@
 		A48400000000000000000902 /* BotSlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotSlashCommands.swift"; sourceTree = "<group>"; };
 		A48400000000000000000904 /* BotSlashAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotSlashAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000202 /* BotMentionAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotMentionAutocompleteView.swift"; sourceTree = "<group>"; };
+		A48400000000000000000A02 /* BotFilePathSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotFilePathSearch.swift"; sourceTree = "<group>"; };
+		A48400000000000000000B02 /* BotAtAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAtAutocompleteView.swift"; sourceTree = "<group>"; };
+		A48400000000000000000C02 /* BotFilePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotFilePathTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000906 /* BotSlashCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotSlashCommandTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000302 /* BotMentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotMentionTests.swift"; sourceTree = "<group>"; };
 		3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotGroupRoom.swift"; sourceTree = "<group>"; };
@@ -1163,6 +1169,7 @@
 				A4750000000000000000B006 /* BotActivityTests.swift */,
 				A48400000000000000000906 /* BotSlashCommandTests.swift */,
 				A48400000000000000000302 /* BotMentionTests.swift */,
+				A48400000000000000000C02 /* BotFilePathTests.swift */,
 				6984D85D628F4E18ABAA2BA9 /* BotChatControlsTests.swift */,
 				0B077A87C9D846D7A9D27D76 /* BotConversationTests.swift */,
 				0B077A87C9D846D7A9D27D7A /* BotPendingRequestTests.swift */,
@@ -1420,6 +1427,8 @@
 				A48400000000000000000902 /* BotSlashCommands.swift */,
 				A48400000000000000000904 /* BotSlashAutocompleteView.swift */,
 				A48400000000000000000202 /* BotMentionAutocompleteView.swift */,
+				A48400000000000000000A02 /* BotFilePathSearch.swift */,
+				A48400000000000000000B02 /* BotAtAutocompleteView.swift */,
 				A48400000000000000000102 /* BotMentions.swift */,
 				B86ED8785A2E4AB0A01B24E9 /* BotArtifactPreview.swift */,
 				0E0FCE6FA1A340AEA4EB1617 /* BotArtifactMessageView.swift */,
@@ -2057,6 +2066,8 @@
 				A48400000000000000000901 /* BotSlashCommands.swift in Sources */,
 				A48400000000000000000903 /* BotSlashAutocompleteView.swift in Sources */,
 				A48400000000000000000201 /* BotMentionAutocompleteView.swift in Sources */,
+				A48400000000000000000A01 /* BotFilePathSearch.swift in Sources */,
+				A48400000000000000000B01 /* BotAtAutocompleteView.swift in Sources */,
 				A48400000000000000000101 /* BotMentions.swift in Sources */,
 				B0F90198095C496B8F4D64BA /* BotArtifactPreview.swift in Sources */,
 				DD0328166A2645CAA29AF018 /* BotArtifactMessageView.swift in Sources */,
@@ -2361,6 +2372,7 @@
 				A4750000000000000000B005 /* BotActivityTests.swift in Sources */,
 				A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */,
 				A48400000000000000000301 /* BotMentionTests.swift in Sources */,
+				A48400000000000000000C01 /* BotFilePathTests.swift in Sources */,
 				D1F04357497D4FD381D726C8 /* BotChatControlsTests.swift in Sources */,
 				9510188AE84E41D9BAE025F1 /* BotConversationTests.swift in Sources */,
 				9510188AE84E41D9BAE025FA /* BotPendingRequestTests.swift in Sources */,
