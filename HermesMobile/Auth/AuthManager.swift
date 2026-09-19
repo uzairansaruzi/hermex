@@ -309,6 +309,7 @@ final class AuthManager {
 
         try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
         await ChatDraftStore.shared.discardBotDrafts(server: active)
+        await HermexPushPairingStore(keychain: keychain).unpair(server: active)
         advanceAfterRemoving(activeServer: active)
     }
 
@@ -320,6 +321,7 @@ final class AuthManager {
         guard let serverURL = URL(string: account.urlString) else { return }
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
         await ChatDraftStore.shared.discardBotDrafts(server: serverURL)
+        await HermexPushPairingStore(keychain: keychain).unpair(server: serverURL)
         let isActive = state.server?.absoluteString == account.id
 
         if isActive {
@@ -401,14 +403,16 @@ final class AuthManager {
     }
 
     /// Deletes one server's local auth artifacts — its scoped custom headers, its
-    /// Bot connection with that connection's cached avatars, and its cookies —
-    /// without touching the registry or the global `server_url` key.
+    /// Bot connection with that connection's cached avatars, its push pairing keys,
+    /// and its cookies — without touching the registry or the global `server_url` key.
     private func clearLocalArtifacts(for server: URL) {
         try? keychain.delete(.customHeaders, scope: server.absoluteString)
         if let connection = try? BotConnectionStore(keychain: keychain).load(server: server) {
             BotAvatarStore.shared.removeAll(connectionID: connection.id)
         }
         try? keychain.delete(.botConnection, scope: server.absoluteString)
+        // The push keys belong to that server's Hermes host; no removal path may leave them.
+        try? keychain.delete(.hermexPushPairing, scope: server.absoluteString)
         clearSessionCookies(for: server)
     }
 

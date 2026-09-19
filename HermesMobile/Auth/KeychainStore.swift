@@ -26,6 +26,9 @@ struct KeychainStore: KeychainStoring {
         // lives in the Keychain, not UserDefaults (#15).
         case servers = "servers"
         case botConnection = "bot_connection"
+        // JSON-encoded hermex-push pairing (relay URL + install and preview keys)
+        // for one server's Hermes host (#557). Capability keys, so Keychain only.
+        case hermexPushPairing = "hermex_push_pairing"
     }
 
     private let keychain: Keychain
