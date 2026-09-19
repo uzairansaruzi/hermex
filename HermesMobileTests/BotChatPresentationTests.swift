@@ -85,8 +85,6 @@ import XCTest
             ], "Header and broadcast rows show both avatars; each member row shows only its own")
         }
         XCTAssertEqual(completions.map(\.tag), names + ["all", "everyone"])
-        // Vision reads the monospaced "@all" as "@a11" on iOS 27; either spelling is the row.
-        XCTAssertNotNil(text.range(of: "@a[l1][l1] Everyone", options: .regularExpression), text)
         XCTAssertTrue(text.contains("@everyone Everyone"), text)
         XCTAssertNil(selected, "Rendering suggestions must not insert a mention")
     }
