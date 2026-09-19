@@ -164,6 +164,7 @@ struct ClarificationRequestCard: View {
     let onCollapse: () -> Void
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
     @State private var bodyContentHeight: CGFloat?
@@ -300,26 +301,28 @@ struct ClarificationRequestCard: View {
 
     private func expirationBadge(now: Date) -> some View {
         let remaining = remainingSeconds(now: now)
-        let fraction = remainingFraction(now: now)
 
         return VStack(alignment: .trailing, spacing: 5) {
             Text(expirationText(remaining: remaining))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.primary.opacity(0.10))
-                    Capsule()
-                        .fill(progressFill)
-                        .frame(width: max(0, proxy.size.width * fraction))
+            if !reduceMotion {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(.primary.opacity(0.10))
+                        Capsule()
+                            .fill(progressFill)
+                            .frame(width: max(0, proxy.size.width * remainingFraction(now: now)))
+                    }
                 }
+                .frame(width: 68, height: 4)
             }
-            .frame(width: 68, height: 4)
-            .accessibilityLabel("Clarification expiration")
-            .accessibilityValue(expirationText(remaining: remaining))
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Clarification expiration")
+        .accessibilityValue(expirationText(remaining: remaining))
     }
 
     private var trimmedDraft: String {

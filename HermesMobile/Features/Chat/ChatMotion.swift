@@ -1,20 +1,21 @@
 import SwiftUI
 
+/// Chat animation curves. Reduce Motion always snaps (`nil`); do not substitute a shorter ease.
 enum ChatMotion {
     static func press(duration: Double, reduceMotion: Bool) -> Animation? {
-        reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: duration, extraBounce: 0)
+        reduceMotion ? nil : .smooth(duration: duration, extraBounce: 0)
     }
 
     static func quickState(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? .easeOut(duration: 0.10) : .easeInOut(duration: 0.16)
+        reduceMotion ? nil : .easeInOut(duration: 0.16)
     }
 
     static func disclosure(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? .easeOut(duration: 0.10) : .smooth(duration: 0.18, extraBounce: 0)
+        reduceMotion ? nil : .smooth(duration: 0.18, extraBounce: 0)
     }
 
     static func composerChrome(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.22, extraBounce: 0)
+        reduceMotion ? nil : .smooth(duration: 0.22, extraBounce: 0)
     }
 
     static func scrollToLatest(reduceMotion: Bool) -> Animation? {

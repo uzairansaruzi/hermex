@@ -34,6 +34,7 @@ struct ComposerVoiceControlButton: View {
     let onRecordingDragChanged: (CGFloat) -> Void
     let onRecordingEnd: (CGFloat) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPressing = false
     @State private var didTriggerRecording = false
     @State private var holdWorkItem: DispatchWorkItem?
@@ -43,8 +44,8 @@ struct ComposerVoiceControlButton: View {
             .font(.system(size: 18, weight: .regular))
             .frame(width: 44, height: 44)
             .foregroundStyle(isListening || isRecordingVoiceNote ? Color.red : color)
-            .scaleEffect(isRecordingVoiceNote ? 1.3 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
+            .scaleEffect(reduceMotion ? 1 : (isRecordingVoiceNote ? 1.3 : 1))
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
             .contentShape(Circle())
             .opacity(isDisabled && !isRecordingVoiceNote ? 0.4 : 1)
             .gesture(pressGesture)
