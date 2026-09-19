@@ -45,6 +45,8 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
     private let relay: HermexPushRelayClient
     private let dashboard: @MainActor (BotConnection) -> BotDashboardClient
     private let deviceToken: HermexPushDeviceTokenProvider
+    /// The connection this server still has saved, read at the moment state is committed.
+    private let connectionID: @MainActor () -> UUID?
     /// Retries while the host is coming back from its restart; injected so tests never sleep.
     private let retryDelays: [Duration]
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -56,6 +58,7 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
          relay: HermexPushRelayClient = HermexPushRelayClient(),
          dashboard: (@MainActor (BotConnection) -> BotDashboardClient)? = nil,
          deviceToken: @escaping HermexPushDeviceTokenProvider = { nil },
+         connectionID: (@MainActor () -> UUID?)? = nil,
          retryDelays: [Duration] = [.seconds(2), .seconds(3), .seconds(5), .seconds(5), .seconds(5), .seconds(10)],
          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.server = server
@@ -64,6 +67,7 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
         self.relay = relay
         self.dashboard = dashboard ?? { BotDashboardClient(connection: $0) }
         self.deviceToken = deviceToken
+        self.connectionID = connectionID ?? { (try? BotConnectionStore().load(server: server))?.id }
         self.retryDelays = retryDelays
         self.sleep = sleep
         pairing = try? self.store.load(server: server)
@@ -102,13 +106,15 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
             try await client.restartGateway()
             step = advance(from: step, to: .pair)
             var paired = try await pairAfterRestart(client)
-            try store.save(paired, server: server)
             step = advance(from: step, to: .device)
-            if let token = await deviceToken() {
-                try await relay.register(paired, token: token)
-                paired.deviceToken = token
-                try store.save(paired, server: server)
-            }
+            let token = await deviceToken()
+            if let token { try await relay.register(paired, token: token) }
+            // A run outlives the screen, so the connection or its whole server can be
+            // removed while it works. Teardown wins: the keys are never written and this
+            // phone comes back off the relay.
+            guard connectionID() == connection.id else { return await abandon(paired, token: token) }
+            paired.deviceToken = token
+            try store.save(paired, server: server)
             completed.insert(.device)
             pairing = paired
             phase = .idle
@@ -140,6 +146,16 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
             pairing = nil
             phase = .idle
         } catch { fail(step, error) }
+    }
+
+    /// Finishes a run whose connection was removed under it: nothing is stored, and a
+    /// device registered moments ago is dropped again, so a removed connection never
+    /// leaves this phone on its relay.
+    private func abandon(_ paired: HermexPushPairing, token: String?) async {
+        if let token { try? await relay.removeDevice(paired, token: token) }
+        try? store.remove(server: server)
+        pairing = nil
+        phase = .idle
     }
 
     /// The restart drops the route for a moment, and a freshly installed plugin only

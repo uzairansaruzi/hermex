@@ -191,9 +191,31 @@ import XCTest
         XCTAssertNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
     }
 
+    func testAConnectionRemovedWhileSettingUpKeepsItsTeardownFinal() async throws {
+        let keychain = InMemoryKeychainStore()
+        var isConnected = true
+        PushHTTPFixture.handler = { request in
+            // The user removes the connection while the host is still being set up.
+            if request.url?.path == "/api/plugins/hermex-push/pairing" { isConnected = false }
+            return nil
+        }
+        let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: token,
+                                          stillConnected: { isConnected })
+
+        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+
+        XCTAssertNil(provisioner.pairing)
+        XCTAssertNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA),
+                     "A removal during setup must not be undone by the run that outlived it")
+        XCTAssertEqual(PushHTTPFixture.calls.last,
+                       "DELETE https://hermex-relay.hermex-relay.workers.dev/installs/\(PushHTTPFixture.installKey)/devices/\(token)",
+                       "The phone registered mid-teardown comes back off the relay")
+    }
+
     // MARK: - Fixtures
 
-    private func makeProvisioner(server: URL, keychain: InMemoryKeychainStore, deviceToken: String?) -> HermexPushProvisioner {
+    private func makeProvisioner(server: URL, keychain: InMemoryKeychainStore, deviceToken: String?,
+                                 stillConnected: @escaping @MainActor () -> Bool = { true }) -> HermexPushProvisioner {
         let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
                                        username: "user", password: "secret")
         return HermexPushProvisioner(
@@ -202,6 +224,7 @@ import XCTest
             relay: relayClient(),
             dashboard: { BotDashboardClient(connection: $0, configuration: PushHTTPFixture.configuration()) },
             deviceToken: { deviceToken },
+            connectionID: { stillConnected() ? connection.id : nil },
             retryDelays: [.zero, .zero, .zero],
             sleep: { _ in }
         )

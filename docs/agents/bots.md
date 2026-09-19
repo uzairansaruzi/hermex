@@ -982,6 +982,11 @@ Strict here rather than tolerant on purpose — a key the relay would refuse wou
 pair a phone that could never receive a push. `deviceToken` stays nil until the
 entitlement lands (#558); the relay registration step is skipped, not failed.
 
+A confirmed run is never cancelled when the screen closes — the host has already been
+asked to change — so it can outlive a removal. It commits nothing without re-reading the
+saved connection first: if the connection or its server is gone, the keys are not written
+and a device registered seconds earlier is dropped again, so teardown stays final.
+
 Every way out removes this phone at the relay and wipes the keys:
 `HermexPushProvisioner.disable()` also disables the plugin on the host and keeps
 the keys when a step fails so the user can retry, while
