@@ -399,7 +399,7 @@ struct SettingsView: View {
                         isOn: $isBotModeEnabled
                     )
 
-                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Sessions/Bots switch to the session list and a Bot connection row to each server."))
+                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Sessions/Bots switch to the session list. Each server’s Hermes connection is available with it off."))
                 }
 
                 SettingsCard(title: String(localized: "Sessions")) {
