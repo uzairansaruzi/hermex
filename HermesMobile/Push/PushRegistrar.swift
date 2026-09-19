@@ -102,7 +102,16 @@ enum PushRegistrarError: Error, Equatable {
 
         var stored = pairing
         stored.registeredToken = token
-        try store.save(stored, for: server)
+        do {
+            try store.save(stored, for: server)
+        } catch {
+            // The relay has already accepted this device. With no keys on disk
+            // nothing could ever revoke it, so undo the registration before
+            // reporting the failure rather than leave a phone that cannot be
+            // unpaired.
+            try? await relay.deleteDevice(token: token, pairing: pairing)
+            throw error
+        }
     }
 
     /// Removes this device from that install's relay, then wipes its keys. The
@@ -168,12 +177,22 @@ enum PushRegistrarError: Error, Equatable {
     private func reregisterAllPairings(token: String) async {
         guard let identity, let pairings = try? store.allPairings() else { return }
         for (server, pairing) in pairings {
+            // The user can disable a server at any suspension point below, so the
+            // snapshot is only a starting list: what is on disk right now decides.
+            guard isStillPaired(pairing, for: server) else { continue }
             do {
                 try await relay.registerDevice(token: token, identity: identity, pairing: pairing)
+                guard isStillPaired(pairing, for: server) else {
+                    // Disabled while that call was in flight. Retire the device we
+                    // just registered; otherwise the phone keeps receiving pushes
+                    // for a server whose keys are gone.
+                    try? await relay.deleteDevice(token: token, pairing: pairing)
+                    continue
+                }
                 if let previous = pairing.registeredToken, previous != token {
                     try? await relay.deleteDevice(token: previous, pairing: pairing)
                 }
-                guard pairing.registeredToken != token else { continue }
+                guard pairing.registeredToken != token, isStillPaired(pairing, for: server) else { continue }
                 var updated = pairing
                 updated.registeredToken = token
                 try store.save(updated, for: server)
@@ -181,6 +200,13 @@ enum PushRegistrarError: Error, Equatable {
                 Self.logger.error("Push device registration failed: \(String(describing: error), privacy: .public)")
             }
         }
+    }
+
+    /// Whether the stored pairing is still the one this refresh started from. A
+    /// disable in the meantime removes it, and a re-pair mints a new install key;
+    /// either way the snapshot must not be written back over the user's choice.
+    private func isStillPaired(_ pairing: PushPairing, for server: URL) -> Bool {
+        (try? store.pairing(for: server))?.installKey == pairing.installKey
     }
 
     /// The token arrives through the app delegate, not from a call, so a first

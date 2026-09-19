@@ -211,6 +211,38 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(harness.remoteNotifications.unregisterCount, 0)
     }
 
+    /// A disable that lands while a launch refresh is registering must win: the
+    /// keys stay gone and the device it just registered is retired again.
+    func testDisableDuringALaunchRefreshIsNotUndone() async {
+        let harness = Harness()
+        harness.store.pairings[serverA] = harness.pairing(install: installA, registeredToken: "0dd0")
+        harness.relay.duringRegister = { [registrar = harness.registrar, serverA] in
+            try? await registrar.disable(for: serverA)
+        }
+
+        harness.registrar.refreshOnLaunch()
+        await harness.deliverToken("5ee5")
+
+        XCTAssertNil(harness.store.pairings[serverA])
+        XCTAssertEqual(harness.relay.deletions.map(\.token), ["0dd0", "5ee5"])
+    }
+
+    /// Without stored keys nothing could ever revoke the device, so a Keychain
+    /// write that fails takes the relay registration down with it.
+    func testEnableUndoesTheRelayRegistrationWhenTheKeychainWriteFails() async {
+        struct KeychainFailure: Error, Equatable {}
+        let harness = Harness()
+        harness.deliverTokenOnRegister("0a1b")
+        harness.store.saveError = KeychainFailure()
+
+        await XCTAssertThrowsErrorAsync(
+            try await harness.registrar.enable(harness.pairing(install: installA), for: serverA),
+            KeychainFailure()
+        )
+        XCTAssertTrue(harness.store.pairings.isEmpty)
+        XCTAssertEqual(harness.relay.deletions.map(\.token), ["0a1b"])
+    }
+
     // MARK: - Relay wire shape
 
     func testRelayRegistrationSendsTheStrictBodyToTheInstallsPath() async throws {
@@ -353,9 +385,13 @@ private final class Harness {
 @MainActor
 private final class InMemoryPushPairingStore: PushPairingStoring {
     var pairings: [URL: PushPairing] = [:]
+    var saveError: (any Error)?
 
     func pairing(for server: URL) throws -> PushPairing? { pairings[server] }
-    func save(_ pairing: PushPairing, for server: URL) throws { pairings[server] = pairing }
+    func save(_ pairing: PushPairing, for server: URL) throws {
+        if let saveError { throw saveError }
+        pairings[server] = pairing
+    }
     func remove(for server: URL) throws { pairings[server] = nil }
     func allPairings() throws -> [URL: PushPairing] { pairings }
 }
@@ -384,7 +420,15 @@ private final class RecordingPushRelay: PushRelayRegistering {
         deletions = []
     }
 
+    /// Runs while a registration is suspended, so a test can land a concurrent
+    /// disable the way a user tapping the button would.
+    var duringRegister: (() async -> Void)?
+
     func registerDevice(token: String, identity: PushBuildIdentity, pairing: PushPairing) async throws {
+        if let duringRegister {
+            self.duringRegister = nil
+            await duringRegister()
+        }
         if let registerError { throw registerError }
         registrations.append(Registration(token: token, installKey: pairing.installKey,
                                           environment: identity.environment, bundleID: identity.bundleID))
