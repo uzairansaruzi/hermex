@@ -40,11 +40,15 @@ import Foundation
                                    body: .object(["key": .string(key), "value": .string(value)])))
     }
 
-    /// Installs an agent plugin from its identifier. `force` stays false so an existing
-    /// install is left in place; `enable` covers the fresh-install case in one call.
+    /// Installs an agent plugin from its identifier, reinstalling over an existing copy.
+    /// `force` is true because an install that refuses to overwrite would make the second
+    /// run — re-enabling after a disable, or repairing a plugin too old for this build —
+    /// fail with nothing the user can do from the phone. Reinstalling cannot unpair a
+    /// device: `hermex-push` keeps its key pair in `plugin-data`, outside the install
+    /// directory.
     func installPlugin(identifier: String) async throws {
         _ = try await send(request(BotEndpoint.pluginInstall.url(base: connection.address), method: "POST",
-                                   body: .object(["identifier": .string(identifier), "enable": .bool(true), "force": .bool(false)])))
+                                   body: .object(["identifier": .string(identifier), "enable": .bool(true), "force": .bool(true)])))
     }
 
     /// Enables or disables an installed agent plugin. Disabling is deliberately never

@@ -10,7 +10,6 @@ import SwiftUI
     @State private var relayURL: String
     @State private var isConfirmingEnable = false
     @State private var isConfirmingDisable = false
-    @State private var work: Task<Void, Never>?
 
     init(server: URL, connection: BotConnection) {
         self.connection = connection
@@ -47,14 +46,16 @@ import SwiftUI
                  : "This iPhone is paired with this server’s Hermes host. Its keys are stored in the Keychain for this server alone.")
         }
         .onChange(of: connection) { _, updated in provisioner.connection = updated }
-        .onDisappear { work?.cancel() }
         .confirmationDialog("Install the plugin and restart Hermes?", isPresented: $isConfirmingEnable, titleVisibility: .visible) {
-            Button("Install and restart") { work = Task { await provisioner.enable(relayURL: relayURL) } }
+            // Deliberately not cancelled when the screen closes: the host has already been
+            // asked to change, so the run finishes and the keys land instead of leaving a
+            // configured host and an unpaired phone. Reopening reads the stored result.
+            Button("Install and restart") { Task { await provisioner.enable(relayURL: relayURL) } }
         } message: {
             Text("Hermex installs code on your Hermes host and restarts its gateway. Work running there is interrupted. Nothing is installed until you tap this.")
         }
         .confirmationDialog("Turn off notifications for this server?", isPresented: $isConfirmingDisable, titleVisibility: .visible) {
-            Button("Turn off notifications", role: .destructive) { work = Task { await provisioner.disable() } }
+            Button("Turn off notifications", role: .destructive) { Task { await provisioner.disable() } }
         } message: {
             Text("This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted.")
         }

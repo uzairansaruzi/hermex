@@ -963,7 +963,11 @@ platform, payload_version}`. Verified against a live 0.21.3 host on 2026-09-19:
 install takes `{identifier, force, enable, catalog_name, ref}` with no Profile
 parameter, enable and disable are path-only, and only `PUT /api/env` and the
 restart accept one. The install identifier is
-`https://github.com/uzairansaruzi/hermex-push.git/plugin`.
+`https://github.com/uzairansaruzi/hermex-push.git/plugin`, sent with `force` true so a
+second run — re-enabling after a disable, or repairing a plugin too old for this build —
+reinstalls instead of refusing. Reinstalling cannot unpair a phone: the plugin keeps its
+key pair in `plugin-data`. The revision is whatever the repository resolves to; pinning a
+`ref` is an open owner decision.
 
 The restart drops the route, so the pairing read retries a missing route, a 409
 from an unread relay address and a refused connection on a fixed schedule before

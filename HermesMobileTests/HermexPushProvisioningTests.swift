@@ -38,7 +38,7 @@ import XCTest
         XCTAssertEqual(env["value"].text, HermexPushPairing.defaultRelayURL.absoluteString)
         let install = PushHTTPFixture.body(of: "POST https://a.example.com/api/dashboard/agent-plugins/install")
         XCTAssertEqual(install["identifier"].text, "https://github.com/uzairansaruzi/hermex-push.git/plugin")
-        XCTAssertEqual(install["force"].flag, false)
+        XCTAssertEqual(install["force"].flag, true, "A second run must reinstall rather than refuse")
         let device = PushHTTPFixture.body(of: "POST https://hermex-relay.hermex-relay.workers.dev/installs/\(PushHTTPFixture.installKey)/devices")
         XCTAssertEqual(device["device_token"].text, token)
 
