@@ -157,7 +157,8 @@ struct ChatTranscriptView: View {
                             .frame(height: transcriptBottomInsetHeight)
                             .accessibilityHidden(true)
                     }
-                    .adaptiveSoftScrollEdges()
+                    .adaptiveSoftScrollEdges(.bottom)
+                    .adaptiveHardTopScrollEdge()
                     .simultaneousGesture(
                         TapGesture().onEnded {
                             onDismissKeyboard()

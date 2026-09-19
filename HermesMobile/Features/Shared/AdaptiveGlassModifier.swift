@@ -241,6 +241,30 @@ private struct AdaptiveSoftScrollEdgeModifier: ViewModifier {
     }
 }
 
+/// On iOS 26 a *hard* top scroll edge stops scrolled content at the bottom edge of
+/// the navigation bar instead of painting it beneath the translucent Liquid-Glass
+/// bar, where two-row `.principal` titles (chat title + workspace/profile subtitle)
+/// make any bleed extremely visible. On iOS < 26 the navigation bar is opaque, so
+/// the modifier is a no-op there, mirroring the soft variant's fallback path.
+/// Apply only where the transcript scrolls under a two-row title (chat, bot chat);
+/// list surfaces keep soft edges.
+private struct AdaptiveHardTopScrollEdgeModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *),
+           AdaptiveScrollEdgeTreatment.resolve(
+               softScrollEdgesAvailable: true,
+               reduceTransparency: reduceTransparency
+           ) == .soft {
+            content.scrollEdgeEffectStyle(.hard, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 struct AdaptiveGlassContainer<Content: View>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
@@ -308,5 +332,9 @@ extension View {
 
     func adaptiveSoftScrollEdges(_ edges: Edge.Set = [.top, .bottom]) -> some View {
         modifier(AdaptiveSoftScrollEdgeModifier(edges: edges))
+    }
+
+    func adaptiveHardTopScrollEdge() -> some View {
+        modifier(AdaptiveHardTopScrollEdgeModifier())
     }
 }
