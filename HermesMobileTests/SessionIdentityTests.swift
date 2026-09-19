@@ -384,6 +384,7 @@ final class SectionVisibilitySettingsTests: XCTestCase {
         SectionVisibilitySettings.skillsKey,
         SectionVisibilitySettings.memoryKey,
         SectionVisibilitySettings.insightsKey,
+        SectionVisibilitySettings.filesKey,
         SectionVisibilitySettings.activeProfileKey,
         SectionVisibilitySettings.projectsKey,
         SectionVisibilitySettings.chatFilesKey,
@@ -444,6 +445,7 @@ final class SidebarSectionVisibilityTests: XCTestCase {
         XCTAssertTrue(visibility.skills)
         XCTAssertTrue(visibility.memory)
         XCTAssertTrue(visibility.insights)
+        XCTAssertTrue(visibility.files)
         XCTAssertTrue(visibility.activeProfile)
         XCTAssertTrue(visibility.projects)
         XCTAssertTrue(visibility.showsAnyUtilityLink)
@@ -455,17 +457,19 @@ final class SidebarSectionVisibilityTests: XCTestCase {
         visibility.kanban = false
         visibility.skills = false
         visibility.memory = false
+        visibility.files = false
 
         XCTAssertTrue(visibility.showsAnyUtilityLink)
     }
 
-    func testUtilityLinkRowDropsOnlyWhenAllFiveAreHidden() {
+    func testUtilityLinkRowDropsOnlyWhenAllLinksAreHidden() {
         var visibility = SidebarSectionVisibility.showAll
         visibility.tasks = false
         visibility.kanban = false
         visibility.skills = false
         visibility.memory = false
         visibility.insights = false
+        visibility.files = false
 
         XCTAssertFalse(visibility.showsAnyUtilityLink)
     }

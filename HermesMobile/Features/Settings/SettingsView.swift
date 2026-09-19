@@ -89,6 +89,7 @@ struct SettingsView: View {
     @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanbanSection = true
     @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
     @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
+    @AppStorage(SectionVisibilitySettings.filesKey) private var showsFilesSection = true
     @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
     @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
     @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
@@ -363,6 +364,14 @@ struct SettingsView: View {
                         title: String(localized: "Memory"),
                         systemImage: "brain",
                         isOn: $showsMemorySection
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Files"),
+                        systemImage: "folder",
+                        isOn: $showsFilesSection
                     )
 
                     SettingsDivider()
