@@ -59,16 +59,61 @@ launchctl unload ~/Library/LaunchAgents/com.hermes.webui.plist
 launchctl kickstart -k gui/$(id -u)/com.hermes.webui
 ```
 
-## Local Validation With XcodeBuildMCP
+## Local XCTest
+
+Use the repository runner for local tests, including when XcodeBuildMCP is
+available. It builds a signed Debug app and runs XCTest once, serially on the
+assigned simulator. Separate worktrees can test concurrently on separate devices.
+
+Choose the session's simulator once (`hermex-flow` owns its device pool). The
+main checkout normally uses **iPhone 17**. Resolve its UDID with
+`xcrun simctl list devices available`; names shared by multiple iOS runtimes
+are ambiguous, so pass the UDID. The runner never chooses another device or
+creates one, and refuses to boot a fifth simulator.
+
+```zsh
+# Full suite (also builds): use the same assigned UDID throughout the session.
+scripts/test-sim <simulator-udid>
+
+# Focused tests; repeat --only for multiple classes or individual test methods.
+scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests
+```
+
+The runner waits for simulator readiness, then holds locks on the simulator
+and checkout until testing finishes. A competing runner reports the current
+owner immediately; different checkout/device pairs run independently. These
+locks coordinate this runner only: keep other build/install tools on their
+session's assigned device, and do not run them during its test run.
+
+Build products and timestamped logs live under
+`~/Library/Developer/Xcode/DerivedData/hermex-tests-<checkout-path-hash>/`.
+The full absolute checkout path determines the hash, so identically named
+worktrees do not share build files. The command prints the log directory at
+startup and test counts/failures at completion; `command.json`, `test.log`,
+`summary.json`, and `Tests.xcresult` retain the evidence.
+
+Wait on the runner using the longest supported tool wait; avoid separate log
+polls or status commands. It checks readiness with bounded commands (120 seconds
+for boot operations), allows 30 minutes for build and tests, and performs no
+retries. `--boot-timeout` and `--test-timeout` override those limits in seconds
+when a known workload requires it.
+
+Exit codes: **0** passed; **1** build/test failure; **2** busy device, setup, or
+result-verification failure; **124** timeout; **130** interrupted. On a busy
+device or infrastructure failure, report the blocker and log path; stop rather
+than rebooting, erasing devices, clearing caches, or rerunning unchanged tests.
+For actual test failures, inspect the recorded failure and follow the repo's
+baseline-check procedure where applicable. The runner stops only processes it
+spawned and leaves the simulator available for the session's next step.
+
+Runner checks: `python3 -m unittest discover -s scripts/tests -v`.
+
+## Build and Launch With XcodeBuildMCP
 
 Defaults and the verification flow live in `AGENTS.md` § Verifying. Human/CLI equivalents:
 
 ```zsh
 xcodebuildmcp simulator list --enabled
-```
-
-```zsh
-xcodebuildmcp simulator test --output jsonl
 ```
 
 ```zsh
@@ -100,7 +145,7 @@ security add-generic-password -s hermex-bot -a <bot-username> -j <bot-address> -
 
 ## Raw xcodebuild Fallback
 
-Use raw `xcodebuild` when XcodeBuildMCP is unavailable, when validating lower-level build failures, or when matching the GitHub Actions release/archive commands exactly. The TestFlight workflows continue to use raw `xcodebuild` and are not replaced by XcodeBuildMCP.
+Use raw `xcodebuild` for builds when XcodeBuildMCP is unavailable, when validating lower-level build failures, or when matching the GitHub Actions release/archive commands exactly. Local XCTest uses `scripts/test-sim` above. The TestFlight workflows continue to use raw `xcodebuild` and are not replaced by XcodeBuildMCP.
 
 List available simulators:
 

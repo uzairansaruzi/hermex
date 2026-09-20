@@ -98,7 +98,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 
 ## Verifying
 
-- Smallest proof that the change works while iterating: focused XCTest for the behavior you touched, via XcodeBuildMCP `test_sim`. Defaults live in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that sim is missing, pick a nearby iPhone and say which.
+- Run local XCTest through `scripts/test-sim <assigned-simulator-udid>`; add `--only HermesMobileTests/<TestClass>` for focused validation. Each worktree keeps its own simulator; different simulators can test concurrently. See `DEVELOPMENT.md` § Local XCTest for assignment, logs, and failure handling.
 - **Run the full XCTest suite before asking for review or committing a slice.** A failing build or test becomes the current task; fix it before writing more code on top.
 - Behavior changes ship with focused tests for that behavior.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.

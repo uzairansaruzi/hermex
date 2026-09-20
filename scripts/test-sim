@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Run local XCTest on one assigned simulator, without model-side polling."""
+
+import argparse
+from collections import deque
+from contextlib import ExitStack, contextmanager
+from datetime import datetime
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+
+class RunnerError(Exception):
+    pass
+
+
+@contextmanager
+def lock(path, owner, timeout=0):
+    """Keep lock files in place: unlinking them could let two owners through."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+") as handle:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    handle.seek(0)
+                    raise RunnerError("Busy: " + (handle.read().strip() or str(path)))
+                time.sleep(0.1)
+        handle.seek(0)
+        handle.truncate()
+        handle.write(owner + "\n")
+        handle.flush()
+        # Children inherit this descriptor. If the runner dies, an active child
+        # keeps the resource locked until it exits. Closing releases normally.
+        yield handle.fileno()
+
+
+def run(command, output, timeout, lock_fds=()):
+    """Wait locally; on timeout/interruption stop only the child we spawned."""
+    with output.open("w") as log:
+        process = subprocess.Popen(
+            command, stdout=log, stderr=subprocess.STDOUT,
+            pass_fds=tuple(lock_fds), start_new_session=True,
+        )
+        try:
+            return process.wait(timeout=timeout)
+        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            raise
+
+
+def devices(run_dir, lock_fds=()):
+    output = run_dir / "devices.json"
+    if run(["xcrun", "simctl", "list", "devices", "-j"], output, 30, lock_fds):
+        raise RunnerError("Cannot list simulators; see " + str(output))
+    return [dict(device, runtime=runtime)
+            for runtime, entries in json.loads(output.read_text())["devices"].items()
+            for device in entries]
+
+
+def select_device(entries, requested):
+    matches = [device for device in entries
+               if device.get("isAvailable")
+               and ".iOS-" in device["runtime"]
+               and requested in (device["name"], device["udid"])]
+    if len(matches) != 1:
+        choices = "\n".join("  {name}: {udid} ({runtime}, {state})".format(**d)
+                            for d in matches)
+        raise RunnerError(
+            ("Ambiguous simulator name; pass its UDID:\n" + choices) if matches
+            else "No available iOS simulator matches " + requested
+        )
+    return matches[0]
+
+
+def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
+    # Serialize only the boot request/count check, not the tests. This keeps
+    # concurrent runners from racing past the four-device pool limit.
+    with lock(locks_dir / "boot.lock", owner, timeout) as boot_fd:
+        entries = devices(run_dir, (*lock_fds, boot_fd))
+        current = next(d for d in entries if d["udid"] == device["udid"])
+        if current["state"] == "Shutdown":
+            if sum(d["state"] in ("Booted", "Booting") for d in entries) >= 4:
+                raise RunnerError("Four simulators are already booted/booting; stop here.")
+            if run(["xcrun", "simctl", "boot", device["udid"]],
+                   run_dir / "boot.log", timeout, (*lock_fds, boot_fd)):
+                raise RunnerError("Simulator boot failed; see boot.log.")
+        elif current["state"] not in ("Booted", "Booting"):
+            raise RunnerError("Simulator is " + current["state"] + "; stop here.")
+    if run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"],
+           run_dir / "bootstatus.log", timeout, lock_fds):
+        raise RunnerError("Simulator did not become ready; see bootstatus.log.")
+
+
+def print_summary(result, output):
+    if not result.exists():
+        return None
+    if run(["xcrun", "xcresulttool", "get", "test-results", "summary",
+            "--path", str(result), "--compact"], output, 30):
+        return None
+    summary = json.loads(output.read_text())
+    print("Tests: {passedTests} passed, {failedTests} failed, {skippedTests} skipped"
+          .format(**summary), flush=True)
+    failures = summary.get("testFailures", [])
+    for failure in failures[:20]:
+        print("  " + str(failure.get("testName", "Test failure")) + ": "
+              + str(failure.get("failureText", ""))[:500], flush=True)
+    if len(failures) > 20:
+        print("  Remaining failures are in " + str(output), flush=True)
+    return summary
+
+
+def failure_excerpt(log):
+    if log.exists():
+        with log.open(errors="replace") as source:
+            lines = deque(source, maxlen=30)
+        print("".join(lines).strip(), flush=True)
+
+
+def positive_seconds(value):
+    seconds = int(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("timeout must be positive")
+    return seconds
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("device", help="assigned simulator UDID or unique name")
+    parser.add_argument("--only", action="append", default=[], metavar="TEST",
+                        help="XCTest identifier, e.g. HermesMobileTests/BotLiveActivityTests; repeatable")
+    parser.add_argument("--boot-timeout", type=positive_seconds, default=120,
+                        help="seconds per simulator readiness operation (default: 120)")
+    parser.add_argument("--test-timeout", type=positive_seconds, default=1800,
+                        help="seconds for build and tests together (default: 1800)")
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parent.parent
+    key = hashlib.sha256(str(root).encode()).hexdigest()[:16]
+    cache = Path.home() / "Library/Developer/Xcode/DerivedData" / ("hermex-tests-" + key)
+    cache.mkdir(parents=True, exist_ok=True)
+    runs = cache / "runs"
+    runs.mkdir(exist_ok=True)
+    run_dir = Path(tempfile.mkdtemp(prefix=datetime.now().strftime("%Y%m%d-%H%M%S-"), dir=runs))
+    locks_dir = Path.home() / "Library/Caches/HermexSimulatorLocks"
+    owner = "PID {}: {} ({})".format(os.getpid(), root, args.device)
+    log = run_dir / "test.log"
+    result = run_dir / "Tests.xcresult"
+    print("Checkout: {}\nLogs: {}".format(root, run_dir), flush=True)
+    try:
+        with ExitStack() as stack:
+            work_fd = stack.enter_context(lock(locks_dir / (key + ".lock"), owner))
+            device = select_device(devices(run_dir, (work_fd,)), args.device)
+            sim_fd = stack.enter_context(lock(locks_dir / (device["udid"] + ".lock"), owner))
+            lock_fds = (work_fd, sim_fd)
+            print("Simulator: {name} ({udid}); serial tests".format(**device), flush=True)
+            boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
+            command = [
+                "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
+                "-scheme", "HermesMobile", "-configuration", "Debug",
+                "-destination", "platform=iOS Simulator,id=" + device["udid"],
+                "-destination-timeout", "30", "-derivedDataPath", str(cache / "Build"),
+                "-resultBundlePath", str(result), "-parallel-testing-enabled", "NO",
+                "-maximum-concurrent-test-simulator-destinations", "1",
+                "-collect-test-diagnostics", "never",
+            ] + ["-only-testing:" + test for test in args.only]
+            (run_dir / "command.json").write_text(json.dumps(command, indent=2) + "\n")
+            code = run(command, log, args.test_timeout, lock_fds)
+            summary = print_summary(result, run_dir / "summary.json")
+            if code:
+                print("FAIL: xcodebuild exited {}. No retry performed.".format(code), flush=True)
+                failure_excerpt(log)
+                return 1
+            if not summary or summary.get("failedTests") != 0 or not summary.get("passedTests"):
+                raise RunnerError("Cannot confirm a passing test run; inspect the result bundle.")
+            print("PASS\nResult: " + str(result), flush=True)
+            return 0
+    except subprocess.TimeoutExpired:
+        print("STOP: command timed out; its process was stopped. No retry performed.", flush=True)
+        return 124
+    except KeyboardInterrupt:
+        print("STOP: interrupted. No retry performed.", flush=True)
+        return 130
+    except (RunnerError, OSError, ValueError, KeyError) as error:
+        print("STOP: " + str(error), flush=True)
+        return 2
+
+
+if __name__ == "__main__":
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, interrupted)
+    sys.exit(main())
