@@ -146,6 +146,8 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
     private(set) var errorMessage: String?
 
     @ObservationIgnored private let wire: any BotTransport
+    /// Fired after the active worker count may have changed, for the Live Activity chips (#489).
+    @ObservationIgnored var onWorkersChanged: (() -> Void)?
     @ObservationIgnored private var context: Context?
     @ObservationIgnored private var listRequestID = UUID()
     @ObservationIgnored private var tailRequestID = UUID()
@@ -329,6 +331,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         let bounded = Array(received.prefix(Self.maximumWorkers))
         workers = Self.hierarchyOrder(bounded)
         omittedWorkerCount = max(0, received.count - bounded.count)
+        onWorkersChanged?()
         if let tail, current(tail.worker) == nil { self.tail = nil }
         if let loadingTail, current(loadingTail) == nil { self.loadingTail = nil }
         if let interruptedWorker, current(interruptedWorker) == nil { self.interruptedWorker = nil }

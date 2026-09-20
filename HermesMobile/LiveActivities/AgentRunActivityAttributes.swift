@@ -13,6 +13,10 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         var isStale: Bool
         var isFinal: Bool
         var errorSummary: String?
+        /// A bot's bounded work summary ("Plan 2 of 5", "2 workers"): counts only, never
+        /// reply text, so it is safe on a locked phone. Nil for a webui session, and
+        /// optional so an activity persisted by an older build still decodes (#489).
+        var chips: [String]?
 
         init(
             sessionID: String,
@@ -43,12 +47,50 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     var sessionTitle: String
     var streamID: String?
     var startedAt: Date
+    /// Set when a bot owns this activity: the tap target and the avatar. Nil for a
+    /// webui session, and for an activity persisted by a build older than #489.
+    var bot: AgentRunActivityBot?
 
-    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date) {
+    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date, bot: AgentRunActivityBot? = nil) {
         self.sessionID = sessionID
         self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
         self.streamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
         self.startedAt = startedAt
+        self.bot = bot
+    }
+}
+
+/// The bot behind a Live Activity (#489). `key` stands in for the session id, so an
+/// activity is only ever reused by the same bot on the same Bot connection: equal
+/// Profile names on two connections get different keys. The widget sees only this
+/// value; the typed `BotDestination` it was built from stays in the main app.
+struct AgentRunActivityBot: Codable, Hashable {
+    /// `bot:<connection UUID>:<Profile name>`.
+    let key: String
+    /// The `hermes-agent://bot?...` route a tap opens.
+    let destinationURL: URL
+    /// File name of the rendered avatar in `AgentRunActivityAvatarFile.directory`,
+    /// or nil when none could be written; the widget then keeps the status dot.
+    var avatarFile: String?
+
+    /// One activity per bot turn: a reconnect inside the turn reuses it, the next turn does not.
+    func streamID(turn: String) -> String { "\(key)#\(turn)" }
+}
+
+/// Where the app leaves a bot's rendered avatar for the widget: one small PNG in the
+/// shared app group, since a Live Activity cannot carry image data in its state.
+enum AgentRunActivityAvatarFile {
+    static var directory: URL? {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "HermesAppGroupIdentifier") as? String,
+              !group.isEmpty else { return nil }
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?
+            .appendingPathComponent("LiveActivityAvatars", isDirectory: true)
+    }
+
+    static func url(named name: String?) -> URL? {
+        // A bare file name only: the attribute is never allowed to walk out of the directory.
+        guard let name, !name.isEmpty, !name.contains("/") else { return nil }
+        return directory?.appendingPathComponent(name)
     }
 }
 
@@ -137,6 +179,14 @@ enum AgentRunActivitySanitizer {
     static let maximumActivityCharacters = 64
     static let maximumExcerptCharacters = 140
     static let maximumToolLabelCharacters = 28
+    static let maximumChips = 3
+    static let maximumChipCharacters = 24
+
+    static func chips(_ rawValues: [String]) -> [String] {
+        rawValues.map { trimmed(normalizedSingleLine($0), limit: maximumChipCharacters) }
+            .filter { !$0.isEmpty }
+            .prefix(maximumChips).map { $0 }
+    }
 
     static func sessionTitle(_ rawValue: String) -> String {
         let normalized = normalizedSingleLine(rawValue)

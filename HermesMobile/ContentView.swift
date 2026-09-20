@@ -44,6 +44,8 @@ struct ContentView: View {
                 // the one pass allowed to fire a recent run's "response complete"
                 // notification, since a relaunch means it finished while not active.
                 await reconcileOrphanedLiveActivities(notifiesOnCompletion: true)
+                // #489: a bot activity has no server status to reconcile against.
+                await AgentLiveActivityManager.shared.endBotActivitiesFromPreviousLaunch()
             }
             .onChange(of: scenePhase) {
                 guard scenePhase == .active else { return }

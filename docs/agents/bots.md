@@ -556,14 +556,45 @@ it is turned on again. The gate is not per-server because it hides screens
 rather than storing user data. It is removed, together with its Settings row
 and `BotModeGateTests`, in the release PR that ships Bot Mode, not before.
 
-New Bot code belongs only to the main app and XCTest target. Share-extension,
-App Intent, deep-link and Live Activity commands still route to webui sessions.
+New Bot code belongs only to the main app and XCTest target, apart from the Live
+Activity below. Share-extension and App Intent commands still route to webui
+sessions.
 The Sessions/Bots switch returns to Sessions for existing external entry points.
 
 The implementation issue links the installed contract evidence, signed-build and
 test results, and remaining manual gates. Physical-phone transport, native
 accessibility and integrated live behavior must be validated before declaring
 the MVP complete. Simulator or isolated fixtures are not physical-phone evidence.
+
+## Bot Live Activity
+
+A working bot shows on the Lock Screen and Dynamic Island through the same
+`AgentLiveActivityManager` and widget as a webui run; there is no second manager
+(#489). `BotConversation.liveActivitySnapshot` projects the conversation into a
+pure value at its state choke points, and the shared `BotLiveActivityFeed` diffs
+those values into manager calls.
+
+- **Identity.** `AgentRunActivityBot.key` is `bot:<connection UUID>:<Profile>` and
+  stands in for the session id; the stream id adds the host's turn start. Equal
+  Profile names on two connections never reuse an activity, a reconnect inside a
+  turn re-adopts it, and the next turn gets a new one. The tap target is the #554
+  bot route, so a tap validates the stored connection like any other bot link.
+- **Freshness.** Updates flow only while that bot's chat is open and its socket is
+  connected. The chat suspends with the scene, so a locked phone shows the stale
+  state ("Not connected", "Open to reconnect") until the chat is active again and
+  reconciles. Background freshness is push work (#560) and is not claimed here.
+- **Ownership.** Before every stale or end call the feed checks
+  `drivenSessionID`, so an activity a webui run or another bot took over is never
+  touched. A bot activity left by a previous process is removed on cold launch:
+  learning its outcome would mean resuming the chat, which is never done to inspect.
+- **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
+  appears only behind the existing response-excerpt setting.
+- **Avatar.** The app renders the bot's photo or drawn face to one PNG under
+  `LiveActivityAvatars/` in the app group, named by connection UUID, and the
+  widget reads it; that is why the widget target carries the app-group
+  entitlement. A missing file falls back to the status dot.
+
+Rooms have no Live Activity.
 
 ## Bot mentions
 

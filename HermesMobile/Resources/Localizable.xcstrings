@@ -1,6 +1,436 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld workers" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld عمليات عاملة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld Worker"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld workers"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld workers"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld תהליכי עבודה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld worker"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ワーカー %lld 件"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "워커 %lld개"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld workers"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld procesów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld workers"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld воркеров"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld worker"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld ورکرز"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld 個工作程序"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld 个工作进程"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld 個工作程序"
+          }
+        }
+      }
+    },
+    "Not connected" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "غير متصل"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nicht verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sin conexión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Non connecté"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לא מחובר"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Non connesso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "未接続"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "연결되지 않음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Niet verbonden"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Brak połączenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Não conectado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Нет подключения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bağlı değil"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منسلک نہیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "未連線"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "未连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "未連線"
+          }
+        }
+      }
+    },
+    "Open to reconnect" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "افتح لإعادة الاتصال"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zum Verbinden öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Abre para reconectar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ouvrir pour reconnecter"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "פתח כדי להתחבר מחדש"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Apri per riconnettere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "開いて再接続"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "열어서 다시 연결"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Open om te verbinden"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Otwórz, aby połączyć"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Abra para reconectar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Откройте для подключения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bağlanmak için aç"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "دوبارہ منسلک ہونے کے لیے کھولیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "開啟以重新連線"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "打开以重新连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "開啟以重新連線"
+          }
+        }
+      }
+    },
+    "Plan %lld of %lld" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الخطة %1$lld من %2$lld"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plan %1$lld von %2$lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Plan %1$lld of %2$lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plan %1$lld de %2$lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plan %1$lld sur %2$lld"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "תוכנית %1$lld מתוך %2$lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Piano %1$lld di %2$lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "プラン %1$lld/%2$lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "계획 %1$lld/%2$lld"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plan %1$lld van %2$lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plan %1$lld z %2$lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plano %1$lld de %2$lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "План %1$lld из %2$lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plan %1$lld / %2$lld"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منصوبہ %1$lld از %2$lld"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "計劃 %1$lld/%2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "计划 %1$lld/%2$lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "計畫 %1$lld/%2$lld"
+          }
+        }
+      }
+    },
     "Set up push" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Push einrichten"}},"es":{"stringUnit":{"state":"needs_review","value":"Configurar push"}},"fr":{"stringUnit":{"state":"needs_review","value":"Configurer le push"}},"it":{"stringUnit":{"state":"needs_review","value":"Configura il push"}},"pl":{"stringUnit":{"state":"needs_review","value":"Skonfiguruj push"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Configurar push"}},"nl":{"stringUnit":{"state":"needs_review","value":"Push instellen"}},"tr":{"stringUnit":{"state":"needs_review","value":"Push’u kur"}},"ru":{"stringUnit":{"state":"needs_review","value":"Настроить push"}},"ja":{"stringUnit":{"state":"needs_review","value":"プッシュを設定"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"设置推送"}},"ko":{"stringUnit":{"state":"needs_review","value":"푸시 설정"}},"ar":{"stringUnit":{"state":"needs_review","value":"إعداد الإشعارات الفورية"}},"he":{"stringUnit":{"state":"needs_review","value":"הגדרת Push"}},"ur":{"stringUnit":{"state":"needs_review","value":"پش سیٹ اپ کریں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"設定推播"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"設定推播"}}}},
     "Set this Hermes host up for push?" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Diesen Hermes-Host für Push einrichten?"}},"es":{"stringUnit":{"state":"needs_review","value":"¿Configurar este host de Hermes para push?"}},"fr":{"stringUnit":{"state":"needs_review","value":"Configurer cet hôte Hermes pour le push ?"}},"it":{"stringUnit":{"state":"needs_review","value":"Configurare questo host Hermes per il push?"}},"pl":{"stringUnit":{"state":"needs_review","value":"Skonfigurować tego hosta Hermes do push?"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Configurar este host do Hermes para push?"}},"nl":{"stringUnit":{"state":"needs_review","value":"Deze Hermes-host instellen voor push?"}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu Hermes sunucusu push için kurulsun mu?"}},"ru":{"stringUnit":{"state":"needs_review","value":"Настроить этот хост Hermes для push?"}},"ja":{"stringUnit":{"state":"needs_review","value":"この Hermes ホストをプッシュ用に設定しますか？"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"为此 Hermes 主机设置推送？"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 Hermes 호스트를 푸시용으로 설정할까요?"}},"ar":{"stringUnit":{"state":"needs_review","value":"إعداد مضيف Hermes هذا للإشعارات الفورية؟"}},"he":{"stringUnit":{"state":"needs_review","value":"להגדיר את מארח Hermes הזה ל‑Push?"}},"ur":{"stringUnit":{"state":"needs_review","value":"اس Hermes ہوسٹ کو پش کے لیے سیٹ اپ کریں؟"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"為此 Hermes 主機設定推播？"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"為此 Hermes 主機設定推播？"}}}},
     "If this host is not set up yet, Hermex installs the hermex-push plugin on it and restarts its gateway, interrupting work running there. A host that is already set up is only paired. Nothing happens until you tap this." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Ist dieser Host noch nicht eingerichtet, installiert Hermex das hermex-push-Plug-in darauf und startet sein Gateway neu, was dort laufende Arbeit unterbricht. Ein bereits eingerichteter Host wird nur gekoppelt. Nichts passiert, bevor du hier tippst."}},"es":{"stringUnit":{"state":"needs_review","value":"Si este host aún no está configurado, Hermex instala el complemento hermex-push y reinicia su pasarela, interrumpiendo el trabajo en curso. Un host ya configurado solo se empareja. No ocurre nada hasta que toques esto."}},"fr":{"stringUnit":{"state":"needs_review","value":"Si cet hôte n’est pas encore configuré, Hermex y installe le plug-in hermex-push et redémarre sa passerelle, interrompant le travail en cours. Un hôte déjà configuré est simplement jumelé. Rien ne se passe tant que vous n’avez pas touché ce bouton."}},"it":{"stringUnit":{"state":"needs_review","value":"Se questo host non è ancora configurato, Hermex vi installa il plugin hermex-push e ne riavvia il gateway, interrompendo il lavoro in corso. Un host già configurato viene solo associato. Non accade nulla finché non tocchi qui."}},"pl":{"stringUnit":{"state":"needs_review","value":"Jeśli ten host nie jest jeszcze skonfigurowany, Hermex zainstaluje na nim wtyczkę hermex-push i zrestartuje jego bramę, przerywając trwającą tam pracę. Host już skonfigurowany zostanie tylko sparowany. Nic się nie stanie, dopóki tego nie stukniesz."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Se este host ainda não estiver configurado, o Hermex instala o plugin hermex-push nele e reinicia seu gateway, interrompendo o trabalho em andamento. Um host já configurado é apenas pareado. Nada acontece até você tocar aqui."}},"nl":{"stringUnit":{"state":"needs_review","value":"Is deze host nog niet ingesteld, dan installeert Hermex de hermex-push-plug-in erop en start de gateway opnieuw, waarmee werk dat daar loopt wordt onderbroken. Een host die al is ingesteld, wordt alleen gekoppeld. Er gebeurt niets tot je hierop tikt."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu sunucu henüz kurulmadıysa Hermex hermex-push eklentisini yükler ve ağ geçidini yeniden başlatır; orada süren işler kesintiye uğrar. Zaten kurulu bir sunucu yalnızca eşleştirilir. Siz dokunmadan hiçbir şey olmaz."}},"ru":{"stringUnit":{"state":"needs_review","value":"Если этот хост ещё не настроен, Hermex установит на него плагин hermex-push и перезапустит его шлюз, прервав выполняемую там работу. Уже настроенный хост просто связывается. Ничего не произойдёт, пока вы не нажмёте здесь."}},"ja":{"stringUnit":{"state":"needs_review","value":"このホストがまだ設定されていない場合、Hermex は hermex-push プラグインをインストールし、ゲートウェイを再起動します。そこで実行中の作業は中断されます。すでに設定済みのホストはペアリングのみ行われます。ここをタップするまで何も起こりません。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"如果此主机尚未设置，Hermex 会在其上安装 hermex-push 插件并重启网关，中断正在进行的工作。已设置好的主机只会进行配对。在你点按之前不会发生任何事。"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 호스트가 아직 설정되지 않았다면 Hermex가 hermex-push 플러그인을 설치하고 게이트웨이를 재시작하며, 실행 중인 작업이 중단됩니다. 이미 설정된 호스트는 페어링만 합니다. 탭하기 전까지는 아무 일도 일어나지 않습니다."}},"ar":{"stringUnit":{"state":"needs_review","value":"إذا لم يكن هذا المضيف مُعدًّا بعد، فسيثبّت Hermex إضافة hermex-push عليه ويعيد تشغيل بوابته، مما يقاطع العمل الجاري هناك. أما المضيف المُعدّ مسبقًا فيتم إقرانه فقط. لا يحدث شيء حتى تضغط هنا."}},"he":{"stringUnit":{"state":"needs_review","value":"אם המארח הזה עדיין לא מוגדר, ‏Hermex יתקין עליו את התוסף hermex-push ויפעיל מחדש את השער שלו, מה שיקטע עבודה שרצה שם. מארח שכבר מוגדר רק מותאם. שום דבר לא קורה עד שתקיש כאן."}},"ur":{"stringUnit":{"state":"needs_review","value":"اگر یہ ہوسٹ ابھی سیٹ اپ نہیں ہے تو Hermex اس پر hermex-push پلگ ان انسٹال کر کے اس کا گیٹ وے دوبارہ شروع کرے گا، جس سے وہاں چلتا کام رک جائے گا۔ پہلے سے سیٹ اپ ہوسٹ صرف پیئر ہوتا ہے۔ جب تک آپ یہ ٹیپ نہ کریں، کچھ نہیں ہوتا۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"如果此主機尚未設定，Hermex 會在其上安裝 hermex-push 外掛程式並重新啟動閘道，中斷正在執行的工作。已設定好的主機只會進行配對。在你點一下之前不會發生任何事。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"如果此主機尚未設定，Hermex 會在其上安裝 hermex-push 外掛程式並重新啟動閘道，中斷正在執行的工作。已設定好的主機只會進行配對。在你點一下之前不會發生任何事。"}}}},

@@ -17,6 +17,8 @@ enum AgentLiveActivityEvent: Equatable {
     case toolCompleted
     case waitingForApproval
     case waitingForClarification
+    /// A bot's bounded work summary chips (#489). Counts only, never reply text.
+    case workSummary([String])
 }
 
 /// A persisted Live Activity left over from a previous launch that this manager
@@ -36,6 +38,13 @@ protocol AgentLiveActivityManaging: AnyObject {
     /// elapsed timer counts the same span as the in-app "Working for" label
     /// (#406). Callers without a seeded start pass `Date()`.
     func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date)
+    /// Starts or re-adopts a bot's activity for one turn (#489). `turn` names the turn,
+    /// so a reconnect inside it reuses the activity and the next turn gets a new one.
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date)
+    /// The session id, or a bot's `key`, of the unfinished activity this manager is
+    /// driving. The Bot feed checks it before every stale or end call, so it never
+    /// touches an activity a webui run or another bot has since taken over.
+    var drivenSessionID: String? { get }
     func update(_ event: AgentLiveActivityEvent)
     func markStale()
     func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?)
@@ -52,6 +61,9 @@ protocol AgentLiveActivityManaging: AnyObject {
 }
 
 extension AgentLiveActivityManaging {
+    // Defaults so webui-only test spies don't have to care about bots.
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {}
+    var drivenSessionID: String? { nil }
     // Defaults so test spies and non-ActivityKit conformers don't have to care
     // about reconciliation; the real manager overrides both.
     func orphanedActivities() -> [OrphanedLiveActivity] { [] }
@@ -87,6 +99,18 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     }
 
     func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date = Date()) {
+        start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID, startedAt: startedAt, bot: nil)
+    }
+
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
+        start(sessionID: bot.key, sessionTitle: title, streamID: bot.streamID(turn: turn), startedAt: startedAt, bot: bot)
+    }
+
+    var drivenSessionID: String? {
+        currentState?.isFinal == false ? currentSessionID : nil
+    }
+
+    private func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date, bot: AgentRunActivityBot?) {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else { return }
         let normalizedStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
@@ -142,6 +166,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionID: normalizedSessionID,
                 streamID: normalizedStreamID,
                 sessionTitle: state.sessionTitle,
+                bot: bot,
                 state: state,
                 lifecycle: lifecycle
             )
@@ -200,6 +225,11 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             updateCurrentState { state in
                 AgentRunActivityStateReducer.waitingForClarification(state: state)
             }
+        case .workSummary(let chips):
+            let sanitized = AgentRunActivitySanitizer.chips(chips)
+            guard currentState?.chips ?? [] != sanitized else { return }
+            currentState?.chips = sanitized
+            updateCurrentState(immediate: false) { $0 }
         }
     }
 
@@ -222,12 +252,13 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
 
-        let finalState = AgentRunActivityStateReducer.final(
+        var finalState = AgentRunActivityStateReducer.final(
             status: status,
             activity: activityLine,
             state: currentState,
             errorSummary: errorSummary
         )
+        finalState.chips = currentState.chips
         self.currentState = finalState
         let endingActivity = activity
         let endingSessionID = currentSessionID
@@ -256,6 +287,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // caller gates purely on the server's status instead, which is ground
         // truth — a genuinely live run reports active=true and is left alone.
         let result: [OrphanedLiveActivity] = all.compactMap { activity in
+            // A bot's activity has no webui stream to ask about (#489).
+            guard activity.attributes.bot == nil else { return nil }
             guard let streamID = AgentLiveActivityReusePolicy.normalizedStreamID(activity.attributes.streamID) else {
                 return nil
             }
@@ -274,6 +307,16 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             )
         }
         return result
+    }
+
+    /// Cold launch only (#489): a bot activity left by a previous process has no owner
+    /// and no honest way to learn its outcome, since asking would mean resuming the
+    /// bot's chat. It is removed; opening the bot starts a fresh one if work continues.
+    func endBotActivitiesFromPreviousLaunch() async {
+        for persisted in Activity<AgentRunActivityAttributes>.activities
+        where persisted.attributes.bot != nil && persisted.id != activity?.id {
+            await persisted.end(nil, dismissalPolicy: .immediate)
+        }
     }
 
     @discardableResult
@@ -317,6 +360,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         sessionID: String,
         streamID: String?,
         sessionTitle: String,
+        bot: AgentRunActivityBot?,
         state: AgentRunActivityAttributes.ContentState,
         lifecycle: Int
     ) async {
@@ -359,7 +403,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionID: sessionID,
                 sessionTitle: sessionTitle,
                 streamID: streamID,
-                startedAt: state.startedAt
+                startedAt: state.startedAt,
+                bot: bot
             )
             let requestedActivity = try Activity.request(
                 attributes: attributes,
@@ -385,7 +430,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     ) {
         guard let currentState else { return }
 
-        let updatedState = transform(currentState)
+        // The reducers rebuild the state field by field; a bot's chips ride along.
+        var updatedState = transform(currentState)
+        updatedState.chips = currentState.chips
         self.currentState = updatedState
 
         guard activity != nil else { return }

@@ -15,11 +15,12 @@ struct AgentRunLiveActivityWidget: Widget {
             AgentRunLockScreenView(context: context)
                 .activityBackgroundTint(AgentRunLiveActivityTheme.background)
                 .activitySystemActionForegroundColor(AgentRunLiveActivityTheme.primaryText)
-                .widgetURL(HermesDeepLink.sessionURL(sessionID: context.state.sessionID))
+                .widgetURL(AgentRunTapTarget.url(for: context))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    AgentRunIslandBadge(status: context.state.status)
+                    AgentRunIslandBadge(status: context.state.status, bot: context.attributes.bot,
+                                        title: context.state.sessionTitle)
                         .padding(.leading, 18)
                 }
 
@@ -29,7 +30,7 @@ struct AgentRunLiveActivityWidget: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    AgentRunExpandedIslandBottomView(state: context.state)
+                    AgentRunExpandedIslandBottomView(state: context.state, isBot: context.attributes.bot != nil)
                 }
             } compactLeading: {
                 AgentRunIslandCompactMark(status: context.state.status)
@@ -42,20 +43,40 @@ struct AgentRunLiveActivityWidget: Widget {
             } minimal: {
                 AgentRunIslandCompactMark(status: context.state.status)
             }
-            .widgetURL(HermesDeepLink.sessionURL(sessionID: context.state.sessionID))
+            .widgetURL(AgentRunTapTarget.url(for: context))
             .keylineTint(AgentRunStatusStyle.color(for: context.state.status, isStale: context.state.isStale))
         }
     }
 }
 
+/// A bot's activity opens that bot; a session's opens the session (#489).
+private enum AgentRunTapTarget {
+    static func url(for context: ActivityViewContext<AgentRunActivityAttributes>) -> URL? {
+        context.attributes.bot?.destinationURL ?? HermesDeepLink.sessionURL(sessionID: context.state.sessionID)
+    }
+}
+
 private struct AgentRunExpandedIslandBottomView: View {
     let state: AgentRunActivityAttributes.ContentState
+    let isBot: Bool
+
+    /// One line for a bot: what it is doing, then its counts.
+    private var botLine: String {
+        let lead = state.isStale ? String(localized: "Not connected") : state.currentActivity
+        return ([lead] + (state.chips ?? [])).joined(separator: " · ")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             AgentRunProgressRail(status: state.status)
 
-            if !state.responseExcerpt.isEmpty {
+            if isBot, state.responseExcerpt.isEmpty {
+                Text(botLine)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else if !state.responseExcerpt.isEmpty {
                 Text(state.responseExcerpt)
                     .font(.caption2)
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
@@ -83,16 +104,23 @@ private struct AgentRunLockScreenView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             activityProgressRow(progressWidth: 112)
-            transcriptPanel
+            if isBot, context.state.responseExcerpt.isEmpty, !botChips.isEmpty {
+                AgentRunChipRow(chips: botChips, isDimmed: context.state.isStale)
+            } else {
+                transcriptPanel
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
 
+    private var isBot: Bool { context.attributes.bot != nil }
+
     private var activityText: String {
         if context.state.isStale {
-            return "Latest status shown"
+            // A bot's socket closes with the app, so say that rather than imply freshness.
+            return isBot ? String(localized: "Not connected") : "Latest status shown"
         }
 
         if let errorSummary = context.state.errorSummary, !errorSummary.isEmpty {
@@ -102,12 +130,19 @@ private struct AgentRunLockScreenView: View {
         return context.state.currentActivity
     }
 
+    /// The bot's counts; a stale activity adds the way back in.
+    private var botChips: [String] {
+        let chips = context.state.chips ?? []
+        return context.state.isStale ? chips + [String(localized: "Open to reconnect")] : chips
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            AgentRunStatusDot(status: context.state.status, isStale: context.state.isStale, size: 34)
+            AgentRunLeadingMark(bot: context.attributes.bot, status: context.state.status,
+                                isStale: context.state.isStale, size: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Hermex")
+                Text(isBot ? "Hermex · \(String(localized: "Bot"))" : "Hermex")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
                     .textCase(.uppercase)
@@ -174,13 +209,66 @@ private struct AgentRunLockScreenView: View {
     }
 }
 
-private struct AgentRunIslandBadge: View {
-    let status: AgentRunActivityStatus
+/// Bounded count chips for a bot's activity. Static: nothing here repaints on its own.
+private struct AgentRunChipRow: View {
+    let chips: [String]
+    let isDimmed: Bool
 
     var body: some View {
         HStack(spacing: 6) {
-            AgentRunStatusDot(status: status, isStale: false)
-            Text("Hermex")
+            ForEach(chips, id: \.self) { chip in
+                Text(chip)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isDimmed ? AgentRunLiveActivityTheme.secondaryText : AgentRunLiveActivityTheme.primaryText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The bot's avatar with its status as a corner badge, or the plain status dot for a
+/// session and for a bot whose avatar file is missing.
+private struct AgentRunLeadingMark: View {
+    let bot: AgentRunActivityBot?
+    let status: AgentRunActivityStatus
+    let isStale: Bool
+    var size: CGFloat = 22
+
+    private var avatar: UIImage? {
+        AgentRunActivityAvatarFile.url(named: bot?.avatarFile).flatMap { UIImage(contentsOfFile: $0.path) }
+    }
+
+    var body: some View {
+        if let avatar {
+            Image(uiImage: avatar).resizable().scaledToFit()
+                .frame(width: size, height: size)
+                .opacity(isStale ? 0.6 : 1)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle().fill(AgentRunStatusStyle.color(for: status, isStale: isStale))
+                        .frame(width: size * 0.32, height: size * 0.32)
+                        .overlay(Circle().stroke(AgentRunLiveActivityTheme.background, lineWidth: 2))
+                        .offset(x: 2, y: 2)
+                }
+                .accessibilityHidden(true)
+        } else {
+            AgentRunStatusDot(status: status, isStale: isStale, size: size)
+        }
+    }
+}
+
+private struct AgentRunIslandBadge: View {
+    let status: AgentRunActivityStatus
+    let bot: AgentRunActivityBot?
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            AgentRunLeadingMark(bot: bot, status: status, isStale: false)
+            Text(bot == nil ? "Hermex" : title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
                 .lineLimit(1)

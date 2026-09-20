@@ -32,7 +32,8 @@ import SwiftUI
         mentionAvatars = avatars
         self.onConversationUnavailable = onConversationUnavailable
         _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile,
-                                                     roster: roster, conversation: conversation, historyCache: .shared))
+                                                     roster: roster, conversation: conversation, historyCache: .shared,
+                                                     liveActivityFeed: .shared))
     }
 
     init(model: BotConversation, onConversationUnavailable: (() -> Void)? = nil) {
