@@ -140,6 +140,7 @@ private struct BotRoomEventView: View {
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @State private var responseIsVisible = false
 
     var body: some View {
         if event.kind == "message.user" {
@@ -151,9 +152,15 @@ private struct BotRoomEventView: View {
                 BotRoomMemberAvatar(member: event.member(in: room), roster: roster, avatars: avatars, size: 26)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(event.sender(in: room)).font(.caption).foregroundStyle(.secondary)
-                    MarkdownRenderer(content: messageText)
+                    ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
+                        MarkdownRenderer(content: messageText)
+                    }
+                    .onGeometryChange(for: Bool.self) { geometry in
+                        guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+                        return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+                    } action: { responseIsVisible = $0 }
                         .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
-                        .chatMessageContextMenu(actions)
+                        .chatMessageContextMenu(actions, longPress: false)
                 }
                 Spacer(minLength: 20)
             }

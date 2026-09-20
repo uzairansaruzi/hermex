@@ -212,6 +212,42 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         XCTAssertEqual(scroll.contentSize.height, originalHeight, accuracy: 1)
     }
 
+    /// A lazy transcript places rows it has not realized from their measured
+    /// height, so a selection document that measures short strands the scroll.
+    func testLazyTranscriptScrollsToASelectableRowItHasNotRealized() async throws {
+        let rows = (0..<60).map { index in
+            String(repeating: "Lazy row \(index). Text that wraps onto several lines.\n\n", count: 8)
+        }
+        let host = UIHostingController(rootView: ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(rows.indices, id: \.self) { index in
+                        ResponseTextSelection(identity: rows[index]) {
+                            Text(rows[index]).responseSelectableText(rows[index])
+                        }
+                        .id(index)
+                    }
+                }
+                .padding(12)
+            }
+            .task { proxy.scrollTo(rows.count - 1, anchor: .bottom) }
+        })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await renderFrames()
+        await renderFrames()
+
+        let last = try XCTUnwrap(descendants(host.view, of: ResponseSelectionLeafView.self).first { $0.text == rows[rows.count - 1] })
+        let frame = last.convert(last.bounds, to: window)
+        XCTAssertGreaterThan(frame.height, 100, "The row must keep its wrapped height")
+        XCTAssertTrue(window.bounds.intersects(frame), "The scroll must land on the row, not on blank space")
+        XCTAssertLessThanOrEqual(frame.maxY, window.bounds.maxY + 1, "The row's bottom edge must sit at the latest edge")
+    }
+
     private func assertSelectable(message: ChatMessage, in view: UIView) throws {
         let text = try XCTUnwrap(message.content)
         let prefix = String(text.prefix(12))

@@ -12,13 +12,15 @@ import UIKit
 extension View {
     /// Attach to the message content itself, not the full-width row, so the
     /// menu opens only where there is something to act on. An empty list
-    /// leaves the view untouched.
+    /// leaves the view untouched. Pass `longPress: false` on selectable text:
+    /// the menu's long-press outranks text selection, so there the actions
+    /// stay reachable through VoiceOver only and selection supplies Copy.
     @ViewBuilder
-    func chatMessageContextMenu(_ actions: [ChatMessageActionItem]) -> some View {
+    func chatMessageContextMenu(_ actions: [ChatMessageActionItem], longPress: Bool = true) -> some View {
         if actions.isEmpty {
             self
         } else {
-            background(ChatMessageContextMenuHost(actions: actions))
+            background { if longPress { ChatMessageContextMenuHost(actions: actions) } }
                 .accessibilityActions {
                     ForEach(actions.filter(\.isEnabled)) { item in
                         Button(item.title) {

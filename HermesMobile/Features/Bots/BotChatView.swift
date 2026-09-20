@@ -63,7 +63,7 @@ import SwiftUI
                             )
                         }
                         if let reply = model.liveMessages.first(where: { $0.role == "assistant" }) {
-                            BotArtifactMessageView(message: reply, model: model)
+                            BotArtifactMessageView(message: reply, model: model, isLive: true)
                         }
                         if let plan = model.plan {
                             BotPlanRowView(plan: plan).id("bot-plan")
