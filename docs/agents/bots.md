@@ -943,3 +943,69 @@ Foreign-authority rooms hide rename/disband; absent capabilities disable writes.
 The room and profile share state but claim separate view ownership so navigation
 cannot let an old screen close the new screen's socket. Lifecycle helpers belong
 only to the app target; the share extension and Live Activity do not manage rooms.
+
+## Push provisioning
+
+The Hermes connection screen is not behind the Bot Mode gate (#557). Pairing for
+push needs that login, and push serves the server's webui sessions too, so
+`ServerDetailView` links it for every configured server while the Bots inbox
+stays gated. Its copy says "Hermes connection" and why a webui-only user would
+add one.
+
+Turning notifications on is one confirmed action per server, driven by
+`HermexPushProvisioner` over `BotDashboardClient` (the host's REST surface, no
+gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first, and only that
+route's own answers decide what the host needs: 200 means the relay is set and the plugin
+loaded, so it is paired as it stands, with nothing installed and no restart interrupting
+work; 409 means a loaded plugin with nowhere to send, which needs the address alone, since
+the plugin re-reads it; 404 means the plugin is missing, which needs the full sequence.
+Anything else — a timeout, a server error, keys this build cannot read — is reported as it
+is, because reconfiguring on those would replace a self-hosted relay and restart a gateway
+over a failure that had nothing to do with setup. The full sequence runs
+in the order the host needs: `PUT /api/env` sets
+`HERMEX_PUSH_RELAY_URL` at the root so every Profile inherits it, `POST
+/api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
+plugin, `POST /api/gateway/restart` loads it, and `GET
+/api/plugins/hermex-push/pairing` returns `{relay_url, install_key, preview_key,
+platform, payload_version}`. Verified against a live 0.21.3 host on 2026-09-19:
+install takes `{identifier, force, enable, catalog_name, ref}` with no Profile
+parameter, enable and disable are path-only, and only `PUT /api/env` and the
+restart accept one. The install identifier is
+`https://github.com/uzairansaruzi/hermex-push.git/plugin`, sent with `force` true so a
+second run — re-enabling after a disable, or repairing a plugin too old for this build —
+reinstalls instead of refusing. Reinstalling cannot unpair a phone: the plugin keeps its
+key pair in `plugin-data`. The revision is whatever the repository resolves to; pinning a
+`ref` is an open owner decision.
+
+The restart drops the route, so the pairing read retries a missing route, a 409
+from an unread relay address and a refused connection on a fixed schedule before
+the step fails. A failure names its step and leaves nothing half-paired: the keys
+are wiped, and the host hands back the same pair on the next attempt, because the
+plugin keeps them in `plugin-data` rather than its install directory.
+
+The relay address is not a field on the phone. A host that already names its own relay
+keeps it — that is what the probe protects — and a host that has never been set up gets
+`HermexPushPairing.defaultRelayURL`. Self-hosting stays a server-side setting.
+
+A failed step says what the host answered (the status code, a timeout, a rejected
+sign-in) in provisioning's own words; `BotFailure`'s chat copy never reaches this screen.
+`BotDashboardClient` waits 120 seconds per request, because installing clones a
+repository on the host and a restart takes the gateway down and back up.
+
+`HermexPushPairing` lives in server-scoped Keychain (`hermex_push_pairing`),
+never `UserDefaults`, and decodes strictly: a 64-hex install key, a preview key
+that is base64 of 32 bytes, and an https relay (plain http only to loopback).
+Strict here rather than tolerant on purpose — a key the relay would refuse would
+pair a phone that could never receive a push. `deviceToken` stays nil until the
+entitlement lands (#558); the relay registration step is skipped, not failed.
+
+A confirmed run is never cancelled when the screen closes — the host has already been
+asked to change — so it can outlive a removal. It commits nothing without re-reading the
+saved connection first: if the connection or its server is gone, the keys are not written
+and a device registered seconds earlier is dropped again, so teardown stays final.
+
+Every way out removes this phone at the relay and wipes the keys:
+`HermexPushProvisioner.disable()` also disables the plugin on the host and keeps
+the keys when a step fails so the user can retry, while
+`HermexPushPairingStore.unpair` is the best-effort teardown that connection
+removal, a changed account identity, sign-out and server removal all run.

@@ -399,7 +399,7 @@ struct SettingsView: View {
                         isOn: $isBotModeEnabled
                     )
 
-                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Sessions/Bots switch to the session list and a Bot connection row to each server."))
+                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Sessions/Bots switch to the session list. Each server’s Hermes connection is available with it off."))
                 }
 
                 SettingsCard(title: String(localized: "Sessions")) {
@@ -2160,7 +2160,6 @@ private struct ServerDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
     @State private var displayName: String
     @State private var initials: String
     @State private var colorHex: String
@@ -2192,9 +2191,19 @@ private struct ServerDetailView: View {
                     }
                 }
 
-                if isBotModeEnabled, let server = URL(string: account.urlString) {
-                    NavigationLink("Bot connection") { BotConnectionView(server: server) }
-                        .frame(minHeight: 44)
+                // Not behind the Bot Mode preview gate (#557): this login is what push
+                // pairing needs, and push serves this server's webui sessions too.
+                if let server = URL(string: account.urlString) {
+                    SettingsCard(title: String(localized: "Hermes connection")) {
+                        SettingsFootnote(String(localized: "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots."))
+
+                        NavigationLink {
+                            BotConnectionView(server: server)
+                        } label: {
+                            SettingsAccessoryRow(title: String(localized: "Hermes connection"), systemImage: "bell.badge")
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 SettingsCard(title: String(localized: "Identity")) {

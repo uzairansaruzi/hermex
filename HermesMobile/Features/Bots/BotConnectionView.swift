@@ -14,6 +14,7 @@ import SwiftUI
     @State private var client: BotClient?
     @State private var connectTask: Task<Void, Never>?
     private let store = BotConnectionStore()
+    private let pushStore = HermexPushPairingStore()
 
     var body: some View {
         Form {
@@ -25,8 +26,8 @@ import SwiftUI
                 TextField("Username", text: $username).textContentType(.username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField("Password", text: $password).textContentType(.password)
-            } header: { Text("Bot connection") } footer: {
-                Text("This connection belongs to the selected Hermex server. Use the address and password of your existing Hermes backend on LAN or Tailscale.")
+            } header: { Text("Hermes connection") } footer: {
+                Text("This connection belongs to the selected Hermex server. Use the address and password of your existing Hermes backend on LAN, a tailnet or a tunnel. Sessions work without it — add it to turn on notifications for this server, and to use Bots.")
             }
             Section {
                 if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
@@ -37,6 +38,7 @@ import SwiftUI
             } footer: {
                 if let note = saved?.untestedVersionNote { Text(note) }
             }
+            if let saved { HermexPushSectionView(server: server, connection: saved).id(saved.id) }
             Section("Setup in Hermes Desktop") {
                 Text("Keep Hermes Desktop running. In Settings → Advanced, enable Keep computer awake. The display may dim.")
                 Text("In Settings → Plugins, enable Bots for the intended Profile. Applies to selects the Profile configuration being edited.")
@@ -46,11 +48,11 @@ import SwiftUI
             }
             if saved != nil {
                 Section {
-                    Button("Remove bot connection…", role: .destructive) { confirmingRemoval = true }
+                    Button("Remove Hermes connection…", role: .destructive) { confirmingRemoval = true }
                 }
             }
         }
-        .navigationTitle("Bot connection")
+        .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .task {
@@ -64,9 +66,10 @@ import SwiftUI
         }
         .onDisappear { connectTask?.cancel(); client?.close(); client = nil }
         .confirmationDialog("Remove this connection from Hermex?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
-            Button("Remove bot connection", role: .destructive) {
+            Button("Remove Hermes connection", role: .destructive) {
                 Task {
                     do {
+                        await pushStore.unpair(server: server)
                         try store.remove(server: server)
                         if let saved {
                             try? await BotHistoryCache.shared.remove(server: server, connectionID: saved.id)
@@ -79,7 +82,7 @@ import SwiftUI
                 }
             }
         } message: {
-            Text("Saved sign-in details and this connection’s drafts will be deleted. Bots and their work remain on the host.")
+            Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host.")
         }
     }
 
@@ -104,6 +107,8 @@ import SwiftUI
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
             try store.save(candidate, server: server)
             if let saved, saved.id != candidate.id {
+                // A different host or account is a different pairing: its keys never carry over.
+                await pushStore.unpair(server: server)
                 try? await BotHistoryCache.shared.remove(server: server, connectionID: saved.id)
                 await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
                 BotAvatarStore.shared.removeAll(connectionID: saved.id)
