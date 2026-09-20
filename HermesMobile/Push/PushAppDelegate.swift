@@ -44,8 +44,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         let userInfo = response.notification.request.content.userInfo
         // The system does not promise a thread here, so hop rather than assume.
         Task { @MainActor in
+            let activeServer = ServerRegistry.shared.activeServerID.flatMap(URL.init(string:))
             if let pairings = try? KeychainPushPairingStore()?.allPairings(),
-               let destination = PushNotificationRouter.botDestination(userInfo: userInfo, pairings: pairings) {
+               let destination = PushNotificationRouter.botDestination(
+                   userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
                 AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: destination))
             }
             completionHandler()

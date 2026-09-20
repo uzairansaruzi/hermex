@@ -10,11 +10,16 @@ import Foundation
     /// simply opens. The pairing picks the server, so a tap can never land on a bot
     /// with the same Profile name under another server.
     ///
+    /// One host reached through two configured servers (LAN and a tunnel, say) hands
+    /// both the same install key. The tap then stays on `activeServer` when it is one
+    /// of them, and otherwise takes the first by URL that has a Bot connection.
+    ///
     /// The destination carries no conversation: the payload's `session_id` is the
     /// run's live session, not the bot's durable root, and a bot has one chat.
     static func botDestination(
         userInfo: [AnyHashable: Any],
         pairings: [URL: PushPairing],
+        activeServer: URL? = nil,
         botConnectionID: @MainActor (URL) -> UUID? = { @MainActor url in
             (try? BotConnectionStore().load(server: url))?.id
         }
@@ -22,13 +27,17 @@ import Foundation
         let payload = PushPayload(userInfo: userInfo)
         guard payload.source == "bot",
               let profile = payload.profile, !profile.isEmpty,
-              let installHash = payload.installHash,
-              let server = pairings.first(where: { _, pairing in
-                  PushPreviewKeys(installKey: pairing.installKey, previewKey: pairing.previewKey)
-                      .installHash == installHash
-              })?.key,
-              let connectionID = botConnectionID(server)
+              let installHash = payload.installHash
         else { return nil }
-        return BotDestination(server: server, connectionID: connectionID, profile: profile)
+        let servers = pairings
+            .filter { PushPreviewKeys(installKey: $0.value.installKey, previewKey: $0.value.previewKey).installHash == installHash }
+            .keys
+            .sorted { ($0 == activeServer ? 0 : 1, $0.absoluteString) < ($1 == activeServer ? 0 : 1, $1.absoluteString) }
+        for server in servers {
+            if let connectionID = botConnectionID(server) {
+                return BotDestination(server: server, connectionID: connectionID, profile: profile)
+            }
+        }
+        return nil
     }
 }

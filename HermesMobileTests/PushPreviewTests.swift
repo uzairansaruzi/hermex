@@ -77,6 +77,24 @@ import XCTest
         )
     }
 
+    func testOneHostUnderTwoServersStaysOnTheActiveOne() {
+        let lan = URL(string: "http://192.168.1.2:9120")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        let content = banner(sealed: sealed)
+        PushPreview.rewrite(content, candidates: [keys])
+        func route(active: URL?, connected: Set<URL>) -> URL? {
+            PushNotificationRouter.botDestination(
+                userInfo: content.userInfo, pairings: [server: pairing, lan: pairing], activeServer: active
+            ) { connected.contains($0) ? UUID() : nil }?.server
+        }
+
+        XCTAssertEqual(route(active: server, connected: [server, lan]), server)
+        XCTAssertEqual(route(active: lan, connected: [server, lan]), lan)
+        // The active alias has no Bot connection: the other one still routes.
+        XCTAssertEqual(route(active: lan, connected: [server]), server)
+        XCTAssertEqual(route(active: nil, connected: [server, lan]), lan)
+    }
+
     func testTapWithoutABotToOpenOnlyOpensTheApp() {
         let pairings = [server: PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)]
         let opened = banner(sealed: sealed)
