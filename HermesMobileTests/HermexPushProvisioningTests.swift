@@ -113,12 +113,59 @@ import XCTest
             return (200, .object(["relay_url": .string(HermexPushPairing.defaultRelayURL.absoluteString),
                                   "install_key": .string("abc"), "preview_key": .string(PushHTTPFixture.previewKey)]))
         }
+        PushHTTPFixture.isSetUp = true
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
 
         await provisioner.enable()
 
         XCTAssertEqual(provisioner.failure?.message, HermexPushFailure.unusablePairing.errorDescription)
         XCTAssertNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") },
+                       "Keys this build cannot read are reported, never repaired by a restart")
+    }
+
+    func testAHostThatOnlyLacksARelayAddressIsNotReinstalledOrRestarted() async throws {
+        let keychain = InMemoryKeychainStore()
+        var relaySet = false
+        PushHTTPFixture.isSetUp = true
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/env": relaySet = true; return nil
+            // The plugin is loaded but has nowhere to send to until the address is set.
+            case "/api/plugins/hermex-push/pairing": return relaySet ? nil : (409, .null)
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
+
+        await provisioner.enable()
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertNotNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
+        XCTAssertTrue(PushHTTPFixture.calls.contains("PUT https://a.example.com/api/env"))
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("agent-plugins") },
+                       "A loaded plugin is not reinstalled to give it an address")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") })
+    }
+
+    func testAHostErrorWhileCheckingIsReportedInsteadOfReconfiguringTheHost() async throws {
+        let keychain = InMemoryKeychainStore()
+        PushHTTPFixture.isSetUp = true
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? (500, .null) : nil
+        }
+        let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
+
+        await provisioner.enable()
+
+        XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.pair.title)
+        XCTAssertTrue(try XCTUnwrap(provisioner.failure?.message).contains("500"))
+        XCTAssertNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/env") },
+                       "A host error must not replace a self-hosted relay address")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("agent-plugins") })
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") },
+                       "A host error must not interrupt work running there")
     }
 
     func testAHostThatIsAlreadySetUpPairsWithoutInstallingOrRestartingIt() async throws {

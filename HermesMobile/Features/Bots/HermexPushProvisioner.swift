@@ -98,15 +98,25 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
         let client = dashboard(connection)
         do {
             try await client.signIn()
+            let state: HostState
+            do { state = try await hostState(client) } catch { return fail(Step.pair.title, error) }
             var paired: HermexPushPairing
-            if let configured = try? await client.pairing() {
+            switch state {
+            case .paired(let configured):
                 completed.formUnion([.relayURL, .install, .restart])
                 step = .pair
                 phase = .enabling(step)
                 paired = configured
-            } else {
-                // The host's own relay address wins when it has one; this only fills in
-                // the default for a host that has never been set up.
+            case .relayUnset:
+                // The plugin is there and loaded; it only lacks somewhere to send to. The
+                // plugin re-reads the value, so this needs no reinstall and no restart.
+                try await client.setEnvironmentValue(HermexPushPairing.relayURLEnvironmentKey,
+                                                     HermexPushPairing.defaultRelayURL.absoluteString)
+                completed.formUnion([.relayURL, .install, .restart])
+                step = .pair
+                phase = .enabling(step)
+                paired = try await pairAfterRestart(client)
+            case .notInstalled:
                 try await client.setEnvironmentValue(HermexPushPairing.relayURLEnvironmentKey,
                                                      HermexPushPairing.defaultRelayURL.absoluteString)
                 step = advance(from: step, to: .install)
@@ -157,6 +167,23 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
             pairing = nil
             phase = .idle
         } catch { fail(step, error) }
+    }
+
+    /// What the pairing route says this host still needs. Only an absent route or an
+    /// unset relay mean "not set up yet": a timeout, a server error, or keys this build
+    /// cannot read are thrown on instead, because reinstalling and restarting on those
+    /// would replace a self-hosted relay and interrupt work over a failure that had
+    /// nothing to do with setup.
+    private enum HostState { case paired(HermexPushPairing), relayUnset, notInstalled }
+
+    private func hostState(_ client: BotDashboardClient) async throws -> HostState {
+        do { return .paired(try await client.pairing()) } catch BotFailure.rejected(let status) {
+            switch status {
+            case 404: return .notInstalled
+            case 409: return .relayUnset
+            default: throw BotFailure.rejected(status)
+            }
+        }
     }
 
     /// Finishes a run whose connection was removed under it: nothing is stored, and a

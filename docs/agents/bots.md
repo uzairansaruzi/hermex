@@ -954,9 +954,14 @@ add one.
 
 Turning notifications on is one confirmed action per server, driven by
 `HermexPushProvisioner` over `BotDashboardClient` (the host's REST surface, no
-gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first: a host that
-answers already has its relay set and the plugin loaded, so it is paired as it stands,
-with nothing installed and no restart interrupting work. Otherwise the full sequence runs
+gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first, and only that
+route's own answers decide what the host needs: 200 means the relay is set and the plugin
+loaded, so it is paired as it stands, with nothing installed and no restart interrupting
+work; 409 means a loaded plugin with nowhere to send, which needs the address alone, since
+the plugin re-reads it; 404 means the plugin is missing, which needs the full sequence.
+Anything else — a timeout, a server error, keys this build cannot read — is reported as it
+is, because reconfiguring on those would replace a self-hosted relay and restart a gateway
+over a failure that had nothing to do with setup. The full sequence runs
 in the order the host needs: `PUT /api/env` sets
 `HERMEX_PUSH_RELAY_URL` at the root so every Profile inherits it, `POST
 /api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
