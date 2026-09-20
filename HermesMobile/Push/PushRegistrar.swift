@@ -66,6 +66,10 @@ enum PushRegistrarError: Error, Equatable {
     private let identity: PushBuildIdentity?
     private let tokenTimeout: Duration
 
+    lazy var activities = PushActivityRegistrar(relay: PushRelayClient(), pairing: { [weak self] server in
+        self?.pairing(for: server)
+    })
+
     private var currentToken: String?
     private var pendingLaunchRefresh = false
     private var tokenWaiters: [CheckedContinuation<String, any Error>] = []
@@ -135,6 +139,7 @@ enum PushRegistrarError: Error, Equatable {
             try? await relay.deleteDevice(token: token, pairing: pairing)
         }
         try? store.remove(for: server)
+        await activities.forget(server: server)
         if ((try? store.allPairings()) ?? [:]).isEmpty {
             remoteNotifications.unregisterForRemoteNotifications()
             currentToken = nil
@@ -152,6 +157,7 @@ enum PushRegistrarError: Error, Equatable {
             try await relay.deleteDevice(token: token, pairing: pairing)
         }
         try store.remove(for: server)
+        await activities.forget(server: server)
 
         if ((try? store.allPairings()) ?? [:]).isEmpty {
             remoteNotifications.unregisterForRemoteNotifications()
@@ -219,10 +225,13 @@ enum PushRegistrarError: Error, Equatable {
                 if let previous = pairing.registeredToken, previous != token {
                     try? await relay.deleteDevice(token: previous, pairing: pairing)
                 }
-                guard pairing.registeredToken != token, isStillPaired(pairing, for: server) else { continue }
-                var updated = pairing
-                updated.registeredToken = token
-                try store.save(updated, for: server)
+                guard isStillPaired(pairing, for: server) else { continue }
+                if pairing.registeredToken != token {
+                    var updated = pairing
+                    updated.registeredToken = token
+                    try store.save(updated, for: server)
+                }
+                await activities.refresh(republish: true)
             } catch {
                 Self.logger.error("Push device registration failed: \(String(describing: error), privacy: .public)")
             }
@@ -262,3 +271,108 @@ enum PushRegistrarError: Error, Equatable {
 
 /// `PushRegistrar` already is this seam; the protocol only exists so tests can stand in.
 extension PushRegistrar: PushPairingEnabling {}
+
+/// Serializes activity PUT/DELETE calls, including retirement during an in-flight
+/// PUT. An old owner's cleanup completes before a new owner can register the same
+/// session. No task reads a mutable "active server" after suspension.
+@MainActor final class PushActivityRegistrar {
+    private struct Desired: Equatable {
+        let server: URL
+        let sessionID: String
+        let token: String
+    }
+    private struct Registered {
+        let desired: Desired
+        let pairing: PushPairing
+        let deviceToken: String
+        var confirmed = true
+    }
+    private let relay: any PushActivityRelaying
+    private let pairing: (URL) -> PushPairing?
+    private var desired: [String: Desired] = [:]
+    private var registered: [String: Registered] = [:]
+    private var tail: Task<Void, Never>?
+
+    init(relay: any PushActivityRelaying, pairing: @escaping (URL) -> PushPairing?) {
+        self.relay = relay
+        self.pairing = pairing
+    }
+
+    func isRegistered(_ owner: String) -> Bool {
+        guard let record = registered[owner], record.confirmed, desired[owner] == record.desired else { return false }
+        return pairing(record.desired.server) == record.pairing
+    }
+
+    func register(owner: String, server: URL, sessionID: String, token: String) async {
+        desired[owner] = Desired(server: server, sessionID: sessionID, token: token)
+        await enqueue(owner).value
+    }
+
+    func retire(owner: String, server: URL? = nil, sessionID: String? = nil) async {
+        desired[owner] = nil
+        // A persisted activity may end before this process ever saw its token.
+        if registered[owner] == nil, let server, let sessionID,
+           let keys = pairing(server), let device = keys.registeredToken,
+           !registered.values.contains(where: { $0.desired.server == server && $0.desired.sessionID == sessionID }) {
+            registered[owner] = Registered(desired: Desired(server: server, sessionID: sessionID, token: ""),
+                                           pairing: keys, deviceToken: device)
+        }
+        await enqueue(owner).value
+    }
+
+    func forget(server: URL) async {
+        let owners = Set(desired.filter { $0.value.server == server }.map(\.key))
+            .union(registered.filter { $0.value.desired.server == server }.map(\.key))
+        for owner in owners { desired[owner] = nil }
+        for owner in owners { await enqueue(owner).value }
+    }
+
+    func refresh(republish: Bool = false) async {
+        for owner in Set(desired.keys).union(registered.keys) { await enqueue(owner, republish: republish).value }
+    }
+
+    private func enqueue(_ owner: String, republish: Bool = false) -> Task<Void, Never> {
+        let previous = tail
+        let task = Task { [self] in
+            await previous?.value
+            await reconcile(owner, republish: republish)
+        }
+        tail = task
+        return task
+    }
+
+    private func reconcile(_ owner: String, republish: Bool) async {
+        // Failed retirement must block a replacement on that route; otherwise a
+        // retry of the old DELETE could revoke the replacement's token.
+        if let next = desired[owner] {
+            for (other, old) in registered where other != owner && desired[other] == nil
+                && old.desired.server == next.server && old.desired.sessionID == next.sessionID {
+                do {
+                    try await relay.deleteActivity(sessionID: old.desired.sessionID, deviceToken: old.deviceToken, pairing: old.pairing)
+                    registered[other] = nil
+                } catch { return }
+            }
+        }
+        if let old = registered[owner] {
+            if desired[owner] == old.desired, pairing(old.desired.server) == old.pairing {
+                guard republish || !old.confirmed else { return }
+                registered[owner]?.confirmed = false
+            } else {
+                do {
+                    try await relay.deleteActivity(sessionID: old.desired.sessionID, deviceToken: old.deviceToken, pairing: old.pairing)
+                    registered[owner] = nil
+                } catch { return } // Keep the receipt so a refresh can retry cleanup.
+            }
+        }
+        guard let next = desired[owner], let keys = pairing(next.server), let device = keys.registeredToken else { return }
+        do {
+            try await relay.registerActivity(token: next.token, sessionID: next.sessionID, deviceToken: device, pairing: keys)
+            registered[owner] = Registered(desired: next, pairing: keys, deviceToken: device)
+            if desired[owner] != next || pairing(next.server) != keys {
+                // No later queued PUT can run until this stale registration is removed.
+                try await relay.deleteActivity(sessionID: next.sessionID, deviceToken: device, pairing: keys)
+                registered[owner] = nil
+            }
+        } catch { /* No confirmed registration means suspend remains honestly stale. */ }
+    }
+}

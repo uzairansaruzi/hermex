@@ -591,20 +591,35 @@ those values into manager calls.
   Profile names on two connections never reuse an activity, a reconnect inside a
   turn re-adopts it, and the next turn gets a new one. The tap target is the #554
   bot route, so a tap validates the stored connection like any other bot link.
-- **Freshness.** Updates flow only while that bot's chat is open and its socket is
-  connected. The chat suspends with the scene, so a locked phone shows the stale
-  state ("Not connected", "Open to reconnect") until the chat is active again and
-  reconciles. Background freshness is push work (#560) and is not claimed here.
+- **Freshness.** Bot activities request ActivityKit update tokens. For a paired
+  server, `PushActivityRegistrar` forwards each token to the relay under the stored
+  agent session ID (`session_key`, the resolved compression tip) and registered
+  device token. The gateway's short-lived RPC `session_id` and the canonical chat
+  root are different IDs; plugin progress hooks use neither of them. After registration succeeds,
+  suspension leaves freshness to push; the relay sets a fifteen-minute stale date
+  and the widget uses ActivityKit's stale flag. Unpaired or failed registrations
+  still show "Not connected" / "Open to reconnect" on suspend. Webui activities
+  remain local-only (`pushType: nil`). There is no push-to-start.
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
-  touched. A bot activity left by a previous process is removed on cold launch:
-  learning its outcome would mean resuming the chat, which is never done to inspect.
+  touched. Token rotation and retirement are serialized: an in-flight registration
+  must be cleaned up before its replacement can register the same session. Ending,
+  dismissal, and server unpairing retire registrations. Cold launch observes paired
+  activities without resuming their chats; legacy/unpaired activities are removed.
+  `BotLiveActivityFeed.decision` is the pure start/update/end/wait decision.
 - **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
   appears only behind the existing response-excerpt setting.
 - **Avatar.** The app renders the bot's photo or drawn face to one PNG under
   `LiveActivityAvatars/` in the app group, named by connection UUID, and the
   widget reads it; that is why the widget target carries the app-group
   entitlement. A missing file falls back to the status dot.
+
+The shared content state accepts both existing local fields and the relay's compact
+`v`, `status`, `tool`, `tool_calls`, `started_at` shape. The wire status remains a
+string; unknown statuses or newer versions render a generic existing status.
+Identity/title come from immutable activity attributes when a push omits them.
+The app and widget share this decoder; the share and notification extensions do
+not consume it. The relay contract lives in `hermex-push/relay/README.md`.
 
 Rooms have no Live Activity.
 

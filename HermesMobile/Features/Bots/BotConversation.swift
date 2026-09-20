@@ -174,7 +174,7 @@ import Observation
 
         return BotLiveActivitySnapshot(
             destination: BotDestination(server: server, connectionID: connection.id, profile: profile.id, conversation: root),
-            title: BotProfileAppearance(profile: profile).title, phase: phase, work: work, chips: chips)
+            title: BotProfileAppearance(profile: profile).title, phase: phase, work: work, chips: chips, agentSessionID: tip)
     }
 
     private func syncLiveActivity() {

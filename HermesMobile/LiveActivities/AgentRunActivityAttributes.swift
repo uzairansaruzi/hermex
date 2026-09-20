@@ -5,7 +5,30 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var sessionID: String
         var sessionTitle: String
-        var status: AgentRunActivityStatus
+        var schemaVersion = 1
+        // The wire value stays open-ended; only presentation maps known statuses.
+        var rawStatus: String
+        var tool: String?
+        var toolCalls: Int?
+        var status: AgentRunActivityStatus {
+            get {
+                guard schemaVersion <= 1 else { return .starting }
+                switch rawStatus {
+                case "running":
+                    guard let tool else { return .thinking }
+                    switch AgentRunActivitySanitizer.toolKind(name: tool) {
+                    case .command: return .runningCommand
+                    case .search: return .searchingFiles
+                    case .files: return .readingFiles
+                    case .generic: return .usingTool
+                    }
+                case "waiting": return .waiting
+                case "done": return .complete
+                default: return AgentRunActivityStatus(rawValue: rawStatus) ?? .starting
+                }
+            }
+            set { rawStatus = newValue.rawValue }
+        }
         var currentActivity: String
         var responseExcerpt: String
         var startedAt: Date
@@ -32,7 +55,7 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         ) {
             self.sessionID = sessionID
             self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
-            self.status = status
+            self.rawStatus = status.rawValue
             self.currentActivity = AgentRunActivitySanitizer.activityLine(currentActivity)
             self.responseExcerpt = AgentRunActivitySanitizer.responseExcerpt(responseExcerpt)
             self.startedAt = startedAt
@@ -41,6 +64,80 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             self.isFinal = isFinal
             self.errorSummary = errorSummary.map(AgentRunActivitySanitizer.activityLine)
         }
+
+        enum CodingKeys: String, CodingKey {
+            case schemaVersion = "v", rawStatus = "status", tool, toolCalls = "tool_calls"
+            case pushStartedAt = "started_at"
+            case sessionID, sessionTitle, currentActivity, responseExcerpt, startedAt, updatedAt
+            case isStale, isFinal, errorSummary, chips
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+            rawStatus = try c.decodeIfPresent(String.self, forKey: .rawStatus) ?? "unknown"
+            tool = try c.decodeIfPresent(String.self, forKey: .tool)
+            toolCalls = try c.decodeIfPresent(Int.self, forKey: .toolCalls)
+            sessionID = try c.decodeIfPresent(String.self, forKey: .sessionID) ?? ""
+            sessionTitle = try c.decodeIfPresent(String.self, forKey: .sessionTitle) ?? ""
+            let unixStart = try c.decodeIfPresent(Double.self, forKey: .pushStartedAt)
+            startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
+                ?? unixStart.map(Date.init(timeIntervalSince1970:)) ?? .distantPast
+            // The compact relay state has no end timestamp. Freeze the final timer
+            // at receipt time rather than showing a zero-length completed run.
+            updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+            isStale = try c.decodeIfPresent(Bool.self, forKey: .isStale) ?? false
+            isFinal = try c.decodeIfPresent(Bool.self, forKey: .isFinal)
+                ?? (schemaVersion <= 1 && ["done", "failed"].contains(rawStatus))
+            responseExcerpt = try c.decodeIfPresent(String.self, forKey: .responseExcerpt) ?? ""
+            errorSummary = try c.decodeIfPresent(String.self, forKey: .errorSummary)
+            chips = try c.decodeIfPresent([String].self, forKey: .chips)
+            currentActivity = try c.decodeIfPresent(String.self, forKey: .currentActivity) ?? ""
+            if currentActivity.isEmpty {
+                if schemaVersion <= 1, rawStatus == "running", let tool,
+                   case .generic(let label) = AgentRunActivitySanitizer.toolKind(name: tool) {
+                    currentActivity = String(localized: "Using \(label)")
+                } else { currentActivity = status.title }
+            }
+            if schemaVersion > 1 {
+                currentActivity = AgentRunActivityStatus.starting.title
+                responseExcerpt = ""
+                chips = nil
+                isFinal = false
+            } else if let toolCalls, chips == nil, toolCalls > 0 {
+                chips = [String(localized: "\(toolCalls) tools")]
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(schemaVersion, forKey: .schemaVersion)
+            try c.encode(rawStatus, forKey: .rawStatus)
+            try c.encodeIfPresent(tool, forKey: .tool)
+            try c.encodeIfPresent(toolCalls, forKey: .toolCalls)
+            try c.encode(sessionID, forKey: .sessionID)
+            try c.encode(sessionTitle, forKey: .sessionTitle)
+            try c.encode(currentActivity, forKey: .currentActivity)
+            try c.encode(responseExcerpt, forKey: .responseExcerpt)
+            try c.encode(startedAt, forKey: .startedAt)
+            try c.encode(updatedAt, forKey: .updatedAt)
+            try c.encode(isStale, forKey: .isStale)
+            try c.encode(isFinal, forKey: .isFinal)
+            try c.encodeIfPresent(errorSummary, forKey: .errorSummary)
+            try c.encodeIfPresent(chips, forKey: .chips)
+        }
+
+        /// Pushes omit identity and freshness flags: immutable attributes and
+        /// ActivityKit's stale-date clock supply those to every widget surface.
+        func presented(attributes: AgentRunActivityAttributes, systemIsStale: Bool) -> Self {
+            var value = self
+            if value.sessionID.isEmpty { value.sessionID = attributes.sessionID }
+            if value.sessionTitle.isEmpty { value.sessionTitle = attributes.sessionTitle }
+            if value.startedAt == .distantPast { value.startedAt = attributes.startedAt }
+            value.isStale = value.isStale || systemIsStale
+            return value
+        }
+
     }
 
     var sessionID: String
@@ -72,6 +169,9 @@ struct AgentRunActivityBot: Codable, Hashable {
     /// File name of the rendered avatar in `AgentRunActivityAvatarFile.directory`,
     /// or nil when none could be written; the widget then keeps the status dot.
     var avatarFile: String?
+    /// Stored agent session ID (`session_key`, the resolved compression tip) used
+    /// by plugin hooks and the relay. Never the gateway runtime ID or chat root.
+    var pushSessionID: String? = nil
 
     /// One activity per bot turn: a reconnect inside the turn reuses it, the next turn does not.
     func streamID(turn: String) -> String { "\(key)#\(turn)" }
@@ -102,6 +202,7 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
     case readingFiles
     case runningCommand
     case responding
+    case waiting
     case waitingForApproval
     case waitingForClarification
     case complete
@@ -124,6 +225,8 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
             String(localized: "Running command")
         case .responding:
             String(localized: "Responding")
+        case .waiting:
+            String(localized: "Waiting for you")
         case .waitingForApproval:
             String(localized: "Waiting for approval")
         case .waitingForClarification:
@@ -153,6 +256,8 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
             String(localized: "Cmd")
         case .responding:
             String(localized: "Reply")
+        case .waiting:
+            "…"
         case .waitingForApproval:
             String(localized: "Approve")
         case .waitingForClarification:

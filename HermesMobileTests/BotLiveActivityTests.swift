@@ -164,6 +164,8 @@ import XCTest
         XCTAssertEqual(live.phase, .working(turn: "100.0", startedAt: Date(timeIntervalSince1970: 100)))
         XCTAssertEqual(live.chips, ["Plan 2 of 2"])
         XCTAssertEqual(live.destination.conversation, "root")
+        XCTAssertEqual(live.agentSessionID, "tip")
+        XCTAssertEqual(spy.started.first?.bot.pushSessionID, "tip")
         XCTAssertEqual(spy.started.map(\.turn), ["100.0"])
         // Previews are off in this feed, so the reply never left the conversation.
         XCTAssertFalse(spy.events.contains { if case .interimAssistant = $0 { true } else { false } })
@@ -176,6 +178,41 @@ import XCTest
         wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("message.delta")]))
         XCTAssertEqual(spy.staleCount, 1)
         XCTAssertEqual(spy.started.count, 1)
+    }
+
+    func testPushUsesTheStoredAgentSessionInsteadOfTheGatewayRuntimeOrRoot() async {
+        let wire = BotFixtureWire()
+        wire.root = "canonical-chat"
+        wire.tip = "agent-session-after-compression"
+        wire.runtimeID = "gateway-runtime"
+        wire.running = true
+        wire.inflight = .object(["started_at": .number(100)])
+        let spy = BotLiveActivitySpy()
+        let model = conversation(wire, feed: feed(spy))
+        await model.recover()
+
+        // Hermes constructs the agent with session_id=session_key. Its plugin
+        // hooks use that stored ID, whereas RPC replies identify the runtime.
+        XCTAssertEqual(spy.started.first?.bot.pushSessionID, wire.tip)
+        XCTAssertNotEqual(spy.started.first?.bot.pushSessionID, model.runtime)
+        XCTAssertEqual(model.liveActivitySnapshot.destination.conversation, wire.root)
+        model.suspend()
+    }
+
+    func testPushSessionFollowsTheResolvedAgentSessionOnReconnect() async {
+        let wire = BotFixtureWire()
+        wire.running = true
+        wire.inflight = .object(["started_at": .number(100)])
+        let spy = BotLiveActivitySpy()
+        let model = conversation(wire, feed: feed(spy))
+        await model.recover()
+        model.suspend()
+
+        wire.tip = "next-agent-session"
+        wire.runtimeID = "next-gateway-runtime"
+        await model.recover()
+        XCTAssertEqual(spy.started.map { $0.bot.pushSessionID }, ["tip", "next-agent-session"])
+        model.suspend()
     }
 
     func testWorkThatFinishedWhileAwayEndsTheActivityOnReturn() async {
@@ -198,6 +235,58 @@ import XCTest
         await model.recover()
         XCTAssertEqual(model.liveActivitySnapshot.work, .waitingForApproval)
         model.suspend()
+    }
+
+    func testPureDecisionCoversStartUpdateWaitEndAndOwnership() throws {
+        let target = destination()
+        let key = try XCTUnwrap(AgentRunActivityBot(target)?.key)
+        let running = snapshot(target, turn)
+        XCTAssertEqual(BotLiveActivityFeed.decision(running, previous: nil, drivenSessionID: nil), .start)
+        XCTAssertEqual(BotLiveActivityFeed.decision(running, previous: running, drivenSessionID: key), .update)
+        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .unknown), previous: running, drivenSessionID: key), .wait)
+        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .disconnected), previous: running, drivenSessionID: key), .stale)
+        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .finished(.failed)), previous: running, drivenSessionID: key), .end(.failed))
+        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .finished(.complete)), previous: running, drivenSessionID: "other"), .wait)
+        var changedAgentSession = running
+        changedAgentSession.agentSessionID = "compressed-agent-session"
+        XCTAssertEqual(BotLiveActivityFeed.decision(changedAgentSession, previous: running, drivenSessionID: key), .start)
+    }
+
+    func testRelayContentDecodesWithoutLocalFieldsAndUsesAttributeIdentity() throws {
+        let data = Data(#"{"v":1,"status":"running","tool":"terminal","tool_calls":3,"started_at":1800000000}"#.utf8)
+        let decoded = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: data)
+        XCTAssertEqual(decoded.rawStatus, "running")
+        XCTAssertEqual(decoded.status, .runningCommand)
+        XCTAssertEqual(decoded.startedAt, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertEqual(decoded.chips, ["3 tools"])
+        let attributes = AgentRunActivityAttributes(sessionID: "bot-key", sessionTitle: "Triage", startedAt: .now)
+        let shown = decoded.presented(attributes: attributes, systemIsStale: true)
+        XCTAssertEqual(shown.sessionID, "bot-key")
+        XCTAssertEqual(shown.sessionTitle, "Triage")
+        XCTAssertTrue(shown.isStale)
+    }
+
+    func testUnknownVersionAndStatusSurviveRoundTripWithoutClaimingCompletion() throws {
+        for json in [#"{"v":99,"status":"done"}"#, #"{"v":1,"status":"future-status"}"#] {
+            let state = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: Data(json.utf8))
+            XCTAssertEqual(state.status, .starting)
+            XCTAssertFalse(state.isFinal)
+            XCTAssertFalse(state.currentActivity.isEmpty)
+            let copy = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: JSONEncoder().encode(state))
+            XCTAssertEqual(copy, state)
+        }
+    }
+
+    func testRelayWaitAndFinalStatuses() throws {
+        for (raw, expected, final) in [("waiting", AgentRunActivityStatus.waiting, false),
+                                       ("done", .complete, true), ("failed", .failed, true)] {
+            let beforeReceipt = Date()
+            let data = try JSONSerialization.data(withJSONObject: ["v": 1, "status": raw])
+            let state = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: data)
+            XCTAssertEqual(state.status, expected)
+            XCTAssertEqual(state.isFinal, final)
+            XCTAssertGreaterThanOrEqual(state.updatedAt, beforeReceipt)
+        }
     }
 
     // MARK: Shared model

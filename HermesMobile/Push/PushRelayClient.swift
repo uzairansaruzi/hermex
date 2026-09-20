@@ -7,6 +7,11 @@ import OSLog
     func deleteDevice(token: String, pairing: PushPairing) async throws
 }
 
+@MainActor protocol PushActivityRelaying {
+    func registerActivity(token: String, sessionID: String, deviceToken: String, pairing: PushPairing) async throws
+    func deleteActivity(sessionID: String, deviceToken: String, pairing: PushPairing) async throws
+}
+
 enum PushRelayError: Error, Equatable {
     /// The relay answered, but not with success. 400 means the body or the
     /// environment was wrong, 409 that the install is at its 32-device limit,
@@ -23,7 +28,7 @@ enum PushRelayError: Error, Equatable {
 ///
 /// The install key is a bearer capability and it sits in the *path*, so no URL
 /// built here is ever logged, attached to an error, or shown to the user.
-@MainActor struct PushRelayClient: PushRelayRegistering {
+@MainActor struct PushRelayClient: PushRelayRegistering, PushActivityRelaying {
     private static let logger = Logger(subsystem: "com.uzairansar.hermesmobile", category: "push")
 
     private let session: URLSession
@@ -51,6 +56,33 @@ enum PushRelayError: Error, Equatable {
         var request = URLRequest(url: try Self.devicesURL(pairing: pairing).appending(path: token))
         request.httpMethod = "DELETE"
         try await send(request, describedAs: "delete")
+    }
+
+    func registerActivity(token: String, sessionID: String, deviceToken: String, pairing: PushPairing) async throws {
+        var request = URLRequest(url: try Self.activityURL(sessionID: sessionID, deviceToken: deviceToken, pairing: pairing))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["activity_token": token])
+        try await send(request, describedAs: "register activity")
+    }
+
+    func deleteActivity(sessionID: String, deviceToken: String, pairing: PushPairing) async throws {
+        var request = URLRequest(url: try Self.activityURL(sessionID: sessionID, deviceToken: deviceToken, pairing: pairing))
+        request.httpMethod = "DELETE"
+        try await send(request, describedAs: "delete activity")
+    }
+
+    static func activityURL(sessionID: String, deviceToken: String, pairing: PushPairing) throws -> URL {
+        // A session is one opaque path segment, including any slash or percent sign.
+        let base = try devicesURL(pairing: pairing).appending(path: deviceToken).appending(path: "activities")
+        var parts = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+        guard let segment = sessionID.addingPercentEncoding(withAllowedCharacters: unreserved) else {
+            throw PushRelayError.transport
+        }
+        parts.percentEncodedPath += "/" + segment
+        guard let url = parts.url else { throw PushRelayError.transport }
+        return url
     }
 
     private func send(_ request: URLRequest, describedAs action: String) async throws {

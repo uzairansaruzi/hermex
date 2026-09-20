@@ -28,6 +28,9 @@ struct BotLiveActivitySnapshot: Equatable {
     let phase: Phase
     let work: Work
     let chips: [String]
+    /// Plugin hooks carry the stored agent ID (`session_key`), not the gateway's
+    /// ephemeral RPC `session_id` or the canonical chat root.
+    var agentSessionID: String? = nil
 }
 
 extension AgentRunActivityBot {
@@ -68,21 +71,18 @@ extension AgentRunActivityBot {
         guard snapshot != last else { return }
         let previous = last?.destination == snapshot.destination ? last : nil
         last = snapshot
-        guard let key = AgentRunActivityBot(snapshot.destination)?.key else { return }
 
-        switch snapshot.phase {
-        case .unknown:
-            return
-        case .disconnected:
-            if manager.drivenSessionID == key { manager.markStale() }
-        case .finished(let status):
-            guard manager.drivenSessionID == key else { return }
-            manager.end(status: status, activity: Self.finalLine(status), errorSummary: nil)
-        case .working(let turn, let startedAt):
-            let adopting = previous?.phase != snapshot.phase || manager.drivenSessionID != key
-            if adopting {
+        let decision = Self.decision(snapshot, previous: previous, drivenSessionID: manager.drivenSessionID)
+        switch decision {
+        case .wait: return
+        case .stale: manager.markStale()
+        case .end(let status): manager.end(status: status, activity: Self.finalLine(status), errorSummary: nil)
+        case .start, .update:
+            let adopting = decision == .start
+            if adopting, case .working(let turn, let startedAt) = snapshot.phase {
                 let file = writeAvatar(profile, snapshot.destination)
-                guard let bot = AgentRunActivityBot(snapshot.destination, avatarFile: file) else { return }
+                guard var bot = AgentRunActivityBot(snapshot.destination, avatarFile: file) else { return }
+                bot.pushSessionID = snapshot.agentSessionID
                 manager.startBot(bot, title: snapshot.title, turn: turn, startedAt: startedAt)
             }
             if sentExcerpt, !showsExcerpts() {
@@ -91,6 +91,22 @@ extension AgentRunActivityBot {
             }
             if adopting || previous?.work != snapshot.work { send(snapshot.work) }
             manager.update(.workSummary(snapshot.chips))
+        }
+    }
+
+    enum Decision: Equatable { case start, update, end(AgentRunActivityStatus), stale, wait }
+
+    /// One pure lifecycle decision, independent of ActivityKit and transport.
+    static func decision(_ snapshot: BotLiveActivitySnapshot, previous: BotLiveActivitySnapshot?,
+                         drivenSessionID: String?) -> Decision {
+        guard let key = AgentRunActivityBot(snapshot.destination)?.key else { return .wait }
+        switch snapshot.phase {
+        case .unknown: return .wait
+        case .disconnected: return drivenSessionID == key ? .stale : .wait
+        case .finished(let status): return drivenSessionID == key ? .end(status) : .wait
+        case .working:
+            return previous?.destination != snapshot.destination || previous?.phase != snapshot.phase
+                || previous?.agentSessionID != snapshot.agentSessionID || drivenSessionID != key ? .start : .update
         }
     }
 

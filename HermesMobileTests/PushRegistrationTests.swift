@@ -311,6 +311,138 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(recorded.request?.httpMethod, "DELETE")
     }
 
+    func testActivityRelayUsesOneEncodedSessionSegmentAndExactBody() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let client = PushRelayClient(session: URLSession(configuration: configuration))
+        let recorded = RecordedRequest()
+        MockURLProtocol.requestHandler = { request in
+            recorded.store(request)
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data())
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        let pairing = PushPairing(relayURL: relay, installKey: installA, previewKey: "k")
+        try await client.registerActivity(token: "aabb", sessionID: "session/a%? #", deviceToken: "ccdd", pairing: pairing)
+        XCTAssertEqual(recorded.request?.httpMethod, "PUT")
+        XCTAssertTrue(recorded.request?.url?.absoluteString.hasSuffix("/activities/session%2Fa%25%3F%20%23") == true)
+        let body = try JSONDecoder().decode([String: String].self, from: XCTUnwrap(recorded.body))
+        XCTAssertEqual(body, ["activity_token": "aabb"])
+        let url = recorded.request?.url
+        try await client.deleteActivity(sessionID: "session/a%? #", deviceToken: "ccdd", pairing: pairing)
+        XCTAssertEqual(recorded.request?.httpMethod, "DELETE")
+        XCTAssertEqual(recorded.request?.url, url)
+    }
+
+    func testActivityTokenRotationAndServersStayScoped() async {
+        let wire = ActivityRelaySpy()
+        let a = PushPairing(relayURL: relay, installKey: installA, previewKey: "a", registeredToken: "device-a")
+        let b = PushPairing(relayURL: relay, installKey: installB, previewKey: "b", registeredToken: "device-b")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { [serverA] in $0 == serverA ? a : b })
+        await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "first")
+        await registrar.register(owner: "b", server: serverB, sessionID: "runtime", token: "other")
+        await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "rotated")
+        await registrar.retire(owner: "a")
+        XCTAssertEqual(wire.calls.map(\.action), ["put:first", "put:other", "delete", "put:rotated", "delete"])
+        XCTAssertEqual(wire.calls.map(\.install), [installA, installB, installA, installA, installA])
+        XCTAssertFalse(registrar.isRegistered("a"))
+        XCTAssertTrue(registrar.isRegistered("b"))
+    }
+
+    func testUnpairedAndFailedRegistrationNeverClaimBackgroundFreshness() async {
+        let wire = ActivityRelaySpy()
+        var keys: PushPairing?
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "token")
+        XCTAssertTrue(wire.calls.isEmpty)
+        XCTAssertFalse(registrar.isRegistered("a"))
+        keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        wire.failure = true
+        await registrar.refresh()
+        XCTAssertFalse(registrar.isRegistered("a"))
+        wire.failure = false
+        await registrar.refresh()
+        XCTAssertTrue(registrar.isRegistered("a"))
+        keys = nil
+        XCTAssertFalse(registrar.isRegistered("a"))
+        await registrar.refresh()
+        XCTAssertEqual(wire.calls.last?.action, "delete")
+    }
+
+    func testRetiringDuringPutDeletesBeforeTheReplacementRegisters() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let entered = expectation(description: "first PUT entered")
+        var release: CheckedContinuation<Void, Never>?
+        wire.hold = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                entered.fulfill()
+            }
+        }
+        let first = Task { await registrar.register(owner: "old", server: serverA, sessionID: "runtime", token: "old") }
+        await fulfillment(of: [entered], timeout: 2)
+        let retiring = expectation(description: "retirement queued")
+        let retire = Task {
+            retiring.fulfill()
+            await registrar.retire(owner: "old")
+        }
+        await fulfillment(of: [retiring], timeout: 2)
+        wire.hold = nil
+        let replacement = Task { await registrar.register(owner: "new", server: serverA, sessionID: "runtime", token: "new") }
+        release?.resume()
+        await first.value
+        await retire.value
+        await replacement.value
+        XCTAssertEqual(wire.calls.map(\.action), ["put:old", "delete", "put:new"])
+        XCTAssertFalse(registrar.isRegistered("old"))
+        XCTAssertTrue(registrar.isRegistered("new"))
+    }
+
+    func testDeviceRefreshRepublishesActivitiesAndForgetCannotReviveThem() async {
+        let wire = ActivityRelaySpy()
+        var keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "old-device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "activity")
+        keys.registeredToken = "new-device"
+        await registrar.refresh(republish: true)
+        XCTAssertEqual(wire.calls.map(\.action), ["put:activity", "delete", "put:activity"])
+        wire.failure = true
+        await registrar.refresh(republish: true)
+        XCTAssertFalse(registrar.isRegistered("a"))
+        wire.failure = false
+        await registrar.refresh()
+        XCTAssertTrue(registrar.isRegistered("a"))
+        await registrar.forget(server: serverA)
+        let count = wire.calls.count
+        await registrar.refresh(republish: true)
+        XCTAssertEqual(wire.calls.count, count)
+        XCTAssertFalse(registrar.isRegistered("a"))
+    }
+
+    func testFailedRetirementBlocksReplacementUntilCleanupSucceeds() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        await registrar.register(owner: "old", server: serverA, sessionID: "runtime", token: "old")
+        wire.failure = true
+        await registrar.retire(owner: "old")
+        await registrar.register(owner: "new", server: serverA, sessionID: "runtime", token: "new")
+        XCTAssertFalse(wire.calls.contains { $0.action == "put:new" })
+        wire.failure = false
+        await registrar.refresh()
+        XCTAssertEqual(wire.calls.last?.action, "put:new")
+        XCTAssertTrue(registrar.isRegistered("new"))
+    }
+
+    func testRelaunchedActivityCanDeleteItsRegistrationWithoutSeeingAToken() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        await registrar.retire(owner: "persisted", server: serverA, sessionID: "runtime")
+        XCTAssertEqual(wire.calls.map(\.action), ["delete"])
+    }
+
     // MARK: - Keychain access group
 
     /// The real store, in the real shared access group: the pairing round-trips,
@@ -552,5 +684,21 @@ private func XCTAssertThrowsErrorAsync<T, E: Error & Equatable>(
         XCTAssertEqual(error, expected, file: file, line: line)
     } catch {
         XCTFail("expected \(expected), got \(error)", file: file, line: line)
+    }
+}
+
+@MainActor private final class ActivityRelaySpy: PushActivityRelaying {
+    struct Call { let action: String; let install: String; let session: String }
+    var calls: [Call] = []
+    var hold: (() async -> Void)?
+    var failure = false
+    func registerActivity(token: String, sessionID: String, deviceToken: String, pairing: PushPairing) async throws {
+        calls.append(Call(action: "put:" + token, install: pairing.installKey, session: sessionID))
+        await hold?()
+        if failure { throw PushRelayError.transport }
+    }
+    func deleteActivity(sessionID: String, deviceToken: String, pairing: PushPairing) async throws {
+        calls.append(Call(action: "delete", install: pairing.installKey, session: sessionID))
+        if failure { throw PushRelayError.transport }
     }
 }
