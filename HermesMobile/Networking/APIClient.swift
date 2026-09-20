@@ -94,9 +94,10 @@ actor APIClient {
 
     func send<Response: Decodable>(
         endpoint: Endpoint,
-        method: String
+        method: String,
+        timeout: TimeInterval? = nil
     ) async throws -> Response {
-        let data = try await sendData(endpoint: endpoint, method: method, encodedBody: nil)
+        let data = try await sendData(endpoint: endpoint, method: method, encodedBody: nil, timeout: timeout)
         return try decode(Response.self, from: data)
     }
 

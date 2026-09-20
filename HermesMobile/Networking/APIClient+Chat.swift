@@ -46,8 +46,16 @@ extension APIClient {
         try await send(endpoint: .chatCancel(streamID: streamID), method: "GET")
     }
 
+    /// Status probes run inside the reconnect retry budget (#537), so they use a
+    /// short explicit timeout instead of the 60s session default.
+    private static let chatStreamStatusTimeout: TimeInterval = 10
+
     func chatStreamStatus(streamID: String) async throws -> ChatStreamStatusResponse {
-        try await send(endpoint: .chatStreamStatus(streamID: streamID), method: "GET")
+        try await send(
+            endpoint: .chatStreamStatus(streamID: streamID),
+            method: "GET",
+            timeout: Self.chatStreamStatusTimeout
+        )
     }
 
     func approvalPending(sessionID: String) async throws -> ApprovalPendingResponse {
