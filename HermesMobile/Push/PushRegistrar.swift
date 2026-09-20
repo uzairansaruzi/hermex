@@ -19,6 +19,17 @@ import UIKit
     }
 }
 
+/// What setting a Hermes host up for push (#557) needs from the registrar. A protocol so
+/// the Hermes connection screen can be exercised without UIKit or a Keychain access group.
+@MainActor protocol PushPairingEnabling {
+    func enable(_ pairing: PushPairing, for server: URL) async throws
+    func disable(for server: URL) async throws
+    /// Teardown that always leaves nothing behind, even when the relay cannot be
+    /// reached. Removing a connection or a whole server may not depend on the network.
+    func forget(for server: URL) async
+    func pairing(for server: URL) -> PushPairing?
+}
+
 enum PushRegistrarError: Error, Equatable {
     /// No `aps-environment` mirror in Info.plist, or a bundle ID the relay does
     /// not accept. A fork signed under another identity lands here.
@@ -111,6 +122,22 @@ enum PushRegistrarError: Error, Equatable {
             // unpaired.
             try? await relay.deleteDevice(token: token, pairing: pairing)
             throw error
+        }
+    }
+
+    /// Teardown for a connection or server the user removed. Unlike `disable(for:)` this
+    /// never fails: the keys go whether or not the relay could be told, because the user
+    /// has already thrown the connection away and an unreachable relay must not leave
+    /// credentials behind. The relay drops the device on its own once Apple reports the
+    /// token invalid.
+    func forget(for server: URL) async {
+        if let pairing = try? store.pairing(for: server), let token = pairing.registeredToken {
+            try? await relay.deleteDevice(token: token, pairing: pairing)
+        }
+        try? store.remove(for: server)
+        if ((try? store.allPairings()) ?? [:]).isEmpty {
+            remoteNotifications.unregisterForRemoteNotifications()
+            currentToken = nil
         }
     }
 
@@ -232,3 +259,6 @@ enum PushRegistrarError: Error, Equatable {
         for waiter in waiters { waiter.resume(with: result) }
     }
 }
+
+/// `PushRegistrar` already is this seam; the protocol only exists so tests can stand in.
+extension PushRegistrar: PushPairingEnabling {}

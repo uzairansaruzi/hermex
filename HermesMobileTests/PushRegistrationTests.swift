@@ -10,6 +10,20 @@ final class PushRegistrationTests: XCTestCase {
     private let installA = String(repeating: "a", count: 64)
     private let installB = String(repeating: "b", count: 64)
 
+    func testForgetWipesTheKeysEvenWhenTheRelayCannotBeReached() async throws {
+        let harness = Harness()
+        harness.deliverTokenOnRegister(String(repeating: "ab", count: 32))
+        try await harness.registrar.enable(harness.pairing(install: installA), for: serverA)
+        harness.relay.deleteError = PushRelayError.transport
+
+        await harness.registrar.forget(for: serverA)
+
+        XCTAssertNil(try harness.store.pairing(for: serverA),
+                     "A removed connection may not leave credentials behind")
+        XCTAssertEqual(harness.remoteNotifications.unregisterCount, 1,
+                       "The last pairing gone means this phone stops minting tokens")
+    }
+
     // MARK: - Build identity
 
     /// Branch TestFlight is a production build even though its bundle ID looks

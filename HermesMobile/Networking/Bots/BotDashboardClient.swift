@@ -69,8 +69,8 @@ import Foundation
 
     /// Reads the plugin's pairing keys. The route answers 409 until the relay URL is set
     /// and 404 until the restart has mounted it, so the caller retries both.
-    func pairing() async throws -> HermexPushPairing {
-        try HermexPushPairing(try await send(request(BotEndpoint.pushPairing.url(base: connection.address))))
+    func pairing() async throws -> PushPairing {
+        try HermexPushPlugin.pairing(try await send(request(BotEndpoint.pushPairing.url(base: connection.address))))
     }
 
     private func request(_ url: URL, method: String = "GET", body: BotJSON? = nil) -> URLRequest {

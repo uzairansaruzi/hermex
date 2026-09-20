@@ -985,27 +985,30 @@ plugin keeps them in `plugin-data` rather than its install directory.
 
 The relay address is not a field on the phone. A host that already names its own relay
 keeps it — that is what the probe protects — and a host that has never been set up gets
-`HermexPushPairing.defaultRelayURL`. Self-hosting stays a server-side setting.
+`HermexPushPlugin.defaultRelayURL`. Self-hosting stays a server-side setting.
 
 A failed step says what the host answered (the status code, a timeout, a rejected
 sign-in) in provisioning's own words; `BotFailure`'s chat copy never reaches this screen.
 `BotDashboardClient` waits 120 seconds per request, because installing clones a
 repository on the host and a restart takes the gateway down and back up.
 
-`HermexPushPairing` lives in server-scoped Keychain (`hermex_push_pairing`),
-never `UserDefaults`, and decodes strictly: a 64-hex install key, a preview key
-that is base64 of 32 bytes, and an https relay (plain http only to loopback).
-Strict here rather than tolerant on purpose — a key the relay would refuse would
-pair a phone that could never receive a push. `deviceToken` stays nil until the
-entitlement lands (#558); the relay registration step is skipped, not failed.
+`HermexPushPlugin` owns only what the plugin itself defines: its name, its install
+identifier, the env var it reads, and a strict decode of the pairing route — a 64-hex
+install key, a preview key that is base64 of 32 bytes, and an https relay (plain http
+only to loopback). Strict rather than tolerant on purpose: a key the relay would refuse
+would pair a phone that could never receive a push. The keys themselves are a
+`PushPairing`, and storing them, minting a device token and registering it are
+`PushRegistrar`'s job (`HermesMobile/Push/`, #558); provisioning holds no copy and
+reaches that side only through `PushPairingEnabling`.
 
 A confirmed run is never cancelled when the screen closes — the host has already been
 asked to change — so it can outlive a removal. It commits nothing without re-reading the
 saved connection first: if the connection or its server is gone, the keys are not written
 and a device registered seconds earlier is dropped again, so teardown stays final.
 
-Every way out removes this phone at the relay and wipes the keys:
-`HermexPushProvisioner.disable()` also disables the plugin on the host and keeps
-the keys when a step fails so the user can retry, while
-`HermexPushPairingStore.unpair` is the best-effort teardown that connection
-removal, a changed account identity, sign-out and server removal all run.
+Every way out removes this phone at the relay and wipes the keys.
+`HermexPushProvisioner.disable()` stops the host sending first, then calls
+`PushRegistrar.disable`, so a failure at either end changes nothing the user has to
+unpick. `PushRegistrar.forget` is the teardown that cannot fail — the keys go whether or
+not the relay could be told — and connection removal, a changed account identity,
+sign-out and server removal all run it.

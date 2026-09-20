@@ -14,7 +14,6 @@ import SwiftUI
     @State private var client: BotClient?
     @State private var connectTask: Task<Void, Never>?
     private let store = BotConnectionStore()
-    private let pushStore = HermexPushPairingStore()
 
     var body: some View {
         Form {
@@ -69,7 +68,7 @@ import SwiftUI
             Button("Remove Hermes connection", role: .destructive) {
                 Task {
                     do {
-                        await pushStore.unpair(server: server)
+                        await PushRegistrar.shared?.forget(for: server)
                         try store.remove(server: server)
                         if let saved {
                             try? await BotHistoryCache.shared.remove(server: server, connectionID: saved.id)
@@ -108,7 +107,7 @@ import SwiftUI
             try store.save(candidate, server: server)
             if let saved, saved.id != candidate.id {
                 // A different host or account is a different pairing: its keys never carry over.
-                await pushStore.unpair(server: server)
+                await PushRegistrar.shared?.forget(for: server)
                 try? await BotHistoryCache.shared.remove(server: server, connectionID: saved.id)
                 await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
                 BotAvatarStore.shared.removeAll(connectionID: saved.id)

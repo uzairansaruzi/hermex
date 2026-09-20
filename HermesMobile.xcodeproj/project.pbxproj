@@ -474,7 +474,6 @@
 		013E4253ACC0484FA59DC45F /* BotConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D93D8EC41FE4FBABD1746AD /* BotConversation.swift */; };
 		7EF4120B486B4243AF54FCAF /* BotsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE221A56F264309AF71E18B /* BotsInboxView.swift */; };
 		A27FAACA0A9243C5AD4860BB /* BotClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2EA5336E9B431489F91A63 /* BotClient.swift */; };
-		D41D3CD91CFBBEB85C2B7028 /* HermexPushRelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A41E4E285E44E055AFB92E /* HermexPushRelayClient.swift */; };
 		490BBC30DF0FD97DB0850771 /* BotDashboardClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */; };
 		A990ABE1D2654992AD262B77 /* BotProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5619C4EB852849D396C45F95 /* BotProtocol.swift */; };
 		9510188AE84E41D9BAE025F1 /* BotConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B077A87C9D846D7A9D27D76 /* BotConversationTests.swift */; };
@@ -1029,7 +1028,6 @@
 		9D93D8EC41FE4FBABD1746AD /* BotConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConversation.swift"; sourceTree = "<group>"; };
 		9FE221A56F264309AF71E18B /* BotsInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotsInboxView.swift"; sourceTree = "<group>"; };
 		BF2EA5336E9B431489F91A63 /* BotClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotClient.swift"; sourceTree = "<group>"; };
-		B8A41E4E285E44E055AFB92E /* HermexPushRelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/HermexPushRelayClient.swift"; sourceTree = "<group>"; };
 		02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotDashboardClient.swift"; sourceTree = "<group>"; };
 		5619C4EB852849D396C45F95 /* BotProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotProtocol.swift"; sourceTree = "<group>"; };
 		0B077A87C9D846D7A9D27D76 /* BotConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotConversationTests.swift"; sourceTree = "<group>"; };
@@ -1374,7 +1372,6 @@
 			children = (
 				5619C4EB852849D396C45F95 /* BotProtocol.swift */,
 				BF2EA5336E9B431489F91A63 /* BotClient.swift */,
-				B8A41E4E285E44E055AFB92E /* HermexPushRelayClient.swift */,
 				02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */,
 				D2FB3FA2B0654D06B7B2B032 /* BotArtifactDownload.swift */,
 				B6923C3D8C6C4822BEF3C41C /* BotAttachmentUpload.swift */,
@@ -2096,7 +2093,6 @@
 				785784DE20094BA78F432A9A /* BotChatComposerView.swift in Sources */,
 				A990ABE1D2654992AD262B77 /* BotProtocol.swift in Sources */,
 				A27FAACA0A9243C5AD4860BB /* BotClient.swift in Sources */,
-				D41D3CD91CFBBEB85C2B7028 /* HermexPushRelayClient.swift in Sources */,
 				490BBC30DF0FD97DB0850771 /* BotDashboardClient.swift in Sources */,
 				729010E70E8041EA9414997D /* BotArtifactDownload.swift in Sources */,
 				D7750E758B8A432EA96770E2 /* BotAttachmentUpload.swift in Sources */,
