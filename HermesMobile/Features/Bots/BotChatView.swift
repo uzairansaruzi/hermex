@@ -25,6 +25,7 @@ import SwiftUI
     /// Measured composer height; sizes the material fade behind it, as the main chat does.
     @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var window = BotTranscriptWindow()
 
     init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile],
          avatars: [String: UIImage], conversation: String? = nil,
@@ -46,10 +47,18 @@ import SwiftUI
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(model.messages) { message in
+                    // Eager over a bounded window, like the Sessions transcript: a
+                    // settled reply is a hosted selection document, and a lazy stack
+                    // places rows it has not built from an estimate, which strands
+                    // the scroll under load (issue #553).
+                    VStack(alignment: .leading, spacing: 8) {
+                        if window.hasEarlier(count: model.messages.count) {
+                            Button("Load earlier") { loadEarlier(proxy: proxy) }
+                                .frame(maxWidth: .infinity)
+                        }
+                        ForEach(model.messages[window.start(count: model.messages.count)...]) { message in
                             settledActivity(anchoredTo: message.id)
-                            BotArtifactMessageView(message: message, model: model)
+                            BotArtifactMessageView(message: message, model: model).id(message.id)
                         }
                         settledActivity(anchoredTo: nil)
                         // The live turn reads like a settled one: prompt, work, then reply.
@@ -98,6 +107,7 @@ import SwiftUI
                     }
                 }
                 .defaultScrollAnchor(ChatScrollPolicy.initialTranscriptAnchor, for: .initialOffset)
+                .onChange(of: model.messages.count, initial: true) { _, count in window.seed(count: count) }
                 .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: model.messages.count) { followLatest(proxy) }
@@ -271,6 +281,20 @@ import SwiftUI
 
     private var followsLatest: Bool { followLatch.isFollowing }
 
+    /// Reveals one more page and keeps the message the reader was on at the top,
+    /// since the new rows push everything below them down.
+    private func loadEarlier(proxy: ScrollViewProxy) {
+        let count = model.messages.count
+        let firstShown = model.messages[window.start(count: count)...].first?.id
+        handleFollowEvent(.userScrollBegin)
+        window.loadEarlier()
+        guard let firstShown else { return }
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo(firstShown, anchor: .top)
+        }
+    }
+
     private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
         let resolved = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
         if resolved != followLatch { followLatch = resolved }
@@ -329,4 +353,26 @@ struct BotChatTitlePillFallback: ViewModifier {
                 .background(.regularMaterial, in: Capsule())
         }
     }
+}
+
+/// The settled messages the Bot transcript builds. The host sends the whole
+/// history; drawing only the latest page keeps an eager transcript cheap.
+/// Messages that settle after opening stay visible, so a reader scrolled up
+/// never loses rows off the top.
+struct BotTranscriptWindow: Equatable {
+    static let pageSize = 50
+    private var openedCount: Int?
+    private var earlier = 0
+
+    func start(count: Int) -> Int {
+        max(0, min(openedCount ?? count, count) - Self.pageSize - earlier)
+    }
+
+    func hasEarlier(count: Int) -> Bool { start(count: count) > 0 }
+
+    mutating func seed(count: Int) {
+        if openedCount == nil, count > 0 { openedCount = count }
+    }
+
+    mutating func loadEarlier() { earlier += Self.pageSize }
 }

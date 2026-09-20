@@ -22,7 +22,11 @@ struct BotArtifactMessageView: View {
             } else if isLive {
                 assistantContent
             } else {
-                ResponseTextSelection(identity: message.content ?? message.id, collectsGlyphs: responseIsVisible) {
+                ResponseTextSelection(
+                    identity: message.content ?? message.id,
+                    collectsGlyphs: responseIsVisible,
+                    onAskHermex: { model.quotePassage($0) }
+                ) {
                     assistantContent
                 }
                 .onGeometryChange(for: Bool.self) { geometry in

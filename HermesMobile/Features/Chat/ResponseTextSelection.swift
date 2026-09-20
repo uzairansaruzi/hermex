@@ -7,7 +7,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     let identity: String
     // Metadata stays registered when glyph rendering is deferred offscreen.
     var collectsGlyphs = true
-    var onAskHermex: (String) -> Void = { _ in }
+    var onAskHermex: ((String) -> Void)?
     @ViewBuilder let content: () -> Content
     @Environment(\.self) private var environment
 

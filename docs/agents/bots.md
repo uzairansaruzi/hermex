@@ -58,16 +58,28 @@ Copy alone over the Markdown source, because the host owns the history and
 edit, regenerate and branch have nothing to act on. Group rooms use the same
 seam.
 
-In-place text selection is deliberately absent. `ResponseTextSelection` hosts
-its content in a view controller that reports no height until its row is laid
-out, so a row inside the `LazyVStack` both transcripts use measures short and
-the scroll lands on blank space — `testLongInflightResponseRemainsVisibleAtLatestEdge`
-and `testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages` catch
-it. An eager `VStack` fixes the measurement but builds every settled message on
-open, which is the regression behind incident #463; it showed up on CI as
-`renderFrames` timeouts across the Bot presentation suite. Selection, and the
-"Ask Hermex" quote that depends on it, need a lazy-compatible measurement first
-and are tracked in issue #564.
+Settled bot replies and room member messages sit in a `ResponseTextSelection`
+document, so text selects in place as it does in Sessions. The scroll-view
+context menu outranks the selection long-press, so those rows pass
+`longPress: false`: Copy stays a VoiceOver action and the selection menu
+supplies Copy and Select All. User messages and the live reply keep the
+long-press menu; the live reply is never selectable, because its document would
+be rebuilt on every snapshot. "Ask Hermex" appends a `ComposerQuote` to the Bot
+draft, durable through `ChatDraftStore`, and becomes a Markdown blockquote only
+on the way out, after any skill expansion, so a failed send restores the
+composer exactly. Rooms pass no Ask Hermex handler and the menu omits it. The
+quote detail view stays in issue #564.
+
+Both transcripts are eager `VStack`s because of that document. It is a hosted
+view controller, and a lazy stack places rows it has not built from an
+estimate: under load the latest-edge follow and a room's jump to a search hit
+landed on the wrong rows (`testLongInflightResponseRemainsVisibleAtLatestEdge`,
+`testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages`, the latter
+on a cold first iteration). Eager is affordable only over a bounded list,
+which is what incident #463 was about: `BotTranscriptWindow` draws the latest
+50 settled messages with Load earlier above them, the way Sessions pages, and
+rooms are bounded by their own Load earlier. The host still sends the whole
+history; the window limits only what is built.
 
 Activity comes from two sources that never overlap. The full snapshot's
 `messages` rows already carry settled tool rows (`role: tool` with `name`,

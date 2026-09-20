@@ -22,7 +22,11 @@ import SwiftUI
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 16) {
+                // Eager: member replies are hosted selection documents, and a lazy
+                // stack places unbuilt rows from an estimate, so the jump to a
+                // search hit missed on a cold open (issue #553). History pages
+                // in through Load earlier, which bounds what this builds.
+                VStack(spacing: 16) {
                     if reader.hasEarlier {
                         Button("Load earlier") { handleFollowEvent(.userScrollBegin); Task { await reader.loadEarlier() } }
                             .disabled(reader.loadingEarlier || reader.link != .live)

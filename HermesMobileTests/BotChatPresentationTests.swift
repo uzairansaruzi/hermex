@@ -1155,3 +1155,27 @@ private struct SessionChatPresentationFixture: View {
         )
     }
 }
+
+final class BotTranscriptWindowTests: XCTestCase {
+    func testShowsTheLatestPageAndGrowsByOnePageAtATime() {
+        var window = BotTranscriptWindow()
+        XCTAssertEqual(window.start(count: 40), 0)
+        XCTAssertFalse(window.hasEarlier(count: 40))
+        XCTAssertEqual(window.start(count: 130), 80, "Before seeding, the first frame must already be bounded")
+
+        window.seed(count: 130)
+        window.loadEarlier()
+        XCTAssertEqual(window.start(count: 130), 30)
+        window.loadEarlier()
+        XCTAssertEqual(window.start(count: 130), 0)
+        XCTAssertFalse(window.hasEarlier(count: 130))
+    }
+
+    func testMessagesThatSettleAfterOpeningNeverPushRowsOffTheTop() {
+        var window = BotTranscriptWindow()
+        window.seed(count: 130)
+        window.seed(count: 140)
+        XCTAssertEqual(window.start(count: 140), 80)
+        XCTAssertEqual(window.start(count: 60), 10, "A compacted history clamps instead of indexing past its end")
+    }
+}

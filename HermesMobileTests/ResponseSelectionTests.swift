@@ -20,6 +20,7 @@ final class ResponseSelectionTests: XCTestCase {
         input.selectedTextRange = ResponseTextRange(
             NSRange(location: 0, length: leaf.text.utf16.count)
         )
+        XCTAssertFalse(input.canPerformAction(#selector(input.askHermex(_:)), withSender: nil), "No composer to quote into, no Ask Hermex")
         var passage: String?
         input.onAskHermex = { passage = $0 }
 
