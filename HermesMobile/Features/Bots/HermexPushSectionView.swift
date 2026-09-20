@@ -7,15 +7,12 @@ import SwiftUI
 @MainActor struct HermexPushSectionView: View {
     let connection: BotConnection
     @State private var provisioner: HermexPushProvisioner
-    @State private var relayURL: String
     @State private var isConfirmingEnable = false
     @State private var isConfirmingDisable = false
 
     init(server: URL, connection: BotConnection) {
         self.connection = connection
-        let provisioner = HermexPushProvisioner(server: server, connection: connection)
-        _provisioner = State(initialValue: provisioner)
-        _relayURL = State(initialValue: (provisioner.pairing?.relayURL ?? HermexPushPairing.defaultRelayURL).absoluteString)
+        _provisioner = State(initialValue: HermexPushProvisioner(server: server, connection: connection))
     }
 
     var body: some View {
@@ -26,13 +23,10 @@ import SwiftUI
                        role: .destructive) { isConfirmingDisable = true }
                     .disabled(provisioner.isWorking)
             } else {
-                TextField("Relay address", text: $relayURL)
-                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .disabled(provisioner.isWorking)
                 Button(provisioner.isWorking ? String(localized: "Setting up…") : String(localized: "Turn on notifications…")) {
                     isConfirmingEnable = true
                 }
-                .disabled(provisioner.isWorking || relayURL.isEmpty)
+                .disabled(provisioner.isWorking)
                 if provisioner.isWorking || provisioner.failure != nil {
                     ForEach(HermexPushProvisioner.Step.allCases) { step in stepRow(step) }
                 }
@@ -42,17 +36,17 @@ import SwiftUI
             Text("Notifications")
         } footer: {
             Text(provisioner.pairing == nil
-                 ? "Hermex installs the hermex-push plugin on this Hermes host, points it at the relay you choose and pairs this iPhone. Your host encrypts every notification’s text: the relay only ever sees ciphertext."
+                 ? "Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext."
                  : "This iPhone is paired with this server’s Hermes host. Its keys are stored in the Keychain for this server alone.")
         }
         .onChange(of: connection) { _, updated in provisioner.connection = updated }
-        .confirmationDialog("Install the plugin and restart Hermes?", isPresented: $isConfirmingEnable, titleVisibility: .visible) {
+        .confirmationDialog("Set this Hermes host up for push?", isPresented: $isConfirmingEnable, titleVisibility: .visible) {
             // Deliberately not cancelled when the screen closes: the host has already been
             // asked to change, so the run finishes and the keys land instead of leaving a
             // configured host and an unpaired phone. Reopening reads the stored result.
-            Button("Install and restart") { Task { await provisioner.enable(relayURL: relayURL) } }
+            Button("Set up push") { Task { await provisioner.enable() } }
         } message: {
-            Text("Hermex installs code on your Hermes host and restarts its gateway. Work running there is interrupted. Nothing is installed until you tap this.")
+            Text("If this host is not set up yet, Hermex installs the hermex-push plugin on it and restarts its gateway, interrupting work running there. A host that is already set up is only paired. Nothing happens until you tap this.")
         }
         .confirmationDialog("Turn off notifications for this server?", isPresented: $isConfirmingDisable, titleVisibility: .visible) {
             Button("Turn off notifications", role: .destructive) { Task { await provisioner.disable() } }

@@ -19,13 +19,14 @@ import XCTest
         PushHTTPFixture.handler = { _ in nil }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: token)
 
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
 
         XCTAssertNil(provisioner.failure)
         XCTAssertEqual(PushHTTPFixture.calls, [
             "GET https://a.example.com/api/status",
             "POST https://a.example.com/auth/password-login",
             "GET https://a.example.com/api/auth/me",
+            "GET https://a.example.com/api/plugins/hermex-push/pairing",
             "PUT https://a.example.com/api/env",
             "POST https://a.example.com/api/dashboard/agent-plugins/install",
             "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/enable",
@@ -64,7 +65,7 @@ import XCTest
             let keychain = InMemoryKeychainStore()
             let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: token)
 
-            await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+            await provisioner.enable()
 
             XCTAssertEqual(provisioner.failure?.title, step.title)
             XCTAssertNil(provisioner.pairing)
@@ -80,14 +81,16 @@ import XCTest
         PushHTTPFixture.handler = { request in
             guard request.url?.path == "/api/plugins/hermex-push/pairing" else { return nil }
             attempts += 1
-            return attempts < 3 ? (attempts == 1 ? 404 : 409, .null) : nil
+            // 1 is the probe that finds an unconfigured host; 2 and 3 are the host coming
+            // back from its restart with the route missing, then its relay address unread.
+            return attempts < 4 ? (attempts < 3 ? 404 : 409, .null) : nil
         }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
 
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
 
         XCTAssertNil(provisioner.failure)
-        XCTAssertEqual(attempts, 3)
+        XCTAssertEqual(attempts, 4)
         XCTAssertNotNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
     }
 
@@ -96,7 +99,7 @@ import XCTest
         PushHTTPFixture.handler = { request in request.url?.path == "/api/plugins/hermex-push/pairing" ? (404, .null) : nil }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
 
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
 
         XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.pair.title)
         XCTAssertEqual(provisioner.failure?.message, HermexPushFailure.pairingUnavailable.errorDescription)
@@ -112,26 +115,46 @@ import XCTest
         }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
 
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
 
         XCTAssertEqual(provisioner.failure?.message, HermexPushFailure.unusablePairing.errorDescription)
         XCTAssertNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
     }
 
-    func testARelayAddressHermexCannotUseNeverReachesTheHost() async throws {
+    func testAHostThatIsAlreadySetUpPairsWithoutInstallingOrRestartingIt() async throws {
+        let keychain = InMemoryKeychainStore()
+        PushHTTPFixture.isSetUp = true
+        PushHTTPFixture.handler = { _ in nil }
+        let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: nil)
+
+        await provisioner.enable()
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertNotNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA))
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/env") },
+                       "A host that names its own relay keeps it")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("agent-plugins") })
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") },
+                       "Nothing is interrupted on a host that is already set up")
+    }
+
+    func testAStepTheHostRefusedReportsWhatItAnsweredRatherThanChatWording() async throws {
+        PushHTTPFixture.handler = { request in request.url?.path == "/api/env" ? (500, .null) : nil }
         let provisioner = makeProvisioner(server: serverA, keychain: InMemoryKeychainStore(), deviceToken: nil)
 
-        await provisioner.enable(relayURL: "http://relay.example.com")
+        await provisioner.enable()
 
-        XCTAssertEqual(provisioner.failure?.message, HermexPushFailure.invalidRelayURL.errorDescription)
-        XCTAssertEqual(PushHTTPFixture.calls, [])
+        let message = try XCTUnwrap(provisioner.failure?.message)
+        XCTAssertTrue(message.contains("500"), "The user has to know what the host said: \(message)")
+        XCTAssertNotEqual(message, BotFailure.rejected(500).errorDescription,
+                          "Provisioning must not borrow the Bot chat's wording")
     }
 
     func testDisableDropsThePhoneAtTheRelayDisablesThePluginAndWipesTheKeys() async throws {
         let keychain = InMemoryKeychainStore()
         PushHTTPFixture.handler = { _ in nil }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: token)
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
         PushHTTPFixture.clearCalls()
 
         await provisioner.disable()
@@ -152,7 +175,7 @@ import XCTest
         let keychain = InMemoryKeychainStore()
         PushHTTPFixture.handler = { _ in nil }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: token)
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
         PushHTTPFixture.handler = { request in request.httpMethod == "DELETE" ? (500, .null) : nil }
 
         await provisioner.disable()
@@ -167,7 +190,7 @@ import XCTest
         PushHTTPFixture.handler = { _ in nil }
         for server in [serverA, serverB] {
             await makeProvisioner(server: server, keychain: keychain, deviceToken: token)
-                .enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+                .enable()
         }
         PushHTTPFixture.clearCalls()
 
@@ -183,7 +206,7 @@ import XCTest
         let keychain = InMemoryKeychainStore()
         PushHTTPFixture.handler = { _ in nil }
         await makeProvisioner(server: serverA, keychain: keychain, deviceToken: token)
-            .enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+            .enable()
         PushHTTPFixture.handler = { _ in (503, .null) }
 
         await HermexPushPairingStore(keychain: keychain).unpair(server: serverA, relay: relayClient())
@@ -196,13 +219,13 @@ import XCTest
         var isConnected = true
         PushHTTPFixture.handler = { request in
             // The user removes the connection while the host is still being set up.
-            if request.url?.path == "/api/plugins/hermex-push/pairing" { isConnected = false }
+            if request.url?.path == "/api/gateway/restart" { isConnected = false }
             return nil
         }
         let provisioner = makeProvisioner(server: serverA, keychain: keychain, deviceToken: token,
                                           stillConnected: { isConnected })
 
-        await provisioner.enable(relayURL: HermexPushPairing.defaultRelayURL.absoluteString)
+        await provisioner.enable()
 
         XCTAssertNil(provisioner.pairing)
         XCTAssertNil(try HermexPushPairingStore(keychain: keychain).load(server: serverA),
@@ -241,6 +264,9 @@ private final class PushHTTPFixture: URLProtocol {
     static let installKey = String(repeating: "0123456789abcdef", count: 4)
     static let previewKey = Data(repeating: 7, count: 32).base64EncodedString()
     nonisolated(unsafe) static var handler: ((URLRequest) -> (Int, BotJSON)?)?
+    /// Whether the host already has the plugin loaded and a relay address set. A fresh
+    /// host only answers the pairing route once a restart has loaded the plugin.
+    nonisolated(unsafe) static var isSetUp = false
     private nonisolated(unsafe) static var recorded: [(call: String, body: BotJSON)] = []
     private static let lock = NSLock()
 
@@ -253,7 +279,7 @@ private final class PushHTTPFixture: URLProtocol {
     static var calls: [String] { lock.withLock { recorded.map(\.call) } }
     static func body(of call: String) -> BotJSON { lock.withLock { recorded.first { $0.call == call }?.body ?? .null } }
     static func clearCalls() { lock.withLock { recorded = [] } }
-    static func reset() { handler = nil; clearCalls() }
+    static func reset() { handler = nil; isSetUp = false; clearCalls() }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -276,6 +302,7 @@ private final class PushHTTPFixture: URLProtocol {
         }
         let decoded = data.flatMap { try? JSONDecoder().decode(BotJSON.self, from: $0) } ?? .null
         Self.lock.withLock { Self.recorded.append((call, decoded)) }
+        if url.path == "/api/gateway/restart" { Self.isSetUp = true }
         let (status, value) = Self.handler?(request) ?? Self.success(for: url)
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!
@@ -294,6 +321,7 @@ private final class PushHTTPFixture: URLProtocol {
                                   "version": .string("0.21.3")]))
         case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
         case "/api/plugins/hermex-push/pairing":
+            guard isSetUp else { return (404, .null) }
             return (200, .object(["relay_url": .string(HermexPushPairing.defaultRelayURL.absoluteString),
                                   "install_key": .string(installKey), "preview_key": .string(previewKey),
                                   "platform": .string("hermex"), "payload_version": .number(1)]))

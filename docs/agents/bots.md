@@ -954,7 +954,10 @@ add one.
 
 Turning notifications on is one confirmed action per server, driven by
 `HermexPushProvisioner` over `BotDashboardClient` (the host's REST surface, no
-gateway socket) in the order the host needs: `PUT /api/env` sets
+gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first: a host that
+answers already has its relay set and the plugin loaded, so it is paired as it stands,
+with nothing installed and no restart interrupting work. Otherwise the full sequence runs
+in the order the host needs: `PUT /api/env` sets
 `HERMEX_PUSH_RELAY_URL` at the root so every Profile inherits it, `POST
 /api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
 plugin, `POST /api/gateway/restart` loads it, and `GET
@@ -974,6 +977,15 @@ from an unread relay address and a refused connection on a fixed schedule before
 the step fails. A failure names its step and leaves nothing half-paired: the keys
 are wiped, and the host hands back the same pair on the next attempt, because the
 plugin keeps them in `plugin-data` rather than its install directory.
+
+The relay address is not a field on the phone. A host that already names its own relay
+keeps it — that is what the probe protects — and a host that has never been set up gets
+`HermexPushPairing.defaultRelayURL`. Self-hosting stays a server-side setting.
+
+A failed step says what the host answered (the status code, a timeout, a rejected
+sign-in) in provisioning's own words; `BotFailure`'s chat copy never reaches this screen.
+`BotDashboardClient` waits 120 seconds per request, because installing clones a
+repository on the host and a restart takes the gateway down and back up.
 
 `HermexPushPairing` lives in server-scoped Keychain (`hermex_push_pairing`),
 never `UserDefaults`, and decodes strictly: a 64-hex install key, a preview key

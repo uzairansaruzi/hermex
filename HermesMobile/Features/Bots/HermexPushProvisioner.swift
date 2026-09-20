@@ -84,28 +84,39 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
 
     func isRunning(_ step: Step) -> Bool { phase == .enabling(step) }
 
-    /// The whole setup. The relay address has to be set before the pairing route answers,
-    /// and the plugin has to be loaded by a restart before that route exists at all.
-    func enable(relayURL text: String) async {
+    /// The whole setup. A host that already answers the pairing route has its relay set
+    /// and the plugin loaded, so it is paired as it stands: no install, and no restart
+    /// interrupting work. Anything else gets the full sequence, in the order the host
+    /// needs it — the relay address before the pairing route will answer, and the plugin
+    /// loaded by a restart before that route exists at all.
+    func enable() async {
         guard !isWorking else { return }
         guard let connection else { return fail(Step.relayURL.title, HermexPushFailure.noConnection) }
-        guard let url = HermexPushPairing.relayURL(text) else {
-            return fail(Step.relayURL.title, HermexPushFailure.invalidRelayURL)
-        }
         completed = []
         var step = Step.relayURL
         phase = .enabling(step)
         let client = dashboard(connection)
         do {
             try await client.signIn()
-            try await client.setEnvironmentValue(HermexPushPairing.relayURLEnvironmentKey, url.absoluteString)
-            step = advance(from: step, to: .install)
-            try await client.installPlugin(identifier: HermexPushPairing.pluginIdentifier)
-            try await client.setPlugin(HermexPushPairing.pluginName, enabled: true)
-            step = advance(from: step, to: .restart)
-            try await client.restartGateway()
-            step = advance(from: step, to: .pair)
-            var paired = try await pairAfterRestart(client)
+            var paired: HermexPushPairing
+            if let configured = try? await client.pairing() {
+                completed.formUnion([.relayURL, .install, .restart])
+                step = .pair
+                phase = .enabling(step)
+                paired = configured
+            } else {
+                // The host's own relay address wins when it has one; this only fills in
+                // the default for a host that has never been set up.
+                try await client.setEnvironmentValue(HermexPushPairing.relayURLEnvironmentKey,
+                                                     HermexPushPairing.defaultRelayURL.absoluteString)
+                step = advance(from: step, to: .install)
+                try await client.installPlugin(identifier: HermexPushPairing.pluginIdentifier)
+                try await client.setPlugin(HermexPushPairing.pluginName, enabled: true)
+                step = advance(from: step, to: .restart)
+                try await client.restartGateway()
+                step = advance(from: step, to: .pair)
+                paired = try await pairAfterRestart(client)
+            }
             step = advance(from: step, to: .device)
             let token = await deviceToken()
             if let token { try await relay.register(paired, token: token) }
@@ -187,8 +198,23 @@ typealias HermexPushDeviceTokenProvider = @MainActor @Sendable () async -> Strin
     }
 
     private func fail(_ step: String, _ error: Error) {
-        let message = (error as? LocalizedError)?.errorDescription
-            ?? String(localized: "Could not reach this Hermes host. Check the connection, then try again.")
-        phase = .failed(Failure(title: step, message: message))
+        phase = .failed(Failure(title: step, message: Self.message(for: error)))
+    }
+
+    /// Provisioning speaks for itself rather than borrowing the Bot chat's wording: a step
+    /// that failed says what the host answered, because that is what the user has to act on.
+    private static func message(for error: Error) -> String {
+        switch error {
+        case let failure as HermexPushFailure:
+            return failure.errorDescription ?? String(localized: "This step did not finish. Try again.")
+        case BotFailure.rejected(401), BotFailure.rejected(403):
+            return String(localized: "This Hermes host rejected the saved sign-in. Reconnect above, then try again.")
+        case BotFailure.rejected(let status):
+            return String(localized: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again.")
+        case BotFailure.transport, is URLError:
+            return String(localized: "The host did not answer in time. It may still be finishing this step — wait a moment, then try again.")
+        default:
+            return String(localized: "Could not reach this Hermes host. Check the connection, then try again.")
+        }
     }
 }

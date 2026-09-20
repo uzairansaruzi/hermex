@@ -23,8 +23,9 @@ struct HermexPushPairing: Codable, Equatable {
     static let relayURLEnvironmentKey = "HERMEX_PUSH_RELAY_URL"
     static let pluginName = "hermex-push"
     static let pluginIdentifier = "https://github.com/uzairansaruzi/hermex-push.git/plugin"
-    /// The relay Hermex runs for users who do not host their own (hermex#556). The field
-    /// stays editable: the plugin accepts any https relay, and http only to loopback.
+    /// The relay Hermex runs (hermex#556), used for a host that has never been set up.
+    /// It is not offered as a choice: a host that already names its own relay keeps it,
+    /// and self-hosting stays a server-side setting rather than a field on the phone.
     static let defaultRelayURL = URL(string: "https://hermex-relay.hermex-relay.workers.dev")!
 
     /// Decodes `GET /api/plugins/hermex-push/pairing`. Fields the plugin may add later are
@@ -48,8 +49,8 @@ struct HermexPushPairing: Codable, Equatable {
     }
 
     /// Accepts the relay addresses the plugin itself accepts: https anywhere, plain http
-    /// only to loopback for a local capture. A typed address with credentials, a query or
-    /// a fragment is rejected rather than sent to the host's environment.
+    /// only to loopback for a local capture. A host that answers with anything else is
+    /// refused rather than pairing a phone the relay could never reach.
     static func relayURL(_ text: String) -> URL? {
         guard var parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = parts.host, !host.isEmpty,
@@ -69,11 +70,9 @@ struct HermexPushPairing: Codable, Equatable {
 /// Failures that belong to push provisioning rather than to the Hermes gateway. Each one
 /// is shown next to the step that produced it, so the user knows what to retry.
 enum HermexPushFailure: Error, Equatable, LocalizedError {
-    case invalidRelayURL, unusablePairing, pairingUnavailable, relayRejected(Int), noConnection
+    case unusablePairing, pairingUnavailable, relayRejected(Int), noConnection
     var errorDescription: String? {
         switch self {
-        case .invalidRelayURL:
-            return String(localized: "Enter an HTTPS relay address without credentials or a query.")
         case .unusablePairing:
             return String(localized: "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.")
         case .pairingUnavailable:

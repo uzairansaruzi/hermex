@@ -12,8 +12,11 @@ import Foundation
 
     init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral) {
         self.connection = connection
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 60
+        // Provisioning waits on real work: installing clones a repository on the host,
+        // and a restart takes the gateway down and back up. The Bot socket's 15 seconds
+        // would read as a failure while the host was still succeeding.
+        configuration.timeoutIntervalForRequest = 120
+        configuration.timeoutIntervalForResource = 180
         session = URLSession(configuration: configuration)
     }
 
