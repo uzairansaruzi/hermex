@@ -1012,3 +1012,34 @@ Every way out removes this phone at the relay and wipes the keys.
 unpick. `PushRegistrar.forget` is the teardown that cannot fail — the keys go whether or
 not the relay could be told — and connection removal, a changed account identity,
 sign-out and server removal all run it.
+
+## Push previews and taps
+
+`HermesNotificationService` is the fourth target (#559). A relay banner arrives
+content-free ("Hermex / New activity") with `mutable-content`, and outside `aps` carries
+`v`, `kind`, `event_id`, `install_hash`, `session_id`, `source`, `is_subagent` and
+`sealed`. The extension finds the pairing whose `sha256(install_key)` equals
+`install_hash`, opens `sealed` (base64 of `nonce(12) || AES-256-GCM ciphertext ||
+tag(16)`, AAD `hermex-preview-v1:<that hash>`) and rewrites title, subtitle and body. On
+any failure — a null `sealed`, no pairing, a wrong key, a tampered blob, running out of
+time — the banner stays content-free, with only `New activity` localized. Format and test
+vector: `hermex-push` `plugin/hermex_push_tests/fixtures/sealed_preview.json`.
+
+Target membership is deliberate. The extension compiles `NotificationService.swift` and
+`HermesMobile/Push/PushPreview.swift` and bundles `Localizable.xcstrings`; that shared
+file imports only Foundation, CryptoKit, Security and UserNotifications, and reads the
+push access group with `SecItemCopyMatching` so KeychainAccess is not linked. Its
+entitlement is the push Keychain group alone: no app group, no networking, no SwiftData.
+`PushPreviewKeys` decodes the same Keychain JSON `KeychainPushPairingStore` writes, so a
+rename of `installKey` or `previewKey` in `PushPairing` breaks previews.
+
+The Profile exists only inside the ciphertext, so the extension writes it back to
+`userInfo["hermex_profile"]`. `PushAppDelegate` is the notification-center delegate: a
+tap becomes `PushNotificationRouter.botDestination` — `source == "bot"`, the pairing
+picks the server, that server's Bot connection supplies the UUID — and rides the one bot
+deep link (#554) through `AppIntentRouter`. No conversation is passed: `session_id` is
+the run's live session, not the bot's durable root. A tap only navigates; an approval is
+never answered from a banner. Anything unroutable just opens the app; webui taps are
+#561. Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
+banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
+not app code.

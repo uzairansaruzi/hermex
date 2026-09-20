@@ -47,8 +47,8 @@ struct PushPairing: Codable, Equatable, Sendable {
     func allPairings() throws -> [URL: PushPairing]
 }
 
-/// The pairing keys live in a Keychain *access group* shared with the future
-/// Notification Service Extension, unlike the rest of the app's credentials,
+/// The pairing keys live in a Keychain *access group* shared with the
+/// Notification Service Extension (`PushPreviewKeys.stored`), unlike the rest of the app's credentials,
 /// which stay in the app's default group. The extension finds the right server's
 /// preview key by hashing each stored install key and matching the payload's
 /// `install_hash`, so it needs to enumerate this group — hence `allPairings`.

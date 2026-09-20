@@ -134,6 +134,7 @@ Branch TestFlight app identity:
 - Main bundle ID: `com.uzairansar.hermesmobile.branch`
 - Share extension bundle ID: `com.uzairansar.hermesmobile.branch.shareextension`
 - Live Activity widget bundle ID: `com.uzairansar.hermesmobile.branch.liveactivitywidget`
+- Notification Service Extension bundle ID: `com.uzairansar.hermesmobile.branch.notificationservice`
 - Display name: `Hermex Branch`
 - App group: `group.com.uzairansar.hermesmobile.branch`
 - URL scheme: `hermes-agent-branch`
