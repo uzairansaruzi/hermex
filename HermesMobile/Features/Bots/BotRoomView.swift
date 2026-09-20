@@ -28,7 +28,18 @@ import SwiftUI
                 // in through Load earlier, which bounds what this builds.
                 VStack(spacing: 16) {
                     if reader.hasEarlier {
-                        Button("Load earlier") { handleFollowEvent(.userScrollBegin); Task { await reader.loadEarlier() } }
+                        // The new page pushes everything below it down, so bring the
+                        // event the reader was on back to the top afterwards.
+                        Button("Load earlier") {
+                            handleFollowEvent(.userScrollBegin)
+                            let firstShown = reader.events.first?.seq
+                            Task {
+                                await reader.loadEarlier()
+                                guard let firstShown, reader.events.first?.seq != firstShown else { return }
+                                await Task.yield()
+                                proxy.scrollTo(firstShown, anchor: .top)
+                            }
+                        }
                             .disabled(reader.loadingEarlier || reader.link != .live)
                     }
                     if reader.foreignAuthority {
