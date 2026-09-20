@@ -1,8 +1,9 @@
 # Push notifications
 
 Push is optional and off until the user enables it for a server from the Hermes
-connection screen. This page is the map. `bots.md` ("Push provisioning" and
-"Push previews and taps") owns the protocol detail.
+connection screen. This page is the map. bots.md owns the protocol detail:
+see [Push provisioning](bots.md#push-provisioning) and
+[Push previews and taps](bots.md#push-previews-and-taps).
 
 ## Components
 
@@ -31,7 +32,7 @@ connection screen. This page is the map. `bots.md` ("Push provisioning" and
   the plugin cannot unpair a phone.
 - On the phone, each server's `PushPairing` (relay URL, install key, preview
   key) is one Keychain item in the access group shared with the extension,
-  keyed `pushPairing::<server URL>`. The install key is a bearer capability:
+  keyed `push_pairing::<server URL>`. The install key is a bearer capability:
   it never appears in a log, a printed URL, or `UserDefaults`.
 - The extension reads the same group with `SecItemCopyMatching` and finds the
   right key by matching the payload's `install_hash` against each stored
@@ -44,3 +45,8 @@ with that server. The device token registers with each paired relay
 independently, a tap resolves its server through the pairing, and removing a
 server wipes its keys (`PushRegistrar.forget`). Nothing one server's push
 touches may show up under another.
+
+One caveat: two configured servers that reach the same host pair with the
+same install, because the host hands out one key pair. A tap on one of that
+host's banners then prefers the active server and otherwise takes the first
+matching server by URL (`PushNotificationRouter.botDestination`).

@@ -27,7 +27,7 @@ Your server. Your iPhone. No middleman.
 Hermex is a native SwiftUI iPhone app for driving a self-hosted [hermes-webui](https://github.com/nesquena/hermes-webui) server — a mobile cockpit for an AI agent that lives on a machine **you** control. The phone is the control plane, not the compute plane: the agent, its tools, and your data stay on your own hardware.
 
 - **Free.** No subscriptions, no in-app purchases.
-- **Private.** No analytics, no tracking. The app talks only to your server. Push notifications are optional and off until you enable them; they go through an open-source relay you can self-host, which sees device tokens and ciphertext, never message text, server URLs, or credentials.
+- **Private.** No analytics, no tracking. The app talks only to your server. Push notifications are optional and off until you enable them: an open-source relay you can self-host forwards them, seeing device tokens, notification metadata (kind, source, thread and session ids, timestamps), and ciphertext. It never sees message text, server URLs, or credentials.
 - **Native.** Real SwiftUI, built for iOS 18+, not a web wrapper.
 
 ## Features
