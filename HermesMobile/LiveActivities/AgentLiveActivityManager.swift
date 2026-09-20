@@ -17,6 +17,9 @@ enum AgentLiveActivityEvent: Equatable {
     case toolCompleted
     case waitingForApproval
     case waitingForClarification
+    /// The reply is being written, with no text attached: the status moves on even
+    /// when previews are off (#489).
+    case responding
     /// A bot's bounded work summary chips (#489). Counts only, never reply text.
     case workSummary([String])
 }
@@ -224,6 +227,11 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         case .waitingForClarification:
             updateCurrentState { state in
                 AgentRunActivityStateReducer.waitingForClarification(state: state)
+            }
+        case .responding:
+            guard currentState?.status != .responding else { return }
+            updateCurrentState { state in
+                AgentRunActivityStateReducer.responding(state: state)
             }
         case .workSummary(let chips):
             let sanitized = AgentRunActivitySanitizer.chips(chips)

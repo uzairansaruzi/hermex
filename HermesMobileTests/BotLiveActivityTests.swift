@@ -90,11 +90,42 @@ import XCTest
     func testReplyTextReachesTheActivityOnlyWhenPreviewsAreOn() {
         let hidden = BotLiveActivitySpy()
         feed(hidden).sync(snapshot(destination(), turn, work: .responding("private words")), profile: profile)
-        XCTAssertEqual(hidden.events, [.workSummary([])])
+        XCTAssertEqual(hidden.events, [.responding, .workSummary([])])
 
         let shown = BotLiveActivitySpy()
         feed(shown, showsExcerpts: true).sync(snapshot(destination(), turn, work: .responding("private words")), profile: profile)
         XCTAssertEqual(shown.events, [.interimAssistant("private words"), .workSummary([])])
+    }
+
+    func testTurningPreviewsOffClearsTextAlreadyOnTheActivity() {
+        let spy = BotLiveActivitySpy()
+        var shows = true
+        let feed = BotLiveActivityFeed(manager: spy, showsExcerpts: { shows }, writeAvatar: { _, _ in nil })
+        let target = destination()
+        feed.sync(snapshot(target, turn, work: .responding("private words")), profile: profile)
+        shows = false
+        feed.sync(snapshot(target, turn, work: .tool("search_mail")), profile: profile)
+        XCTAssertEqual(spy.events, [.interimAssistant("private words"), .workSummary([]),
+                                    .clearResponseExcerpt, .toolStarted(name: "search_mail"), .workSummary([])])
+    }
+
+    func testAHostErrorEndsAsFailedAndAStopAsCancelled() async {
+        let failed = BotFixtureWire(); failed.inflight = .object(["error": .string("boom")])
+        let broken = conversation(failed)
+        await broken.recover()
+        XCTAssertEqual(broken.liveActivitySnapshot.phase, .finished(.failed))
+        broken.suspend()
+
+        let stopped = BotFixtureWire()
+        stopped.transformResume = { snapshot in
+            guard case .object(var fields) = snapshot else { return snapshot }
+            fields["status"] = .string("interrupted")
+            return .object(fields)
+        }
+        let halted = conversation(stopped)
+        await halted.recover()
+        XCTAssertEqual(halted.liveActivitySnapshot.phase, .finished(.cancelled))
+        halted.suspend()
     }
 
     func testRepeatedSnapshotsAreCoalesced() {

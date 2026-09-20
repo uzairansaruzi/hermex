@@ -87,6 +87,8 @@ import Observation
     private var turnStartedAt: Double?
     /// When this phone first saw the current turn, for a host that sends no start time.
     private var turnObservedAt = Date()
+    /// Whether the last snapshot's interruption was a host error rather than a stop.
+    private var turnFailed = false
     private var snapshotIsBusy: Bool?
     private var snapshotDirty = false
     private var fullSnapshotNeeded = false
@@ -142,7 +144,7 @@ import Observation
                 phase = .working(turn: turnStartedAt.map { String($0) } ?? runtime ?? "",
                                  startedAt: turnStartedAt.map(Date.init(timeIntervalSince1970:)) ?? turnObservedAt)
             case .idle: phase = .finished(.complete)
-            case .interrupted: phase = .finished(.cancelled)
+            case .interrupted: phase = .finished(turnFailed ? .failed : .cancelled)
             case .unknown, .submitting, .uncertain: phase = .unknown
             }
         }
@@ -529,7 +531,9 @@ import Observation
         else if uncertainSend || uncertainStop { turn = .uncertain }
         else if localOperation { /* A snapshot cannot acknowledge a local command. */ }
         else if running || continuation || queued { turn = .running }
-        else if inflight["error"] != .null || snapshot["status"].text == "interrupted" { turn = .interrupted }
+        else if inflight["error"] != .null || snapshot["status"].text == "interrupted" {
+            turn = .interrupted; turnFailed = inflight["error"] != .null
+        }
         else { turn = .idle }
         if settingsRevision == nil || settingsRevision == chatControls.snapshotRevision {
             chatControls.snapshot(snapshot["info"], idle: !busy)

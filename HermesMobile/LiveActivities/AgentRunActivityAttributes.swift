@@ -427,6 +427,13 @@ enum AgentRunActivityStateReducer {
         statusState(.responding, activity: String(localized: "Processing result"), state: state, now: now)
     }
 
+    static func responding(
+        state: AgentRunActivityAttributes.ContentState,
+        now: Date = Date()
+    ) -> AgentRunActivityAttributes.ContentState {
+        statusState(.responding, activity: String(localized: "Writing response"), state: state, now: now)
+    }
+
     static func waitingForApproval(
         state: AgentRunActivityAttributes.ContentState,
         now: Date = Date()

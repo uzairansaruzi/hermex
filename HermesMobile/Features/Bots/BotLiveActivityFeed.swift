@@ -51,6 +51,8 @@ extension AgentRunActivityBot {
     private let showsExcerpts: () -> Bool
     private let writeAvatar: @MainActor (BotProfile, BotDestination) -> String?
     private var last: BotLiveActivitySnapshot?
+    /// True while the activity may hold reply text, so turning previews off clears it.
+    private var sentExcerpt = false
 
     init(manager: any AgentLiveActivityManaging,
          showsExcerpts: @escaping () -> Bool = {
@@ -83,6 +85,10 @@ extension AgentRunActivityBot {
                 guard let bot = AgentRunActivityBot(snapshot.destination, avatarFile: file) else { return }
                 manager.startBot(bot, title: snapshot.title, turn: turn, startedAt: startedAt)
             }
+            if sentExcerpt, !showsExcerpts() {
+                manager.update(.clearResponseExcerpt)
+                sentExcerpt = false
+            }
             if adopting || previous?.work != snapshot.work { send(snapshot.work) }
             manager.update(.workSummary(snapshot.chips))
         }
@@ -97,8 +103,14 @@ extension AgentRunActivityBot {
         case .waitingForApproval: manager.update(.waitingForApproval)
         case .waitingForAnswer: manager.update(.waitingForClarification)
         case .responding(let excerpt):
-            // Reply text reaches the Lock Screen only behind the existing setting.
-            if showsExcerpts() { manager.update(.interimAssistant(excerpt)) }
+            // Reply text reaches the Lock Screen only behind the existing setting;
+            // without it the status still moves on to "Writing response".
+            if showsExcerpts() {
+                manager.update(.interimAssistant(excerpt))
+                sentExcerpt = true
+            } else {
+                manager.update(.responding)
+            }
         }
     }
 
