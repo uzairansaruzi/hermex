@@ -523,6 +523,13 @@
 		44479D93F1024975AD571858 /* BotRoomManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73869046C6B24A24B963627C /* BotRoomManagementTests.swift */; };
 		13E546F5603145768F264AAD /* BotRoomAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */; };
 		EE59C61D9C83468A8D674EFD /* BotRoomComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D846D46BEF04DB99E7EADFB /* BotRoomComposerView.swift */; };
+		559000000000000000000001 /* PushPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000010 /* PushPreview.swift */; };
+		559000000000000000000002 /* PushPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000010 /* PushPreview.swift */; };
+		559000000000000000000003 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000011 /* NotificationService.swift */; };
+		559000000000000000000004 /* HermesNotificationService.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 559000000000000000000014 /* HermesNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		559000000000000000000005 /* PushNotificationRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000015 /* PushNotificationRouter.swift */; };
+		559000000000000000000006 /* PushPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000016 /* PushPreviewTests.swift */; };
+		559000000000000000000007 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -547,6 +554,13 @@
 			remoteGlobalIDString = A04500000000000000000040;
 			remoteInfo = HermesLiveActivityWidget;
 		};
+		559000000000000000000030 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A2B3C4D5E6F700000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 559000000000000000000040;
+			remoteInfo = HermesNotificationService;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -558,6 +572,7 @@
 			files = (
 				B5A100000000000000000006 /* HermesShareExtension.appex in Embed App Extensions */,
 				A04500000000000000000007 /* HermesLiveActivityWidget.appex in Embed App Extensions */,
+				559000000000000000000004 /* HermesNotificationService.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1077,6 +1092,13 @@
 		73869046C6B24A24B963627C /* BotRoomManagementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomManagementTests.swift"; sourceTree = "<group>"; };
 		9B84B78CC79B48F0938A1C70 /* BotRoomAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomAction.swift"; sourceTree = "<group>"; };
 		0D846D46BEF04DB99E7EADFB /* BotRoomComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomComposerView.swift"; sourceTree = "<group>"; };
+		559000000000000000000010 /* PushPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPreview.swift; sourceTree = "<group>"; };
+		559000000000000000000011 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		559000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		559000000000000000000013 /* HermesNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesNotificationService.entitlements; sourceTree = "<group>"; };
+		559000000000000000000014 /* HermesNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HermesNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		559000000000000000000015 /* PushNotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationRouter.swift; sourceTree = "<group>"; };
+		559000000000000000000016 /* PushPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPreviewTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1115,6 +1137,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		559000000000000000000061 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -1126,6 +1155,7 @@
 				1A2B3C4D5E6F700000000034 /* HermesMobileTests */,
 				B5A100000000000000000051 /* HermesShareExtension */,
 				A04500000000000000000021 /* HermesLiveActivityWidget */,
+				559000000000000000000020 /* HermesNotificationService */,
 				1A2B3C4D5E6F700000000032 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -1156,6 +1186,7 @@
 				1A2B3C4D5E6F700000000015 /* HermesMobileTests.xctest */,
 				B5A100000000000000000017 /* HermesShareExtension.appex */,
 				A04500000000000000000017 /* HermesLiveActivityWidget.appex */,
+				559000000000000000000014 /* HermesNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1339,6 +1370,7 @@
 				C0DE3400000000000000000C /* TranscriptMediaPreviewViewModelTests.swift */,
 				C0DE12000000000000000004 /* TranscriptLinkPreviewTests.swift */,
 				A04500000000000000000018 /* LiveActivityTests.swift */,
+				559000000000000000000016 /* PushPreviewTests.swift */,
 				1A2B3C4D5E6F700000000340 /* AppIntentNewChatTests.swift */,
 				1A2B3C4D5E6F700000000344 /* AppIntentNewChatInProfileTests.swift */,
 				A4790000000000000000F006 /* PushRegistrationTests.swift */,
@@ -1351,6 +1383,8 @@
 			children = (
 				A4790000000000000000F001 /* PushEnvironment.swift */,
 				A4790000000000000000F002 /* PushPairing.swift */,
+				559000000000000000000010 /* PushPreview.swift */,
+				559000000000000000000015 /* PushNotificationRouter.swift */,
 				A4790000000000000000F003 /* PushRelayClient.swift */,
 				A4790000000000000000F004 /* PushRegistrar.swift */,
 				A4790000000000000000F005 /* PushAppDelegate.swift */,
@@ -1811,6 +1845,24 @@
 			path = AppIntents;
 			sourceTree = "<group>";
 		};
+		559000000000000000000020 /* HermesNotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				559000000000000000000011 /* NotificationService.swift */,
+				559000000000000000000021 /* Resources */,
+			);
+			path = HermesNotificationService;
+			sourceTree = "<group>";
+		};
+		559000000000000000000021 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				559000000000000000000012 /* Info.plist */,
+				559000000000000000000013 /* HermesNotificationService.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		A04500000000000000000021 /* HermesLiveActivityWidget */ = {
 			isa = PBXGroup;
 			children = (
@@ -1901,6 +1953,7 @@
 			dependencies = (
 				B5A100000000000000000031 /* PBXTargetDependency */,
 				A04500000000000000000031 /* PBXTargetDependency */,
+				559000000000000000000031 /* PBXTargetDependency */,
 			);
 			name = HermesMobile;
 			packageProductDependencies = (
@@ -1969,6 +2022,23 @@
 			productReference = A04500000000000000000017 /* HermesLiveActivityWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		559000000000000000000040 /* HermesNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 559000000000000000000041 /* Build configuration list for PBXNativeTarget "HermesNotificationService" */;
+			buildPhases = (
+				559000000000000000000050 /* Sources */,
+				559000000000000000000060 /* Resources */,
+				559000000000000000000061 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HermesNotificationService;
+			productName = HermesNotificationService;
+			productReference = 559000000000000000000014 /* HermesNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1990,6 +2060,9 @@
 						CreatedOnToolsVersion = 26.4.1;
 					};
 					A04500000000000000000040 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					559000000000000000000040 = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
@@ -2036,6 +2109,7 @@
 				1A2B3C4D5E6F700000000044 /* HermesMobileTests */,
 				B5A100000000000000000040 /* HermesShareExtension */,
 				A04500000000000000000040 /* HermesLiveActivityWidget */,
+				559000000000000000000040 /* HermesNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -2062,6 +2136,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		559000000000000000000060 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				559000000000000000000007 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A04500000000000000000060 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2079,6 +2161,8 @@
 			files = (
 				A4790000000000000000E001 /* PushEnvironment.swift in Sources */,
 				A4790000000000000000E002 /* PushPairing.swift in Sources */,
+				559000000000000000000001 /* PushPreview.swift in Sources */,
+				559000000000000000000005 /* PushNotificationRouter.swift in Sources */,
 				A4790000000000000000E003 /* PushRelayClient.swift in Sources */,
 				A4790000000000000000E004 /* PushRegistrar.swift in Sources */,
 				A4790000000000000000E005 /* PushAppDelegate.swift in Sources */,
@@ -2575,6 +2659,7 @@
 				C0DE3400000000000000000B /* TranscriptMediaPreviewViewModelTests.swift in Sources */,
 				C0DE12000000000000000003 /* TranscriptLinkPreviewTests.swift in Sources */,
 				A04500000000000000000008 /* LiveActivityTests.swift in Sources */,
+				559000000000000000000006 /* PushPreviewTests.swift in Sources */,
 				1A2B3C4D5E6F700000000341 /* AppIntentNewChatTests.swift in Sources */,
 				1A2B3C4D5E6F700000000345 /* AppIntentNewChatInProfileTests.swift in Sources */,
 			);
@@ -2587,6 +2672,15 @@
 				B5A100000000000000000002 /* SharedDraftStore.swift in Sources */,
 				B5A100000000000000000003 /* ShareViewController.swift in Sources */,
 				B5A100000000000000000007 /* ShareInputReader.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		559000000000000000000050 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				559000000000000000000003 /* NotificationService.swift in Sources */,
+				559000000000000000000002 /* PushPreview.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2617,6 +2711,11 @@
 			isa = PBXTargetDependency;
 			target = A04500000000000000000040 /* HermesLiveActivityWidget */;
 			targetProxy = A04500000000000000000030 /* PBXContainerItemProxy */;
+		};
+		559000000000000000000031 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 559000000000000000000040 /* HermesNotificationService */;
+			targetProxy = 559000000000000000000030 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -2939,6 +3038,35 @@
 			};
 			name = Debug;
 		};
+		559000000000000000000042 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = HermesNotificationService/Resources/HermesNotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HermesNotificationService/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				KEYCHAIN_SERVICE = "$(APP_BUNDLE_IDENTIFIER)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.7;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).notificationservice";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		A04500000000000000000043 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2955,6 +3083,35 @@
 				);
 				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).liveactivitywidget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		559000000000000000000043 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = HermesNotificationService/Resources/HermesNotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HermesNotificationService/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				KEYCHAIN_SERVICE = "$(APP_BUNDLE_IDENTIFIER)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.7;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).notificationservice";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -3001,6 +3158,15 @@
 			buildConfigurations = (
 				B5A100000000000000000042 /* Debug */,
 				B5A100000000000000000043 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		559000000000000000000041 /* Build configuration list for PBXNativeTarget "HermesNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				559000000000000000000042 /* Debug */,
+				559000000000000000000043 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
