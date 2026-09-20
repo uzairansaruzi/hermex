@@ -77,6 +77,43 @@ import XCTest
         XCTAssertEqual(spy.ended, [.cancelled])
     }
 
+    func testColdLaunchRestoresCompactPushOwnershipSoCompletedBotCanEndIt() throws {
+        let target = destination()
+        let bot = try XCTUnwrap(AgentRunActivityBot(target))
+        let attributes = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage",
+                                                    streamID: bot.streamID(turn: "100.0"),
+                                                    startedAt: Date(timeIntervalSince1970: 100), bot: bot)
+        let state = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self,
+                                            from: Data(#"{"v":1,"status":"running","tool_calls":5}"#.utf8))
+        let manager = AgentLiveActivityManager()
+        XCTAssertTrue(manager.restoreBotOwnership(attributes: attributes, state: state))
+        XCTAssertEqual(manager.drivenSessionID, bot.key)
+        XCTAssertEqual(manager.currentStateForTesting()?.sessionTitle, "Inbox Triage")
+        XCTAssertNil(manager.activeConnectedStreamID, "A restored push activity does not own a foreground stream")
+
+        let feed = BotLiveActivityFeed(manager: manager, showsExcerpts: { false }, writeAvatar: { _, _ in nil })
+        feed.sync(snapshot(target, .finished(.complete)), profile: profile)
+        XCTAssertTrue(try XCTUnwrap(manager.currentStateForTesting()).isFinal)
+        XCTAssertNil(manager.drivenSessionID)
+    }
+
+    func testColdLaunchRejectsFinalActivitiesAndDoesNotReplaceAnAdoptedOwner() throws {
+        let bot = try XCTUnwrap(AgentRunActivityBot(destination()))
+        let attributes = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage",
+                                                    streamID: bot.streamID(turn: "100.0"),
+                                                    startedAt: Date(timeIntervalSince1970: 100), bot: bot)
+        let running = AgentRunActivityStateReducer.initialState(sessionID: bot.key, sessionTitle: "Inbox Triage")
+        let final = AgentRunActivityStateReducer.final(status: .complete, activity: "Done", state: running)
+        let manager = AgentLiveActivityManager()
+        XCTAssertFalse(manager.restoreBotOwnership(attributes: attributes, state: final))
+        XCTAssertNil(manager.drivenSessionID)
+        XCTAssertTrue(manager.restoreBotOwnership(attributes: attributes, state: running))
+        var duplicate = attributes
+        duplicate.sessionID = "another-bot"
+        XCTAssertFalse(manager.restoreBotOwnership(attributes: duplicate, state: running))
+        XCTAssertEqual(manager.drivenSessionID, bot.key)
+    }
+
     func testAnIdleBotNeverStartsAnActivityAndUnknownStateSaysNothing() {
         let spy = BotLiveActivitySpy()
         let feed = feed(spy)

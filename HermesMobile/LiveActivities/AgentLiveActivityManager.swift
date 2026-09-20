@@ -343,13 +343,31 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         for persisted in Activity<AgentRunActivityAttributes>.activities
         where persisted.attributes.bot != nil && persisted.id != activity?.id {
             if let bot = persisted.attributes.bot, canReceivePush(bot),
-               persisted.activityState != .ended, persisted.activityState != .dismissed {
+               persisted.activityState != .ended, persisted.activityState != .dismissed,
+               restoreBotOwnership(attributes: persisted.attributes, state: persisted.content.state) {
+                activity = persisted
                 observePush(persisted)
             } else {
                 await retirePush(persisted)
                 await persisted.end(nil, dismissalPolicy: .immediate)
             }
         }
+    }
+
+    /// Restores the feed's ownership before observing a surviving push activity.
+    /// Only one activity can own the manager; duplicates and final states retire.
+    @discardableResult
+    func restoreBotOwnership(attributes: AgentRunActivityAttributes,
+                             state: AgentRunActivityAttributes.ContentState) -> Bool {
+        guard currentSessionID == nil, attributes.bot != nil, !state.isFinal else { return false }
+        currentSessionID = attributes.sessionID
+        currentStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(attributes.streamID)
+        currentState = state.presented(attributes: attributes, systemIsStale: false)
+        rawResponseText = currentState?.responseExcerpt ?? ""
+        lastSentUpdateAt = state.updatedAt
+        _ = nextLifecycleGeneration()
+        _ = nextUpdateGeneration()
+        return true
     }
 
     @discardableResult
