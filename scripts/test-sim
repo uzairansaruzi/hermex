@@ -3,7 +3,7 @@
 
 import argparse
 from collections import deque
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, suppress
 from datetime import datetime
 import fcntl
 import hashlib
@@ -46,7 +46,7 @@ def lock(path, owner, timeout=0):
 
 
 def run(command, output, timeout, lock_fds=()):
-    """Wait locally; on timeout/interruption stop only the child we spawned."""
+    """Wait locally; on timeout/interruption stop our isolated process group."""
     with output.open("w") as log:
         process = subprocess.Popen(
             command, stdout=log, stderr=subprocess.STDOUT,
@@ -55,11 +55,19 @@ def run(command, output, timeout, lock_fds=()):
         try:
             return process.wait(timeout=timeout)
         except (subprocess.TimeoutExpired, KeyboardInterrupt):
-            process.terminate()
+            # start_new_session makes the captured child's PID its process-group
+            # ID. Never discover targets by name or touch another runner's group.
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGTERM)
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                process.kill()
+                pass
+            finally:
+                # The leader may exit before descendants that ignore SIGTERM.
+                # Always stop the remaining group, even after wait() succeeds.
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
             raise
 
@@ -190,7 +198,7 @@ def main():
             print("PASS\nResult: " + str(result), flush=True)
             return 0
     except subprocess.TimeoutExpired:
-        print("STOP: command timed out; its process was stopped. No retry performed.", flush=True)
+        print("STOP: command timed out; its process group was stopped. No retry performed.", flush=True)
         return 124
     except KeyboardInterrupt:
         print("STOP: interrupted. No retry performed.", flush=True)

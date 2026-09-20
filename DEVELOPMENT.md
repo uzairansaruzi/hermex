@@ -103,8 +103,9 @@ result-verification failure; **124** timeout; **130** interrupted. On a busy
 device or infrastructure failure, report the blocker and log path; stop rather
 than rebooting, erasing devices, clearing caches, or rerunning unchanged tests.
 For actual test failures, inspect the recorded failure and follow the repo's
-baseline-check procedure where applicable. The runner stops only processes it
-spawned and leaves the simulator available for the session's next step.
+baseline-check procedure where applicable. On timeout or interruption, the runner
+terminates the isolated process group it spawned, including remaining descendants,
+and leaves other jobs and the simulator itself alone.
 
 Runner checks: `python3 -m unittest discover -s scripts/tests -v`.
 

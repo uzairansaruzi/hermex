@@ -5,7 +5,10 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import select
+import signal
 import subprocess
 import sys
 import tempfile
@@ -129,6 +132,69 @@ class SimulatorRunnerTests(unittest.TestCase):
                            self.home / "timeout.log", timeout=0.1)
             self.assertEqual(spawn.call_count, 1)
         # run() reaps its child before propagating the timeout.
+
+    def check_descendant_cleanup(self, interruption):
+        path = self.home / "descendant.lock"
+        read_fd, write_fd = os.pipe()
+        spawned = []
+        original_popen = subprocess.Popen
+        unrelated = original_popen([sys.executable, "-c", "import sys; sys.stdin.read()"],
+                                   stdin=subprocess.PIPE)
+        # Only the grandchild announces readiness, after inheriting the lock
+        # and installing SIGTERM resistance. EOF proves all pipe owners exited.
+        command = [sys.executable, "-c", """
+import os, signal, sys
+if os.fork() == 0:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    os.write(int(sys.argv[1]), b'R')
+while True:
+    signal.pause()
+""", str(write_fd)]
+
+        def spawn(*args, **kwargs):
+            process = original_popen(*args, **kwargs)
+            spawned.append(process)
+            original_wait = process.wait
+            os.close(write_fd)
+
+            def wait_for_ready(timeout=None):
+                process.wait = original_wait
+                self.assertTrue(select.select([read_fd], [], [], 5)[0], "Child did not start")
+                self.assertEqual(os.read(read_fd, 1), b"R")
+                raise interruption
+
+            process.wait = wait_for_ready
+            return process
+
+        try:
+            with runner.lock(path, "test hierarchy") as lock_fd:
+                with patch.object(runner.subprocess, "Popen", side_effect=spawn):
+                    with self.assertRaises(type(interruption)):
+                        runner.run(command, self.home / "descendant.log", 30,
+                                   lock_fds=(lock_fd, write_fd))
+            self.assertTrue(select.select([read_fd], [], [], 5)[0], "Descendant survived cleanup")
+            self.assertEqual(os.read(read_fd, 1), b"")
+            with runner.lock(path, "next test run"):
+                pass
+            self.assertIsNotNone(spawned[0].returncode)
+            self.assertIsNone(unrelated.poll(), "Cleanup touched an unrelated job")
+        finally:
+            for process in spawned:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            if not spawned:
+                os.close(write_fd)
+            os.close(read_fd)
+            unrelated.communicate(timeout=5)
+
+    def test_timeout_stops_descendants_and_releases_their_lock(self):
+        self.check_descendant_cleanup(subprocess.TimeoutExpired("test process", 30))
+
+    def test_interruption_stops_descendants_and_releases_their_lock(self):
+        self.check_descendant_cleanup(KeyboardInterrupt())
 
 
 if __name__ == "__main__":
