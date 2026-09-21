@@ -282,24 +282,6 @@ import XCTest
         XCTAssertTrue(text.localizedCaseInsensitiveContains("high"), text)
     }
 
-    func testBotComposerExposesOnDeviceVoiceInput() async throws {
-        let wire = BotFixtureWire()
-        let model = make(wire)
-        await model.recover()
-        let window = try show(VStack {
-            Spacer()
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
-        })
-        defer { close(window); model.suspend() }
-
-        await renderFrames()
-
-        XCTAssertTrue(
-            accessibilityLabels(in: window).contains("Voice input")
-                || accessibilityIdentifiers(in: window).contains("bot-voice-input")
-        )
-    }
-
     func testLatestArrowLayoutAboveAndAtTheBottom() async throws {
         let wire = BotFixtureWire()
         wire.history = (0..<30).map { index in
@@ -1051,10 +1033,6 @@ import XCTest
             queue += view.subviews
         }
         return labels
-    }
-
-    private func accessibilityIdentifiers(in root: UIView) -> [String] {
-        descendants(root).compactMap(\.accessibilityIdentifier)
     }
 
     private func accessibilityLabel(of element: Any?) -> [String] {

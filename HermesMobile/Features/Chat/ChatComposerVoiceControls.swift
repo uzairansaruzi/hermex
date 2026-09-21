@@ -83,8 +83,10 @@ struct ComposerVoiceControlButton: View {
     }
 
     private var accessibilityLabel: Text {
-        if isRecordingVoiceNote { return Text("Recording voice note") }
-        return isListening ? Text("Stop voice input") : Text("Voice input")
+        Text(ComposerVoiceControlAccessibility.label(
+            isListening: isListening,
+            isRecordingVoiceNote: isRecordingVoiceNote
+        ))
     }
 
     /// One `DragGesture(minimumDistance: 0)` distinguishes tap from hold by timing,
@@ -134,6 +136,13 @@ struct ComposerVoiceControlButton: View {
     private func cancelScheduledRecordingStart() {
         holdWorkItem?.cancel()
         holdWorkItem = nil
+    }
+}
+
+enum ComposerVoiceControlAccessibility {
+    static func label(isListening: Bool, isRecordingVoiceNote: Bool) -> String {
+        if isRecordingVoiceNote { return String(localized: "Recording voice note") }
+        return isListening ? String(localized: "Stop voice input") : String(localized: "Voice input")
     }
 }
 

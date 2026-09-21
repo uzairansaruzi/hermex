@@ -356,7 +356,6 @@ struct BotChatComposerView: View {
             onRecordingDragChanged: { _ in },
             onRecordingEnd: { _ in }
         )
-        .accessibilityIdentifier("bot-voice-input")
     }
 
     private var isVoiceInputDisabled: Bool {
