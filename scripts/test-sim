@@ -17,7 +17,8 @@ import tempfile
 import time
 
 
-APP_BUNDLE_ID = "com.uzairansar.hermesmobile"  # Debug builds carry no suffix.
+# Same override as scripts/sim-login, for a Config/Local.xcconfig bundle ID.
+APP_BUNDLE_ID = os.environ.get("HERMEX_BUNDLE_ID", "com.uzairansar.hermesmobile")
 
 
 class RunnerError(Exception):
