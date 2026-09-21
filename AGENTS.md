@@ -99,7 +99,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 ## Verifying
 
 - Run local XCTest through `scripts/test-sim <assigned-simulator-udid>`; add `--only HermesMobileTests/<TestClass>` for focused validation. Each worktree keeps its own simulator; different simulators can test concurrently. See `DEVELOPMENT.md` § Local XCTest for assignment, logs, and failure handling.
-- **Run the full XCTest suite before asking for review or committing a slice** when the change touches Swift, resources, the Xcode project, or `Config/`. A change limited to `scripts/`, docs, or `.github/` runs its own checks instead (for `scripts/`: `python3 -m unittest discover -s scripts/tests`). A failing build or test becomes the current task; fix it before writing more code on top.
+- **Run the full XCTest suite before asking for review or committing a slice** when the change touches Swift, resources, the Xcode project, or `Config/`. A change limited to `scripts/`, docs, or `.github/` runs its own checks instead: `python3 -m unittest discover -s scripts/tests` for `scripts/test-sim`, and a real run of any other script you changed. A failing build or test becomes the current task; fix it before writing more code on top.
 - Behavior changes ship with focused tests for that behavior.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
 - UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
