@@ -32,17 +32,17 @@ import SwiftUI
             .padding(.top, 12)
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: "bell").foregroundStyle(.secondary)
+                Image(systemName: "bell").foregroundStyle(Color.secondary)
                     .frame(width: 24).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Notifications").font(AppFont.subheadline(weight: .medium))
                     Text(provisioner.pairing == nil
                          ? String(localized: "Push off · Current server")
                          : String(localized: "Push on · Current server"))
-                        .font(AppFont.caption()).foregroundStyle(.secondary)
+                        .font(AppFont.caption()).foregroundStyle(Color.secondary)
                 }
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(Color.primary)
             .frame(minHeight: 44)
         }
         .transaction { $0.animation = nil }
@@ -114,10 +114,13 @@ import SwiftUI
             HStack {
                 Text(provisioner.connection == nil ? String(localized: "Connect Hermes…") : String(localized: "Hermes connection"))
                 Spacer()
-                Image(systemName: "chevron.forward").accessibilityHidden(true)
+                Image(systemName: "chevron.forward")
+                    .foregroundStyle(Color.secondary).accessibilityHidden(true)
             }
             .font(AppFont.subheadline()).frame(minHeight: 44)
+            .foregroundStyle(Color.primary)
         }
+        .buttonStyle(.plain)
         .disabled(provisioner.isWorking)
         if let failure = provisioner.failure { failureRow(failure) }
     }
