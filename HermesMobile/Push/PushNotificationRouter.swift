@@ -82,7 +82,7 @@ struct WebuiPushDestination: Hashable {
     }
 
     init?(url: URL) {
-        guard url.scheme == HermesDeepLink.scheme, url.host == "webui-push",
+        guard url.scheme?.lowercased() == HermesDeepLink.scheme.lowercased(), url.host?.lowercased() == "webui-push",
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               let rawServer = items.first(where: { $0.name == "server" })?.value,
               let server = try? AuthManager.normalizedServerURL(from: rawServer),

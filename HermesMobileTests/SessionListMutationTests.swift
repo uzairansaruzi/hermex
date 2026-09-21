@@ -36,7 +36,7 @@ final class SessionListMutationTests: XCTestCase {
 
     @MainActor
     func testPushSessionLoadsLiveAndKeepsRealFailuresVisible() async throws {
-        for status in [200, 503] {
+        for status in [200, 401, 503] {
             let viewModel = try makeViewModel { request in
                 let body = status == 200 ? #"{"session":{"session_id":"s1","title":"Live"}}"# : #"{"error":"Unavailable"}"#
                 return (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
@@ -48,6 +48,11 @@ final class SessionListMutationTests: XCTestCase {
             } else {
                 XCTAssertNil(result)
                 XCTAssertNotNil(viewModel.lastError)
+                if status == 401 {
+                    guard let error = viewModel.lastError, case APIError.unauthorized = error else {
+                        return XCTFail("Push lookup must preserve the error that sends the app to sign-in")
+                    }
+                }
             }
         }
     }

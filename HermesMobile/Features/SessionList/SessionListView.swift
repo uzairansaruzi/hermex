@@ -1366,10 +1366,16 @@ struct SessionListView: View {
             id: destination.sessionID, modelContext: modelContext, isPush: true)
         guard !Task.isCancelled, pendingWebuiPush == destination,
               authManager.state == .loggedIn(server: server) else { return }
-        pendingWebuiPush = nil
-        guard navigationState.rootRevision == revision else { return }
-        if let session { selectSession(session) }
+        guard navigationState.rootRevision == revision else {
+            pendingWebuiPush = nil
+            return
+        }
         handleLastError()
+        // An expired cookie moves the app to sign-in. Keep the tap until the
+        // rebuilt, signed-in session list can retry its owning server's lookup.
+        guard authManager.state == .loggedIn(server: server) else { return }
+        pendingWebuiPush = nil
+        if let session { selectSession(session) }
     }
 
     /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before

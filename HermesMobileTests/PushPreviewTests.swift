@@ -129,6 +129,14 @@ import XCTest
         XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
     }
 
+    func testWebuiDeepLinkAcceptsMixedCaseSchemeAndHost() throws {
+        let destination = WebuiPushDestination(server: server, sessionID: "CaseSensitiveSession")
+        var components = try XCTUnwrap(URLComponents(url: XCTUnwrap(destination.url), resolvingAgainstBaseURL: false))
+        components.scheme = HermesDeepLink.scheme.uppercased()
+        components.host = "WEBUI-PUSH"
+        XCTAssertEqual(WebuiPushDestination(url: try XCTUnwrap(components.url)), destination)
+    }
+
     func testWebuiPreviewUsesTheSameSealedEnvelope() {
         let content = banner(sealed: sealed)
         content.userInfo["source"] = "webui"
