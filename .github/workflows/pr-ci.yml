@@ -1,6 +1,7 @@
 # Contributor CI: build and run the full XCTest suite on every pull request
-# that touches app code. Docs-only PRs (markdown, docs/, community files) skip
-# the macOS runner entirely and pass via the cheap gate job.
+# that touches app code. PRs limited to docs (markdown, docs/, community files)
+# and local tooling (scripts/) skip the macOS runner entirely and pass via the
+# cheap gate job.
 #
 # The required branch-protection check is "CI Gate", not "Build and Test":
 # a skipped required check would block merges forever, so the gate always
@@ -43,15 +44,17 @@ jobs:
             --paginate --jq '.[].filename')
           echo "Changed files:"
           echo "${files}"
-          # Fail closed: anything NOT on the docs-only allowlist triggers the
-          # full suite (including workflow, project, and config changes).
-          non_docs=$(echo "${files}" | grep -vE '^(docs/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
-          if [[ -n "${non_docs}" ]]; then
-            echo "Non-docs changes detected — running the full suite:"
-            echo "${non_docs}"
+          # Fail closed: anything NOT on the allowlist triggers the full suite
+          # (including workflow, project, and config changes). scripts/ is
+          # local tooling that no workflow or build phase calls; take it off
+          # the allowlist if that ever changes.
+          app_changes=$(echo "${files}" | grep -vE '^(docs/.*|scripts/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
+          if [[ -n "${app_changes}" ]]; then
+            echo "App-affecting changes detected — running the full suite:"
+            echo "${app_changes}"
             echo "run_ios=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Docs-only change — skipping the macOS runner."
+            echo "Docs or scripts only — skipping the macOS runner."
             echo "run_ios=false" >> "$GITHUB_OUTPUT"
           fi
 
