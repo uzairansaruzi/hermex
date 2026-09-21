@@ -142,15 +142,7 @@ final class TranscriptMediaPreviewViewModel {
     }
 
     private func transcriptMediaData() async throws -> Data {
-        switch reference.source {
-        case .localPath:
-            guard let sessionID = resolvedSessionID else {
-                throw TranscriptMediaPreviewError.missingSessionID
-            }
-            return try await apiClient.transcriptMediaData(for: reference, sessionID: sessionID)
-        case .remoteURL:
-            return try await apiClient.transcriptMediaData(for: reference, sessionID: resolvedSessionID ?? "")
-        }
+        try await apiClient.transcriptMediaData(for: reference, sessionID: resolvedSessionID)
     }
 
     private var resolvedSessionID: String? {
@@ -206,7 +198,7 @@ final class TranscriptMediaPreviewViewModel {
     }
 }
 
-private enum TranscriptMediaPreviewError: LocalizedError {
+enum TranscriptMediaPreviewError: LocalizedError {
     case missingSessionID
 
     var errorDescription: String? {
