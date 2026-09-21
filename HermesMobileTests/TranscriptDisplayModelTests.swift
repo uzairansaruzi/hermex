@@ -643,4 +643,57 @@ final class ClarificationRequestPresentationTests: XCTestCase {
         XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
         XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
     }
+
+    func testHeightPolicyFitsContentWithoutGrowingTheCard() {
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 500,
+                fixedContentHeight: 160,
+                bodyContentHeight: 180,
+                minimumBodyHeight: 44
+            ),
+            180
+        )
+    }
+
+    func testHeightPolicyClampsBodyToSafeGapAndCap() {
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 360,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 44
+            ),
+            200
+        )
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 600,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 44
+            ),
+            300
+        )
+    }
+
+    func testHeightPolicyCollapsesWhenOneScaledChoiceCannotFit() {
+        XCTAssertNil(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 247,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 88
+            )
+        )
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 248,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 88
+            ),
+            88
+        )
+    }
 }

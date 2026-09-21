@@ -708,30 +708,37 @@ struct ChatView: View {
     /// The chat scaffold. Split from `body` so the confirmation-alert chain
     /// below stays inside the compiler's type-checking budget.
     private var chatContent: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                if viewModel.isViewingCachedData {
-                    ChatOfflineCacheBanner()
+        GeometryReader { viewport in
+            let clarificationMaximumHeight = max(
+                0,
+                viewport.size.height - composerHeight - 16
+            )
+
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    if viewModel.isViewingCachedData {
+                        ChatOfflineCacheBanner()
+                    }
+
+                    listenPlaybackBar
+
+                    messageContent
+                        // Scope RTL to the chat transcript only (#259): the offline
+                        // banner above stays in the app's default direction.
+                        .environment(\.layoutDirection, chatLayoutDirection)
                 }
+                .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
 
-                listenPlaybackBar
+                BottomComposerMaterialFade(composerHeight: composerHeight)
 
-                messageContent
-                    // Scope RTL to the chat transcript only (#259): the offline
-                    // banner above stays in the app's default direction.
-                    .environment(\.layoutDirection, chatLayoutDirection)
+                composerAccessoryStack
+
+                clarificationInset(maximumExpandedHeight: clarificationMaximumHeight)
+
+                messageComposer
+
+                approvalOverlay
             }
-            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
-
-            BottomComposerMaterialFade(composerHeight: composerHeight)
-
-            composerAccessoryStack
-
-            clarificationInset
-
-            messageComposer
-
-            approvalOverlay
         }
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
@@ -1273,11 +1280,12 @@ struct ChatView: View {
 
     /// The pending clarification, pinned above the composer. Sits in the same
     /// bottom stack as the composer so it rides the keyboard with it.
-    private var clarificationInset: some View {
+    private func clarificationInset(maximumExpandedHeight: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
             if let clarificationPrompt = viewModel.clarificationPrompt {
                 ClarificationRequestInset(
                     prompt: clarificationPrompt,
+                    maximumExpandedHeight: maximumExpandedHeight,
                     isResponding: viewModel.isRespondingToClarification,
                     isStopping: viewModel.isCancellingStream,
                     errorMessage: viewModel.clarificationErrorMessage,

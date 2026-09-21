@@ -8,6 +8,9 @@ import UIKit
 /// the transcript. A new request always arrives expanded.
 struct ClarificationRequestInset: View {
     let prompt: ClarificationPromptState
+    /// Height between the chat's top safe edge and this inset's bottom edge.
+    /// The expanded card may use less, but never more.
+    let maximumExpandedHeight: CGFloat
     let isResponding: Bool
     let isStopping: Bool
     let errorMessage: String?
@@ -46,11 +49,14 @@ struct ClarificationRequestInset: View {
                 if isExpanded {
                     ClarificationRequestCard(
                         prompt: prompt,
+                        maximumExpandedHeight: maximumExpandedHeight,
                         isResponding: isResponding,
                         errorMessage: errorMessage,
                         draftResponse: $draftResponse,
                         onSubmit: onSubmit,
-                        onCollapse: { setExpanded(false) }
+                        onCollapse: { setExpanded(false) },
+                        onDismissKeyboard: onDismissKeyboard,
+                        onCannotFit: { setExpanded(false) }
                     )
                     .transition(.move(edge: .bottom))
                 }
@@ -157,29 +163,40 @@ struct ClarificationRequestBar: View {
 
 struct ClarificationRequestCard: View {
     let prompt: ClarificationPromptState
+    let maximumExpandedHeight: CGFloat
     let isResponding: Bool
     let errorMessage: String?
     @Binding var draftResponse: String
     let onSubmit: (String) -> Void
     let onCollapse: () -> Void
+    let onDismissKeyboard: () -> Void
+    let onCannotFit: () -> Void
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var minimumBodyHeight: CGFloat = 44
+    @State private var headerHeight: CGFloat?
+    @State private var responseHeight: CGFloat?
+    @State private var footerHeight: CGFloat?
     @State private var bodyContentHeight: CGFloat?
-
-    /// Beyond this the question and choices scroll inside the card, so a long
-    /// prompt cannot push the response field off screen. Sized to fit a short
-    /// question with four choices without scrolling.
-    private let bodyHeightCap: CGFloat = 300
-
+    private let contentSpacing: CGFloat = 14
+    private let verticalPadding: CGFloat = 32
     var body: some View {
         cardContent
             .frame(maxWidth: 560, alignment: .leading)
             .pendingRequestCardSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
-            // Ideal height regardless of what the bar-sized overlay proposes.
+            // Keep the card's clamped ideal height despite the bar-sized overlay proposal.
             .fixedSize(horizontal: false, vertical: true)
+            // Stay hidden during first measurement instead of briefly drawing clipped.
+            .opacity(resolvedBodyHeight == nil ? 0 : 1)
+            .allowsHitTesting(resolvedBodyHeight != nil)
             .accessibilityElement(children: .contain)
+            .onChange(of: canFit, initial: true) { _, canFit in
+                if canFit == false {
+                    onCannotFit()
+                }
+            }
     }
 
     private var header: some View {
@@ -205,6 +222,14 @@ struct ClarificationRequestCard: View {
             expirationView
 
             collapseButton
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onDismissKeyboard)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            headerHeight = height
         }
     }
 
@@ -237,8 +262,8 @@ struct ClarificationRequestCard: View {
         }
     }
 
-    /// Question plus choices, scrolling only once they outgrow the cap.
-    @ViewBuilder
+    /// Only the question and choices scroll. An interactive drag follows the
+    /// transcript's keyboard-dismiss behaviour.
     private var scrollableBody: some View {
         let content = VStack(alignment: .leading, spacing: 14) {
             question
@@ -253,14 +278,11 @@ struct ClarificationRequestCard: View {
             bodyContentHeight = height
         }
 
-        if let bodyContentHeight, bodyContentHeight > bodyHeightCap {
-            ScrollView {
-                content
-            }
-            .frame(height: bodyHeightCap)
-        } else {
+        return ScrollView {
             content
         }
+        .scrollDismissesKeyboard(.interactively)
+        .frame(height: resolvedBodyHeight ?? minimumBodyHeight)
     }
 
     private var responseField: some View {
@@ -275,6 +297,12 @@ struct ClarificationRequestCard: View {
             PendingRequestSubmitButton(isBusy: isResponding, canSubmit: canSubmit, action: submitDraft)
                 .accessibilityLabel("Submit clarification")
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            responseHeight = height
+        }
     }
 
     private var canSubmit: Bool { !isResponding && !trimmedDraft.isEmpty }
@@ -286,6 +314,11 @@ struct ClarificationRequestCard: View {
                 .font(.caption)
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    footerHeight = height
+                }
         }
     }
 
@@ -334,6 +367,35 @@ struct ClarificationRequestCard: View {
             footer
         }
         .padding(16)
+    }
+
+    private var canFit: Bool? {
+        guard measurements != nil else { return nil }
+        return resolvedBodyHeight != nil
+    }
+
+    private var resolvedBodyHeight: CGFloat? {
+        guard let measurements else { return nil }
+        return ClarificationRequestHeightPolicy.bodyHeight(
+            maximumExpandedHeight: maximumExpandedHeight,
+            fixedContentHeight: measurements.fixedContentHeight,
+            bodyContentHeight: measurements.bodyContentHeight,
+            minimumBodyHeight: minimumBodyHeight
+        )
+    }
+
+    private var measurements: (fixedContentHeight: CGFloat, bodyContentHeight: CGFloat)? {
+        guard let headerHeight, let responseHeight, let bodyContentHeight else { return nil }
+        let hasFooter = nonEmpty(errorMessage) != nil
+        guard !hasFooter || footerHeight != nil else { return nil }
+
+        let visibleSectionCount = hasFooter ? 4 : 3
+        let fixedContentHeight = verticalPadding
+            + headerHeight
+            + responseHeight
+            + (footerHeight ?? 0)
+            + CGFloat(visibleSectionCount - 1) * contentSpacing
+        return (fixedContentHeight, bodyContentHeight)
     }
 
     @ViewBuilder
@@ -409,5 +471,30 @@ struct ClarificationRequestCard: View {
     private func nonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
+/// Converts the safe gap above the composer into the question-and-choice
+/// viewport. Returning nil tells the inset to fall back to its collapsed bar.
+struct ClarificationRequestHeightPolicy {
+    static let bodyHeightCap: CGFloat = 300
+
+    static func bodyHeight(
+        maximumExpandedHeight: CGFloat,
+        fixedContentHeight: CGFloat,
+        bodyContentHeight: CGFloat,
+        minimumBodyHeight: CGFloat
+    ) -> CGFloat? {
+        let availableBodyHeight = maximumExpandedHeight - fixedContentHeight
+        guard maximumExpandedHeight.isFinite,
+              fixedContentHeight.isFinite,
+              bodyContentHeight.isFinite,
+              minimumBodyHeight.isFinite,
+              availableBodyHeight >= minimumBodyHeight
+        else {
+            return nil
+        }
+
+        return min(bodyContentHeight, bodyHeightCap, availableBodyHeight)
     }
 }
