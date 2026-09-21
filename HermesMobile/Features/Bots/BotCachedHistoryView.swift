@@ -31,7 +31,12 @@ struct BotCachedHistoryView: View {
                         )
                         if chatMessage.isSteerMessage {
                             // The same steer bubble as live Bot history.
-                            MessageBubbleView(message: chatMessage, textOnly: true)
+                            // A steer bubble is text only, so this namespace never keys media.
+                            MessageBubbleView(
+                                message: chatMessage,
+                                transcriptMediaCacheNamespace: "bot-cached-history",
+                                textOnly: true
+                            )
                                 .id(message.id)
                         } else {
                             VStack(alignment: .leading, spacing: 6) {

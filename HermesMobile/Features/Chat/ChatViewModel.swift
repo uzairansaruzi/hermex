@@ -1776,7 +1776,9 @@ final class ChatViewModel {
 
         for index in stride(from: startIndex, through: 0, by: -1) {
             let message = messages[index]
-            guard message.role == "user" else { continue }
+            // A steer sits between the prompt and its reply; regenerating must
+            // resend the prompt, never the steer's wrapped text.
+            guard message.role == "user", !message.isSteerMessage else { continue }
 
             let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let text, !text.isEmpty {

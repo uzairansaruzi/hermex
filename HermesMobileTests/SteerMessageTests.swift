@@ -128,6 +128,7 @@ final class SteerMessageTests: XCTestCase {
 
     // MARK: - Cache round-trip
 
+    @MainActor
     func testCacheRoundTripsDisplayKind() throws {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
@@ -197,13 +198,29 @@ final class SteerMessageTests: XCTestCase {
         let history: [BotJSON] = [
             .object([
                 "role": .string("user"),
-                "text": .string(annotated),
+                "text": .string(Self.wrapped(annotated)),
                 "display_kind": .string("steer"),
             ]),
         ]
         let projected = BotTranscriptProjection.project(history: history, root: "root")
         XCTAssertEqual(projected.messages.count, 1)
-        XCTAssertEqual(projected.messages[0].content, steerText)
+        XCTAssertTrue(projected.messages[0].isSteerMessage)
+        XCTAssertEqual(projected.messages[0].steerText, steerText)
+    }
+
+    // MARK: - Regenerate
+
+    /// Regenerating a steered reply resends the prompt, not the steer.
+    func testRegenerateSkipsSteerRows() {
+        let messages = [
+            ChatMessage(role: "user", content: "Tell me a long story", timestamp: nil, messageId: "u1"),
+            ChatMessage(role: "user", content: Self.wrapped("About elephants"), timestamp: nil, messageId: "s1"),
+            ChatMessage(role: "assistant", content: "The Long Voice", timestamp: nil, messageId: "a1"),
+        ]
+        XCTAssertEqual(
+            ChatViewModel.precedingUserMessageText(in: messages, beforeVisibleIndex: 2),
+            "Tell me a long story"
+        )
     }
 
     // MARK: - Active-stream snapshot restoration

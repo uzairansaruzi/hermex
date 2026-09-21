@@ -175,6 +175,7 @@
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
 		531000000000000000000201 /* TipJarPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000202 /* TipJarPromptTests.swift */; };
 		C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */; };
+		C25420000000000000000001 /* SteerMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25420000000000000000002 /* SteerMessageTests.swift */; };
 		C22600000000000000000003 /* StreamReconnectContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000004 /* StreamReconnectContractTests.swift */; };
 		1A2B3C4D5E6F7000000000D4 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D5 /* ChatViewModel.swift */; };
 		1A2B3C4D5E6F7000000000D6 /* SSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D7 /* SSEClient.swift */; };
@@ -742,6 +743,7 @@
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
 		531000000000000000000202 /* TipJarPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
+		C25420000000000000000002 /* SteerMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteerMessageTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000004 /* StreamReconnectContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamReconnectContractTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D5 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D7 /* SSEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEClient.swift; sourceTree = "<group>"; };
@@ -1299,6 +1301,7 @@
 				C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */,
 				1A2B3C4D5E6F7000000000DD /* SSEClientTests.swift */,
 				C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */,
+				C25420000000000000000002 /* SteerMessageTests.swift */,
 				C22600000000000000000004 /* StreamReconnectContractTests.swift */,
 				C22300000000000000000004 /* CompressionAnchorResolverTests.swift */,
 				C21200000000000000000004 /* StreamingWordDrainTests.swift */,
@@ -2592,6 +2595,7 @@
 				C27800000000000000000003 /* ChatGitControlsVisibilityPolicyTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000DC /* SSEClientTests.swift in Sources */,
 				C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */,
+				C25420000000000000000001 /* SteerMessageTests.swift in Sources */,
 				C22600000000000000000003 /* StreamReconnectContractTests.swift in Sources */,
 				C22300000000000000000003 /* CompressionAnchorResolverTests.swift in Sources */,
 				C21200000000000000000003 /* StreamingWordDrainTests.swift in Sources */,
