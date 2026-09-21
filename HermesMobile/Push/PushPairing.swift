@@ -21,6 +21,10 @@ struct PushPairing: Codable, Equatable, Sendable {
     var registeredToken: String?
     /// Optional on disk so pairings saved before preferences keep the relay defaults.
     var preferences: PushPreferences?
+    /// Written before a remote preference change and cleared only after both
+    /// sides agree. A crash or failed rollback must not turn old values into a
+    /// false confirmation when Settings reopens.
+    var preferencesNeedSync: Bool?
     var effectivePreferences: PushPreferences { preferences ?? PushPreferences() }
 
     init(relayURL: URL, installKey: String, previewKey: String, registeredToken: String? = nil) {

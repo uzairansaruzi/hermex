@@ -84,6 +84,9 @@ import Foundation
         connection = try? BotConnectionStore().load(server: server)
         pairing = registrar?.pairing(for: server)
         phase = .idle
+        if let pairing, pairing.preferencesNeedSync == true {
+            await updatePreferences(pairing.effectivePreferences)
+        }
     }
 
     func updatePreferences(_ preferences: PushPreferences) async {

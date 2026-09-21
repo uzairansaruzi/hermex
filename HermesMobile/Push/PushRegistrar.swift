@@ -41,6 +41,7 @@ enum PushRegistrarError: Error, Equatable {
     case tokenUnavailable
     case malformedPairing
     case pairingChanged
+    case preferencesUnconfirmed
 }
 
 /// Owns this device's APNs registration across every paired server.
@@ -185,23 +186,43 @@ enum PushRegistrarError: Error, Equatable {
             guard let original = try store.pairing(for: server),
                   sameInstall(original, expectedPairing), let token = original.registeredToken
             else { throw PushRegistrarError.pairingChanged }
+            // Journal uncertainty first. If Keychain is unavailable, do not change
+            // the relay; if the process ends later, reload can still reconcile.
+            var pending = original
+            pending.preferencesNeedSync = true
+            try store.save(pending, for: server)
             var updated = original
             updated.preferences = preferences
-            try await relay.registerDevice(token: token, identity: identity, pairing: updated)
-            guard isStillPaired(original, for: server) else {
-                try? await relay.deleteDevice(token: token, pairing: original)
-                throw PushRegistrarError.pairingChanged
-            }
+            updated.preferencesNeedSync = nil
             do {
+                try await relay.registerDevice(token: token, identity: identity, pairing: updated)
+                guard isStillPaired(original, for: server) else {
+                    throw PushRegistrarError.pairingChanged
+                }
                 try store.save(updated, for: server)
             } catch {
-                // A failed local commit restores the previously confirmed relay
-                // preferences. Launch refresh retries that value if rollback fails.
-                try? await relay.registerDevice(token: token, identity: identity, pairing: original)
+                let updateError = error
+                if isStillPaired(original, for: server) {
+                    var restored = original
+                    restored.preferencesNeedSync = nil
+                    do {
+                        // Even a transport failure may have reached the relay.
+                        // Confirm rollback before clearing the durable marker.
+                        try await relay.registerDevice(token: token, identity: identity, pairing: restored)
+                        if isStillPaired(original, for: server) {
+                            try store.save(restored, for: server)
+                        }
+                    } catch {
+                        if isStillPaired(original, for: server) {
+                            throw PushRegistrarError.preferencesUnconfirmed
+                        }
+                    }
+                }
                 if !isStillPaired(original, for: server) {
                     try? await relay.deleteDevice(token: token, pairing: original)
+                    throw PushRegistrarError.pairingChanged
                 }
-                throw error
+                throw updateError
             }
             await activities.refresh()
         }
@@ -269,9 +290,10 @@ enum PushRegistrarError: Error, Equatable {
                     try? await relay.deleteDevice(token: previous, pairing: pairing)
                 }
                 guard isStillPaired(pairing, for: server) else { continue }
-                if pairing.registeredToken != token {
+                if pairing.registeredToken != token || pairing.preferencesNeedSync == true {
                     var updated = pairing
                     updated.registeredToken = token
+                    updated.preferencesNeedSync = nil
                     try store.save(updated, for: server)
                 }
                 await activities.refresh(republish: true)

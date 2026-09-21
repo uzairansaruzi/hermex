@@ -68,13 +68,23 @@ import SwiftUI
 
     @ViewBuilder private var pushSettings: some View {
         if let pairing = provisioner.pairing {
-            preferenceToggle(String(localized: "Reply Notifications"), keyPath: \.replies)
-            Divider()
-            preferenceToggle(String(localized: "Subagent Notifications"), keyPath: \.muteSubagents, inverted: true)
-            Divider()
-            preferenceToggle(String(localized: "Show Previews"), keyPath: \.previews)
-            Text("For this iPhone and the selected server. Previews include message text; your iPhone’s notification settings still apply.")
-                .font(AppFont.caption()).foregroundStyle(.secondary)
+            if pairing.preferencesNeedSync == true {
+                Text("Preferences aren’t confirmed. Try again to sync this iPhone with the relay.")
+                    .font(AppFont.caption()).foregroundStyle(.secondary)
+                Button("Try again.") {
+                    preferenceTask = Task { await provisioner.updatePreferences(pairing.effectivePreferences) }
+                }
+                .disabled(provisioner.isWorking)
+                .frame(minHeight: 44)
+            } else {
+                preferenceToggle(String(localized: "Reply Notifications"), keyPath: \.replies)
+                Divider()
+                preferenceToggle(String(localized: "Subagent Notifications"), keyPath: \.muteSubagents, inverted: true)
+                Divider()
+                preferenceToggle(String(localized: "Show Previews"), keyPath: \.previews)
+                Text("For this iPhone and the selected server. Previews include message text; your iPhone’s notification settings still apply.")
+                    .font(AppFont.caption()).foregroundStyle(.secondary)
+            }
             if provisioner.phase == .savingPreferences {
                 Text("Saving…").font(AppFont.caption()).foregroundStyle(.secondary)
             }

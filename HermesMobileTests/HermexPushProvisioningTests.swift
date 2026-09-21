@@ -347,6 +347,24 @@ import XCTest
         XCTAssertEqual(provisioner.pairing?.effectivePreferences.previews, false)
     }
 
+    func testSettingsReconcilesAnUnconfirmedPairingAndKeepsFailedRetryVisible() async throws {
+        let registrar = FakePushRegistrar()
+        var pending = PushPairing(relayURL: URL(string: "https://relay.example")!,
+                                  installKey: String(repeating: "a", count: 64), previewKey: "key")
+        pending.preferencesNeedSync = true
+        try await registrar.enable(pending, for: serverA)
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        registrar.preferenceError = PushRegistrarError.preferencesUnconfirmed
+        await provisioner.reload()
+        XCTAssertEqual(provisioner.pairing?.preferencesNeedSync, true)
+        XCTAssertNotNil(provisioner.failure)
+        registrar.preferenceError = nil
+        await provisioner.reload()
+        XCTAssertNil(provisioner.pairing?.preferencesNeedSync)
+        XCTAssertNil(provisioner.failure)
+        XCTAssertEqual(provisioner.pairing?.effectivePreferences, PushPreferences())
+    }
+
     private func makeProvisioner(server: URL, registrar: FakePushRegistrar,
                                  stillConnected: @escaping @MainActor () -> Bool = { true }) -> HermexPushProvisioner {
         let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
@@ -399,6 +417,7 @@ import XCTest
         await duringPreferenceSave?()
         if let preferenceError { throw preferenceError }
         pairings[server]?.preferences = preferences
+        pairings[server]?.preferencesNeedSync = nil
     }
 
     func pairing(for server: URL) -> PushPairing? { pairings[server] }

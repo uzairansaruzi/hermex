@@ -80,8 +80,9 @@ final class PushRegistrationTests: XCTestCase {
         harness.relay.registerError = PushRelayError.transport
         await XCTAssertThrowsErrorAsync(
             try await harness.registrar.updatePreferences(PushPreferences(previews: false), for: serverA, expectedPairing: original),
-            PushRelayError.transport)
-        XCTAssertEqual(harness.store.pairings[serverA], original)
+            PushRegistrarError.preferencesUnconfirmed)
+        XCTAssertEqual(harness.store.pairings[serverA]?.effectivePreferences, original.effectivePreferences)
+        XCTAssertEqual(harness.store.pairings[serverA]?.preferencesNeedSync, true)
         harness.relay.registerError = nil
         try await harness.registrar.updatePreferences(PushPreferences(previews: false), for: serverA, expectedPairing: original)
         XCTAssertEqual(harness.store.pairings[serverA]?.effectivePreferences.previews, false)
@@ -91,12 +92,58 @@ final class PushRegistrationTests: XCTestCase {
         let harness = Harness()
         let original = harness.pairing(install: installA, registeredToken: "abcd")
         harness.store.pairings[serverA] = original
-        harness.store.saveError = PushRelayError.transport
+        harness.store.failedSaveAttempts = [2]
         await XCTAssertThrowsErrorAsync(
             try await harness.registrar.updatePreferences(PushPreferences(previews: false), for: serverA, expectedPairing: original),
             PushRelayError.transport)
         XCTAssertEqual(harness.store.pairings[serverA], original)
         XCTAssertEqual(harness.relay.registrations.map(\.preferences), [PushPreferences(previews: false), PushPreferences()])
+    }
+
+    func testUnavailableKeychainStopsPreferencesBeforeChangingTheRelay() async {
+        let harness = Harness()
+        let original = harness.pairing(install: installA, registeredToken: "abcd")
+        harness.store.pairings[serverA] = original
+        harness.store.saveError = PushRelayError.transport
+        await XCTAssertThrowsErrorAsync(
+            try await harness.registrar.updatePreferences(PushPreferences(previews: false), for: serverA, expectedPairing: original),
+            PushRelayError.transport)
+        XCTAssertTrue(harness.relay.registrations.isEmpty)
+        XCTAssertEqual(harness.store.pairings[serverA], original)
+    }
+
+    func testFailedCommitAndRollbackStayUnconfirmedAcrossRelaunchUntilRefresh() async throws {
+        let harness = Harness()
+        var original = harness.pairing(install: installA, registeredToken: "abcd")
+        original.preferences = PushPreferences(previews: false)
+        harness.store.pairings[serverA] = original
+        harness.store.failedSaveAttempts = [2]
+        harness.relay.failedRegisterAttempts = [2]
+        await XCTAssertThrowsErrorAsync(
+            try await harness.registrar.updatePreferences(PushPreferences(previews: true), for: serverA, expectedPairing: original),
+            PushRegistrarError.preferencesUnconfirmed)
+        let pending = try XCTUnwrap(harness.store.pairings[serverA])
+        XCTAssertEqual(pending.effectivePreferences.previews, false)
+        XCTAssertEqual(pending.preferencesNeedSync, true)
+        XCTAssertEqual(harness.relay.registrations.map(\.preferences.previews), [true])
+        // Persisted uncertainty survives a new process, including when the token
+        // is unchanged. A failed launch refresh must not clear it either.
+        harness.store.pairings[serverA] = try JSONDecoder().decode(PushPairing.self, from: JSONEncoder().encode(pending))
+        let relaunched = PushRegistrar(store: harness.store, relay: harness.relay,
+            remoteNotifications: harness.remoteNotifications, authorization: harness.authorization,
+            identity: PushBuildIdentity(bundleID: "com.uzairansar.hermesmobile", environment: .sandbox))
+        harness.relay.registerError = PushRelayError.transport
+        relaunched.refreshOnLaunch()
+        relaunched.didRegisterForRemoteNotifications(deviceToken: Data(hex: "abcd"))
+        await relaunched.finishPendingRegistrations()
+        XCTAssertEqual(harness.store.pairings[serverA]?.preferencesNeedSync, true)
+        harness.relay.registerError = nil
+        relaunched.refreshOnLaunch()
+        relaunched.didRegisterForRemoteNotifications(deviceToken: Data(hex: "abcd"))
+        await relaunched.finishPendingRegistrations()
+        XCTAssertNil(harness.store.pairings[serverA]?.preferencesNeedSync)
+        XCTAssertEqual(harness.store.pairings[serverA]?.effectivePreferences.previews, false)
+        XCTAssertEqual(harness.relay.registrations.last?.preferences.previews, false)
     }
 
     func testDisableWhilePreferencesSaveCannotRestoreThePairing() async {
@@ -132,7 +179,9 @@ final class PushRegistrationTests: XCTestCase {
         }
         let saving = Task { try await harness.registrar.updatePreferences(PushPreferences(previews: false), for: serverA, expectedPairing: original) }
         await fulfillment(of: [entered], timeout: 2)
-        XCTAssertEqual(harness.store.pairings[serverA], original, "Never claim success before the relay accepts")
+        XCTAssertEqual(harness.store.pairings[serverA]?.effectivePreferences, original.effectivePreferences,
+                       "Never claim success before the relay accepts")
+        XCTAssertEqual(harness.store.pairings[serverA]?.preferencesNeedSync, true)
         harness.registrar.refreshOnLaunch()
         harness.registrar.didRegisterForRemoteNotifications(deviceToken: Data(hex: "1234"))
         release?.resume()
@@ -684,9 +733,13 @@ private final class Harness {
 private final class InMemoryPushPairingStore: PushPairingStoring {
     var pairings: [URL: PushPairing] = [:]
     var saveError: (any Error)?
+    var failedSaveAttempts: Set<Int> = []
+    private var saveAttempts = 0
 
     func pairing(for server: URL) throws -> PushPairing? { pairings[server] }
     func save(_ pairing: PushPairing, for server: URL) throws {
+        saveAttempts += 1
+        if failedSaveAttempts.contains(saveAttempts) { throw PushRelayError.transport }
         if let saveError { throw saveError }
         pairings[server] = pairing
     }
@@ -712,6 +765,8 @@ private final class RecordingPushRelay: PushRelayRegistering {
     private(set) var registrations: [Registration] = []
     private(set) var deletions: [Deletion] = []
     var registerError: (any Error)?
+    var failedRegisterAttempts: Set<Int> = []
+    private var registerAttempts = 0
     var deleteError: (any Error)?
 
     func reset() {
@@ -724,6 +779,8 @@ private final class RecordingPushRelay: PushRelayRegistering {
     var duringRegister: (() async -> Void)?
 
     func registerDevice(token: String, identity: PushBuildIdentity, pairing: PushPairing) async throws {
+        registerAttempts += 1
+        if failedRegisterAttempts.contains(registerAttempts) { throw PushRelayError.transport }
         if let duringRegister {
             self.duringRegister = nil
             await duringRegister()

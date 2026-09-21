@@ -1018,7 +1018,10 @@ Push preferences live with the pairing in server-scoped Keychain storage; older
 pairings adopt the relay defaults (replies and previews on, subagents muted).
 Registration refreshes and preference writes run in order so a launch or token
 rotation cannot overwrite an accepted choice. Failed saves keep the confirmed
-values visible. Changing preferences does not retire an existing Live Activity.
+values visible. A durable pending-sync marker is saved before remote writes; if
+confirmation or rollback fails, Settings hides the unconfirmed switches and offers
+retry. Returning to Settings or refreshing registration reconciles the saved choices
+before clearing that marker. Changing preferences does not retire an existing Live Activity.
 
 Turning notifications on is one confirmed action per server, driven by
 `HermexPushProvisioner` over `BotDashboardClient` (the host's REST surface, no
