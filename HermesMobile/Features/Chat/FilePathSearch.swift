@@ -24,12 +24,26 @@ final class ComposerFilePathSearch {
         let parentPath: String
         let isDirectory: Bool
 
+        init(path: String, name: String, parentPath: String, isDirectory: Bool) {
+            self.path = path
+            self.name = name
+            self.parentPath = parentPath
+            self.isDirectory = isDirectory
+        }
+
         init(node: FileTreeNode) {
-            path = node.path
-            name = node.name
-            let parent = FileTree.parentPath(of: node.path)
-            parentPath = parent == FileTree.rootPath ? "" : parent
-            isDirectory = node.isDirectory
+            self.init(
+                path: node.path,
+                name: node.name,
+                parentPath: Self.parentPath(of: node.path),
+                isDirectory: node.isDirectory
+            )
+        }
+
+        /// The row's folder, spelled the way the panel draws it: empty at the root.
+        static func parentPath(of path: String) -> String {
+            let parent = FileTree.parentPath(of: path)
+            return parent == FileTree.rootPath ? "" : parent
         }
     }
 
@@ -79,6 +93,36 @@ final class ComposerFilePathSearch {
             guard generation == self.generation else { return }
             isLoading = false
             matches = Self.ranked(nodes, against: request.segment)
+        } catch {
+            guard generation == self.generation else { return }
+            isLoading = false
+            matches = []
+        }
+    }
+
+    /// One query whose rows the data source ranks itself.
+    ///
+    /// Bots use this: `complete.path` completes against the live session's
+    /// working directory, ranks its own rows and caps them, so there is nothing
+    /// to list or score here. The generation guard is the same one
+    /// `search(_:sessionID:apiClient:)` runs under, so a reply that lands after
+    /// a newer query, or after `reset()`, can never publish.
+    ///
+    /// The previous query's rows are dropped the moment a new one starts: they
+    /// are not this query's answer, and leaving them selectable would let a tap
+    /// insert a path the user is no longer typing. The webui engine clears the
+    /// same way whenever the folder it needs is not cached.
+    func search(_ query: String, load: (String) async throws -> [Match]) async {
+        generation &+= 1
+        let generation = self.generation
+        isLoading = true
+        matches = []
+
+        do {
+            let rows = try await load(query)
+            guard generation == self.generation else { return }
+            isLoading = false
+            matches = rows
         } catch {
             guard generation == self.generation else { return }
             isLoading = false

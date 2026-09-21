@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 import UniformTypeIdentifiers
 
 enum BotAttachmentPicker: Equatable { case photos, files, camera }
@@ -9,32 +8,62 @@ enum BotAttachmentPicker: Equatable { case photos, files, camera }
 struct BotAttachmentPickerPresentation: ViewModifier {
     let model: BotConversation
     @Binding var picker: BotAttachmentPicker?
-    @State private var photos: [PhotosPickerItem] = []
+    @State private var presentFilesAfterMediaPickerDismisses = false
 
     func body(content: Content) -> some View {
         content
-            .photosPicker(isPresented: presented(.photos), selection: $photos,
-                          maxSelectionCount: 8, matching: .images)
             .fileImporter(isPresented: presented(.files), allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { BotAttachmentPaste.files(urls, model: model) }
+                if case .success(let urls) = result {
+                    let capacity = HermexAttachmentPickerPolicy.availableCapacity(
+                        existingCount: model.attachments.items.count
+                    )
+                    guard urls.count <= capacity else {
+                        model.attachments.report(BotAttachmentFailure.limit)
+                        return
+                    }
+                    BotAttachmentPaste.files(urls, model: model)
+                }
                 else if case .failure(let error) = result,
                         (error as NSError).code != NSUserCancelledError { model.attachments.report(error) }
             }
-            .fullScreenCover(isPresented: presented(.camera)) {
-                CameraPickerView { image in BotAttachmentPaste.images([image], model: model) }
-                    .ignoresSafeArea()
-            }
-            .task(id: photos) {
-                for photo in photos {
-                    guard model.mayImportAttachments, !Task.isCancelled else { break }
-                    await model.attachments.importValue {
-                        guard let data = try await photo.loadTransferable(type: Data.self) else { throw BotAttachmentFailure.unreadable }
-                        let ext = photo.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                        return (data, "photo.\(ext)")
-                    }
+            .background {
+                HermexKeyboardRetainingOverlay(isPresented: presentsMedia.wrappedValue) {
+                    HermexAttachmentPickerView(
+                        imageCapacity: HermexAttachmentPickerPolicy.availableCapacity(
+                            existingCount: model.attachments.items.count
+                        ),
+                        onChooseFiles: {
+                            presentFilesAfterMediaPickerDismisses = true
+                        },
+                        onAdd: { media in
+                            BotAttachmentPaste.media(media, model: model)
+                        },
+                        onDismiss: {
+                            picker = nil
+                        }
+                    )
                 }
-                photos = []
+                .frame(width: 0, height: 0)
             }
+            .onChange(of: presentsMedia.wrappedValue) { _, isPresented in
+                guard !isPresented, presentFilesAfterMediaPickerDismisses else { return }
+                presentFilesAfterMediaPickerDismisses = false
+                guard model.mayImportAttachments,
+                      model.attachments.items.count < HermexAttachmentPickerPolicy.maximumBotAttachments
+                else { return }
+                picker = .files
+            }
+    }
+
+    private var presentsMedia: Binding<Bool> {
+        Binding(
+            get: { picker == .photos || picker == .camera },
+            set: { isPresented in
+                if !isPresented, (picker == .photos || picker == .camera) {
+                    picker = nil
+                }
+            }
+        )
     }
 
     private func presented(_ value: BotAttachmentPicker) -> Binding<Bool> {
@@ -43,6 +72,15 @@ struct BotAttachmentPickerPresentation: ViewModifier {
 }
 
 @MainActor enum BotAttachmentPaste {
+    static func media(_ media: [HermexPickedMedia], model: BotConversation) {
+        Task {
+            for item in media {
+                guard model.mayImportAttachments else { return }
+                await model.attachments.importValue { (item.data, item.filename) }
+            }
+        }
+    }
+
     static func files(_ urls: [URL], model: BotConversation) {
         Task {
             for url in urls {

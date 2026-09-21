@@ -7,6 +7,9 @@ import Observation
     enum Link: Equatable { case idle, connecting, live, stopped }
     let key: BotRoomKey
     let connection: BotConnection
+    let initialSequence: Int?
+    @ObservationIgnored private let cache: BotHistoryCache
+    @ObservationIgnored private(set) var historyRemoval: Task<Void, Never>?
     private(set) var room: BotGroupRoom
     private(set) var events: [BotRoomEvent] = []
     private(set) var status = BotRoomStatus(.null)
@@ -29,6 +32,7 @@ import Observation
         let threadID: String
         init(text: String) { self.text = text; eventID = UUID().uuidString; threadID = UUID().uuidString }
     }
+    @ObservationIgnored private var didOpen = false
     @ObservationIgnored private var viewOwner: UUID?
     @ObservationIgnored private var commandID: UUID?
     @ObservationIgnored private var dispatched = false
@@ -45,11 +49,13 @@ import Observation
     @ObservationIgnored private let onDisbanded: () -> Void
 
     init(key: BotRoomKey, connection: BotConnection, room: BotGroupRoom,
+         cache: BotHistoryCache = .shared, initialSequence: Int? = nil,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          onExpired: @escaping () -> Void = {},
          onChanged: @escaping (BotGroupRoom) -> Void = { _ in },
          onDisbanded: @escaping () -> Void = {}) {
         self.key = key; self.connection = connection; self.room = room
+        self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(connection: $0) }; self.onExpired = onExpired
     }
@@ -66,6 +72,15 @@ import Observation
             self.fail(error, client)
         }
         do {
+            await historyRemoval?.value
+            let cached = try? await cache.roomHistory(key)
+            try check(client)
+            if let cached {
+                var restored = BotRoomLog()
+                restored.apply(cached.replayPage)
+                restored.loadedEarlier(from: cached.earlierBoundary ?? 0)
+                log = restored; publishLog()
+            }
             try await client.connect()
             try check(client)
             let value = try await client.call("groups.capabilities", [:])
@@ -74,15 +89,27 @@ import Observation
             guard capabilities.enabled else { throw BotFailure.unsupported }
             if uncertainDisband, try await reconcileDisband(client) { return }
             let latest = try await readState(client)
-            // Re-open from current server state, never from cached member sessions.
-            var initial = BotRoomLog(); initial.begin(latest: latest)
+            var initial = log
+            let target = didOpen ? nil : initialSequence
+            if cached == nil {
+                initial.begin(latest: latest)
+                if let sequence = target, sequence > 0, sequence <= latest {
+                    initial.begin(latest: latest - sequence < 199 ? latest : sequence + 199)
+                }
+            }
+            if let sequence = target, sequence > 0, sequence <= initial.earlierBoundary {
+                let earlier = try await readPages(client, since: sequence - 1, through: initial.earlierBoundary)
+                try check(client)
+                for page in earlier { initial.apply(page) }
+                initial.loadedEarlier(from: sequence - 1)
+            }
             let pages = try await readPages(client, since: initial.cursor)
             try check(client)
             for page in pages { initial.apply(page) }
             log = initial; publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
-            link = .live
+            link = .live; didOpen = true
             pollTask = Task { [weak self] in
                 while let self, self.wire === client, !Task.isCancelled {
                     do { try await Task.sleep(for: self.status.interval) } catch { return }
@@ -198,7 +225,7 @@ import Observation
     }
 
     private func finishDisband() {
-        uncertainDisband = false; close(); onDisbanded()
+        uncertainDisband = false; discardHistory(); close(); onDisbanded()
     }
 
     private func reconcileDisband(_ client: any BotTransport) async throws -> Bool {
@@ -275,7 +302,7 @@ import Observation
                 if method == "groups.disband" { uncertainDisband = false }
                 commandMessage = rejection.localizedDescription
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
-                if rejection.expired { close(); onExpired(); return }
+                if rejection.expired { discardHistory(); close(); onExpired(); return }
                 // A rejected retry does not erase the uncertainty of the original send.
             } else if dispatched {
                 uncertainSend = sending ?? uncertainSend
@@ -321,6 +348,7 @@ import Observation
     private func readPages(_ client: any BotTransport, since: Int, through: Int? = nil) async throws -> [BotJSON] {
         var cursor = since
         var pages: [BotJSON] = []
+        let receivedAt = Date()
         while true {
             let limit = min(capabilities.pageLimit, through.map { max(1, $0 - cursor) } ?? capabilities.pageLimit)
             let page = try await client.call("groups.log", ["room_id": .string(key.roomID),
@@ -333,6 +361,15 @@ import Observation
             guard next > cursor else { throw BotFailure.unsupported }
             cursor = next
         }
+        // Commit the complete contiguous window together. Saving earlier pages one
+        // at a time would temporarily leave a gap before the already-cached window.
+        // Storage is best-effort; failures never stop live reading.
+        let projection = BotJSON.object([
+            "events": .array(pages.flatMap { $0["events"].list ?? [] }),
+            "cursor": pages.last?["cursor"] ?? .number(Double(since))
+        ])
+        try? await cache.appendRoom(key: key, room: room, page: projection, since: since, receivedAt: receivedAt)
+        try check(client)
         return pages
     }
 
@@ -358,10 +395,16 @@ import Observation
         hasEarlier = log.earlierBoundary > 0
     }
 
+    private func discardHistory() {
+        let cache = cache, key = key
+        // Deletion intentionally outlives the screen; it never mutates view state.
+        historyRemoval = Task { try? await cache.removeRoom(key) }
+    }
+
     private func fail(_ error: Error, _ client: any BotTransport) {
         guard wire === client else { return }
         suspend(); link = .stopped
         errorMessage = error.localizedDescription
-        if let failure = error as? BotRoomFailure, failure.expired { close(); onExpired() }
+        if let failure = error as? BotRoomFailure, failure.expired { discardHistory(); close(); onExpired() }
     }
 }

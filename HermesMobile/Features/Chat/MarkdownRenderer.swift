@@ -414,6 +414,7 @@ private struct ChatCodeBlock: View {
     let isStreaming: Bool
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var highlightedCode: NSAttributedString?
@@ -434,7 +435,7 @@ private struct ChatCodeBlock: View {
                     Image(systemName: wrapsCodeBlockLines ? "arrow.turn.down.left" : "arrow.left.and.right")
                         .font(.system(size: 18, weight: .semibold))
                         .frame(width: 36, height: 36)
-                        .contentTransition(.symbolEffect(.replace))
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                 }
                 .buttonStyle(.chatTactile(.icon))
                 .foregroundStyle(SwiftUI.Color.primary)

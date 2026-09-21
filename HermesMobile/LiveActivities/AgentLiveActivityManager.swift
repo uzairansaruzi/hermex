@@ -17,6 +17,11 @@ enum AgentLiveActivityEvent: Equatable {
     case toolCompleted
     case waitingForApproval
     case waitingForClarification
+    /// The reply is being written, with no text attached: the status moves on even
+    /// when previews are off (#489).
+    case responding
+    /// A bot's bounded work summary chips (#489). Counts only, never reply text.
+    case workSummary([String])
 }
 
 /// A persisted Live Activity left over from a previous launch that this manager
@@ -36,6 +41,13 @@ protocol AgentLiveActivityManaging: AnyObject {
     /// elapsed timer counts the same span as the in-app "Working for" label
     /// (#406). Callers without a seeded start pass `Date()`.
     func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date)
+    /// Starts or re-adopts a bot's activity for one turn (#489). `turn` names the turn,
+    /// so a reconnect inside it reuses the activity and the next turn gets a new one.
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date)
+    /// The session id, or a bot's `key`, of the unfinished activity this manager is
+    /// driving. The Bot feed checks it before every stale or end call, so it never
+    /// touches an activity a webui run or another bot has since taken over.
+    var drivenSessionID: String? { get }
     func update(_ event: AgentLiveActivityEvent)
     func markStale()
     func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?)
@@ -52,6 +64,9 @@ protocol AgentLiveActivityManaging: AnyObject {
 }
 
 extension AgentLiveActivityManaging {
+    // Defaults so webui-only test spies don't have to care about bots.
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {}
+    var drivenSessionID: String? { nil }
     // Defaults so test spies and non-ActivityKit conformers don't have to care
     // about reconciliation; the real manager overrides both.
     func orphanedActivities() -> [OrphanedLiveActivity] { [] }
@@ -81,12 +96,28 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var pendingUpdateTask: Task<Void, Never>?
     private var updateGeneration = 0
     private var lifecycleGeneration = 0
+    private var pushTokenTask: Task<Void, Never>?
+    private var pushStateTask: Task<Void, Never>?
+    private var pushOwner: String?
+    private var pushRegistrar: PushActivityRegistrar? { PushRegistrar.shared?.activities }
 
     init(minimumUpdateInterval: TimeInterval = 1.5) {
         self.minimumUpdateInterval = minimumUpdateInterval
     }
 
     func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date = Date()) {
+        start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID, startedAt: startedAt, bot: nil)
+    }
+
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
+        start(sessionID: bot.key, sessionTitle: title, streamID: bot.streamID(turn: turn), startedAt: startedAt, bot: bot)
+    }
+
+    var drivenSessionID: String? {
+        currentState?.isFinal == false ? currentSessionID : nil
+    }
+
+    private func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date, bot: AgentRunActivityBot?) {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else { return }
         let normalizedStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
@@ -95,7 +126,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 
         if currentSessionID == normalizedSessionID,
            currentStreamID == normalizedStreamID,
-           currentState?.isFinal == false {
+           currentState?.isFinal == false,
+           activity?.activityState != .ended, activity?.activityState != .dismissed,
+           activity?.attributes.bot?.pushSessionID == bot?.pushSessionID {
+            if let activity { observePush(activity) }
             updateCurrentState { state in
                 AgentRunActivityAttributes.ContentState(
                     sessionID: state.sessionID,
@@ -117,6 +151,12 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             return
         }
 
+        // Detach synchronously: feed updates for the new owner must never reach
+        // the previous owner's activity while its asynchronous cleanup runs.
+        activity = nil
+        pushTokenTask?.cancel()
+        pushStateTask?.cancel()
+        pushOwner = nil
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
         rawResponseText = ""
@@ -142,6 +182,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionID: normalizedSessionID,
                 streamID: normalizedStreamID,
                 sessionTitle: state.sessionTitle,
+                bot: bot,
                 state: state,
                 lifecycle: lifecycle
             )
@@ -200,6 +241,16 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             updateCurrentState { state in
                 AgentRunActivityStateReducer.waitingForClarification(state: state)
             }
+        case .responding:
+            guard currentState?.status != .responding else { return }
+            updateCurrentState { state in
+                AgentRunActivityStateReducer.responding(state: state)
+            }
+        case .workSummary(let chips):
+            let sanitized = AgentRunActivitySanitizer.chips(chips)
+            guard currentState?.chips ?? [] != sanitized else { return }
+            currentState?.chips = sanitized
+            updateCurrentState(immediate: false) { $0 }
         }
     }
 
@@ -208,6 +259,13 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // stream is eligible for server-truth reconciliation again (PR #266 #3).
         activeConnectedStreamID = nil
         guard currentState?.isFinal == false else { return }
+        if let pushOwner, pushRegistrar?.isRegistered(pushOwner) == true {
+            // Stop queued foreground writes; the relay now owns freshness.
+            pendingUpdateTask?.cancel()
+            pendingUpdateTask = nil
+            _ = nextUpdateGeneration()
+            return
+        }
 
         updateCurrentState { state in
             AgentRunActivityStateReducer.stale(state: state)
@@ -222,12 +280,13 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
 
-        let finalState = AgentRunActivityStateReducer.final(
+        var finalState = AgentRunActivityStateReducer.final(
             status: status,
             activity: activityLine,
             state: currentState,
             errorSummary: errorSummary
         )
+        finalState.chips = currentState.chips
         self.currentState = finalState
         let endingActivity = activity
         let endingSessionID = currentSessionID
@@ -256,6 +315,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // caller gates purely on the server's status instead, which is ground
         // truth — a genuinely live run reports active=true and is left alone.
         let result: [OrphanedLiveActivity] = all.compactMap { activity in
+            // A bot's activity has no webui stream to ask about (#489).
+            guard activity.attributes.bot == nil else { return nil }
             guard let streamID = AgentLiveActivityReusePolicy.normalizedStreamID(activity.attributes.streamID) else {
                 return nil
             }
@@ -274,6 +335,39 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             )
         }
         return result
+    }
+
+    /// Cold launch adopts paired push activities without resuming a Bot session.
+    /// Legacy/unpaired activities still have no background source of truth.
+    func endBotActivitiesFromPreviousLaunch() async {
+        for persisted in Activity<AgentRunActivityAttributes>.activities
+        where persisted.attributes.bot != nil && persisted.id != activity?.id {
+            if let bot = persisted.attributes.bot, canReceivePush(bot),
+               persisted.activityState != .ended, persisted.activityState != .dismissed,
+               restoreBotOwnership(attributes: persisted.attributes, state: persisted.content.state) {
+                activity = persisted
+                observePush(persisted)
+            } else {
+                await retirePush(persisted)
+                await persisted.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+    }
+
+    /// Restores the feed's ownership before observing a surviving push activity.
+    /// Only one activity can own the manager; duplicates and final states retire.
+    @discardableResult
+    func restoreBotOwnership(attributes: AgentRunActivityAttributes,
+                             state: AgentRunActivityAttributes.ContentState) -> Bool {
+        guard currentSessionID == nil, attributes.bot != nil, !state.isFinal else { return false }
+        currentSessionID = attributes.sessionID
+        currentStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(attributes.streamID)
+        currentState = state.presented(attributes: attributes, systemIsStale: false)
+        rawResponseText = currentState?.responseExcerpt ?? ""
+        lastSentUpdateAt = state.updatedAt
+        _ = nextLifecycleGeneration()
+        _ = nextUpdateGeneration()
+        return true
     }
 
     @discardableResult
@@ -317,6 +411,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         sessionID: String,
         streamID: String?,
         sessionTitle: String,
+        bot: AgentRunActivityBot?,
         state: AgentRunActivityAttributes.ContentState,
         lifecycle: Int
     ) async {
@@ -328,7 +423,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         do {
             let existingActivities = Activity<AgentRunActivityAttributes>.activities
             let reusableActivity = existingActivities.first { existing in
-                AgentLiveActivityReusePolicy.canReuseActivity(
+                existing.activityState != .ended && existing.activityState != .dismissed
+                && existing.attributes.bot?.pushSessionID == bot?.pushSessionID
+                && AgentLiveActivityReusePolicy.canReuseActivity(
                     existingSessionID: existing.attributes.sessionID,
                     existingStreamID: existing.attributes.streamID,
                     requestedSessionID: sessionID,
@@ -337,16 +434,20 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             }
 
             for staleActivity in existingActivities {
+                guard lifecycle == lifecycleGeneration else { return }
                 if let reusableActivity, staleActivity.id == reusableActivity.id {
                     continue
                 }
 
+                await retirePush(staleActivity)
+                guard lifecycle == lifecycleGeneration else { return }
                 await staleActivity.end(nil, dismissalPolicy: .immediate)
             }
             guard lifecycle == lifecycleGeneration else { return }
 
             if let existing = reusableActivity {
                 activity = existing
+                observePush(existing)
                 let latestState = currentState ?? state
                 await existing.update(
                     ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
@@ -359,15 +460,20 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionID: sessionID,
                 sessionTitle: sessionTitle,
                 streamID: streamID,
-                startedAt: state.startedAt
+                startedAt: state.startedAt,
+                bot: bot
             )
             let requestedActivity = try Activity.request(
                 attributes: attributes,
                 content: ActivityContent(state: state, staleDate: staleDate(for: state)),
-                pushType: nil
+                pushType: bot == nil ? nil : .token
             )
-            guard lifecycle == lifecycleGeneration else { return }
+            guard lifecycle == lifecycleGeneration else {
+                await requestedActivity.end(nil, dismissalPolicy: .immediate)
+                return
+            }
             activity = requestedActivity
+            observePush(requestedActivity)
             if let latestState = currentState, latestState != state {
                 await requestedActivity.update(
                     ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
@@ -385,7 +491,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     ) {
         guard let currentState else { return }
 
-        let updatedState = transform(currentState)
+        // The reducers rebuild the state field by field; a bot's chips ride along.
+        var updatedState = transform(currentState)
+        updatedState.chips = currentState.chips
         self.currentState = updatedState
 
         guard activity != nil else { return }
@@ -451,6 +559,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             return
         }
 
+        await retirePush(endingActivity)
         let policy = dismissalPolicy(for: status)
 
         await endingActivity.update(ActivityContent(state: finalState, staleDate: nil))
@@ -485,7 +594,62 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // #246: keep the widget looking current longer so a suspended run doesn't
         // get the dimmed "stale" treatment within seconds. The system-rendered
         // elapsed timer keeps ticking regardless of this window.
-        state.isFinal ? nil : Date().addingTimeInterval(state.isStale ? 90 : 300)
+        if state.isFinal { return nil }
+        if let pushOwner, pushRegistrar?.isRegistered(pushOwner) == true {
+            return Date().addingTimeInterval(15 * 60)
+        }
+        return Date().addingTimeInterval(state.isStale ? 90 : 300)
+    }
+
+    private func canReceivePush(_ bot: AgentRunActivityBot) -> Bool {
+        guard bot.pushSessionID != nil,
+              let destination = HermesDeepLink.botDestination(from: bot.destinationURL) else { return false }
+        return PushRegistrar.shared?.pairing(for: destination.server)?.registeredToken != nil
+    }
+
+    private func observePush(_ observed: Activity<AgentRunActivityAttributes>) {
+        guard let bot = observed.attributes.bot, let sessionID = bot.pushSessionID,
+              let destination = HermesDeepLink.botDestination(from: bot.destinationURL),
+              let registrar = pushRegistrar else { return }
+        pushTokenTask?.cancel()
+        pushStateTask?.cancel()
+        pushOwner = observed.id
+        pushTokenTask = Task { [weak self] in
+            func forward(_ token: Data) async {
+                guard !Task.isCancelled else { return }
+                await registrar.register(owner: observed.id, server: destination.server, sessionID: sessionID,
+                                         token: token.map { String(format: "%02x", $0) }.joined())
+            }
+            if let token = observed.pushToken { await forward(token) }
+            for await token in observed.pushTokenUpdates {
+                guard !Task.isCancelled, self?.pushOwner == observed.id else { return }
+                await forward(token)
+            }
+        }
+        let lifecycle = lifecycleGeneration
+        pushStateTask = Task { [weak self] in
+            for await state in observed.activityStateUpdates {
+                guard !Task.isCancelled else { return }
+                if state == .ended || state == .dismissed {
+                    await self?.retirePush(observed)
+                    if self?.lifecycleGeneration == lifecycle, self?.activity?.id == observed.id { self?.reset() }
+                    return
+                }
+            }
+        }
+    }
+
+    private func retirePush(_ retiring: Activity<AgentRunActivityAttributes>) async {
+        if pushOwner == retiring.id {
+            pushTokenTask?.cancel()
+            pushStateTask?.cancel()
+            pushTokenTask = nil
+            pushStateTask = nil
+            pushOwner = nil
+        }
+        let bot = retiring.attributes.bot
+        let destination = bot.flatMap { HermesDeepLink.botDestination(from: $0.destinationURL) }
+        await pushRegistrar?.retire(owner: retiring.id, server: destination?.server, sessionID: bot?.pushSessionID)
     }
 
     private func reset() {
@@ -624,7 +788,8 @@ enum LiveActivityReconciler {
                     sessionID: orphan.sessionID.isEmpty ? nil : orphan.sessionID,
                     preferenceEnabled: preferenceEnabled,
                     completedNormally: true,
-                    sceneIsActive: false
+                    sceneIsActive: false,
+                    server: server
                 )
             }
         )

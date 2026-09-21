@@ -58,7 +58,20 @@ enum BotEndpoint: String {
     case status = "api/status", login = "auth/password-login", identity = "api/auth/me"
     case ticket = "api/auth/ws-ticket", socket = "api/ws"
     case imageUpload = "api/chat/image-upload"
+    /// Dashboard routes push provisioning uses (#557), verified against a 0.21.3 host on
+    /// 2026-09-19: install takes `{identifier, enable, force, ref}` and has no profile
+    /// parameter, enable and disable are path-only, and `PUT /api/env` and the gateway
+    /// restart take an optional `profile` Hermex leaves unset so every profile inherits.
+    case environment = "api/env"
+    case pluginInstall = "api/dashboard/agent-plugins/install"
+    case gatewayRestart = "api/gateway/restart"
+    case pushPairing = "api/plugins/hermex-push/pairing"
     func url(base: URL) -> URL { base.appendingPathComponent(rawValue) }
+    /// `POST /api/dashboard/agent-plugins/{name}/{action}` for `enable` and `disable`.
+    static func pluginURL(base: URL, name: String, action: String) -> URL {
+        base.appendingPathComponent("api/dashboard/agent-plugins")
+            .appendingPathComponent(name).appendingPathComponent(action)
+    }
     /// `DELETE /api/profiles/{name}`, the only Profile removal the host exposes; the
     /// gateway has no `profiles.delete` RPC. `name` is a validated Profile slug.
     static func profileURL(base: URL, name: String) -> URL {

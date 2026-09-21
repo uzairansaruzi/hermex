@@ -26,6 +26,10 @@ struct KeychainStore: KeychainStoring {
         // lives in the Keychain, not UserDefaults (#15).
         case servers = "servers"
         case botConnection = "bot_connection"
+        // Per-server push pairing (relay URL, install key, preview key). Unlike
+        // every other key here it lives in a shared Keychain access group so the
+        // Notification Service Extension can read it; see `PushPairing.swift`.
+        case pushPairing = "push_pairing"
     }
 
     private let keychain: Keychain

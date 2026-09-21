@@ -561,18 +561,18 @@ final class SessionListViewModel {
         attentionStatesBySessionID = pruned
     }
 
-    func loadSessionForDeepLink(id rawSessionID: String, modelContext: ModelContext? = nil) async -> SessionSummary? {
+    func loadSessionForDeepLink(id rawSessionID: String, modelContext: ModelContext? = nil, isPush: Bool = false) async -> SessionSummary? {
         let sessionID = rawSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sessionID.isEmpty else { return nil }
 
-        if let loadedSession = sessions.first(where: { $0.sessionId == sessionID }) {
+        if !isPush, let loadedSession = sessions.first(where: { $0.sessionId == sessionID }) {
             return loadedSession
         }
 
         actionErrorMessage = nil
         lastError = nil
 
-        if let modelContext {
+        if !isPush, let modelContext {
             do {
                 if let cachedSession = try CacheStore.cachedSessions(serverURL: server, in: modelContext)
                     .first(where: { $0.sessionId == sessionID }) {
@@ -585,11 +585,14 @@ final class SessionListViewModel {
 
         do {
             let response = try await client.session(id: sessionID, includeMessages: false, messageLimit: nil)
+            guard !Task.isCancelled else { return nil }
             guard let sessionDetail = response.session else {
+                if isPush { return nil }
                 actionErrorMessage = String(localized: "The server did not return the linked session.")
                 return nil
             }
 
+            if isPush, sessionDetail.sessionId != sessionID { return nil }
             let session = SessionSummary(from: sessionDetail)
             if session.archived != true,
                session.shouldAppearInSessionList,
@@ -607,6 +610,8 @@ final class SessionListViewModel {
 
             return session
         } catch {
+            guard !Task.isCancelled else { return nil }
+            if isPush, case APIError.http(404, _) = error { return nil }
             lastError = error
             actionErrorMessage = error.localizedDescription
             return nil

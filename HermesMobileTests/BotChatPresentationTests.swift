@@ -28,7 +28,7 @@ import XCTest
 
         let wire = RoomWire(); wire.driverStatus = RoomFixture.status(stopping: 1)
         let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: "fixture-room"),
-            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, makeWire: { _ in wire })
+            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, cache: BotHistoryCache(), makeWire: { _ in wire })
         let window = try show(NavigationStack {
             BotRoomProfileView(reader: reader, roster: roster, avatars: [:])
         }.environment(\.scenePhase, .inactive))
@@ -84,8 +84,8 @@ import XCTest
                 ["orange", "green"], ["orange"], ["green"], ["orange", "green"], ["orange", "green"]
             ], "Header and broadcast rows show both avatars; each member row shows only its own")
         }
-        XCTAssertTrue(text.contains("@all"), text)
-        XCTAssertTrue(text.contains("@everyone"), text)
+        XCTAssertEqual(completions.map(\.tag), names + ["all", "everyone"])
+        XCTAssertTrue(text.contains("@everyone Everyone"), text)
         XCTAssertNil(selected, "Rendering suggestions must not insert a mention")
     }
 
@@ -95,7 +95,7 @@ import XCTest
         let wire = RoomWire(); wire.latest = 3; wire.kind = "message.member"
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 3)))
         let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
-                                   connection: connection, room: room, makeWire: { _ in wire })
+                                   connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire })
         let window = try show(NavigationStack {
             BotRoomView(reader: reader, roster: [], avatars: [:])
         }.environment(\.scenePhase, .inactive))
@@ -117,6 +117,67 @@ import XCTest
         await renderFrames(8)
         let stopping = try screenshot(window, name: "527-room-stopping")
         XCTAssertTrue(stopping.contains("Stopping"), stopping)
+    }
+
+    func testRoomMessageSearchShowsRoomAndSenderAfterOpeningTheRoom() async throws {
+        let server = URL(string: "https://search.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let cache = BotHistoryCache(), wire = RoomWire()
+        let inbox = BotInbox(server: server, store: store, historyCache: cache, makeWire: { _ in wire })
+        await inbox.open()
+        defer { inbox.close() }
+        let empty = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
+            .environment(\.scenePhase, .active))
+        await renderFrames(40)
+        let before = try screenshot(empty, name: "528-before-opening-room")
+        XCTAssertTrue(before.contains("No saved messages found"), before)
+        close(empty)
+        let room = try XCTUnwrap(inbox.rooms.first)
+        let roomWire = RoomWire(); roomWire.latest = 20; roomWire.kind = "message.member"
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+            connection: connection, room: room, cache: cache, makeWire: { _ in roomWire })
+        await reader.open(); reader.close()
+        let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
+            .environment(\.scenePhase, .active))
+        defer { close(window) }
+        await renderFrames(40)
+        let after = try screenshot(window, name: "528-after-opening-room")
+        XCTAssertTrue(after.contains("Comms"), after)
+        XCTAssertTrue(after.contains("chief-of-staff"), after)
+        XCTAssertFalse(after.contains("No saved messages found"), after)
+        wire.listFailure = BotFailure.transport
+        await inbox.open()
+        await renderFrames(40)
+        let offline = try screenshot(window, name: "528-room-search-list-unavailable")
+        XCTAssertTrue(offline.contains("Comms"), offline)
+        XCTAssertTrue(offline.contains("chief-of-staff"), offline)
+        XCTAssertFalse(offline.contains("No saved messages found"), offline)
+    }
+
+    func testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let wire = RoomWire(); wire.latest = 80; wire.kind = "message.member"
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 80)))
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+            connection: connection, room: room, cache: BotHistoryCache(), initialSequence: 20, makeWire: { _ in wire })
+        let window = try show(NavigationStack {
+            BotRoomView(reader: reader, roster: [], avatars: [:])
+        }.environment(\.scenePhase, .inactive))
+        defer { reader.close(); close(window) }
+        await renderFrames(4)
+        await reader.open()
+        await renderFrames(8)
+        let selected = try screenshot(window, name: "528-room-search-target")
+        XCTAssertTrue(selected.contains("Message 20"), selected)
+        XCTAssertFalse(selected.contains("Message 80"), selected)
+        wire.latest = 81; await reader.poll()
+        await renderFrames(8)
+        let updated = try screenshot(window, name: "528-room-search-target-after-update")
+        XCTAssertTrue(updated.contains("Message 20"), updated)
+        XCTAssertFalse(updated.contains("Message 81"), updated)
     }
 
     func testLocalBotSearchShowsBotNamesAndNeverResumesWhileBrowsing() async throws {
@@ -243,16 +304,16 @@ import XCTest
         let scroll = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first {
             $0.bounds.width > 300 && $0.contentSize.height > $0.bounds.height
         })
-        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        drag(scroll, to: -scroll.adjustedContentInset.top)
         await renderFrames(30)
         XCTAssertLessThan(scroll.contentOffset.y, 1)
         let above = try screenshot(window, name: "479-latest-arrow-above-bottom")
         XCTAssertFalse(above.contains("Latest"), above)
-        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom), animated: false)
+        drag(scroll, to: scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
         await renderFrames(30)
         let distance = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom - scroll.contentOffset.y
         XCTAssertLessThanOrEqual(distance, ChatScrollPolicy.followReArmThreshold)
-        _ = try screenshot(window, name: "479-latest-arrow-hidden-at-bottom")
+        capture(window, name: "479-latest-arrow-hidden-at-bottom")
     }
 
     func testMissingUsageUsesTheSessionsRing() async throws {
@@ -312,16 +373,43 @@ import XCTest
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.becomeFirstResponder())
         await renderFrames()
-        let expanded = try screenshot(window, name: "478-composer-attachments-expanded")
+        let expanded = try screenshot(window, name: "478-composer-attachments-expanded", literalText: true)
         XCTAssertTrue(expanded.contains("Report.pdf"), expanded)
         XCTAssertFalse(expanded.contains("Photos"), expanded)
         XCTAssertFalse(expanded.contains("Files"), expanded)
-        XCTAssertGreaterThanOrEqual(descendants(window).compactMap { $0 as? UIButton }.filter { $0.menu != nil }.count, 1)
         editor.resignFirstResponder()
         await renderFrames()
-        _ = try screenshot(window, name: "478-composer-attachments-collapsed")
+        capture(window, name: "478-composer-attachments-collapsed")
         XCTAssertTrue(descendants(window).contains { $0 === editor })
         XCTAssertEqual(model.attachments.items.count, 2)
+    }
+
+    func testAttachmentPickerOverlayRetainsKeyboardFocus() async throws {
+        let model = AttachmentOverlayHarnessModel()
+        let window = try show(AttachmentOverlayHarnessView(model: model))
+        defer { close(window) }
+        await renderFrames()
+
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await renderFrames()
+
+        model.isPresented = true
+        await renderFrames()
+        XCTAssertTrue(editor.isFirstResponder, "Opening attachment choices must retain keyboard focus.")
+        let overlay = try XCTUnwrap(descendants(window).first {
+            $0.accessibilityIdentifier == HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier
+        })
+        let rootView = try XCTUnwrap(window.rootViewController?.view)
+        XCTAssertTrue(overlay.superview === rootView.superview)
+        XCTAssertFalse(overlay.isDescendant(of: rootView))
+
+        model.isPresented = false
+        await renderFrames()
+        XCTAssertTrue(editor.isFirstResponder, "Closing attachment choices must retain keyboard focus.")
+        XCTAssertFalse(descendants(window).contains {
+            $0.accessibilityIdentifier == HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier
+        })
     }
 
     func testFocusedAttachmentSendKeepsRenderingWhileUploadIsPending() async throws {
@@ -373,8 +461,17 @@ import XCTest
         await renderFrames()
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.isKeyboardSendEnabled)
-        let busy = try screenshot(window, name: "480-busy-steer")
-        XCTAssertTrue(busy.contains("Steer"), busy)
+        // Read the controls at their own scale. In a full-screen capture the
+        // small, secondary-color menu title can be discarded by Vision.
+        let composerBounds = descendants(window).filter { $0 is UIButton || $0 === editor }
+            .map { $0.convert($0.bounds, to: window) }
+            .reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -12, dy: -12)
+        let busy = try screenshot(window, name: "480-busy-steer", croppedTo: composerBounds, literalText: true)
+        XCTAssertTrue(
+            busy.contains("Steer")
+                || accessibilityLabels(in: window).contains("Message action: Steer"),
+            busy
+        )
         XCTAssertTrue(busy.contains("Focus on reconnect"), busy)
         wire.running = false
         await model.recover()
@@ -434,6 +531,95 @@ import XCTest
         XCTAssertTrue(editor.isKeyboardSendEnabled, "Command-Return uses the visible Steer action while working")
         XCTAssertTrue(editor.isEditable, "Unsent drafts remain editable while the Bot works")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
+    }
+
+    /// Typing `/` in a Bot chat opens the panel with this connection's skills.
+    /// Commands stay out: nothing on the phone can run one, so a `/model` row
+    /// would be text the agent only reads literally.
+    ///
+    /// Only the row names are read back. The detail column is right-aligned and
+    /// truncates with the window width, so asserting on it reads differently on
+    /// a narrower runner; ranking and filtering belong to `BotSlashCommandTests`.
+    func testSlashPanelOffersConnectionSkillsAndNeverCommands() async throws {
+        let wire = BotFixtureWire()
+        wire.catalog = .object([
+            "skills": .object([
+                "/write-tests": .object(["origin": .string("bundled")]),
+                "/triage-inbox": .object(["origin": .string("user")])
+            ]),
+            "pairs": .array([
+                .array([.string("/model"), .string("Picks the chat model")]),
+                .array([.string("/write-tests"), .string("Adds focused XCTests")]),
+                .array([.string("/triage-inbox"), .string("Sorts the morning mail")])
+            ]),
+            "canon": .object(["/model": .string("/model")]), "commands": .object([:])
+        ])
+        let model = make(wire)
+        await model.recover()
+        await model.loadSlashCatalog()
+        XCTAssertEqual(model.slashSkills.map(\.name), ["triage-inbox", "write-tests"])
+        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        defer { model.suspend(); close(window) }
+        await renderFrames()
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await renderFrames()
+
+        editor.insertText("/")
+        let browsing = try await screenshot(window, name: "551-bot-slash-panel", awaiting: ["triage-inbox", "write-tests"])
+        XCTAssertTrue(browsing.contains("triage-inbox"), browsing)
+        XCTAssertTrue(browsing.contains("write-tests"), browsing)
+        XCTAssertFalse(browsing.contains("Picks"), "A command row would insert text nothing runs")
+
+        window.overrideUserInterfaceStyle = .dark
+        await renderFrames(4)
+        capture(window, name: "551-bot-slash-panel-dark")
+        window.overrideUserInterfaceStyle = .light
+
+        // Past the name the user is writing the skill's argument, so the panel
+        // closes and the accepted name becomes an atomic chip.
+        editor.insertText("triage-inbox yesterday's mail")
+        await renderFrames(4)
+        XCTAssertEqual(model.draft, "/triage-inbox yesterday's mail")
+        capture(window, name: "551-bot-slash-chip")
+        XCTAssertEqual(
+            ComposerChipTokenizer.tokens(in: model.draft, catalog: ComposerChipCatalog(skills: model.slashSkills))
+                .map { (model.draft as NSString).substring(with: $0.range) },
+            ["/triage-inbox"])
+    }
+
+    func testScrolledSlashSkillsStayInsideTheCard() async throws {
+        let suggestions = (0..<30).map {
+            SkillSlashSuggestion(name: "skill-\($0)", category: nil, description: nil)
+        }
+        let window = try show(VStack {
+            Spacer()
+            AdaptiveGlassContainer {
+                BotSlashAutocompleteView(suggestions: suggestions, onSelect: { _ in })
+            }
+            .padding(.horizontal, 16)
+            Spacer()
+        })
+        defer { close(window) }
+        await renderFrames()
+        let scroll = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first)
+        drag(scroll, to: 300)
+        await renderFrames(8)
+
+        let card = scroll.convert(scroll.bounds, to: window)
+        let image = capture(window, name: "551-scrolled-skills-clipped")
+        let request = VNRecognizeTextRequest()
+        try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage)).perform([request])
+        let rows = (request.results ?? []).filter {
+            $0.topCandidates(1).first?.string.localizedCaseInsensitiveContains("skill") == true
+        }
+        XCTAssertFalse(rows.isEmpty, "The scrolled panel must still show skill rows")
+        for row in rows {
+            let top = (1 - row.boundingBox.maxY) * window.bounds.height
+            let bottom = (1 - row.boundingBox.minY) * window.bounds.height
+            XCTAssertGreaterThanOrEqual(top, card.minY - 1, "Skill text escaped above the card")
+            XCTAssertLessThanOrEqual(bottom, card.maxY + 1, "Skill text escaped below the card")
+        }
     }
 
     func testPendingRequestOutranksUncertainStopInStatus() async throws {
@@ -630,13 +816,13 @@ import XCTest
                 await model.recover()
                 await renderFrames()
                 let name = "bot-\(dark ? "dark" : "light")-\(large ? "large" : "default")"
-                _ = try screenshot(window, name: name + "-closed")
+                capture(window, name: name + "-closed")
                 let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
                 XCTAssertTrue(editor.becomeFirstResponder())
                 await renderFrames()
                 editor.insertText("Draft a short reply.")
                 await renderFrames()
-                _ = try screenshot(window, name: name + "-keyboard")
+                capture(window, name: name + "-keyboard")
                 XCTAssertEqual(model.draft, "Draft a short reply.")
                 XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
                 close(window)
@@ -647,7 +833,7 @@ import XCTest
                     .preferredColorScheme(dark ? .dark : .light))
                 defer { close(reference) }
                 await renderFrames()
-                _ = try screenshot(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-closed")
+                capture(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-closed")
                 let referenceEditor = try XCTUnwrap(descendants(reference).compactMap { $0 as? ComposerChipTextView }.first)
                 XCTAssertTrue(referenceEditor.acceptsAttachments)
                 focus.isFocused = true
@@ -656,7 +842,7 @@ import XCTest
                 XCTAssertGreaterThan(referenceEditor.bounds.height, 44)
                 referenceEditor.insertText("Draft a short reply.")
                 await renderFrames()
-                _ = try screenshot(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-keyboard")
+                capture(reference, name: name.replacingOccurrences(of: "bot-", with: "sessions-") + "-keyboard")
             }
         }
     }
@@ -717,6 +903,67 @@ import XCTest
         XCTAssertFalse(hidden.contains("Thinking"), hidden)
         XCTAssertFalse(hidden.contains("Updated"), hidden)
         XCTAssertTrue(hidden.contains("Plan"), "work progress stays visible with cards off: " + hidden)
+    }
+
+    func testDelegationCompletionCardKeepsTheFullReportInItsSheet() async throws {
+        let report = """
+        [ASYNC DELEGATION BATCH COMPLETE — deleg_fixture]
+
+        Unique full worker result body.
+        """
+        let message = ChatMessage(
+            role: "delegation_completion",
+            content: report,
+            timestamp: nil,
+            messageId: "delivery",
+            displayKind: BotDelegationCompletion.displayKind,
+            displayMetadata: [
+                "delegation_id": .string("deleg_fixture"),
+                "task_count": .number(2),
+                "completed_count": .number(2),
+                "failed_count": .number(0),
+                "duration_seconds": .number(8.48)
+            ]
+        )
+        let completion = try XCTUnwrap(BotDelegationCompletion(message))
+
+        let card = try show(VStack {
+            BotDelegationCompletionCard(completion: completion)
+                .padding(16)
+            Spacer()
+        })
+        card.overrideUserInterfaceStyle = .dark
+        let compact = try screenshot(card, name: "477-delegation-completion-card")
+        XCTAssertTrue(compact.contains("2 workers completed"), compact)
+        XCTAssertTrue(compact.contains("View results"), compact)
+        XCTAssertFalse(compact.contains("Unique full worker result body"), compact)
+        close(card)
+
+        let sheet = try show(BotDelegationResultsSheet(completion: completion))
+        sheet.overrideUserInterfaceStyle = .dark
+        defer { close(sheet) }
+        await renderFrames(8)
+        let expanded = try screenshot(sheet, name: "477-delegation-results-sheet")
+        XCTAssertTrue(expanded.contains("Delegated work"), expanded)
+        XCTAssertTrue(expanded.contains("Unique full worker result body"), expanded)
+        // The toolbar's backing differs by build SDK: the button can surface
+        // as a labeled hosted view, as a bar button item, or as a bare
+        // accessibility node. VoiceOver reads any of them, so accept any.
+        // Like the OCR reads above, wait for the label to land instead of
+        // asserting on the first pass.
+        var labels: [String] = []
+        for _ in 0..<8 {
+            labels = accessibilityLabels(in: sheet)
+            if labels.contains("Copy") { break }
+            await renderFrames(4)
+        }
+        // Some build SDKs never publish the accessibility tree in-process
+        // (no labels anywhere, not even sheet content), so there is nothing
+        // to check the toolbar against. Where the tree is published, the
+        // icon-only action must stay named.
+        try XCTSkipUnless(!labels.isEmpty, "No accessibility tree is published in-process on this toolchain.")
+        XCTAssertTrue(labels.contains("Copy"),
+                      "The icon-only toolbar action must remain named for VoiceOver, found: \(labels)")
     }
 
     /// Finds the fixture's saturated avatar colors by row, without depending on
@@ -780,6 +1027,64 @@ import XCTest
         [view] + view.subviews.flatMap(descendants)
     }
 
+    /// Every accessibility label exposed under a view: hosted view labels,
+    /// explicit accessibility elements (which need not be views), and the bar
+    /// button items behind a UIKit-backed toolbar.
+    private func accessibilityLabels(in root: UIView) -> [String] {
+        var labels: [String] = []
+        var queue = [root]
+        var seen: Set<ObjectIdentifier> = []
+        while let view = queue.popLast() {
+            guard seen.insert(ObjectIdentifier(view)).inserted else { continue }
+            if let label = view.accessibilityLabel { labels.append(label) }
+            for element in view.accessibilityElements ?? [] {
+                if let elementView = element as? UIView {
+                    queue.append(elementView)
+                } else {
+                    labels += accessibilityLabel(of: element)
+                }
+            }
+            let count = view.accessibilityElementCount()
+            if count != NSNotFound, count > 0 {
+                for index in 0..<count {
+                    let element = view.accessibilityElement(at: index)
+                    if let elementView = element as? UIView {
+                        queue.append(elementView)
+                    } else {
+                        labels += accessibilityLabel(of: element)
+                    }
+                }
+            }
+            if let bar = view as? UINavigationBar, let top = bar.topItem {
+                labels += (top.leftBarButtonItems ?? []).compactMap(\.accessibilityLabel)
+                labels += (top.rightBarButtonItems ?? []).compactMap(\.accessibilityLabel)
+            }
+            if let toolbar = view as? UIToolbar {
+                labels += (toolbar.items ?? []).compactMap(\.accessibilityLabel)
+            }
+            queue += view.subviews
+        }
+        return labels
+    }
+
+    private func accessibilityLabel(of element: Any?) -> [String] {
+        if let node = element as? UIAccessibilityElement { return node.accessibilityLabel.map { [$0] } ?? [] }
+        if let object = element as? NSObject,
+           let label = object.value(forKey: "accessibilityLabel") as? String {
+            return [label]
+        }
+        return []
+    }
+
+    /// Moves a SwiftUI scroll view the way a finger would. iOS 27 restores its
+    /// own tracked position over a bare offset write on the next layout, so the
+    /// write is bracketed with the drag callbacks SwiftUI listens for.
+    private func drag(_ scroll: UIScrollView, to y: CGFloat) {
+        scroll.delegate?.scrollViewWillBeginDragging?(scroll)
+        scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+        scroll.delegate?.scrollViewDidEndDragging?(scroll, willDecelerate: false)
+    }
+
     /// Waits for the conversation's coalesced snapshot read to land. Every
     /// `applySnapshot` republishes the turn state, so it is the arrival signal.
     private func awaitSnapshot(_ model: BotConversation) async {
@@ -812,18 +1117,41 @@ import XCTest
     }
 
     @discardableResult
-    private func screenshot(_ window: UIWindow, name: String, inspecting: ((UIImage) -> Void)? = nil) throws -> String {
+    private func screenshot(_ window: UIWindow, name: String, croppedTo bounds: CGRect? = nil, literalText: Bool = false,
+                            inspecting: ((UIImage) -> Void)? = nil) throws -> String {
+        let image = capture(window, name: name)
+        inspecting?(image)
+        var pixels = try XCTUnwrap(image.cgImage)
+        if let bounds {
+            let rect = bounds.intersection(window.bounds).applying(CGAffineTransform(scaleX: image.scale, y: image.scale))
+            pixels = try XCTUnwrap(pixels.cropping(to: rect))
+        }
+        let request = VNRecognizeTextRequest()
+        // Tests render in English and assert literal UI copy, including filenames.
+        // Language correction can turn Report.pdf into Report.odf; do not ask
+        // OCR to rewrite what was rendered.
+        if literalText {
+            request.recognitionLanguages = ["en-US"]
+            request.usesLanguageCorrection = false
+        }
+        try VNImageRequestHandler(cgImage: pixels).perform([request])
+        return request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+    }
+
+    /// Attaches a capture as review evidence without reading its text. Captures
+    /// whose words are never asserted on take this path, since text recognition
+    /// is most of what `screenshot` costs. Evidence is stored as JPEG: encoding
+    /// a PNG of the 3x window took six times longer than drawing it.
+    @discardableResult
+    private func capture(_ window: UIWindow, name: String) -> UIImage {
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
-        inspecting?(image)
-        let attachment = XCTAttachment(image: image)
+        let attachment = XCTAttachment(image: image, quality: .medium)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        let request = VNRecognizeTextRequest()
-        try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage)).perform([request])
-        return request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+        return image
     }
 }
 
@@ -831,6 +1159,36 @@ import XCTest
 /// No APIClient, active account or server data participates in these captures.
 @MainActor @Observable private final class SessionFixtureFocus {
     var isFocused = false
+}
+
+@MainActor @Observable
+private final class AttachmentOverlayHarnessModel {
+    var isPresented = false
+}
+
+private struct AttachmentOverlayHarnessView: View {
+    @Bindable var model: AttachmentOverlayHarnessModel
+    @State private var message = ""
+
+    var body: some View {
+        VStack {
+            Spacer()
+            TextField("Message", text: $message)
+                .textFieldStyle(.roundedBorder)
+                .padding()
+        }
+        .background {
+            HermexKeyboardRetainingOverlay(isPresented: model.isPresented) {
+                HermexAttachmentPickerView(
+                    imageCapacity: 1,
+                    onChooseFiles: {},
+                    onAdd: { _ in },
+                    onDismiss: { model.isPresented = false }
+                )
+            }
+            .frame(width: 0, height: 0)
+        }
+    }
 }
 
 private struct SessionChatPresentationFixture: View {
@@ -847,7 +1205,12 @@ private struct SessionChatPresentationFixture: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(messages) { message in MessageBubbleView(message: message) }
+                ForEach(messages) { message in
+                    MessageBubbleView(
+                        message: message,
+                        transcriptMediaCacheNamespace: "https://webui.example|test"
+                    )
+                }
             }
             .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
             .padding(.vertical, 16)
@@ -879,11 +1242,35 @@ private struct SessionChatPresentationFixture: View {
             onModelPickerOpen: {}, onSelectReasoningEffort: { _ in }, onLoadWorkspaceSuggestions: { _ in },
             onWorkspaceRegistryChanged: {}, onLoadPersonalitySuggestions: {}, onLoadSkillSuggestions: {},
             onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _ in },
-            onPhotoItemSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },
+            onPhotoMediaSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in }, onPasteImageProviders: { _ in }, onPasteImages: { _ in },
             onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {},
             onSelectFileReference: { _ in }, onOpenFileReference: { _ in }, onSelectGitBranch: { _ in },
             onCreateGitBranch: { _ in }, onRefreshGitBranches: {}
         )
+    }
+}
+
+final class BotTranscriptWindowTests: XCTestCase {
+    func testShowsTheLatestPageAndGrowsByOnePageAtATime() {
+        var window = BotTranscriptWindow()
+        XCTAssertEqual(window.start(count: 40), 0)
+        XCTAssertFalse(window.hasEarlier(count: 40))
+        XCTAssertEqual(window.start(count: 130), 80, "Before seeding, the first frame must already be bounded")
+
+        window.seed(count: 130)
+        window.loadEarlier()
+        XCTAssertEqual(window.start(count: 130), 30)
+        window.loadEarlier()
+        XCTAssertEqual(window.start(count: 130), 0)
+        XCTAssertFalse(window.hasEarlier(count: 130))
+    }
+
+    func testMessagesThatSettleAfterOpeningNeverPushRowsOffTheTop() {
+        var window = BotTranscriptWindow()
+        window.seed(count: 130)
+        window.seed(count: 140)
+        XCTAssertEqual(window.start(count: 140), 80)
+        XCTAssertEqual(window.start(count: 60), 10, "A compacted history clamps instead of indexing past its end")
     }
 }

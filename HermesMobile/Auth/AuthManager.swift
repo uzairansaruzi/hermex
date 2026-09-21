@@ -309,6 +309,7 @@ final class AuthManager {
 
         try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
         await ChatDraftStore.shared.discardBotDrafts(server: active)
+        await PushRegistrar.shared?.forget(for: active)
         advanceAfterRemoving(activeServer: active)
     }
 
@@ -320,6 +321,7 @@ final class AuthManager {
         guard let serverURL = URL(string: account.urlString) else { return }
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
         await ChatDraftStore.shared.discardBotDrafts(server: serverURL)
+        await PushRegistrar.shared?.forget(for: serverURL)
         let isActive = state.server?.absoluteString == account.id
 
         if isActive {
@@ -401,8 +403,10 @@ final class AuthManager {
     }
 
     /// Deletes one server's local auth artifacts — its scoped custom headers, its
-    /// Bot connection with that connection's cached avatars, and its cookies —
-    /// without touching the registry or the global `server_url` key.
+    /// Bot connection with that connection's cached avatars, and its cookies — without
+    /// touching the registry or the global `server_url` key. Its push pairing lives in
+    /// the shared Keychain access group and is torn down by `PushRegistrar.forget`,
+    /// which the removal paths above await first.
     private func clearLocalArtifacts(for server: URL) {
         try? keychain.delete(.customHeaders, scope: server.absoluteString)
         if let connection = try? BotConnectionStore(keychain: keychain).load(server: server) {

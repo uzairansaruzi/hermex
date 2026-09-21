@@ -24,12 +24,14 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
 The full XCTest suite is the repo's green bar — it must pass before any PR:
 
 ```zsh
-xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
+scripts/test-sim <simulator-udid>
 ```
 
-If that simulator name isn't installed, pick a nearby iPhone from
-`xcrun simctl list devices available`. The same suite runs in CI on every pull
-request with code signing disabled, so forks get green CI without any secrets.
+Choose an available iPhone UDID from `xcrun simctl list devices available`.
+The runner builds a signed Debug app and runs tests serially on that device;
+see [Local XCTest](DEVELOPMENT.md#local-xctest) for focused tests and logs.
+The same suite runs in CI on every pull request with code signing disabled,
+so forks get green CI without any secrets.
 
 ## Code signing for contributors
 
@@ -52,7 +54,7 @@ team** — override locally instead:
    committed defaults for every target — no project-file changes needed.
 
 For simulator-only development you usually don't need any of this: simulator
-builds don't require a paid team. Note that unit tests and CI run with
+builds don't require a paid team. CI runs with
 `CODE_SIGNING_ALLOWED=NO`; installing such a build on a simulator for *manual*
 testing breaks Keychain entitlements — use a normally-signed build for that
 (see `AGENTS.md`).

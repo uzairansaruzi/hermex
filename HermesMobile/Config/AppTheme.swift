@@ -330,8 +330,10 @@ enum SectionVisibilitySettings {
 /// App-wide preview gate for Bot Mode (#496). Default off so unfinished Bot UI
 /// never ships through a hotfix cut from `master`. Not per-server: it hides
 /// screens, it is not user data, and Bot connections and drafts stay in the
-/// Keychain while it is off. Delete this gate and its Settings row in the
-/// release PR that ships Bot Mode; see `docs/agents/bots.md`.
+/// Keychain while it is off. The Hermes connection screen is deliberately no
+/// longer behind it (#557): that login is what push pairing needs, and push
+/// serves a server's webui sessions too. Delete this gate and its Settings row
+/// in the release PR that ships Bot Mode; see `docs/agents/bots.md`.
 enum BotModeGate {
     static let isEnabledKey = "botMode.isEnabled"
 
@@ -624,15 +626,20 @@ enum ResponseCompletionNotificationService {
         await scheduler.requestAuthorization()
     }
 
-    @discardableResult
+    @MainActor @discardableResult
     static func scheduleResponseCompletedIfAllowed(
         sessionID: String?,
         preferenceEnabled: Bool,
         completedNormally: Bool,
         sceneIsActive: Bool,
+        server: URL? = nil,
+        isPushPaired: @MainActor (URL) -> Bool = { @MainActor in PushRegistrar.shared?.pairing(for: $0) != nil },
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
     ) async -> Bool {
         let status = await authorizationStatus(scheduler: scheduler)
+        // Read after the permission await: pairing can change while it is suspended.
+        // Both chat completion and cold-launch Live Activity reconciliation use this.
+        if let server, isPushPaired(server) { return false }
         guard ResponseCompletionNotificationPolicy.shouldSchedule(
             preferenceEnabled: preferenceEnabled,
             authorizationStatus: status,

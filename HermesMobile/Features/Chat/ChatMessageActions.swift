@@ -35,6 +35,26 @@ struct ChatMessageActionItem: Identifiable {
     var id: Kind { kind }
 }
 
+/// The long-press menu is built from the item list alone, so any transcript
+/// that can name its own actions — Sessions, a Bot chat, a group room — gets
+/// the same UIKit menu without owning a chat view model.
+extension Array where Element == ChatMessageActionItem {
+    func uiMenu() -> UIMenu {
+        UIMenu(children: map { item in
+            let action = UIAction(
+                title: item.title,
+                image: UIImage(systemName: item.systemImage)
+            ) { _ in
+                item.perform()
+            }
+            if !item.isEnabled {
+                action.attributes = .disabled
+            }
+            return action
+        })
+    }
+}
+
 struct ChatMessageActionMenu: View {
     let context: MessageActionContext
     let listeningMessageID: String?
@@ -114,18 +134,7 @@ struct ChatMessageActionMenu: View {
 
     /// The same actions as a UIKit menu, for `ChatMessageContextMenuView`.
     func uiMenu() -> UIMenu {
-        UIMenu(children: items.map { item in
-            let action = UIAction(
-                title: item.title,
-                image: UIImage(systemName: item.systemImage)
-            ) { _ in
-                item.perform()
-            }
-            if !item.isEnabled {
-                action.attributes = .disabled
-            }
-            return action
-        })
+        items.uiMenu()
     }
 
     private var isListening: Bool {

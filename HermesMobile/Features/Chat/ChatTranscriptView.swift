@@ -826,7 +826,7 @@ private struct ChatTranscriptMessageRow: View {
             isStreaming: isStreaming,
             liveTokensPerSecond: liveTokensPerSecond,
             onAskHermex: onAskHermex,
-            contextMenu: isUserMessage && !message.isSteerMessage ? actionMenu : nil
+            contextMenuActions: isUserMessage && !message.isSteerMessage ? (actionMenu?.items ?? []) : []
         )
     }
 

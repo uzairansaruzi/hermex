@@ -20,7 +20,7 @@ import XCTest
     private func reader(_ wire: RoomWire, changed: @escaping (BotGroupRoom) -> Void = { _ in },
                         disbanded: @escaping () -> Void = {}) -> BotRoomReader {
         BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: "fixture-room"),
-            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, makeWire: { _ in wire },
+            connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, cache: BotHistoryCache(), makeWire: { _ in wire },
             onChanged: changed, onDisbanded: disbanded)
     }
 

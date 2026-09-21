@@ -191,15 +191,19 @@ enum BotTranscriptProjection {
                 let id = "\(root)/\(index)"
                 flush(anchor: id)
                 let displayKind = row["display_kind"].text
-                // Steers get the same mention-note stripping as ordinary user
-                // rows: the hidden agent-profile annotation must never leak
-                // profile IDs into bot history.
+                let isDelegationCompletion = displayKind == BotDelegationCompletion.displayKind
+                // A persisted steer arrives wrapped in the out-of-band marker.
+                // Unwrap it first so the trailing mention note is still a
+                // suffix and gets hidden like on any other user row.
+                let steerText = role == "user" ? ChatMessage.strippedSteerText(from: text) : nil
+                let userText = steerText ?? text
                 messages.append(ChatMessage(
-                    role: role,
-                    content: role == "user" ? BotMentions.displayText(text) : text,
-                    timestamp: nil,
+                    role: isDelegationCompletion ? "delegation_completion" : role,
+                    content: role == "user" && !isDelegationCompletion ? BotMentions.displayText(userText) : text,
+                    timestamp: row["timestamp"].number,
                     messageId: id,
-                    displayKind: displayKind
+                    displayKind: steerText != nil ? ChatMessage.steerDisplayKind : displayKind,
+                    displayMetadata: row["display_metadata"].argumentDictionary
                 ))
             default:
                 continue

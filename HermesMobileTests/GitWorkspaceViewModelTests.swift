@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import HermesMobile
 
 /// View-model behaviour + diff parsing for the workspace-git feature (issue #312, Slice A).
@@ -506,6 +507,15 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         try? await Task.sleep(for: .milliseconds(20))
         XCTAssertEqual(state.success?.title, "Second")
         state.dismissSuccess()
+    }
+
+    @MainActor
+    func testToastAnimationSnapsUnderReduceMotion() {
+        XCTAssertNil(GitActionToastState.toastAnimation(reduceMotion: true))
+        XCTAssertEqual(
+            GitActionToastState.toastAnimation(reduceMotion: false),
+            .easeInOut(duration: 0.18)
+        )
     }
 
     // MARK: - Quick commit pipeline (issue #315, Slice C)

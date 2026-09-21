@@ -1,34 +1,25 @@
 # Hermes Upstream Feature-Gap Index
 
-Thin, **always-current** classification of upstream `Hermes-WebUI` API route
-groups against `Hermes-Mobile`. This file replaces an earlier 1,400-line
-per-endpoint catalog, which mixed durable judgment (priority, defer/skip
-decisions, safety notes) with volatile detail (exact JSON shapes, handler names)
-that rotted between upstream releases.
+Thin classification of upstream `hermes-webui` route groups against Hermex.
 
-- The **durable layer** lives here: route group → status + priority + safety + a
-  one-line note. Cheap to keep true.
-- The **volatile layer** (request/response shapes, handler names) is **not**
-  cached here. It is validated **just-in-time**, when a feature is selected for
-  implementation, against the pinned upstream copy. See
+- **`Endpoints.swift` is the authority for `implemented`.** Do not hand-list
+  shipping paths here.
+- This file is only durable judgment: remaining gaps (`roadmap`), non-goals
+  (`n-a`), and owner drop decisions. Validate JSON shapes just-in-time against
+  the pinned upstream copy when a row is selected — see
   [Just-in-time research rule](#just-in-time-research-rule).
-- The old catalog (durable per-feature regression notes and validated shapes as
-  of 2026-05-21) was retired during open-source prep (#347); shapes are always
-  re-validated just-in-time rather than recovered from it.
 
-Keep owner-observed mobile bugs, polish notes, and tester feedback in GitHub Issues
-unless the item is explicitly an upstream WebUI parity gap.
+Owner-observed mobile bugs and polish stay in GitHub Issues unless the item is
+an upstream WebUI parity gap.
 
 ## Status vocabulary
 
 | Status | Meaning | Source |
 | :--- | :--- | :--- |
-| `implemented` | Shipping in the app. | Whatever `HermesMobile/Networking/Endpoints.swift` calls — never hand-listed here, so it cannot drift from what the app ships. |
-| `roadmap` | A known upstream feature tracked as a future/deferred mobile slice (covers the old `[ ]`/`[~]`/`[defer]`). | The hand-maintained table below. |
-| `n-a` | Web-, desktop-, or server-internal surface. No mobile implementation expected. | The hand-maintained table below. |
-| `new` | Genuinely uncatalogued upstream route — the triage queue. | Any upstream route matching neither `Endpoints.swift` nor the table below. |
-
-Only `roadmap` and `n-a` are hand-maintained in the table, so this index stays small.
+| `implemented` | Shipping in the app. | Whatever `HermesMobile/Networking/Endpoints.swift` calls. |
+| `roadmap` | Known upstream surface still missing on mobile (or **partial**: some paths shipped, note lists what remains). | The table below. |
+| `n-a` | Web-, desktop-, or server-internal; or owner-dropped. No mobile work expected. | The table below. |
+| `new` | Uncatalogued upstream route. | Matches neither `Endpoints.swift` nor the table. |
 
 ## Priority guide
 
@@ -39,18 +30,19 @@ Only `roadmap` and `n-a` are hand-maintained in the table, so this index stays s
 - **P4**: Large systems or safety-sensitive surfaces.
 - **P5**: Niche server-admin monitoring or low mobile fit.
 
-The **Safety** column flags surfaces that need explicit confirmation/guardrails:
-`write` (mutates server state/files), `exec` (runs server code), `secret`
-(API keys/credentials), `privacy` (data leaves the device), `admin`
+**Safety:** `write` (mutates server state/files), `exec` (runs server code),
+`secret` (API keys/credentials), `privacy` (data leaves the device), `admin`
 (server-management), `read` (read-only, low risk), `—` (n/a).
 
 ## Route classification
 
-Every row whose **Status** is `roadmap` or `n-a` is a route-prefix
-classification. Matching is by prefix,
-**first match wins**, so specific prefixes must be listed before general ones
+Every `roadmap` / `n-a` row is a route-prefix. Matching is by prefix,
+**first match wins**, so specific prefixes must sit before general ones
 (e.g. `/api/file/reveal` before `/api/file/`). A trailing `/` scopes a prefix to
-sub-paths of a group. Do not reorder casually.
+sub-paths. `Endpoints.swift` still wins for any path it defines.
+
+A `roadmap` row whose prefix also matches a live `Endpoint` must say **partial**
+and name the remaining paths.
 
 | Route prefix | Status | Priority | Safety | Note |
 | :--- | :--- | :---: | :---: | :--- |
@@ -66,95 +58,77 @@ sub-paths of a group. Do not reorder casually.
 | `/api/shutdown` | n-a | — | — | Server shutdown; admin-only |
 | `/api/auth/passkey` | n-a | — | — | WebAuthn passkey browser auth; mobile uses its own server-connection auth |
 | `/api/auth/passkeys` | n-a | — | — | WebAuthn passkey list; browser auth surface |
-| `/api/git-info` | roadmap | P3 | read | Git Info & Rollback — branch/status read |
-| `/api/git/` | roadmap | P3 | write | Git review & management — branches/diff/commit/stage/push/pull/discard/stash |
-| `/api/rollback/` | roadmap | P3 | write | Git Info & Rollback — checkpoint list/diff/restore |
-| `/api/crons/history` | roadmap | P2 | read | Cron History / Recent Runs |
-| `/api/session/usage` | roadmap | P2 | read | Session Token Usage — mostly covered by the context ring |
-| `/api/session/import` | roadmap | P3 | — | Session Import (JSON / CLI) |
-| `/api/session/duplicate` | roadmap | P4 | — | Session Duplicate — branch-based duplicate already covers the need |
-| `/api/session/toolsets` | roadmap | P4 | write | Advanced Session Maintenance |
-| `/api/session/draft` | roadmap | P4 | write | Advanced Session Maintenance |
-| `/api/session/compress/` | roadmap | P4 | write | Advanced Session Maintenance |
-| `/api/session/conversation-rounds` | roadmap | P4 | write | Advanced Session Maintenance |
-| `/api/session/handoff-summary` | roadmap | P4 | read | Advanced Session Maintenance |
-| `/api/session/lineage/` | roadmap | P4 | read | Advanced Session Maintenance |
-| `/api/session/worktree/` | roadmap | P4 | write | Advanced Session Maintenance |
-| `/api/session/recovery/` | roadmap | P4 | write | Advanced Session Maintenance |
-| `/api/sessions/cleanup` | roadmap | P4 | write | Advanced Session Maintenance — bulk cleanup |
-| `/api/provider/` | roadmap | P3 | secret | Provider Management — `quota` shipped as the Usage screen's Limits cards (#415); `cost-history` remains roadmap |
-| `/api/providers` | roadmap | P3 | secret | Provider Management — read-only status screen shipped (#26); key set/delete remains roadmap |
-| `/api/models/refresh` | roadmap | P3 | — | Provider / Model Management |
-| `/api/models/live` | roadmap | P3 | — | Provider / Model Management — live model fetch |
-| `/api/model/` | roadmap | P3 | — | Provider / Model Management |
-| `/api/settings` | roadmap | P3 | secret | Settings Write — single-key `show_cli_sessions` write shipped (#19); full Settings Write (bot name + password operations) remains roadmap |
-| `/api/profile/` | roadmap | P3 | write | Profile Management — active/create/delete |
-| `/api/skills/` | roadmap | P3 | write | Skill Management — toggle shipped; save/delete remain roadmap |
-| `/api/transcribe` | roadmap | P3 | privacy | Audio Transcription — server-side; audio leaves the device |
-| `/api/workspaces/` | roadmap | P3 | write | Workspace Management — add/remove/rename/reorder shipped (#22); list + `/suggest` were already shipped |
-| `/api/workspace/` | roadmap | P3 | write | Workspace Management |
-| `/api/file/` | roadmap | P4 | write | File Editing / Management — owner-deferred |
-| `/api/folder/` | roadmap | P4 | write | File Editing / Management — owner-deferred |
+| `/api/commands/exec` | n-a | — | exec | Dropped by owner — must not resurface; needs product framing |
+| `/api/updates/summary` | n-a | — | admin | Dropped by owner — undocumented; fires a server LLM call |
+| `/api/session/import` | n-a | — | — | JSON import unused; CLI import (`/api/session/import_cli`) shipped |
+| `/api/rollback/` | roadmap | P3 | write | Git checkpoint list/diff/restore |
+| `/api/session/usage` | roadmap | P2 | read | Session token usage — mostly covered by the context ring |
+| `/api/session/toolsets` | roadmap | P4 | write | Advanced session maintenance |
+| `/api/session/draft` | roadmap | P4 | write | Advanced session maintenance |
+| `/api/session/conversation-rounds` | roadmap | P4 | write | Advanced session maintenance |
+| `/api/session/handoff-summary` | roadmap | P4 | read | Advanced session maintenance |
+| `/api/session/lineage/` | roadmap | P4 | read | Advanced session maintenance |
+| `/api/session/worktree/` | roadmap | P4 | write | Advanced session maintenance |
+| `/api/session/recovery/` | roadmap | P4 | write | Advanced session maintenance |
+| `/api/sessions/cleanup` | roadmap | P4 | write | Advanced session maintenance — bulk cleanup |
+| `/api/provider/` | roadmap | P3 | secret | partial — `quota` shipped (#415); `cost-history` remains |
+| `/api/providers` | roadmap | P3 | secret | partial — GET status shipped (#26); key set/delete and `/self-hosted` remain |
+| `/api/models/refresh` | roadmap | P3 | — | Provider / model management |
+| `/api/model/` | roadmap | P3 | — | Provider / model management (`set`, `auxiliary`) |
+| `/api/settings` | roadmap | P3 | secret | partial — GET plus session-visibility writes shipped (#19); full settings editor remains |
+| `/api/profile/` | roadmap | P3 | write | partial — switch/create shipped; `active` and `delete` remain |
+| `/api/skills/` | roadmap | P3 | write | partial — list/content/toggle shipped; save/delete remain |
+| `/api/workspace/` | roadmap | P3 | write | Workspace-panel `/upload`; registry CRUD is `/api/workspaces/*` and shipped |
+| `/api/file/` | roadmap | P4 | write | partial — read (`/api/file`, `/api/file/raw`) shipped; mutations owner-deferred |
+| `/api/folder/` | roadmap | P4 | write | File editing — owner-deferred (zip download) |
 | `/api/terminal/` | roadmap | P4 | exec | Terminal — owner-deferred; App Store/safety-sensitive |
-| `/api/commands/exec` | roadmap | P4 | exec | Plugin command exec — owner-deferred |
-| `/api/gateway/` | roadmap | P5 | read | Gateway / Messaging Bridge |
-| `/api/updates/` | roadmap | P5 | admin | Server Updates |
-| `/api/system/health` | roadmap | P5 | read | System Health & Logs |
-| `/api/health/agent` | roadmap | P5 | read | System Health & Logs |
-| `/api/logs` | roadmap | P5 | read | System Health & Logs |
-| `/api/dashboard/` | roadmap | P5 | admin | Dashboard & Plugins |
-| `/api/plugins` | roadmap | P5 | admin | Dashboard & Plugins |
-| `/api/mcp/` | roadmap | P5 | admin | MCP Servers & Tools |
-| `/api/wiki/` | roadmap | P5 | read | Wiki / Knowledge System |
-| `/api/notes/` | roadmap | P5 | read | Notes / Knowledge — search/sources/item |
+| `/api/gateway/` | roadmap | P5 | read | Gateway / messaging bridge |
+| `/api/updates/` | roadmap | P5 | admin | partial — check/apply shipped; `force` and `clear_lock` remain |
+| `/api/system/health` | roadmap | P5 | read | System health & logs |
+| `/api/health/agent` | roadmap | P5 | read | System health & logs |
+| `/api/logs` | roadmap | P5 | read | System health & logs |
+| `/api/dashboard/` | roadmap | P5 | admin | Dashboard & plugins |
+| `/api/plugins` | roadmap | P5 | admin | Dashboard & plugins |
+| `/api/mcp/` | roadmap | P5 | admin | MCP servers & tools |
+| `/api/wiki/` | roadmap | P5 | read | Wiki / knowledge system |
+| `/api/notes/` | roadmap | P5 | read | Notes / knowledge — search/sources/item |
 | `/api/project-os/` | roadmap | P5 | read | Project-OS dashboard |
 
-### Implemented (for reference, derived — not parsed)
-
-`Endpoints.swift` is the authority for `implemented`; this list is a human
-convenience only.
-Shipping parity features include: Clarification System, Goal Submission, Session
-Search, Memory Editing, Cron mutations, Project Rename, Server-Side Insights,
-Transcript `MEDIA:` inline image rendering, Kanban Board, and the core
-session/chat/streaming surface. For each feature's regression-check notes and
-last-validated shapes, see the archived catalog in `git log` history (removed
-during open-source prep, #347).
+Shipped prefixes removed from this table (now `implemented` via `Endpoints.swift`):
+`/api/git-info`, `/api/git/*`, `/api/crons/history`, `/api/session/duplicate`,
+`/api/session/compress`, `/api/models/live`, `/api/transcribe`,
+`/api/workspaces/*`, `/api/session/import_cli`, `/api/background`,
+`/api/personalities`, `/api/personality/set`, `/api/default-model`, `/api/btw`.
 
 ### Not in this index → `new`
 
-Any upstream route group not in `Endpoints.swift` and not in the table above
-surfaces in the digest's **New / unclassified** bucket — the just-in-time triage
-queue. As of upstream `v0.51.338` this includes groups such as `prompts` (saved
-prompts library), `background`, `personalities`/`personality`, `default-model`,
-and `btw`. Leaving them uncatalogued is deliberate: they need an owner triage
-decision (priority + fit) before they earn a durable row here. Do not invent a
-classification for them without that decision.
+Any upstream route matching neither `Endpoints.swift` nor the table is
+**New / unclassified** — the triage queue. Do not invent a row without an owner
+priority/fit decision. Current examples: `prompts` (saved prompts library),
+`extensions`, `share`.
 
 ### Already triaged — do not re-file
 
-The 2026-07-02 docs-vs-app gap analysis was fully triaged into issues #15–#26
-(tracker #27, now closed and shipped). Two route groups were **dropped by owner
-decision** and must not resurface as new findings:
+Owner-dropped; must not resurface as new findings:
 
 - `POST /api/updates/summary` — undocumented, and it fires a server LLM call.
 - `POST /api/commands/exec` — needs product framing before any client work.
 
-A further set was **deferred pending explicit owner opt-in** — do not file these
-without asking first: session import; stream/status `replay_available` decode;
-cron history view; auxiliary model routing; settings-editor UI; profile
-create/delete; all `/api/file/*` mutations and folder zip; skill authoring;
+Deferred pending explicit owner opt-in — do not file without asking first:
+stream/status `replay_available` decode; auxiliary model routing; settings-editor
+UI; profile delete; all `/api/file/*` mutations and folder zip; skill authoring;
 command bundles.
 
 ## Just-in-time research rule
 
 Deep request/response/handler validation happens **when a feature is selected for
-implementation**, not pre-cached in this index. When you pick up a `roadmap` row:
+implementation**, not pre-cached here. When you pick up a `roadmap` row:
 
 1. Read the matching handler in `.codex-tmp/hermes-webui/api/routes.py` (and the
    WebUI caller in `.codex-tmp/hermes-webui/static/` when one exists) at the
-   pinned upstream commit. Never guess JSON shapes — see `AGENTS.md` hard rule 3.
+   pinned upstream commit. Never guess JSON shapes — see `AGENTS.md`.
 2. Record the validated shape, handler name, and upstream commit **in the issue
-   and the PR**, not in this index. The index stays thin.
+   and the PR**, not in this index.
 3. If the durable judgment changes (priority, safety, defer/skip), update this
    row — that is the only thing the index should accumulate.
 

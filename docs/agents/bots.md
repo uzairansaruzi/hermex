@@ -50,6 +50,37 @@ Markdown rendering without token reveal animations. The deferred streaming
 renderer can leave a growing Bot response's trailing viewport blank; an XCTest
 renders evolving snapshots and checks the actual visible output.
 
+Settled messages reuse the Sessions transcript's long-press seam.
+`chatMessageContextMenu` supplies the menu from a plain
+`[ChatMessageActionItem]`, so a transcript names its own actions without owning
+a chat view model; `BotMessageActions` builds that list, and for a Bot it is
+Copy alone over the Markdown source, because the host owns the history and
+edit, regenerate and branch have nothing to act on. Group rooms use the same
+seam.
+
+Settled bot replies and room member messages sit in a `ResponseTextSelection`
+document, so text selects in place as it does in Sessions. The scroll-view
+context menu outranks the selection long-press, so those rows pass
+`longPress: false`: Copy stays a VoiceOver action and the selection menu
+supplies Copy and Select All. User messages and the live reply keep the
+long-press menu; the live reply is never selectable, because its document would
+be rebuilt on every snapshot. "Ask Hermex" appends a `ComposerQuote` to the Bot
+draft, durable through `ChatDraftStore`, and becomes a Markdown blockquote only
+on the way out, after any skill expansion, so a failed send restores the
+composer exactly. Rooms pass no Ask Hermex handler and the menu omits it. The
+quote detail view stays in issue #564.
+
+Both transcripts are eager `VStack`s because of that document. It is a hosted
+view controller, and a lazy stack places rows it has not built from an
+estimate: under load the latest-edge follow and a room's jump to a search hit
+landed on the wrong rows (`testLongInflightResponseRemainsVisibleAtLatestEdge`,
+`testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages`, the latter
+on a cold first iteration). Eager is affordable only over a bounded list,
+which is what incident #463 was about: `BotTranscriptWindow` draws the latest
+50 settled messages with Load earlier above them, the way Sessions pages, and
+rooms are bounded by their own Load earlier. The host still sends the whole
+history; the window limits only what is built.
+
 Activity comes from two sources that never overlap. The full snapshot's
 `messages` rows already carry settled tool rows (`role: tool` with `name`,
 `context`, `args`) and assistant `reasoning`; `BotTranscriptProjection` turns
@@ -70,6 +101,49 @@ global Chat display toggles; the plan row stays visible with cards off. Tool
 output is text only. `message.react` and `learning.frames` are deliberately
 not wired: the snapshot carries no reactions to show back, and the frames are
 terminal-sized renders.
+
+Delegated work stays attached to its owning Bot conversation. A toolbar count
+appears only while `subagent.list({session_id})` reports live workers; it opens a
+sheet with at most 64 rows showing the host's hierarchy, goal, status, model and
+latest tool. The roster is read once after each connection, on an explicit
+refresh, and after coalesced `subagent.spawn_requested`, `subagent.start`,
+`subagent.progress`, `subagent.tool` or `subagent.complete` events. It is never
+polled, and token/reasoning events never trigger a read.
+
+A worker tail is loaded only when tapped through
+`subagent.tail({session_id, subagent_id})`. Both host and client cap it at the
+latest 16 KiB and say when earlier output was cut. Cancelling or timing out a
+list/tail read fails only that optional inspection request; it never closes an
+otherwise usable Bot conversation. Interrupt is the only worker write in this
+slice. The phone re-lists immediately before
+`subagent.interrupt({session_id, subagent_id})` and compares the row's
+`started_at` and `delegation_id`, so a worker that finished during confirmation
+or an id replaced between snapshots is not dispatched. Current hosts generate
+each `subagent_id` with a fresh UUID suffix; inside the interrupt handler they
+resolve the transport-owned record once and act on that exact agent object.
+The confirmation states that Hermex cannot resume the worker and that its parent
+and siblings continue. An interrupt is never retried; a lost reply has an
+unknown outcome. Ownership rejection asks for a reconnect, and hosts without
+the methods simply show no worker control.
+Steering and every wider delegation, process, spawn-tree and verification RPC
+remain outside the BotClient allowlist.
+
+Completed async delegation is durable transcript history, not user authorship.
+The gateway projects its delivery row with
+`display_kind: "async_delegation_complete"` plus display-only counts, duration
+and delegation id. Hermex renders that typed row as a compact timeline card and
+opens the untouched server report in a results sheet. It never recognizes
+completion prose by prefix. The worker toolbar remains live-only and disappears
+when `subagent.list` has no active rows; reopening the conversation restores
+the result card from the host transcript rather than a second local history.
+
+The three method names, exact parameters and result shapes were verified against
+`tui_gateway/methods_subagents.py` and
+`tests/tui_gateway/test_subagent_snapshot.py` at `HERMES_AGENT_TESTED_SHA`
+`3abeca16e66cad4875f7b40beb0eb54bc4a589d5`. No live worker was interrupted for
+validation. The completion display kind and metadata were verified at the same
+pin in `gateway/wake.py`, `hermes_state_messages.py` and
+`tui_gateway/session_history.py`.
 
 A blocking request is whatever has parked the bot. On 0.21.2, the gateway sends
 JSON-RPC server requests with string ids and methods such as `clarify`, `sudo`,
@@ -180,14 +254,16 @@ keeps an upload pending while checking display-link frames and editor state.
 
 Copies and records use the Bot draft key (server + connection UUID
 + Profile); navigation/relaunch never uploads them. Imports allow eight files,
-25 MB each and 50 MB total. Images are converted off the main actor to JPEG,
-limited to 4096 pixels on the longest edge; PDFs, text, audio and common document
+25 MB each and 50 MB total. Images are converted off the main actor to JPEG
+or PNG when they contain transparency, limited to 4096 pixels on the longest
+edge; PDFs, text, audio and common document
 formats retain their original bytes. Removal deletes the local copy after the
 updated record reaches disk.
 
 Send and Queue upload the selected files and put only acknowledged references in
 that prompt. Steer/Redirect remain text-only. Images use the authenticated
-`POST /api/chat/image-upload?profile=…` with `{filename, data_url}` and require
+`POST /api/chat/image-upload?profile=…` with `{filename, data_url}` using the
+matching JPEG or PNG data URL and require
 `{ok: true, path}`. This stores the image without touching `attached_images`.
 The prompt carries the returned absolute path with the vision-tool instruction
 used by Hermes's `_build_image_ref_message`; analysis uses the host's configured
@@ -392,6 +468,30 @@ is adaptive: `Color.botBody` paints it white in dark appearance and black in
 light, with eyes inverted to match, so the face and the swatch never vanish
 into the background.
 
+## Opening a bot from outside the app
+
+One URL route lands on a bot conversation: `hermes-agent://bot?server=…&
+connection=…&profile=…[&conversation=…]` (`BotDestination` and the parser live in
+`Features/Bots/BotDeepLink.swift`, the host in the widget-shared
+`HermesDeepLink`). It routes only by identity the server owns — configured server
+URL, Bot connection UUID, Profile name — so equal display names, or equal Profile
+names on two connections, can never resolve to each other.
+
+`BotDeepLinkRouter` decides the outcome before anything navigates, from the Bot
+Mode gate, the server registry, the destination server's Keychain connection and
+the auth state: Bot Mode off, an unconfigured server, or a removed or replaced
+connection drops the link and the app just opens; signed out holds it until the
+next sign-in; another server activates first, and the rebuilt tree routes it. The
+roster is never waited on to route. `BotsInboxView` resolves the held destination
+once `open()` has settled, and a Profile the server no longer has simply leaves
+the user on that inbox. Opening follows the ordinary canonical resume rules: a
+link never sends a prompt and never auto-continues on its own.
+
+`conversation` is the bot's durable canonical root when the sender knows it. It is
+seeded as `BotConversation.root`, so the existing changed-root rejection refuses to
+open a replacement conversation under the link's identity; the chat reports that
+back and the inbox says the conversation is no longer available.
+
 ## Bot lifecycle
 
 The inbox's `+` button and a row's context menu create, duplicate and delete
@@ -470,8 +570,9 @@ it is turned on again. The gate is not per-server because it hides screens
 rather than storing user data. It is removed, together with its Settings row
 and `BotModeGateTests`, in the release PR that ships Bot Mode, not before.
 
-New Bot code belongs only to the main app and XCTest target. Share-extension,
-App Intent, deep-link and Live Activity commands still route to webui sessions.
+New Bot code belongs only to the main app and XCTest target, apart from the Live
+Activity below. Share-extension and App Intent commands still route to webui
+sessions.
 The Sessions/Bots switch returns to Sessions for existing external entry points.
 
 The implementation issue links the installed contract evidence, signed-build and
@@ -479,11 +580,57 @@ test results, and remaining manual gates. Physical-phone transport, native
 accessibility and integrated live behavior must be validated before declaring
 the MVP complete. Simulator or isolated fixtures are not physical-phone evidence.
 
+## Bot Live Activity
+
+A working bot shows on the Lock Screen and Dynamic Island through the same
+`AgentLiveActivityManager` and widget as a webui run; there is no second manager
+(#489). `BotConversation.liveActivitySnapshot` projects the conversation into a
+pure value at its state choke points, and the shared `BotLiveActivityFeed` diffs
+those values into manager calls.
+
+- **Identity.** `AgentRunActivityBot.key` is `bot:<connection UUID>:<Profile>` and
+  stands in for the session id; the stream id adds the host's turn start. Equal
+  Profile names on two connections never reuse an activity, a reconnect inside a
+  turn re-adopts it, and the next turn gets a new one. The tap target is the #554
+  bot route, so a tap validates the stored connection like any other bot link.
+- **Freshness.** Bot activities request ActivityKit update tokens. For a paired
+  server, `PushActivityRegistrar` forwards each token to the relay under the stored
+  agent session ID (`session_key`, the resolved compression tip) and registered
+  device token. The gateway's short-lived RPC `session_id` and the canonical chat
+  root are different IDs; plugin progress hooks use neither of them. After registration succeeds,
+  suspension leaves freshness to push; the relay sets a fifteen-minute stale date
+  and the widget uses ActivityKit's stale flag. Unpaired or failed registrations
+  still show "Not connected" / "Open to reconnect" on suspend. Webui activities
+  remain local-only (`pushType: nil`). There is no push-to-start.
+- **Ownership.** Before every stale or end call the feed checks
+  `drivenSessionID`, so an activity a webui run or another bot took over is never
+  touched. Token rotation and retirement are serialized: an in-flight registration
+  must be cleaned up before its replacement can register the same session. Ending,
+  dismissal, and server unpairing retire registrations. Cold launch observes paired
+  activities without resuming their chats; legacy/unpaired activities are removed.
+  `BotLiveActivityFeed.decision` is the pure start/update/end/wait decision.
+- **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
+  appears only behind the existing response-excerpt setting.
+- **Avatar.** The app renders the bot's photo or drawn face to one PNG under
+  `LiveActivityAvatars/` in the app group, named by connection UUID, and the
+  widget reads it; that is why the widget target carries the app-group
+  entitlement. A missing file falls back to the status dot.
+
+The shared content state accepts both existing local fields and the relay's compact
+`v`, `status`, `tool`, `tool_calls`, `started_at` shape. The wire status remains a
+string; unknown statuses or newer versions render a generic existing status.
+Identity/title come from immutable activity attributes when a push omits them.
+The app and widget share this decoder; the share and notification extensions do
+not consume it. The relay contract lives in `hermex-push/relay/README.md`.
+
+Rooms have no Live Activity.
+
 ## Bot mentions
 
 The Bot Chat composer offers up to eight `@` completions from the inbox roster
-for its own connection, excluding the open bot. It reuses the slash panel's
-presentation and caret-local replacement behavior. Rows show a small static avatar
+for its own connection, excluding the open bot. The same panel also lists this
+conversation's workspace files below the roster; see File references. It reuses
+the slash panel's presentation and caret-local replacement behavior. Rows show a small static avatar
 from the inbox's connection-scoped image cache, falling back to the bot's existing
 face; opening or filtering the picker never fetches images. Once selected or
 followed by whitespace, a recognized mention becomes the shared composer's
@@ -522,6 +669,111 @@ Desktop has synced the peer roster within ten minutes, and delivery requires
 that Desktop to remain running. The phone cannot autocomplete remote bots
 because there is no read-only remote-roster RPC. Real phone support needs that
 RPC and a relay owner independent of a Desktop renderer.
+
+## File references
+
+The `@` panel is one panel with two groups: the roster above (see Bot mentions),
+then this conversation's workspace files. With no roster the panel is files
+alone; with no file rows (a failed or empty lookup) it is the roster alone. One
+gesture, no mode rules: a mention-shaped word (`@res`) can offer both, and a
+path-shaped one (`@src/Ch`) can only match files, because bot tags contain no
+slash. `BotAtPanelSection` owns that ordering, and a lookup still in flight
+shows the Files group with no rows yet so the first answer can appear.
+
+File rows come from the direct connection's `complete.path` (#552; the epic's
+exclusion was reversed 2026-09-17). The client sends `{word, session_id,
+profile}`: `word` is the path being typed — a bare `@` sends `.`, because the
+host answers an empty word with no items — and `session_id` is the live runtime,
+so rows resolve against the session's working directory (`session.cwd.set`). The
+reply's `items` rows are plain relative paths or the host's `@file:`/`@folder:`
+directive spellings; directories end in `/` and carry `meta: "dir"`. Rows a
+`@path` reference cannot carry — directives, whitespace, `..`, absolute paths —
+are dropped. The host ranks and caps its own rows (30), so the phone neither
+relists nor rescores them.
+
+Picking a file inserts `@path` plus the trailing space and draws the same chip
+the Sessions composer draws; picking a folder inserts `@path/` and leaves the
+panel open on its contents. A picked path is remembered for the conversation's
+lifetime so its chip draws, and is forgotten when the workspace moves: a path is
+only a file inside the workspace it was found in. A failed lookup hides the
+Files group and never blocks typing; a reply that lands after a newer query is
+dropped by the panel's generation guard, the same one the Sessions panel runs
+under.
+
+`BotClient` admits `complete.path` as a fourth typed exception: exactly `word`,
+`session_id` and `profile`, one bare word with no whitespace and both ids
+non-empty. Cancelling a completion drops its reply without dropping the
+conversation, because a completion has no outcome to recover. Group rooms are
+untouched: `BotRoomComposerView` keeps its members-only mention panel and never
+gets the Files group.
+
+Contract verified read-only against the live host on 2026-09-18 (the host
+reported 0.21.3; `HERMES_AGENT_TESTED_SHA` is 0.21.2) with authenticated
+`complete.path` calls: `word: ""` answers `{items: []}`, `word: "."` lists the
+root, directories carry a trailing `/` and `meta: "dir"`, and the listing caps
+at 30. The shape matches the pin's
+`tui_gateway/methods_complete.py::complete.path`; the listing root resolves as
+`cwd` → live session cwd → profile-configured cwd → launch cwd. No resume,
+prompt or mutation was executed.
+
+## Slash suggestions
+
+Typing `/` at the start of a Bot Chat draft opens the slash panel with this
+connection's **skills**. Commands are deliberately absent: the gateway runs those
+only through `slash.exec` and `command.dispatch`'s quick/plugin/registry stages,
+which Bot Mode does not expose, so a command row would insert text nothing runs.
+Model, effort and workspace already have native controls (Chat controls above).
+
+`commands.catalog` (no parameters) is read once per conversation, after connecting,
+driven by the composer. `BotSlashCatalog` reads the `skills` keys for which entries
+are skills and the `pairs` rows for their descriptions, and **drops any skill key
+that also appears in `canon` or `commands`**: those are registry, quick or plugin
+commands, `command.dispatch` resolves them ahead of skills, and a `quick_commands`
+entry of type `exec` runs a shell command on the host. A failed read is silent and
+retried on the next connect; the panel simply does not open and typing and sending
+never wait on it. A reply for a conversation that has moved on is dropped. Nothing
+is shared across servers or connections: `BotConversation` is one
+server/connection/Profile lifetime.
+
+`BotSlashTrigger` narrows `ComposerSlashTrigger` to a `/` that opens the draft and
+ends at its first space — past that the user is typing the skill's argument. The
+panel is closed for Steer and Redirect, which never expand an invocation. A `@`
+mention wins over a `/`, so the two panels never stack. Rows reuse the slash
+panel's dense glass presentation and `SlashSkillFormatter.matching` ranking;
+choosing one inserts the skill's **slug**, which is what `ComposerChipCatalog` is
+keyed by, so the shared composer draws it as an atomic chip through
+`ComposerChipTextView`, exactly as Sessions does. The send path resolves the slug
+back to the host's own key, so a key like `/Weekly_Report` completes as
+`/weekly-report` and still dispatches under its real name.
+
+`prompt.submit` never interprets a leading `/`. So at Send or Queue, a draft that
+opens with a catalog skill is expanded first: `command.dispatch {name, arg,
+session_id}` returns `{type: "skill", message, name, display}`, and `message` is
+what gets submitted. Only a catalog skill name is ever dispatched, and only a
+`skill` reply is used — anything else, or a failed dispatch, sends nothing and
+leaves the draft with an error. The catalog is re-read immediately before
+dispatching, because the cached one is a connect-time snapshot and a command added
+to the host since then would shadow the skill; the read also refreshes the panel.
+The last microseconds of that race cannot be closed from the phone — the gateway
+has no skill-only dispatch. Expansion happens before any durable marker, so a
+failure cannot strand a submission. The transcript still shows the typed line,
+because the host projects the invocation back over the stored message
+(`display_kind: "skill_invocation"`).
+
+`BotClient` allowlists `commands.catalog` (no parameters) and `command.dispatch`
+(exactly `name`, `arg`, `session_id`; a bare name with no slash or whitespace) as
+its third typed exception. `slash.exec` stays unsupported.
+
+Group rooms are out of scope: `BotRoomComposerView` is a separate composer and
+does not get the panel.
+
+Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
+`tui_gateway/methods_tools.py` (`commands.catalog`, `command.dispatch`,
+`_dispatch_quick`/`_dispatch_skill`), `tui_gateway/methods_complete.py`
+(`complete.slash`, a per-keystroke read the catalog replaces) and
+`tui_gateway/session_history.py` (`_skill_scaffold_projection`). Neither read is
+Profile-scoped upstream while dispatch is, so the list belongs to the connection,
+not the Profile. No live mutation was used for validation.
 
 ## Chat controls
 
@@ -587,8 +839,8 @@ keep the previous value and preserve the host's error text.
 The top-right search button opens a sheet with a focused search field and an
 All / Bots / Messages filter. Bot names use the current roster, including hidden
 bots when a query matches. Message search is entirely local: it searches saved
-user/assistant text from full, identity-validated Bot snapshots this iPhone has
-loaded. It never uses webui history or calls a server search/resume endpoint.
+user/assistant text from full, identity-validated Bot snapshots and user/member
+messages from group room pages this iPhone has loaded. It never uses webui history or calls a server search/resume endpoint.
 The coverage label is “Messages saved on this iPhone.” There is no initial server
 crawl, attachment indexing, or live-token indexing.
 
@@ -598,11 +850,27 @@ canonical root and compression tip, but no runtime identifier. Refresh replaces
 the snapshot, so undo/compression cannot accumulate obsolete search rows. The
 cache is disposable, under Library/Caches with file protection: 30-day lifetime,
 100 snapshots, 8 MB encoded globally, and up to the latest 500 projected messages
-per bot. Messages over 16 KB are omitted. Search returns at most 100 matches and
+per bot or room. Messages over 16 KB are omitted. Search returns at most 100 matches and
 asks the user to refine at the cap. Unknown roles, tool output, credentials from
 prompt cards, inflight text, and drafts are not indexed.
 
-A message result holds the selected immutable snapshot and opens a read-only
+Room rows use configured server hash + connection UUID + room ID, never the room
+name or member Profile. Completed replay windows append by `seq`; overlaps do
+not replace existing messages. Pages in each window commit together so fetching
+earlier history preserves the newer cached window. Only `message.user` and `message.member` text, sender identity and time
+are saved. The separate cursor includes invisible events. Cached coverage stays
+contiguous; eviction advances its earlier boundary. Bot and room results share
+the 100-hit limit and global storage budget. A room hit shows its room and sender
+and opens the normal room at the saved sequence, revalidating the connection and
+room after search dismisses. When the room list is unavailable (including cold
+start offline), saved room names and sender text remain searchable. Selecting a
+hit admits only that cached identity for navigation; runtime permissions and
+members still come from fresh state. A successful room list always wins over the
+cached fallback, including if it refreshes while search is dismissing. If the cache was evicted, the reader fetches that
+sequence again. Expiry/disband revokes late writes and removes the room rows;
+a complete active room list also removes cached rooms that have disappeared.
+
+A Bot message result holds the selected immutable snapshot and opens a read-only
 text reader at its local message ID. Those IDs belong to the saved projection;
 they never become RPC targets. A bot result deliberately opens its normal chat
 only after the sheet dismisses and the connection/Profile selection is validated
@@ -635,11 +903,13 @@ when the host lacks its capability. `groups.list` pages all active
 rooms; disbanded entries are excluded. Identity is configured server URL + Bot
 connection UUID + `room_id`; names and member Profiles are never room keys.
 Avatars resolve against that connection’s roster, with a placeholder for unknown
-members. Search matches room names only; no room message cache exists yet.
+members. Search matches room names and previously loaded room messages through the local cache above.
 
 `BotRoomReader` owns an independent socket and in-memory `BotRoomLog`. Opening
-reads state, starts at `max(0, latest_seq - 200)`, and drains log pages until
-`has_more` is false. Load earlier reads the preceding 200-event window. Duplicate
+restores cached messages first, then reads state and drains pages from the saved
+cursor until `has_more` is false. Without cache it starts at
+`max(0, latest_seq - 200)` (or the selected search sequence). Each completed replay window
+updates the best-effort cache; cache read/write failures never stop live reading. Load earlier reads the preceding 200-event window. Duplicate
 `seq` values are ignored, events sort by sequence, and invisible/unknown kinds
 still advance the cursor. Authority epochs never reset the cursor. An authority
 change triggers a state read; a foreign gateway shows “Managed by another Hermes”.
@@ -648,7 +918,7 @@ While visible and foregrounded, state reads run every two seconds when working
 or blocked and every ten seconds when idle. Log reads happen only after sequence
 advancement. Unchanged polls do not assign the transcript. Backgrounding, closing,
 and socket loss stop polling and invalidate late replies. Reconnect closes the
-old transport before opening and re-reading state/history. Closing drops the log.
+old transport before opening and re-reading state/history. Closing drops the in-memory log; bounded cached messages remain for reopening.
 
 The transcript renders `message.user` and `message.member` with the existing
 Bot markdown renderer; member messages include their sender and roster avatar.
@@ -698,7 +968,7 @@ has disappeared. Unknown or incomplete pending kinds show Desktop attention.
 
 Foreign authority hides the composer. Missing authority or unadvertised methods
 cannot dispatch participant commands. No peer or authority administration is exposed. These helpers belong only to the app target; share
-extension, Live Activities, App Intents and room caching remain outside this slice.
+extension, Live Activities and App Intents do not participate in rooms.
 
 ### Room lifecycle
 
@@ -733,3 +1003,122 @@ Foreign-authority rooms hide rename/disband; absent capabilities disable writes.
 The room and profile share state but claim separate view ownership so navigation
 cannot let an old screen close the new screen's socket. Lifecycle helpers belong
 only to the app target; the share extension and Live Activity do not manage rooms.
+
+## Push provisioning
+
+The Hermes connection screen is not behind the Bot Mode gate (#557). Pairing for
+push needs that login, and push serves the server's webui sessions too, so
+`ServerDetailView` links it for every configured server while the Bots inbox
+stays gated. Its copy says "Hermes connection" and why a webui-only user would
+add one.
+
+Notification controls live in Settings → Interaction → Notifications, collapsed by
+default. That group owns push setup/disable, the per-device reply/subagent/preview
+choices for the selected server, and the existing global local-alert and Live
+Activity excerpt controls. The Hermes connection screen only edits the host login.
+Push preferences live with the pairing in server-scoped Keychain storage; older
+pairings adopt the relay defaults (replies and previews on, subagents muted).
+Registration refreshes and preference writes run in order so a launch or token
+rotation cannot overwrite an accepted choice. Failed saves keep the confirmed
+values visible. A durable pending-sync marker is saved before remote writes; if
+confirmation or rollback fails, Settings hides the unconfirmed switches and offers
+retry. Returning to Settings or refreshing registration reconciles the saved choices
+before clearing that marker. Changing preferences does not retire an existing Live Activity.
+
+Turning notifications on is one confirmed action per server, driven by
+`HermexPushProvisioner` over `BotDashboardClient` (the host's REST surface, no
+gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first, and only that
+route's own answers decide what the host needs: 200 means the relay is set and the plugin
+loaded, so it is paired as it stands, with nothing installed and no restart interrupting
+work; 409 means a loaded plugin with nowhere to send, which needs the address alone, since
+the plugin re-reads it; 404 means the plugin is missing, which needs the full sequence.
+Anything else — a timeout, a server error, keys this build cannot read — is reported as it
+is, because reconfiguring on those would replace a self-hosted relay and restart a gateway
+over a failure that had nothing to do with setup. The full sequence runs
+in the order the host needs: `PUT /api/env` sets
+`HERMEX_PUSH_RELAY_URL` at the root so every Profile inherits it, `POST
+/api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
+plugin, `POST /api/gateway/restart` loads it, and `GET
+/api/plugins/hermex-push/pairing` returns `{relay_url, install_key, preview_key,
+platform, payload_version}`. Verified against a live 0.21.3 host on 2026-09-19:
+install takes `{identifier, force, enable, catalog_name, ref}` with no Profile
+parameter, enable and disable are path-only, and only `PUT /api/env` and the
+restart accept one. The install identifier is
+`https://github.com/uzairansaruzi/hermex-push.git/plugin`, sent with `force` true so a
+second run — re-enabling after a disable, or repairing a plugin too old for this build —
+reinstalls instead of refusing. Reinstalling cannot unpair a phone: the plugin keeps its
+key pair in `plugin-data`. The revision is whatever the repository resolves to; pinning a
+`ref` is an open owner decision.
+
+The restart drops the route, so the pairing read retries a missing route, a 409
+from an unread relay address and a refused connection on a fixed schedule before
+the step fails. A failure names its step and leaves nothing half-paired: the keys
+are wiped, and the host hands back the same pair on the next attempt, because the
+plugin keeps them in `plugin-data` rather than its install directory.
+
+The relay address is not a field on the phone. A host that already names its own relay
+keeps it — that is what the probe protects — and a host that has never been set up gets
+`HermexPushPlugin.defaultRelayURL`. Self-hosting stays a server-side setting.
+
+A failed step says what the host answered (the status code, a timeout, a rejected
+sign-in) in provisioning's own words; `BotFailure`'s chat copy never reaches this screen.
+`BotDashboardClient` waits 120 seconds per request, because installing clones a
+repository on the host and a restart takes the gateway down and back up.
+
+`HermexPushPlugin` owns only what the plugin itself defines: its name, its install
+identifier, the env var it reads, and a strict decode of the pairing route — a 64-hex
+install key, a preview key that is base64 of 32 bytes, and an https relay (plain http
+only to loopback). Strict rather than tolerant on purpose: a key the relay would refuse
+would pair a phone that could never receive a push. The keys themselves are a
+`PushPairing`, and storing them, minting a device token and registering it are
+`PushRegistrar`'s job (`HermesMobile/Push/`, #558); provisioning holds no copy and
+reaches that side only through `PushPairingEnabling`.
+
+A confirmed run is never cancelled when the screen closes — the host has already been
+asked to change — so it can outlive a removal. It commits nothing without re-reading the
+saved connection first: if the connection or its server is gone, the keys are not written
+and a device registered seconds earlier is dropped again, so teardown stays final.
+
+Every way out removes this phone at the relay and wipes the keys.
+`HermexPushProvisioner.disable()` stops the host sending first, then calls
+`PushRegistrar.disable`, so a failure at either end changes nothing the user has to
+unpick. `PushRegistrar.forget` is the teardown that cannot fail — the keys go whether or
+not the relay could be told — and connection removal, a changed account identity,
+sign-out and server removal all run it.
+
+## Push previews and taps
+
+`HermesNotificationService` is the fourth target (#559). A relay banner arrives
+content-free ("Hermex / New activity") with `mutable-content`, and outside `aps` carries
+`v`, `kind`, `event_id`, `install_hash`, `session_id`, `source`, `is_subagent` and
+`sealed`. The extension finds the pairing whose `sha256(install_key)` equals
+`install_hash`, opens `sealed` (base64 of `nonce(12) || AES-256-GCM ciphertext ||
+tag(16)`, AAD `hermex-preview-v1:<that hash>`) and rewrites title, subtitle and body. On
+any failure — a null `sealed`, no pairing, a wrong key, a tampered blob, running out of
+time — the banner stays content-free, with only `New activity` localized. Format and test
+vector: `hermex-push` `plugin/hermex_push_tests/fixtures/sealed_preview.json`.
+
+Target membership is deliberate. The extension compiles `NotificationService.swift` and
+`HermesMobile/Push/PushPreview.swift` and bundles `Localizable.xcstrings`; that shared
+file imports only Foundation, CryptoKit, Security and UserNotifications, and reads the
+push access group with `SecItemCopyMatching` so KeychainAccess is not linked. Its
+entitlement is the push Keychain group alone: no app group, no networking, no SwiftData.
+`PushPreviewKeys` decodes the same Keychain JSON `KeychainPushPairingStore` writes, so a
+rename of `installKey` or `previewKey` in `PushPairing` breaks previews.
+
+The Profile exists only inside the ciphertext, so the extension writes it back to
+`userInfo["hermex_profile"]`. `PushAppDelegate` is the notification-center delegate: a
+tap becomes `PushNotificationRouter.botDestination` — `source == "bot"`, the pairing
+picks the server, that server's Bot connection supplies the UUID — and rides the one bot
+deep link (#554) through `AppIntentRouter`. No conversation is passed: `session_id` is
+the run's live session, not the bot's durable root. A tap only navigates; an approval is
+never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured server
+and `session_id`, independently of Bot Mode and preview decryption. After switching to
+that server (and signing in if needed), a live session lookup opens the conversation;
+a missing session leaves its session list without an error. It never searches another
+server or uses a stale cached session. A paired server suppresses local completion
+notifications from both chat and cold-launch Live Activity reconciliation; disabling
+push restores the existing global local-notification preference. Webui Live Activities
+remain local-only. Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
+banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
+not app code.

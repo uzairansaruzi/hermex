@@ -29,39 +29,53 @@ struct ComposerVoiceControlButton: View {
     let isDisabled: Bool
     let color: Color
     let isRecordingVoiceNote: Bool
+    var supportsVoiceNotes = true
     let onTap: () -> Void
     let onRecordingStart: () -> Void
     let onRecordingDragChanged: (CGFloat) -> Void
     let onRecordingEnd: (CGFloat) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPressing = false
     @State private var didTriggerRecording = false
     @State private var holdWorkItem: DispatchWorkItem?
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if supportsVoiceNotes {
+            label
+                .gesture(pressGesture)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction {
+                    // VoiceOver synthesizes an activation rather than a real touch,
+                    // so the gesture's tap path never fires for it.
+                    if !isDisabled { onTap() }
+                }
+                .accessibilityAction(named: Text("Record voice note")) {
+                    // VoiceOver can't hold-to-talk, so this starts recording; the
+                    // recording bar then exposes "Stop and send" / "Cancel" actions.
+                    onRecordingStart()
+                }
+        } else {
+            Button {
+                onTap()
+            } label: {
+                label
+            }
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+        }
+    }
+
+    private var label: some View {
         Image(systemName: symbolName)
             .font(.system(size: 18, weight: .regular))
             .frame(width: 44, height: 44)
             .foregroundStyle(isListening || isRecordingVoiceNote ? Color.red : color)
-            .scaleEffect(isRecordingVoiceNote ? 1.3 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
+            .scaleEffect(reduceMotion ? 1 : (isRecordingVoiceNote ? 1.3 : 1))
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
             .contentShape(Circle())
             .opacity(isDisabled && !isRecordingVoiceNote ? 0.4 : 1)
-            .gesture(pressGesture)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction {
-                // Default VoiceOver activation (double-tap) toggles dictation.
-                // VoiceOver synthesizes an activation rather than a real touch, so
-                // the gesture's tap path never fires for it; without this the
-                // dictation toggle is unreachable for VoiceOver users.
-                if !isDisabled { onTap() }
-            }
-            .accessibilityAction(named: Text("Record voice note")) {
-                // VoiceOver can't hold-to-talk, so this starts recording; the
-                // recording bar then exposes "Stop and send" / "Cancel" actions.
-                onRecordingStart()
-            }
     }
 
     private var symbolName: String {
@@ -70,8 +84,10 @@ struct ComposerVoiceControlButton: View {
     }
 
     private var accessibilityLabel: Text {
-        if isRecordingVoiceNote { return Text("Recording voice note") }
-        return isListening ? Text("Stop voice input") : Text("Voice input")
+        Text(ComposerVoiceControlAccessibility.label(
+            isListening: isListening,
+            isRecordingVoiceNote: isRecordingVoiceNote
+        ))
     }
 
     /// One `DragGesture(minimumDistance: 0)` distinguishes tap from hold by timing,
@@ -121,6 +137,13 @@ struct ComposerVoiceControlButton: View {
     private func cancelScheduledRecordingStart() {
         holdWorkItem?.cancel()
         holdWorkItem = nil
+    }
+}
+
+enum ComposerVoiceControlAccessibility {
+    static func label(isListening: Bool, isRecordingVoiceNote: Bool) -> String {
+        if isRecordingVoiceNote { return String(localized: "Recording voice note") }
+        return isListening ? String(localized: "Stop voice input") : String(localized: "Voice input")
     }
 }
 

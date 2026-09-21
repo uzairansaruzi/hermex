@@ -346,9 +346,9 @@ private extension ChatMessage {
             contentParts: contentParts,
             reasoning: cachedMessage.reasoning,
             attachments: attachments,
+            displayKind: cachedMessage.displayKind,
             turnTps: cachedMessage.turnTps,
-            turnDuration: cachedMessage.turnDuration,
-            displayKind: cachedMessage.displayKind
+            turnDuration: cachedMessage.turnDuration
         )
     }
 }

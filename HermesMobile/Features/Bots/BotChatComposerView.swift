@@ -13,6 +13,7 @@ struct BotChatComposerView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
@@ -25,6 +26,7 @@ struct BotChatComposerView: View {
     @State private var inputHeight: CGFloat = 22
     @State private var measuredHeight: CGFloat = 0
     @State private var keyboardIsVisible = false
+    @State private var voiceInput = ComposerVoiceInputController()
 
     @State private var settingsPresented = false
     @State private var mode = BotPromptMode.send
@@ -34,7 +36,7 @@ struct BotChatComposerView: View {
     private var showsToolbar: Bool { isExpanded || mode != .send }
     private var showsStop: Bool { model.mayStop || model.turn == .stopping }
     private var canSend: Bool {
-        model.maySubmit(mode) && (!model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.attachments.items.isEmpty)
+        model.maySubmit(mode) && model.hasSendableInput
     }
     private var appearance: ChatComposerActionAppearance {
         ChatComposerActionAppearance(
@@ -77,19 +79,11 @@ struct BotChatComposerView: View {
                     Text("Adding attachment…").font(AppFont.footnote()).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
                 }
-
-                if isFocused, model.mayEditDraft,
-                   let trigger = BotMentionTrigger.detect(in: model.draft, selection: selection.range) {
-                    let completions = model.mentions.completions(query: trigger.query)
-                    if !completions.isEmpty {
-                        BotMentionAutocompleteView(completions: completions, avatars: mentionAvatars) { item in
-                            let result = trigger.applying(tag: item.tag, to: model.draft)
-                            model.editDraft(result.draft)
-                            selection = selection.moved(to: result.selection)
-                        }
-                        .padding(.horizontal, 16).padding(.bottom, 8)
-                    }
+                if let voiceStatus {
+                    ComposerVoiceStatusView(status: voiceStatus)
                 }
+
+                if isFocused, model.mayEditDraft { autocomplete }
 
                 composerSurface.padding(.horizontal, 16)
 
@@ -101,6 +95,7 @@ struct BotChatComposerView: View {
                             BotComposerSettings(settings: model.chatControls, preparePresentation: {
                                 settingsPresented = true; isFocused = false
                             }, dismissPresentation: { settingsPresented = false })
+                            voiceControlButton
                         }
                         promptButtons
                     }
@@ -140,6 +135,8 @@ struct BotChatComposerView: View {
                 try await model.attachments.data(for: item)
             }
         }
+        .task(id: model.connectionState) { await model.loadSlashCatalog() }
+        .onChange(of: model.chatControls.workspace) { _, _ in model.resetFileReferences() }
         .task(id: picker) {
             guard picker == nil, shouldRestoreFocusAfterPicker else { return }
             // Match Sessions' short delay while the native picker dismisses.
@@ -148,7 +145,19 @@ struct BotChatComposerView: View {
             shouldRestoreFocusAfterPicker = false
             if model.mayEditDraft { isFocused = true }
         }
-        .onDisappear { shouldRestoreFocusAfterPicker = false }
+        .onDisappear {
+            shouldRestoreFocusAfterPicker = false
+            voiceInput.stopBeforeSubmittingDraft()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active { voiceInput.stopBeforeSubmittingDraft() }
+        }
+        // Ask Hermex lands the passage here, so the keyboard should already be
+        // up for whatever the user wants to ask about it.
+        .onChange(of: model.quotes.count) { previous, current in
+            guard current > previous, model.mayEditDraft else { return }
+            isFocused = true
+        }
         .onChange(of: model.attachments.items.isEmpty) { _, empty in
             if !empty, mode == .steer || mode == .redirect { mode = model.mayGuide ? .queue : .send }
         }
@@ -178,6 +187,59 @@ struct BotChatComposerView: View {
         }
     }
 
+    /// The one panel the caret can open: bots and workspace files for an `@`,
+    /// this connection's skills for a `/` that opens the draft. The `@` panel
+    /// wins, so the two can never stack. The skill panel stays closed for Steer
+    /// and Redirect, where the host will not expand an invocation.
+    ///
+    /// The `@` container stands whenever the caret sits in a reference, even
+    /// while the panel itself is still empty: its task is what asks the host
+    /// for rows, and the first answer is what makes the panel appear.
+    @ViewBuilder private var autocomplete: some View {
+        if let trigger = ComposerFileTrigger.detect(in: model.draft, selection: selection.range) {
+            let botCompletions = model.mentions.completions(query: trigger.query)
+            Group {
+                if !botCompletions.isEmpty || !model.filePathSearch.matches.isEmpty || model.filePathSearch.isLoading {
+                    BotAtAutocompleteView(
+                        botCompletions: botCompletions,
+                        avatars: mentionAvatars,
+                        fileMatches: model.filePathSearch.matches,
+                        isLoadingFiles: model.filePathSearch.isLoading,
+                        onSelectBot: { item in
+                            let result = trigger.applying("@" + item.tag + " ", to: model.draft)
+                            editDraft(result.draft)
+                            selection = selection.moved(to: result.selection)
+                        },
+                        onSelectFile: { match in
+                            let result = trigger.applying(
+                                match.isDirectory ? "@\(match.path)/" : "@\(match.path) ", to: model.draft
+                            )
+                            editDraft(result.draft)
+                            selection = selection.moved(to: result.selection)
+                            if !match.isDirectory { model.recordFileChipReference(match.path) }
+                        }
+                    )
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                }
+            }
+            .task(id: trigger.query) { await model.searchFilePaths(trigger.query) }
+        } else if mode.startsTurn,
+                  let trigger = BotSlashTrigger.detect(in: model.draft, selection: selection.range) {
+            let matches = SlashSkillFormatter.matching(trigger.query, in: model.slashSkills)
+            if !matches.isEmpty {
+                BotSlashAutocompleteView(suggestions: matches) { skill in
+                    // The slug, exactly as Sessions completes a skill: it is what
+                    // `ComposerChipCatalog` is keyed by, so the chip draws. The send
+                    // path resolves it back to the host's own key before dispatch.
+                    let result = trigger.applying("/" + skill.slashName + " ", to: model.draft)
+                    editDraft(result.draft)
+                    selection = selection.moved(to: result.selection)
+                }
+                .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+        }
+    }
+
     /// Same pill/card structure as the Sessions composer. The editor keeps its
     /// identity as the attachment strip and controls move around it.
     private var composerSurface: some View {
@@ -190,24 +252,29 @@ struct BotChatComposerView: View {
             }
             HStack(alignment: .center, spacing: 4) {
                 ComposerTextInputView(
-                    text: Binding(get: { model.draft }, set: { model.editDraft($0) }),
+                    text: Binding(get: { model.draft }, set: editDraft),
                     selection: $selection, isFocused: $isFocused,
                     inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                     isDisabled: !model.mayEditDraft, isCollapsed: !isExpanded,
                     isKeyboardSendEnabled: canSend, verticalPadding: 12,
-                    chipSkills: [], chipFilePaths: [],
-                    chipBots: model.mentions.chipReferences(avatars: mentionAvatars), quotes: [],
+                    chipSkills: model.slashSkills, chipFilePaths: model.fileChipPaths,
+                    chipBots: model.mentions.chipReferences(avatars: mentionAvatars), quotes: model.quotes,
                     onKeyboardSend: send,
                     onPasteFileProviders: { BotAttachmentPaste.providers($0, model: model) },
                     onPasteFileURLs: { BotAttachmentPaste.files($0, model: model) },
                     onPasteImageProviders: { BotAttachmentPaste.providers($0, model: model) },
                     onPasteImages: { BotAttachmentPaste.images($0, model: model) },
-                    onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
+                    // Tapping a chip opens its full passage in issue #564; here it
+                    // is inert, and the swipe-to-remove is the way back out.
+                    onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { model.removeQuote($0) },
                     placeholder: String(localized: "Ask anything..."), acceptsAttachments: model.mayEditDraft
                 )
                 if !isExpanded {
                     ComposerAttachmentPillPreview(attachments: model.attachments.items, onPreview: { preview = $0 })
-                    if !showsToolbar { if showsStop { stopButton } else { actionButton } }
+                    if !showsToolbar {
+                        voiceControlButton
+                        if showsStop { stopButton } else { actionButton }
+                    }
                 }
             }
             .padding(.trailing, isExpanded ? 0 : ChatComposerMetrics.pillInset)
@@ -219,7 +286,13 @@ struct BotChatComposerView: View {
     }
 
     private var plusMenu: some View {
-        ChatUIKitMenuButton {
+        Button {
+            guard model.mayImportAttachments,
+                  model.attachments.items.count < HermexAttachmentPickerPolicy.maximumBotAttachments
+            else { return }
+            shouldRestoreFocusAfterPicker = isFocused
+            picker = .photos
+        } label: {
             Image(systemName: "plus")
                 .font(.system(size: plusIconSize, weight: .medium))
                 .foregroundStyle(Color(.secondaryLabel))
@@ -227,28 +300,16 @@ struct BotChatComposerView: View {
                 .adaptiveGlass(.regular, isInteractive: true, fallbackMaterial: .ultraThinMaterial,
                                inheritsClipping: true, in: Circle())
                 .clipShape(Circle())
-        } menu: {
-            UIMenu(children: [UIMenu(title: String(localized: "Attach"), options: [.displayInline], children: [
-                attachmentAction(.files, title: String(localized: "Attach File"), image: "paperclip"),
-                attachmentAction(.photos, title: String(localized: "Photos"), image: "photo.on.rectangle"),
-                attachmentAction(.camera, title: String(localized: "Camera"), image: "camera")
-            ])])
         }
+        .buttonStyle(.plain)
         .tint(Color(.secondaryLabel))
-        .disabled(!model.mayImportAttachments || model.attachments.isImporting)
+        .disabled(
+            !model.mayImportAttachments
+                || model.attachments.isImporting
+                || model.attachments.items.count >= HermexAttachmentPickerPolicy.maximumBotAttachments
+        )
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Composer options")
-    }
-
-    private func attachmentAction(_ choice: BotAttachmentPicker, title: String, image: String) -> UIAction {
-        UIAction(title: title, image: UIImage(systemName: image),
-                 attributes: choice == .camera && !UIImagePickerController.isSourceTypeAvailable(.camera) ? .disabled : []) { _ in
-            Task { @MainActor in
-                guard model.mayImportAttachments else { return }
-                shouldRestoreFocusAfterPicker = isFocused
-                isFocused = false
-                picker = choice
-            }
-        }
     }
 
     private var modeMenu: some View {
@@ -275,6 +336,84 @@ struct BotChatComposerView: View {
             if showsStop { stopButton }
             actionButton
         }
+    }
+
+    private var voiceControlButton: some View {
+        ComposerVoiceControlButton(
+            isListening: voiceInput.isListening,
+            isDisabled: isVoiceInputDisabled,
+            color: Color(.secondaryLabel),
+            isRecordingVoiceNote: false,
+            supportsVoiceNotes: false,
+            onTap: toggleVoiceInput,
+            onRecordingStart: {},
+            onRecordingDragChanged: { _ in },
+            onRecordingEnd: { _ in }
+        )
+    }
+
+    private var isVoiceInputDisabled: Bool {
+        BotVoiceInputPolicy.isDisabled(
+            isListening: voiceInput.isListening,
+            isRequestingPermission: voiceInput.isRequestingPermission,
+            mayEditDraft: model.mayEditDraft
+        )
+    }
+
+    private var voiceStatus: ComposerVoiceStatus? {
+        switch voiceInput.state {
+        case .listening:
+            return ComposerVoiceStatus(text: String(localized: "Listening..."), systemImage: "waveform", isError: false)
+        case .serverListening:
+            return ComposerVoiceStatus(text: String(localized: "Recording..."), systemImage: "mic.fill", isError: false)
+        case .transcribing:
+            return ComposerVoiceStatus(text: String(localized: "Transcribing..."), systemImage: "waveform", isError: false)
+        case .requestingPermission:
+            return ComposerVoiceStatus(
+                text: String(localized: "Requesting voice permissions..."),
+                systemImage: "mic.badge.plus",
+                isError: false
+            )
+        case .idle:
+            break
+        }
+
+        guard let errorMessage = voiceInput.errorMessage else { return nil }
+        return ComposerVoiceStatus(
+            text: errorMessage,
+            systemImage: "exclamationmark.triangle",
+            isError: true
+        )
+    }
+
+    @MainActor
+    private func toggleVoiceInput() {
+        let insertionRange = BotVoiceInputPolicy.insertionRange(
+            in: model.draft,
+            selection: selection.range,
+            isFocused: isFocused
+        )
+        let insertion = BotVoiceDraftInsertion(draft: model.draft, selection: insertionRange)
+        voiceInput.apiClient = nil
+        voiceInput.providerPreference = .onDeviceOnly
+        voiceInput.locale = .current
+        Task {
+            await voiceInput.toggle(currentDraft: "") { transcript in
+                guard let result = insertion.applying(transcript: transcript, to: model.draft) else {
+                    voiceInput.stopBeforeSubmittingDraft()
+                    return
+                }
+                model.editDraft(result.draft)
+                selection = selection.moved(to: result.selection)
+            }
+        }
+    }
+
+    private func editDraft(_ text: String) {
+        if voiceInput.isListening || voiceInput.isRequestingPermission {
+            voiceInput.stopBeforeSubmittingDraft()
+        }
+        model.editDraft(text)
     }
 
     private var stopButton: some View {
@@ -310,9 +449,77 @@ struct BotChatComposerView: View {
     }
 
     private func send() {
+        voiceInput.stopBeforeSubmittingDraft()
         guard let action = model.preparePrompt(mode) else { return }
         if mode == .redirect { redirectAction = action }
         else { Task { await model.submit(action) } }
+    }
+}
+
+/// One dictation run replaces the selection that existed when the mic was tapped.
+/// Every partial transcript is applied to that same base draft, so speech updates
+/// replace each other instead of accumulating duplicate words.
+final class BotVoiceDraftInsertion {
+    struct Result: Equatable {
+        let draft: String
+        let selection: NSRange
+    }
+
+    private let draft: NSString
+    private let range: NSRange
+    private var lastAppliedDraft: String
+
+    init(draft: String, selection: NSRange) {
+        self.draft = draft as NSString
+        lastAppliedDraft = draft
+        let location = min(max(selection.location, 0), self.draft.length)
+        let length = min(max(selection.length, 0), self.draft.length - location)
+        range = NSRange(location: location, length: length)
+    }
+
+    func applying(transcript: String, to currentDraft: String) -> Result? {
+        guard currentDraft == lastAppliedDraft else { return nil }
+        let transcript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else {
+            return Result(draft: draft as String, selection: range)
+        }
+
+        let before = draft.substring(to: range.location)
+        let after = draft.substring(from: range.upperBound)
+        let leadingSpace = Self.needsLeadingSpace(before: before, transcript: transcript) ? " " : ""
+        let trailingSpace = Self.needsTrailingSpace(transcript: transcript, after: after) ? " " : ""
+        let replacement = leadingSpace + transcript + trailingSpace
+        let updated = draft.replacingCharacters(in: range, with: replacement)
+        let caret = range.location + (replacement as NSString).length
+        lastAppliedDraft = updated
+        return Result(draft: updated, selection: NSRange(location: caret, length: 0))
+    }
+
+    private static func needsLeadingSpace(before: String, transcript: String) -> Bool {
+        guard let left = before.unicodeScalars.last, let right = transcript.unicodeScalars.first else { return false }
+        return !CharacterSet.whitespacesAndNewlines.contains(left)
+            && !CharacterSet.whitespacesAndNewlines.contains(right)
+            && !CharacterSet(charactersIn: "([{“‘").contains(left)
+    }
+
+    private static func needsTrailingSpace(transcript: String, after: String) -> Bool {
+        guard let left = transcript.unicodeScalars.last, let right = after.unicodeScalars.first else { return false }
+        return !CharacterSet.whitespacesAndNewlines.contains(left)
+            && !CharacterSet.whitespacesAndNewlines.contains(right)
+            && !CharacterSet.punctuationCharacters.contains(right)
+    }
+}
+
+enum BotVoiceInputPolicy {
+    static func isDisabled(isListening: Bool, isRequestingPermission: Bool, mayEditDraft: Bool) -> Bool {
+        if isListening { return false }
+        return !mayEditDraft || isRequestingPermission
+    }
+
+    /// A collapsed editor has no visible caret, so dictation follows Sessions and
+    /// appends. Once focused, the editor's UTF-16 selection is authoritative.
+    static func insertionRange(in draft: String, selection: NSRange, isFocused: Bool) -> NSRange {
+        isFocused ? selection : NSRange(location: (draft as NSString).length, length: 0)
     }
 }
 

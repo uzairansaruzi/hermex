@@ -169,6 +169,21 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         }
     }
 
+    func testVoiceControlAccessibilityLabelsDescribeTheAvailableAction() {
+        XCTAssertEqual(
+            ComposerVoiceControlAccessibility.label(isListening: false, isRecordingVoiceNote: false),
+            "Voice input"
+        )
+        XCTAssertEqual(
+            ComposerVoiceControlAccessibility.label(isListening: true, isRecordingVoiceNote: false),
+            "Stop voice input"
+        )
+        XCTAssertEqual(
+            ComposerVoiceControlAccessibility.label(isListening: false, isRecordingVoiceNote: true),
+            "Recording voice note"
+        )
+    }
+
     @MainActor
     func testVoiceInputControllerDoesNotCreateSpeechOrAudioObjectsBeforeRecording() {
         let counter = VoiceInputFactoryCounter()

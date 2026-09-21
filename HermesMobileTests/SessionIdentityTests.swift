@@ -305,7 +305,6 @@ final class AvatarServerSwitcherModelTests: XCTestCase {
             displayName: displayName,
             initials: "",
             headerLogoColorHex: HeaderLogoColor.defaultHex,
-            customHeadersRef: id,
             createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 0)
         )

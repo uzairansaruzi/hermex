@@ -3,7 +3,8 @@ import UIKit
 /// Read-only UITextInput adapter. UIKit owns gestures, handles, and the edit menu;
 /// the existing SwiftUI leaves continue to own rendering and link interactions.
 final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelegate {
-    var onAskHermex: (String) -> Void = { _ in }
+    /// Nil where there is no composer to quote into; the menu then omits Ask Hermex.
+    var onAskHermex: ((String) -> Void)?
     let leaves = NSHashTable<ResponseSelectionLeafView>.weakObjects()
     var leafOrder: [UUID] = []
     let selectionInteraction = UITextInteraction(for: .nonEditable)
@@ -251,7 +252,7 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(copy(_:)) { return selectedTextRange?.isEmpty == false }
         if action == #selector(selectAll(_:)) { return hasText }
-        if action == #selector(askHermex(_:)) { return selectedTextRange?.isEmpty == false }
+        if action == #selector(askHermex(_:)) { return onAskHermex != nil && selectedTextRange?.isEmpty == false }
         return false
     }
 
@@ -280,7 +281,7 @@ final class ResponseSelectionInput: UIView, UITextInput, UITextInteractionDelega
         guard let selectedTextRange, let text = text(in: selectedTextRange), !text.isEmpty else { return }
         self.selectedTextRange = nil
         resignFirstResponder()
-        onAskHermex(text)
+        onAskHermex?(text)
     }
 
     func replace(_ range: UITextRange, withText text: String) {}

@@ -643,4 +643,79 @@ final class ClarificationRequestPresentationTests: XCTestCase {
         XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
         XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
     }
+
+    func testHeightPolicyFitsContentWithoutGrowingTheCard() {
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 500,
+                fixedContentHeight: 160,
+                bodyContentHeight: 180,
+                minimumBodyHeight: 44
+            ),
+            180
+        )
+    }
+
+    func testHeightPolicyClampsBodyToSafeGapAndCap() {
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 360,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 44
+            ),
+            200
+        )
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 600,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 44
+            ),
+            300
+        )
+    }
+
+    func testHeightPolicyCollapsesWhenOneScaledChoiceCannotFit() {
+        XCTAssertNil(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 247,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 88
+            )
+        )
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 248,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 88
+            ),
+            88
+        )
+    }
+}
+
+final class ChatMotionTests: XCTestCase {
+    func testEveryCurveSnapsUnderReduceMotion() {
+        XCTAssertNil(ChatMotion.press(duration: 0.2, reduceMotion: true))
+        XCTAssertNil(ChatMotion.quickState(reduceMotion: true))
+        XCTAssertNil(ChatMotion.disclosure(reduceMotion: true))
+        XCTAssertNil(ChatMotion.composerChrome(reduceMotion: true))
+        XCTAssertNil(ChatMotion.scrollToLatest(reduceMotion: true))
+        XCTAssertNil(ChatMotion.streamingFollow(reduceMotion: true))
+        XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
+    }
+
+    func testCurvesKeepTheirUnreducedTiming() {
+        XCTAssertEqual(ChatMotion.press(duration: 0.2, reduceMotion: false), .smooth(duration: 0.2, extraBounce: 0))
+        XCTAssertEqual(ChatMotion.quickState(reduceMotion: false), .easeInOut(duration: 0.16))
+        XCTAssertEqual(ChatMotion.disclosure(reduceMotion: false), .smooth(duration: 0.18, extraBounce: 0))
+        XCTAssertEqual(ChatMotion.composerChrome(reduceMotion: false), .smooth(duration: 0.22, extraBounce: 0))
+        XCTAssertEqual(ChatMotion.scrollToLatest(reduceMotion: false), .easeOut(duration: 0.20))
+        XCTAssertEqual(ChatMotion.streamingFollow(reduceMotion: false), .easeOut(duration: 0.15))
+        XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
+    }
 }

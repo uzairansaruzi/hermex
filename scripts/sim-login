@@ -1,0 +1,39 @@
+#!/bin/zsh
+# Launches the installed Debug build on a booted simulator and signs it in, so
+# agents are never blocked on the login screen. Credentials come from the macOS
+# Keychain and reach the app through SIMCTL_CHILD_* environment variables
+# (read by DevAutoLogin.swift, DEBUG builds only); they are never printed.
+#
+# Usage: scripts/sim-login <simulator-udid>
+#
+# One-time Keychain setup (the account of hermex-webui is the server host):
+#   security add-generic-password -s hermex-webui -a <server-host> -w
+#   security add-generic-password -s hermex-bot -a <bot-username> -j <bot-address> -w
+# hermex-bot is optional; without it only the server login runs.
+set -euo pipefail
+
+udid="${1:?usage: scripts/sim-login <simulator-udid>}"
+bundle_id="${HERMEX_BUNDLE_ID:-com.uzairansar.hermesmobile}"
+
+# Prints one attribute ("acct" or "icmt") of a generic-password Keychain item,
+# or nothing when the item is missing.
+attribute() {
+  security find-generic-password -s "$1" 2>/dev/null | sed -n "s/^ *\"$2\"<blob>=\"\(.*\)\"$/\1/p" || true
+}
+
+host="$(attribute hermex-webui acct)"
+[[ -n "$host" ]] || { echo "No hermex-webui Keychain item; see the header of this script." >&2; exit 1 }
+[[ "$host" == *://* ]] || host="https://$host"
+export SIMCTL_CHILD_HERMEX_DEV_SERVER_URL="$host"
+export SIMCTL_CHILD_HERMEX_DEV_PASSWORD="$(security find-generic-password -s hermex-webui -w)"
+
+bot_username="$(attribute hermex-bot acct)"
+bot_address="$(attribute hermex-bot icmt)"
+if [[ -n "$bot_username" && -n "$bot_address" ]]; then
+  export SIMCTL_CHILD_HERMEX_DEV_BOT_ADDRESS="$bot_address"
+  export SIMCTL_CHILD_HERMEX_DEV_BOT_USERNAME="$bot_username"
+  export SIMCTL_CHILD_HERMEX_DEV_BOT_PASSWORD="$(security find-generic-password -s hermex-bot -w)"
+fi
+
+xcrun simctl launch --terminate-running-process "$udid" "$bundle_id" >/dev/null
+echo "Launched $bundle_id on $udid with dev sign-in."

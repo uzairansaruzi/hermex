@@ -7,9 +7,9 @@ import UIKit
 /// (`package.json`, `Dockerfile`), then `tsconfig.*.json`, then the longest matching
 /// extension chain (`env.local` before `local`), then the plain document glyph.
 enum FileIcon: String, CaseIterable {
-    case agents, astro, babel, bash, biome, bootstrap, browserslist, bun, c, claude, cpp, css
+    case agents, astro, babel, bash, biome, browserslist, bun, c, claude, cpp, css
     case database, docker, eslint, font, git, go, graphql, html, image, javascript, json
-    case markdown, mcp, nextjs, npm, oxc, package, pnpm, postcss, prettier, python, react
+    case markdown, nextjs, oxc, package, pnpm, postcss, prettier, python, react
     case readme, ruby, rust, sass, stylelint, svelte, svg, svgo, swift, table, tailwind
     case terraform, text, tsconfig, typescript, vite, vscode, vue, wasm, webpack, yml, zig, zip
     case `default`

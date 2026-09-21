@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 import UIKit
-import PhotosUI
 import UniformTypeIdentifiers
 
 private enum GitChatAlert: Identifiable {
@@ -513,8 +512,8 @@ struct ChatView: View {
             onHeightChange: { height in
                 composerHeight = height
             },
-            onPhotoItemSelected: { item in
-                Task { await handlePhotoSelection(item) }
+            onPhotoMediaSelected: { media in
+                Task { await handlePhotoSelection(media) }
             },
             onFileURLsSelected: { urls in
                 Task { await handleSelectedFileURLs(urls) }
@@ -708,30 +707,37 @@ struct ChatView: View {
     /// The chat scaffold. Split from `body` so the confirmation-alert chain
     /// below stays inside the compiler's type-checking budget.
     private var chatContent: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                if viewModel.isViewingCachedData {
-                    ChatOfflineCacheBanner()
+        GeometryReader { viewport in
+            let clarificationMaximumHeight = max(
+                0,
+                viewport.size.height - composerHeight - 16
+            )
+
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    if viewModel.isViewingCachedData {
+                        ChatOfflineCacheBanner()
+                    }
+
+                    listenPlaybackBar
+
+                    messageContent
+                        // Scope RTL to the chat transcript only (#259): the offline
+                        // banner above stays in the app's default direction.
+                        .environment(\.layoutDirection, chatLayoutDirection)
                 }
+                .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
 
-                listenPlaybackBar
+                BottomComposerMaterialFade(composerHeight: composerHeight)
 
-                messageContent
-                    // Scope RTL to the chat transcript only (#259): the offline
-                    // banner above stays in the app's default direction.
-                    .environment(\.layoutDirection, chatLayoutDirection)
+                composerAccessoryStack
+
+                clarificationInset(maximumExpandedHeight: clarificationMaximumHeight)
+
+                messageComposer
+
+                approvalOverlay
             }
-            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
-
-            BottomComposerMaterialFade(composerHeight: composerHeight)
-
-            composerAccessoryStack
-
-            clarificationInset
-
-            messageComposer
-
-            approvalOverlay
         }
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
@@ -1273,11 +1279,12 @@ struct ChatView: View {
 
     /// The pending clarification, pinned above the composer. Sits in the same
     /// bottom stack as the composer so it rides the keyboard with it.
-    private var clarificationInset: some View {
+    private func clarificationInset(maximumExpandedHeight: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
             if let clarificationPrompt = viewModel.clarificationPrompt {
                 ClarificationRequestInset(
                     prompt: clarificationPrompt,
+                    maximumExpandedHeight: maximumExpandedHeight,
                     isResponding: viewModel.isRespondingToClarification,
                     isStopping: viewModel.isCancellingStream,
                     errorMessage: viewModel.clarificationErrorMessage,
@@ -2403,16 +2410,14 @@ struct ChatView: View {
         return imageExtensions.contains(fileExtension) ? attachment.data : nil
     }
 
-    private func handlePhotoSelection(_ item: PhotosPickerItem) async {
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self) else {
-                viewModel.setUploadAttachmentError(String(localized: "Could not read the selected photo."))
-                return
-            }
-            let filename = "image_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(4)).jpg"
-            await viewModel.uploadAttachment(data: data, filename: filename, previewData: data)
-        } catch {
-            viewModel.setUploadAttachmentError(error.localizedDescription)
+    private func handlePhotoSelection(_ media: [HermexPickedMedia]) async {
+        for item in media {
+            guard !Task.isCancelled else { return }
+            await viewModel.uploadAttachment(
+                data: item.data,
+                filename: item.filename,
+                previewData: item.data
+            )
         }
     }
 
@@ -2716,7 +2721,8 @@ struct ChatView: View {
                 sessionID: session.sessionId,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
                 completedNormally: true,
-                sceneIsActive: completionContext.sceneIsActive
+                sceneIsActive: completionContext.sceneIsActive,
+                server: server
             )
         }
     }

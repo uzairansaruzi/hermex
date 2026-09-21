@@ -20,6 +20,29 @@ import UIKit
         }
     }
 
+    private var transparentPhoto: Data {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4), format: format).pngData { context in
+            UIColor.red.withAlphaComponent(0.5).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
+    func testTransparentImageStaysPNGWhenStaged() async throws {
+        let copies = BotAttachmentCopies()
+        let model = make(BotFixtureWire(), drafts: store(), copies: copies)
+        await model.recover()
+        await model.attachments.stage(data: transparentPhoto, filename: "overlay.png")
+        let item = try XCTUnwrap(model.attachments.items.first)
+        XCTAssertEqual(item.name, "overlay.png")
+        XCTAssertEqual(item.mime, "image/png")
+        let file = try XCTUnwrap(item.draftFileName)
+        let bytes = try await copies.data(named: file)
+        XCTAssertTrue(bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+        model.suspend()
+    }
+
     func testPickerStagesLocallyRestoresOnlyItsConnectionAndRemovalDeletesCopy() async throws {
         let drafts = store(); let copies = BotAttachmentCopies(); let id = UUID(); let wire = BotFixtureWire()
         let model = make(wire, connectionID: id, drafts: drafts, copies: copies)
@@ -203,6 +226,26 @@ actor BotAttachmentCopies: ChatDraftAttachmentStoring {
 }
 
 extension BotAttachmentSendingTests {
+    func testPNGImageHTTPUploadUsesPNGDataURL() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [BotArtifactHTTPFixture.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel(); BotArtifactHTTPFixture.handler = nil }
+        BotArtifactHTTPFixture.handler = { request in
+            let payload = apiTestBodyData(from: request).flatMap {
+                (try? JSONSerialization.jsonObject(with: $0)) as? [String: String]
+            }
+            XCTAssertEqual(payload?["filename"], "overlay.png")
+            XCTAssertTrue(payload?["data_url"]?.hasPrefix("data:image/png;base64,") == true)
+            return (200, [:], Data(#"{"ok":true,"path":"/profile/images/overlay.png"}"#.utf8))
+        }
+        let path = try await BotAttachmentUpload.image(
+            session: session, base: URL(string: "https://bot.example")!,
+            data: transparentPhoto, filename: "overlay.png", profile: "inbox-triage"
+        )
+        XCTAssertEqual(path, "/profile/images/overlay.png")
+    }
+
     func testImageHTTPUploadUsesProfileAndReturnedPathAndRejectsMissingAcknowledgment() async throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [BotArtifactHTTPFixture.self]

@@ -33,8 +33,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>HermesAPSEnvironment</key>
+	<string>$(APS_ENVIRONMENT)</string>
 	<key>HermesAppGroupIdentifier</key>
 	<string>$(APP_GROUP_IDENTIFIER)</string>
+	<key>HermesKeychainAccessGroup</key>
+	<string>$(KEYCHAIN_ACCESS_GROUP)</string>
 	<key>HermesKeychainService</key>
 	<string>$(KEYCHAIN_SERVICE)</string>
 	<key>HermesURLScheme</key>

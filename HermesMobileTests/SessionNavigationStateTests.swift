@@ -2,6 +2,18 @@ import XCTest
 @testable import HermesMobile
 
 final class SessionNavigationStateTests: XCTestCase {
+    func testPushFallbackStaysOnListInsteadOfRestoringPreviousChat() {
+        let previous = SessionSummary(sessionId: "old", title: "Old")
+        var state = SessionNavigationState(lastSelectedSessionID: "old")
+        state.select(previous)
+        let oldRevision = state.rootRevision
+        state.openSessionList()
+        state.restoreIfNeeded(from: [previous])
+        XCTAssertNil(state.destination)
+        XCTAssertNil(state.lastSelectedSessionID)
+        XCTAssertGreaterThan(state.rootRevision, oldRevision)
+    }
+
     func testSelectingSessionUpdatesDestinationAndRestorationID() {
         let session = SessionSummary(sessionId: "session-1", title: "One")
         var state = SessionNavigationState()
