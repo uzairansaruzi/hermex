@@ -14,7 +14,7 @@ import XCTest
             selection: NSRange(location: 6, length: 0)
         )
 
-        let result = insertion.applying(transcript: "carefully")
+        let result = try XCTUnwrap(insertion.applying(transcript: "carefully", to: "Please review this"))
         drafts.setDraft(result.draft, for: key)
         try await drafts.flush()
         let persisted = await persistence.load()
@@ -30,23 +30,35 @@ import XCTest
             selection: NSRange(location: 10, length: 0)
         )
 
-        XCTAssertEqual(
-            insertion.applying(transcript: "today").draft,
-            "Check this today, please."
+        let first = insertion.applying(transcript: "today", to: "Check this, please.")
+        let second = insertion.applying(
+            transcript: "today before lunch",
+            to: first?.draft ?? ""
         )
-        XCTAssertEqual(
-            insertion.applying(transcript: "today before lunch").draft,
-            "Check this today before lunch, please."
-        )
+
+        XCTAssertEqual(first?.draft, "Check this today, please.")
+        XCTAssertEqual(second?.draft, "Check this today before lunch, please.")
     }
 
-    func testFocusedVoiceDraftUsesTheEditorsUTF16Caret() {
+    func testVoiceDraftRejectsAPartialTranscriptAfterManualEditing() throws {
+        let insertion = BotVoiceDraftInsertion(
+            draft: "Check this",
+            selection: NSRange(location: 10, length: 0)
+        )
+        let first = try XCTUnwrap(insertion.applying(transcript: "today", to: "Check this"))
+        let manuallyEdited = first.draft + " please"
+
+        XCTAssertNil(insertion.applying(transcript: "today before lunch", to: manuallyEdited))
+        XCTAssertEqual(manuallyEdited, "Check this today please")
+    }
+
+    func testFocusedVoiceDraftUsesTheEditorsUTF16Caret() throws {
         let insertion = BotVoiceDraftInsertion(
             draft: "Hi 👋 there",
             selection: NSRange(location: 5, length: 0)
         )
 
-        let result = insertion.applying(transcript: "friend")
+        let result = try XCTUnwrap(insertion.applying(transcript: "friend", to: "Hi 👋 there"))
 
         XCTAssertEqual(result.draft, "Hi 👋 friend there")
         XCTAssertEqual(result.selection, NSRange(location: 12, length: 0))

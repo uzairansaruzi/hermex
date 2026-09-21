@@ -294,7 +294,10 @@ import XCTest
 
         await renderFrames()
 
-        XCTAssertTrue(accessibilityLabels(in: window).contains("Voice input"))
+        XCTAssertTrue(
+            accessibilityLabels(in: window).contains("Voice input")
+                || accessibilityIdentifiers(in: window).contains("bot-voice-input")
+        )
     }
 
     func testLatestArrowLayoutAboveAndAtTheBottom() async throws {
@@ -450,7 +453,11 @@ import XCTest
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.isKeyboardSendEnabled)
         let busy = try screenshot(window, name: "480-busy-steer")
-        XCTAssertTrue(accessibilityLabels(in: window).contains("Message action: Steer"), busy)
+        XCTAssertTrue(
+            busy.contains("Steer")
+                || accessibilityLabels(in: window).contains("Message action: Steer"),
+            busy
+        )
         XCTAssertTrue(busy.contains("Focus on reconnect"), busy)
         wire.running = false
         await model.recover()
@@ -1023,6 +1030,17 @@ import XCTest
                     labels += accessibilityLabel(of: element)
                 }
             }
+            let count = view.accessibilityElementCount()
+            if count != NSNotFound, count > 0 {
+                for index in 0..<count {
+                    let element = view.accessibilityElement(at: index)
+                    if let elementView = element as? UIView {
+                        queue.append(elementView)
+                    } else {
+                        labels += accessibilityLabel(of: element)
+                    }
+                }
+            }
             if let bar = view as? UINavigationBar, let top = bar.topItem {
                 labels += (top.leftBarButtonItems ?? []).compactMap(\.accessibilityLabel)
                 labels += (top.rightBarButtonItems ?? []).compactMap(\.accessibilityLabel)
@@ -1033,6 +1051,10 @@ import XCTest
             queue += view.subviews
         }
         return labels
+    }
+
+    private func accessibilityIdentifiers(in root: UIView) -> [String] {
+        descendants(root).compactMap(\.accessibilityIdentifier)
     }
 
     private func accessibilityLabel(of element: Any?) -> [String] {

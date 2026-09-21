@@ -207,14 +207,14 @@ struct BotChatComposerView: View {
                         isLoadingFiles: model.filePathSearch.isLoading,
                         onSelectBot: { item in
                             let result = trigger.applying("@" + item.tag + " ", to: model.draft)
-                            model.editDraft(result.draft)
+                            editDraft(result.draft)
                             selection = selection.moved(to: result.selection)
                         },
                         onSelectFile: { match in
                             let result = trigger.applying(
                                 match.isDirectory ? "@\(match.path)/" : "@\(match.path) ", to: model.draft
                             )
-                            model.editDraft(result.draft)
+                            editDraft(result.draft)
                             selection = selection.moved(to: result.selection)
                             if !match.isDirectory { model.recordFileChipReference(match.path) }
                         }
@@ -232,7 +232,7 @@ struct BotChatComposerView: View {
                     // `ComposerChipCatalog` is keyed by, so the chip draws. The send
                     // path resolves it back to the host's own key before dispatch.
                     let result = trigger.applying("/" + skill.slashName + " ", to: model.draft)
-                    model.editDraft(result.draft)
+                    editDraft(result.draft)
                     selection = selection.moved(to: result.selection)
                 }
                 .padding(.horizontal, 16).padding(.bottom, 8)
@@ -252,7 +252,7 @@ struct BotChatComposerView: View {
             }
             HStack(alignment: .center, spacing: 4) {
                 ComposerTextInputView(
-                    text: Binding(get: { model.draft }, set: { model.editDraft($0) }),
+                    text: Binding(get: { model.draft }, set: editDraft),
                     selection: $selection, isFocused: $isFocused,
                     inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                     isDisabled: !model.mayEditDraft, isCollapsed: !isExpanded,
@@ -356,6 +356,7 @@ struct BotChatComposerView: View {
             onRecordingDragChanged: { _ in },
             onRecordingEnd: { _ in }
         )
+        .accessibilityIdentifier("bot-voice-input")
     }
 
     private var isVoiceInputDisabled: Bool {
@@ -405,11 +406,21 @@ struct BotChatComposerView: View {
         voiceInput.locale = .current
         Task {
             await voiceInput.toggle(currentDraft: "") { transcript in
-                let result = insertion.applying(transcript: transcript)
+                guard let result = insertion.applying(transcript: transcript, to: model.draft) else {
+                    voiceInput.stopBeforeSubmittingDraft()
+                    return
+                }
                 model.editDraft(result.draft)
                 selection = selection.moved(to: result.selection)
             }
         }
+    }
+
+    private func editDraft(_ text: String) {
+        if voiceInput.isListening || voiceInput.isRequestingPermission {
+            voiceInput.stopBeforeSubmittingDraft()
+        }
+        model.editDraft(text)
     }
 
     private var stopButton: some View {
@@ -445,7 +456,7 @@ struct BotChatComposerView: View {
     }
 
     private func send() {
-        if voiceInput.isListening { voiceInput.stopBeforeSubmittingDraft() }
+        voiceInput.stopBeforeSubmittingDraft()
         guard let action = model.preparePrompt(mode) else { return }
         if mode == .redirect { redirectAction = action }
         else { Task { await model.submit(action) } }
@@ -455,7 +466,7 @@ struct BotChatComposerView: View {
 /// One dictation run replaces the selection that existed when the mic was tapped.
 /// Every partial transcript is applied to that same base draft, so speech updates
 /// replace each other instead of accumulating duplicate words.
-struct BotVoiceDraftInsertion {
+final class BotVoiceDraftInsertion {
     struct Result: Equatable {
         let draft: String
         let selection: NSRange
@@ -463,15 +474,18 @@ struct BotVoiceDraftInsertion {
 
     private let draft: NSString
     private let range: NSRange
+    private var lastAppliedDraft: String
 
     init(draft: String, selection: NSRange) {
         self.draft = draft as NSString
+        lastAppliedDraft = draft
         let location = min(max(selection.location, 0), self.draft.length)
         let length = min(max(selection.length, 0), self.draft.length - location)
         range = NSRange(location: location, length: length)
     }
 
-    func applying(transcript: String) -> Result {
+    func applying(transcript: String, to currentDraft: String) -> Result? {
+        guard currentDraft == lastAppliedDraft else { return nil }
         let transcript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else {
             return Result(draft: draft as String, selection: range)
@@ -484,6 +498,7 @@ struct BotVoiceDraftInsertion {
         let replacement = leadingSpace + transcript + trailingSpace
         let updated = draft.replacingCharacters(in: range, with: replacement)
         let caret = range.location + (replacement as NSString).length
+        lastAppliedDraft = updated
         return Result(draft: updated, selection: NSRange(location: caret, length: 0))
     }
 
