@@ -41,6 +41,8 @@ class SimulatorRunnerTests(unittest.TestCase):
             output.write_text(json.dumps({"devices": {self.device["runtime"]: [self.device]}}))
         elif command[:3] == ["xcrun", "simctl", "bootstatus"]:
             return int(self.boot_failed)
+        elif command[:3] == ["xcrun", "simctl", "terminate"]:
+            return 3  # simctl's status when the app is not running.
         elif command[0] == "xcodebuild":
             Path(command[command.index("-resultBundlePath") + 1]).mkdir()
             output.write_text("test log\n")
@@ -70,6 +72,13 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertFalse(any("CODE_SIGNING_ALLOWED" in c for c in command))
         self.assertNotIn("-retry-tests-on-failure", command)
         self.assertNotIn("-test-iterations", command)
+
+    def test_running_app_is_terminated_before_tests(self):
+        # The fake reports "not running"; the run must still pass.
+        self.assertEqual(self.invoke(), 0)
+        terminate = ["xcrun", "simctl", "terminate", "SIM-A", runner.APP_BUNDLE_ID]
+        self.assertLess(self.commands.index(terminate),
+                        next(i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"))
 
     def test_same_basename_worktrees_have_distinct_build_directories(self):
         self.assertEqual(self.invoke("one/hermex"), 0)

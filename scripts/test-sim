@@ -17,6 +17,9 @@ import tempfile
 import time
 
 
+APP_BUNDLE_ID = "com.uzairansar.hermesmobile"  # Debug builds carry no suffix.
+
+
 class RunnerError(Exception):
     pass
 
@@ -115,6 +118,14 @@ def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
         raise RunnerError("Simulator did not become ready; see bootstatus.log.")
 
 
+def terminate_app(device, run_dir, lock_fds, timeout):
+    """An app left running by a build-and-run (with log capture attached) makes
+    the test runner hang before connecting. Exit status is ignored: simctl
+    fails when the app is not running or not installed, which is the goal."""
+    run(["xcrun", "simctl", "terminate", device["udid"], APP_BUNDLE_ID],
+        run_dir / "terminate.log", timeout, lock_fds)
+
+
 def print_summary(result, output):
     if not result.exists():
         return None
@@ -177,6 +188,7 @@ def main():
             lock_fds = (work_fd, sim_fd)
             print("Simulator: {name} ({udid}); serial tests".format(**device), flush=True)
             boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
+            terminate_app(device, run_dir, lock_fds, args.boot_timeout)
             command = [
                 "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
                 "-scheme", "HermesMobile", "-configuration", "Debug",
