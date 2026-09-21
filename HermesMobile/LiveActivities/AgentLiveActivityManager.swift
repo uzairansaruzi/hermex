@@ -788,7 +788,8 @@ enum LiveActivityReconciler {
                     sessionID: orphan.sessionID.isEmpty ? nil : orphan.sessionID,
                     preferenceEnabled: preferenceEnabled,
                     completedNormally: true,
-                    sceneIsActive: false
+                    sceneIsActive: false,
+                    server: server
                 )
             }
         )

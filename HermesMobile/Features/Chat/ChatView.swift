@@ -2716,7 +2716,8 @@ struct ChatView: View {
                 sessionID: session.sessionId,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
                 completedNormally: true,
-                sceneIsActive: completionContext.sceneIsActive
+                sceneIsActive: completionContext.sceneIsActive,
+                server: server
             )
         }
     }

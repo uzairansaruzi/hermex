@@ -13,6 +13,46 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testPushSessionMissingFallsBackWithoutUsingCacheOrAnotherServer() async throws {
+        let context = try makeContext()
+        let server = URL(string: "https://example.test")!
+        let cached = SessionSummary(sessionId: "missing", title: "Stale")
+        try CacheStore.cacheSessions([cached], serverURL: server, in: context)
+        try CacheStore.cacheSessions([cached], serverURL: URL(string: "https://other.test")!, in: context)
+        var requests = 0
+        let viewModel = try makeViewModel { request in
+            requests += 1
+            XCTAssertEqual(request.url?.host, "example.test")
+            XCTAssertEqual(request.url?.path, "/api/session")
+            return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!,
+                    Data(#"{"error":"Session not found"}"#.utf8))
+        }
+        let result = await viewModel.loadSessionForDeepLink(id: "missing", modelContext: context, isPush: true)
+        XCTAssertNil(result)
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertNil(viewModel.actionErrorMessage)
+        XCTAssertEqual(requests, 1)
+    }
+
+    @MainActor
+    func testPushSessionLoadsLiveAndKeepsRealFailuresVisible() async throws {
+        for status in [200, 503] {
+            let viewModel = try makeViewModel { request in
+                let body = status == 200 ? #"{"session":{"session_id":"s1","title":"Live"}}"# : #"{"error":"Unavailable"}"#
+                return (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+            }
+            let result = await viewModel.loadSessionForDeepLink(id: "s1", isPush: true)
+            if status == 200 {
+                XCTAssertEqual(result?.sessionId, "s1")
+                XCTAssertNil(viewModel.lastError)
+            } else {
+                XCTAssertNil(result)
+                XCTAssertNotNil(viewModel.lastError)
+            }
+        }
+    }
+
+    @MainActor
     func testLoadFallsBackToCachedSessionsForNetworkTimeout() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))

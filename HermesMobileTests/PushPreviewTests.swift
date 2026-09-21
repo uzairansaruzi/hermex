@@ -111,6 +111,57 @@ import XCTest
         XCTAssertNil(PushNotificationRouter.botDestination(userInfo: opened.userInfo, pairings: pairings) { _ in nil })
     }
 
+    func testWebuiTapRoutesWithoutBotConnectionOrDecryptedProfile() throws {
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["source"] = "webui"
+        let destination = try XCTUnwrap(PushNotificationRouter.webuiDestination(
+            userInfo: info, pairings: [server: pairing]))
+        XCTAssertEqual(destination, WebuiPushDestination(server: server, sessionID: "s1"))
+        XCTAssertEqual(WebuiPushDestination(url: try XCTUnwrap(destination.url)), destination)
+        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [:]))
+        for source in ["bot", "other", "future"] {
+            info["source"] = source
+            XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
+        }
+        info["source"] = "webui"
+        info["session_id"] = " "
+        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
+    }
+
+    func testWebuiPreviewUsesTheSameSealedEnvelope() {
+        let content = banner(sealed: sealed)
+        content.userInfo["source"] = "webui"
+        PushPreview.rewrite(content, candidates: [keys])
+        XCTAssertEqual(content.body, "Noon.")
+        XCTAssertEqual(PushPayload(userInfo: content.userInfo).source, "webui")
+    }
+
+    func testWebuiRouteSwitchesToItsServerAndWaitsForItsSignIn() {
+        let other = URL(string: "https://other.example")!
+        let destination = WebuiPushDestination(server: server, sessionID: "s1")
+        let account = ServerAccount(id: server.absoluteString, urlString: server.absoluteString,
+                                    displayName: "", initials: "", headerLogoColorHex: "",
+                                    customHeadersRef: nil, createdAt: .now, updatedAt: .now)
+        XCTAssertEqual(destination.route(state: .loggedIn(server: other), servers: [account]), .switchServer(account))
+        XCTAssertEqual(destination.route(state: .loggedOut(server: other), servers: [account]), .switchServer(account))
+        XCTAssertEqual(destination.route(state: .loggedOut(server: server), servers: [account]), .waitForSignIn)
+        XCTAssertEqual(destination.route(state: .loggedIn(server: server), servers: [account]), .open)
+        XCTAssertEqual(destination.route(state: .loggedIn(server: other), servers: []), .ignore)
+    }
+
+    func testWebuiTapOnlyMatchesItsInstallAndPrefersActiveAlias() {
+        let other = URL(string: "https://other.example")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["source"] = "webui"
+        XCTAssertEqual(PushNotificationRouter.webuiDestination(
+            userInfo: info, pairings: [server: pairing, other: pairing], activeServer: other)?.server, other)
+        let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
+        XCTAssertEqual(PushNotificationRouter.webuiDestination(
+            userInfo: info, pairings: [server: pairing, other: unrelated], activeServer: other)?.server, server)
+    }
+
     /// A banner as the relay's `bannerPush` builds it.
     private func banner(sealed: String?) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()

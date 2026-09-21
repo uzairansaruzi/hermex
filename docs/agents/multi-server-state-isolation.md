@@ -63,7 +63,7 @@ per-server:
 
 - App theme (`AppTheme`)
 - Haptics (`AppHaptics`)
-- Response-completion notifications + permission flag (`ResponseCompletionNotifications`)
+- Response-completion notifications + permission flag (`ResponseCompletionNotifications`). A server with a stored push pairing suppresses local completion banners on both chat completion and cold-launch reconciliation; disabling its pairing restores this global preference without affecting other servers.
 - Live Activity response-excerpt privacy (`AgentRunLiveActivityPrivacy`)
 - Session-row display toggles (`SessionRowDisplaySettings`: message count, workspace, cron — the CLI toggle moved to per-server storage in #19, see the per-server table above)
 - Sidebar disclosure state (`sessionSidebar.profilesAreExpanded` / `projectsAreExpanded`)

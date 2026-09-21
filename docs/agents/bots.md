@@ -1097,7 +1097,13 @@ tap becomes `PushNotificationRouter.botDestination` — `source == "bot"`, the p
 picks the server, that server's Bot connection supplies the UUID — and rides the one bot
 deep link (#554) through `AppIntentRouter`. No conversation is passed: `session_id` is
 the run's live session, not the bot's durable root. A tap only navigates; an approval is
-never answered from a banner. Anything unroutable just opens the app; webui taps are
-#561. Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
+never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured server
+and `session_id`, independently of Bot Mode and preview decryption. After switching to
+that server (and signing in if needed), a live session lookup opens the conversation;
+a missing session leaves its session list without an error. It never searches another
+server or uses a stale cached session. A paired server suppresses local completion
+notifications from both chat and cold-launch Live Activity reconciliation; disabling
+push restores the existing global local-notification preference. Webui Live Activities
+remain local-only. Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
 banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
 not app code.

@@ -10,6 +10,27 @@ final class PushRegistrationTests: XCTestCase {
     private let installA = String(repeating: "a", count: 64)
     private let installB = String(repeating: "b", count: 64)
 
+    func testLocalCompletionSuppressionFollowsServerPairingAndDisable() async throws {
+        let harness = Harness()
+        harness.deliverTokenOnRegister("ab12")
+        try await harness.registrar.enable(harness.pairing(install: installA), for: serverA)
+        let scheduler = CompletionScheduler()
+        func schedule(_ server: URL) async -> Bool {
+            await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
+                sessionID: "same-id", preferenceEnabled: true, completedNormally: true,
+                sceneIsActive: false, server: server,
+                isPushPaired: { harness.registrar.pairing(for: $0) != nil }, scheduler: scheduler)
+        }
+        let paired = await schedule(serverA)
+        let unpaired = await schedule(serverB)
+        XCTAssertFalse(paired)
+        XCTAssertTrue(unpaired)
+        try await harness.registrar.disable(for: serverA)
+        let disabled = await schedule(serverA)
+        XCTAssertTrue(disabled)
+        XCTAssertEqual(scheduler.count, 2)
+    }
+
     func testForgetWipesTheKeysEvenWhenTheRelayCannotBeReached() async throws {
         let harness = Harness()
         harness.deliverTokenOnRegister(String(repeating: "ab", count: 32))
@@ -701,4 +722,11 @@ private func XCTAssertThrowsErrorAsync<T, E: Error & Equatable>(
         calls.append(Call(action: "delete", install: pairing.installKey, session: sessionID))
         if failure { throw PushRelayError.transport }
     }
+}
+
+private final class CompletionScheduler: ResponseCompletionNotificationScheduling {
+    var count = 0
+    func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
+    func requestAuthorization() async -> Bool { true }
+    func schedule(_ request: ResponseCompletionNotificationRequest) async { count += 1 }
 }

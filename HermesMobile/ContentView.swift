@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var hasWaitingSharedImport = false
     @State private var hasRoutedSharedImport = false
     @State private var pendingDeepLinkedSessionID: String?
+    @State private var pendingWebuiPush: WebuiPushDestination?
     /// The bot a deep link named, held until the owning server is active and signed
     /// in. The session list flips to the Bots inbox, which resolves it against the
     /// live roster (#554).
@@ -33,10 +34,10 @@ struct ContentView: View {
                 drainPendingIntentDeepLink()
             }
             .onChange(of: authManager.state) {
-                // A held bot link resolves again once sign-in or a server switch
+                // A held conversation link resolves again once sign-in or a server switch
                 // changes what it can reach.
-                guard let destination = pendingBotDestination else { return }
-                routeBot(destination)
+                if let destination = pendingWebuiPush { routeWebuiPush(destination) }
+                if let destination = pendingBotDestination { routeBot(destination) }
             }
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
@@ -82,7 +83,8 @@ struct ContentView: View {
                 openNextSharedImport: openNextSharedImport,
                 pendingDeepLinkedSessionID: $pendingDeepLinkedSessionID,
                 requestedNewChat: $pendingNewChatRequest,
-                pendingBotDestination: $pendingBotDestination
+                pendingBotDestination: $pendingBotDestination,
+                pendingWebuiPush: $pendingWebuiPush
             )
             // Switching the active server keeps us in `.loggedIn`, so without a
             // per-server identity SwiftUI would reuse the same SessionListView (and
@@ -94,6 +96,15 @@ struct ContentView: View {
     }
 
     private func handleOpenURL(_ url: URL) {
+        pendingWebuiPush = nil
+        if let destination = WebuiPushDestination(url: url) {
+            pendingBotDestination = nil
+            pendingDeepLinkedSessionID = nil
+            pendingNewChatRequest = nil
+            routeWebuiPush(destination)
+            return
+        }
+
         // A fresh request each time (new `id`) so a repeat invocation re-triggers navigation
         // even if the previous one's value still lingers downstream. The voice variant carries
         // `autoStartsVoiceInput` so the composer begins dictation once it appears (#338).
@@ -134,6 +145,18 @@ struct ContentView: View {
         }
 
         importPendingSharedDraftIfAvailable()
+    }
+
+    private func routeWebuiPush(_ destination: WebuiPushDestination) {
+        switch destination.route(state: authManager.state, servers: authManager.servers) {
+        case .ignore:
+            pendingWebuiPush = nil
+        case .waitForSignIn, .open:
+            pendingWebuiPush = destination
+        case .switchServer(let account):
+            pendingWebuiPush = destination
+            authManager.switchActiveServer(to: account)
+        }
     }
 
     /// Applies the router's verdict for a bot deep link: drop it when nothing can be

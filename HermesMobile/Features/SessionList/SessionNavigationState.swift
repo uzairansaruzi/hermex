@@ -60,6 +60,13 @@ struct SessionNavigationState: Equatable {
         }
     }
 
+    /// Explicit list navigation must also discard the previous restore target.
+    mutating func openSessionList() {
+        rootRevision += 1
+        clearDestination()
+        lastSelectedSessionID = nil
+    }
+
     mutating func clearDestination() {
         destination = nil
         newChatSessionID = nil

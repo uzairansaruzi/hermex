@@ -20,6 +20,7 @@ struct SessionListView: View {
     /// The bot a deep link named. Non-nil flips this screen to the Bots inbox, which
     /// resolves it against its live roster and clears it (#554).
     @Binding private var pendingBotDestination: BotDestination?
+    @Binding private var pendingWebuiPush: WebuiPushDestination?
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
@@ -96,6 +97,7 @@ struct SessionListView: View {
         pendingDeepLinkedSessionID: Binding<String?> = .constant(nil),
         requestedNewChat: Binding<NewChatRequest?> = .constant(nil),
         pendingBotDestination: Binding<BotDestination?> = .constant(nil),
+        pendingWebuiPush: Binding<WebuiPushDestination?> = .constant(nil),
         draftStore: ChatDraftStore? = nil
     ) {
         self.authManager = authManager
@@ -108,6 +110,7 @@ struct SessionListView: View {
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
         _pendingBotDestination = pendingBotDestination
+        _pendingWebuiPush = pendingWebuiPush
         _viewModel = State(initialValue: SessionListViewModel(server: server))
         _navigationState = State(
             initialValue: SessionNavigationState(
@@ -286,6 +289,9 @@ struct SessionListView: View {
                 // Ordered after the deep link so restoreIfNeeded() sees the explicit
                 // destination and leaves the stored selection alone.
                 restoreLastSelectedSessionIfNeeded()
+            }
+            .task(id: pendingWebuiPush) {
+                await openPendingWebuiPush()
             }
             .task(id: remoteSearchTaskID) {
                 await viewModel.searchSessions(query: searchText, content: true, depth: 5)
@@ -1344,6 +1350,28 @@ struct SessionListView: View {
         didRoutePendingSharedImport(reservation)
     }
 
+    /// A push is resolved only on its server and against the live endpoint, so a
+    /// stale cache cannot open a deleted session. The task belongs to this view;
+    /// another tap, server switch or manual selection invalidates its result.
+    private func openPendingWebuiPush() async {
+        guard let destination = pendingWebuiPush, destination.server == server,
+              authManager.state == .loggedIn(server: server), !Task.isCancelled else { return }
+        showsBots = false
+        sessionOpenTask?.cancel()
+        viewModel.invalidateSessionOpening()
+        navigationState.openSessionList()
+        persistLastSelectedSession()
+        let revision = navigationState.rootRevision
+        let session = await viewModel.loadSessionForDeepLink(
+            id: destination.sessionID, modelContext: modelContext, isPush: true)
+        guard !Task.isCancelled, pendingWebuiPush == destination,
+              authManager.state == .loggedIn(server: server) else { return }
+        pendingWebuiPush = nil
+        guard navigationState.rootRevision == revision else { return }
+        if let session { selectSession(session) }
+        handleLastError()
+    }
+
     /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before
     /// `restoreLastSelectedSessionIfNeeded()` — otherwise the restore races the deep
     /// link's network load and wins with the previous session.
@@ -1455,6 +1483,7 @@ struct SessionListView: View {
     }
 
     private func restoreLastSelectedSessionIfNeeded() {
+        guard pendingWebuiPush == nil else { return }
         navigationState.restoreIfNeeded(
             from: viewModel.sessions,
             clearsMissingSelection: viewModel.sessionLoadError == nil,

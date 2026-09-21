@@ -29,7 +29,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         MainActor.assumeIsolated { PushRegistrar.shared?.didFailToRegisterForRemoteNotifications(error: error) }
     }
 
-    /// A tapped banner queues the bot deep link on `AppIntentRouter`, which
+    /// A tapped banner queues the conversation deep link on `AppIntentRouter`, which
     /// `ContentView` drains on cold and warm launch alike. Foreground presentation
     /// is deliberately not implemented, so it stays the system default.
     func userNotificationCenter(
@@ -45,10 +45,16 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         // The system does not promise a thread here, so hop rather than assume.
         Task { @MainActor in
             let activeServer = ServerRegistry.shared.activeServerID.flatMap(URL.init(string:))
-            if let pairings = try? KeychainPushPairingStore()?.allPairings(),
-               let destination = PushNotificationRouter.botDestination(
-                   userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
-                AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: destination))
+            if let stored = try? KeychainPushPairingStore()?.allPairings() {
+                let configured = Set(ServerRegistry.shared.servers.map(\.id))
+                let pairings = stored.filter { configured.contains($0.key.absoluteString) }
+                if let destination = PushNotificationRouter.webuiDestination(
+                    userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
+                    AppIntentRouter.shared.requestDeepLink(destination.url)
+                } else if let destination = PushNotificationRouter.botDestination(
+                    userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
+                    AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: destination))
+                }
             }
             completionHandler()
         }

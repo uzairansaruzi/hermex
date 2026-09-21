@@ -626,15 +626,20 @@ enum ResponseCompletionNotificationService {
         await scheduler.requestAuthorization()
     }
 
-    @discardableResult
+    @MainActor @discardableResult
     static func scheduleResponseCompletedIfAllowed(
         sessionID: String?,
         preferenceEnabled: Bool,
         completedNormally: Bool,
         sceneIsActive: Bool,
+        server: URL? = nil,
+        isPushPaired: @MainActor (URL) -> Bool = { @MainActor in PushRegistrar.shared?.pairing(for: $0) != nil },
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
     ) async -> Bool {
         let status = await authorizationStatus(scheduler: scheduler)
+        // Read after the permission await: pairing can change while it is suspended.
+        // Both chat completion and cold-launch Live Activity reconciliation use this.
+        if let server, isPushPaired(server) { return false }
         guard ResponseCompletionNotificationPolicy.shouldSchedule(
             preferenceEnabled: preferenceEnabled,
             authorizationStatus: status,
