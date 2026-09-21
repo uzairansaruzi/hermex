@@ -186,11 +186,10 @@ struct ClarificationRequestCard: View {
         cardContent
             .frame(maxWidth: 560, alignment: .leading)
             .pendingRequestCardSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
-            // Keep the card's clamped ideal height despite the bar-sized overlay proposal.
+            // Honor the clamped ideal height; hide only until base measurements settle.
             .fixedSize(horizontal: false, vertical: true)
-            // Stay hidden during first measurement instead of briefly drawing clipped.
-            .opacity(resolvedBodyHeight == nil ? 0 : 1)
-            .allowsHitTesting(resolvedBodyHeight != nil)
+            .opacity(hasMeasuredBaseContent ? 1 : 0)
+            .allowsHitTesting(hasMeasuredBaseContent && canFit != false)
             .accessibilityElement(children: .contain)
             .onChange(of: canFit, initial: true) { _, canFit in
                 if canFit == false {
@@ -226,6 +225,7 @@ struct ClarificationRequestCard: View {
         .fixedSize(horizontal: false, vertical: true)
         .contentShape(Rectangle())
         .onTapGesture(perform: onDismissKeyboard)
+        .accessibilityElement(children: .contain)
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { height in
@@ -262,8 +262,7 @@ struct ClarificationRequestCard: View {
         }
     }
 
-    /// Only the question and choices scroll. An interactive drag follows the
-    /// transcript's keyboard-dismiss behaviour.
+    /// Only the question and choices scroll; a drag dismisses the keyboard interactively.
     private var scrollableBody: some View {
         let content = VStack(alignment: .leading, spacing: 14) {
             question
@@ -374,6 +373,8 @@ struct ClarificationRequestCard: View {
         return resolvedBodyHeight != nil
     }
 
+    private var hasMeasuredBaseContent: Bool { headerHeight != nil && responseHeight != nil && bodyContentHeight != nil }
+
     private var resolvedBodyHeight: CGFloat? {
         guard let measurements else { return nil }
         return ClarificationRequestHeightPolicy.bodyHeight(
@@ -393,7 +394,7 @@ struct ClarificationRequestCard: View {
         let fixedContentHeight = verticalPadding
             + headerHeight
             + responseHeight
-            + (footerHeight ?? 0)
+            + (hasFooter ? (footerHeight ?? 0) : 0)
             + CGFloat(visibleSectionCount - 1) * contentSpacing
         return (fixedContentHeight, bodyContentHeight)
     }
@@ -474,8 +475,7 @@ struct ClarificationRequestCard: View {
     }
 }
 
-/// Converts the safe gap above the composer into the question-and-choice
-/// viewport. Returning nil tells the inset to fall back to its collapsed bar.
+/// Converts the safe gap into a body viewport, or nil to fall back to the collapsed bar.
 struct ClarificationRequestHeightPolicy {
     static let bodyHeightCap: CGFloat = 300
 
