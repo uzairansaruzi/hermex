@@ -992,7 +992,7 @@ import Observation
         }
     }
 
-    /// Runs one answer dispatch under the rules every request kind shares. The
+    /// Runs one answer dispatch under the rules every request kind shares.
     /// The closure returns the host's verdict, or nil for an incomplete batch
     /// that needs reconciliation. A lost reply leaves the outcome unknown.
     private func deliver(_ action: AnswerAction,
