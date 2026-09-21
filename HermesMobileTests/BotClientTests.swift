@@ -137,6 +137,122 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 4)
     }
 
+    func testDelegatedWorkAllowlistAdmitsOnlySessionOwnedShapes() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        _ = try await client.call("subagent.list", ["session_id": .string("runtime")])
+        _ = try await client.call("subagent.tail", ["session_id": .string("runtime"), "subagent_id": .string("worker")])
+        _ = try await client.call("subagent.interrupt", ["session_id": .string("runtime"), "subagent_id": .string("worker")])
+        XCTAssertEqual(socket.sentTextFrames, 3)
+
+        let rejected: [(String, [String: BotJSON])] = [
+            ("subagent.list", [:]),
+            ("subagent.list", ["session_id": .string("runtime"), "profile": .string("default")]),
+            ("subagent.tail", ["session_id": .string("runtime")]),
+            ("subagent.tail", ["session_id": .string("runtime"), "subagent_id": .string("")]),
+            ("subagent.interrupt", ["session_id": .string("runtime"), "subagent_id": .string("worker"), "all": .bool(true)]),
+            ("subagent.steer", ["session_id": .string("runtime"), "subagent_id": .string("worker"), "text": .string("keep going")])
+        ]
+        for (method, params) in rejected {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Invalid \(method) call dispatched")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 3)
+    }
+
+    func testCancellingDelegatedReadsKeepsTheConversationSocketAvailable() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        let calls: [(String, [String: BotJSON])] = [
+            ("subagent.list", ["session_id": .string("runtime")]),
+            ("subagent.tail", ["session_id": .string("runtime"), "subagent_id": .string("worker")])
+        ]
+        for (method, params) in calls {
+            let started = expectation(description: "\(method) dispatched")
+            socket.withholdReply = { request in
+                guard request["method"].text == method else { return false }
+                started.fulfill()
+                return true
+            }
+            let read = Task { try await client.call(method, params) }
+            await fulfillment(of: [started], timeout: 2)
+
+            read.cancel()
+            do { _ = try await read.value; XCTFail("Cancelled \(method) succeeded") }
+            catch { XCTAssertTrue(error is CancellationError) }
+
+            socket.withholdReply = nil
+            _ = try await client.call("profiles.list", [:])
+            XCTAssertEqual(socket.sentRequests.last?["method"].text, "profiles.list")
+        }
+    }
+
+    func testDelegatedReadTimeoutFailsOnlyTheOptionalRequest() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        socket.withholdReply = { $0["method"].text == "subagent.list" }
+        let client = BotClient(connection: connection(), configuration: configuration,
+                               rpcDeadline: .milliseconds(50)) { _, _ in socket }
+        var disconnects = 0
+        client.onDisconnect = { _ in disconnects += 1 }
+        try await client.connect()
+        defer { client.close() }
+
+        do {
+            _ = try await client.call("subagent.list", ["session_id": .string("runtime")])
+            XCTFail("Timed-out delegated read succeeded")
+        } catch {
+            XCTAssertEqual(error as? BotFailure, .transport)
+        }
+
+        socket.withholdReply = nil
+        _ = try await client.call("profiles.list", [:])
+        XCTAssertEqual(disconnects, 0)
+        XCTAssertEqual(socket.sentRequests.last?["method"].text, "profiles.list")
+    }
+
     func testLifecycleAllowlistAdmitsOnlyTheCreateShapeAndCanonicalChatCalls() async throws {
         var deletes: [(String, String)] = []
         BotHTTPFixture.handler = { request in
@@ -230,6 +346,132 @@ import XCTest
         }
         XCTAssertEqual(socket.sentTextFrames, 4)
         client.close()
+    }
+
+    /// The slash panel's two reads stay a narrow shape. `command.dispatch` in
+    /// particular must never widen: the gateway resolves quick commands ahead of
+    /// skills, and one of those can run a shell command on the host.
+    func testSlashAllowlistAdmitsOnlyTheCatalogReadAndABareDispatchName() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        _ = try await client.call("commands.catalog", [:])
+        _ = try await client.call("command.dispatch", [
+            "name": .string("work"), "arg": .string("fix the leak"), "session_id": .string("runtime")
+        ])
+        XCTAssertEqual(socket.sentTextFrames, 2)
+
+        let rejected: [(String, [String: BotJSON])] = [
+            ("slash.exec", ["command": .string("/deploy"), "session_id": .string("runtime")]),
+            ("commands.catalog", ["session_id": .string("runtime")]),
+            ("command.dispatch", ["name": .string("/work"), "arg": .string(""), "session_id": .string("runtime")]),
+            ("command.dispatch", ["name": .string("work fix"), "arg": .string(""), "session_id": .string("runtime")]),
+            ("command.dispatch", ["name": .string(""), "arg": .string(""), "session_id": .string("runtime")]),
+            ("command.dispatch", ["name": .string("work"), "arg": .string(""), "session_id": .string("")]),
+            ("command.dispatch", ["name": .string("work"), "session_id": .string("runtime")]),
+            ("command.dispatch", ["name": .string("work"), "arg": .string(""), "session_id": .string("runtime"), "shell": .bool(true)])
+        ]
+        for (method, params) in rejected {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Invalid \(method) call dispatched")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 2)
+    }
+
+    func testCompletionAllowlistAdmitsOneWordAndRejectsEverythingElse() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        _ = try await client.call("complete.path", [
+            "word": .string("src/Ch"), "session_id": .string("runtime"), "profile": .string("default")
+        ])
+        XCTAssertEqual(socket.sentTextFrames, 1)
+
+        let rejected: [(String, [String: BotJSON])] = [
+            ("complete.path", ["word": .string(""), "session_id": .string("runtime"), "profile": .string("default")]),
+            ("complete.path", ["word": .string("src Ch"), "session_id": .string("runtime"), "profile": .string("default")]),
+            ("complete.path", ["word": .string("src"), "session_id": .string(""), "profile": .string("default")]),
+            ("complete.path", ["word": .string("src"), "session_id": .string("runtime")]),
+            ("complete.path", ["word": .string("src"), "profile": .string("default")]),
+            ("complete.path", ["word": .string("src"), "session_id": .string("runtime"), "profile": .string("default"), "cwd": .string("/tmp")]),
+            ("slash.exec", ["command": .string("/deploy"), "session_id": .string("runtime")])
+        ]
+        for (method, params) in rejected {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Invalid \(method) call dispatched")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 1)
+    }
+
+    func testCancelCompletionKeepsSocketAvailableWithoutResendingIt() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let started = expectation(description: "completion dispatched")
+        socket.withholdReply = { request in
+            guard request["method"].text == "complete.path" else { return false }
+            started.fulfill(); return true
+        }
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        let lookup = Task {
+            try await client.call("complete.path", [
+                "word": .string("src"), "session_id": .string("runtime"), "profile": .string("default")
+            ])
+        }
+        await fulfillment(of: [started], timeout: 2)
+        lookup.cancel()
+        do { _ = try await lookup.value; XCTFail("Cancelled completion succeeded") }
+        catch { XCTAssertTrue(error is CancellationError) }
+
+        _ = try await client.call("profiles.list", [:])
+        XCTAssertEqual(socket.sentRequests.filter { $0["method"].text == "complete.path" }.count, 1)
+        XCTAssertEqual(socket.sentRequests.last?["method"].text, "profiles.list")
     }
 
     func testSettingsAllowlistRejectsUnscopedWritesAndPreservesHostError() async throws {

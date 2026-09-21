@@ -4,6 +4,130 @@ import XCTest
 @MainActor final class BotRoomTests: XCTestCase {
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!, username: "u", password: "p")
 
+    func testCachedRoomSearchSurvivesColdStartAndListFailureButFreshListAndIdentityWin() async throws {
+        for offline in [true, false] {
+            let cache = BotHistoryCache(), wire = RoomWire()
+            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+            try store.save(connection, server: key().server)
+            let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 1)))
+            try await cache.appendRoom(key: key(), room: room,
+                page: RoomFixture.page([RoomFixture.event(1, kind: "message.member")], cursor: 1), since: 0)
+            if offline { wire.connectFailure = BotFailure.transport }
+            else { wire.listFailure = BotFailure.transport }
+            let inbox = BotInbox(server: key().server, store: store, historyCache: cache, makeWire: { _ in wire })
+            await inbox.open()
+            XCTAssertTrue(inbox.rooms.isEmpty)
+            XCTAssertNil(inbox.searchableRoomIDs)
+            let hits = try await cache.search("Message", scope: .init(server: key().server, connectionID: connection.id),
+                                             profileIDs: [], roomIDs: inbox.searchableRoomIDs)
+            let hit = try XCTUnwrap(hits.first)
+            XCTAssertEqual(inbox.roomForSearch(hit)?.name, "Comms")
+            XCTAssertEqual(inbox.selectRoomSearchHit(hit)?.id, room.id)
+            XCTAssertEqual(inbox.rooms.first?.id, room.id, "The existing room destination can open cached identity")
+            let wrongServer = BotInbox(server: URL(string: "https://other.example")!, store: store)
+            XCTAssertNil(wrongServer.selectRoomSearchHit(hit))
+            wire.connectFailure = nil; wire.listFailure = nil; wire.listedRooms = []
+            await inbox.open()
+            XCTAssertEqual(inbox.searchableRoomIDs, [])
+            XCTAssertNil(inbox.roomForSearch(hit), "An authoritative empty list hides a removed room")
+            XCTAssertNil(inbox.selectRoomSearchHit(hit), "A queued tap cannot resurrect a removed room")
+            let removed = try await cache.roomHistory(key()); XCTAssertNil(removed)
+            let replacement = BotConnection(id: UUID(), name: "Other", address: connection.address, username: "u", password: "p")
+            try store.save(replacement, server: key().server)
+            wire.connectFailure = BotFailure.transport
+            await inbox.open()
+            XCTAssertNil(inbox.selectRoomSearchHit(hit), "Offline fallback still revalidates connection identity")
+            inbox.close()
+        }
+    }
+
+    func testRoomOpensFromCacheBeforeStateThenReadsOnlyNewSequences() async throws {
+        let cache = BotHistoryCache(), wire = RoomWire()
+        wire.latest = 3
+        let first = makeReader(wire, cache: cache)
+        await first.open(); first.close()
+        let nextWire = RoomWire(); nextWire.latest = 5; nextWire.holdState = true
+        let parked = expectation(description: "server state is pending")
+        nextWire.onHeld = { parked.fulfill() }
+        let next = makeReader(nextWire, cache: cache)
+        let opening = Task { await next.open() }
+        await fulfillment(of: [parked], timeout: 2)
+        XCTAssertEqual(next.events.map(\.seq), [1, 2, 3], "Saved messages appear before the server replies")
+        nextWire.releaseState(latest: 5)
+        await opening.value
+        XCTAssertEqual(nextWire.logStarts, [3])
+        XCTAssertEqual(next.events.map(\.seq), [1, 2, 3, 4, 5])
+        next.close()
+    }
+
+    func testExpiredAndDisbandedRoomsPurgeTheirCache() async throws {
+        for disband in [false, true] {
+            let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 3
+            let reader = makeReader(wire, cache: cache)
+            await reader.open()
+            let saved = try await cache.roomHistory(key()); XCTAssertNotNil(saved)
+            if disband { await reader.disband() }
+            else {
+                wire.failure = BotRoomFailure(code: 4112, reason: "room_history_expired")
+                await reader.poll()
+            }
+            await reader.historyRemoval?.value
+            let removed = try await cache.roomHistory(key())
+            XCTAssertNil(removed)
+            XCTAssertTrue(reader.events.isEmpty)
+        }
+    }
+
+    func testSearchSequenceLoadsEvenIfItsSnapshotWasEvicted() async throws {
+        let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 600
+        let reader = BotRoomReader(key: key(), connection: connection,
+            room: BotGroupRoom(RoomFixture.room(latest: 600))!, cache: cache, initialSequence: 42, makeWire: { _ in wire })
+        await reader.open()
+        XCTAssertEqual(wire.logStarts.first, 41)
+        XCTAssertEqual(reader.initialSequence, 42)
+        XCTAssertEqual(reader.events.first?.seq, 42)
+        XCTAssertEqual(reader.events.last?.seq, 600)
+        reader.close()
+        let previousReads = wire.logStarts.count
+        wire.latest = 601
+        await reader.open()
+        XCTAssertEqual(wire.logStarts.count, previousReads + 1, "Reconnect must not replay the initial search target")
+        XCTAssertEqual(wire.logStarts.last, 600)
+        XCTAssertEqual(reader.events.last?.seq, 601)
+        reader.close()
+    }
+
+    func testSearchHitKeepsItsSequenceAndOlderTargetLoadsBeforeCachedWindow() async throws {
+        let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 500
+        let first = makeReader(wire, cache: cache); await first.open(); first.close()
+        let hits = try await cache.search("Message 345", scope: .init(server: key().server, connectionID: connection.id),
+                                         profileIDs: [], roomIDs: [key().roomID])
+        let selected = try XCTUnwrap(hits.first)
+        XCTAssertEqual(selected.message.seq, 345)
+        let nextWire = RoomWire(); nextWire.latest = 500
+        let next = BotRoomReader(key: key(), connection: connection,
+            room: BotGroupRoom(RoomFixture.room(latest: 500))!, cache: cache, initialSequence: 42, makeWire: { _ in nextWire })
+        await next.open()
+        XCTAssertEqual(nextWire.logStarts.first, 41)
+        XCTAssertEqual(next.events.first?.seq, 42)
+        XCTAssertEqual(next.events.last?.seq, 500)
+        next.close()
+    }
+
+    func testUnwritableCacheDoesNotStopLiveRoomReading() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let wire = RoomWire(); wire.latest = 2
+        let reader = makeReader(wire, cache: BotHistoryCache(directory: file))
+        await reader.open()
+        XCTAssertEqual(reader.link, .live)
+        XCTAssertEqual(reader.events.map(\.seq), [1, 2])
+        wire.latest = 3; await reader.poll()
+        XCTAssertEqual(reader.events.map(\.seq), [1, 2, 3])
+        reader.close()
+    }
+
     func testCapturedCommsResponsesDecodeTolerantly() throws {
         let value = try JSONDecoder().decode(BotJSON.self, from: Data(Self.liveFixture.utf8))
         XCTAssertTrue(BotRoomCapabilities(value["capabilities"]).enabled)
@@ -51,9 +175,10 @@ import XCTest
         XCTAssertNotEqual(first, BotRoomKey(server: URL(string: "https://two.example")!, connectionID: connection.id, roomID: room.id))
     }
 
-    func testOpenDrainsPagesAndEarlierWindowDoesNotSkipOrRewind() async {
+    func testOpenDrainsPagesAndEarlierWindowDoesNotSkipOrRewind() async throws {
         let wire = RoomWire(); wire.latest = 450
-        let reader = makeReader(wire)
+        let cache = BotHistoryCache()
+        let reader = makeReader(wire, cache: cache)
         await reader.open()
         XCTAssertEqual(reader.link, .live)
         XCTAssertEqual(wire.logStarts, [250, 350])
@@ -63,6 +188,9 @@ import XCTest
         XCTAssertEqual(Array(wire.logStarts.suffix(2)), [50, 150])
         XCTAssertEqual(reader.events.first?.seq, 51)
         XCTAssertEqual(reader.events.count, 400)
+        let saved = try await cache.roomHistory(key())
+        XCTAssertEqual(saved?.cursor, 450, "Earlier paging must preserve the newer cached window")
+        XCTAssertEqual(saved?.messages.compactMap(\.seq), Array(51...450))
         await reader.loadEarlier()
         XCTAssertEqual(wire.logStarts.last, 0)
         XCTAssertFalse(reader.hasEarlier)
@@ -110,7 +238,7 @@ import XCTest
     func testSocketLossStopsReadsAndReconnectUsesFreshSocket() async {
         let wire = RoomWire(); let next = RoomWire(); next.latest = 1
         var wires = [wire, next]
-        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, makeWire: { _ in wires.removeFirst() })
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() })
         await reader.open()
         wire.onDisconnect?(BotFailure.transport)
         XCTAssertEqual(reader.link, .stopped)
@@ -360,8 +488,8 @@ import XCTest
     }
 
     private func key() -> BotRoomKey { BotRoomKey(server: URL(string: "https://webui.example")!, connectionID: connection.id, roomID: "fixture-room") }
-    private func makeReader(_ wire: RoomWire, expired: @escaping () -> Void = {}) -> BotRoomReader {
-        BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, makeWire: { _ in wire }, onExpired: expired)
+    private func makeReader(_ wire: RoomWire, cache: BotHistoryCache = BotHistoryCache(), expired: @escaping () -> Void = {}) -> BotRoomReader {
+        BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!, cache: cache, makeWire: { _ in wire }, onExpired: expired)
     }
 }
 
@@ -402,6 +530,8 @@ enum RoomFixture {
     var roomName = "Comms"
     var listedRooms: [BotJSON]?
     var listCalls = 0
+    var listFailure: Error?
+    var connectFailure: Error?
     var authority = "fixture-install"
     var epoch = 1
     var logStarts: [Int] = []
@@ -422,7 +552,7 @@ enum RoomFixture {
     var holdState = false
     var onHeld: (() -> Void)?
     private var held: CheckedContinuation<BotJSON, Never>?
-    func connect() async throws {}
+    func connect() async throws { if let connectFailure { throw connectFailure } }
     func close() { closed += 1 }
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.create", "groups.rename", "groups.disband"].contains(method) {
@@ -477,6 +607,7 @@ enum RoomFixture {
         case "groups.capabilities": return capabilities
         case "groups.list":
             listCalls += 1
+            if let listFailure { throw listFailure }
             if let listedRooms { return .object(["rooms": .array(listedRooms), "next_offset": .null]) }
             var room = RoomFixture.room(latest: latest).fields!
             room["name"] = .string(roomName)

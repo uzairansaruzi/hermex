@@ -9,20 +9,37 @@ import SwiftUI
     @State private var owner = UUID()
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var isNearBottom = true
+    @State private var pendingSequence: Int?
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
 
     init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage]) {
         _reader = State(initialValue: reader); self.roster = roster; self.avatars = avatars
+        _pendingSequence = State(initialValue: reader.initialSequence)
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 16) {
+                // Eager: member replies are hosted selection documents, and a lazy
+                // stack places unbuilt rows from an estimate, so the jump to a
+                // search hit missed on a cold open (issue #553). History pages
+                // in through Load earlier, which bounds what this builds.
+                VStack(spacing: 16) {
                     if reader.hasEarlier {
-                        Button("Load earlier") { handleFollowEvent(.userScrollBegin); Task { await reader.loadEarlier() } }
+                        // The new page pushes everything below it down, so bring the
+                        // event the reader was on back to the top afterwards.
+                        Button("Load earlier") {
+                            handleFollowEvent(.userScrollBegin)
+                            let firstShown = reader.events.first?.seq
+                            Task {
+                                await reader.loadEarlier()
+                                guard let firstShown, reader.events.first?.seq != firstShown else { return }
+                                await Task.yield()
+                                proxy.scrollTo(firstShown, anchor: .top)
+                            }
+                        }
                             .disabled(reader.loadingEarlier || reader.link != .live)
                     }
                     if reader.foreignAuthority {
@@ -53,8 +70,16 @@ import SwiftUI
             }
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
+            .onChange(of: pendingSequence.flatMap { sequence in
+                reader.events.contains(where: { $0.seq == sequence }) ? sequence : nil
+            }) { _, sequence in
+                if let sequence {
+                    handleFollowEvent(.userScrollBegin)
+                    proxy.scrollTo(sequence, anchor: .center); pendingSequence = nil
+                }
+            }
             .onChange(of: reader.events.last?.seq) {
-                if followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
+                if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
             }
             .overlay(alignment: .bottom) {
                 if !isNearBottom && !reader.events.isEmpty {
@@ -136,12 +161,16 @@ private struct BotRoomEventView: View {
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     let transcriptMediaCacheNamespace: String
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @State private var responseIsVisible = false
+
     var body: some View {
         if event.kind == "message.user" {
             MessageBubbleView(
                 message: ChatMessage(role: "user", content: event.payload["text"].text,
                     timestamp: event.timestamp, messageId: String(event.seq)),
                 transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
+                contextMenuActions: actions,
                 textOnly: true
             )
         } else if event.kind == "message.member" {
@@ -149,8 +178,15 @@ private struct BotRoomEventView: View {
                 BotRoomMemberAvatar(member: event.member(in: room), roster: roster, avatars: avatars, size: 26)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(event.sender(in: room)).font(.caption).foregroundStyle(.secondary)
-                    MarkdownRenderer(content: event.payload["text"].text ?? "")
+                    ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
+                        MarkdownRenderer(content: messageText)
+                    }
+                    .onGeometryChange(for: Bool.self) { geometry in
+                        guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+                        return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+                    } action: { responseIsVisible = $0 }
                         .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
+                        .chatMessageContextMenu(actions, longPress: false)
                 }
                 Spacer(minLength: 20)
             }
@@ -159,6 +195,12 @@ private struct BotRoomEventView: View {
             Text(event.systemText).font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
         }
+    }
+
+    private var messageText: String { event.payload["text"].text ?? "" }
+
+    private var actions: [ChatMessageActionItem] {
+        BotMessageActions.items(copyText: messageText, isHapticsEnabled: isHapticsEnabled)
     }
 }
 

@@ -137,4 +137,39 @@ final class BotActivityTests: XCTestCase {
         XCTAssertNil(projected.activity[1].anchorMessageID, "work after the last reply renders at the end")
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: projected.activity[0].toolCalls[1], isLive: false)?.detail, "draft.md")
     }
+
+    func testSnapshotProjectionUsesTypedDelegationDeliveryInsteadOfUserAuthorship() throws {
+        let report = "[ASYNC DELEGATION BATCH COMPLETE — deleg_123]\nFull worker report"
+        let projected = BotTranscriptProjection.project(history: [
+            .object([
+                "role": .string("user"),
+                "text": .string(report),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object([
+                    "delegation_id": .string("deleg_123"),
+                    "task_count": .number(2),
+                    "completed_count": .number(2),
+                    "failed_count": .number(0),
+                    "duration_seconds": .number(8.48),
+                    "future": .object(["field": .bool(true)])
+                ])
+            ]),
+            .object(["role": .string("user"), "text": .string(report)])
+        ], root: "root")
+
+        XCTAssertEqual(projected.messages.map(\.role), ["delegation_completion", "user"])
+        XCTAssertEqual(projected.messages.map(\.content), [report, report],
+                       "the card keeps the server report intact and prefix-like user text stays user-authored")
+        let delivery = try XCTUnwrap(projected.messages.first)
+        XCTAssertEqual(delivery.displayKind, BotDelegationCompletion.displayKind)
+        XCTAssertEqual(delivery.displayMetadata?["delegation_id"], .string("deleg_123"))
+
+        let completion = try XCTUnwrap(BotDelegationCompletion(delivery))
+        XCTAssertEqual(completion.delegationID, "deleg_123")
+        XCTAssertEqual(completion.taskCount, 2)
+        XCTAssertEqual(completion.completedCount, 2)
+        XCTAssertEqual(completion.failedCount, 0)
+        XCTAssertEqual(completion.durationSeconds, 8.48)
+        XCTAssertEqual(completion.report, report)
+    }
 }

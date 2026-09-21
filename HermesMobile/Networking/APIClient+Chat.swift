@@ -28,26 +28,23 @@ extension APIClient {
     }
 
     nonisolated func chatStreamURL(streamID: String, replayAfterSeq: Int? = nil) -> URL {
-        let url = Endpoint.chatStream(streamID: streamID).url(relativeTo: baseURL)
-        guard let replayAfterSeq,
-              var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        else {
-            return url
-        }
-
-        var queryItems = components.queryItems ?? []
-        queryItems.append(URLQueryItem(name: "replay", value: "1"))
-        queryItems.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
-        components.queryItems = queryItems
-        return components.url ?? url
+        Endpoint.chatStream(streamID: streamID, replayAfterSeq: replayAfterSeq).url(relativeTo: baseURL)
     }
 
     func cancelChat(streamID: String) async throws -> ChatCancelResponse {
         try await send(endpoint: .chatCancel(streamID: streamID), method: "GET")
     }
 
+    /// Status probes run inside the reconnect retry budget (#537), so they use a
+    /// short explicit timeout instead of the 60s session default.
+    private static let chatStreamStatusTimeout: TimeInterval = 10
+
     func chatStreamStatus(streamID: String) async throws -> ChatStreamStatusResponse {
-        try await send(endpoint: .chatStreamStatus(streamID: streamID), method: "GET")
+        try await send(
+            endpoint: .chatStreamStatus(streamID: streamID),
+            method: "GET",
+            timeout: Self.chatStreamStatusTimeout
+        )
     }
 
     func approvalPending(sessionID: String) async throws -> ApprovalPendingResponse {

@@ -15,47 +15,68 @@ struct AgentRunLiveActivityWidget: Widget {
             AgentRunLockScreenView(context: context)
                 .activityBackgroundTint(AgentRunLiveActivityTheme.background)
                 .activitySystemActionForegroundColor(AgentRunLiveActivityTheme.primaryText)
-                .widgetURL(HermesDeepLink.sessionURL(sessionID: context.state.sessionID))
+                .widgetURL(AgentRunTapTarget.url(for: context))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    AgentRunIslandBadge(status: context.state.status)
+                    AgentRunIslandBadge(status: context.presentedState.status, bot: context.attributes.bot,
+                                        title: context.presentedState.sessionTitle)
                         .padding(.leading, 18)
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    AgentRunIslandStatusView(state: context.state)
+                    AgentRunIslandStatusView(state: context.presentedState)
                         .padding(.trailing, 18)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    AgentRunExpandedIslandBottomView(state: context.state)
+                    AgentRunExpandedIslandBottomView(state: context.presentedState, isBot: context.attributes.bot != nil)
                 }
             } compactLeading: {
-                AgentRunIslandCompactMark(status: context.state.status)
+                AgentRunIslandCompactMark(status: context.presentedState.status)
             } compactTrailing: {
-                Text(context.state.status.compactTitle)
+                Text(context.presentedState.status.compactTitle)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AgentRunStatusStyle.color(for: context.state.status, isStale: context.state.isStale))
+                    .foregroundStyle(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale))
                     .minimumScaleFactor(0.72)
                     .lineLimit(1)
             } minimal: {
-                AgentRunIslandCompactMark(status: context.state.status)
+                AgentRunIslandCompactMark(status: context.presentedState.status)
             }
-            .widgetURL(HermesDeepLink.sessionURL(sessionID: context.state.sessionID))
-            .keylineTint(AgentRunStatusStyle.color(for: context.state.status, isStale: context.state.isStale))
+            .widgetURL(AgentRunTapTarget.url(for: context))
+            .keylineTint(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale))
         }
+    }
+}
+
+/// A bot's activity opens that bot; a session's opens the session (#489).
+private enum AgentRunTapTarget {
+    static func url(for context: ActivityViewContext<AgentRunActivityAttributes>) -> URL? {
+        context.attributes.bot?.destinationURL ?? HermesDeepLink.sessionURL(sessionID: context.presentedState.sessionID)
     }
 }
 
 private struct AgentRunExpandedIslandBottomView: View {
     let state: AgentRunActivityAttributes.ContentState
+    let isBot: Bool
+
+    /// One line for a bot: what it is doing, then its counts.
+    private var botLine: String {
+        let lead = state.isStale ? String(localized: "Not connected") : state.currentActivity
+        return ([lead] + (state.chips ?? [])).joined(separator: " · ")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             AgentRunProgressRail(status: state.status)
 
-            if !state.responseExcerpt.isEmpty {
+            if isBot, state.responseExcerpt.isEmpty {
+                Text(botLine)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else if !state.responseExcerpt.isEmpty {
                 Text(state.responseExcerpt)
                     .font(.caption2)
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
@@ -83,36 +104,50 @@ private struct AgentRunLockScreenView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             activityProgressRow(progressWidth: 112)
-            transcriptPanel
+            if isBot, context.presentedState.responseExcerpt.isEmpty, !botChips.isEmpty {
+                AgentRunChipRow(chips: botChips, isDimmed: context.presentedState.isStale)
+            } else {
+                transcriptPanel
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
 
+    private var isBot: Bool { context.attributes.bot != nil }
+
     private var activityText: String {
-        if context.state.isStale {
-            return "Latest status shown"
+        if context.presentedState.isStale {
+            // A bot's socket closes with the app, so say that rather than imply freshness.
+            return isBot ? String(localized: "Not connected") : "Latest status shown"
         }
 
-        if let errorSummary = context.state.errorSummary, !errorSummary.isEmpty {
+        if let errorSummary = context.presentedState.errorSummary, !errorSummary.isEmpty {
             return errorSummary
         }
 
-        return context.state.currentActivity
+        return context.presentedState.currentActivity
+    }
+
+    /// The bot's counts; a stale activity adds the way back in.
+    private var botChips: [String] {
+        let chips = context.presentedState.chips ?? []
+        return context.presentedState.isStale ? chips + [String(localized: "Open to reconnect")] : chips
     }
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            AgentRunStatusDot(status: context.state.status, isStale: context.state.isStale, size: 34)
+            AgentRunLeadingMark(bot: context.attributes.bot, status: context.presentedState.status,
+                                isStale: context.presentedState.isStale, size: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Hermex")
+                Text(isBot ? "Hermex · \(String(localized: "Bot"))" : "Hermex")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
                     .textCase(.uppercase)
 
-                Text(context.state.sessionTitle)
+                Text(context.presentedState.sessionTitle)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
                     .lineLimit(1)
@@ -123,7 +158,7 @@ private struct AgentRunLockScreenView: View {
 
             Spacer(minLength: 8)
 
-            AgentRunTimerPill(state: context.state)
+            AgentRunTimerPill(state: context.presentedState)
         }
     }
 
@@ -138,7 +173,7 @@ private struct AgentRunLockScreenView: View {
 
             Spacer(minLength: 8)
 
-            AgentRunProgressRail(status: context.state.status)
+            AgentRunProgressRail(status: context.presentedState.status)
                 .frame(width: progressWidth)
         }
     }
@@ -154,7 +189,7 @@ private struct AgentRunLockScreenView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(AgentRunStatusStyle.color(for: context.state.status, isStale: context.state.isStale).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(AgentRunLiveActivityTheme.stroke, lineWidth: 1)
@@ -162,11 +197,11 @@ private struct AgentRunLockScreenView: View {
     }
 
     private var excerptText: String {
-        if !context.state.responseExcerpt.isEmpty {
-            return context.state.responseExcerpt
+        if !context.presentedState.responseExcerpt.isEmpty {
+            return context.presentedState.responseExcerpt
         }
 
-        if context.state.isFinal {
+        if context.presentedState.isFinal {
             return "Response is ready to review."
         }
 
@@ -174,13 +209,66 @@ private struct AgentRunLockScreenView: View {
     }
 }
 
-private struct AgentRunIslandBadge: View {
-    let status: AgentRunActivityStatus
+/// Bounded count chips for a bot's activity. Static: nothing here repaints on its own.
+private struct AgentRunChipRow: View {
+    let chips: [String]
+    let isDimmed: Bool
 
     var body: some View {
         HStack(spacing: 6) {
-            AgentRunStatusDot(status: status, isStale: false)
-            Text("Hermex")
+            ForEach(chips, id: \.self) { chip in
+                Text(chip)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isDimmed ? AgentRunLiveActivityTheme.secondaryText : AgentRunLiveActivityTheme.primaryText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The bot's avatar with its status as a corner badge, or the plain status dot for a
+/// session and for a bot whose avatar file is missing.
+private struct AgentRunLeadingMark: View {
+    let bot: AgentRunActivityBot?
+    let status: AgentRunActivityStatus
+    let isStale: Bool
+    var size: CGFloat = 22
+
+    private var avatar: UIImage? {
+        AgentRunActivityAvatarFile.url(named: bot?.avatarFile).flatMap { UIImage(contentsOfFile: $0.path) }
+    }
+
+    var body: some View {
+        if let avatar {
+            Image(uiImage: avatar).resizable().scaledToFit()
+                .frame(width: size, height: size)
+                .opacity(isStale ? 0.6 : 1)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle().fill(AgentRunStatusStyle.color(for: status, isStale: isStale))
+                        .frame(width: size * 0.32, height: size * 0.32)
+                        .overlay(Circle().stroke(AgentRunLiveActivityTheme.background, lineWidth: 2))
+                        .offset(x: 2, y: 2)
+                }
+                .accessibilityHidden(true)
+        } else {
+            AgentRunStatusDot(status: status, isStale: isStale, size: size)
+        }
+    }
+}
+
+private struct AgentRunIslandBadge: View {
+    let status: AgentRunActivityStatus
+    let bot: AgentRunActivityBot?
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            AgentRunLeadingMark(bot: bot, status: status, isStale: false)
+            Text(bot == nil ? "Hermex" : title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
                 .lineLimit(1)
@@ -284,7 +372,7 @@ private struct AgentRunProgressRail: View {
             0.3
         case .usingTool, .searchingFiles, .readingFiles, .runningCommand:
             0.52
-        case .waitingForApproval, .waitingForClarification:
+        case .waiting, .waitingForApproval, .waitingForClarification:
             0.62
         case .responding:
             0.78
@@ -373,7 +461,7 @@ private enum AgentRunStatusStyle {
             return Color(red: 0.58, green: 0.78, blue: 1.0)
         case .runningCommand:
             return Color(red: 0.76, green: 0.55, blue: 1.0)
-        case .waitingForApproval:
+        case .waiting, .waitingForApproval:
             return Color(red: 1.0, green: 0.58, blue: 0.24)
         case .waitingForClarification:
             return Color(red: 1.0, green: 0.65, blue: 0.30)
@@ -402,6 +490,8 @@ private enum AgentRunStatusStyle {
             "terminal"
         case .responding:
             "text.bubble"
+        case .waiting:
+            "hourglass"
         case .waitingForApproval:
             "checkmark.shield"
         case .waitingForClarification:
@@ -413,5 +503,11 @@ private enum AgentRunStatusStyle {
         case .cancelled:
             "xmark"
         }
+    }
+}
+
+private extension ActivityViewContext where Attributes == AgentRunActivityAttributes {
+    var presentedState: AgentRunActivityAttributes.ContentState {
+        state.presented(attributes: attributes, systemIsStale: isStale)
     }
 }

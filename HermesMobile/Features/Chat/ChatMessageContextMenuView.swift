@@ -11,36 +11,38 @@ import UIKit
 /// beside the press in one motion, whatever the reply's length (issue #208).
 extension View {
     /// Attach to the message content itself, not the full-width row, so the
-    /// menu opens only where there is something to act on. A nil menu leaves
-    /// the view untouched.
+    /// menu opens only where there is something to act on. An empty list
+    /// leaves the view untouched. Pass `longPress: false` on selectable text:
+    /// the menu's long-press outranks text selection, so there the actions
+    /// stay reachable through VoiceOver only and selection supplies Copy.
     @ViewBuilder
-    func chatMessageContextMenu(_ menu: ChatMessageActionMenu?) -> some View {
-        if let menu {
-            background(ChatMessageContextMenuHost(menu: menu))
+    func chatMessageContextMenu(_ actions: [ChatMessageActionItem], longPress: Bool = true) -> some View {
+        if actions.isEmpty {
+            self
+        } else {
+            background { if longPress { ChatMessageContextMenuHost(actions: actions) } }
                 .accessibilityActions {
-                    ForEach(menu.items.filter(\.isEnabled)) { item in
+                    ForEach(actions.filter(\.isEnabled)) { item in
                         Button(item.title) {
                             item.perform()
                         }
                     }
                 }
-        } else {
-            self
         }
     }
 }
 
 private struct ChatMessageContextMenuHost: UIViewRepresentable {
-    let menu: ChatMessageActionMenu
+    let actions: [ChatMessageActionItem]
 
     func makeUIView(context: Context) -> ChatMessageContextMenuView {
         let view = ChatMessageContextMenuView()
-        view.menu = menu
+        view.actions = actions
         return view
     }
 
     func updateUIView(_ view: ChatMessageContextMenuView, context: Context) {
-        view.menu = menu
+        view.actions = actions
     }
 }
 
@@ -52,7 +54,7 @@ private struct ChatMessageContextMenuHost: UIViewRepresentable {
 /// attached to this view never fires. On the scroll view it wins, as it does
 /// in a collection view.
 final class ChatMessageContextMenuView: UIView {
-    var menu: ChatMessageActionMenu?
+    var actions: [ChatMessageActionItem] = []
 
     private weak var coordinator: ChatMessageContextMenuCoordinator?
 
@@ -132,7 +134,7 @@ final class ChatMessageContextMenuCoordinator: NSObject, UIContextMenuInteractio
         guard let scrollView else { return nil }
         return rows.allObjects.first { row in
             row.window != nil
-                && row.menu != nil
+                && !row.actions.isEmpty
                 && row.convert(row.bounds, to: scrollView).contains(location)
         }
     }
@@ -145,7 +147,7 @@ final class ChatMessageContextMenuCoordinator: NSObject, UIContextMenuInteractio
         activeRow = row
         pressInRow = row.convert(location, from: scrollView)
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak row] _ in
-            row?.menu?.uiMenu()
+            row?.actions.uiMenu()
         }
     }
 

@@ -7,6 +7,10 @@ import SwiftUI
 
     @Environment(\.scenePhase) private var scenePhase
     private let mentionAvatars: [String: UIImage]
+    /// Called when this chat was opened for a conversation a deep link named and the
+    /// bot's canonical chat has since moved on, so the inbox can take the user back
+    /// instead of leaving a dead transcript on screen (#554).
+    private let onConversationUnavailable: (() -> Void)?
     @State private var model: BotConversation
     @State private var stopAction: BotConversation.StopAction?
     @State private var recoveryID = UUID()
@@ -17,17 +21,25 @@ import SwiftUI
     /// Bumped by the status line's Review action; the transcript scrolls on change.
     @State private var showRequestID = UUID()
     @State private var showingProfileEditor = false
+    @State private var showingDelegatedWork = false
     /// Measured composer height; sizes the material fade behind it, as the main chat does.
     @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var window = BotTranscriptWindow()
 
-    init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile], avatars: [String: UIImage]) {
+    init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile],
+         avatars: [String: UIImage], conversation: String? = nil,
+         onConversationUnavailable: (() -> Void)? = nil) {
         mentionAvatars = avatars
-        _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile, roster: roster, historyCache: .shared))
+        self.onConversationUnavailable = onConversationUnavailable
+        _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile,
+                                                     roster: roster, conversation: conversation, historyCache: .shared,
+                                                     liveActivityFeed: .shared))
     }
 
-    init(model: BotConversation) {
+    init(model: BotConversation, onConversationUnavailable: (() -> Void)? = nil) {
         mentionAvatars = [:]
+        self.onConversationUnavailable = onConversationUnavailable
         _model = State(initialValue: model)
     }
 
@@ -35,10 +47,18 @@ import SwiftUI
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(model.messages) { message in
+                    // Eager over a bounded window, like the Sessions transcript: a
+                    // settled reply is a hosted selection document, and a lazy stack
+                    // places rows it has not built from an estimate, which strands
+                    // the scroll under load (issue #553).
+                    VStack(alignment: .leading, spacing: 8) {
+                        if window.hasEarlier(count: model.messages.count) {
+                            Button("Load earlier") { loadEarlier(proxy: proxy) }
+                                .frame(maxWidth: .infinity)
+                        }
+                        ForEach(model.messages[window.start(count: model.messages.count)...]) { message in
                             settledActivity(anchoredTo: message.id)
-                            BotArtifactMessageView(message: message, model: model)
+                            BotArtifactMessageView(message: message, model: model).id(message.id)
                         }
                         settledActivity(anchoredTo: nil)
                         // The live turn reads like a settled one: prompt, work, then reply.
@@ -52,7 +72,7 @@ import SwiftUI
                             )
                         }
                         if let reply = model.liveMessages.first(where: { $0.role == "assistant" }) {
-                            BotArtifactMessageView(message: reply, model: model)
+                            BotArtifactMessageView(message: reply, model: model, isLive: true)
                         }
                         if let plan = model.plan {
                             BotPlanRowView(plan: plan).id("bot-plan")
@@ -87,6 +107,7 @@ import SwiftUI
                     }
                 }
                 .defaultScrollAnchor(ChatScrollPolicy.initialTranscriptAnchor, for: .initialOffset)
+                .onChange(of: model.messages.count, initial: true) { _, count in window.seed(count: count) }
                 .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: model.messages.count) { followLatest(proxy) }
@@ -147,6 +168,26 @@ import SwiftUI
                 .accessibilityLabel(model.profile.name)
                 .accessibilityHint(Text("Opens this bot’s profile."))
             }
+            if model.delegatedWork.hasWorkers {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingDelegatedWork = true
+                        Task { await model.delegatedWork.refresh() }
+                    } label: {
+                        Image(systemName: "person.2")
+                            .overlay(alignment: .topTrailing) {
+                                Text("\(min(model.delegatedWork.activeCount, 99))")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.black)
+                                    .frame(minWidth: 15, minHeight: 15)
+                                    .background(.green, in: Capsule())
+                                    .offset(x: 7, y: -7)
+                            }
+                    }
+                    .accessibilityLabel("Delegated work, \(model.delegatedWork.activeCount) active workers")
+                    .accessibilityHint(Text("Shows worker status, recent output, and interrupt controls."))
+                }
+            }
             if !model.chatControls.controls.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { BotSessionControlMenu(settings: model.chatControls) }
             }
@@ -159,6 +200,11 @@ import SwiftUI
             }
             .id(model.connection.id.uuidString + model.profile.id)
         }
+        .sheet(isPresented: $showingDelegatedWork) {
+            BotDelegatedWorkView(work: model.delegatedWork)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .task(id: recoveryID) {
             if scenePhase == .active { await model.recover() }
         }
@@ -167,6 +213,11 @@ import SwiftUI
             else { stopAction = nil; model.suspend() }
         }
         .onDisappear { stopAction = nil; model.suspend() }
+        .onChange(of: model.linkedRootIsStale) {
+            // The link named a conversation this bot has replaced: hand it back to
+            // the inbox, which reports it (#554).
+            if model.linkedRootIsStale { onConversationUnavailable?() }
+        }
         .confirmationDialog("Stop this bot’s current work?", isPresented: Binding(
             get: { stopAction != nil }, set: { if !$0 { stopAction = nil } }
         ), titleVisibility: .visible) {
@@ -230,6 +281,20 @@ import SwiftUI
 
     private var followsLatest: Bool { followLatch.isFollowing }
 
+    /// Reveals one more page and keeps the message the reader was on at the top,
+    /// since the new rows push everything below them down.
+    private func loadEarlier(proxy: ScrollViewProxy) {
+        let count = model.messages.count
+        let firstShown = model.messages[window.start(count: count)...].first?.id
+        handleFollowEvent(.userScrollBegin)
+        window.loadEarlier()
+        guard let firstShown else { return }
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo(firstShown, anchor: .top)
+        }
+    }
+
     private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
         let resolved = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
         if resolved != followLatch { followLatch = resolved }
@@ -288,4 +353,26 @@ struct BotChatTitlePillFallback: ViewModifier {
                 .background(.regularMaterial, in: Capsule())
         }
     }
+}
+
+/// The settled messages the Bot transcript builds. The host sends the whole
+/// history; drawing only the latest page keeps an eager transcript cheap.
+/// Messages that settle after opening stay visible, so a reader scrolled up
+/// never loses rows off the top.
+struct BotTranscriptWindow: Equatable {
+    static let pageSize = 50
+    private var openedCount: Int?
+    private var earlier = 0
+
+    func start(count: Int) -> Int {
+        max(0, min(openedCount ?? count, count) - Self.pageSize - earlier)
+    }
+
+    func hasEarlier(count: Int) -> Bool { start(count: count) > 0 }
+
+    mutating func seed(count: Int) {
+        if openedCount == nil, count > 0 { openedCount = count }
+    }
+
+    mutating func loadEarlier() { earlier += Self.pageSize }
 }

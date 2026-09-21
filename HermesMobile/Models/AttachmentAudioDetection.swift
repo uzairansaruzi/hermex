@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 /// Pure, testable audio-attachment detection shared by the chat bubble and the
 /// full-screen attachment preview. Mirrors the image-detection rules used by
@@ -31,6 +32,28 @@ enum AttachmentAudioDetection {
             if audioExtensions.contains(ext) { return true }
         }
         return false
+    }
+
+    /// The audio container `data` starts with, judged from its magic bytes:
+    /// WAV, MP3 (ID3 tag or bare frame sync), CAF, M4A, FLAC, and Ogg. Used
+    /// for extensionless media and exports, where nothing else names the type.
+    /// A byte check is deliberate: asking AVFoundation or AudioToolbox to open
+    /// the data starts the audio subsystem, which takes seconds on a cold
+    /// simulator and is wasted work for a preview nobody has pressed play on.
+    static func containerType(of data: Data) -> (contentType: UTType, fileExtension: String)? {
+        let bytes = Array(data.prefix(12))
+        func starts(with tag: String, at offset: Int = 0) -> Bool {
+            let tagBytes = Array(tag.utf8)
+            return bytes.count >= offset + tagBytes.count && Array(bytes[offset..<offset + tagBytes.count]) == tagBytes
+        }
+        if starts(with: "RIFF"), starts(with: "WAVE", at: 8) { return (.wav, "wav") }
+        if starts(with: "ID3") { return (.mp3, "mp3") }
+        if bytes.count >= 2, bytes[0] == 0xFF, (bytes[1] & 0xE0) == 0xE0 { return (.mp3, "mp3") }
+        if starts(with: "caff") { return (UTType(filenameExtension: "caf") ?? .audio, "caf") }
+        if starts(with: "ftyp", at: 4), starts(with: "M4A", at: 8) { return (.mpeg4Audio, "m4a") }
+        if starts(with: "fLaC") { return (UTType(filenameExtension: "flac") ?? .audio, "flac") }
+        if starts(with: "OggS") { return (UTType(filenameExtension: "ogg") ?? .audio, "ogg") }
+        return nil
     }
 }
 

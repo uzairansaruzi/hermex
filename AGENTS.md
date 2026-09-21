@@ -98,11 +98,12 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 
 ## Verifying
 
-- Smallest proof that the change works while iterating: focused XCTest for the behavior you touched, via XcodeBuildMCP `test_sim`. Defaults live in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that sim is missing, pick a nearby iPhone and say which.
-- **Run the full XCTest suite before asking for review or committing a slice.** A failing build or test becomes the current task; fix it before writing more code on top.
+- Run local XCTest through `scripts/test-sim <assigned-simulator-udid>`; add `--only HermesMobileTests/<TestClass>` for focused validation. Each worktree keeps its own simulator; different simulators can test concurrently. See `DEVELOPMENT.md` § Local XCTest for assignment, logs, and failure handling.
+- **Run the full XCTest suite before asking for review or committing a slice** when the change touches Swift, resources, the Xcode project, or `Config/`. A change limited to `scripts/`, docs, or `.github/` runs its own checks instead: `python3 -m unittest discover -s scripts/tests` for `scripts/test-sim`, and a real run of any other script you changed. A failing build or test becomes the current task; fix it before writing more code on top.
 - Behavior changes ship with focused tests for that behavior.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
 - UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
+- If the simulator lands on the login screen or Bots has no connection, run `scripts/sim-login <udid>` instead of stopping. It signs the installed Debug build in from the macOS Keychain (`DEVELOPMENT.md` § Signing a simulator in).
 - Run `scripts/check-swift-file-sizes` when a production Swift file grows. It is a warning, not a gate: use it to notice a missing seam, not to force unrelated refactors into the current issue.
 
 ## Pull requests
@@ -139,6 +140,7 @@ Canonical vocabulary: `CONTEXT.md`.
 - `HermesMobile/Auth/` - authentication and Keychain access.
 - `HermesMobile/Persistence/` - SwiftData cache models and stores.
 - `HermesMobile/AppIntents/` and `HermesMobile/LiveActivities/` - system entry points and activity coordination.
+- `HermesMobile/Push/` - APNs registration: the build's push environment, per-server pairing keys in the shared Keychain access group, the relay client, and the app delegate that receives device tokens.
 - `HermesShareExtension/` and `HermesLiveActivityWidget/` - separate targets. Shared files need target-membership checks.
 - `HermesMobileTests/` - the XCTest suite, one target directory. Keep tests near the behavior in name and scope.
 - `Config/`, `ci/`, and `.github/workflows/` - signing, CI, and release configuration. Treat edits there as release-sensitive. App identity resolves through xcconfig and is not grep-able: bundle ID `com.uzairansar.hermesmobile`, tests `….tests`, Team `6GYD9C9N6R`, SKU `hermes-mobile-ios`.

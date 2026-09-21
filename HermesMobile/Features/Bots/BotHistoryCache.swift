@@ -19,6 +19,20 @@ actor BotHistoryCache {
         let id: String
         let role: String
         let text: String
+        var seq: Int? = nil
+        var sender: String? = nil
+        var memberID: String? = nil
+        var timestamp: Double? = nil
+
+        /// Rebuild only the message projection, never cached commands or runtime state.
+        var roomEvent: BotJSON? {
+            guard let seq else { return nil }
+            return .object(["seq": .number(Double(seq)), "kind": .string(role),
+                "actor": .object(["id": memberID.map(BotJSON.string) ?? .null,
+                                  "display_name": sender.map(BotJSON.string) ?? .null]),
+                "payload": .object(["text": .string(text)]),
+                "created_at": timestamp.map(BotJSON.number) ?? .null])
+        }
     }
     struct Snapshot: Codable, Equatable, Identifiable, Sendable {
         let id: UUID
@@ -29,6 +43,22 @@ actor BotHistoryCache {
         let tip: String
         let savedAt: Date
         let messages: [Message]
+        var roomID: String? = nil
+        var cursor: Int? = nil
+        var earlierBoundary: Int? = nil
+
+        /// Minimal identity for opening a saved room while its live list is unavailable.
+        /// Runtime authority, members and permissions always come from groups.state.
+        var cachedRoom: BotGroupRoom? {
+            guard let roomID else { return nil }
+            return BotGroupRoom(.object(["room_id": .string(roomID),
+                "name": .string(profileName ?? roomID), "latest_seq": .number(Double(cursor ?? 0))]))
+        }
+
+        var replayPage: BotJSON {
+            .object(["events": .array(messages.compactMap(\.roomEvent)),
+                     "cursor": .number(Double(cursor ?? 0))])
+        }
     }
     struct Hit: Identifiable, Equatable, Sendable {
         var id: String { "\(snapshot.id)/\(message.id)" }
@@ -48,6 +78,11 @@ actor BotHistoryCache {
     private var loaded = false
     private var needsPrunePersistence = false
     private var snapshots: [Snapshot] = []
+    private struct RoomIdentity: Hashable {
+        let scope: Scope
+        let id: String
+    }
+    private var removedRooms: Set<RoomIdentity> = []
     private var removed: Set<Scope> = []
     private var clearedAt: [String: Date] = [:]
 
@@ -61,7 +96,7 @@ actor BotHistoryCache {
         try Task.checkCancellation()
         guard !removed.contains(scope), receivedAt > (clearedAt[scope.serverKey] ?? .distantPast) else { return }
         try load()
-        if let previous = snapshots.first(where: { $0.scope == scope && $0.profileID == profileID }),
+        if let previous = snapshots.first(where: { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }),
            previous.savedAt > receivedAt { return }
         var seen: Set<String> = []
         let rows = messages.suffix(Self.maximumMessages).compactMap { message -> Message? in
@@ -70,10 +105,10 @@ actor BotHistoryCache {
                   text.utf8.count <= Self.maximumMessageBytes, seen.insert(message.id).inserted else { return nil }
             return Message(id: message.id, role: role, text: text)
         }
-        if let previous = snapshots.first(where: { $0.scope == scope && $0.profileID == profileID }),
+        if let previous = snapshots.first(where: { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }),
            previous.root == root, previous.tip == tip, previous.messages == rows,
            receivedAt.timeIntervalSince(previous.savedAt) < 60 { return }
-        snapshots.removeAll { $0.scope == scope && $0.profileID == profileID }
+        snapshots.removeAll { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }
         if !rows.isEmpty {
             snapshots.append(Snapshot(id: UUID(), scope: scope, profileID: profileID, profileName: profileName, root: root,
                                       tip: tip, savedAt: receivedAt, messages: rows))
@@ -82,7 +117,7 @@ actor BotHistoryCache {
         try persist()
     }
 
-    func search(_ query: String, scope: Scope, profileIDs: Set<String>?, now: Date = Date()) throws -> [Hit] {
+    func search(_ query: String, scope: Scope, profileIDs: Set<String>?, roomIDs: Set<String>? = [], now: Date = Date()) throws -> [Hit] {
         try Task.checkCancellation()
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
@@ -92,7 +127,8 @@ actor BotHistoryCache {
         persistPruning(previousCount: previousCount)
         var hits: [Hit] = []
         for snapshot in snapshots.reversed() where snapshot.scope == scope
-            && (profileIDs?.contains(snapshot.profileID) ?? true) && now.timeIntervalSince(snapshot.savedAt) < Self.lifetime {
+            && (snapshot.roomID.map { roomIDs?.contains($0) ?? true }
+                ?? (profileIDs?.contains(snapshot.profileID) ?? true)) && now.timeIntervalSince(snapshot.savedAt) < Self.lifetime {
             for message in snapshot.messages.reversed() {
                 try Task.checkCancellation()
                 guard let range = message.text.range(of: query, options: .caseInsensitive) else { continue }
@@ -105,6 +141,82 @@ actor BotHistoryCache {
             }
         }
         return hits
+    }
+
+    /// Append overlapping replay pages by sequence. Coverage includes invisible events,
+    /// while the disk projection contains only bounded user/member message text.
+    func appendRoom(key: BotRoomKey, room: BotGroupRoom, page: BotJSON, since: Int,
+                    receivedAt: Date = Date()) throws {
+        try Task.checkCancellation()
+        let scope = Scope(server: key.server, connectionID: key.connectionID)
+        guard !removed.contains(scope), !removedRooms.contains(.init(scope: scope, id: key.roomID)),
+              receivedAt > (clearedAt[scope.serverKey] ?? .distantPast),
+              room.id == key.roomID, !room.disbanded,
+              let cursor = page["cursor"].integer, cursor >= since else { return }
+        try load()
+        let previous = snapshots.first { $0.scope == scope && $0.roomID == key.roomID }
+        // A gap cannot become a saved cursor: retain only the newly read window.
+        let overlaps = previous.map { since <= ($0.cursor ?? 0) && cursor >= ($0.earlierBoundary ?? 0) } ?? false
+        var rows = overlaps ? previous?.messages ?? [] : []
+        var seen = Set(rows.compactMap(\.seq))
+        for value in page["events"].list ?? [] {
+            guard value["room_id"].text == key.roomID, let event = BotRoomEvent(value),
+                  event.seq > since, event.seq <= cursor,
+                  ["message.user", "message.member"].contains(event.kind),
+                  let text = event.payload["text"].text, !text.isEmpty,
+                  text.utf8.count <= Self.maximumMessageBytes, seen.insert(event.seq).inserted else { continue }
+            rows.append(Message(id: String(event.seq), role: event.kind, text: text, seq: event.seq,
+                sender: event.kind == "message.user" ? String(localized: "You") : event.sender(in: room),
+                memberID: event.payload["member_id"].text ?? event.actor["id"].text, timestamp: event.timestamp))
+        }
+        rows.sort { ($0.seq ?? 0) < ($1.seq ?? 0) }
+        var boundary = overlaps ? min(previous?.earlierBoundary ?? since, since) : since
+        if rows.count > Self.maximumMessages {
+            boundary = max(boundary, rows[rows.count - Self.maximumMessages - 1].seq ?? boundary)
+            rows = Array(rows.suffix(Self.maximumMessages))
+        }
+        let next = Snapshot(id: previous?.id ?? UUID(), scope: scope, profileID: "", profileName: room.name,
+            root: "", tip: "", savedAt: max(previous?.savedAt ?? receivedAt, receivedAt), messages: rows,
+            roomID: key.roomID, cursor: overlaps ? max(previous?.cursor ?? 0, cursor) : cursor,
+            earlierBoundary: boundary)
+        if let previous, previous.messages == next.messages, previous.cursor == next.cursor,
+           previous.earlierBoundary == next.earlierBoundary, previous.profileName == next.profileName { return }
+        snapshots.removeAll { $0.scope == scope && $0.roomID == key.roomID }
+        snapshots.append(next)
+        prune(now: receivedAt)
+        try persist()
+    }
+
+    func roomHistory(_ key: BotRoomKey, now: Date = Date()) throws -> Snapshot? {
+        try Task.checkCancellation()
+        try load()
+        let previousCount = snapshots.count
+        snapshots.removeAll { now.timeIntervalSince($0.savedAt) >= Self.lifetime }
+        persistPruning(previousCount: previousCount)
+        let scope = Scope(server: key.server, connectionID: key.connectionID)
+        return snapshots.first { $0.scope == scope && $0.roomID == key.roomID }
+    }
+
+    /// Room IDs are permanently retired by expiry/disband. Revoke late page writes too.
+    func removeRoom(_ key: BotRoomKey) throws {
+        let scope = Scope(server: key.server, connectionID: key.connectionID)
+        removedRooms.insert(.init(scope: scope, id: key.roomID))
+        try load()
+        snapshots.removeAll { $0.scope == scope && $0.roomID == key.roomID }
+        try persist()
+    }
+
+    /// Call only with a complete authoritative room list, never a partial page.
+    func retainRooms(_ ids: Set<String>, scope: Scope) throws {
+        try load()
+        let removed = snapshots.compactMap { snapshot -> String? in
+            guard snapshot.scope == scope, let id = snapshot.roomID, !ids.contains(id) else { return nil }
+            return id
+        }
+        guard !removed.isEmpty else { return }
+        removedRooms.formUnion(removed.map { RoomIdentity(scope: scope, id: $0) })
+        snapshots.removeAll { $0.scope == scope && $0.roomID.map { !ids.contains($0) } == true }
+        try persist()
     }
 
     /// Removal revokes queued writes from the old connection. Cache clearing
@@ -122,7 +234,7 @@ actor BotHistoryCache {
     func removeProfile(server: URL, connectionID: UUID, profileID: String) throws {
         let scope = Scope(server: server, connectionID: connectionID)
         try load()
-        snapshots.removeAll { $0.scope == scope && $0.profileID == profileID }
+        snapshots.removeAll { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }
         try persist()
     }
 

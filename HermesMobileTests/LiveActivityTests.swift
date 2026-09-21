@@ -41,46 +41,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(generic.currentActivity, "Using apply patch")
     }
 
-    func testElapsedTimeFormatterUsesStableClockLabels() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 100)
-            ),
-            "00:00"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 106)
-            ),
-            "00:06"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 190)
-            ),
-            "01:30"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 3_761)
-            ),
-            "1:01:01"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 99)
-            ),
-            "00:00"
-        )
-    }
-
     func testLiveActivityReusePolicyRequiresMatchingSessionAndStream() {
         XCTAssertTrue(
             AgentLiveActivityReusePolicy.canReuseActivity(
@@ -147,7 +107,6 @@ final class LiveActivityTests: XCTestCase {
             AgentRunActivityStateReducer.toolCompleted(state: initial, now: later),
             AgentRunActivityStateReducer.waitingForApproval(state: initial, now: later),
             AgentRunActivityStateReducer.waitingForClarification(state: initial, now: later),
-            AgentRunActivityStateReducer.appendingToken("Hello", to: initial, now: later),
             AgentRunActivityStateReducer.settingInterimAssistant("Drafting the answer", on: initial, now: later)
         ]
 
@@ -156,12 +115,6 @@ final class LiveActivityTests: XCTestCase {
             XCTAssertFalse(state.sessionTitle.isEmpty)
             XCTAssertFalse(state.currentActivity.isEmpty)
             XCTAssertGreaterThanOrEqual(state.updatedAt, state.startedAt)
-            XCTAssertFalse(
-                AgentRunElapsedTimeFormatter.label(
-                    startedAt: state.startedAt,
-                    updatedAt: state.updatedAt
-                ).isEmpty
-            )
         }
     }
 

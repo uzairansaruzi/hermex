@@ -31,7 +31,7 @@ struct MessageBubbleView: View {
     let onAskHermex: (String) -> Void
     /// Long-press actions, attached to the message content only so the empty
     /// gutter beside a user bubble does not open its menu.
-    let contextMenu: ChatMessageActionMenu?
+    let contextMenuActions: [ChatMessageActionItem]
 
     init(
         message: ChatMessage,
@@ -46,7 +46,7 @@ struct MessageBubbleView: View {
         isStreaming: Bool = false,
         liveTokensPerSecond: Double? = nil,
         onAskHermex: @escaping (String) -> Void = { _ in },
-        contextMenu: ChatMessageActionMenu? = nil,
+        contextMenuActions: [ChatMessageActionItem] = [],
         textOnly: Bool = false
     ) {
         self.textOnly = textOnly
@@ -62,7 +62,7 @@ struct MessageBubbleView: View {
         self.isStreaming = isStreaming
         self.liveTokensPerSecond = liveTokensPerSecond
         self.onAskHermex = onAskHermex
-        self.contextMenu = contextMenu
+        self.contextMenuActions = contextMenuActions
     }
 
     var body: some View {
@@ -98,7 +98,7 @@ struct MessageBubbleView: View {
                         }
                         linkPreview
                     }
-                    .chatMessageContextMenu(contextMenu)
+                    .chatMessageContextMenu(contextMenuActions)
                 }
             }
         }
@@ -345,7 +345,7 @@ struct MessageBubbleView: View {
             }
         }
         // Before the full-width frame, so the marker covers the grid only.
-        .chatMessageContextMenu(contextMenu)
+        .chatMessageContextMenu(contextMenuActions)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 

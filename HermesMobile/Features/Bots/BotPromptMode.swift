@@ -23,6 +23,10 @@ enum BotPromptMode: CaseIterable, Hashable {
         }
     }
 
+    /// Whether this mode starts a fresh turn. Only there will the host expand a
+    /// skill invocation, so it is also the only place the `/` panel opens.
+    var startsTurn: Bool { self == .send || self == .queue }
+
     var method: String {
         switch self {
         case .send, .queue: return "prompt.submit"

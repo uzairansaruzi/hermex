@@ -123,11 +123,17 @@ enum BotAttachmentFailure: Error, LocalizedError {
                     kCGImageSourceCreateThumbnailWithTransform: true,
                     kCGImageSourceThumbnailMaxPixelSize: 4096
                   ] as CFDictionary) else { throw BotAttachmentFailure.unreadable }
+            let alpha = image.alphaInfo
+            let hasAlpha = alpha == .first || alpha == .last || alpha == .premultipliedFirst
+                || alpha == .premultipliedLast || alpha == .alphaOnly
+            let format = hasAlpha ? UTType.png : UTType.jpeg
             let output = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { throw BotAttachmentFailure.unreadable }
-            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+            guard let destination = CGImageDestinationCreateWithData(output, format.identifier as CFString, 1, nil) else { throw BotAttachmentFailure.unreadable }
+            let options: [CFString: Any] = hasAlpha ? [:] : [kCGImageDestinationLossyCompressionQuality: 0.9]
+            CGImageDestinationAddImage(destination, image, options as CFDictionary)
             guard CGImageDestinationFinalize(destination), output.length <= maximumFileBytes else { throw BotAttachmentFailure.limit }
-            return (output as Data, URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent + ".jpg", "image/jpeg", true)
+            let base = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent
+            return (output as Data, base + (hasAlpha ? ".png" : ".jpg"), hasAlpha ? "image/png" : "image/jpeg", true)
         }
         let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
         guard type.conforms(to: .text) || type.conforms(to: .pdf) || type.conforms(to: .audio)

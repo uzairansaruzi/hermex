@@ -12,8 +12,9 @@ enum BotAttachmentUpload {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let mime = URL(fileURLWithPath: filename).pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg"
         request.httpBody = try JSONEncoder().encode(BotJSON.object([
-            "filename": .string(filename), "data_url": .string("data:image/jpeg;base64," + data.base64EncodedString())
+            "filename": .string(filename), "data_url": .string("data:\(mime);base64," + data.base64EncodedString())
         ]))
         let (bytes, response) = try await session.bytes(for: request, delegate: BotArtifactRedirectGuard())
         defer { bytes.task.cancel() }

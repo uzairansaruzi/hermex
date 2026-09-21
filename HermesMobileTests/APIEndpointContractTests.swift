@@ -90,6 +90,13 @@ final class ContractReadinessTests: XCTestCase {
                 query: ["stream_id": "stream-123"]
             ),
             .init(
+                name: "chat stream replay",
+                method: "GET",
+                endpoint: .chatStream(streamID: "stream-123", replayAfterSeq: 4),
+                path: "/api/chat/stream",
+                query: ["stream_id": "stream-123", "replay": "1", "after_seq": "4"]
+            ),
+            .init(
                 name: "chat cancel",
                 method: "GET",
                 endpoint: .chatCancel(streamID: "stream-123"),

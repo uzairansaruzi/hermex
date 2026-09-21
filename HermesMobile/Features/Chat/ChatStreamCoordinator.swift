@@ -26,6 +26,20 @@ struct ChatStreamCoordinatorTiming: Equatable {
     )
 }
 
+/// Delays between reconnect status probes. Production sleeps; tests inject a no-op
+/// so the retry loop can be asserted without waiting (#537).
+typealias ChatStreamReconnectDelay = @Sendable (TimeInterval) async throws -> Void
+
+enum ChatStreamReconnectBackoff {
+    /// Delays after the initial probe: three retries at 1s, 2s, and 4s.
+    static let delays: [TimeInterval] = [1, 2, 4]
+    static let maxProbeAttempts = delays.count + 1
+
+    static let standardDelay: ChatStreamReconnectDelay = { seconds in
+        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
+}
+
 struct ChatStreamLoadPreparation: Equatable {
     let activeStreamIDBeforeLoad: String?
     let shouldPrepareSuspendedStreamResume: Bool
@@ -105,6 +119,7 @@ final class ChatStreamCoordinator {
     private let liveActivityManager: any AgentLiveActivityManaging
     private let ratingPromptState: RatingPromptState
     private let timing: ChatStreamCoordinatorTiming
+    private let reconnectDelay: ChatStreamReconnectDelay
     private var showsLiveActivityResponseExcerpts: Bool
 
     private(set) var activeStreamID: String? {
@@ -170,13 +185,15 @@ final class ChatStreamCoordinator {
         liveActivityManager: any AgentLiveActivityManaging,
         showsLiveActivityResponseExcerpts: Bool,
         timing: ChatStreamCoordinatorTiming = .standard,
-        ratingPromptState: RatingPromptState? = nil
+        ratingPromptState: RatingPromptState? = nil,
+        reconnectDelay: @escaping ChatStreamReconnectDelay = ChatStreamReconnectBackoff.standardDelay
     ) {
         self.client = client
         self.streamClient = streamClient
         self.liveActivityManager = liveActivityManager
         self.showsLiveActivityResponseExcerpts = showsLiveActivityResponseExcerpts
         self.timing = timing
+        self.reconnectDelay = reconnectDelay
         self.ratingPromptState = ratingPromptState ?? .shared
         self.ratingPromptState.register(self, server: client.baseURL)
     }
@@ -417,99 +434,151 @@ final class ChatStreamCoordinator {
         streamID: String,
         runGeneration: Int
     ) async {
-        guard reconnectTaskIsCurrent(
-            reconnectTaskID: reconnectTaskID,
-            streamID: streamID,
-            runGeneration: runGeneration
-        ) else { return }
-
-        do {
-            let response = try await client.chatStreamStatus(streamID: streamID)
+        for attempt in 0..<ChatStreamReconnectBackoff.maxProbeAttempts {
             guard reconnectTaskIsCurrent(
                 reconnectTaskID: reconnectTaskID,
                 streamID: streamID,
                 runGeneration: runGeneration
             ) else { return }
-            delegate?.streamCoordinatorDidConfirmRecovery()
 
-            if response.active == true {
-                let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
-                guard completedLoad,
-                      reconnectTaskIsCurrent(
-                          reconnectTaskID: reconnectTaskID,
-                          streamID: streamID,
-                          runGeneration: runGeneration
-                      )
-                else { return }
-
-                if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
-                    restoreSnapshotIfAvailable(streamID: streamID)
-                }
-                if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
-                    delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
-                }
-                // A cold process has no snapshot cursor. Ask the server journal
-                // for the run from the beginning so the loaded partial transcript
-                // can be filled in immediately instead of waiting for `done`.
-                // Existing foreground/background resumes keep their ordinary
-                // connection when this process still owns an in-memory snapshot.
-                let replayAfterSeq = response.replayAvailable == true
-                    && !hasInMemorySnapshotForActiveStream
-                    && lastEventID == nil
-                    ? 0
-                    : nil
-                isConnectionSuspended = false
-                start(streamID: streamID, replayAfterSeq: replayAfterSeq)
-            } else if response.replayAvailable == true {
+            do {
+                let response = try await client.chatStreamStatus(streamID: streamID)
                 guard reconnectTaskIsCurrent(
                     reconnectTaskID: reconnectTaskID,
                     streamID: streamID,
                     runGeneration: runGeneration
                 ) else { return }
-                let replayAfterSeq = Self.runJournalReplayAfterSeq(from: lastEventID) ?? 0
-                isConnectionSuspended = false
-                start(streamID: streamID, replayAfterSeq: replayAfterSeq)
-            } else {
-                let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
-                guard completedLoad,
-                      reconnectTaskOwnsFinalization(
-                          reconnectTaskID: reconnectTaskID,
-                          streamID: streamID,
-                          runGeneration: runGeneration
-                      ),
-                      canFinalizeRunAfterLoad(streamID: streamID, capturedGeneration: runGeneration)
-                else { return }
+                delegate?.streamCoordinatorDidConfirmRecovery()
 
-                // #246: the server reports the run is over. Finalize it (and end
-                // the Live Activity) instead of re-arming and leaving it dangling
-                // on "running" when no assistant reply surfaced.
-                finalizeInactiveStream(streamID: streamID)
-            }
-        } catch {
-            if (error as? APIError)?.indicatesMissingStream == true,
-               reconnectTaskIsCurrent(
-                   reconnectTaskID: reconnectTaskID,
-                   streamID: streamID,
-                   runGeneration: runGeneration
-               ) {
-                let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
-                guard completedLoad,
-                      reconnectTaskOwnsFinalization(
-                          reconnectTaskID: reconnectTaskID,
-                          streamID: streamID,
-                          runGeneration: runGeneration
-                      ),
-                      canFinalizeRunAfterLoad(streamID: streamID, capturedGeneration: runGeneration)
-                else { return }
-                finalizeInactiveStream(streamID: streamID)
+                if response.active == true {
+                    let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
+                    guard completedLoad,
+                          reconnectTaskIsCurrent(
+                              reconnectTaskID: reconnectTaskID,
+                              streamID: streamID,
+                              runGeneration: runGeneration
+                          )
+                    else { return }
+
+                    if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
+                        restoreSnapshotIfAvailable(streamID: streamID)
+                    }
+                    if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
+                        delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
+                    }
+                    // A cold process has no snapshot cursor. Ask the server journal
+                    // for the run from the beginning so the loaded partial transcript
+                    // can be filled in immediately instead of waiting for `done`.
+                    // Existing foreground/background resumes keep their ordinary
+                    // connection when this process still owns an in-memory snapshot.
+                    let replayAfterSeq = response.replayAvailable == true
+                        && !hasInMemorySnapshotForActiveStream
+                        && lastEventID == nil
+                        ? 0
+                        : nil
+                    isConnectionSuspended = false
+                    start(streamID: streamID, replayAfterSeq: replayAfterSeq)
+                } else if response.replayAvailable == true {
+                    guard reconnectTaskIsCurrent(
+                        reconnectTaskID: reconnectTaskID,
+                        streamID: streamID,
+                        runGeneration: runGeneration
+                    ) else { return }
+                    let replayAfterSeq = Self.runJournalReplayAfterSeq(from: lastEventID) ?? 0
+                    isConnectionSuspended = false
+                    start(streamID: streamID, replayAfterSeq: replayAfterSeq)
+                } else {
+                    let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
+                    guard completedLoad,
+                          reconnectTaskOwnsFinalization(
+                              reconnectTaskID: reconnectTaskID,
+                              streamID: streamID,
+                              runGeneration: runGeneration
+                          ),
+                          canFinalizeRunAfterLoad(streamID: streamID, capturedGeneration: runGeneration)
+                    else { return }
+
+                    // #246: the server reports the run is over. Finalize it (and end
+                    // the Live Activity) instead of re-arming and leaving it dangling
+                    // on "running" when no assistant reply surfaced.
+                    finalizeInactiveStream(streamID: streamID)
+                }
                 return
+            } catch is CancellationError {
+                return
+            } catch {
+                if (error as? APIError)?.indicatesMissingStream == true,
+                   reconnectTaskIsCurrent(
+                       reconnectTaskID: reconnectTaskID,
+                       streamID: streamID,
+                       runGeneration: runGeneration
+                   ) {
+                    let completedLoad = await loadMessagesForReconnect(reconnectTaskID: reconnectTaskID)
+                    guard completedLoad,
+                          reconnectTaskOwnsFinalization(
+                              reconnectTaskID: reconnectTaskID,
+                              streamID: streamID,
+                              runGeneration: runGeneration
+                          ),
+                          canFinalizeRunAfterLoad(streamID: streamID, capturedGeneration: runGeneration)
+                    else { return }
+                    finalizeInactiveStream(streamID: streamID)
+                    return
+                }
+
+                let canRetry = Self.isTransientReconnectFailure(error)
+                    && attempt < ChatStreamReconnectBackoff.delays.count
+                guard canRetry else {
+                    guard reconnectTaskIsCurrent(
+                        reconnectTaskID: reconnectTaskID,
+                        streamID: streamID,
+                        runGeneration: runGeneration
+                    ) else { return }
+                    delegate?.streamCoordinatorDidReceiveRecoveryError(error)
+                    return
+                }
+
+                do {
+                    try await reconnectDelay(ChatStreamReconnectBackoff.delays[attempt])
+                } catch {
+                    return
+                }
             }
-            guard reconnectTaskIsCurrent(
-                reconnectTaskID: reconnectTaskID,
-                streamID: streamID,
-                runGeneration: runGeneration
-            ) else { return }
-            delegate?.streamCoordinatorDidReceiveRecoveryError(error)
+        }
+    }
+
+    /// Transient tunnel/connectivity failures that are worth retrying inside the
+    /// reconnect budget. Auth, decoding, and ordinary HTTP errors surface once (#537).
+    nonisolated static func isTransientReconnectFailure(_ error: Error) -> Bool {
+        switch error {
+        case APIError.network(let underlying):
+            return isTransientReconnectURLError(underlying)
+        case APIError.http(let statusCode, _):
+            switch statusCode {
+            case 502, 503, 504:
+                return true
+            default:
+                return false
+            }
+        default:
+            return isTransientReconnectURLError(error)
+        }
+    }
+
+    nonisolated private static func isTransientReconnectURLError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut,
+             .cannotConnectToHost,
+             .networkConnectionLost,
+             .notConnectedToInternet,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .dataNotAllowed,
+             .resourceUnavailable:
+            return true
+        default:
+            return false
         }
     }
 

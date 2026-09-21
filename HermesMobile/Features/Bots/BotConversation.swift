@@ -15,6 +15,9 @@ import Observation
     struct PromptAction: Equatable {
         let generation: Int; let revision: Int; let runtime: String
         let mode: BotPromptMode; let text: String
+        /// Kept apart from `text` so a failed send restores exactly what the
+        /// composer held; quotes only become Markdown on the way out.
+        var quotes: [ComposerQuote] = []
         var attachmentIDs: [UUID] = []
     }
 
@@ -37,9 +40,31 @@ import Observation
     let chatControls = BotChatControls()
     let attachments: BotAttachmentDraft
     private(set) var draft = ""
+    /// This connection's skills, read once from `commands.catalog` and kept for
+    /// the conversation's life. Empty until the read lands, and after one fails:
+    /// the panel simply does not open, and typing and sending never wait on it.
+    private(set) var slashSkills: [SkillSlashSuggestion] = []
+    private var slashCatalogLoaded = false
+    /// Workspace files picked from the composer's `@` panel, so a sent `@path`
+    /// draws as the shared composer chip. A conversation is one
+    /// server/connection/Profile lifetime, so a path never reaches another bot.
+    private(set) var fileChipPaths: Set<String> = []
+    /// The `@` panel's rows, owned here rather than by the composer so they
+    /// outlive one open panel and die with the conversation.
+    @ObservationIgnored let filePathSearch = ComposerFilePathSearch()
+    /// Passages the user sent here with Ask Hermex. Separate from `draft` so a
+    /// pasted paragraph never turns into a chip and each one is removable.
+    private(set) var quotes: [ComposerQuote] = []
     private(set) var uncertainSend = false
     private(set) var uncertainStop = false
     private(set) var root: String?
+    /// The canonical root a deep link named, seeded into `root` so the changed-root
+    /// rejection below refuses to open the bot's replacement conversation under the
+    /// link's identity (#554). Nil for an ordinary open from the inbox.
+    private let linkedRoot: String?
+    /// Set when that seeded root is not the bot's canonical chat any more, so the
+    /// inbox can take the user back with a one-line report.
+    private(set) var linkedRootIsStale = false
     private(set) var runtime: String?
     private(set) var sequence = 0
     private(set) var epoch: String?
@@ -66,6 +91,10 @@ import Observation
     private var generation = 0
     private var turnRevision = 0
     private var turnStartedAt: Double?
+    /// When this phone first saw the current turn, for a host that sends no start time.
+    private var turnObservedAt = Date()
+    /// Whether the last snapshot's interruption was a host error rather than a stop.
+    private var turnFailed = false
     private var snapshotIsBusy: Bool?
     private var snapshotDirty = false
     private var fullSnapshotNeeded = false
@@ -80,24 +109,76 @@ import Observation
     private var localOperation = false
     private var hydrated = false
     private let wire: any BotTransport
+    let delegatedWork: BotDelegatedWork
     private let historyCache: BotHistoryCache?
     private(set) var historyCacheTask: Task<Void, Never>?
     private let drafts: ChatDraftStore
+    /// Nil outside the chat screen and in tests, so only a visible chat drives ActivityKit.
+    private let liveActivityFeed: BotLiveActivityFeed?
 
     init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile] = [],
+         conversation: String? = nil,
          historyCache: BotHistoryCache? = nil, wire: (any BotTransport)? = nil, drafts: ChatDraftStore? = nil,
          attachmentCopies: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
+         liveActivityFeed: BotLiveActivityFeed? = nil,
          reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        let resolvedWire = wire ?? BotClient(connection: connection)
         self.server = server; self.connection = connection; self.profile = profile
+        self.linkedRoot = conversation; self.root = conversation
         self.mentions = BotMentions(roster: roster, excluding: profile.id)
         self.reconnectDelay = reconnectDelay
-        self.wire = wire ?? BotClient(connection: connection)
+        self.wire = resolvedWire
+        self.delegatedWork = BotDelegatedWork(wire: resolvedWire)
         self.historyCache = historyCache
         self.drafts = drafts ?? .shared
+        self.liveActivityFeed = liveActivityFeed
         self.attachments = BotAttachmentDraft(key: .bot(server: server, connectionID: connection.id, profile: profile.id),
                                               drafts: drafts ?? .shared, copies: attachmentCopies)
         self.wire.onEvent = { [weak self] event in self?.observe(event) }
         self.wire.onDisconnect = { [weak self] error in self?.disconnected(error) }
+        self.delegatedWork.onWorkersChanged = { [weak self] in self?.syncLiveActivity() }
+    }
+
+    /// This conversation as its Live Activity should show it (#489). Counts and tool
+    /// names only, plus a reply excerpt the feed drops unless previews are on.
+    var liveActivitySnapshot: BotLiveActivitySnapshot {
+        let phase: BotLiveActivitySnapshot.Phase
+        if connectionState != .connected { phase = .disconnected }
+        else {
+            switch turn {
+            case .running, .stopping, .needsAttention:
+                phase = .working(turn: turnStartedAt.map { String($0) } ?? runtime ?? "",
+                                 startedAt: turnStartedAt.map(Date.init(timeIntervalSince1970:)) ?? turnObservedAt)
+            case .idle: phase = .finished(.complete)
+            case .interrupted: phase = .finished(turnFailed ? .failed : .cancelled)
+            case .unknown, .submitting, .uncertain: phase = .unknown
+            }
+        }
+
+        let work: BotLiveActivitySnapshot.Work
+        let reply = liveMessages.last { $0.role == "assistant" }?.content ?? ""
+        if turn == .needsAttention {
+            if case .approval = pendingRequest { work = .waitingForApproval } else { work = .waitingForAnswer }
+        } else if let tool = liveActivity.toolCalls.last, !tool.isCompleted { work = .tool(tool.name) }
+        else if !reply.isEmpty { work = .responding(AgentRunActivitySanitizer.responseExcerpt(reply)) }
+        else if liveActivity.toolCalls.last != nil { work = .toolDone }
+        else if !liveActivity.reasoning.isEmpty { work = .thinking }
+        else { work = .starting }
+
+        var chips: [String] = []
+        if let plan, !plan.isFinished {
+            chips.append(String(localized: "Plan \(min(plan.completedCount + 1, plan.items.count)) of \(plan.items.count)"))
+        }
+        if delegatedWork.activeCount > 0 { chips.append(String(localized: "\(delegatedWork.activeCount) workers")) }
+        if !liveActivity.toolCalls.isEmpty { chips.append(String(localized: "\(liveActivity.toolCalls.count) tools")) }
+
+        return BotLiveActivitySnapshot(
+            destination: BotDestination(server: server, connectionID: connection.id, profile: profile.id, conversation: root),
+            title: BotProfileAppearance(profile: profile).title, phase: phase, work: work, chips: chips, agentSessionID: tip)
+    }
+
+    private func syncLiveActivity() {
+        liveActivityFeed?.sync(liveActivitySnapshot, profile: profile)
     }
 
     var artifactContext: BotArtifactContext? {
@@ -133,9 +214,14 @@ import Observation
     }
 
     func preparePrompt(_ mode: BotPromptMode) -> PromptAction? {
-        guard maySubmit(mode), let runtime,
-              (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.items.isEmpty) else { return nil }
-        return PromptAction(generation: generation, revision: turnRevision, runtime: runtime, mode: mode, text: draft, attachmentIDs: attachments.items.map(\.id))
+        guard maySubmit(mode), let runtime, hasSendableInput else { return nil }
+        return PromptAction(generation: generation, revision: turnRevision, runtime: runtime, mode: mode,
+                            text: draft, quotes: quotes, attachmentIDs: attachments.items.map(\.id))
+    }
+
+    /// A quote alone is a message: the passage is what the user wants asked about.
+    var hasSendableInput: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !quotes.isEmpty || !attachments.items.isEmpty
     }
 
     var mayImportAttachments: Bool { mayEditDraft && connectionState == .connected }
@@ -183,6 +269,71 @@ import Observation
         drafts.setDraft(text, for: draftKey)
     }
 
+    /// Reads this connection's skills once it is connected.
+    ///
+    /// The composer drives this, because its `/` panel is the only thing that
+    /// needs them. A failed read is silent and retried the next time the composer
+    /// asks; a reply for a conversation that has moved on is dropped.
+    func loadSlashCatalog() async {
+        guard connectionState == .connected, !slashCatalogLoaded else { return }
+        let owner = generation
+        guard let reply = try? await request("commands.catalog", [:], owner: owner), generation == owner else { return }
+        slashCatalogLoaded = true
+        slashSkills = BotSlashCatalog.skills(from: reply)
+    }
+
+    /// One query's rows for the composer's `@` panel.
+    ///
+    /// `complete.path` answers against the live session's working directory and
+    /// ranks its own rows, so a disconnected conversation has nothing to ask.
+    /// The panel's generation guard drops a reply a newer query replaced.
+    func searchFilePaths(_ query: String) async {
+        await filePathSearch.search(query) { [weak self] query in
+            guard let self else { throw BotFailure.stale }
+            return try await self.completeFileMatches(for: query)
+        }
+    }
+
+    /// Remembers a file the `@` panel inserted, so the composer draws its chip
+    /// with the insertion instead of a beat later.
+    func recordFileChipReference(_ path: String) {
+        let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        fileChipPaths.insert(path)
+    }
+
+    /// Forgets picked paths and rows because the workspace moved: a path is
+    /// only a file inside the workspace it was found in.
+    func resetFileReferences() {
+        filePathSearch.reset()
+        fileChipPaths.removeAll()
+    }
+
+    private func completeFileMatches(for query: String) async throws -> [ComposerFilePathSearch.Match] {
+        guard connectionState == .connected, let runtime else { throw BotFailure.stale }
+        let reply = try await request("complete.path", [
+            "word": .string(BotFilePathSearch.word(for: query)),
+            "session_id": .string(runtime),
+            "profile": .string(profile.id)
+        ], owner: generation)
+        return BotFilePathSearch.matches(from: reply)
+    }
+
+    /// Ask Hermex on a passage selected in the transcript. Durable straight
+    /// away, so a passage survives leaving the screen the way typed text does.
+    func quotePassage(_ passage: String) {
+        let trimmed = passage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard mayEditDraft, !trimmed.isEmpty else { return }
+        quotes.append(ComposerQuote(text: trimmed))
+        drafts.setQuotes(quotes, for: draftKey)
+    }
+
+    func removeQuote(_ id: UUID) {
+        guard mayEditDraft, quotes.contains(where: { $0.id == id }) else { return }
+        quotes.removeAll { $0.id == id }
+        drafts.setQuotes(quotes, for: draftKey)
+    }
+
     func recover() async {
         suspend()
         isActive = true
@@ -211,6 +362,7 @@ import Observation
                 let saved = await drafts.draft(for: draftKey)
                 try check(owner)
                 draft = saved?.text ?? ""
+                quotes = saved?.quotes ?? []
                 uncertainSend = saved?.botSubmissionUncertain ?? false
                 await attachments.restore(saved?.attachments ?? [])
                 try check(owner)
@@ -227,7 +379,12 @@ import Observation
             guard let foundRoot = rows[0]["id"].text, !foundRoot.isEmpty,
                   let foundTip = rows[0]["resolved_id"].text, !foundTip.isEmpty else { throw BotFailure.unsupported }
             // Resume can auto-continue. Reject a changed root before making that call.
-            if let root, root != foundRoot { throw BotFailure.wrongIdentity }
+            if let root, root != foundRoot {
+                // The rejected root is the one a deep link named: report it so the
+                // inbox can say so, rather than sitting on an error the user cannot act on.
+                if root == linkedRoot { linkedRootIsStale = true }
+                throw BotFailure.wrongIdentity
+            }
             root = foundRoot; tip = foundTip
             let first = try await request("session.resume", resumeParams(), owner: owner)
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
@@ -253,6 +410,9 @@ import Observation
             chatControls.snapshot(current["info"], idle: [.idle, .interrupted].contains(turn))
             connectionState = .connected
             shouldRetryConnection = false
+            syncLiveActivity()
+            await delegatedWork.connect(.init(connectionID: connection.id, runtime: foundRuntime, generation: owner))
+            try check(owner)
             scheduleRefresh()
         } catch {
             guard owner == generation, !Task.isCancelled else { return }
@@ -336,6 +496,7 @@ import Observation
     }
 
     private func applySnapshot(_ snapshot: BotJSON, full: Bool, settingsRevision: Int? = nil, requestsRevision: Int? = nil) throws {
+        defer { syncLiveActivity() }
         guard snapshot["session_id"].text == runtime, snapshot["session_key"].text == tip,
               let running = snapshot["running"].flag, snapshot["hydrating"].flag != true else { throw BotFailure.unsupported }
         if let value = snapshot["info"]["profile_name"].text, value != profile.id { throw BotFailure.wrongIdentity }
@@ -360,7 +521,7 @@ import Observation
         if let next = BotPlan(snapshot["todo_state"]), next.revision >= (plan?.revision ?? 0) { plan = next }
         let inflight = snapshot["inflight"]
         let startedAt = inflight["started_at"].number ?? snapshot["turn_started_at"].number
-        if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt }
+        if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt; turnObservedAt = Date() }
         liveMessages = []
         if let text = inflight["user"].text, !text.isEmpty {
             liveMessages.append(ChatMessage(role: "user", content: BotMentions.displayText(text), timestamp: nil, messageId: "live-user"))
@@ -397,7 +558,9 @@ import Observation
         else if uncertainSend || uncertainStop { turn = .uncertain }
         else if localOperation { /* A snapshot cannot acknowledge a local command. */ }
         else if running || continuation || queued { turn = .running }
-        else if inflight["error"] != .null || snapshot["status"].text == "interrupted" { turn = .interrupted }
+        else if inflight["error"] != .null || snapshot["status"].text == "interrupted" {
+            turn = .interrupted; turnFailed = inflight["error"] != .null
+        }
         else { turn = .idle }
         if settingsRevision == nil || settingsRevision == chatControls.snapshotRevision {
             chatControls.snapshot(snapshot["info"], idle: !busy)
@@ -468,13 +631,25 @@ import Observation
             errorMessage = String(localized: "Could not save the draft. Your message was not sent.")
             return
         }
+        // Expanding a skill has no effect on the conversation, so it runs before
+        // anything durable: a failure here leaves the draft exactly as it was.
+        let base: String
+        do {
+            base = ComposerQuoteMessageFormatter.message(
+                text: try await skillText(action, owner: owner) ?? action.text, quotes: action.quotes)
+        }
+        catch {
+            guard owner == generation, !Task.isCancelled else { return }
+            errorMessage = String(localized: "Could not start that skill. Your draft is still here.")
+            return
+        }
         var promptDispatched = false
         do {
             let text: String
-            if action.attachmentIDs.isEmpty { text = action.text }
+            if action.attachmentIDs.isEmpty { text = base }
             else {
                 isUploadingAttachments = true
-                let task = Task { try await self.attachmentPrompt(action, owner: owner) }
+                let task = Task { try await self.attachmentPrompt(action, base: base, owner: owner) }
                 attachmentUploadTask = task
                 defer {
                     if owner == generation { isUploadingAttachments = false; attachmentUploadTask = nil }
@@ -505,11 +680,12 @@ import Observation
             }
             guard let receipt = outcome.receipt else { throw BotFailure.unsupported }
             drafts.setDraft("", for: draftKey)
+            drafts.setQuotes([], for: draftKey)
             drafts.setAttachments([], for: draftKey)
             drafts.setBotSubmissionUncertain(false, for: draftKey)
             try await drafts.flush()
             try check(owner)
-            draft = ""; uncertainSend = false
+            draft = ""; quotes = []; uncertainSend = false
             await attachments.consumed()
             try check(owner)
             localOperation = false
@@ -530,6 +706,7 @@ import Observation
                 // A failed durable clear must leave the original text held too.
                 drafts.setAttachments(attachments.items.map(ChatDraftAttachment.init(pending:)), for: draftKey)
                 drafts.setDraft(action.text, for: draftKey)
+                drafts.setQuotes(action.quotes, for: draftKey)
                 drafts.setBotSubmissionUncertain(true, for: draftKey)
                 try? await drafts.flush()
                 guard owner == generation, !Task.isCancelled else { return }
@@ -560,8 +737,45 @@ import Observation
     /// enter another prompt. Uploaded files remain host-owned if Send is cancelled.
     func cancelAttachmentUpload() { attachmentUploadTask?.cancel() }
 
-    private func attachmentPrompt(_ action: PromptAction, owner: Int) async throws -> String {
-        var text = action.text
+    /// The message a skill row actually sends, or `nil` when the draft is prose.
+    ///
+    /// `prompt.submit` never interprets a leading `/`, so a typed `/work fix the
+    /// leak` would reach the agent as literal text. The host expands it instead:
+    /// `command.dispatch` hands back the invocation body the agent reads, while
+    /// the transcript still shows the typed line, because the host projects the
+    /// invocation back over the stored message.
+    ///
+    /// Only a name this connection's catalog reported as a skill is dispatched,
+    /// and only a `skill` reply is used. Nothing else runs from here: the gateway
+    /// resolves quick, plugin and registry commands ahead of skills, and a quick
+    /// command can run a shell command on the host.
+    private func skillText(_ action: PromptAction, owner: Int) async throws -> String? {
+        guard action.mode.startsTurn,
+              let invocation = BotSlashCatalog.invocation(in: action.text),
+              SlashSkillFormatter.skill(named: invocation.name, in: slashSkills) != nil
+        else { return nil }
+        // The cached catalog is a snapshot of the host at connect time. A command
+        // added since then would shadow this name, so the decision is made against
+        // a fresh read instead — and the panel gets the newer skills for free. The
+        // last microseconds of the race cannot be closed from here: the gateway has
+        // no skill-only dispatch.
+        slashSkills = BotSlashCatalog.skills(from: try await request("commands.catalog", [:], owner: owner))
+        guard let skill = SlashSkillFormatter.skill(named: invocation.name, in: slashSkills) else {
+            throw BotFailure.unsupported
+        }
+        let reply = try await request("command.dispatch", [
+            "name": .string(skill.name), "arg": .string(invocation.argument),
+            "session_id": .string(action.runtime)
+        ], owner: owner)
+        // Asked for an expansion and did not get one: send nothing rather than
+        // fall back to prose the agent would only read literally.
+        guard reply["type"].text == "skill", let message = reply["message"].text,
+              !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw BotFailure.unsupported }
+        return message
+    }
+
+    private func attachmentPrompt(_ action: PromptAction, base: String, owner: Int) async throws -> String {
+        var text = base
         guard !action.attachmentIDs.isEmpty else { return text }
         guard attachments.items.count <= 8,
               attachments.items.reduce(0, { $0 + ($1.size ?? BotAttachmentDraft.maximumFileBytes) }) <= BotAttachmentDraft.maximumTotalBytes
@@ -821,6 +1035,7 @@ import Observation
 
     private func observe(_ event: BotJSON) {
         guard connectionState != .disconnected, runtime != nil else { return }
+        defer { syncLiveActivity() }
         if let request = BotServerRequest(event) {
             guard request.sessionID == runtime else { return }
             if serverRequests == nil { serverRequests = [] }
@@ -854,6 +1069,10 @@ import Observation
         }
         sequence = next
         let type = event["type"].text ?? ""
+        if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
+            "subagent.tool", "subagent.complete"].contains(type) {
+            delegatedWork.noteSubagentEvent()
+        }
         if ["session.info", "message.start", "message.complete", "session.control.update"].contains(type) {
             chatControls.refresh()
         }
@@ -932,6 +1151,7 @@ import Observation
 
     private func disconnected(_ error: Error) {
         chatControls.disconnect()
+        delegatedWork.disconnect()
         wire.close()
         refreshTask?.cancel(); refreshTask = nil
         // A stream request lives only in the stream, so a lost socket makes its
@@ -947,6 +1167,7 @@ import Observation
         default: shouldRetryConnection = false
         }
         errorMessage = shouldRetryConnection ? nil : failure.localizedDescription
+        syncLiveActivity()
         scheduleReconnect()
     }
 
@@ -982,6 +1203,7 @@ import Observation
 
     private func resetConnection() {
         chatControls.disconnect()
+        delegatedWork.disconnect()
         attachmentUploadTask?.cancel(); attachmentUploadTask = nil; isUploadingAttachments = false
         attachments.cancelImport()
         generation += 1; turnRevision += 1
@@ -990,5 +1212,6 @@ import Observation
         localOperation = false; submittingPrompt = nil
         streamRequest = nil; serverRequests = nil; answeringRequestID = nil
         connectionState = .disconnected; turn = .unknown
+        syncLiveActivity()
     }
 }

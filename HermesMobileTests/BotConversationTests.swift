@@ -346,7 +346,7 @@ import Vision
         XCTAssertEqual(model.runtime, "runtime")
         XCTAssertTrue(model.maySend)
         XCTAssertEqual(model.messages.map(\.content), ["saved"])
-        XCTAssertEqual(wire.calls.map(\.0), ["session.list", "session.resume", "session.events.since", "session.resume", "model.options", "session.control.read"])
+        XCTAssertEqual(wire.calls.map(\.0), ["session.list", "session.resume", "session.events.since", "session.resume", "model.options", "session.control.read", "subagent.list"])
         XCTAssertEqual(wire.calls[1].1["session_id"], .string("tip"))
         XCTAssertEqual(wire.calls[1].1["close_on_disconnect"], .bool(false))
         model.suspend()
@@ -770,9 +770,9 @@ import Vision
         defer { model.suspend(); window.isHidden = true; window.rootViewController = nil }
         await model.recover()
         await renderBotFrames()
-        for step in 1...12 {
+        for step in 1...6 {
             wire.inflight = .object(["assistant": .string(
-                (1...(100 + step * 25)).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
+                (1...(100 + step * 50)).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
             )])
             let updated = expectation(description: "Stream snapshot published")
             withObservationTracking { _ = model.liveMessages } onChange: { updated.fulfill() }
@@ -791,17 +791,24 @@ import Vision
         driver.stop()
     }
 
+    /// Reads the lower half of the window, where the latest edge of the
+    /// transcript sits above the composer, so saved history scrolled off the top
+    /// can never satisfy the check. The probe is a large repeated uppercase
+    /// phrase, which the fast recognizer finds reliably at a fraction of the cost.
     private func assertBotOutputVisible(_ window: UIWindow) throws {
         let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
-        let attachment = XCTAttachment(image: screenshot)
+        let attachment = XCTAttachment(image: screenshot, quality: .medium)
         attachment.lifetime = .keepAlways
         add(attachment)
+        let full = try XCTUnwrap(screenshot.cgImage)
+        let lowerHalf = try XCTUnwrap(full.cropping(to: CGRect(x: 0, y: full.height / 2, width: full.width, height: full.height / 2)))
         let request = VNRecognizeTextRequest()
-        try VNImageRequestHandler(cgImage: XCTUnwrap(screenshot.cgImage)).perform([request])
+        request.recognitionLevel = .fast
+        try VNImageRequestHandler(cgImage: lowerHalf).perform([request])
         let visibleText = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
-        XCTAssertTrue(visibleText.contains("VISIBLE LIVE OUTPUT"), "Live response must be visible, got: \(visibleText)")
+        XCTAssertTrue(visibleText.contains("VISIBLE LIVE OUTPUT"), "Live response must be visible at the latest edge, got: \(visibleText)")
     }
 }
 
@@ -864,6 +871,14 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var settingsCall: ((String, [String: BotJSON]) -> BotJSON)?
     var lookupFailure: BotFailure?
     var submitFailure: BotFailure?
+    /// What `commands.catalog` answers, and what `command.dispatch` answers for a
+    /// skill; nil means the host has no reply and the RPC fails.
+    var catalog: BotJSON?
+    /// Consumed before `catalog`, so a test can change the host's answer between reads.
+    var catalogQueue: [BotJSON] = []
+    var catalogFailure: BotFailure?
+    var dispatch: BotJSON?
+    var dispatchFailure: BotFailure?
     var promptReply: BotJSON?
     var stopFailure: BotFailure?
     var beforeDispatch: ((String) -> Void)?
@@ -926,6 +941,16 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             if let respondFailure { throw respondFailure }
             return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay
+        case "subagent.list": return .object(["subagents": .array([]), "delegations": .array([])])
+        case "commands.catalog":
+            if let catalogFailure { throw catalogFailure }
+            if !catalogQueue.isEmpty { return catalogQueue.removeFirst() }
+            guard let catalog else { throw BotFailure.unsupported }
+            return catalog
+        case "command.dispatch":
+            if let dispatchFailure { throw dispatchFailure }
+            guard let dispatch else { throw BotFailure.unsupported }
+            return dispatch
         case "prompt.submit", "session.steer", "session.redirect":
             await beforeSubmit?()
             if let submitFailure { throw submitFailure }

@@ -35,7 +35,7 @@ enum Endpoint {
     case renameProject
     case deleteProject
     case chatStart
-    case chatStream(streamID: String)
+    case chatStream(streamID: String, replayAfterSeq: Int? = nil)
     case chatCancel(streamID: String)
     case chatStreamStatus(streamID: String)
     case chatSteer
@@ -449,8 +449,16 @@ enum Endpoint {
             return items
         case let .sessionStatus(id):
             return [URLQueryItem(name: "session_id", value: id)]
-        case let .chatStream(streamID),
-            let .chatCancel(streamID),
+        case let .chatStream(streamID, replayAfterSeq):
+            var items = [URLQueryItem(name: "stream_id", value: streamID)]
+            // Opt-in reconnect: omitted on a live attach so the URL stays
+            // byte-identical. Negative cursors clamp to 0.
+            if let replayAfterSeq {
+                items.append(URLQueryItem(name: "replay", value: "1"))
+                items.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
+            }
+            return items
+        case let .chatCancel(streamID),
             let .chatStreamStatus(streamID):
             return [URLQueryItem(name: "stream_id", value: streamID)]
         case let .sessionYolo(sessionID):

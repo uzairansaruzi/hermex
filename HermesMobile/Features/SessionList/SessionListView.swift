@@ -17,6 +17,10 @@ struct SessionListView: View {
     private let openNextSharedImport: () -> Void
     @Binding private var pendingDeepLinkedSessionID: String?
     @Binding private var requestedNewChat: NewChatRequest?
+    /// The bot a deep link named. Non-nil flips this screen to the Bots inbox, which
+    /// resolves it against its live roster and clears it (#554).
+    @Binding private var pendingBotDestination: BotDestination?
+    @Binding private var pendingWebuiPush: WebuiPushDestination?
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
@@ -92,6 +96,8 @@ struct SessionListView: View {
         openNextSharedImport: @escaping () -> Void = {},
         pendingDeepLinkedSessionID: Binding<String?> = .constant(nil),
         requestedNewChat: Binding<NewChatRequest?> = .constant(nil),
+        pendingBotDestination: Binding<BotDestination?> = .constant(nil),
+        pendingWebuiPush: Binding<WebuiPushDestination?> = .constant(nil),
         draftStore: ChatDraftStore? = nil
     ) {
         self.authManager = authManager
@@ -103,6 +109,8 @@ struct SessionListView: View {
         self.draftStore = draftStore ?? .shared
         _pendingDeepLinkedSessionID = pendingDeepLinkedSessionID
         _requestedNewChat = requestedNewChat
+        _pendingBotDestination = pendingBotDestination
+        _pendingWebuiPush = pendingWebuiPush
         _viewModel = State(initialValue: SessionListViewModel(server: server))
         _navigationState = State(
             initialValue: SessionNavigationState(
@@ -120,7 +128,7 @@ struct SessionListView: View {
     }
 
     var body: some View {
-        navigationContainer
+        routedNavigationContainer
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background {
                     wasBackgrounded = true
@@ -282,6 +290,9 @@ struct SessionListView: View {
                 // destination and leaves the stored selection alone.
                 restoreLastSelectedSessionIfNeeded()
             }
+            .task(id: pendingWebuiPush) {
+                await openPendingWebuiPush()
+            }
             .task(id: remoteSearchTaskID) {
                 await viewModel.searchSessions(query: searchText, content: true, depth: 5)
             }
@@ -397,6 +408,26 @@ struct SessionListView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// The navigation container plus bot-link routing. Kept off `body`'s modifier
+    /// chain, which is long enough that adding to it exceeds the type-checker's
+    /// budget on the CI toolchain.
+    private var routedNavigationContainer: some View {
+        navigationContainer
+            // Cold launch delivers the link before this view appears; a warm one after.
+            .task { showBotsForPendingDestination() }
+            .onChange(of: pendingBotDestination) { showBotsForPendingDestination() }
+    }
+
+    /// A bot deep link opens this server's Bots inbox, which owns resolving it. Only
+    /// this view's own server routes: a link for another server switches servers
+    /// first, which rebuilds this view against it (#554).
+    private func showBotsForPendingDestination() {
+        guard isBotModeEnabled, let destination = pendingBotDestination, destination.server == server else {
+            return
+        }
+        showsBots = true
+    }
+
     private var showsBotsInbox: Bool {
         BotModeGate.showsBotsInbox(isEnabled: isBotModeEnabled, userPickedBots: showsBots)
     }
@@ -405,7 +436,9 @@ struct SessionListView: View {
     private var navigationContainer: some View {
         if showsBotsInbox {
             NavigationStack {
-                BotsInboxView(server: server) { showsBots = false }
+                BotsInboxView(server: server, pendingDestination: $pendingBotDestination) {
+                    showsBots = false
+                }
             }
         } else if horizontalSizeClass == .regular {
             NavigationSplitView {
@@ -1317,6 +1350,34 @@ struct SessionListView: View {
         didRoutePendingSharedImport(reservation)
     }
 
+    /// A push is resolved only on its server and against the live endpoint, so a
+    /// stale cache cannot open a deleted session. The task belongs to this view;
+    /// another tap, server switch or manual selection invalidates its result.
+    private func openPendingWebuiPush() async {
+        guard let destination = pendingWebuiPush, destination.server == server,
+              authManager.state == .loggedIn(server: server), !Task.isCancelled else { return }
+        showsBots = false
+        sessionOpenTask?.cancel()
+        viewModel.invalidateSessionOpening()
+        navigationState.openSessionList()
+        persistLastSelectedSession()
+        let revision = navigationState.rootRevision
+        let session = await viewModel.loadSessionForDeepLink(
+            id: destination.sessionID, modelContext: modelContext, isPush: true)
+        guard !Task.isCancelled, pendingWebuiPush == destination,
+              authManager.state == .loggedIn(server: server) else { return }
+        guard navigationState.rootRevision == revision else {
+            pendingWebuiPush = nil
+            return
+        }
+        handleLastError()
+        // An expired cookie moves the app to sign-in. Keep the tap until the
+        // rebuilt, signed-in session list can retry its owning server's lookup.
+        guard authManager.state == .loggedIn(server: server) else { return }
+        pendingWebuiPush = nil
+        if let session { selectSession(session) }
+    }
+
     /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before
     /// `restoreLastSelectedSessionIfNeeded()` — otherwise the restore races the deep
     /// link's network load and wins with the previous session.
@@ -1428,6 +1489,7 @@ struct SessionListView: View {
     }
 
     private func restoreLastSelectedSessionIfNeeded() {
+        guard pendingWebuiPush == nil else { return }
         navigationState.restoreIfNeeded(
             from: viewModel.sessions,
             clearsMissingSelection: viewModel.sessionLoadError == nil,

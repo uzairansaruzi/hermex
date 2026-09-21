@@ -5,32 +5,39 @@ import SwiftUI
 struct BotArtifactMessageView: View {
     let message: ChatMessage
     let model: BotConversation
+    /// The live turn's reply. Selection stays off it: the document would be
+    /// rebuilt on every snapshot, and there is nothing settled to select yet.
+    var isLive = false
+    @State private var responseIsVisible = false
     @State private var preview: TranscriptMediaPreviewItem?
     @State private var previewContext: BotArtifactContext?
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     var body: some View {
         Group {
-            if message.role == "user" {
+            if let completion = BotDelegationCompletion(message) {
+                BotDelegationCompletionCard(completion: completion)
+            } else if message.role == "user" {
                 MessageBubbleView(
                     message: message,
                     transcriptMediaCacheNamespace: "\(model.server.absoluteString)|bot:\(model.connection.id.uuidString)",
+                    contextMenuActions: actions,
                     textOnly: true
                 )
+            } else if isLive {
+                assistantContent
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(TranscriptMediaParser.segments(in: message.content ?? "", includesLocalFileLinks: true).enumerated()), id: \.offset) { _, segment in
-                        switch segment {
-                        case .text(let text):
-                            MarkdownRenderer(content: text)
-                        case .media(let reference):
-                            BotArtifactRow(reference: reference, model: model) {
-                                previewContext = model.artifactContext
-                                preview = TranscriptMediaPreviewItem(reference: reference)
-                            }
-                        }
-                    }
+                ResponseTextSelection(
+                    identity: message.content ?? message.id,
+                    collectsGlyphs: responseIsVisible,
+                    onAskHermex: { model.quotePassage($0) }
+                ) {
+                    assistantContent
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: Bool.self) { geometry in
+                    guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+                    return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+                } action: { responseIsVisible = $0 }
             }
         }
         .environment(\.openURL, OpenURLAction { url in
@@ -48,6 +55,30 @@ struct BotArtifactMessageView: View {
             }
         }
         .onChange(of: model.artifactContext) { _, _ in preview = nil; previewContext = nil }
+    }
+
+    /// Attached to the message content, not the row, so the gutter beside a
+    /// user bubble stays inert.
+    private var assistantContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(TranscriptMediaParser.segments(in: message.content ?? "", includesLocalFileLinks: true).enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case .text(let text):
+                    MarkdownRenderer(content: text)
+                case .media(let reference):
+                    BotArtifactRow(reference: reference, model: model) {
+                        previewContext = model.artifactContext
+                        preview = TranscriptMediaPreviewItem(reference: reference)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .chatMessageContextMenu(actions, longPress: isLive)
+    }
+
+    private var actions: [ChatMessageActionItem] {
+        BotMessageActions.items(copyText: message.content, isHapticsEnabled: isHapticsEnabled)
     }
 }
 

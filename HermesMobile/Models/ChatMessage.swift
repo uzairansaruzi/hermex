@@ -16,6 +16,10 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     let contentParts: [JSONValue]?
     let reasoning: String?
     let attachments: [MessageAttachment]?
+    /// Display-only server semantics. Direct Bot snapshots use this to keep
+    /// durable system deliveries from impersonating user-authored messages.
+    let displayKind: String?
+    let displayMetadata: [String: JSONValue]?
     let turnTps: Double?
     /// Server-measured wall-clock seconds for the whole turn, set on its final
     /// assistant message (`_turnDuration`). Absent on older transcripts.
@@ -33,6 +37,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         contentParts: [JSONValue]? = nil,
         reasoning: String? = nil,
         attachments: [MessageAttachment]? = nil,
+        displayKind: String? = nil,
+        displayMetadata: [String: JSONValue]? = nil,
         turnTps: Double? = nil,
         turnDuration: Double? = nil
     ) {
@@ -47,6 +53,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         self.contentParts = contentParts
         self.reasoning = reasoning
         self.attachments = attachments
+        self.displayKind = displayKind
+        self.displayMetadata = displayMetadata
         self.turnTps = turnTps
         self.turnDuration = turnDuration
     }
@@ -62,6 +70,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         case toolCalls
         case reasoning
         case attachments
+        case displayKind
+        case displayMetadata
         case turnTps = "_turnTps"
         case turnDuration = "_turnDuration"
         case underscoredTimestamp = "_ts"
@@ -83,6 +93,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         reasoning = container.decodeLossyStringIfPresent(forKey: .reasoning)
         let decodedAttachments = Self.decodeAttachmentsTolerantly(from: container)
         attachments = Self.attachments(decodedAttachments, enrichedByMarkerIn: content)
+        displayKind = container.decodeLossyStringIfPresent(forKey: .displayKind)
+        displayMetadata = try? container.decodeIfPresent([String: JSONValue].self, forKey: .displayMetadata)
         turnTps = container.decodeLossyDoubleIfPresent(forKey: .turnTps)
         turnDuration = container.decodeLossyDoubleIfPresent(forKey: .turnDuration)
     }
@@ -258,10 +270,6 @@ enum TranscriptTurnClassifier {
         return keysByMessageID
     }
 
-    static func assistantTurnKeysByMessageID(_ messages: [ChatMessage]) -> [String: String] {
-        assistantTurnKeysByAnchorID(messages)
-    }
-
     static func assistantAnchorID(
         forRawIndex rawIndex: Int,
         in messages: [ChatMessage],
@@ -299,10 +307,6 @@ enum TranscriptTurnClassifier {
             guard message.role == "assistant" else { return nil }
             return anchorID(for: message, at: startIndex + offset, messageOffset: messageOffset)
         }
-    }
-
-    static func currentTurnAssistantMessageIDs(in messages: [ChatMessage]) -> [String] {
-        currentTurnAssistantAnchorIDs(in: messages)
     }
 
     private static func previousUserBoundaryIndex(before rawIndex: Int, in messages: [ChatMessage]) -> Int? {
