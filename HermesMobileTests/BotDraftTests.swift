@@ -5,6 +5,72 @@ import XCTest
     private let one = URL(string: "https://one.example")!
     private let two = URL(string: "https://two.example")!
 
+    func testVoiceDraftInsertsAtTheCaretAndPersists() async throws {
+        let persistence = BotMemoryDrafts()
+        let drafts = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(60))
+        let key = ChatDraftKey.bot(server: one, connectionID: UUID(), profile: "writer")
+        let insertion = BotVoiceDraftInsertion(
+            draft: "Please review this",
+            selection: NSRange(location: 6, length: 0)
+        )
+
+        let result = insertion.applying(transcript: "carefully")
+        drafts.setDraft(result.draft, for: key)
+        try await drafts.flush()
+        let persisted = await persistence.load()
+
+        XCTAssertEqual(result.draft, "Please carefully review this")
+        XCTAssertEqual(result.selection, NSRange(location: 16, length: 0))
+        XCTAssertEqual(persisted[key]?.text, result.draft)
+    }
+
+    func testVoiceDraftPartialTranscriptsReplaceInsteadOfAccumulate() {
+        let insertion = BotVoiceDraftInsertion(
+            draft: "Check this, please.",
+            selection: NSRange(location: 10, length: 0)
+        )
+
+        XCTAssertEqual(
+            insertion.applying(transcript: "today").draft,
+            "Check this today, please."
+        )
+        XCTAssertEqual(
+            insertion.applying(transcript: "today before lunch").draft,
+            "Check this today before lunch, please."
+        )
+    }
+
+    func testFocusedVoiceDraftUsesTheEditorsUTF16Caret() {
+        let insertion = BotVoiceDraftInsertion(
+            draft: "Hi 👋 there",
+            selection: NSRange(location: 5, length: 0)
+        )
+
+        let result = insertion.applying(transcript: "friend")
+
+        XCTAssertEqual(result.draft, "Hi 👋 friend there")
+        XCTAssertEqual(result.selection, NSRange(location: 12, length: 0))
+    }
+
+    func testUnfocusedVoiceDraftAppendsWithoutAVisibleCaret() {
+        XCTAssertEqual(
+            BotVoiceInputPolicy.insertionRange(
+                in: "Keep this",
+                selection: NSRange(location: 0, length: 0),
+                isFocused: false
+            ),
+            NSRange(location: 9, length: 0)
+        )
+    }
+
+    func testPermissionFailureLeavesBotVoiceInputAvailableForAnotherTap() {
+        XCTAssertFalse(BotVoiceInputPolicy.isDisabled(
+            isListening: false,
+            isRequestingPermission: false,
+            mayEditDraft: true
+        ))
+    }
+
     func testDiskRoundTripSeparatesServersConnectionsProfilesAndWebui() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

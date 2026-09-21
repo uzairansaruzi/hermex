@@ -13,6 +13,7 @@ struct BotChatComposerView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
@@ -25,6 +26,7 @@ struct BotChatComposerView: View {
     @State private var inputHeight: CGFloat = 22
     @State private var measuredHeight: CGFloat = 0
     @State private var keyboardIsVisible = false
+    @State private var voiceInput = ComposerVoiceInputController()
 
     @State private var settingsPresented = false
     @State private var mode = BotPromptMode.send
@@ -77,6 +79,9 @@ struct BotChatComposerView: View {
                     Text("Adding attachment…").font(AppFont.footnote()).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
                 }
+                if let voiceStatus {
+                    ComposerVoiceStatusView(status: voiceStatus)
+                }
 
                 if isFocused, model.mayEditDraft { autocomplete }
 
@@ -90,6 +95,7 @@ struct BotChatComposerView: View {
                             BotComposerSettings(settings: model.chatControls, preparePresentation: {
                                 settingsPresented = true; isFocused = false
                             }, dismissPresentation: { settingsPresented = false })
+                            voiceControlButton
                         }
                         promptButtons
                     }
@@ -139,7 +145,13 @@ struct BotChatComposerView: View {
             shouldRestoreFocusAfterPicker = false
             if model.mayEditDraft { isFocused = true }
         }
-        .onDisappear { shouldRestoreFocusAfterPicker = false }
+        .onDisappear {
+            shouldRestoreFocusAfterPicker = false
+            voiceInput.stopBeforeSubmittingDraft()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active { voiceInput.stopBeforeSubmittingDraft() }
+        }
         // Ask Hermex lands the passage here, so the keyboard should already be
         // up for whatever the user wants to ask about it.
         .onChange(of: model.quotes.count) { previous, current in
@@ -259,7 +271,10 @@ struct BotChatComposerView: View {
                 )
                 if !isExpanded {
                     ComposerAttachmentPillPreview(attachments: model.attachments.items, onPreview: { preview = $0 })
-                    if !showsToolbar { if showsStop { stopButton } else { actionButton } }
+                    if !showsToolbar {
+                        voiceControlButton
+                        if showsStop { stopButton } else { actionButton }
+                    }
                 }
             }
             .padding(.trailing, isExpanded ? 0 : ChatComposerMetrics.pillInset)
@@ -329,6 +344,74 @@ struct BotChatComposerView: View {
         }
     }
 
+    private var voiceControlButton: some View {
+        ComposerVoiceControlButton(
+            isListening: voiceInput.isListening,
+            isDisabled: isVoiceInputDisabled,
+            color: Color(.secondaryLabel),
+            isRecordingVoiceNote: false,
+            supportsVoiceNotes: false,
+            onTap: toggleVoiceInput,
+            onRecordingStart: {},
+            onRecordingDragChanged: { _ in },
+            onRecordingEnd: { _ in }
+        )
+    }
+
+    private var isVoiceInputDisabled: Bool {
+        BotVoiceInputPolicy.isDisabled(
+            isListening: voiceInput.isListening,
+            isRequestingPermission: voiceInput.isRequestingPermission,
+            mayEditDraft: model.mayEditDraft
+        )
+    }
+
+    private var voiceStatus: ComposerVoiceStatus? {
+        switch voiceInput.state {
+        case .listening:
+            return ComposerVoiceStatus(text: String(localized: "Listening..."), systemImage: "waveform", isError: false)
+        case .serverListening:
+            return ComposerVoiceStatus(text: String(localized: "Recording..."), systemImage: "mic.fill", isError: false)
+        case .transcribing:
+            return ComposerVoiceStatus(text: String(localized: "Transcribing..."), systemImage: "waveform", isError: false)
+        case .requestingPermission:
+            return ComposerVoiceStatus(
+                text: String(localized: "Requesting voice permissions..."),
+                systemImage: "mic.badge.plus",
+                isError: false
+            )
+        case .idle:
+            break
+        }
+
+        guard let errorMessage = voiceInput.errorMessage else { return nil }
+        return ComposerVoiceStatus(
+            text: errorMessage,
+            systemImage: "exclamationmark.triangle",
+            isError: true
+        )
+    }
+
+    @MainActor
+    private func toggleVoiceInput() {
+        let insertionRange = BotVoiceInputPolicy.insertionRange(
+            in: model.draft,
+            selection: selection.range,
+            isFocused: isFocused
+        )
+        let insertion = BotVoiceDraftInsertion(draft: model.draft, selection: insertionRange)
+        voiceInput.apiClient = nil
+        voiceInput.providerPreference = .onDeviceOnly
+        voiceInput.locale = .current
+        Task {
+            await voiceInput.toggle(currentDraft: "") { transcript in
+                let result = insertion.applying(transcript: transcript)
+                model.editDraft(result.draft)
+                selection = selection.moved(to: result.selection)
+            }
+        }
+    }
+
     private var stopButton: some View {
         let colors = ChatComposerActionAppearance(
             isStop: true, isDisabled: !model.mayStop, colorScheme: colorScheme,
@@ -362,9 +445,73 @@ struct BotChatComposerView: View {
     }
 
     private func send() {
+        if voiceInput.isListening { voiceInput.stopBeforeSubmittingDraft() }
         guard let action = model.preparePrompt(mode) else { return }
         if mode == .redirect { redirectAction = action }
         else { Task { await model.submit(action) } }
+    }
+}
+
+/// One dictation run replaces the selection that existed when the mic was tapped.
+/// Every partial transcript is applied to that same base draft, so speech updates
+/// replace each other instead of accumulating duplicate words.
+struct BotVoiceDraftInsertion {
+    struct Result: Equatable {
+        let draft: String
+        let selection: NSRange
+    }
+
+    private let draft: NSString
+    private let range: NSRange
+
+    init(draft: String, selection: NSRange) {
+        self.draft = draft as NSString
+        let location = min(max(selection.location, 0), self.draft.length)
+        let length = min(max(selection.length, 0), self.draft.length - location)
+        range = NSRange(location: location, length: length)
+    }
+
+    func applying(transcript: String) -> Result {
+        let transcript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else {
+            return Result(draft: draft as String, selection: range)
+        }
+
+        let before = draft.substring(to: range.location)
+        let after = draft.substring(from: range.upperBound)
+        let leadingSpace = Self.needsLeadingSpace(before: before, transcript: transcript) ? " " : ""
+        let trailingSpace = Self.needsTrailingSpace(transcript: transcript, after: after) ? " " : ""
+        let replacement = leadingSpace + transcript + trailingSpace
+        let updated = draft.replacingCharacters(in: range, with: replacement)
+        let caret = range.location + (replacement as NSString).length
+        return Result(draft: updated, selection: NSRange(location: caret, length: 0))
+    }
+
+    private static func needsLeadingSpace(before: String, transcript: String) -> Bool {
+        guard let left = before.unicodeScalars.last, let right = transcript.unicodeScalars.first else { return false }
+        return !CharacterSet.whitespacesAndNewlines.contains(left)
+            && !CharacterSet.whitespacesAndNewlines.contains(right)
+            && !CharacterSet(charactersIn: "([{“‘").contains(left)
+    }
+
+    private static func needsTrailingSpace(transcript: String, after: String) -> Bool {
+        guard let left = transcript.unicodeScalars.last, let right = after.unicodeScalars.first else { return false }
+        return !CharacterSet.whitespacesAndNewlines.contains(left)
+            && !CharacterSet.whitespacesAndNewlines.contains(right)
+            && !CharacterSet.punctuationCharacters.contains(right)
+    }
+}
+
+enum BotVoiceInputPolicy {
+    static func isDisabled(isListening: Bool, isRequestingPermission: Bool, mayEditDraft: Bool) -> Bool {
+        if isListening { return false }
+        return !mayEditDraft || isRequestingPermission
+    }
+
+    /// A collapsed editor has no visible caret, so dictation follows Sessions and
+    /// appends. Once focused, the editor's UTF-16 selection is authoritative.
+    static func insertionRange(in draft: String, selection: NSRange, isFocused: Bool) -> NSRange {
+        isFocused ? selection : NSRange(location: (draft as NSString).length, length: 0)
     }
 }
 

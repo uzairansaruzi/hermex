@@ -29,6 +29,7 @@ struct ComposerVoiceControlButton: View {
     let isDisabled: Bool
     let color: Color
     let isRecordingVoiceNote: Bool
+    var supportsVoiceNotes = true
     let onTap: () -> Void
     let onRecordingStart: () -> Void
     let onRecordingDragChanged: (CGFloat) -> Void
@@ -38,7 +39,33 @@ struct ComposerVoiceControlButton: View {
     @State private var didTriggerRecording = false
     @State private var holdWorkItem: DispatchWorkItem?
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if supportsVoiceNotes {
+            label
+                .gesture(pressGesture)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction {
+                    // VoiceOver synthesizes an activation rather than a real touch,
+                    // so the gesture's tap path never fires for it.
+                    if !isDisabled { onTap() }
+                }
+                .accessibilityAction(named: Text("Record voice note")) {
+                    // VoiceOver can't hold-to-talk, so this starts recording; the
+                    // recording bar then exposes "Stop and send" / "Cancel" actions.
+                    onRecordingStart()
+                }
+        } else {
+            Button {
+                onTap()
+            } label: {
+                label
+            }
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+        }
+    }
+
+    private var label: some View {
         Image(systemName: symbolName)
             .font(.system(size: 18, weight: .regular))
             .frame(width: 44, height: 44)
@@ -47,21 +74,7 @@ struct ComposerVoiceControlButton: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
             .contentShape(Circle())
             .opacity(isDisabled && !isRecordingVoiceNote ? 0.4 : 1)
-            .gesture(pressGesture)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction {
-                // Default VoiceOver activation (double-tap) toggles dictation.
-                // VoiceOver synthesizes an activation rather than a real touch, so
-                // the gesture's tap path never fires for it; without this the
-                // dictation toggle is unreachable for VoiceOver users.
-                if !isDisabled { onTap() }
-            }
-            .accessibilityAction(named: Text("Record voice note")) {
-                // VoiceOver can't hold-to-talk, so this starts recording; the
-                // recording bar then exposes "Stop and send" / "Cancel" actions.
-                onRecordingStart()
-            }
     }
 
     private var symbolName: String {

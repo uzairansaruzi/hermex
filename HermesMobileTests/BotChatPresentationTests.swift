@@ -282,6 +282,21 @@ import XCTest
         XCTAssertTrue(text.localizedCaseInsensitiveContains("high"), text)
     }
 
+    func testBotComposerExposesOnDeviceVoiceInput() async throws {
+        let wire = BotFixtureWire()
+        let model = make(wire)
+        await model.recover()
+        let window = try show(VStack {
+            Spacer()
+            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
+        })
+        defer { close(window); model.suspend() }
+
+        await renderFrames()
+
+        XCTAssertTrue(accessibilityLabels(in: window).contains("Voice input"))
+    }
+
     func testLatestArrowLayoutAboveAndAtTheBottom() async throws {
         let wire = BotFixtureWire()
         wire.history = (0..<30).map { index in
@@ -435,7 +450,7 @@ import XCTest
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.isKeyboardSendEnabled)
         let busy = try screenshot(window, name: "480-busy-steer")
-        XCTAssertTrue(busy.contains("Steer"), busy)
+        XCTAssertTrue(accessibilityLabels(in: window).contains("Message action: Steer"), busy)
         XCTAssertTrue(busy.contains("Focus on reconnect"), busy)
         wire.running = false
         await model.recover()
