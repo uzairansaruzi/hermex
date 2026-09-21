@@ -21,7 +21,7 @@ import XCTest
 
     private func account(_ server: URL) -> ServerAccount {
         ServerAccount(id: server.absoluteString, urlString: server.absoluteString, displayName: "",
-                      initials: "", headerLogoColorHex: HeaderLogoColor.defaultHex, customHeadersRef: nil,
+                      initials: "", headerLogoColorHex: HeaderLogoColor.defaultHex,
                       createdAt: Date(timeIntervalSince1970: 0), updatedAt: Date(timeIntervalSince1970: 0))
     }
 

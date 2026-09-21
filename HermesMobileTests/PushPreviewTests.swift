@@ -150,7 +150,7 @@ import XCTest
         let destination = WebuiPushDestination(server: server, sessionID: "s1")
         let account = ServerAccount(id: server.absoluteString, urlString: server.absoluteString,
                                     displayName: "", initials: "", headerLogoColorHex: "",
-                                    customHeadersRef: nil, createdAt: .now, updatedAt: .now)
+                                    createdAt: .now, updatedAt: .now)
         XCTAssertEqual(destination.route(state: .loggedIn(server: other), servers: [account]), .switchServer(account))
         XCTAssertEqual(destination.route(state: .loggedOut(server: other), servers: [account]), .switchServer(account))
         XCTAssertEqual(destination.route(state: .loggedOut(server: server), servers: [account]), .waitForSignIn)
