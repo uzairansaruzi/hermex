@@ -241,8 +241,7 @@ private struct ComposerTextView: UIViewRepresentable {
         // trailing edge. `.natural` keeps the LTR default untouched, and per-run
         // bidi still resolves mixed Arabic+Latin/URL content within the line.
         let isRTL = context.environment.layoutDirection == .rightToLeft
-        textView.semanticContentAttribute = isRTL ? .forceRightToLeft : .unspecified
-        textView.textAlignment = isRTL ? .right : .natural
+        textView.applyPresentationStyle(isRightToLeft: isRTL, isDisabled: isDisabled)
         textView.acceptsAttachments = acceptsAttachments
         textView.accessibilityLabel = accessibilityLabel
         let pasteTypes = acceptsAttachments
@@ -253,7 +252,6 @@ private struct ComposerTextView: UIViewRepresentable {
         }
         context.coordinator.acceptsAttachments = acceptsAttachments
         context.coordinator.syncEditing(for: textView, isDisabled: isDisabled)
-        textView.textColor = isDisabled ? .secondaryLabel : .label
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
         textView.onKeyboardSend = onKeyboardSend
         textView.onPasteFileProviders = onPasteFileProviders

@@ -112,6 +112,27 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
     }
 
+    /// Applies the SwiftUI-owned direction and enabled appearance without
+    /// rewriting text attributes on every representable update. A redundant
+    /// alignment or colour assignment invalidates UITextView layout and can
+    /// reveal the caret after the user has manually scrolled elsewhere.
+    func applyPresentationStyle(isRightToLeft: Bool, isDisabled: Bool) {
+        let semanticAttribute: UISemanticContentAttribute = isRightToLeft ? .forceRightToLeft : .unspecified
+        if semanticContentAttribute != semanticAttribute {
+            semanticContentAttribute = semanticAttribute
+        }
+
+        let alignment: NSTextAlignment = isRightToLeft ? .right : .natural
+        if textAlignment != alignment {
+            textAlignment = alignment
+        }
+
+        let color: UIColor = isDisabled ? .secondaryLabel : .label
+        if textColor != color {
+            textColor = color
+        }
+    }
+
     /// UIKit may place a caret on the zero-source quote prefix after a chip tap.
     /// Map it back through draft coordinates so typing always starts after the
     /// quote metadata.

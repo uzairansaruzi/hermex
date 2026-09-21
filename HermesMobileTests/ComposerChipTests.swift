@@ -639,6 +639,48 @@ final class ComposerChipGestureTests: XCTestCase {
     }
 }
 
+@MainActor
+final class ComposerChipPresentationTests: XCTestCase {
+    func testRedundantPresentationUpdateDoesNotEditTextStorageOrMoveScroll() {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 160))
+        textView.applyPresentationStyle(isRightToLeft: false, isDisabled: false)
+        textView.replaceDocument(with: Array(repeating: "A long draft line", count: 30).joined(separator: "\n"))
+        textView.layoutIfNeeded()
+        textView.contentOffset = CGPoint(x: 0, y: 120)
+
+        let editObserver = TextStorageEditObserver()
+        textView.textStorage.delegate = editObserver
+        textView.applyPresentationStyle(isRightToLeft: false, isDisabled: false)
+        textView.layoutIfNeeded()
+
+        XCTAssertEqual(editObserver.processedEditCount, 0)
+        XCTAssertEqual(textView.contentOffset.y, 120, accuracy: 0.001)
+    }
+
+    func testPresentationUpdateStillAppliesChangedDirectionAndDisabledColor() {
+        let textView = ComposerChipTextView()
+
+        textView.applyPresentationStyle(isRightToLeft: true, isDisabled: true)
+
+        XCTAssertEqual(textView.semanticContentAttribute, .forceRightToLeft)
+        XCTAssertEqual(textView.textAlignment, .right)
+        XCTAssertEqual(textView.textColor, .secondaryLabel)
+    }
+}
+
+private final class TextStorageEditObserver: NSObject, NSTextStorageDelegate {
+    private(set) var processedEditCount = 0
+
+    func textStorage(
+        _ textStorage: NSTextStorage,
+        didProcessEditing editedMask: NSTextStorage.EditActions,
+        range editedRange: NSRange,
+        changeInLength delta: Int
+    ) {
+        processedEditCount += 1
+    }
+}
+
 final class ComposerDropRouteTests: XCTestCase {
     func testRoutesAMixOfFilesAndImages() throws {
         let route = try XCTUnwrap(
