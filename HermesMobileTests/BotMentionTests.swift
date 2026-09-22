@@ -144,7 +144,8 @@ final class BotMentionTests: XCTestCase {
             wire.inflight = .object(["user": .string(sent)])
             await model.recover()
             XCTAssertEqual(model.messages.first?.content, original)
-            XCTAssertEqual(model.liveMessages.first?.content, original)
+            // History already lists the prompt, so the live row yields to it.
+            XCTAssertTrue(model.liveMessages.isEmpty)
             model.suspend()
         }
     }

@@ -605,6 +605,24 @@ import Vision
         return .object(object)
     }
 
+    /// A host that lists the prompt in history while it is still in flight must
+    /// not get a second bubble; the live prompt row only appears when history
+    /// has not caught up.
+    func testInFlightPromptAlreadyInHistoryDrawsOnce() async {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.history = [.object(["role": .string("assistant"), "text": .string("saved")]),
+                        .object(["role": .string("user"), "text": .string("Tell me story")])]
+        wire.inflight = .object(["user": .string("Tell me story"), "assistant": .string("Once")])
+        let model = make(wire); await model.recover()
+        XCTAssertEqual(model.messages.map(\.content), ["saved", "Tell me story"])
+        XCTAssertEqual(model.liveMessages.map(\.content), ["Once"], "the settled row already shows the prompt")
+
+        wire.history = [.object(["role": .string("assistant"), "text": .string("saved")])]
+        await model.recover()
+        XCTAssertEqual(model.liveMessages.map(\.content), ["Tell me story", "Once"], "history behind: the live row fills the gap")
+        model.suspend()
+    }
+
     func testLongResponseInterleavesToolEventsThenSettlesWithoutDuplicateRows() async {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover()
