@@ -366,10 +366,7 @@ final class ChatStreamCoordinator {
                 seedActiveRunStart(runStartedAt)
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 isConnectionSuspended = true
-                let didRestoreSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
-                if preparation.activeStreamIDBeforeLoad != streamID {
-                    hasInMemorySnapshotForActiveStream = didRestoreSnapshot
-                }
+                restoreLoadedStreamSnapshot(streamID: streamID, preparation: preparation)
             } else {
                 activeStreamID = nil
                 hasInMemorySnapshotForActiveStream = false
@@ -384,10 +381,7 @@ final class ChatStreamCoordinator {
                 activeStreamID = streamID
                 seedActiveRunStart(runStartedAt)
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
-                let didRestoreSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
-                if preparation.activeStreamIDBeforeLoad != streamID {
-                    hasInMemorySnapshotForActiveStream = didRestoreSnapshot
-                }
+                restoreLoadedStreamSnapshot(streamID: streamID, preparation: preparation)
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                     delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 }
@@ -1199,6 +1193,19 @@ final class ChatStreamCoordinator {
             streamID: streamID,
             startedAt: activeRunStartedAt ?? Date()
         )
+    }
+
+    /// Restores `streamID`'s snapshot while a session load adopts it. Adopting a
+    /// different stream first drops the previous stream's resume cursor, so its
+    /// seq is never sent as `after_seq` for the new run (#599).
+    private func restoreLoadedStreamSnapshot(streamID: String, preparation: ChatStreamLoadPreparation) {
+        guard preparation.activeStreamIDBeforeLoad != streamID else {
+            restoreSnapshotIfAvailable(streamID: streamID)
+            return
+        }
+
+        lastEventID = nil
+        hasInMemorySnapshotForActiveStream = restoreSnapshotIfAvailable(streamID: streamID)
     }
 
     @discardableResult

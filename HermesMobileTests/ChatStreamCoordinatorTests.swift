@@ -1596,6 +1596,43 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertTrue(coordinator.isReplayConnection)
     }
 
+    /// #599 review: a reload that adopts a different live stream must not resume
+    /// it from the previous stream's seq.
+    @MainActor
+    func testSessionLoadAdoptingNewStreamDropsPreviousStreamCursor() async throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            return apiTestJSONResponse(
+                #"{"active": true, "stream_id": "stream-new", "replay_available": true}"#,
+                for: request
+            )
+        }
+        delegate.onLoadMessages = {
+            let preparation = coordinator.prepareForSessionLoad()
+            coordinator.reconcileSessionLoad(
+                loadedActiveStreamID: "stream-new",
+                preparation: preparation,
+                usedCacheFallback: false
+            )
+        }
+
+        coordinator.start(streamID: "stream-old")
+        streamClient.emit(.token("Old answer."), lastEventID: "stream-old:500")
+        coordinator.suspendActiveStreamConnection()
+        await delegate.onLoadMessages?()
+
+        XCTAssertNil(coordinator.lastEventID)
+
+        await coordinator.reconnectIfNeeded()
+
+        let resumedURL = try XCTUnwrap(streamClient.startedURLs.last)
+        let queryItems = URLComponents(url: resumedURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(queryItems.first(where: { $0.name == "stream_id" })?.value, "stream-new")
+        XCTAssertEqual(queryItems.first(where: { $0.name == "after_seq" })?.value, "0")
+    }
+
     @MainActor
     func testCancelDoesNotFinishReplacementStreamWhenResponseReturnsLate() async throws {
         let cancelRequestStarted = expectation(description: "cancel request started")
