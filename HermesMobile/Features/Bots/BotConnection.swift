@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 struct BotConnection: Codable, Equatable, Identifiable {
     let id: UUID
@@ -14,25 +15,54 @@ struct BotConnection: Codable, Equatable, Identifiable {
     /// `HERMES_AGENT_TESTED_SHA`; `BotConnectionVersionTests` fails when they drift.
     static let testedHermesVersion = "0.21.2"
 
-    /// One-line note for a host running a release other than the tested one. Nil when
-    /// the version matches or was never reported: the contract is validated just in
-    /// time by each RPC, so a mismatch informs the user and never blocks login.
-    var untestedVersionNote: String? {
-        guard let hermesVersion, hermesVersion != Self.testedHermesVersion else { return nil }
-        return String(localized: "Untested Hermes version \(hermesVersion). Hermex was tested with \(Self.testedHermesVersion); some features may not work.")
-    }
-
     static func address(_ text: String) throws -> URL {
-        guard var parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !value.contains(where: \.isWhitespace) else { throw BotFailure.invalidAddress }
+        let hasScheme = value.contains("://")
+        if !hasScheme {
+            // A bare IPv6 literal needs brackets; bracketed literals may include a port.
+            if IPv6Address(value) != nil { value = "[\(value)]" }
+            value = "https://" + value
+        }
+        guard var parts = URLComponents(string: value),
               ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
               let host = parts.host, !host.isEmpty,
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
-              parts.path.isEmpty || parts.path == "/" else { throw BotFailure.invalidAddress }
+              parts.path.isEmpty || parts.path == "/",
+              parts.port.map({ (1...65535).contains($0) }) ?? true else { throw BotFailure.invalidAddress }
+        let plainHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard !plainHost.allSatisfy({ $0.isNumber || $0 == "." }) || IPv4Address(plainHost) != nil else {
+            throw BotFailure.invalidAddress
+        }
+        if !hasScheme && defaultsToHTTP(plainHost.lowercased()) { parts.scheme = "http" }
         parts.scheme = parts.scheme?.lowercased()
         parts.host = host.lowercased()
         parts.path = ""
         guard let url = parts.url else { throw BotFailure.invalidAddress }
         return url
+    }
+
+    /// Infer a scheme only for an omitted one, never as a retry after TLS fails.
+    private static func defaultsToHTTP(_ host: String) -> Bool {
+        if let address = IPv4Address(host) { return privateIPv4(Array(address.rawValue)) }
+        if let address = IPv6Address(host) {
+            let bytes = Array(address.rawValue)
+            if bytes.prefix(12) == Array(repeating: UInt8(0), count: 10) + [255, 255] {
+                return privateIPv4(Array(bytes.suffix(4)))
+            }
+            return bytes == Array(repeating: UInt8(0), count: 15) + [1]
+                || bytes[0] & 0xfe == 0xfc || (bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80)
+        }
+        return host == "localhost" || host.hasSuffix(".localhost") || host.hasSuffix(".local")
+            || (!host.contains(".") && !host.contains(":"))
+    }
+
+    private static func privateIPv4(_ octets: [UInt8]) -> Bool {
+        octets[0] == 10 || octets[0] == 127
+            || (octets[0] == 172 && (16...31).contains(octets[1]))
+            || (octets[0] == 192 && octets[1] == 168)
+            || (octets[0] == 169 && octets[1] == 254)
+            || (octets[0] == 100 && (64...127).contains(octets[1]))
     }
 }
 

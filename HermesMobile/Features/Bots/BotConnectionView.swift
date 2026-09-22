@@ -1,124 +1,238 @@
 import SwiftUI
+import Observation
 
 @MainActor struct BotConnectionView: View {
     @Environment(\.dismiss) private var dismiss
-    let server: URL
-    @State private var saved: BotConnection?
-    @State private var name = ""
-    @State private var address = ""
-    @State private var username = ""
-    @State private var password = ""
-    @State private var errorMessage: String?
-    @State private var isConnecting = false
+    @State private var setup: BotConnectionSetup
+    @State private var operation: Task<Void, Never>?
     @State private var confirmingRemoval = false
-    @State private var client: BotClient?
-    @State private var connectTask: Task<Void, Never>?
-    private let store = BotConnectionStore()
+    @State private var copiedPrompt = false
+
+    init(server: URL) { _setup = State(initialValue: BotConnectionSetup(server: server)) }
 
     var body: some View {
         Form {
             Section {
-                Text(server.host ?? server.absoluteString).font(.footnote).foregroundStyle(.secondary)
-                TextField("Name", text: $name)
-                TextField("Hermes address", text: $address)
+                Text("Connect to your dashboard").font(.title3.bold())
+                Text("Use your Hermes dashboard sign-in.").foregroundStyle(.secondary)
+            }
+            .listRowBackground(Color.clear)
+            Section {
+                TextField("Hermes address", text: $setup.address)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                TextField("Username", text: $username).textContentType(.username)
+                    .accessibilityIdentifier("hermes-connection-address")
+                TextField("Username", text: $setup.username).textContentType(.username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                SecureField("Password", text: $password).textContentType(.password)
-            } header: { Text("Hermes connection") } footer: {
-                Text("This connection belongs to the selected Hermex server. Use the address and password of your existing Hermes backend on LAN, a tailnet or a tunnel. Sessions work without it — add it to turn on notifications for this server, and to use Bots.")
+                SecureField("Password", text: $setup.password).textContentType(.password)
+            } footer: {
+                Text("Domains, Tailscale names and IP addresses work. You can include http:// or https://.")
+            }
+            .disabled(setup.isConnecting)
+            Section {
+                if let error = setup.errorMessage {
+                    Text(error).foregroundStyle(.red).accessibilityIdentifier("hermes-connection-error")
+                }
+                Button(setup.isConnecting ? String(localized: "Connecting…") : String(localized: "Connect")) {
+                    operation = Task { if await setup.connect(), !Task.isCancelled { dismiss() } }
+                }
+                .frame(maxWidth: .infinity)
+                .disabled(!setup.canConnect)
+                .accessibilityIdentifier("hermes-connection-connect")
+            }
+            Section("Need your connection details?") {
+                Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button(copiedPrompt ? String(localized: "Copied") : String(localized: "Copy setup prompt"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = BotConnectionSetup.prompt
+                    copiedPrompt = true
+                }
+                DisclosureGroup("Manual setup") {
+                    Text("Keep Hermes Desktop running. In Settings → Advanced, enable Keep computer awake. The display may dim.")
+                    Text("In Settings → Plugins, enable Bots for the intended Profile. Applies to selects the Profile configuration being edited.")
+                    Text("Desktop and Hermex must use the same password-protected backend. Remote gateway connects Desktop to a backend; it does not expose Desktop’s private local backend to your phone.")
+                    Text("Open each bot’s Bot Chat in Desktop first. Do not start a second backend using the same Profile storage.")
+                }
             }
             Section {
-                if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
-                Button(isConnecting ? String(localized: "Connecting…") : String(localized: "Connect")) {
-                    connectTask = Task { await connect() }
+                DisclosureGroup("Connection name · optional") {
+                    TextField("Name", text: $setup.name).disabled(setup.isConnecting)
                 }
-                .disabled(isConnecting || address.isEmpty || username.isEmpty || password.isEmpty)
-            } footer: {
-                if let note = saved?.untestedVersionNote { Text(note) }
             }
-            Section("Setup in Hermes Desktop") {
-                Text("Keep Hermes Desktop running. In Settings → Advanced, enable Keep computer awake. The display may dim.")
-                Text("In Settings → Plugins, enable Bots for the intended Profile. Applies to selects the Profile configuration being edited.")
-                Text("Desktop and Hermex must use the same password-protected backend. Remote gateway connects Desktop to a backend; it does not expose Desktop’s private local backend to your phone.")
-                Text("Open each bot’s Bot Chat in Desktop first. Do not start a second backend using the same Profile storage.")
-                Text("Connecting loads the bot roster and may recover archived Bot Chats. Opening a chat may resume unfinished work. Approvals are answered in Desktop.")
-            }
-            if saved != nil {
+            if setup.saved != nil {
                 Section {
                     Button("Remove Hermes connection…", role: .destructive) { confirmingRemoval = true }
+                        .disabled(setup.isConnecting)
                 }
             }
         }
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-        .task {
-            do {
-                saved = try store.load(server: server)
-                name = saved?.name ?? ""
-                address = saved?.address.absoluteString ?? ""
-                username = saved?.username ?? ""
-                password = saved?.password ?? ""
-            } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
-        }
-        .onDisappear { connectTask?.cancel(); client?.close(); client = nil }
+        .task { setup.load() }
+        .onDisappear { operation?.cancel(); setup.cancel() }
         .confirmationDialog("Remove this connection from Hermex?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Remove Hermes connection", role: .destructive) {
-                Task {
-                    do {
-                        await PushRegistrar.shared?.forget(for: server)
-                        try store.remove(server: server)
-                        if let saved {
-                            try? await BotHistoryCache.shared.remove(server: server, connectionID: saved.id)
-                            await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
-                            BotAvatarStore.shared.removeAll(connectionID: saved.id)
-                            BotUnreadStore().remove(connectionID: saved.id)
-                            BotRoomOrganizeStore().remove(connectionID: saved.id)
-                        }
-                        dismiss()
-                    } catch { errorMessage = String(localized: "Could not remove saved sign-in details.") }
-                }
+                operation = Task { if await setup.remove(), !Task.isCancelled { dismiss() } }
             }
         } message: {
             Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host.")
         }
     }
+}
 
-    private func connect() async {
-        guard !isConnecting else { return }
-        isConnecting = true; errorMessage = nil
-        defer { if !Task.isCancelled { isConnecting = false } }
+/// Owns one sign-in attempt. Parsing failures and late transport replies obey the
+/// same lifetime, including attempts cancelled before a client was constructed.
+@MainActor @Observable final class BotConnectionSetup {
+    let server: URL
+    var name = ""
+    var address = ""
+    var username = ""
+    var password = ""
+    private(set) var saved: BotConnection?
+    private(set) var errorMessage: String?
+    private(set) var isConnecting = false
+    @ObservationIgnored private let store: BotConnectionStore
+    @ObservationIgnored private let makeWire: (BotConnection) -> any BotTransport
+    @ObservationIgnored private let discard: (BotConnection) async -> Void
+    @ObservationIgnored private var client: (any BotTransport)?
+    @ObservationIgnored private var attempt: UUID?
+
+    init(server: URL, store: BotConnectionStore? = nil,
+         makeWire: ((BotConnection) -> any BotTransport)? = nil,
+         discard: ((BotConnection) async -> Void)? = nil) {
+        self.server = server; self.store = store ?? BotConnectionStore()
+        self.makeWire = makeWire ?? { BotClient(connection: $0) }
+        self.discard = discard ?? { old in
+            await PushRegistrar.shared?.forget(for: server)
+            try? await BotHistoryCache.shared.remove(server: server, connectionID: old.id)
+            await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: old.id)
+            BotAvatarStore.shared.removeAll(connectionID: old.id)
+            BotUnreadStore().remove(connectionID: old.id)
+            BotRoomOrganizeStore().remove(connectionID: old.id)
+        }
+    }
+
+    var canConnect: Bool {
+        !isConnecting && !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
+    }
+
+    func load() {
+        do {
+            saved = try store.load(server: server)
+            name = saved?.name ?? ""; address = saved?.address.absoluteString ?? ""
+            username = saved?.username ?? ""; password = saved?.password ?? ""
+        } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
+    }
+
+    func cancel() {
+        attempt = nil; client?.close(); client = nil; isConnecting = false
+    }
+
+    func connect() async -> Bool {
+        guard !isConnecting, !Task.isCancelled else { return false }
+        let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil
+        defer { if attempt == id { isConnecting = false; client = nil; attempt = nil } }
         do {
             let url = try BotConnection.address(address)
-            let sameAccount = saved?.address == url && saved?.username == username
+            let account = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sameAccount = saved?.address == url && saved?.username == account
             var candidate = BotConnection(id: sameAccount ? saved!.id : UUID(),
-                                          name: name.isEmpty ? (url.host ?? "Hermes") : name,
-                                          address: url, username: username, password: password)
-            let wire = BotClient(connection: candidate)
-            client = wire
+                name: name.isEmpty ? (url.host ?? "Hermes") : name,
+                address: url, username: account, password: password)
+            let wire = makeWire(candidate); client = wire
             defer { wire.close() }
             try await wire.connect()
-            guard !Task.isCancelled, client === wire else { return }
+            guard attempt == id, !Task.isCancelled else { return false }
             candidate.hermesVersion = wire.serverVersion
             let result = try await wire.call("profiles.list", ["include_sessions": .bool(true)])
-            guard !Task.isCancelled, client === wire else { return }
+            guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
             try store.save(candidate, server: server)
-            if let saved, saved.id != candidate.id {
-                // A different host or account is a different pairing: its keys never carry over.
-                await PushRegistrar.shared?.forget(for: server)
-                try? await BotHistoryCache.shared.remove(server: server, connectionID: saved.id)
-                await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
-                BotAvatarStore.shared.removeAll(connectionID: saved.id)
-            }
-            guard !Task.isCancelled, client === wire else { return }
+            if let old = saved, old.id != candidate.id { await discard(old) }
+            guard attempt == id, !Task.isCancelled else { return false }
             saved = candidate
-            // An untested release keeps the screen up so the note is seen once; Done closes it.
-            if candidate.untestedVersionNote == nil { dismiss() }
+            return true
         } catch {
-            guard !Task.isCancelled, client != nil else { return }
-            errorMessage = (error as? BotFailure)?.localizedDescription ?? String(localized: "Could not save sign-in details or connect to Hermes.")
+            guard attempt == id, !Task.isCancelled else { return false }
+            errorMessage = (error as? BotFailure)?.localizedDescription
+                ?? String(localized: "Could not save sign-in details or connect to Hermes.")
+            return false
+        }
+    }
+
+    func remove() async -> Bool {
+        guard !isConnecting, !Task.isCancelled else { return false }
+        let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil
+        defer { if attempt == id { isConnecting = false; attempt = nil } }
+        do {
+            try store.remove(server: server)
+            if let old = saved { await discard(old) }
+            guard attempt == id, !Task.isCancelled else { return false }
+            saved = nil
+            return true
+        } catch {
+            guard attempt == id, !Task.isCancelled else { return false }
+            errorMessage = String(localized: "Could not remove saved sign-in details.")
+            return false
+        }
+    }
+
+    /// Generic instructions only: no credentials or configured host is copied.
+    /// The agent discovers its installed version instead of following pinned CLI recipes.
+    static let prompt = """
+    Help me connect the Hermex iPhone app to my existing Hermes dashboard for Bots and notifications. Hermex already connects to hermes-webui, but this is a separate direct dashboard connection.
+
+    Inspect this machine's Hermes installation and current dashboard/Desktop setup first. Check the installed version's supported setup instructions and whether its dashboard supports username/password sign-in and Bot chats. Reuse the backend and Profile storage already used by my bots; do not start a second backend against the same storage.
+
+    Find the dashboard address reachable from my iPhone, including scheme and port, and the sign-in username. A localhost address only works on this machine, so ask whether I use LAN, Tailscale/VPN or an existing HTTPS tunnel when needed. Do not assume the WebUI address or login is the dashboard's.
+
+    Tell me whether I should use my existing dashboard password. Do not print secrets, invent credentials or claim to recover a hashed password. If setup or a password reset is needed, explain the exact changes and ask me before changing credentials, starting/restarting services, installing anything, or changing network exposure. Help me set up the supported connection after I approve.
+
+    Finish with the Hermes address and username to enter in Hermex, where to obtain or set the password, and any remaining steps. Do not claim the iPhone can connect until reachability and authenticated dashboard access have been checked.
+    """
+}
+
+/// The unconnected inbox uses the same drawn faces as the bot editor. Each short
+/// playful bit returns to neutral, and covered/inactive screens render still faces.
+struct BotConnectionWelcomeView: View {
+    let isCovered: Bool
+    let onConnect: () -> Void
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .title) private var avatarSize = 72.0
+
+    var body: some View {
+        VStack(spacing: 24) {
+            HStack(alignment: .top, spacing: 2) {
+                face("welcome-circle", shape: .circle, color: "#f97316")
+                face("welcome-triangle", shape: .triangle, color: "#22c55e").padding(.top, 22)
+                face("welcome-squircle", shape: .squircle, color: "#8b5cf6").padding(.top, 8)
+            }
+            .accessibilityHidden(true)
+            VStack(spacing: 12) {
+                Text("Your bots, together.").font(.title2.bold())
+                Text("Bots live in your Hermes dashboard. WebUI uses a separate connection, so sign in once here to bring them to Hermex.")
+                    .foregroundStyle(.secondary)
+            }
+            .multilineTextAlignment(.center)
+            Button("Connect", action: onConnect)
+                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                .foregroundStyle(Color(uiColor: .systemBackground))
+                .background(Color(uiColor: .label), in: Capsule()).buttonStyle(.plain)
+        }
+        .frame(maxWidth: 360).padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder private func face(_ name: String, shape: BotAvatarShape, color: String) -> some View {
+        let appearance = BotProfileAppearance(look: ["shape": .string(shape.rawValue), "color": .string(color),
+            "expression": .string(BotAvatarExpression.neutral.rawValue)], fallbackTitle: name)
+        let size = min(avatarSize, 92)
+        if scenePhase == .active && !isCovered && !reduceMotion {
+            BotInteractiveFaceView(name: name, appearance: appearance, size: size)
+        } else {
+            BotAnimatedFaceView(name: name, appearance: appearance, size: size, motion: .still)
         }
     }
 }

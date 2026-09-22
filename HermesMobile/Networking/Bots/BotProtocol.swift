@@ -81,6 +81,7 @@ enum BotEndpoint: String {
 
 @MainActor protocol BotTransport: AnyObject {
     var replayEpoch: String? { get }
+    var serverVersion: String? { get }
     /// Sequenced event params or a complete string-id server-request envelope.
     var onEvent: ((BotJSON) -> Void)? { get set }
     var onDisconnect: ((Error) -> Void)? { get set }
@@ -95,6 +96,8 @@ enum BotEndpoint: String {
 }
 
 extension BotTransport {
+    var serverVersion: String? { nil }
+
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         throw BotFailure.unsupported
     }

@@ -16,12 +16,22 @@ OAuth, webui fallback, server provisioning or competing-backend path.
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
 counterpart of `UPSTREAM_TESTED_SHA`. `BotClient.connect()` captures `version`
-and the connection screen stores it on the `BotConnection` record. A release
-other than `BotConnection.testedHermesVersion` shows a one-line "Untested Hermes
-version" note and keeps the screen up after a successful connect so the note is
-seen; a missing `version` shows nothing. Login is never blocked on it: each RPC
-validates the contract just in time. Advancing the pin is described in AGENTS.md
+and the connection screen stores it on the `BotConnection` record. Successful
+sign-in saves and dismisses regardless of version; no version warning is shown.
+Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md
 (Working with the server); update the file and the constant together.
+
+The disconnected inbox offers one Connect action with the editor's drawn,
+neutral-default playful faces. Motion pauses while covered or inactive and is
+still with Reduce Motion. Setup help copies a generic prompt for the user's
+agent; copying sends nothing and includes no credentials or configured address.
+The prompt discovers the existing backend and asks before changing setup.
+The same connection form serves Bots, Settings and push setup. A schemeless
+address defaults to HTTPS, except recognizable private/local IPs (including
+Tailscale ranges), local names and single-label hosts use HTTP. Explicit schemes
+and ports are preserved; TLS failures never trigger an HTTP downgrade. Invalid
+addresses display errors even before a transport exists. Cancellation invalidates
+the attempt before late replies can save credentials or dismiss the screen.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
