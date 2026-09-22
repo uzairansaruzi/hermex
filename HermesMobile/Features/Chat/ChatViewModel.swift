@@ -5760,7 +5760,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     func streamCoordinatorStopAuxiliaryMonitoring(clearPrompt: Bool) {
-        pendingActionCoordinator.stopMonitoring(clearPrompt: clearPrompt)
+        pendingActionCoordinator.stopMonitoringForStreamTransition(clearClarification: clearPrompt)
     }
 
     func streamCoordinatorSaveSnapshotIfNeeded() {

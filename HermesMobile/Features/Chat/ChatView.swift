@@ -364,6 +364,7 @@ struct ChatView: View {
     @State private var responseCompletionNotificationTracker = ResponseCompletionNotificationTracker()
     @State private var responseCompletionBackgroundTask: UIBackgroundTaskIdentifier = .invalid
     @State private var activeStreamStatusRefreshTask: Task<Void, Never>?
+    @State private var appearanceTask: Task<Void, Never>?
     @State private var initialAttachments: [SharedAttachmentImport]
     @State private var didUploadInitialAttachments = false
 
@@ -782,6 +783,8 @@ struct ChatView: View {
             }
             .onDisappear {
                 flushDraftsBestEffort()
+                appearanceTask?.cancel()
+                appearanceTask = nil
                 activeStreamStatusRefreshTask?.cancel()
                 activeStreamStatusRefreshTask = nil
                 viewModel.stopListening()
@@ -789,8 +792,14 @@ struct ChatView: View {
                 viewModel.cleanupPollingTasks()
             }
             .onAppear {
-                Task {
+                appearanceTask?.cancel()
+                appearanceTask = Task {
                     await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
+                    guard !Task.isCancelled else { return }
+                    if didCompleteInitialAppearance {
+                        await viewModel.refreshApprovalBypassState()
+                    }
+                    guard !Task.isCancelled else { return }
 
                     if viewModel.activeStreamID != nil {
                         handleActiveStreamChange()

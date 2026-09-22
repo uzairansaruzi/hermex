@@ -59,6 +59,7 @@ final class ChatPendingActionCoordinator {
     private var approvalPendingBySession: [String: ApprovalPromptState] = [:]
     private var approvalMonitoringSessionID: String?
     @ObservationIgnored private var approvalPollingTask: Task<Void, Never>?
+    private var approvalStateGeneration = 0
 
     private var clarificationPendingBySession: [String: ClarificationPromptState] = [:]
     private var clarificationMonitoringSessionID: String?
@@ -90,8 +91,11 @@ final class ChatPendingActionCoordinator {
 
         do {
             let response = try await client.sessionYolo(sessionID: sessionID)
+            guard !Task.isCancelled, delegate?.pendingActionSessionID == sessionID else { return }
             isSessionApprovalBypassEnabled = response.yoloEnabled == true
             if isSessionApprovalBypassEnabled {
+                approvalStateGeneration &+= 1
+                approvalPendingBySession[sessionID] = nil
                 approvalPrompt = nil
             } else {
                 renderApprovalPromptForCurrentSession()
@@ -99,6 +103,10 @@ final class ChatPendingActionCoordinator {
         } catch {
             // Approval bypass state is advisory UI; failures should not block chat.
         }
+
+        // A pending approval can outlive the chat stream, including across navigation.
+        guard !Task.isCancelled, !isSessionApprovalBypassEnabled else { return }
+        await refreshApprovalPending(sessionID: sessionID)
     }
 
     @discardableResult
@@ -135,6 +143,7 @@ final class ChatPendingActionCoordinator {
                 return false
             }
 
+            approvalStateGeneration &+= 1
             approvalPendingBySession[prompt.sessionID] = nil
             approvalPrompt = nil
             await refreshApprovalPending(sessionID: prompt.sessionID)
@@ -143,6 +152,7 @@ final class ChatPendingActionCoordinator {
             if (error as? APIError)?.indicatesExpiredPendingPrompt == true {
                 // The prompt already expired server-side: dismiss the stale card and
                 // explain, instead of leaving a stuck card behind a generic failure.
+                approvalStateGeneration &+= 1
                 approvalPendingBySession[prompt.sessionID] = nil
                 approvalPrompt = nil
                 delegate?.pendingActionCoordinatorDidFailAction(PendingPromptExpiredError(prompt: .approval))
@@ -170,6 +180,7 @@ final class ChatPendingActionCoordinator {
         do {
             let response = try await client.setSessionYolo(sessionID: prompt.sessionID, enabled: true)
             isSessionApprovalBypassEnabled = response.yoloEnabled ?? true
+            approvalStateGeneration &+= 1
             approvalPendingBySession[prompt.sessionID] = nil
             approvalPrompt = nil
             return true
@@ -190,6 +201,15 @@ final class ChatPendingActionCoordinator {
         stopClarificationMonitoring(clearPrompt: clearPrompt)
     }
 
+    func stopMonitoringForStreamTransition(clearClarification: Bool) {
+        // A pending approval belongs to the server, not to the chat transport.
+        // Keep its monitor alive after completion; suspend it while reconnecting.
+        if delegate?.pendingActionIsStreamConnectionSuspended == true || approvalPrompt == nil {
+            stopApprovalMonitoring(clearPrompt: false)
+        }
+        stopClarificationMonitoring(clearPrompt: clearClarification)
+    }
+
     func applyApprovalUpdate(_ update: ApprovalPendingResponse, sessionID: String) {
         if let pending = update.pending, !pending.isEmpty {
             let prompt = ApprovalPromptState(
@@ -198,11 +218,22 @@ final class ChatPendingActionCoordinator {
                 pendingCount: max(update.pendingCount ?? 1, 1)
             )
             approvalPendingBySession[sessionID] = prompt
-        } else {
+        } else if update.pendingCount == 0 {
             approvalPendingBySession[sessionID] = nil
+        } else {
+            // An unrecognized SSE payload is not a server-confirmed clear.
+            return
         }
 
+        guard sessionID == delegate?.pendingActionSessionID else { return }
+        approvalStateGeneration &+= 1
         renderApprovalPromptForCurrentSession()
+        if approvalPendingBySession[sessionID] != nil {
+            startApprovalMonitoring()
+        } else if delegate?.pendingActionHasActiveStream != true,
+                  approvalMonitoringSessionID == sessionID {
+            stopApprovalMonitoring(clearPrompt: false)
+        }
     }
 
     @discardableResult
@@ -266,7 +297,7 @@ final class ChatPendingActionCoordinator {
 
     private func startApprovalMonitoring() {
         guard let sessionID = delegate?.pendingActionSessionID,
-              delegate?.pendingActionHasActiveStream == true,
+              delegate?.pendingActionHasActiveStream == true || approvalPendingBySession[sessionID] != nil,
               approvalMonitoringSessionID != sessionID
         else { return }
 
@@ -287,6 +318,7 @@ final class ChatPendingActionCoordinator {
         approvalMonitoringSessionID = nil
 
         guard clearPrompt else { return }
+        approvalStateGeneration &+= 1
         if let sessionID = delegate?.pendingActionSessionID {
             approvalPendingBySession[sessionID] = nil
         }
@@ -295,6 +327,7 @@ final class ChatPendingActionCoordinator {
     }
 
     private func handleApprovalMonitorEvent(_ event: SSEEvent, sessionID: String) {
+        guard approvalMonitoringSessionID == sessionID else { return }
         switch event {
         case .approvalPending(let update):
             applyApprovalUpdate(update, sessionID: sessionID)
@@ -317,7 +350,6 @@ final class ChatPendingActionCoordinator {
                 do {
                     guard let self,
                           self.delegate?.pendingActionSessionID == sessionID,
-                          self.delegate?.pendingActionHasActiveStream == true,
                           self.delegate?.pendingActionIsStreamConnectionSuspended != true
                     else { break pollingLoop }
 
@@ -331,10 +363,15 @@ final class ChatPendingActionCoordinator {
     }
 
     private func refreshApprovalPending(sessionID: String) async {
-        guard delegate?.pendingActionHasActiveStream == true else { return }
+        guard delegate?.pendingActionSessionID == sessionID else { return }
+        approvalStateGeneration &+= 1
+        let generation = approvalStateGeneration
 
         do {
             let response = try await client.approvalPending(sessionID: sessionID)
+            guard !Task.isCancelled,
+                  delegate?.pendingActionSessionID == sessionID,
+                  approvalStateGeneration == generation else { return }
             applyApprovalUpdate(response, sessionID: sessionID)
         } catch {
             // The web UI also ignores degraded-mode polling failures.
@@ -350,8 +387,7 @@ final class ChatPendingActionCoordinator {
             return
         }
 
-        guard delegate?.pendingActionHasActiveStream == true,
-              !isSessionApprovalBypassEnabled,
+        guard !isSessionApprovalBypassEnabled,
               let prompt = approvalPendingBySession[sessionID]
         else {
             if approvalPrompt?.sessionID == sessionID {
