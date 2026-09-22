@@ -260,6 +260,34 @@ import SwiftUI
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
         .contextMenu { organizeMenu(profile) }
+        // The same writes the long-press menu offers, one swipe away. No full
+        // swipe: Delete confirms and Pin is a server write, so nothing should fire
+        // from a flick.
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                Task { await inbox.setPinned(!profile.pinned, profile) }
+            } label: {
+                Label(profile.pinned ? "Unpin" : "Pin", systemImage: profile.pinned ? "pin.slash" : "pin")
+            }
+            .tint(.orange)
+            .disabled(!inbox.mayEdit(profile))
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Hide sits at the edge and Delete behind it, so the first thing a
+            // short swipe reaches is the reversible one.
+            Button {
+                Task { await inbox.setHidden(!profile.hidden, profile) }
+            } label: {
+                Label(profile.hidden ? "Unhide" : "Hide", systemImage: profile.hidden ? "eye" : "eye.slash")
+            }
+            .tint(.gray)
+            .disabled(!inbox.mayEdit(profile))
+            if inbox.mayDelete(profile) {
+                Button(role: .destructive) { deleting = profile } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
         .listRowSeparator(.hidden)
         .padding(.vertical, 12)
     }
