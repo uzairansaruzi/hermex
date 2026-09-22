@@ -5,6 +5,50 @@ import Vision
 @testable import HermesMobile
 
 @MainActor final class BotConversationTests: XCTestCase {
+    func testWorkingClockUsesServerTimeAndRestoresItAfterReconnect() async {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.inflight = .object(["started_at": .number(100)])
+        let model = make(wire)
+        XCTAssertNil(model.workingRowStartedAt)
+        await model.recover()
+        XCTAssertEqual(model.workingRowStartedAt, Date(timeIntervalSince1970: 100))
+        model.suspend()
+        XCTAssertNil(model.workingRowStartedAt)
+        await model.recover()
+        XCTAssertEqual(model.workingRowStartedAt, Date(timeIntervalSince1970: 100), "Returning never restarts the clock")
+        wire.attention = true
+        await model.recover()
+        XCTAssertNil(model.workingRowStartedAt, "A blocked turn is waiting, not working")
+        wire.attention = false; wire.running = false
+        await model.recover()
+        XCTAssertNil(model.workingRowStartedAt, "Retained start timestamps do not imply a live turn")
+        model.suspend()
+    }
+
+    func testWorkingClockNeverInventsMissingOrInvalidServerTime() async {
+        let invalidStarts: [Double?] = [nil, 0, -1, .infinity, .nan, Date().addingTimeInterval(600).timeIntervalSince1970]
+        for start in invalidStarts {
+            let wire = BotFixtureWire(); wire.running = true; wire.turnStartedAt = start
+            let model = make(wire); await model.recover()
+            XCTAssertEqual(model.turn, .running)
+            XCTAssertNil(model.workingRowStartedAt)
+            model.suspend()
+        }
+        let wire = BotFixtureWire(); wire.running = true; wire.turnStartedAt = 100
+        let model = make(wire); await model.recover()
+        XCTAssertEqual(model.workingRowStartedAt, Date(timeIntervalSince1970: 100))
+        model.suspend()
+    }
+
+    func testNewTurnWaitsForItsOwnSnapshotBeforeShowingElapsedTime() async {
+        let wire = BotFixtureWire(); wire.running = true; wire.turnStartedAt = 100
+        let model = make(wire); await model.recover()
+        wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("message.start")]))
+        wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(2), "type": .string("message.delta")]))
+        XCTAssertNil(model.workingRowStartedAt, "An event without a timestamp cannot revive the preceding turn's clock")
+        model.suspend()
+    }
+
     private let server = URL(string: "https://webui.example")!
     private var connection: BotConnection {
         BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!, username: "user", password: "fixture")

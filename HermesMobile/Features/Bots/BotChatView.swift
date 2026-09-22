@@ -92,6 +92,9 @@ import SwiftUI
                             )
                             .id(BotChatView.requestAnchor)
                         }
+                        if let startedAt = model.workingRowStartedAt {
+                            ChatWorkingRowView(startedAt: startedAt)
+                        }
                         Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
                     .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)

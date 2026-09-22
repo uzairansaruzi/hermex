@@ -7,6 +7,20 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotChatPresentationTests: XCTestCase {
+    func testRoomPillKeepsRequestsAndRecoveryReachableWithoutRoutineStatus() {
+        XCTAssertNil(BotComposerPill.room(link: .connecting, blocked: false, hasActions: false, mayRetry: false, errorText: nil))
+        XCTAssertNil(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: false, errorText: nil))
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: true, mayRetry: false, errorText: "failed"),
+                       .request("Waiting for your answer"))
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: true, hasActions: false, mayRetry: false, errorText: nil),
+                       .notice("Waiting on Hermes Desktop"))
+        XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: true, hasActions: true, mayRetry: false, errorText: nil),
+                       .reconnect, "Stale approval state must not hide connection recovery")
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, errorText: nil), .retrySend)
+        XCTAssertEqual(BotComposerPill.room(link: .live, blocked: false, hasActions: false, mayRetry: true, errorText: "Outcome unknown"),
+                       .error("Outcome unknown"))
+    }
+
     func testRoomManagementShowsMemberChipsAndStoppingReason() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
@@ -87,6 +101,41 @@ import XCTest
         XCTAssertEqual(completions.map(\.tag), names + ["all", "everyone"])
         XCTAssertTrue(text.contains("@everyone Everyone"), text)
         XCTAssertNil(selected, "Rendering suggestions must not insert a mention")
+    }
+
+    func testRoomTranscriptDismissesKeyboardWithoutLosingDraft() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let wire = RoomWire(); wire.latest = 3; wire.kind = "message.member"
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 3)))
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+                                   connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire })
+        let view = BotRoomView(reader: reader, roster: [], avatars: [:])
+        let window = try show(NavigationStack { view }.environment(\.scenePhase, .inactive))
+        defer { reader.close(); close(window) }
+        await reader.open()
+        await renderFrames(8)
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        let scrollViews = descendants(window).compactMap { $0 as? UIScrollView }.filter { !($0 is UITextView) }
+        let transcript = try XCTUnwrap(scrollViews.first {
+            $0.keyboardDismissMode == .interactive || $0.keyboardDismissMode == .interactiveWithAccessory
+        }, "Transcript scroll modes: \(scrollViews.map { $0.keyboardDismissMode.rawValue })")
+        XCTAssertFalse(editor.isDescendant(of: transcript), "The dismissal gesture belongs to the transcript, not the composer")
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await renderFrames()
+        editor.insertText("Unsent room draft")
+        await renderFrames()
+
+        view.dismissKeyboard()
+        await renderFrames()
+        XCTAssertFalse(editor.isFirstResponder)
+        XCTAssertEqual(reader.draft, "Unsent room draft")
+        XCTAssertEqual(editor.sourceText, reader.draft)
+        XCTAssertTrue(descendants(window).contains { $0 === editor })
+        XCTAssertTrue(editor.becomeFirstResponder(), "The same editor can be focused again after dismissal")
+        await renderFrames()
+        XCTAssertTrue(editor.isFirstResponder)
+        XCTAssertTrue(wire.writes.isEmpty, "Dismissing the keyboard must not send the draft")
     }
 
     func testRoomShowsMemberMessagesAndTextOnlyComposer() async throws {

@@ -542,6 +542,7 @@ enum BotComposerPill: Equatable {
     case voice(ComposerVoiceStatus)
     case reconnect
     case uploading
+    case retrySend
 
     static func resolve(requestText: String?, requestHasCard: Bool, errorText: String?, voiceStatus: ComposerVoiceStatus?,
                         offersReconnect: Bool, isUploading: Bool) -> BotComposerPill? {
@@ -554,16 +555,31 @@ enum BotComposerPill: Equatable {
     }
 
     var errorText: String? { if case .error(let text) = self { return text }; return nil }
+
+    /// Rooms share the action pill, but their host exposes no turn start time.
+    /// Routine working/connecting states stay quiet; requests and recovery remain reachable.
+    static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
+                     mayRetry: Bool, errorText: String?) -> BotComposerPill? {
+        if link == .live && blocked {
+            return hasActions ? .request(String(localized: "Waiting for your answer"))
+                : .notice(String(localized: "Waiting on Hermes Desktop"))
+        }
+        if let errorText { return .error(errorText) }
+        if link == .stopped { return .reconnect }
+        if mayRetry { return .retrySend }
+        return nil
+    }
 }
 
-/// One centered capsule: material, one line, no motion of its own. Request and
+/// One centered capsule with material and no motion of its own. Request and
 /// Reconnect are buttons; an error is tappable to dismiss; Uploading carries Cancel.
-private struct BotComposerPillView: View {
+struct BotComposerPillView: View {
     let pill: BotComposerPill
     let onReconnect: () -> Void
     let onShowRequest: () -> Void
     let onCancelUpload: () -> Void
     let onDismissError: () -> Void
+    var onRetrySend: () -> Void = {}
 
     var body: some View {
         Group {
@@ -579,6 +595,8 @@ private struct BotComposerPillView: View {
                 Label(status.text, systemImage: status.systemImage)
             case .reconnect:
                 Button(action: onReconnect) { Label("Reconnect", systemImage: "arrow.clockwise") }
+            case .retrySend:
+                Button(action: onRetrySend) { Label("Retry send", systemImage: "arrow.up") }
             case .uploading:
                 HStack(spacing: 12) {
                     Label("Uploading…", systemImage: "arrow.up.doc")
@@ -588,7 +606,9 @@ private struct BotComposerPillView: View {
         }
         .buttonStyle(.plain)
         .font(AppFont.footnote())
-        .lineLimit(1)
+        .lineLimit(3)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(.primary)
         .padding(.horizontal, 14).padding(.vertical, 9)
         .background(.regularMaterial, in: Capsule())

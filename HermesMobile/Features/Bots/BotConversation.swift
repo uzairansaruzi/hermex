@@ -90,6 +90,7 @@ import Observation
     private var generation = 0
     private var turnRevision = 0
     private var turnStartedAt: Double?
+    private var confirmedWorkingStart: Date?
     /// When this phone first saw the current turn, for a host that sends no start time.
     private var turnObservedAt = Date()
     /// Whether the last snapshot's interruption was a host error rather than a stop.
@@ -135,6 +136,14 @@ import Observation
         self.wire.onEvent = { [weak self] event in self?.observe(event) }
         self.wire.onDisconnect = { [weak self] error in self?.disconnected(error) }
         self.delegatedWork.onWorkersChanged = { [weak self] in self?.syncLiveActivity() }
+    }
+
+    /// Only a current server snapshot can start the transcript clock. Live Activity's
+    /// legacy local observation fallback is deliberately not used here.
+    var workingRowStartedAt: Date? {
+        guard connectionState == .connected, turn == .running,
+              !uncertainSend, !uncertainStop else { return nil }
+        return confirmedWorkingStart
     }
 
     /// This conversation as its Live Activity should show it (#489). Counts and tool
@@ -477,6 +486,7 @@ import Observation
     private func applyActivity(type: String, payload: BotJSON) -> Bool {
         switch type {
         case "message.start":
+            confirmedWorkingStart = nil
             liveActivity = BotTurnActivity(); workStatus = nil; streamRequest = nil
             return false
         case "todo.updated":
@@ -516,6 +526,10 @@ import Observation
         if let next = BotPlan(snapshot["todo_state"]), next.revision >= (plan?.revision ?? 0) { plan = next }
         let inflight = snapshot["inflight"]
         let startedAt = inflight["started_at"].number ?? snapshot["turn_started_at"].number
+        if running, let startedAt, startedAt.isFinite, startedAt > 0,
+           startedAt <= Date().timeIntervalSince1970 {
+            confirmedWorkingStart = Date(timeIntervalSince1970: startedAt)
+        } else { confirmedWorkingStart = nil }
         if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt; turnObservedAt = Date() }
         liveMessages = []
         // The host can list the prompt in `messages` while it is still the
@@ -1200,6 +1214,7 @@ import Observation
     }
 
     private func resetConnection() {
+        confirmedWorkingStart = nil
         chatControls.disconnect()
         delegatedWork.disconnect()
         attachmentUploadTask?.cancel(); attachmentUploadTask = nil; isUploadingAttachments = false

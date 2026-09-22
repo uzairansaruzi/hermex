@@ -10,6 +10,8 @@ import SwiftUI
     @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var isNearBottom = true
     @State private var pendingSequence: Int?
+    @State private var showRequestID = UUID()
+    @State private var dismissedErrors: Set<String> = []
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
@@ -57,6 +59,7 @@ import SwiftUI
                     if reader.events.isEmpty && reader.link == .live {
                         Text("No messages yet.").foregroundStyle(.secondary)
                     }
+                    Color.clear.frame(height: 0).id("room-actions")
                     ForEach(Array(reader.status.actions.enumerated()), id: \.offset) { _, action in
                         BotRoomActionCard(reader: reader, action: action)
                     }
@@ -68,6 +71,9 @@ import SwiftUI
                         .accessibilityHidden(true)
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
             .onChange(of: pendingSequence.flatMap { sequence in
@@ -81,6 +87,7 @@ import SwiftUI
             .onChange(of: reader.events.last?.seq) {
                 if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
             }
+            .onChange(of: showRequestID) { proxy.scrollTo("room-actions", anchor: .top) }
             .overlay(alignment: .bottom) {
                 if !isNearBottom && !reader.events.isEmpty {
                     ChatScrollToBottomButton(bottomPadding: 12) {
@@ -90,11 +97,23 @@ import SwiftUI
             }
         }
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                if reader.link == .connecting || reader.link == .stopped || reader.statusText != nil { status }
+            VStack(spacing: 10) {
+                if let pill {
+                    BotComposerPillView(pill: pill, onReconnect: { revision = UUID() },
+                        onShowRequest: { showRequestID = UUID() }, onCancelUpload: {},
+                        onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } },
+                        onRetrySend: { Task { await reader.send(retry: true) } })
+                }
                 if reader.showsComposer { BotRoomComposerView(reader: reader, roster: roster, avatars: avatars) }
             }
         }
+        .task(id: pill?.errorText) {
+            guard let text = pill?.errorText else { return }
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            dismissedErrors.insert(text)
+        }
+        .onChange(of: errorTexts) { _, current in dismissedErrors.formIntersection(current) }
+        .onChange(of: reader.busy) { _, busy in if busy { dismissedErrors = [] } }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .toolbar {
@@ -124,6 +143,10 @@ import SwiftUI
         .onDisappear { visible = false; reader.leave(owner: owner) }
     }
 
+    func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
         let next = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
         if next != followLatch { followLatch = next }
@@ -138,20 +161,14 @@ import SwiftUI
             movedAwayFromBottom: metrics.movedAwayFromBottom, wasNearBottom: wasNearBottom))
     }
 
-    private var status: some View {
-        VStack(spacing: 8) {
-            if reader.link == .stopped {
-                Text("Live updates stopped").font(.callout)
-                if let error = reader.errorMessage { Text(error).font(.caption).foregroundStyle(.secondary) }
-                Button("Reconnect") { revision = UUID() }
-            } else if reader.link == .connecting {
-                Text("Connecting…").font(.callout)
-            } else if reader.link == .live {
-                if let text = reader.statusText { Text(text).font(.callout) }
-            }
-        }
-        .frame(maxWidth: .infinity).padding(.horizontal, 16).padding(.vertical, 8)
-        .background(.bar)
+    private var errorTexts: [String] {
+        [reader.commandMessage, reader.errorMessage].compactMap { $0 }
+    }
+
+    private var pill: BotComposerPill? {
+        BotComposerPill.room(link: reader.link, blocked: reader.status.blocked,
+            hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend,
+            errorText: errorTexts.first { !dismissedErrors.contains($0) })
     }
 }
 

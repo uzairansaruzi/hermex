@@ -178,12 +178,6 @@ import Observation
     var mayEditDraft: Bool { !busy && uncertainSend == nil }
     var maySend: Bool { allows("groups.send") && !busy && uncertainSend == nil && BotRoomRPC.validText(draft) }
     var mayResend: Bool { allows("groups.send") && !busy && uncertainSend != nil }
-    var statusText: String? {
-        if status.stopping > 0 || awaitingStop { return String(localized: "Stopping…") }
-        if status.blocked { return String(localized: "Waiting for you") }
-        if status.working { return String(localized: "Working…") }
-        return nil
-    }
     private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
     func mayAct(_ action: BotRoomAction) -> Bool {
         !busy && action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)

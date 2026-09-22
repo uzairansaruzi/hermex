@@ -17,14 +17,6 @@ struct BotRoomComposerView: View {
     var body: some View {
         AdaptiveGlassContainer(spacing: 6) {
             VStack(spacing: 8) {
-                if let warning = reader.commandMessage {
-                    Text(warning).font(.footnote).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if reader.uncertainSend != nil {
-                    Button("Retry send") { Task { await reader.send(retry: true) } }
-                        .disabled(!reader.mayResend)
-                }
                 if focused, reader.mayEditDraft,
                    let trigger = BotMentionTrigger.detect(in: reader.draft, selection: selection.range) {
                     let completions = BotRoomMentions.completions(room: reader.room, query: trigger.query)

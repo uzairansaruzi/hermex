@@ -1011,6 +1011,21 @@ The room and profile share state but claim separate view ownership so navigation
 cannot let an old screen close the new screen's socket. Lifecycle helpers belong
 only to the app target; the share extension and Live Activity do not manage rooms.
 
+## Activity presentation
+
+Bot and room composers share one action pill for requests, errors, reconnect,
+and room send retry. Routine Working/Connecting banners are omitted. Room
+requests link to their cards; Stop and uncertain-send guards remain in effect.
+
+Single-bot transcripts reuse the Sessions "Working for" row only while connected
+and confirmed running, with a valid server `inflight.started_at` or
+`turn_started_at`. Missing or future timestamps never fall back to a phone clock.
+New-turn events clear the previous timer until their snapshot arrives; reconnect
+restores the server's original start. Waiting, stopping and idle hide the row.
+This is elapsed wall time since the server started the turn, not active CPU time.
+Rooms have no elapsed row: the tested `groups.state` contract exposes aggregate
+activity but no current-work start timestamp.
+
 ## Push provisioning
 
 The Hermes connection screen is not behind the Bot Mode gate (#557). Pairing for
