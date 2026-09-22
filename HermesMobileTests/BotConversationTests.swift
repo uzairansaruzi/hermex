@@ -5,6 +5,66 @@ import Vision
 @testable import HermesMobile
 
 @MainActor final class BotConversationTests: XCTestCase {
+    func testRecentTranscriptRendersBeforeNetworkAndFreshHistoryReplacesIt() async throws {
+        let cache = BotHistoryCache(), identity = connection, firstWire = BotFixtureWire()
+        firstWire.history = [
+            .object(["role": .string("tool"), "name": .string("terminal"), "context": .string("tool result")]),
+            .object(["role": .string("assistant"), "text": .string(String(repeating: "long answer ", count: 2000)),
+                     "reasoning": .string("settled reasoning"), "timestamp": .number(100)]),
+            .object(["role": .string("assistant"), "text": .string("Worker finished"),
+                     "display_kind": .string(BotDelegationCompletion.displayKind),
+                     "display_metadata": .object(["worker": .string("fixture")])])
+        ]
+        let first = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: firstWire)
+        await first.recover()
+        let messages = first.messages, activity = first.settledActivity
+        first.suspend()
+        let wire = BotFixtureWire()
+        let next = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: wire)
+        XCTAssertEqual(next.messages, messages, "Warm entry keeps long text, metadata and delegation cards")
+        XCTAssertEqual(next.settledActivity, activity)
+        XCTAssertTrue(next.hasRecentTranscript)
+        XCTAssertNil(next.runtime)
+        XCTAssertNil(next.root, "A display snapshot must not dictate the canonical root")
+        XCTAssertFalse(next.maySend)
+        XCTAssertNil(next.pendingRequest)
+        let parked = expectation(description: "Refresh waits on the network")
+        var release: CheckedContinuation<Void, Never>?
+        wire.beforeResume = { await withCheckedContinuation { release = $0; parked.fulfill() } }
+        let refresh = Task { await next.recover() }
+        await fulfillment(of: [parked], timeout: 3)
+        XCTAssertEqual(next.messages, messages)
+        wire.beforeResume = nil; release?.resume(); await refresh.value
+        XCTAssertEqual(next.messages.map(\.content), ["saved"], "Fresh history replaces the cached projection, without duplicates")
+        XCTAssertFalse(next.hasRecentTranscript)
+        next.suspend()
+    }
+
+    func testRecentHistoryIsScopedAndChangedOrMissingCanonicalChatsDiscardIt() async {
+        let cache = BotHistoryCache(), identity = connection
+        let first = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: BotFixtureWire())
+        await first.recover(); first.suspend()
+        for (host, account, root) in [(URL(string: "https://other.example")!, identity, nil as String?),
+                                      (server, connection, nil), (server, identity, "different-root")] {
+            let isolated = BotConversation(server: host, connection: account, profile: profile, conversation: root,
+                historyCache: cache, wire: BotFixtureWire())
+            XCTAssertTrue(isolated.messages.isEmpty)
+        }
+        let wire = BotFixtureWire(); wire.root = "new-root"
+        let replacement = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: wire)
+        await replacement.recover()
+        XCTAssertEqual(replacement.root, "new-root")
+        XCTAssertEqual(replacement.connectionState, .connected)
+        XCTAssertEqual(replacement.messages.first?.id, "new-root/0")
+        replacement.suspend()
+        let missingWire = BotFixtureWire(); missingWire.lookupFailure = .missingChat
+        let missing = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: missingWire)
+        await missing.recover()
+        XCTAssertTrue(missing.messages.isEmpty)
+        XCTAssertNil(cache.recent.snapshot(for: .bot(server: server, connectionID: identity.id, profile: profile.id)))
+        missing.suspend()
+    }
+
     private let server = URL(string: "https://webui.example")!
     private var connection: BotConnection {
         BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!, username: "user", password: "fixture")

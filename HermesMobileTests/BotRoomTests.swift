@@ -2,6 +2,33 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotRoomTests: XCTestCase {
+    func testRecentRoomKeepsSystemEventsBeforeNetworkAndFetchesOnlyNewRows() async throws {
+        let cache = BotHistoryCache(), wire = RoomWire()
+        wire.latest = 3; wire.kind = "room.renamed"
+        let first = makeReader(wire, cache: cache)
+        await first.open()
+        let events = first.events
+        XCTAssertEqual(events.count, 3)
+        first.close()
+        let nextWire = RoomWire(); nextWire.latest = 4
+        let next = makeReader(nextWire, cache: cache)
+        XCTAssertEqual(next.events, events, "Recent projection preserves system events omitted by the disk search cache")
+        XCTAssertEqual(next.link, .idle)
+        XCTAssertFalse(next.maySend)
+        XCTAssertTrue(next.status.actions.isEmpty)
+        nextWire.holdState = true
+        let parked = expectation(description: "Room state pending")
+        nextWire.onHeld = { parked.fulfill() }
+        let open = Task { await next.open() }
+        await fulfillment(of: [parked], timeout: 3)
+        XCTAssertEqual(next.events, events)
+        nextWire.holdState = false; nextWire.releaseState(latest: 4); await open.value
+        XCTAssertEqual(nextWire.logStarts, [3])
+        XCTAssertEqual(Array(next.events.prefix(3)), events)
+        XCTAssertEqual(next.events.last?.seq, 4)
+        next.close()
+    }
+
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!, username: "u", password: "p")
 
     func testCachedRoomSearchSurvivesColdStartAndListFailureButFreshListAndIdentityWin() async throws {

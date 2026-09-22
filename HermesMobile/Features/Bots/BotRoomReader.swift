@@ -39,6 +39,8 @@ import Observation
     @ObservationIgnored private var sending: Send?
     @ObservationIgnored private var stateRevision = 0
     @ObservationIgnored private var log = BotRoomLog()
+    @ObservationIgnored private var recentOwner: UUID?
+    @ObservationIgnored private var hasRecentLog = false
     @ObservationIgnored private var wire: (any BotTransport)?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var capabilities = BotRoomCapabilities(.null)
@@ -58,6 +60,10 @@ import Observation
         self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(connection: $0) }; self.onExpired = onExpired
+        if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
+            log = recent; events = recent.events; hasEarlier = recent.earlierBoundary > 0
+            hasRecentLog = true
+        }
     }
 
     /// Room and profile share state, but each visible screen claims async ownership.
@@ -65,6 +71,13 @@ import Observation
     func open(owner: UUID? = nil) async {
         viewOwner = owner
         suspend()
+        if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
+            log = recent; events = recent.events; hasEarlier = recent.earlierBoundary > 0
+            hasRecentLog = true
+        } else {
+            log = BotRoomLog(); events = []; hasEarlier = false; hasRecentLog = false
+        }
+        recentOwner = cache.recent.begin(.room(key))
         let client = makeWire(connection)
         wire = client; link = .connecting; errorMessage = nil
         client.onDisconnect = { [weak self] error in
@@ -75,7 +88,7 @@ import Observation
             await historyRemoval?.value
             let cached = try? await cache.roomHistory(key)
             try check(client)
-            if let cached {
+            if let cached, !hasRecentLog {
                 var restored = BotRoomLog()
                 restored.apply(cached.replayPage)
                 restored.loadedEarlier(from: cached.earlierBoundary ?? 0)
@@ -91,7 +104,7 @@ import Observation
             let latest = try await readState(client)
             var initial = log
             let target = didOpen ? nil : initialSequence
-            if cached == nil {
+            if (!hasRecentLog && cached == nil) || latest < initial.cursor {
                 initial.begin(latest: latest)
                 if let sequence = target, sequence > 0, sequence <= latest {
                     initial.begin(latest: latest - sequence < 199 ? latest : sequence + 199)
@@ -109,7 +122,8 @@ import Observation
             log = initial; publishLog()
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
-            link = .live; didOpen = true
+            link = .live; didOpen = true; hasRecentLog = true
+            saveRecentTranscript()
             pollTask = Task { [weak self] in
                 while let self, self.wire === client, !Task.isCancelled {
                     do { try await Task.sleep(for: self.status.interval) } catch { return }
@@ -153,6 +167,7 @@ import Observation
     }
 
     func suspend() {
+        saveRecentTranscript()
         if busy && dispatched {
             uncertainSend = sending ?? uncertainSend
             commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
@@ -166,6 +181,7 @@ import Observation
 
     func close() {
         suspend(); log = BotRoomLog(); events = []; hasEarlier = false
+        hasRecentLog = false
         status = BotRoomStatus(.null); lastAuthority = nil
     }
 
@@ -395,7 +411,15 @@ import Observation
         hasEarlier = log.earlierBoundary > 0
     }
 
+    private func saveRecentTranscript() {
+        // Pending send bubbles stay private until their acknowledgment is known.
+        guard link == .live, !busy, !uncertainDisband, let recentOwner else { return }
+        cache.recent.save(.room(log.recentWindow()), for: .room(key), owner: recentOwner)
+    }
+
     private func discardHistory() {
+        cache.recent.remove { $0 == .room(key) }
+        recentOwner = nil
         let cache = cache, key = key
         // Deletion intentionally outlives the screen; it never mutates view state.
         historyRemoval = Task { try? await cache.removeRoom(key) }

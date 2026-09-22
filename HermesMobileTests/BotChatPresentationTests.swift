@@ -136,17 +136,37 @@ import XCTest
     }
 
     func testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages() async throws {
+        try await assertRoomSearchTarget(warm: false)
+    }
+
+    func testWarmRoomSearchShowsItsTargetBeforeRefreshing() async throws {
+        try await assertRoomSearchTarget(warm: true)
+    }
+
+    private func assertRoomSearchTarget(warm: Bool) async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
         let wire = RoomWire(); wire.latest = 80; wire.kind = "message.member"
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 80)))
-        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
-            connection: connection, room: room, cache: BotHistoryCache(), initialSequence: 20, makeWire: { _ in wire })
+        let cache = BotHistoryCache()
+        let key = BotRoomKey(server: server, connectionID: connection.id, roomID: room.id)
+        if warm {
+            var log = BotRoomLog()
+            log.apply(RoomFixture.page((1...80).map { RoomFixture.event($0, kind: "message.member") }, cursor: 80))
+            cache.recent.save(.room(log), for: .room(key), owner: cache.recent.begin(.room(key)))
+        }
+        let reader = BotRoomReader(key: key,
+            connection: connection, room: room, cache: cache, initialSequence: 20, makeWire: { _ in wire })
         let window = try show(NavigationStack {
             BotRoomView(reader: reader, roster: [], avatars: [:])
         }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
         await renderFrames(4)
+        if warm {
+            let beforeNetwork = try screenshot(window, name: "563-warm-room-search")
+            XCTAssertTrue(beforeNetwork.contains("Message 20"), beforeNetwork)
+            XCTAssertFalse(beforeNetwork.contains("Message 80"), beforeNetwork)
+        }
         await reader.open()
         await renderFrames(8)
         let selected = try screenshot(window, name: "528-room-search-target")

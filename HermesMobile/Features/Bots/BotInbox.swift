@@ -340,6 +340,13 @@ import UIKit
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             var ids = Set<String>()
             profiles = rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
+            if let connection {
+                let scope = BotHistoryCache.Scope(server: server, connectionID: connection.id)
+                historyCache.recent.remove {
+                    guard $0.scope == scope, case .bot(let id) = $0.conversation else { return false }
+                    return !ids.contains(id)
+                }
+            }
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,

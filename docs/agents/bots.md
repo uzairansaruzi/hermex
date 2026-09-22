@@ -841,6 +841,31 @@ the captured context; disconnect invalidates them and never retries a write.
 Older snapshots cannot overwrite an acknowledged workspace change. Rejections
 keep the previous value and preserve the host's error text.
 
+## Recent chat entry
+
+`BotHistoryCache.recent` keeps value snapshots for at most 12 recently visited
+bot/room chats within an 8 MiB estimated payload budget. It is memory-only and
+separate from the lossy disk search index. Bot snapshots retain the last 500
+messages (including long text and display metadata), settled tool/reasoning rows,
+and visible inflight text frozen as history. Room snapshots retain system events
+as well as messages, their replay cursor and earlier boundary. Thumbnails may
+still load separately.
+
+New views read the projection synchronously before starting network recovery.
+Only a fresh server response grants runtime identity, working state, approvals or
+send permissions. Refresh replaces bot history and continues room delta replay.
+Deep links must match the cached canonical root; a fresh lookup of a replacement
+Bot Chat discards the old preview. Already-open chats keep established read-only
+history on identity loss. Warm room search still anchors to its selected sequence.
+
+The store uses configured server hash + connection UUID + bot/room identity.
+Each recovery claims a writer token, so a superseded screen cannot overwrite a
+newer projection. Offline-cache clearing, connection/server removal, deletion and
+authoritative roster pruning invalidate the corresponding entries and writers.
+The small lock only protects in-memory value copies; disk work stays on the
+history actor. No sockets, credentials, pending actions or live permissions are
+cached. App termination discards all recent projections.
+
 ## Local search
 
 The top-right search button opens a sheet with a focused search field and an

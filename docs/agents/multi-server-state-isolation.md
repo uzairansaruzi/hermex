@@ -116,7 +116,11 @@ server's content even if the purge fails.
 
 Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.
 Bot drafts use configured server + connection UUID + Profile, independently of
-webui session IDs. Live Bot transcripts stay in memory; the bounded local search cache uses a hash
+webui session IDs. Recent Bot/room transcript value snapshots stay in a bounded memory cache keyed by
+configured server hash + connection UUID + bot/room. New screens can display them
+before reconnecting, but never restore runtime identity or action permissions.
+The same removal/clear paths invalidate recent snapshots and their writer tokens.
+The bounded local search cache uses a hash
 of the configured server URL plus connection UUID and Profile, and is cleared
 with that server’s offline cache or connection removal. See [Bot Mode](bots.md) for
 identity, removal and recovery rules. `BotDraftTests` covers disk persistence,

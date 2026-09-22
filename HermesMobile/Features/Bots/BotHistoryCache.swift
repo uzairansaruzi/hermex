@@ -4,6 +4,7 @@ import Foundation
 /// A bounded, disposable index of settled conversations this phone has loaded.
 /// All disk access and text matching run on the actor, away from SwiftUI rendering.
 actor BotHistoryCache {
+    nonisolated let recent = BotRecentTranscripts()
     struct Scope: Codable, Hashable, Sendable {
         let serverKey: String
         let connectionID: UUID
@@ -202,6 +203,7 @@ actor BotHistoryCache {
 
     /// Room IDs are permanently retired by expiry/disband. Revoke late page writes too.
     func removeRoom(_ key: BotRoomKey) throws {
+        recent.remove { $0 == .room(key) }
         let scope = Scope(server: key.server, connectionID: key.connectionID)
         removedRooms.insert(.init(scope: scope, id: key.roomID))
         try load()
@@ -211,6 +213,10 @@ actor BotHistoryCache {
 
     /// Call only with a complete authoritative room list, never a partial page.
     func retainRooms(_ ids: Set<String>, scope: Scope) throws {
+        recent.remove {
+            guard $0.scope == scope, case .room(let id) = $0.conversation else { return false }
+            return !ids.contains(id)
+        }
         try load()
         let removed = snapshots.compactMap { snapshot -> String? in
             guard snapshot.scope == scope, let id = snapshot.roomID, !ids.contains(id) else { return nil }
@@ -226,6 +232,7 @@ actor BotHistoryCache {
     /// allows later snapshots, but rejects writes captured before the clear.
     func remove(server: URL, connectionID: UUID? = nil, now: Date = Date()) throws {
         let key = Scope.key(server)
+        recent.remove { $0.scope.serverKey == key && (connectionID == nil || $0.scope.connectionID == connectionID) }
         if let connectionID { removed.insert(Scope(server: server, connectionID: connectionID)) }
         else { clearedAt[key] = now }
         try load()
@@ -235,6 +242,7 @@ actor BotHistoryCache {
 
     /// Drops one deleted bot's snapshots. The scope stays writable for the other bots.
     func removeProfile(server: URL, connectionID: UUID, profileID: String) throws {
+        recent.remove { $0 == .bot(server: server, connectionID: connectionID, profile: profileID) }
         let scope = Scope(server: server, connectionID: connectionID)
         try load()
         snapshots.removeAll { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }
@@ -243,6 +251,7 @@ actor BotHistoryCache {
 
     func removeServer(_ server: URL, activeConnectionID: UUID?) throws {
         let key = Scope.key(server)
+        recent.remove { $0.scope.serverKey == key }
         if let activeConnectionID { removed.insert(Scope(server: server, connectionID: activeConnectionID)) }
         try load()
         removed.formUnion(snapshots.filter { $0.scope.serverKey == key }.map(\.scope))
@@ -289,5 +298,124 @@ actor BotHistoryCache {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONEncoder().encode(snapshots).write(to: directory.appendingPathComponent("history.json"),
                                                  options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+}
+
+/// Recent rendered values, separate from the lossy on-disk search index. The lock
+/// covers every access because screens read synchronously before their first frame,
+/// while the history actor invalidates entries. Snapshots contain value types only:
+/// no clients, callbacks, approval state, or credentials cross this boundary.
+final class BotRecentTranscripts: @unchecked Sendable {
+    enum Conversation: Hashable { case bot(String), room(String) }
+    struct Key: Hashable {
+        let scope: BotHistoryCache.Scope
+        let conversation: Conversation
+        static func bot(server: URL, connectionID: UUID, profile: String) -> Key {
+            Key(scope: .init(server: server, connectionID: connectionID), conversation: .bot(profile))
+        }
+        static func room(_ room: BotRoomKey) -> Key {
+            Key(scope: .init(server: room.server, connectionID: room.connectionID), conversation: .room(room.roomID))
+        }
+    }
+    struct Bot {
+        let root: String
+        let messages: [ChatMessage]
+        let activity: [BotSettledActivity]
+
+        init(root: String, messages: [ChatMessage], activity: [BotSettledActivity]) {
+            self.root = root
+            self.messages = Array(messages.suffix(500))
+            let ids = Set(self.messages.map(\.id))
+            self.activity = Array(activity.filter { $0.anchorMessageID.map(ids.contains) ?? true }.suffix(500))
+        }
+    }
+    enum Snapshot {
+        case bot(Bot), room(BotRoomLog)
+        var cost: Int {
+            switch self {
+            case .bot(let bot):
+                let messages = bot.messages.reduce(0) { total, row in
+                    total + 256 + (row.content?.utf8.count ?? 0) + (row.reasoning?.utf8.count ?? 0)
+                        + JSONValue.object(row.displayMetadata ?? [:]).recentCost
+                }
+                let activity = bot.activity.reduce(0) { total, row in
+                    total + 128 + (row.reasoning?.utf8.count ?? 0) + row.toolCalls.reduce(0) { total, tool in
+                        total + 256 + (tool.preview?.utf8.count ?? 0) + JSONValue.object(tool.args ?? [:]).recentCost
+                    }
+                }
+                return 2 * (messages + activity)
+            case .room(let log):
+                return 2 * log.events.reduce(0) { $0 + 256 + $1.payload.jsonValue.recentCost + $1.actor.jsonValue.recentCost }
+            }
+        }
+    }
+    private struct Entry {
+        var owner: UUID
+        var snapshot: Snapshot?
+        var cost: Int
+        var access: UInt64
+    }
+    private let lock = NSLock()
+    private var entries: [Key: Entry] = [:]
+    private var access: UInt64 = 0
+    private let maximumEntries: Int
+    private let maximumBytes: Int
+
+    init(maximumEntries: Int = 12, maximumBytes: Int = 8 * 1024 * 1024) {
+        self.maximumEntries = maximumEntries; self.maximumBytes = maximumBytes
+    }
+
+    func snapshot(for key: Key) -> Snapshot? {
+        lock.withLock {
+            guard var entry = entries[key] else { return nil }
+            access &+= 1; entry.access = access; entries[key] = entry
+            return entry.snapshot
+        }
+    }
+
+    /// Claim writes when a screen starts recovery, not during SwiftUI construction.
+    /// A later owner or removal makes every older writer inert.
+    func begin(_ key: Key) -> UUID {
+        lock.withLock {
+            let owner = UUID(); access &+= 1
+            entries[key] = Entry(owner: owner, snapshot: entries[key]?.snapshot,
+                                 cost: entries[key]?.cost ?? 0, access: access)
+            prune()
+            return owner
+        }
+    }
+
+    func save(_ snapshot: Snapshot, for key: Key, owner: UUID) {
+        let cost = snapshot.cost
+        lock.withLock {
+            guard entries[key]?.owner == owner else { return }
+            guard cost <= maximumBytes else { entries.removeValue(forKey: key); return }
+            access &+= 1
+            entries[key] = Entry(owner: owner, snapshot: snapshot, cost: cost, access: access)
+            prune()
+        }
+    }
+
+    func remove(where matches: (Key) -> Bool) {
+        lock.withLock { entries = entries.filter { !matches($0.key) } }
+    }
+
+    private func prune() {
+        var bytes = entries.values.reduce(0) { $0 + $1.cost }
+        while entries.count > maximumEntries || bytes > maximumBytes {
+            guard let oldest = entries.min(by: { $0.value.access < $1.value.access }) else { break }
+            bytes -= oldest.value.cost; entries.removeValue(forKey: oldest.key)
+        }
+    }
+}
+
+private extension JSONValue {
+    var recentCost: Int {
+        switch self {
+        case .string(let text): return 32 + text.utf8.count
+        case .array(let values): return 32 + values.reduce(0) { $0 + $1.recentCost }
+        case .object(let fields): return 32 + fields.reduce(0) { $0 + 32 + $1.key.utf8.count + $1.value.recentCost }
+        default: return 16
+        }
     }
 }

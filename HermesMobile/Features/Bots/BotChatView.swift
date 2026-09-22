@@ -140,7 +140,7 @@ import SwiftUI
                     if model.messages.isEmpty && model.liveMessages.isEmpty && model.pendingRequest == nil {
                         // Recovery with nothing on screen yet is the first load: the
                         // same skeleton as a Sessions chat, not a status line.
-                        if model.connectionState == .recovering {
+                        if model.connectionState == .recovering && !model.hasRecentTranscript {
                             ChatTranscriptLoadingSkeletonView()
                         } else if model.connectionState == .connected {
                             ContentUnavailableView {
