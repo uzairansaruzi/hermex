@@ -32,6 +32,10 @@ Tailscale ranges), local names and single-label hosts use HTTP. Explicit schemes
 and ports are preserved; TLS failures never trigger an HTTP downgrade. Invalid
 addresses display errors even before a transport exists. Cancellation invalidates
 the attempt before late replies can save credentials or dismiss the screen.
+The synchronous Keychain write is the commit point. Saved state changes with it;
+old-connection cleanup then finishes independently of sheet cancellation and the
+committed operation remains successful. Main-app ATS exceptions cover the same
+private/local IP ranges used by scheme inference; public hosts still require HTTPS.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs

@@ -148,10 +148,16 @@ import Observation
             let result = try await wire.call("profiles.list", ["include_sessions": .bool(true)])
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
+            let old = saved
             try store.save(candidate, server: server)
-            if let old = saved, old.id != candidate.id { await discard(old) }
-            guard attempt == id, !Task.isCancelled else { return false }
             saved = candidate
+            // Persistence is the commit point, with no suspension after the last
+            // cancellation check. Old-account cleanup must finish even if the
+            // sheet disappears afterwards; a committed replacement is success.
+            if let old, old.id != candidate.id {
+                let discard = discard
+                await Task { await discard(old) }.value
+            }
             return true
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
@@ -166,10 +172,13 @@ import Observation
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil
         defer { if attempt == id { isConnecting = false; attempt = nil } }
         do {
+            let old = saved
             try store.remove(server: server)
-            if let old = saved { await discard(old) }
-            guard attempt == id, !Task.isCancelled else { return false }
             saved = nil
+            if let old {
+                let discard = discard
+                await Task { await discard(old) }.value
+            }
             return true
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }

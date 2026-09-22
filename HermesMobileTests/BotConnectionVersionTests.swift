@@ -31,6 +31,45 @@ final class BotConnectionVersionTests: XCTestCase {
 @MainActor final class BotConnectionSetupTests: XCTestCase {
     private let server = URL(string: "https://webui.example")!
 
+    func testLocalAddressDefaultsHaveNarrowTransportExceptions() throws {
+        let ats = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") as? [String: Any])
+        let domains = try XCTUnwrap(ats["NSExceptionDomains"] as? [String: [String: Any]])
+        XCTAssertNotEqual(ats["NSAllowsArbitraryLoads"] as? Bool, true)
+        XCTAssertEqual(Set(domains.keys), Set(["10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+                                               "169.254.0.0/16", "100.64.0.0/10", "::1", "fc00::/7", "fe80::/10"]))
+        for (range, policy) in domains {
+            XCTAssertEqual(policy["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true, range)
+        }
+    }
+
+    func testDismissalDuringCommittedCleanupKeepsSuccessfulResult() async throws {
+        for removing in [false, true] {
+            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+            let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "old")
+            try store.save(old, server: server)
+            let parked = expectation(description: "Committed cleanup in flight")
+            var release: CheckedContinuation<Void, Never>?
+            var cleaned = false
+            let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { value in
+                XCTAssertEqual(value.id, old.id)
+                await withCheckedContinuation { release = $0; parked.fulfill() }
+                XCTAssertFalse(Task.isCancelled, "Committed cleanup outlives the presenting task")
+                cleaned = true
+            })
+            model.load(); model.username = "replacement"
+            let task = Task { removing ? await model.remove() : await model.connect() }
+            await fulfillment(of: [parked], timeout: 3)
+            XCTAssertEqual(try store.load(server: server), model.saved, "State and persistence commit before cleanup suspends")
+            if removing { XCTAssertNil(model.saved) } else { XCTAssertEqual(model.saved?.username, "replacement") }
+            model.cancel(); task.cancel()
+            release?.resume()
+            let result = await task.value
+            XCTAssertTrue(result, "Dismissal after commit cannot report the persisted operation as cancelled")
+            XCTAssertTrue(cleaned)
+            XCTAssertEqual(try store.load(server: server), model.saved)
+        }
+    }
+
     func testAddressDefaultsHonorLocalNetworksAndExplicitSchemes() throws {
         let cases = [
             "hermes.example.com": "https://hermes.example.com",
