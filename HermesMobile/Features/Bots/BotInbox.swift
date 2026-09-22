@@ -106,6 +106,9 @@ import UIKit
             try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: connectionID, profile: profile)
         }
+        // Known before the first frame, so a saved connection draws the loading
+        // skeleton rather than flashing "Connect to Hermes" until `open()` runs.
+        connection = try? self.store.load(server: server)
     }
 
     var hiddenCount: Int { profiles.filter(\.hidden).count }
@@ -143,36 +146,44 @@ import UIKit
     /// `sessions.changed` reloads. Also the pull-to-refresh and Reconnect path.
     func open() async {
         close(); hasRoomList = false
+        var client: (any BotTransport)?
         do {
             let saved = try store.load(server: server)
             if connection?.id != saved?.id { profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null) }
             connection = saved
             guard let saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
-            let client = makeWire(saved)
-            wire = client; link = .connecting; errorMessage = nil; notice = nil
-            client.onEvent = { [weak self] event in
-                guard let self, self.wire === client, event["type"].text == "sessions.changed" else { return }
+            let opened = makeWire(saved)
+            client = opened
+            wire = opened; link = .connecting; errorMessage = nil; notice = nil
+            opened.onEvent = { [weak self] event in
+                guard let self, self.wire === opened, event["type"].text == "sessions.changed" else { return }
                 self.noteChange()
             }
-            client.onDisconnect = { [weak self] error in
-                guard let self, self.wire === client else { return }
-                self.drop(client, error: error)
+            opened.onDisconnect = { [weak self] error in
+                guard let self, self.wire === opened else { return }
+                self.drop(opened, error: error)
             }
-            try await client.connect()
-            guard wire === client, !Task.isCancelled else { return }
-            guard await reload(client) else { return }
-            await refreshRooms(client)
-            guard wire === client, !Task.isCancelled else { return }
+            try await opened.connect()
+            guard wire === opened, !Task.isCancelled else { return }
+            guard await reload(opened) else { return }
+            await refreshRooms(opened)
+            guard wire === opened, !Task.isCancelled else { return }
             link = .live
             reconnectAttempts = 0
-            await refreshAvatars(client)
+            await refreshAvatars(opened)
         } catch {
             guard !Task.isCancelled else { return }
-            // A saved-connection read can fail before any client exists; that is still
-            // a visible failure with the Reconnect path, not a quiet stale roster.
-            if let client = wire { drop(client, error: error) }
-            else { link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription }
+            if let client {
+                // The socket's own disconnect callback may already have dropped this
+                // client and scheduled the quiet retry; a second report would paint
+                // the message over it.
+                if wire === client { drop(client, error: error) }
+            } else {
+                // A saved-connection read can fail before any client exists; that is
+                // still a visible failure with the Reconnect path, not a stale roster.
+                link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+            }
         }
     }
 
@@ -185,14 +196,21 @@ import UIKit
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for
     /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
-    /// a refusal the user has to act on (sign-in, identity, unsupported host)
-    /// shows a message and the Reconnect button.
+    /// a refusal the user has to act on (sign-in, identity, unsupported host, a
+    /// bad address) shows a message and the Reconnect button; every other failure,
+    /// including transient server-side errors, is the retry loop's problem.
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
-        case nil, .transport, .stale, .missingChat: return true
-        case .rejected(let code): return code >= 500
-        default: return false
+        case .unsupported, .wrongIdentity, .invalidAddress: return false
+        case .rejected(401), .rejected(403), .rejected(-32601), .rejected(4090), .rejected(4130): return false
+        default: return true
         }
+    }
+
+    /// True until the first roster lands: the inbox shows a skeleton instead of a
+    /// connection message while it connects, or quietly retries, with nothing to show.
+    var isLoadingRoster: Bool {
+        connection != nil && profiles.isEmpty && errorMessage == nil && link != .live
     }
 
     func mayEdit(_ profile: BotProfile) -> Bool { link == .live && !editing.contains(profile.id) }

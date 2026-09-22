@@ -531,10 +531,9 @@ private struct BotChatStatusView: View {
     let onShowRequest: () -> Void
 
     var body: some View {
-        if connectionText != nil || (model.connectionState == .connected && model.turn != .idle) || model.errorMessage != nil
+        if (model.connectionState == .connected && model.turn != .idle) || model.errorMessage != nil
             || model.promptReceipt != nil || !model.liveActivity.notices.isEmpty || !model.liveActivity.memoryNotes.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                if let connectionText { Text(connectionText) }
                 ForEach(model.liveActivity.notices) { notice in
                     Label(notice.text, systemImage: notice.isWarning ? "exclamationmark.triangle" : "info.circle")
                 }
@@ -587,15 +586,6 @@ private struct BotChatStatusView: View {
         if model.pendingRequest?.isAnswerable == true { return String(localized: "Waiting for your answer") }
         if model.mayDecline { return String(localized: "Waiting on Hermes Desktop") }
         return String(localized: "Hermes Desktop is handling this")
-    }
-
-    private var connectionText: String? {
-        guard !model.isReconnecting else { return nil }
-        switch model.connectionState {
-        case .connected: return nil
-        case .recovering: return String(localized: "Loading current conversation…")
-        case .disconnected: return nil
-        }
     }
 
     private var turnText: String? {

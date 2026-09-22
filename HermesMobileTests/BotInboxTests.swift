@@ -281,6 +281,21 @@ import XCTest
         XCTAssertNil(inbox.errorMessage)
     }
 
+    func testTransientServerErrorRetriesQuietlyBehindTheSkeleton() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.rejected(-32603)
+        let second = BotInboxFixtureWire(roster: [row("triage")])
+        let inbox = try makeInbox(wires: [wire, second])
+        XCTAssertTrue(inbox.isLoadingRoster, "a saved connection shows the skeleton before the first open")
+        await inbox.open()
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertNil(inbox.errorMessage, "a server-side hiccup is not the user's problem")
+        XCTAssertTrue(inbox.isLoadingRoster)
+        await settle(inbox) { $0.link == .live }
+        XCTAssertFalse(inbox.isLoadingRoster)
+        XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
+    }
+
     func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.connectError = BotFailure.rejected(401)

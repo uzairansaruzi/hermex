@@ -137,13 +137,19 @@ import SwiftUI
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
                 .overlay {
-                    if model.messages.isEmpty && model.liveMessages.isEmpty && model.pendingRequest == nil && model.connectionState == .connected {
-                        ContentUnavailableView {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                        } description: {
-                            Text("Send a message to start the conversation.")
+                    if model.messages.isEmpty && model.liveMessages.isEmpty && model.pendingRequest == nil {
+                        // Recovery with nothing on screen yet is the first load: the
+                        // same skeleton as a Sessions chat, not a status line.
+                        if model.connectionState == .recovering {
+                            ChatTranscriptLoadingSkeletonView()
+                        } else if model.connectionState == .connected {
+                            ContentUnavailableView {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                            } description: {
+                                Text("Send a message to start the conversation.")
+                            }
+                            .allowsHitTesting(false)
                         }
-                        .allowsHitTesting(false)
                     }
                 }
                 .adaptiveSoftScrollEdges(.top)
