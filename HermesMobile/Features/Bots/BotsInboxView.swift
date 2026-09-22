@@ -44,8 +44,13 @@ import SwiftUI
                     Text(errorMessage).font(.callout)
                     Button("Reconnect") { revision = UUID() }
                 } else if inbox.isLoadingRoster {
-                    ForEach(0..<4, id: \.self) { _ in
+                    // The first row speaks for the set, so VoiceOver hears one
+                    // "Loading bots" instead of nothing.
+                    ForEach(0..<4, id: \.self) { index in
                         BotInboxSkeletonRow().listRowSeparator(.hidden).padding(.vertical, 12)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(Text("Loading bots"))
+                            .accessibilityHidden(index > 0)
                     }
                 } else if inbox.profiles.isEmpty && inbox.link == .live {
                     Text("No bots yet. Tap + to create one.")
@@ -407,7 +412,6 @@ private struct BotInboxSkeletonRow: View {
             }
             .redacted(reason: .placeholder)
         }
-        .accessibilityHidden(true)
     }
 }
 

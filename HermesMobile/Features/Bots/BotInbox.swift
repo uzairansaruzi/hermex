@@ -196,13 +196,16 @@ import UIKit
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for
     /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
-    /// a refusal the user has to act on (sign-in, identity, unsupported host, a
-    /// bad address) shows a message and the Reconnect button; every other failure,
-    /// including transient server-side errors, is the retry loop's problem.
+    /// a refusal the user has to act on shows a message and the Reconnect button:
+    /// sign-in, an unsupported host or address, and any other permanent HTTP
+    /// client error (a 404 is not a Hermes host). Server errors, rate limits and
+    /// JSON-RPC faults other than "method missing" are the retry loop's problem.
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .invalidAddress: return false
-        case .rejected(401), .rejected(403), .rejected(-32601), .rejected(4090), .rejected(4130): return false
+        case .rejected(-32601), .rejected(4090), .rejected(4130): return false
+        case .rejected(408), .rejected(429): return true
+        case .rejected(let code): return !(400..<500).contains(code)
         default: return true
         }
     }

@@ -296,6 +296,21 @@ import XCTest
         XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
     }
 
+    func testNotAHermesHostShowsTheMessageInsteadOfRetryingForever() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.rejected(404)
+        var spare = 0
+        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        XCTAssertNotNil(inbox.errorMessage, "a permanent client error is the user's to fix")
+        XCTAssertFalse(inbox.isLoadingRoster)
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(spare, 1, "no automatic retry after a 404")
+    }
+
     func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.connectError = BotFailure.rejected(401)

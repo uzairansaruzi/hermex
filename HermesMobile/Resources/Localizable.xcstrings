@@ -43214,6 +43214,7 @@
         }
       }
     },
+    "Loading bots" : {"localizations":{"ar":{"stringUnit":{"state":"needs_review","value":"جارٍ تحميل الروبوتات"}},"de":{"stringUnit":{"state":"needs_review","value":"Bots werden geladen"}},"es":{"stringUnit":{"state":"needs_review","value":"Cargando bots"}},"fr":{"stringUnit":{"state":"needs_review","value":"Chargement des bots"}},"he":{"stringUnit":{"state":"needs_review","value":"טוען בוטים"}},"it":{"stringUnit":{"state":"needs_review","value":"Caricamento bot"}},"ja":{"stringUnit":{"state":"needs_review","value":"ボットを読み込み中"}},"ko":{"stringUnit":{"state":"needs_review","value":"봇 불러오는 중"}},"nl":{"stringUnit":{"state":"needs_review","value":"Bots laden"}},"pl":{"stringUnit":{"state":"needs_review","value":"Ładowanie botów"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Carregando bots"}},"ru":{"stringUnit":{"state":"needs_review","value":"Загрузка ботов"}},"tr":{"stringUnit":{"state":"needs_review","value":"Botlar yükleniyor"}},"ur":{"stringUnit":{"state":"needs_review","value":"بوٹس لوڈ ہو رہے ہیں"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"正在加载机器人"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"正在載入機器人"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"正在載入機械人"}}}},
     "Loading messages" : {
       "localizations" : {
         "ar" : {
