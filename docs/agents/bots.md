@@ -1014,7 +1014,9 @@ only to the app target; the share extension and Live Activity do not manage room
 ## Activity presentation
 
 Bot and room composers share one action pill for requests, errors, reconnect,
-and room send retry. Routine Working/Connecting banners are omitted. Room
+and retry. In rooms, command errors and uncertain-send recovery take precedence
+over a blocked member's request; its inline action card remains available.
+Routine Working/Connecting banners are omitted. Room
 requests link to their cards; Stop and uncertain-send guards remain in effect.
 
 Single-bot transcripts reuse the Sessions "Working for" row only while connected

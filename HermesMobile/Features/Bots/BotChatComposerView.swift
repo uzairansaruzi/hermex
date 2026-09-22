@@ -560,13 +560,13 @@ enum BotComposerPill: Equatable {
     /// Routine working/connecting states stay quiet; requests and recovery remain reachable.
     static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
                      mayRetry: Bool, errorText: String?) -> BotComposerPill? {
+        if let errorText { return .error(errorText) }
+        if link == .stopped { return .reconnect }
+        if mayRetry { return .retrySend }
         if link == .live && blocked {
             return hasActions ? .request(String(localized: "Waiting for your answer"))
                 : .notice(String(localized: "Waiting on Hermes Desktop"))
         }
-        if let errorText { return .error(errorText) }
-        if link == .stopped { return .reconnect }
-        if mayRetry { return .retrySend }
         return nil
     }
 }

@@ -49,6 +49,27 @@ import Vision
         model.suspend()
     }
 
+    func testSnapshotInFlightBeforeNewTurnCannotRestoreItsOldClock() async {
+        let wire = BotFixtureWire(); wire.running = true; wire.turnStartedAt = 100
+        let model = make(wire); await model.recover()
+        let applied = expectation(description: "Older full snapshot applied")
+        withObservationTracking { _ = model.messages } onChange: { applied.fulfill() }
+        wire.history = [.object(["role": .string("assistant"), "text": .string("Older snapshot")])]
+        wire.beforeResume = {
+            wire.beforeResume = nil
+            wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(2), "type": .string("message.start")]))
+            wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(3), "type": .string("message.delta")]))
+        }
+        wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("message.complete")]))
+        await fulfillment(of: [applied], timeout: 3)
+        XCTAssertNil(model.workingRowStartedAt, "The older reply cannot revive the previous turn's elapsed time")
+        model.suspend()
+        wire.turnStartedAt = 200
+        await model.recover()
+        XCTAssertEqual(model.workingRowStartedAt, Date(timeIntervalSince1970: 200))
+        model.suspend()
+    }
+
     private let server = URL(string: "https://webui.example")!
     private var connection: BotConnection {
         BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!, username: "user", password: "fixture")
