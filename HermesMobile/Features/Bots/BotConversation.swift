@@ -141,7 +141,8 @@ import Observation
         if case .bot(let recent)? = historyCache?.recent.snapshot(for: recentKey),
            conversation == nil || conversation == recent.root {
             messages = recent.messages; settledActivity = recent.activity
-            recentRoot = recent.root; hasRecentTranscript = true
+            recentRoot = recent.root
+            hasRecentTranscript = !recent.messages.isEmpty || !recent.activity.isEmpty
         }
     }
 

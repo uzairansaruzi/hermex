@@ -5,6 +5,16 @@ import Vision
 @testable import HermesMobile
 
 @MainActor final class BotConversationTests: XCTestCase {
+    func testEmptyRecentTranscriptDoesNotSuppressLoading() async {
+        let cache = BotHistoryCache(), identity = connection, wire = BotFixtureWire()
+        wire.history = []
+        let first = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: wire)
+        await first.recover(); first.suspend()
+        let next = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: BotFixtureWire())
+        XCTAssertTrue(next.messages.isEmpty)
+        XCTAssertFalse(next.hasRecentTranscript, "An empty cached projection must retain the first-load skeleton")
+    }
+
     func testRecentTranscriptRendersBeforeNetworkAndFreshHistoryReplacesIt() async throws {
         let cache = BotHistoryCache(), identity = connection, firstWire = BotFixtureWire()
         firstWire.history = [

@@ -418,9 +418,9 @@ import Observation
     }
 
     private func discardHistory() {
+        let cache = cache, key = key
         cache.recent.remove { $0 == .room(key) }
         recentOwner = nil
-        let cache = cache, key = key
         // Deletion intentionally outlives the screen; it never mutates view state.
         historyRemoval = Task { try? await cache.removeRoom(key) }
     }
