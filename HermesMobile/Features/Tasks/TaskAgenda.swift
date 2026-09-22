@@ -202,4 +202,20 @@ extension CronJob {
     var scheduleDescription: CronScheduleDescription? {
         CronScheduleHumanizer.describe(editableScheduleText ?? scheduleText)
     }
+
+    /// Pause/resume control state, shared by the detail screen and its header
+    /// card so the two buttons can't drift apart again. Resume is a circled
+    /// triangle, never `play.fill`: beside "Run now" the same solid triangle
+    /// twice would say the two buttons do the same thing.
+    var shouldResume: Bool {
+        status == .paused || status == .off
+    }
+
+    var pauseResumeTitle: String {
+        shouldResume ? String(localized: "Resume") : String(localized: "Pause")
+    }
+
+    var pauseResumeSystemImage: String {
+        shouldResume ? "play.circle" : "pause.fill"
+    }
 }

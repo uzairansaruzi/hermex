@@ -247,7 +247,7 @@ struct TaskDetailView: View {
                 Button {
                     Task { await togglePauseResume() }
                 } label: {
-                    Label(pauseResumeTitle, systemImage: pauseResumeSystemImage)
+                    Label(viewModel.job.pauseResumeTitle, systemImage: viewModel.job.pauseResumeSystemImage)
                 }
                 .disabled(isActionDisabled)
 
@@ -280,18 +280,6 @@ struct TaskDetailView: View {
         viewModel.isMutating || viewModel.job.jobId == nil
     }
 
-    private var pauseResumeTitle: String {
-        shouldResume ? String(localized: "Resume") : String(localized: "Pause")
-    }
-
-    private var pauseResumeSystemImage: String {
-        shouldResume ? "play.circle" : "pause.circle"
-    }
-
-    private var shouldResume: Bool {
-        viewModel.job.status == .paused || viewModel.job.status == .off
-    }
-
     // MARK: - Actions
 
     private func open(_ run: CronRunHistoryItem) {
@@ -314,7 +302,7 @@ struct TaskDetailView: View {
 
     private func togglePauseResume() async {
         let didMutate: Bool
-        if shouldResume {
+        if viewModel.job.shouldResume {
             didMutate = await viewModel.resume()
         } else {
             didMutate = await viewModel.pause()

@@ -131,8 +131,8 @@ struct TaskDetailHeaderCard: View {
             action: runNow
         )
         let pauseButton = footerButton(
-            title: pauseResumeTitle,
-            systemImage: pauseResumeSystemImage,
+            title: job.pauseResumeTitle,
+            systemImage: job.pauseResumeSystemImage,
             action: togglePauseResume
         )
 
@@ -202,19 +202,5 @@ struct TaskDetailHeaderCard: View {
         case .needsAttention:
             return .yellow
         }
-    }
-
-    private var shouldResume: Bool {
-        job.status == .paused || job.status == .off
-    }
-
-    private var pauseResumeTitle: String {
-        shouldResume ? String(localized: "Resume") : String(localized: "Pause")
-    }
-
-    /// Resume is a circled triangle, never `play.fill`: beside "Run now" the
-    /// same solid triangle twice would say the two buttons do the same thing.
-    private var pauseResumeSystemImage: String {
-        shouldResume ? "play.circle" : "pause.fill"
     }
 }
