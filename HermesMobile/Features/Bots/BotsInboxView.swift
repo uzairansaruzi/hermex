@@ -64,11 +64,15 @@ import SwiftUI
                     // four or more wrap instead of being clipped away.
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(rows.pinned.count, 3)), spacing: 24) {
                         ForEach(rows.pinned) { profile in
-                            Button { selection.profile = profile } label: {
+                            // The grid is one list row, and a row merges every
+                            // `.contextMenu` inside it into one, so holding any tile
+                            // lifted the whole grid with the first bot's menu. A Menu
+                            // with a primary action is its own control: tap opens
+                            // the bot, a hold shows this bot's menu.
+                            Menu { organizeMenu(profile) } label: {
                                 BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
-                            }
+                            } primaryAction: { selection.profile = profile }
                             .buttonStyle(.plain)
-                            .contextMenu { organizeMenu(profile) }
                         }
                     }
                     .padding(.vertical, 20)
@@ -256,6 +260,34 @@ import SwiftUI
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
         .contextMenu { organizeMenu(profile) }
+        // The same writes the long-press menu offers, one swipe away. No full
+        // swipe: Delete confirms and Pin is a server write, so nothing should fire
+        // from a flick.
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                Task { await inbox.setPinned(!profile.pinned, profile) }
+            } label: {
+                Label(profile.pinned ? "Unpin" : "Pin", systemImage: profile.pinned ? "pin.slash" : "pin")
+            }
+            .tint(.orange)
+            .disabled(!inbox.mayEdit(profile))
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Hide sits at the edge and Delete behind it, so the first thing a
+            // short swipe reaches is the reversible one.
+            Button {
+                Task { await inbox.setHidden(!profile.hidden, profile) }
+            } label: {
+                Label(profile.hidden ? "Unhide" : "Hide", systemImage: profile.hidden ? "eye" : "eye.slash")
+            }
+            .tint(.gray)
+            .disabled(!inbox.mayEdit(profile))
+            if inbox.mayDelete(profile) {
+                Button(role: .destructive) { deleting = profile } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
         .listRowSeparator(.hidden)
         .padding(.vertical, 12)
     }

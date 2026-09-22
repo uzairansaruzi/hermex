@@ -53,8 +53,8 @@ import SwiftUI
                     // the scroll under load (issue #553).
                     VStack(alignment: .leading, spacing: 8) {
                         if window.hasEarlier(count: model.messages.count) {
-                            Button("Load earlier") { loadEarlier(proxy: proxy) }
-                                .frame(maxWidth: .infinity)
+                            // The window widens in place, so there is no loading state.
+                            LoadOlderMessagesButton(isLoading: false) { loadEarlier(proxy: proxy) }
                         }
                         ForEach(model.messages[window.start(count: model.messages.count)...]) { message in
                             settledActivity(anchoredTo: message.id)
