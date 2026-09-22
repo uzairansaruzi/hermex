@@ -33,14 +33,20 @@ struct BotChatComposerView: View {
     /// different text shows again; the same one stays gone until the next send
     /// clears it.
     @State private var dismissedError: String?
-    @State private var mode = BotPromptMode.send
-    @State private var redirectAction: BotConversation.PromptAction?
+    /// True while the send-choice card is up: a send landed on a working bot
+    /// and the user has not yet said whether it steers, queues or interrupts.
+    @State private var choosingSendMode = false
 
     private var isExpanded: Bool { isFocused || settingsPresented || picker != nil || shouldRestoreFocusAfterPicker || preview != nil || model.submittingPrompt != nil }
-    private var showsToolbar: Bool { isExpanded || mode != .send }
+    private var showsToolbar: Bool { isExpanded }
     private var showsStop: Bool { model.mayStop || model.turn == .stopping }
+    /// Send is one button. Idle, it starts a turn; working, it asks what the
+    /// message should do, so it is live whenever any of those is.
     private var canSend: Bool {
-        model.maySubmit(mode) && model.hasSendableInput
+        model.hasSendableInput && (model.maySubmit(.send) || !busyChoices.isEmpty)
+    }
+    private var busyChoices: [BotPromptMode] {
+        BotPromptMode.busyChoices(hasAttachments: !model.attachments.items.isEmpty).filter(model.maySubmit)
     }
     private var appearance: ChatComposerActionAppearance {
         ChatComposerActionAppearance(
@@ -105,7 +111,6 @@ struct BotChatComposerView: View {
                     HStack(alignment: .center, spacing: 8) {
                         ComposerToolbarScroller {
                             plusMenu
-                            if model.mayGuide || mode != .send { modeMenu }
                             BotComposerSettings(settings: model.chatControls, preparePresentation: {
                                 settingsPresented = true; isFocused = false
                             }, dismissPresentation: { settingsPresented = false })
@@ -172,26 +177,23 @@ struct BotChatComposerView: View {
             guard current > previous, model.mayEditDraft else { return }
             isFocused = true
         }
-        .onChange(of: model.attachments.items.isEmpty) { _, empty in
-            if !empty, mode == .steer || mode == .redirect { mode = model.mayGuide ? .queue : .send }
-        }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
-        .onChange(of: model.mayGuide) { _, busy in
-            if busy && mode == .send { mode = model.attachments.items.isEmpty ? .steer : .queue }
-        }
-        .onAppear { if model.mayGuide && mode == .send { mode = model.attachments.items.isEmpty ? .steer : .queue } }
-        .confirmationDialog("Redirect this bot's current work?", isPresented: Binding(
-            get: { redirectAction != nil }, set: { if !$0 { redirectAction = nil } }
-        ), titleVisibility: .visible) {
-            if let action = redirectAction {
-                Button("Redirect", role: .destructive) {
-                    redirectAction = nil
+        // The card rides the same keyboard-retaining overlay as the "+" picker, so
+        // the keyboard stays up and the two cards look and move alike.
+        .background {
+            HermexKeyboardRetainingOverlay(isPresented: choosingSendMode) {
+                BotSendChoiceView(choices: busyChoices, onPick: { mode in
+                    choosingSendMode = false
+                    guard let action = model.preparePrompt(mode) else { return }
                     Task { await model.submit(action) }
-                }
+                }, onDismiss: { choosingSendMode = false })
             }
-            Button("Cancel", role: .cancel) { redirectAction = nil }
-        } message: {
-            Text("Interrupt current work and send this direction? During startup, the server may queue it for the next turn.")
+            .frame(width: 0, height: 0)
+        }
+        // The bot finishing, or the choices changing under the card, closes it:
+        // the next send re-asks with the current truth.
+        .onChange(of: busyChoices) { _, choices in
+            if choices.isEmpty { choosingSendMode = false }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardIsVisible = true
@@ -203,8 +205,9 @@ struct BotChatComposerView: View {
 
     /// The one panel the caret can open: bots and workspace files for an `@`,
     /// this connection's skills for a `/` that opens the draft. The `@` panel
-    /// wins, so the two can never stack. The skill panel stays closed for Steer
-    /// and Redirect, where the host will not expand an invocation.
+    /// wins, so the two can never stack. The skill panel opens even while the
+    /// bot works: what the send becomes is decided at send time, and a skill
+    /// sent as Steer just reaches the host as text.
     ///
     /// The `@` container stands whenever the caret sits in a reference, even
     /// while the panel itself is still empty: its task is what asks the host
@@ -237,8 +240,7 @@ struct BotChatComposerView: View {
                 }
             }
             .task(id: trigger.query) { await model.searchFilePaths(trigger.query) }
-        } else if mode.startsTurn,
-                  let trigger = BotSlashTrigger.detect(in: model.draft, selection: selection.range) {
+        } else if let trigger = BotSlashTrigger.detect(in: model.draft, selection: selection.range) {
             let matches = SlashSkillFormatter.matching(trigger.query, in: model.slashSkills)
             if !matches.isEmpty {
                 BotSlashAutocompleteView(suggestions: matches) { skill in
@@ -324,25 +326,6 @@ struct BotChatComposerView: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Composer options")
-    }
-
-    private var modeMenu: some View {
-        ChatUIKitMenuButton {
-            ComposerInlineControlLabel(
-                title: mode.title, systemImage: "arrow.turn.up.right",
-                color: .secondary, controlFont: AppFont.subheadline(), chevronFont: AppFont.caption2()
-            )
-        } menu: {
-            UIMenu(children: BotPromptMode.allCases.map { option in
-                UIAction(title: option.title, subtitle: option.explanation,
-                         attributes: model.maySubmit(option) ? [] : [.disabled],
-                         state: mode == option ? .on : .off) { _ in
-                    mode = option
-                }
-            })
-        }
-        .accessibilityLabel(Text("Message action: \(mode.title)"))
-        .accessibilityHint(Text(mode.explanation))
     }
 
     private var promptButtons: some View {
@@ -450,16 +433,21 @@ struct BotChatComposerView: View {
         }
         .buttonStyle(.chatTactile(.icon))
         .disabled(!canSend)
-        .accessibilityLabel(Text(mode.title))
-        .accessibilityHint(Text(mode.explanation))
+        .accessibilityLabel(Text("Send"))
         .keyboardShortcut(.return, modifiers: .command)
     }
 
+    /// Idle sends go straight out. On a working bot the message could steer,
+    /// queue or interrupt, and that is the user's call every time, so the card
+    /// asks before anything is written.
     private func send() {
         voiceInput.stopBeforeSubmittingDraft()
-        guard let action = model.preparePrompt(mode) else { return }
-        if mode == .redirect { redirectAction = action }
-        else { Task { await model.submit(action) } }
+        guard model.hasSendableInput else { return }
+        if let action = model.preparePrompt(.send) {
+            Task { await model.submit(action) }
+        } else if !busyChoices.isEmpty {
+            choosingSendMode = true
+        }
     }
 }
 
@@ -592,5 +580,89 @@ private struct BotComposerPillView: View {
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 24)
         .accessibilityIdentifier("bot-chat-status")
+    }
+}
+
+/// The send-choice card: the "+" picker's chrome (scrim, material panel, the
+/// same present and dismiss motion) holding Steer, Queue and Interrupt. It sits
+/// bottom-trailing, by the send button that opened it.
+struct BotSendChoiceView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var isVisible = false
+    @State private var isDismissing = false
+    @State private var transitionTask: Task<Void, Never>?
+
+    let choices: [BotPromptMode]
+    let onPick: (BotPromptMode) -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = HermexAttachmentPickerLayoutMetrics.menuWidth(containerWidth: proxy.size.width)
+            ZStack(alignment: .bottomTrailing) {
+                Button(action: dismiss) {
+                    Color.black.opacity(isVisible ? 0.08 : 0)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isDismissing)
+                .accessibilityLabel("Close send choices")
+
+                VStack(spacing: 0) {
+                    ForEach(choices, id: \.self) { choice in
+                        HermexAttachmentMenuRow(title: Text(choice.title), systemImage: choice.systemImage) {
+                            finish { onPick(choice) }
+                        }
+                    }
+                }
+                .padding(.vertical, 12)
+                .frame(width: width)
+                .modifier(HermexAttachmentPanelSurface(reduceTransparency: reduceTransparency))
+                .compositingGroup()
+                .clipShape(.rect(cornerRadius: 46, style: .continuous))
+                .padding(.trailing, HermexAttachmentPickerLayoutMetrics.menuLeadingPadding)
+                .padding(.bottom, 74)
+                .opacity(isVisible ? 1 : 0)
+                .scaleEffect(isVisible ? 1 : 0.96, anchor: .bottomTrailing)
+                .offset(y: isVisible ? 0 : 8)
+                .allowsHitTesting(!isDismissing)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Send choices")
+            }
+        }
+        .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape, dismiss)
+        .onAppear(perform: present)
+        .onDisappear { transitionTask?.cancel(); transitionTask = nil }
+    }
+
+    private func present() {
+        guard !isVisible else { return }
+        guard !reduceMotion else { isVisible = true; return }
+        transitionTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy(duration: 0.2)) { isVisible = true }
+            transitionTask = nil
+        }
+    }
+
+    private func dismiss() { finish(onDismiss) }
+
+    /// Fades the card out, then hands control back; a pick and a dismissal
+    /// leave the same way.
+    private func finish(_ completion: @escaping () -> Void) {
+        guard !isDismissing else { return }
+        isDismissing = true
+        transitionTask?.cancel()
+        guard !reduceMotion else { completion(); return }
+        withAnimation(.easeInOut(duration: 0.16)) { isVisible = false }
+        transitionTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
+            guard !Task.isCancelled else { return }
+            completion()
+        }
     }
 }

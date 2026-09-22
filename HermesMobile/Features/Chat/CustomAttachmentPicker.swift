@@ -492,7 +492,9 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
     }
 }
 
-private struct HermexAttachmentPanelSurface: ViewModifier {
+/// The floating card's material and shadow, shared by the attachment picker
+/// and the Bot send-choice card so the two read as one control.
+struct HermexAttachmentPanelSurface: ViewModifier {
     let reduceTransparency: Bool
 
     func body(content: Content) -> some View {
@@ -615,24 +617,8 @@ struct HermexAttachmentPickerView: View {
         enabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 42, height: 42)
-                    .background(.primary.opacity(0.08), in: Circle())
-                Text(title)
-                    .font(.title3.weight(.regular))
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
+        HermexAttachmentMenuRow(title: Text(title), systemImage: systemImage, action: action)
+            .disabled(!enabled)
     }
 
     private var photoPanel: some View {
@@ -1003,5 +989,33 @@ private struct HermexPhotoAssetThumbnail: View {
         Self.imageManager.cancelImageRequest(requestID)
         requestID = PHInvalidImageRequestID
         requestToken = nil
+    }
+}
+
+/// One choice in a floating card: a circled icon and a title. Shared by the
+/// attachment picker and the Bot send-choice card.
+struct HermexAttachmentMenuRow: View {
+    let title: Text
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 42, height: 42)
+                    .background(.primary.opacity(0.08), in: Circle())
+                title
+                    .font(.title3.weight(.regular))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

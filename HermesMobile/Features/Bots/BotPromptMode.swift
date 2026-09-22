@@ -1,7 +1,9 @@
 import Foundation
 
-/// Bot-only actions. Queue explicitly bypasses the host's configurable busy
-/// input behavior, which could otherwise interrupt work started by Desktop.
+/// Bot-only actions. Send is the only choice while the bot is idle; the other
+/// three are offered when a send lands on a working bot. Queue explicitly
+/// bypasses the host's configurable busy input behavior, which could otherwise
+/// interrupt work started by Desktop.
 enum BotPromptMode: CaseIterable, Hashable {
     case send, steer, queue, redirect
 
@@ -10,17 +12,24 @@ enum BotPromptMode: CaseIterable, Hashable {
         case .send: return String(localized: "Send")
         case .steer: return String(localized: "Steer")
         case .queue: return String(localized: "Queue")
-        case .redirect: return String(localized: "Redirect")
+        case .redirect: return String(localized: "Interrupt")
         }
     }
 
-    var explanation: String {
+    var systemImage: String {
         switch self {
-        case .send: return String(localized: "Start a new turn. If the bot becomes busy, wait for that work to finish.")
-        case .steer: return String(localized: "Add guidance to the current work without interrupting it.")
-        case .queue: return String(localized: "Run after current work, or immediately if it has finished.")
-        case .redirect: return String(localized: "Interrupt current work and change direction. During startup, this may queue a follow-up.")
+        case .send: return "arrow.up"
+        case .steer: return "arrow.turn.up.right"
+        case .queue: return "text.append"
+        case .redirect: return "stop.circle"
         }
+    }
+
+    /// What a send can mean while the bot is working, in the order the card
+    /// lists them. Steer drops out when the draft carries attachments, which
+    /// the host only accepts on a fresh turn.
+    static func busyChoices(hasAttachments: Bool) -> [BotPromptMode] {
+        hasAttachments ? [.queue, .redirect] : [.steer, .queue, .redirect]
     }
 
     /// Whether this mode starts a fresh turn. Only there will the host expand a
