@@ -72,6 +72,15 @@ struct BotChatComposerView: View {
         .onChange(of: model.submittingPrompt) { _, submitting in
             if submitting != nil { dismissedErrors = [] }
         }
+        // A dismissal covers one occurrence. Once the error's source clears, the
+        // same text failing again is news and shows again.
+        .onChange(of: errorTexts) { _, current in dismissedErrors.formIntersection(current) }
+    }
+
+    /// Every error a pill could carry, in priority order.
+    private var errorTexts: [String] {
+        [model.errorMessage, model.chatControls.errorMessage, model.attachments.errorMessage,
+         voiceInput.errorMessage].compactMap { $0 }
     }
 
     private var pill: BotComposerPill? {
@@ -79,8 +88,7 @@ struct BotChatComposerView: View {
             requestText: model.turn == .needsAttention ? requestText : nil,
             // A request the phone could not read has no card to jump to.
             requestHasCard: model.pendingRequest != nil,
-            errorText: [model.errorMessage, model.chatControls.errorMessage, model.attachments.errorMessage,
-                        voiceInput.errorMessage].compactMap { $0 }.first { !dismissedErrors.contains($0) },
+            errorText: errorTexts.first { !dismissedErrors.contains($0) },
             voiceStatus: voiceStatus,
             offersReconnect: model.connectionState == .disconnected && !model.isReconnecting && model.errorMessage != nil,
             isUploading: model.isUploadingAttachments
