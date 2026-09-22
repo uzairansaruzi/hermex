@@ -79,10 +79,10 @@ scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests
 scripts/test-sim <simulator-udid>
 ```
 
-Choose local coverage using `AGENTS.md` § Verifying: ordinary slices run affected
-tests, while broad changes run the full suite. PR CI runs every retained test
-with one simulator worker. `--only` limits execution, but still builds the app
-and test target.
+Choose local coverage using `AGENTS.md` § Verifying: slices run affected tests,
+and PR CI, which runs every retained test with one simulator worker, is the
+full-suite gate. `--only` limits execution, but still builds the app and test
+target.
 
 The runner waits for simulator readiness, terminates any running Hermex app on
 that device (an app left attached by a build-and-run makes the test runner hang

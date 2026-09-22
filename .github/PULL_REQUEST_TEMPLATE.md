@@ -12,11 +12,11 @@ Fixes #
 
 ## How it was tested
 
-<!-- e.g. full XCTest suite (command + result), manual simulator steps, screenshots for UI changes. -->
+<!-- e.g. focused XCTest selection (command + result), manual simulator steps, screenshots for UI changes. -->
 
 ## Checklist
 
-- [ ] Local validation passes using `scripts/test-sim <assigned-simulator-udid>` with affected tests or the full suite, as required by `AGENTS.md` § Verifying; the selection and results are recorded above
+- [ ] Local validation passes using `scripts/test-sim <assigned-simulator-udid>` with the tests required by `AGENTS.md` § Verifying; the selection and results are recorded above
 - [ ] New/changed `Codable` models decode tolerantly (optionals for fields the server might add or rename)
 - [ ] No new third-party dependencies (the list in `AGENTS.md` is locked)
 - [ ] No invented API endpoints or JSON shapes (verified against upstream source or a running server)
