@@ -757,10 +757,6 @@ enum KanbanDependencyMutationValidator {
         }
     }
 
-    private static func normalized(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
-    }
 }
 
 enum KanbanCardMutationValidator {
@@ -776,10 +772,6 @@ enum KanbanCardMutationValidator {
         return card
     }
 
-    private static func normalized(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
-    }
 }
 
 struct KanbanComment: Decodable, Equatable, Sendable {
@@ -971,10 +963,6 @@ enum KanbanCardDetailValidator {
         }
     }
 
-    private static func normalized(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
-    }
 }
 
 struct KanbanLinkCounts: Decodable, Equatable, Sendable {
@@ -1163,9 +1151,11 @@ enum KanbanCompatibilityValidator {
         return normalized
     }
 
-    private static func normalized(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
+}
+
+/// Trim whitespace and newlines; nil when the result is empty.
+private func normalized(_ value: String?) -> String? {
+    let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed?.isEmpty == false ? trimmed : nil
 }
