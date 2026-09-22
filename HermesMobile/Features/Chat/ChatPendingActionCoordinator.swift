@@ -203,8 +203,8 @@ final class ChatPendingActionCoordinator {
 
     func stopMonitoringForStreamTransition(clearClarification: Bool) {
         // A pending approval belongs to the server, not to the chat transport.
-        // Keep its monitor alive after completion; suspend it while reconnecting.
-        if delegate?.pendingActionIsStreamConnectionSuspended == true || approvalPrompt == nil {
+        // The approval event can arrive after chat completion on its own SSE stream.
+        if delegate?.pendingActionIsStreamConnectionSuspended == true {
             stopApprovalMonitoring(clearPrompt: false)
         }
         stopClarificationMonitoring(clearPrompt: clearClarification)
@@ -354,6 +354,11 @@ final class ChatPendingActionCoordinator {
                     else { break pollingLoop }
 
                     await self.refreshApprovalPending(sessionID: sessionID)
+                    // An idle chat with no known approval needs only one fallback
+                    // probe; do not poll a failed remote connection indefinitely.
+                    guard self.delegate?.pendingActionHasActiveStream == true ||
+                          self.approvalPendingBySession[sessionID] != nil
+                    else { break pollingLoop }
                 }
 
                 guard !Task.isCancelled else { break }

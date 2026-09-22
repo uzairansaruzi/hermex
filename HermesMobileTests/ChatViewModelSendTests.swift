@@ -1563,6 +1563,45 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testApprovalArrivingAfterChatStreamEndsIsShown() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/approval/respond":
+                return apiTestJSONResponse(#"{"ok":true,"choice":"once"}"#, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run setup")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(approvalStreamClient.stopCount, 0)
+
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(approvalId: "approval-1", command: "make install"),
+            pendingCount: 1
+        )))
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+
+        let didRespond = await viewModel.respondToApproval(.once)
+        XCTAssertTrue(didRespond)
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertEqual(approvalStreamClient.stopCount, 1)
+    }
+
+    @MainActor
     func testIdleSessionLoadsPendingApprovalAndClearsOnServerUpdate() async throws {
         let approvalStreamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(approvalStreamClient: approvalStreamClient) { request in
