@@ -58,6 +58,7 @@ final class ChatPendingActionCoordinator {
 
     private var approvalPendingBySession: [String: ApprovalPromptState] = [:]
     private var approvalMonitoringSessionID: String?
+    private var approvalHadPendingWhileMonitoring = false
     @ObservationIgnored private var approvalPollingTask: Task<Void, Never>?
     private var approvalStateGeneration = 0
 
@@ -229,9 +230,11 @@ final class ChatPendingActionCoordinator {
         approvalStateGeneration &+= 1
         renderApprovalPromptForCurrentSession()
         if approvalPendingBySession[sessionID] != nil {
+            approvalHadPendingWhileMonitoring = true
             startApprovalMonitoring()
         } else if delegate?.pendingActionHasActiveStream != true,
-                  approvalMonitoringSessionID == sessionID {
+                  approvalMonitoringSessionID == sessionID,
+                  approvalHadPendingWhileMonitoring {
             stopApprovalMonitoring(clearPrompt: false)
         }
     }
@@ -303,6 +306,7 @@ final class ChatPendingActionCoordinator {
 
         stopApprovalMonitoring(clearPrompt: false)
         approvalMonitoringSessionID = sessionID
+        approvalHadPendingWhileMonitoring = approvalPendingBySession[sessionID] != nil
         approvalStreamClient.start(url: client.approvalStreamURL(sessionID: sessionID)) { [weak self] event in
             self?.handleApprovalMonitorEvent(event, sessionID: sessionID)
         }
@@ -316,6 +320,7 @@ final class ChatPendingActionCoordinator {
             approvalStreamClient.stop()
         }
         approvalMonitoringSessionID = nil
+        approvalHadPendingWhileMonitoring = false
 
         guard clearPrompt else { return }
         approvalStateGeneration &+= 1
@@ -354,11 +359,8 @@ final class ChatPendingActionCoordinator {
                     else { break pollingLoop }
 
                     await self.refreshApprovalPending(sessionID: sessionID)
-                    // An idle chat with no known approval needs only one fallback
-                    // probe; do not poll a failed remote connection indefinitely.
-                    guard self.delegate?.pendingActionHasActiveStream == true ||
-                          self.approvalPendingBySession[sessionID] != nil
-                    else { break pollingLoop }
+                    // An empty snapshot cannot rule out a later approval. Keep
+                    // polling while this chat is open if its SSE connection failed.
                 }
 
                 guard !Task.isCancelled else { break }
