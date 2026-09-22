@@ -74,6 +74,7 @@ import SwiftUI
                             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: saved.id)
                             BotAvatarStore.shared.removeAll(connectionID: saved.id)
                             BotUnreadStore().remove(connectionID: saved.id)
+                            BotRoomOrganizeStore().remove(connectionID: saved.id)
                         }
                         dismiss()
                     } catch { errorMessage = String(localized: "Could not remove saved sign-in details.") }

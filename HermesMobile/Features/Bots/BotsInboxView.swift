@@ -16,6 +16,9 @@ import SwiftUI
     @State private var roomCreator: BotRoomCreator?
     @State private var createdRoom: BotRoomKey?
     @State private var deleting: BotProfile?
+    @State private var renamingRoom: BotGroupRoom?
+    @State private var roomName = ""
+    @State private var disbanding: BotGroupRoom?
     @State private var selection = BotInboxSelection()
     @State private var searchedRoom: BotRoomKey?
     @State private var searchedSequence: Int?
@@ -37,7 +40,6 @@ import SwiftUI
     }
 
     var body: some View {
-        let rows = inbox.rows(matching: "")
         List {
             if inbox.connection != nil {
                 if let errorMessage = inbox.errorMessage {
@@ -58,21 +60,30 @@ import SwiftUI
                 if let notice = inbox.notice {
                     Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
                 }
-                if !rows.pinned.isEmpty {
-                    // Pinned bots sit above the list as large tiles: as many columns as
-                    // there are pinned bots, up to three, so one or two sit centered and
+                let pinned = inbox.pinned
+                if !pinned.isEmpty {
+                    // Pinned chats sit above the list as large tiles: as many columns as
+                    // there are pinned chats, up to three, so one or two sit centered and
                     // four or more wrap instead of being clipped away.
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(rows.pinned.count, 3)), spacing: 24) {
-                        ForEach(rows.pinned) { profile in
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(pinned.count, 3)), spacing: 24) {
+                        ForEach(pinned) { chat in
                             // The grid is one list row, and a row merges every
                             // `.contextMenu` inside it into one, so holding any tile
                             // lifted the whole grid with the first bot's menu. A Menu
                             // with a primary action is its own control: tap opens
-                            // the bot, a hold shows this bot's menu.
-                            Menu { organizeMenu(profile) } label: {
-                                BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
-                            } primaryAction: { selection.profile = profile }
-                            .buttonStyle(.plain)
+                            // the chat, a hold shows this chat's menu.
+                            switch chat {
+                            case .bot(let profile):
+                                Menu { organizeMenu(profile) } label: {
+                                    BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
+                                } primaryAction: { selection.profile = profile }
+                                .buttonStyle(.plain)
+                            case .room(let room):
+                                Menu { roomOrganizeMenu(room) } label: {
+                                    BotRoomHeroTile(room: room, roster: inbox.profiles, avatars: inbox.avatars)
+                                } primaryAction: { openRoom(room) }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                     .padding(.vertical, 20)
@@ -84,15 +95,38 @@ import SwiftUI
                         row(profile, dimmed: profile.hidden)
                     case .room(let room):
                         if let key = inbox.roomKey(room) {
-                            Button { roomSequence = nil; selection.room = key } label: {
+                            Button { openRoom(room) } label: {
                                 BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
                             }
                             .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
+                            .opacity(inbox.isRoomHidden(room) ? 0.5 : 1)
+                            .contextMenu { roomOrganizeMenu(room) }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    inbox.setRoomPinned(!inbox.isRoomPinned(room), room)
+                                } label: {
+                                    Label(inbox.isRoomPinned(room) ? "Unpin" : "Pin", systemImage: inbox.isRoomPinned(room) ? "pin.slash" : "pin")
+                                }
+                                .tint(.orange)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    inbox.setRoomHidden(!inbox.isRoomHidden(room), room)
+                                } label: {
+                                    Label(inbox.isRoomHidden(room) ? "Unhide" : "Hide", systemImage: inbox.isRoomHidden(room) ? "eye" : "eye.slash")
+                                }
+                                .tint(.gray)
+                                if inbox.mayDisbandRoom(room) {
+                                    Button(role: .destructive) { disbanding = room } label: {
+                                        Label("Disband", systemImage: "trash")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 if inbox.hiddenCount > 0 {
-                    Button(inbox.showsHidden ? "Hide hidden bots" : "Show hidden bots (\(inbox.hiddenCount))") {
+                    Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
                     }
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -173,6 +207,27 @@ import SwiftUI
         } message: { profile in
             Text("Deletes this bot’s Profile on \(inbox.connection?.name ?? "Hermes"): its instructions, settings, skills, saved keys and chat history. Drafts on this phone are removed too. This cannot be undone. Hiding keeps everything and only removes it from the list.")
         }
+        .alert("Rename group", isPresented: Binding(
+            get: { renamingRoom != nil }, set: { if !$0 { renamingRoom = nil } }
+        ), presenting: renamingRoom) { room in
+            TextField("Group name", text: $roomName)
+            Button("Save") {
+                let name = roomName
+                Task { await inbox.renameRoom(room, to: name) }
+            }
+            .disabled(!BotRoomRPC.validName(roomName) || roomName == room.name)
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Enter a name of up to 200 characters.")
+        }
+        .confirmationDialog("Disband this group?", isPresented: Binding(
+            get: { disbanding != nil }, set: { if !$0 { disbanding = nil } }
+        ), titleVisibility: .visible, presenting: disbanding) { room in
+            Button("Disband Group", role: .destructive) { Task { await inbox.disbandRoom(room) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The room and its history will be removed from every device. All bots in it will stop. The room cannot be restored.")
+        }
         .sheet(isPresented: $showingSearch, onDismiss: openSearchSelection) {
             BotSearchView(inbox: inbox, onSelectRoom: { room, sequence in
                 searchedRoom = inbox.roomKey(room); searchedSequence = sequence
@@ -190,6 +245,7 @@ import SwiftUI
             creation = nil
             roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
             deleting = nil
+            renamingRoom = nil; disbanding = nil
         }
         .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
             NavigationStack { BotConnectionView(server: server) }
@@ -318,6 +374,37 @@ import SwiftUI
         }
     }
 
+    private func openRoom(_ room: BotGroupRoom) {
+        guard let key = inbox.roomKey(room) else { return }
+        roomSequence = nil; selection.room = key
+    }
+
+    /// Pin and hide are this phone's own marks and always apply; Rename and
+    /// Disband go to the host and stay inert until the inbox is live and the
+    /// host offers them for this room.
+    @ViewBuilder private func roomOrganizeMenu(_ room: BotGroupRoom) -> some View {
+        Button {
+            roomName = room.name; renamingRoom = room
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        .disabled(!inbox.mayRenameRoom(room))
+        Button {
+            inbox.setRoomPinned(!inbox.isRoomPinned(room), room)
+        } label: {
+            Label(inbox.isRoomPinned(room) ? "Unpin" : "Pin", systemImage: inbox.isRoomPinned(room) ? "pin.slash" : "pin")
+        }
+        Button {
+            inbox.setRoomHidden(!inbox.isRoomHidden(room), room)
+        } label: {
+            Label(inbox.isRoomHidden(room) ? "Unhide" : "Hide group", systemImage: inbox.isRoomHidden(room) ? "eye" : "eye.slash")
+        }
+        Button(role: .destructive) { disbanding = room } label: {
+            Label("Disband", systemImage: "trash")
+        }
+        .disabled(!inbox.mayDisbandRoom(room))
+    }
+
     /// Pin and hide write Desktop's own roster fields; both stay inert until the
     /// inbox is live and no write for this bot is in flight.
     private func organizeMenu(_ profile: BotProfile) -> some View {
@@ -379,6 +466,22 @@ private struct BotHeroTile: View {
         }
         .frame(maxWidth: 132)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A pinned room: the member avatars stacked large, the name beneath.
+private struct BotRoomHeroTile: View {
+    let room: BotGroupRoom
+    let roster: [BotProfile]
+    let avatars: [String: UIImage]
+    var body: some View {
+        VStack(spacing: 14) {
+            BotRoomAvatars(room: room, roster: roster, avatars: avatars, size: 60).frame(height: 84)
+            Text(room.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .frame(maxWidth: 132)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(room.name))
     }
 }
 

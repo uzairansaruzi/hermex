@@ -40,8 +40,21 @@ import UIKit
     var chats: [ChatRow] {
         let rows = rows(matching: "")
         let bots = (rows.others + rows.hidden).map(ChatRow.bot)
-        let groups = roomCapabilities.enabled ? rooms.map(ChatRow.room) : []
-        return (bots + groups).sorted {
+        let groups = visibleRooms.filter { !isRoomPinned($0) && (!isRoomHidden($0) || showsHidden) }.map(ChatRow.room)
+        return Self.byActivity(bots + groups)
+    }
+
+    /// The tiles above the timeline: Desktop's pinned bots, then rooms pinned on
+    /// this phone, each group by activity.
+    var pinned: [ChatRow] {
+        Self.byActivity(rows(matching: "").pinned.map(ChatRow.bot))
+            + Self.byActivity(visibleRooms.filter { isRoomPinned($0) && !isRoomHidden($0) }.map(ChatRow.room))
+    }
+
+    private var visibleRooms: [BotGroupRoom] { roomCapabilities.enabled ? rooms : [] }
+
+    private static func byActivity(_ rows: [ChatRow]) -> [ChatRow] {
+        rows.sorted {
             switch ($0.activity, $1.activity) {
             case let (lhs?, rhs?) where lhs != rhs: return lhs > rhs
             case (_?, nil): return true
@@ -57,6 +70,9 @@ import UIKit
     private(set) var rooms: [BotGroupRoom] = []
     private var hasRoomList = false
     private(set) var roomCapabilities = BotRoomCapabilities(.null)
+    /// Rooms pinned or hidden on this phone. The host has no such fields for
+    /// rooms, so unlike a bot's pin these never reach Desktop.
+    private(set) var roomFlags = BotRoomOrganizeStore.Flags()
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
@@ -82,6 +98,7 @@ import UIKit
     private var returnedFrom: String?
     private let store: BotConnectionStore
     private let unread: BotUnreadStore
+    private let roomStore: BotRoomOrganizeStore
     private let avatarStore: BotAvatarStore
     private let historyCache: BotHistoryCache
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
@@ -94,11 +111,12 @@ import UIKit
     private let reconnectDelays: [Duration]
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
+         roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
-        self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread
+        self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         self.reconnectDelays = reconnectDelays; self.historyCache = historyCache
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
@@ -111,7 +129,7 @@ import UIKit
         connection = try? self.store.load(server: server)
     }
 
-    var hiddenCount: Int { profiles.filter(\.hidden).count }
+    var hiddenCount: Int { profiles.filter(\.hidden).count + visibleRooms.filter(isRoomHidden).count }
 
     func rows(matching search: String) -> Rows {
         let matching = profiles.filter { search.isEmpty || $0.name.localizedStandardContains(search) }
@@ -149,10 +167,14 @@ import UIKit
         var client: (any BotTransport)?
         do {
             let saved = try store.load(server: server)
-            if connection?.id != saved?.id { profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null) }
+            if connection?.id != saved?.id {
+                profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
+                roomFlags = BotRoomOrganizeStore.Flags()
+            }
             connection = saved
             guard let saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
+            if roomFlags == BotRoomOrganizeStore.Flags() { roomFlags = roomStore.load(connectionID: saved.id) }
             let opened = makeWire(saved)
             client = opened
             wire = opened; link = .connecting; errorMessage = nil; notice = nil
@@ -388,6 +410,77 @@ import UIKit
         notice = String(localized: "This room’s history is no longer available.")
     }
 
+    func isRoomPinned(_ room: BotGroupRoom) -> Bool { roomFlags.pinned.contains(room.id) }
+    func isRoomHidden(_ room: BotGroupRoom) -> Bool { roomFlags.hidden.contains(room.id) }
+
+    /// Phone-only, so these apply at once and need no host round trip.
+    func setRoomPinned(_ pinned: Bool, _ room: BotGroupRoom) {
+        if pinned { roomFlags.pinned.insert(room.id) } else { roomFlags.pinned.remove(room.id) }
+        persistRoomFlags()
+    }
+    func setRoomHidden(_ hidden: Bool, _ room: BotGroupRoom) {
+        if hidden { roomFlags.hidden.insert(room.id) } else { roomFlags.hidden.remove(room.id) }
+        persistRoomFlags()
+    }
+
+    /// Rename and disband follow the room screen's gates: the host must offer the
+    /// method, the room must be this gateway's own, and no write for it may be in
+    /// flight. A room under another gateway's authority is read-only from here.
+    func mayRenameRoom(_ room: BotGroupRoom) -> Bool { mayCommandRoom(room, "groups.rename") }
+    func mayDisbandRoom(_ room: BotGroupRoom) -> Bool { mayCommandRoom(room, "groups.disband") }
+    private func mayCommandRoom(_ room: BotGroupRoom, _ method: String) -> Bool {
+        link == .live && roomCapabilities.methods.contains(method)
+            && !room.isForeign(to: roomCapabilities.authority) && !editing.contains(ChatRow.room(room).id)
+    }
+
+    func renameRoom(_ room: BotGroupRoom, to name: String) async {
+        guard mayRenameRoom(room), BotRoomRPC.validName(name), name != room.name, let client = wire else { return }
+        await commandRoom(room, "groups.rename", ["room_id": .string(room.id),
+            "event_id": .string(UUID().uuidString), "name": .string(name)], client) { result in
+            guard let updated = BotGroupRoom(result["room"]), updated.id == room.id, !updated.disbanded
+            else { throw BotFailure.unsupported }
+            if let index = rooms.firstIndex(where: { $0.id == room.id }) { rooms[index] = updated }
+        }
+    }
+
+    /// Nothing local is dropped until the host confirms the tombstone; a lost
+    /// reply is settled by the next room list, which prunes what is gone.
+    func disbandRoom(_ room: BotGroupRoom) async {
+        guard mayDisbandRoom(room), let client = wire, let key = roomKey(room) else { return }
+        let disbanded = await commandRoom(room, "groups.disband", ["room_id": .string(room.id)], client) { result in
+            guard result["tombstone"]["room_id"].text == room.id,
+                  result["tombstone"]["disbanded_at"].number != nil else { throw BotFailure.unsupported }
+            rooms.removeAll { $0.id == room.id }
+            roomFlags.pinned.remove(room.id); roomFlags.hidden.remove(room.id); persistRoomFlags()
+        }
+        if disbanded { try? await historyCache.removeRoom(key) }
+    }
+
+    /// True when the host accepted the write and `accept` took it.
+    @discardableResult
+    private func commandRoom(_ room: BotGroupRoom, _ method: String, _ params: [String: BotJSON],
+                             _ client: any BotTransport, accept: (BotJSON) throws -> Void) async -> Bool {
+        let id = ChatRow.room(room).id
+        editing.insert(id); notice = nil
+        defer { editing.remove(id) }
+        do {
+            let result = try await client.call(method, params)
+            guard wire === client else { return false }
+            try accept(result)
+            return true
+        } catch {
+            guard wire === client else { return false }
+            notice = (error as? BotRoomFailure)?.localizedDescription
+                ?? String(localized: "Hermes did not save this change.")
+            return false
+        }
+    }
+
+    private func persistRoomFlags() {
+        guard let connection else { return }
+        roomStore.save(roomFlags, connectionID: connection.id)
+    }
+
     /// Capabilities are re-read on every inbox open/refresh, never inferred from
     /// a mutating probe. Unsupported hosts keep their ordinary Bot inbox.
     private func refreshRooms(_ client: any BotTransport) async {
@@ -410,6 +503,9 @@ import UIKit
             }
             var ids = Set<String>()
             rooms = found.filter { ids.insert($0.id).inserted }; hasRoomList = true
+            let pruned = BotRoomOrganizeStore.Flags(pinned: roomFlags.pinned.intersection(ids),
+                                                   hidden: roomFlags.hidden.intersection(ids))
+            if pruned != roomFlags { roomFlags = pruned; persistRoomFlags() }
             if let connectionID = connection?.id {
                 try? await historyCache.retainRooms(ids, scope: .init(server: server, connectionID: connectionID))
             }
@@ -469,6 +565,34 @@ struct BotUnreadStore {
 
     func save(_ seen: [String: Double], connectionID: UUID) {
         defaults.set(seen, forKey: key(connectionID))
+    }
+
+    func remove(connectionID: UUID) {
+        defaults.removeObject(forKey: key(connectionID))
+    }
+}
+
+/// Phone-local pin and hide marks for group rooms, keyed by connection UUID like
+/// the unread marks. The host keeps no such state for rooms, so a pin made here
+/// never shows in Desktop or on another phone.
+struct BotRoomOrganizeStore {
+    struct Flags: Equatable {
+        var pinned: Set<String> = []
+        var hidden: Set<String> = []
+    }
+
+    var defaults: UserDefaults = .standard
+
+    private func key(_ connectionID: UUID) -> String { "bot-inbox-rooms." + connectionID.uuidString }
+
+    func load(connectionID: UUID) -> Flags {
+        let stored = defaults.dictionary(forKey: key(connectionID)) as? [String: [String]] ?? [:]
+        return Flags(pinned: Set(stored["pinned"] ?? []), hidden: Set(stored["hidden"] ?? []))
+    }
+
+    func save(_ flags: Flags, connectionID: UUID) {
+        defaults.set(["pinned": Array(flags.pinned).sorted(), "hidden": Array(flags.hidden).sorted()],
+                     forKey: key(connectionID))
     }
 
     func remove(connectionID: UUID) {

@@ -255,6 +255,93 @@ import XCTest
         XCTAssertEqual(inbox.chats.map(\.id), ["bot:a", "bot:z", "room:a", "room:z"])
     }
 
+    func testRoomPinAndHideLiveOnThisPhoneAndStayWithTheirConnection() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("bot", lastActive: 100)])
+        wire.rooms = [
+            .object(["room_id": .string("standup"), "updated_at": .number(300)]),
+            .object(["room_id": .string("triage"), "updated_at": .number(200)]),
+            .object(["room_id": .string("old"), "updated_at": .number(50)])
+        ]
+        let store = try connectedStore()
+        let inbox = try makeInbox(wires: [wire, wire], store: store)
+        await inbox.open()
+        let standup = try XCTUnwrap(inbox.rooms.first { $0.id == "standup" })
+        let triage = try XCTUnwrap(inbox.rooms.first { $0.id == "triage" })
+
+        inbox.setRoomPinned(true, standup)
+        inbox.setRoomHidden(true, triage)
+        XCTAssertEqual(inbox.pinned.map(\.id), ["room:standup"], "a pinned room joins the tiles")
+        XCTAssertEqual(inbox.chats.map(\.id), ["bot:bot", "room:old"], "pinned and hidden rooms leave the timeline")
+        XCTAssertEqual(inbox.hiddenCount, 1)
+        inbox.showsHidden = true
+        XCTAssertEqual(inbox.chats.map(\.id), ["room:triage", "bot:bot", "room:old"])
+
+        // Both marks survive a fresh inbox on the same connection, and a room the
+        // host no longer lists takes its marks with it.
+        wire.rooms = [.object(["room_id": .string("standup"), "updated_at": .number(300)])]
+        let again = try makeInbox(wires: [wire], store: store)
+        await again.open()
+        XCTAssertEqual(again.pinned.map(\.id), ["room:standup"])
+        XCTAssertEqual(again.hiddenCount, 0)
+        XCTAssertEqual(again.roomFlags, .init(pinned: ["standup"], hidden: []))
+
+        // Another connection starts clean; a pin never leaks across hosts.
+        let other = try makeInbox(wires: [wire], store: connectedStore())
+        await other.open()
+        XCTAssertTrue(other.pinned.isEmpty)
+        XCTAssertEqual(other.chats.map(\.id), ["room:standup", "bot:bot"])
+    }
+
+    func testRenameAndDisbandGoToTheHostAndOnlyApplyOnItsWord() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("bot")])
+        wire.rooms = [.object(["room_id": .string("standup"), "name": .string("Standup"), "updated_at": .number(300)])]
+        wire.roomMethods += ["groups.rename", "groups.disband"]
+        var refused = false
+        wire.roomCommand = { method, params in
+            if refused { throw BotRoomFailure(code: 4090, reason: nil) }
+            switch method {
+            case "groups.rename":
+                return .object(["room": .object(["room_id": .string("standup"), "name": params["name"] ?? .null,
+                                                 "updated_at": .number(400)])])
+            default:
+                return .object(["tombstone": .object(["room_id": .string("standup"), "disbanded_at": .number(500)])])
+            }
+        }
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        let room = try XCTUnwrap(inbox.rooms.first)
+        XCTAssertTrue(inbox.mayRenameRoom(room))
+        inbox.setRoomPinned(true, room)
+
+        await inbox.renameRoom(room, to: "Daily")
+        XCTAssertEqual(inbox.rooms.first?.name, "Daily")
+        XCTAssertNil(inbox.notice)
+
+        refused = true
+        await inbox.disbandRoom(try XCTUnwrap(inbox.rooms.first))
+        XCTAssertEqual(inbox.rooms.count, 1, "a refused disband keeps the room")
+        XCTAssertNotNil(inbox.notice)
+
+        refused = false
+        await inbox.disbandRoom(try XCTUnwrap(inbox.rooms.first))
+        XCTAssertTrue(inbox.rooms.isEmpty)
+        XCTAssertTrue(inbox.pinned.isEmpty, "the disbanded room's local marks go with it")
+        XCTAssertEqual(wire.calls.map(\.0).filter { $0.hasPrefix("groups.rename") || $0.hasPrefix("groups.disband") },
+                       ["groups.rename", "groups.disband", "groups.disband"])
+    }
+
+    func testRoomsUnderAnotherGatewayAreReadOnlyFromTheInbox() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("bot")])
+        wire.rooms = [.object(["room_id": .string("standup"), "authority_gateway_id": .string("other")])]
+        wire.roomMethods += ["groups.rename", "groups.disband"]
+        wire.roomAuthority = "mine"
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        let room = try XCTUnwrap(inbox.rooms.first)
+        XCTAssertFalse(inbox.mayRenameRoom(room))
+        XCTAssertFalse(inbox.mayDisbandRoom(room))
+    }
+
     func testSocketLossKeepsTheRosterAndReconnectsQuietly() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.configure = { _ in XCTFail("no write on a dead socket"); return .null }
@@ -358,6 +445,7 @@ import XCTest
         let store = try store ?? connectedStore(server: server)
         var queue = wires
         return BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
+                        roomStore: BotRoomOrganizeStore(defaults: defaults),
                         avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in queue.removeFirst() }
     }
 
@@ -406,6 +494,10 @@ import XCTest
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]
     var rooms: [BotJSON]?
+    var roomMethods = ["groups.list", "groups.state", "groups.log"]
+    var roomAuthority: String?
+    /// Answers `groups.rename` and `groups.disband`.
+    var roomCommand: ((String, [String: BotJSON]) throws -> BotJSON)?
     var configure: (([String: BotJSON]) -> BotJSON)?
     var delete: ((String) throws -> Void)?
     var deleted: [String] = []
@@ -442,8 +534,12 @@ import XCTest
         switch method {
         case "groups.capabilities":
             guard rooms != nil else { throw BotFailure.unsupported }
-            return .object(["driver": .bool(true), "methods": .array(
-                ["groups.list", "groups.state", "groups.log"].map(BotJSON.string))])
+            var value: [String: BotJSON] = ["driver": .bool(true), "methods": .array(roomMethods.map(BotJSON.string))]
+            if let roomAuthority { value["authority_gateway_id"] = .string(roomAuthority) }
+            return .object(value)
+        case "groups.rename", "groups.disband":
+            guard let roomCommand else { throw BotFailure.unsupported }
+            return try roomCommand(method, params)
         case "groups.list":
             return .object(["rooms": .array(rooms ?? [])])
         case "profiles.list":
