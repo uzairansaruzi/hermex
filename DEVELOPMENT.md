@@ -102,9 +102,17 @@ startup and test counts/failures at completion; `command.json`, `test.log`,
 
 Wait on the runner using the longest supported tool wait; avoid separate log
 polls or status commands. It checks readiness with bounded commands (120 seconds
-for boot operations), allows 30 minutes for build and tests, and performs no
-retries. `--boot-timeout` and `--test-timeout` override those limits in seconds
-when a known workload requires it.
+for boot operations) and allows 30 minutes for build and tests.
+`--boot-timeout` and `--test-timeout` override those limits in seconds when a
+known workload requires it.
+
+It retries in one case only. Xcode sometimes fails with `The test runner hung
+before establishing connection` before any test runs: the app launches, but
+XCTest inside it never hears that the simulator's `testmanagerd` is ready, and
+xcodebuild gives up after 300 seconds. On that failure, and only when no test
+passed, the runner stops the app and reruns once, printing `RETRY:`. The retry
+writes `test-retry.log`, `summary-retry.json`, and `Tests-retry.xcresult` next
+to the first attempt's files. Every other failure is reported without a retry.
 
 Exit codes: **0** passed; **1** build/test failure; **2** busy device, setup, or
 result-verification failure; **124** timeout; **130** interrupted. On a busy
