@@ -886,7 +886,9 @@ struct ChatScrollToBottomButton: View {
     }
 }
 
-private struct LoadOlderMessagesButton: View {
+/// The capsule that reveals earlier transcript rows, shared by the Sessions
+/// and Bot transcripts so paging back reads the same in both.
+struct LoadOlderMessagesButton: View {
     let isLoading: Bool
     let onTap: () -> Void
 
