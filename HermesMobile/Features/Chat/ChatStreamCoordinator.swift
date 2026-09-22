@@ -366,10 +366,7 @@ final class ChatStreamCoordinator {
                 seedActiveRunStart(runStartedAt)
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 isConnectionSuspended = true
-                let didRestoreSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
-                if preparation.activeStreamIDBeforeLoad != streamID {
-                    hasInMemorySnapshotForActiveStream = didRestoreSnapshot
-                }
+                restoreLoadedStreamSnapshot(streamID: streamID, preparation: preparation)
             } else {
                 activeStreamID = nil
                 hasInMemorySnapshotForActiveStream = false
@@ -384,10 +381,7 @@ final class ChatStreamCoordinator {
                 activeStreamID = streamID
                 seedActiveRunStart(runStartedAt)
                 delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
-                let didRestoreSnapshot = restoreSnapshotIfAvailable(streamID: streamID)
-                if preparation.activeStreamIDBeforeLoad != streamID {
-                    hasInMemorySnapshotForActiveStream = didRestoreSnapshot
-                }
+                restoreLoadedStreamSnapshot(streamID: streamID, preparation: preparation)
                 if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                     delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                 }
@@ -466,16 +460,20 @@ final class ChatStreamCoordinator {
                     if delegate?.streamCoordinatorStreamingAssistantMessageID == nil {
                         delegate?.streamCoordinatorStreamingAssistantMessageID = delegate?.streamCoordinatorLatestAssistantMessageID()
                     }
-                    // A cold process has no snapshot cursor. Ask the server journal
-                    // for the run from the beginning so the loaded partial transcript
-                    // can be filled in immediately instead of waiting for `done`.
-                    // Existing foreground/background resumes keep their ordinary
-                    // connection when this process still owns an in-memory snapshot.
-                    let replayAfterSeq = response.replayAvailable == true
-                        && !hasInMemorySnapshotForActiveStream
-                        && lastEventID == nil
-                        ? 0
-                        : nil
+                    // Resume from the last event this process rendered (#599): a
+                    // cursorless attach can replay the run from the start and
+                    // duplicate text already on screen. A cold process with no
+                    // snapshot asks the journal for the whole run so the loaded
+                    // partial transcript fills in before `done`. A snapshot or an
+                    // unparseable cursor keeps an ordinary connection.
+                    let replayAfterSeq: Int?
+                    if response.replayAvailable != true {
+                        replayAfterSeq = nil
+                    } else if let cursor = Self.runJournalReplayAfterSeq(from: lastEventID) {
+                        replayAfterSeq = cursor
+                    } else {
+                        replayAfterSeq = hasInMemorySnapshotForActiveStream || lastEventID != nil ? nil : 0
+                    }
                     isConnectionSuspended = false
                     start(streamID: streamID, replayAfterSeq: replayAfterSeq)
                 } else if response.replayAvailable == true {
@@ -1195,6 +1193,19 @@ final class ChatStreamCoordinator {
             streamID: streamID,
             startedAt: activeRunStartedAt ?? Date()
         )
+    }
+
+    /// Restores `streamID`'s snapshot while a session load adopts it. Adopting a
+    /// different stream first drops the previous stream's resume cursor, so its
+    /// seq is never sent as `after_seq` for the new run (#599).
+    private func restoreLoadedStreamSnapshot(streamID: String, preparation: ChatStreamLoadPreparation) {
+        guard preparation.activeStreamIDBeforeLoad != streamID else {
+            restoreSnapshotIfAvailable(streamID: streamID)
+            return
+        }
+
+        lastEventID = nil
+        hasInMemorySnapshotForActiveStream = restoreSnapshotIfAvailable(streamID: streamID)
     }
 
     @discardableResult

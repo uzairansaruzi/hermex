@@ -34,6 +34,8 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.exit_code = 0
         self.failed = 0
         self.boot_failed = False
+        self.hung_runs = 0
+        self.xcodebuild_runs = 0
 
     def fake_run(self, command, output, timeout, lock_fds=()):
         self.commands.append(command)
@@ -46,13 +48,22 @@ class SimulatorRunnerTests(unittest.TestCase):
         elif command[0] == "xcodebuild":
             Path(command[command.index("-resultBundlePath") + 1]).mkdir()
             output.write_text("test log\n")
-            return self.exit_code
+            self.xcodebuild_runs += 1
+            return 65 if self.is_hung_run() else self.exit_code
         elif command[:3] == ["xcrun", "xcresulttool", "get"]:
-            output.write_text(json.dumps(dict(passedTests=5, failedTests=self.failed,
-                                             skippedTests=1, testFailures=[])))
+            if self.is_hung_run():
+                summary = dict(passedTests=0, failedTests=1, skippedTests=0, testFailures=[
+                    dict(failureText=runner.RUNNER_HANG + ".")])
+            else:
+                summary = dict(passedTests=5, failedTests=self.failed,
+                               skippedTests=1, testFailures=[])
+            output.write_text(json.dumps(summary))
         else:
             self.fail("Unexpected command: " + str(command))
         return 0
+
+    def is_hung_run(self):
+        return self.xcodebuild_runs <= self.hung_runs
 
     def invoke(self, checkout="one/hermex", extra=()):
         with patch.object(runner, "__file__", str(self.home / checkout / "scripts/test-sim")), \
@@ -103,6 +114,21 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.failed = 1
         self.assertEqual(self.invoke(), 1)
         self.assertEqual(sum(c[0] == "xcodebuild" for c in self.commands), 1)
+
+    def test_runner_hang_is_retried_once_with_its_own_result_bundle(self):
+        self.hung_runs = 1
+        self.assertEqual(self.invoke(), 0)
+        runs = [i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"]
+        self.assertEqual(len(runs), 2)
+        results = [self.commands[i][self.commands[i].index("-resultBundlePath") + 1] for i in runs]
+        self.assertNotEqual(results[0], results[1])
+        terminate = ["xcrun", "simctl", "terminate", "SIM-A", runner.APP_BUNDLE_ID]
+        self.assertEqual(self.commands[runs[1] - 1], terminate)
+
+    def test_repeated_runner_hang_stops_after_one_retry(self):
+        self.hung_runs = 2
+        self.assertEqual(self.invoke(), 1)
+        self.assertEqual(sum(c[0] == "xcodebuild" for c in self.commands), 2)
 
     def test_failed_results_cannot_be_reported_as_success(self):
         self.failed = 1

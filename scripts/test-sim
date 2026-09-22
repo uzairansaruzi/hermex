@@ -19,6 +19,7 @@ import time
 
 # Same override as scripts/sim-login, for a Config/Local.xcconfig bundle ID.
 APP_BUNDLE_ID = os.environ.get("HERMEX_BUNDLE_ID", "com.uzairansar.hermesmobile")
+RUNNER_HANG = "The test runner hung before establishing connection"
 
 
 class RunnerError(Exception):
@@ -127,6 +128,16 @@ def terminate_app(device, run_dir, lock_fds, timeout):
         run_dir / "terminate.log", timeout, lock_fds)
 
 
+def runner_hung(summary):
+    """Xcode's launch handshake occasionally stalls before any test runs: the
+    host app launches, but XCTest inside it never hears that testmanagerd is
+    ready, and xcodebuild gives up after 300 seconds. No test ran, so the
+    runner reruns once; every other failure is reported as-is."""
+    return bool(summary) and not summary.get("passedTests") and any(
+        RUNNER_HANG in str(failure.get("failureText", ""))
+        for failure in summary.get("testFailures", []))
+
+
 def print_summary(result, output):
     if not result.exists():
         return None
@@ -178,8 +189,6 @@ def main():
     run_dir = Path(tempfile.mkdtemp(prefix=datetime.now().strftime("%Y%m%d-%H%M%S-"), dir=runs))
     locks_dir = Path.home() / "Library/Caches/HermexSimulatorLocks"
     owner = "PID {}: {} ({})".format(os.getpid(), root, args.device)
-    log = run_dir / "test.log"
-    result = run_dir / "Tests.xcresult"
     print("Checkout: {}\nLogs: {}".format(root, run_dir), flush=True)
     try:
         with ExitStack() as stack:
@@ -189,21 +198,29 @@ def main():
             lock_fds = (work_fd, sim_fd)
             print("Simulator: {name} ({udid}); serial tests".format(**device), flush=True)
             boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
-            terminate_app(device, run_dir, lock_fds, args.boot_timeout)
-            command = [
-                "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
-                "-scheme", "HermesMobile", "-configuration", "Debug",
-                "-destination", "platform=iOS Simulator,id=" + device["udid"],
-                "-destination-timeout", "30", "-derivedDataPath", str(cache / "Build"),
-                "-resultBundlePath", str(result), "-parallel-testing-enabled", "NO",
-                "-maximum-concurrent-test-simulator-destinations", "1",
-                "-collect-test-diagnostics", "never",
-            ] + ["-only-testing:" + test for test in args.only]
-            (run_dir / "command.json").write_text(json.dumps(command, indent=2) + "\n")
-            code = run(command, log, args.test_timeout, lock_fds)
-            summary = print_summary(result, run_dir / "summary.json")
+            # One deadline covers the first attempt and any retry.
+            deadline = time.monotonic() + args.test_timeout
+            for attempt in ("", "-retry"):
+                terminate_app(device, run_dir, lock_fds, args.boot_timeout)
+                log = run_dir / ("test" + attempt + ".log")
+                result = run_dir / ("Tests" + attempt + ".xcresult")
+                command = [
+                    "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
+                    "-scheme", "HermesMobile", "-configuration", "Debug",
+                    "-destination", "platform=iOS Simulator,id=" + device["udid"],
+                    "-destination-timeout", "30", "-derivedDataPath", str(cache / "Build"),
+                    "-resultBundlePath", str(result), "-parallel-testing-enabled", "NO",
+                    "-maximum-concurrent-test-simulator-destinations", "1",
+                    "-collect-test-diagnostics", "never",
+                ] + ["-only-testing:" + test for test in args.only]
+                (run_dir / ("command" + attempt + ".json")).write_text(json.dumps(command, indent=2) + "\n")
+                code = run(command, log, max(1, deadline - time.monotonic()), lock_fds)
+                summary = print_summary(result, run_dir / ("summary" + attempt + ".json"))
+                if not (code and not attempt and runner_hung(summary)):
+                    break
+                print("RETRY: the test runner hung before connecting; rerunning once.", flush=True)
             if code:
-                print("FAIL: xcodebuild exited {}. No retry performed.".format(code), flush=True)
+                print("FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)
                 failure_excerpt(log)
                 return 1
             if not summary or summary.get("failedTests") != 0 or not summary.get("passedTests"):
