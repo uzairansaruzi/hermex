@@ -7,6 +7,23 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotChatPresentationTests: XCTestCase {
+    func testAttachmentOverlayReceivesOwningSceneLifecycle() async throws {
+        let model = AttachmentSceneHarnessModel()
+        let window = try show(AttachmentSceneHarnessView(model: model))
+        defer { close(window) }
+        await renderFrames()
+        model.isPresented = true
+        await renderFrames()
+        XCTAssertEqual(model.observedPhase, .active, "Camera startup must see the presenting scene's active phase")
+
+        model.phase = .background
+        await renderFrames()
+        XCTAssertEqual(model.observedPhase, .background, "A backgrounded scene must stop camera access")
+        model.phase = .active
+        await renderFrames()
+        XCTAssertEqual(model.observedPhase, .active, "Returning to the scene must restart the camera")
+    }
+
     func testRoomManagementShowsMemberChipsAndStoppingReason() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
@@ -1002,6 +1019,32 @@ import XCTest
 @MainActor @Observable
 private final class AttachmentOverlayHarnessModel {
     var isPresented = false
+}
+
+@MainActor @Observable private final class AttachmentSceneHarnessModel {
+    var isPresented = false
+    var phase = ScenePhase.active
+    var observedPhase: ScenePhase?
+}
+
+private struct AttachmentSceneHarnessView: View {
+    @Bindable var model: AttachmentSceneHarnessModel
+    var body: some View {
+        Color.clear.background {
+            HermexKeyboardRetainingOverlay(isPresented: model.isPresented) {
+                AttachmentSceneProbe { model.observedPhase = $0 }
+            }
+        }
+        .environment(\.scenePhase, model.phase)
+    }
+}
+
+private struct AttachmentSceneProbe: View {
+    @Environment(\.scenePhase) private var phase
+    let report: (ScenePhase) -> Void
+    var body: some View {
+        Color.clear.onChange(of: phase, initial: true) { _, value in report(value) }
+    }
 }
 
 private struct AttachmentOverlayHarnessView: View {

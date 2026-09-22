@@ -389,6 +389,7 @@ enum HermexAttachmentPickerPresentation {
 }
 
 struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresentable {
+    @Environment(\.scenePhase) private var scenePhase
     let isPresented: Bool
     private let overlay: () -> Overlay
 
@@ -412,7 +413,9 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
         context.coordinator.update(
             isPresented: isPresented,
             anchor: controller,
-            overlay: AnyView(overlay())
+            // This sibling host does not inherit SwiftUI's scene environment.
+            // Forward it so camera/media work starts and stops with its owner.
+            overlay: AnyView(overlay().environment(\.scenePhase, scenePhase))
         )
     }
 
