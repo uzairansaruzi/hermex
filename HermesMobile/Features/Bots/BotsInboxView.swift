@@ -40,6 +40,25 @@ import SwiftUI
     }
 
     var body: some View {
+        let toasted = list
+            .overlay(alignment: .bottom) {
+                if let toast {
+                    Text(toast).font(.callout).padding()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .padding().accessibilityAddTraits(.updatesFrequently)
+                }
+            }
+            .task(id: toast) {
+                guard toast != nil else { return }
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                toast = nil
+            }
+        attachPresentations(to: toasted)
+    }
+
+    /// The rows alone. The list, its sheets and its lifecycle each sit in their
+    /// own expression: together they were too much for the CI type-checker.
+    private var list: some View {
         List {
             if inbox.connection != nil {
                 if let errorMessage = inbox.errorMessage {
@@ -110,18 +129,6 @@ import SwiftUI
                 Button("Connect to Hermes") { showingSetup = true }
             }
         }
-        .overlay(alignment: .bottom) {
-            if let toast {
-                Text(toast).font(.callout).padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .padding().accessibilityAddTraits(.updatesFrequently)
-            }
-        }
-        .task(id: toast) {
-            guard toast != nil else { return }
-            do { try await Task.sleep(for: .seconds(5)) } catch { return }
-            toast = nil
-        }
         .listStyle(.plain)
         // Pushed from the session list's Bots row: the back button and the
         // toolbar are the whole header, so the pinned tiles sit at the top. The
@@ -152,107 +159,8 @@ import SwiftUI
                 Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
             }
         }
-        .sheet(isPresented: Binding(get: { roomCreator != nil }, set: { if !$0 { roomCreator = nil } }), onDismiss: {
-            if let key = createdRoom, key.connectionID == inbox.connection?.id { roomSequence = nil; selection.room = key }
-            createdRoom = nil
-        }) {
-            if let creator = roomCreator {
-                BotRoomCreateView(creator: creator, avatars: inbox.avatars) { room in
-                    guard inbox.connection?.id == creator.connection.id else { return }
-                    inbox.updateRoom(room, connectionID: creator.connection.id)
-                    createdRoom = inbox.roomKey(room)
-                }
-            }
-        }
-        .sheet(item: $creation) { intent in
-            if let connection = inbox.connection {
-                BotCreateView(creator: BotCreator(server: server, connection: connection, roster: inbox.profiles,
-                                                  source: intent.source, onCreated: { _ in revision = UUID() }))
-            }
-        }
-        .confirmationDialog(Text("Delete “\(deleting?.name ?? "")”?"), isPresented: Binding(
-            get: { deleting != nil }, set: { if !$0 { deleting = nil } }
-        ), titleVisibility: .visible, presenting: deleting) { profile in
-            Button("Delete Bot", role: .destructive) { Task { await inbox.delete(profile) } }
-            Button("Hide Instead") { Task { await inbox.setHidden(true, profile) } }
-            Button("Cancel", role: .cancel) {}
-        } message: { profile in
-            Text("Deletes this bot’s Profile on \(inbox.connection?.name ?? "Hermes"): its instructions, settings, skills, saved keys and chat history. Drafts on this phone are removed too. This cannot be undone. Hiding keeps everything and only removes it from the list.")
-        }
-        .alert("Rename group", isPresented: Binding(
-            get: { renamingRoom != nil }, set: { if !$0 { renamingRoom = nil } }
-        ), presenting: renamingRoom) { room in
-            TextField("Group name", text: $roomName)
-            Button("Save") {
-                let name = roomName
-                Task { await inbox.renameRoom(room, to: name) }
-            }
-            .disabled(!BotRoomRPC.validName(roomName) || roomName == room.name)
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Enter a name of up to 200 characters.")
-        }
-        .confirmationDialog("Disband this group?", isPresented: Binding(
-            get: { disbanding != nil }, set: { if !$0 { disbanding = nil } }
-        ), titleVisibility: .visible, presenting: disbanding) { room in
-            Button("Disband Group", role: .destructive) { Task { await inbox.disbandRoom(room) } }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("The room and its history will be removed from every device. All bots in it will stop. The room cannot be restored.")
-        }
-        .sheet(isPresented: $showingSearch, onDismiss: openSearchSelection) {
-            BotSearchView(inbox: inbox, onSelectRoom: { room, sequence in
-                searchedRoom = inbox.roomKey(room); searchedSequence = sequence
-            }) { profile in
-                guard let connection = inbox.connection else { return }
-                searchedProfile = (connection.id, profile.id)
-            }
-        }
-        .onChange(of: inbox.connection?.id) {
-            showingSearch = false
-            searchedProfile = nil
-            searchedRoom = nil; searchedSequence = nil; roomSequence = nil
-            selection.room = nil; selection.conversation = nil
-            editSelection = nil
-            creation = nil
-            roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
-            deleting = nil
-            renamingRoom = nil; disbanding = nil
-        }
-        .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
-            NavigationStack { BotConnectionView(server: server) }
-        }
-        .navigationDestination(item: $selection.profile) { profile in
-            if let connection = inbox.connection { chat(profile, connection) }
-        }
-        .navigationDestination(item: $selection.room) { key in
-            if let connection = inbox.connection, connection.id == key.connectionID,
-               let room = inbox.rooms.first(where: { $0.id == key.roomID }) {
-                BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, initialSequence: roomSequence, onExpired: {
-                    inbox.expireRoom(key); selection.room = nil
-                    toast = String(localized: "This room’s history is no longer available.")
-                }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
-                    inbox.removeRoom(key); selection.room = nil
-                }), roster: inbox.profiles, avatars: inbox.avatars)
-                .id(key)
-            }
-        }
-        .navigationDestination(item: $editSelection) { selection in
-            editProfile(selection)
-        }
-        // The subscription lives while the inbox is on screen and the app is active;
-        // returning, refreshing and reconnecting all go through the same open().
-        .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
-        .onChange(of: inbox.link) { openPendingDestination() }
-        .onChange(of: pendingDestination) { openPendingDestination() }
-        .onChange(of: selection.profile) { if selection.profile == nil { selection.conversation = nil } }
-        .refreshable { await inbox.open() }
-        .onChange(of: scenePhase) {
-            if scenePhase == .active { revision = UUID() }
-            else { inbox.close() }
-        }
-        .onDisappear { inbox.close() }
     }
+
 
     /// Opens the bot a deep link named, once this inbox has a roster to resolve it
     /// against. A connecting or retrying socket keeps the link pending, so a dropped
@@ -437,6 +345,115 @@ import SwiftUI
             }
         }
         .disabled(!inbox.mayEdit(profile))
+    }
+}
+
+
+extension BotsInboxView {
+    /// The sheets, dialogs, navigation destinations and open/close lifecycle
+    /// the list carries. Split from `body` so the CI type-checker finishes.
+    private func attachPresentations(to content: some View) -> some View {
+        content
+            .sheet(isPresented: Binding(get: { roomCreator != nil }, set: { if !$0 { roomCreator = nil } }), onDismiss: {
+                if let key = createdRoom, key.connectionID == inbox.connection?.id { roomSequence = nil; selection.room = key }
+                createdRoom = nil
+            }) {
+                if let creator = roomCreator {
+                    BotRoomCreateView(creator: creator, avatars: inbox.avatars) { room in
+                        guard inbox.connection?.id == creator.connection.id else { return }
+                        inbox.updateRoom(room, connectionID: creator.connection.id)
+                        createdRoom = inbox.roomKey(room)
+                    }
+                }
+            }
+            .sheet(item: $creation) { intent in
+                if let connection = inbox.connection {
+                    BotCreateView(creator: BotCreator(server: server, connection: connection, roster: inbox.profiles,
+                                                      source: intent.source, onCreated: { _ in revision = UUID() }))
+                }
+            }
+            .confirmationDialog(Text("Delete “\(deleting?.name ?? "")”?"), isPresented: Binding(
+                get: { deleting != nil }, set: { if !$0 { deleting = nil } }
+            ), titleVisibility: .visible, presenting: deleting) { profile in
+                Button("Delete Bot", role: .destructive) { Task { await inbox.delete(profile) } }
+                Button("Hide Instead") { Task { await inbox.setHidden(true, profile) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { profile in
+                Text("Deletes this bot’s Profile on \(inbox.connection?.name ?? "Hermes"): its instructions, settings, skills, saved keys and chat history. Drafts on this phone are removed too. This cannot be undone. Hiding keeps everything and only removes it from the list.")
+            }
+            .alert("Rename group", isPresented: Binding(
+                get: { renamingRoom != nil }, set: { if !$0 { renamingRoom = nil } }
+            ), presenting: renamingRoom) { room in
+                TextField("Group name", text: $roomName)
+                Button("Save") {
+                    let name = roomName
+                    Task { await inbox.renameRoom(room, to: name) }
+                }
+            .disabled(!BotRoomRPC.validName(roomName) || roomName == room.name)
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Enter a name of up to 200 characters.")
+            }
+            .confirmationDialog("Disband this group?", isPresented: Binding(
+                get: { disbanding != nil }, set: { if !$0 { disbanding = nil } }
+            ), titleVisibility: .visible, presenting: disbanding) { room in
+                Button("Disband Group", role: .destructive) { Task { await inbox.disbandRoom(room) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("The room and its history will be removed from every device. All bots in it will stop. The room cannot be restored.")
+            }
+            .sheet(isPresented: $showingSearch, onDismiss: openSearchSelection) {
+                BotSearchView(inbox: inbox, onSelectRoom: { room, sequence in
+                    searchedRoom = inbox.roomKey(room); searchedSequence = sequence
+                }) { profile in
+                    guard let connection = inbox.connection else { return }
+                    searchedProfile = (connection.id, profile.id)
+                }
+            }
+            .onChange(of: inbox.connection?.id) {
+                showingSearch = false
+                searchedProfile = nil
+                searchedRoom = nil; searchedSequence = nil; roomSequence = nil
+                selection.room = nil; selection.conversation = nil
+                editSelection = nil
+                creation = nil
+                roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
+                deleting = nil
+                renamingRoom = nil; disbanding = nil
+            }
+            .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
+                NavigationStack { BotConnectionView(server: server) }
+            }
+            .navigationDestination(item: $selection.profile) { profile in
+                if let connection = inbox.connection { chat(profile, connection) }
+            }
+            .navigationDestination(item: $selection.room) { key in
+                if let connection = inbox.connection, connection.id == key.connectionID,
+                   let room = inbox.rooms.first(where: { $0.id == key.roomID }) {
+                    BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, initialSequence: roomSequence, onExpired: {
+                        inbox.expireRoom(key); selection.room = nil
+                        toast = String(localized: "This room’s history is no longer available.")
+                    }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
+                        inbox.removeRoom(key); selection.room = nil
+                    }), roster: inbox.profiles, avatars: inbox.avatars)
+                    .id(key)
+                }
+            }
+            .navigationDestination(item: $editSelection) { selection in
+                editProfile(selection)
+            }
+            // The subscription lives while the inbox is on screen and the app is active;
+            // returning, refreshing and reconnecting all go through the same open().
+            .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
+            .onChange(of: inbox.link) { openPendingDestination() }
+            .onChange(of: pendingDestination) { openPendingDestination() }
+            .onChange(of: selection.profile) { if selection.profile == nil { selection.conversation = nil } }
+            .refreshable { await inbox.open() }
+            .onChange(of: scenePhase) {
+                if scenePhase == .active { revision = UUID() }
+                else { inbox.close() }
+            }
+            .onDisappear { inbox.close() }
     }
 }
 
