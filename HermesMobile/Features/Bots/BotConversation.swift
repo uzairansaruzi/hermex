@@ -24,7 +24,6 @@ import Observation
     private(set) var isUploadingAttachments = false
     private var attachmentUploadTask: Task<String, Error>?
     private(set) var submittingPrompt: BotPromptMode?
-    private(set) var promptReceipt: String?
     private(set) var unavailablePromptModes: Set<BotPromptMode> = []
 
     /// Re-read after the profile editor saves, so the title and face do not lie.
@@ -105,7 +104,6 @@ import Observation
     private let reconnectDelay: (Duration) async throws -> Void
     private(set) var isReconnecting = false
     private var stopAcknowledged = false
-    private var promptReceiptPersistsWhileIdle = false
     private var localOperation = false
     private var hydrated = false
     private let wire: any BotTransport
@@ -390,10 +388,7 @@ import Observation
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
-            if replayWasReset {
-                sequence = 0
-                promptReceipt = nil; promptReceiptPersistsWhileIdle = false
-            }
+            if replayWasReset { sequence = 0 }
             runtime = foundRuntime; epoch = foundEpoch
             let replayRequestsRevision = requestRevision
             let replay = try await request("session.events.since", ["session_id": .string(foundRuntime), "last_seen": .number(Double(sequence))], owner: owner)
@@ -547,11 +542,6 @@ import Observation
         let continuation = snapshot["auto_continue"] != .null && snapshot["auto_continue"].flag != false
         let queued = snapshot["queued"] != .null
         let busy = running || continuation || queued || attention
-        // Receipts confirm admission; the snapshot owns whether that admitted work
-        // is still active. Do not leave an old confirmation above an idle composer.
-        if (!busy && !promptReceiptPersistsWhileIdle) || (busy && promptReceiptPersistsWhileIdle) {
-            promptReceipt = nil; promptReceiptPersistsWhileIdle = false
-        }
         if snapshotIsBusy != busy { turnRevision += 1; snapshotIsBusy = busy }
         if attention { turn = .needsAttention }
         else if uncertainStop && stopAcknowledged { turn = .stopping }
@@ -618,7 +608,7 @@ import Observation
         let owner = action.generation
         let mentionNote = mentions.annotation(for: action.text)
         localOperation = true; submittingPrompt = action.mode
-        promptReceipt = nil; promptReceiptPersistsWhileIdle = false; errorMessage = nil
+        errorMessage = nil
         defer { if generation == owner { submittingPrompt = nil; localOperation = false } }
         // Persist local copies before upload; an upload cannot start agent work.
         do {
@@ -678,7 +668,7 @@ import Observation
                 refreshAfterPrompt()
                 return
             }
-            guard let receipt = outcome.receipt else { throw BotFailure.unsupported }
+            guard outcome != .unknown else { throw BotFailure.unsupported }
             drafts.setDraft("", for: draftKey)
             drafts.setQuotes([], for: draftKey)
             drafts.setAttachments([], for: draftKey)
@@ -689,8 +679,6 @@ import Observation
             await attachments.consumed()
             try check(owner)
             localOperation = false
-            promptReceipt = receipt
-            promptReceiptPersistsWhileIdle = outcome == .voiceStopped
             refreshAfterPrompt()
         } catch {
             guard owner == generation, !Task.isCancelled else { return }
@@ -833,7 +821,6 @@ import Observation
         guard mayStop, action == prepareStop() else { return }
         let owner = generation
         localOperation = true; uncertainStop = true; turn = .stopping; turnRevision += 1
-        promptReceipt = nil; promptReceiptPersistsWhileIdle = false
         let revision = turnRevision
         do {
             _ = try await request("session.interrupt", ["session_id": .string(action.runtime)], owner: owner) { [weak self] in

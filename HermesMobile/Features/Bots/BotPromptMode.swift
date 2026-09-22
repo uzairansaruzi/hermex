@@ -66,18 +66,9 @@ enum BotPromptMode: CaseIterable, Hashable {
     }
 }
 
+/// What the host said about a prompt. Only `rejected` and `unknown` change what
+/// the app does; the rest confirm admission and clear the draft. Nothing here is
+/// shown: the transcript's own activity is the receipt.
 enum BotPromptOutcome: Equatable {
     case guidanceQueued, redirected, redirectQueued, followUpQueued, started, voiceStopped, rejected, unknown
-
-    var receipt: String? {
-        switch self {
-        case .guidanceQueued: return String(localized: "Guidance queued. The bot may not have read it yet.")
-        case .redirected: return String(localized: "Redirect accepted.")
-        case .redirectQueued: return String(localized: "Redirect queued for the next turn during startup.")
-        case .followUpQueued: return String(localized: "Follow-up queued. Stop can cancel queued work.")
-        case .started: return String(localized: "Message accepted. Starting work.")
-        case .voiceStopped: return String(localized: "Speech stopped. No new message was started.")
-        case .rejected, .unknown: return nil
-        }
-    }
 }

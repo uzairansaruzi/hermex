@@ -124,7 +124,6 @@ import Vision
             XCTAssertEqual(model.draft, accepted ? "" : "guide once")
             XCTAssertFalse(model.uncertainSend)
             XCTAssertEqual(model.connectionState, .connected)
-            XCTAssertEqual(model.promptReceipt, accepted ? mode.outcome(wire.promptReply!).receipt : nil)
             let calls = wire.calls.filter { $0.0 == mode.method }
             XCTAssertEqual(calls.count, 1)
             XCTAssertEqual(calls.first?.1["session_id"], .string("runtime"))
@@ -231,15 +230,14 @@ import Vision
         next.suspend()
     }
 
-    func testQueuedFollowUpReceiptDoesNotSurviveStopOrClaimTheQueueRemains() async throws {
+    func testQueuedFollowUpAfterStopNeverClaimsTheQueueRemains() async throws {
         let wire = BotFixtureWire(); wire.running = true
         wire.promptReply = .object(["status": .string("queued")])
         let model = make(wire); await model.recover(); model.editDraft("next")
         await model.submit(try XCTUnwrap(model.preparePrompt(.queue)))
-        XCTAssertNotNil(model.promptReceipt)
+        XCTAssertEqual(model.draft, "")
         await model.recover()
         await model.stop(try XCTUnwrap(model.prepareStop()))
-        XCTAssertNil(model.promptReceipt)
         XCTAssertFalse(model.maySend)
         // A queued envelope can still appear after Stop races the server drain.
         // Trust the next snapshot; never resend or claim the conversation is idle.
@@ -254,23 +252,7 @@ import Vision
         model.suspend()
     }
 
-    func testAcceptedPromptReceiptClearsWhenSnapshotEstablishesIdle() async throws {
-        let wire = BotFixtureWire(); wire.running = true
-        wire.promptReply = .object(["status": .string("queued")])
-        let model = make(wire); await model.recover(); model.editDraft("next")
-        await model.submit(try XCTUnwrap(model.preparePrompt(.queue)))
-        XCTAssertNotNil(model.promptReceipt)
-
-        wire.running = false
-        wire.queued = .null
-        await model.recover()
-
-        XCTAssertNil(model.promptReceipt)
-        XCTAssertEqual(model.turn, .idle)
-        model.suspend()
-    }
-
-    func testVoiceStopReceiptSurvivesItsIdleSnapshot() async throws {
+    func testVoiceStopAcknowledgementClearsTheDraftWithoutStartingATurn() async throws {
         let wire = BotFixtureWire()
         wire.promptReply = .object(["voice_stopped": .bool(true)])
         let model = make(wire); await model.recover(); model.editDraft("stop speaking")
@@ -278,24 +260,10 @@ import Vision
         wire.running = false
         await model.recover()
 
-        XCTAssertEqual(model.promptReceipt, BotPromptOutcome.voiceStopped.receipt)
+        XCTAssertEqual(model.draft, "", "the host took the phrase; it must not linger as a draft")
+        XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.turn, .idle)
-
-        wire.running = true
-        await model.recover()
-        XCTAssertNil(model.promptReceipt)
-
-        wire.running = false
-        await model.recover()
-        model.editDraft("stop speaking again")
-        await model.submit(try XCTUnwrap(model.preparePrompt(.send)))
-        wire.running = false
-        await model.recover()
-        XCTAssertEqual(model.promptReceipt, BotPromptOutcome.voiceStopped.receipt)
-
-        wire.runtimeID = "replacement-runtime"
-        await model.recover()
-        XCTAssertNil(model.promptReceipt)
+        XCTAssertEqual(wire.calls.filter { $0.0 == "prompt.submit" }.count, 1)
         model.suspend()
     }
 

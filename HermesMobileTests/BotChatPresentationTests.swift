@@ -478,8 +478,9 @@ import XCTest
         await renderFrames()
         XCTAssertFalse(editor.isKeyboardSendEnabled)
         XCTAssertEqual(model.draft, "Focus on reconnect")
+        // No line explains the switch; the disabled send and the kept draft do.
         let idle = try screenshot(window, name: "480-idle-explicit-send")
-        XCTAssertTrue(idle.contains("Choose Send"), idle)
+        XCTAssertFalse(idle.contains("Choose Send"), idle)
         XCTAssertFalse(wire.calls.contains { ["prompt.submit", "session.steer", "session.redirect"].contains($0.0) })
     }
 
@@ -620,6 +621,24 @@ import XCTest
             XCTAssertGreaterThanOrEqual(top, card.minY - 1, "Skill text escaped above the card")
             XCTAssertLessThanOrEqual(bottom, card.maxY + 1, "Skill text escaped below the card")
         }
+    }
+
+    func testComposerPillShowsOneThingHighestPriorityFirst() {
+        let voice = ComposerVoiceStatus(text: "Listening...", systemImage: "waveform", isError: false)
+        XCTAssertEqual(BotComposerPill.resolve(requestText: "Waiting for your answer", errorText: "Send failed",
+                                               voiceStatus: voice, offersReconnect: true, isUploading: true),
+                       .request("Waiting for your answer"))
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: "Send failed", voiceStatus: voice,
+                                               offersReconnect: true, isUploading: true), .error("Send failed"))
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: voice,
+                                               offersReconnect: true, isUploading: true), .voice(voice))
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: nil,
+                                               offersReconnect: true, isUploading: true), .reconnect)
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: nil,
+                                               offersReconnect: false, isUploading: true), .uploading)
+        XCTAssertNil(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: nil,
+                                             offersReconnect: false, isUploading: false),
+                     "a connected, idle or working bot shows no text above the composer")
     }
 
     func testPendingRequestOutranksUncertainStopInStatus() async throws {

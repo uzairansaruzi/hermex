@@ -29,6 +29,10 @@ struct BotChatComposerView: View {
     @State private var voiceInput = ComposerVoiceInputController()
 
     @State private var settingsPresented = false
+    /// The error text the user tapped away or that timed out. A new error with
+    /// different text shows again; the same one stays gone until the next send
+    /// clears it.
+    @State private var dismissedError: String?
     @State private var mode = BotPromptMode.send
     @State private var redirectAction: BotConversation.PromptAction?
 
@@ -46,43 +50,53 @@ struct BotChatComposerView: View {
     }
 
     var body: some View {
+        VStack(spacing: 10) {
+            // One floating pill instead of a strip of status lines: only what the
+            // user can act on or must know, highest priority first, and never a
+            // receipt for work the transcript already shows.
+            if let pill {
+                BotComposerPillView(pill: pill, onReconnect: onReconnect, onShowRequest: onShowRequest,
+                                    onCancelUpload: { model.cancelAttachmentUpload() },
+                                    onDismissError: { dismissedError = pill.errorText })
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+            composerContainer
+        }
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pill)
+        // An error the user did not tap away leaves on its own, like the inbox toast.
+        .task(id: pill?.errorText) {
+            guard let text = pill?.errorText else { return }
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            dismissedError = text
+        }
+        .onChange(of: model.submittingPrompt) { _, submitting in
+            if submitting != nil { dismissedError = nil }
+        }
+    }
+
+    private var pill: BotComposerPill? {
+        BotComposerPill.resolve(
+            requestText: model.turn == .needsAttention ? requestText : nil,
+            errorText: [model.errorMessage, model.chatControls.errorMessage, model.attachments.errorMessage,
+                        voiceInput.errorMessage].compactMap { $0 }.first { $0 != dismissedError },
+            voiceStatus: voiceStatus,
+            offersReconnect: model.connectionState == .disconnected && !model.isReconnecting && model.errorMessage != nil,
+            isUploading: model.isUploadingAttachments
+        )
+    }
+
+    /// What the blocked bot is waiting on. "Handling this" is only true where
+    /// there is nothing to do: a request the phone can answer or decline has an
+    /// action on its card, and saying it is handled would hide that.
+    private var requestText: String {
+        if model.pendingRequest?.isAnswerable == true { return String(localized: "Waiting for your answer") }
+        if model.mayDecline { return String(localized: "Waiting on Hermes Desktop") }
+        return String(localized: "Hermes Desktop is handling this")
+    }
+
+    private var composerContainer: some View {
         AdaptiveGlassContainer(spacing: 6) {
             VStack(spacing: 0) {
-                BotChatStatusView(
-                    model: model, onReconnect: onReconnect,
-                    onShowRequest: onShowRequest
-                )
-
-                if mode != .send && model.maySend {
-                    Text("Work finished. Choose Send to start a new turn.")
-                        .font(AppFont.footnote()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.bottom, 8)
-                }
-
-                if let error = model.chatControls.errorMessage {
-                    Text(error).font(AppFont.footnote()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.bottom, 6)
-                }
-                if let pending = model.chatControls.pendingModel {
-                    Text("Next turn: \(pending.displayName)").font(AppFont.footnote()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.bottom, 6)
-                }
-                if let error = model.attachments.errorMessage {
-                    Text(error).font(AppFont.footnote()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.bottom, 6)
-                }
-                if model.attachments.isImporting {
-                    Text("Adding attachment…").font(AppFont.footnote()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
-                }
-                if let voiceStatus {
-                    ComposerVoiceStatusView(status: voiceStatus)
-                }
-
                 if isFocused, model.mayEditDraft { autocomplete }
 
                 composerSurface.padding(.horizontal, 16)
@@ -375,15 +389,8 @@ struct BotChatComposerView: View {
                 isError: false
             )
         case .idle:
-            break
+            return nil
         }
-
-        guard let errorMessage = voiceInput.errorMessage else { return nil }
-        return ComposerVoiceStatus(
-            text: errorMessage,
-            systemImage: "exclamationmark.triangle",
-            isError: true
-        )
     }
 
     @MainActor
@@ -523,80 +530,67 @@ enum BotVoiceInputPolicy {
     }
 }
 
-/// Ready and connected has no status chrome. Recovery, work and failures appear
-/// immediately above the composer, including the existing Desktop-only actions.
-private struct BotChatStatusView: View {
-    let model: BotConversation
+/// The one thing worth a pill above the composer, highest priority first. A
+/// request outranks an error because it has somewhere to go; an error outranks
+/// recovery because the user can read it; upload comes last because Cancel is
+/// only useful while nothing else is wrong.
+enum BotComposerPill: Equatable {
+    case request(String)
+    case error(String)
+    case voice(ComposerVoiceStatus)
+    case reconnect
+    case uploading
+
+    static func resolve(requestText: String?, errorText: String?, voiceStatus: ComposerVoiceStatus?,
+                        offersReconnect: Bool, isUploading: Bool) -> BotComposerPill? {
+        if let requestText { return .request(requestText) }
+        if let errorText { return .error(errorText) }
+        if let voiceStatus { return .voice(voiceStatus) }
+        if offersReconnect { return .reconnect }
+        if isUploading { return .uploading }
+        return nil
+    }
+
+    var errorText: String? { if case .error(let text) = self { return text }; return nil }
+}
+
+/// One centered capsule: material, one line, no motion of its own. Request and
+/// Reconnect are buttons; an error is tappable to dismiss; Uploading carries Cancel.
+private struct BotComposerPillView: View {
+    let pill: BotComposerPill
     let onReconnect: () -> Void
     let onShowRequest: () -> Void
+    let onCancelUpload: () -> Void
+    let onDismissError: () -> Void
 
     var body: some View {
-        if (model.connectionState == .connected && model.turn != .idle) || model.errorMessage != nil
-            || model.promptReceipt != nil || !model.liveActivity.notices.isEmpty || !model.liveActivity.memoryNotes.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(model.liveActivity.notices) { notice in
-                    Label(notice.text, systemImage: notice.isWarning ? "exclamationmark.triangle" : "info.circle")
-                }
-                ForEach(model.liveActivity.memoryNotes, id: \.self) { note in
-                    Label(note, systemImage: "brain")
-                }
-                if let error = model.errorMessage { Text(error) }
-                if let receipt = model.promptReceipt { Text(receipt) }
-                if model.isUploadingAttachments {
-                    HStack {
-                        Text("Uploading…")
-                        Button("Cancel upload") { model.cancelAttachmentUpload() }
-                    }
-                } else if model.submittingPrompt != nil {
-                    Text("Sending…")
-                } else if model.turn == .needsAttention {
-                    // The model ranks a pending request above an unresolved Stop, so
-                    // the actionable line wins here too. The card is in the transcript
-                    // and may be scrolled away, so this doubles as the way back to it.
-                    if model.pendingRequest != nil {
-                        Button(action: onShowRequest) {
-                            Label(requestText, systemImage: "arrow.down.circle")
-                        }
-                    } else {
-                        // A pending key the phone could not read has no card to show.
-                        Text("Needs attention. Answer the request in Hermes Desktop on this same connection.")
-                    }
-                } else if model.uncertainStop && model.turn != .stopping {
-                    Text("Outcome unknown")
-                } else if model.connectionState == .connected, let turnText {
-                    Text(turnText)
-                }
-                if model.connectionState == .disconnected && !model.isReconnecting && model.errorMessage != nil {
-                    Button("Reconnect", action: onReconnect)
+        Group {
+            switch pill {
+            case .request(let text):
+                Button(action: onShowRequest) { Label(text, systemImage: "arrow.down.circle") }
+            case .error(let text):
+                Button(action: onDismissError) { Label(text, systemImage: "exclamationmark.triangle") }
+                    .accessibilityHint(Text("Dismisses this message"))
+            case .voice(let status):
+                Label(status.text, systemImage: status.systemImage)
+            case .reconnect:
+                Button(action: onReconnect) { Label("Reconnect", systemImage: "arrow.clockwise") }
+            case .uploading:
+                HStack(spacing: 12) {
+                    Label("Uploading…", systemImage: "arrow.up.doc")
+                    Button("Cancel", action: onCancelUpload).fontWeight(.semibold)
                 }
             }
-            .font(AppFont.footnote())
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.bottom, 8)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("bot-chat-status")
         }
-    }
-
-    /// What the blocked bot is waiting on. "Handling this" is only true where
-    /// there is nothing to do: a request the phone can answer or decline has an
-    /// action on its card, and saying it is handled would hide that.
-    private var requestText: String {
-        if model.pendingRequest?.isAnswerable == true { return String(localized: "Waiting for your answer") }
-        if model.mayDecline { return String(localized: "Waiting on Hermes Desktop") }
-        return String(localized: "Hermes Desktop is handling this")
-    }
-
-    private var turnText: String? {
-        switch model.turn {
-        case .idle, .needsAttention: return nil
-        case .running: return model.workStatus ?? String(localized: "Working")
-        case .submitting: return String(localized: "Sending…")
-        case .stopping: return String(localized: "Stopping…")
-        case .uncertain: return model.uncertainStop ? String(localized: "Outcome unknown") : nil
-        case .interrupted: return String(localized: "Work was interrupted. The saved conversation is loaded.")
-        case .unknown: return String(localized: "Checking current work…")
-        }
+        .buttonStyle(.plain)
+        .font(AppFont.footnote())
+        .lineLimit(1)
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.primary.opacity(0.10), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 24)
+        .accessibilityIdentifier("bot-chat-status")
     }
 }
