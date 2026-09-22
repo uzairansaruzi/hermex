@@ -34,6 +34,9 @@ import Observation
     private(set) var connectionState = ConnectionState.disconnected
     private(set) var turn = TurnState.unknown
     private(set) var messages: [ChatMessage] = []
+    private(set) var hasRecentTranscript = false
+    @ObservationIgnored private var recentRoot: String?
+    @ObservationIgnored private var recentOwner: UUID?
     private(set) var liveMessages: [ChatMessage] = []
     private(set) var errorMessage: String?
     let chatControls = BotChatControls()
@@ -137,6 +140,29 @@ import Observation
         self.wire.onEvent = { [weak self] event in self?.observe(event) }
         self.wire.onDisconnect = { [weak self] error in self?.disconnected(error) }
         self.delegatedWork.onWorkersChanged = { [weak self] in self?.syncLiveActivity() }
+        if case .bot(let recent)? = historyCache?.recent.snapshot(for: recentKey),
+           conversation == nil || conversation == recent.root {
+            messages = recent.messages; settledActivity = recent.activity
+            recentRoot = recent.root
+            hasRecentTranscript = !recent.messages.isEmpty || !recent.activity.isEmpty
+        }
+    }
+
+    private var recentKey: BotRecentTranscripts.Key {
+        .bot(server: server, connectionID: connection.id, profile: profile.id)
+    }
+
+    /// Freeze visible text on departure; do not retain live controls or tool state.
+    private func saveRecentTranscript() {
+        guard connectionState == .connected, let root, let recentOwner else { return }
+        let snapshot = BotRecentTranscripts.Bot(root: root, messages: messages + liveMessages, activity: settledActivity)
+        historyCache?.recent.save(.bot(snapshot), for: recentKey, owner: recentOwner)
+    }
+
+    private func discardRecentTranscript(keepingVisibleHistory: Bool = false) {
+        historyCache?.recent.remove { $0 == recentKey }
+        recentOwner = nil; recentRoot = nil; hasRecentTranscript = false
+        if !keepingVisibleHistory { messages = []; settledActivity = []; liveMessages = [] }
     }
 
     /// Only a current server snapshot can start the transcript clock. Live Activity's
@@ -362,6 +388,11 @@ import Observation
 
     private func recoverConnection() async {
         resetConnection()
+        if hasRecentTranscript, historyCache?.recent.snapshot(for: recentKey) == nil {
+            // Clear Offline Cache may have run after construction but before entry.
+            messages = []; settledActivity = []; recentRoot = nil; hasRecentTranscript = false
+        }
+        recentOwner = historyCache?.recent.begin(recentKey)
         let owner = generation
         connectionState = .recovering
         errorMessage = nil
@@ -394,6 +425,12 @@ import Observation
                 throw BotFailure.wrongIdentity
             }
             root = foundRoot; tip = foundTip
+            if let recentRoot, recentRoot != foundRoot {
+                // An ordinary inbox entry may now point at a replacement Bot Chat.
+                // Cached display identity must not make the old root canonical.
+                discardRecentTranscript()
+                recentOwner = historyCache?.recent.begin(recentKey)
+            }
             let first = try await request("session.resume", resumeParams(), owner: owner)
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
@@ -415,6 +452,8 @@ import Observation
             guard connectionState == .recovering, chatControls.context == controlsContext else { throw BotFailure.transport }
             chatControls.snapshot(current["info"], idle: [.idle, .interrupted].contains(turn))
             connectionState = .connected
+            hasRecentTranscript = false; recentRoot = nil
+            saveRecentTranscript()
             shouldRetryConnection = false
             syncLiveActivity()
             await delegatedWork.connect(.init(connectionID: connection.id, runtime: foundRuntime, generation: owner))
@@ -422,6 +461,11 @@ import Observation
             scheduleRefresh()
         } catch {
             guard owner == generation, !Task.isCancelled else { return }
+            if let failure = error as? BotFailure, [.missingChat, .wrongIdentity].contains(failure) {
+                // An already-open conversation keeps its established read-only
+                // history on identity loss. An unverified warm entry does not.
+                discardRecentTranscript(keepingVisibleHistory: !hasRecentTranscript)
+            }
             disconnected(error)
         }
     }
@@ -1170,6 +1214,7 @@ import Observation
     }
 
     private func disconnected(_ error: Error) {
+        saveRecentTranscript()
         chatControls.disconnect()
         delegatedWork.disconnect()
         wire.close()
@@ -1214,6 +1259,7 @@ import Observation
     }
 
     func suspend() {
+        saveRecentTranscript()
         historyCacheTask?.cancel(); historyCacheTask = nil
         isActive = false; shouldRetryConnection = false; isReconnecting = false
         reconnectTask?.cancel(); reconnectTask = nil

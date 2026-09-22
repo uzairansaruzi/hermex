@@ -21,21 +21,197 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(lines[1], BotConnection.testedHermesVersion, "line 2 is the release /api/status reports")
     }
 
-    func testNoteAppearsOnlyForADifferentReportedVersion() throws {
-        var connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "http://hermes.local")!,
-                                       username: "user", password: "secret")
-        XCTAssertNil(connection.untestedVersionNote, "unknown version: nothing to warn about")
-        connection.hermesVersion = BotConnection.testedHermesVersion
-        XCTAssertNil(connection.untestedVersionNote)
-        connection.hermesVersion = "0.22.0"
-        let note = try XCTUnwrap(connection.untestedVersionNote)
-        XCTAssertTrue(note.contains("0.22.0") && note.contains(BotConnection.testedHermesVersion))
-    }
-
     func testRecordsSavedBeforeThePinDecodeWithoutAVersion() throws {
         let stored = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"Host","address":"http://hermes.local","username":"user","password":"secret"}"#
         let connection = try JSONDecoder().decode(BotConnection.self, from: Data(stored.utf8))
         XCTAssertNil(connection.hermesVersion)
-        XCTAssertNil(connection.untestedVersionNote)
     }
+}
+
+@MainActor final class BotConnectionSetupTests: XCTestCase {
+    private let server = URL(string: "https://webui.example")!
+
+    func testLocalAddressDefaultsHaveNarrowTransportExceptions() throws {
+        let ats = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") as? [String: Any])
+        let domains = try XCTUnwrap(ats["NSExceptionDomains"] as? [String: [String: Any]])
+        XCTAssertNotEqual(ats["NSAllowsArbitraryLoads"] as? Bool, true)
+        XCTAssertEqual(Set(domains.keys), Set(["10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+                                               "169.254.0.0/16", "100.64.0.0/10", "::1", "fc00::/7", "fe80::/10"]))
+        for (range, policy) in domains {
+            XCTAssertEqual(policy["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true, range)
+        }
+    }
+
+    func testDismissalDuringCommittedCleanupKeepsSuccessfulResult() async throws {
+        for removing in [false, true] {
+            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+            let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "old")
+            try store.save(old, server: server)
+            let parked = expectation(description: "Committed cleanup in flight")
+            var release: CheckedContinuation<Void, Never>?
+            var cleaned = false
+            let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { value in
+                XCTAssertEqual(value.id, old.id)
+                await withCheckedContinuation { release = $0; parked.fulfill() }
+                XCTAssertFalse(Task.isCancelled, "Committed cleanup outlives the presenting task")
+                cleaned = true
+            })
+            model.load(); model.username = "replacement"
+            let task = Task { removing ? await model.remove() : await model.connect() }
+            await fulfillment(of: [parked], timeout: 3)
+            XCTAssertEqual(try store.load(server: server), model.saved, "State and persistence commit before cleanup suspends")
+            if removing { XCTAssertNil(model.saved) } else { XCTAssertEqual(model.saved?.username, "replacement") }
+            model.cancel(); task.cancel()
+            release?.resume()
+            let result = await task.value
+            XCTAssertTrue(result, "Dismissal after commit cannot report the persisted operation as cancelled")
+            XCTAssertTrue(cleaned)
+            XCTAssertEqual(try store.load(server: server), model.saved)
+        }
+    }
+
+    func testAddressDefaultsHonorLocalNetworksAndExplicitSchemes() throws {
+        let cases = [
+            "hermes.example.com": "https://hermes.example.com",
+            "machine.tail123.ts.net:443": "https://machine.tail123.ts.net:443",
+            "8.8.8.8:9119": "https://8.8.8.8:9119",
+            "localhost:9119": "http://localhost:9119",
+            "hermes.local:9119": "http://hermes.local:9119",
+            "hermes:9119": "http://hermes:9119",
+            "10.1.2.3:9119": "http://10.1.2.3:9119",
+            "172.16.0.1": "http://172.16.0.1",
+            "172.32.0.1": "https://172.32.0.1",
+            "192.168.1.4": "http://192.168.1.4",
+            "169.254.1.4": "http://169.254.1.4",
+            "127.0.0.2": "http://127.0.0.2",
+            "100.64.0.1": "http://100.64.0.1",
+            "100.128.0.1": "https://100.128.0.1",
+            "[::1]:9119": "http://[::1]:9119",
+            "fd7a:115c:a1e0::1": "http://[fd7a:115c:a1e0::1]",
+            "[fe80::1]:9119": "http://[fe80::1]:9119",
+            "[2001:4860::1]:9119": "https://[2001:4860::1]:9119",
+            " HTTPS://HERMES.LOCAL:9119/ ": "https://hermes.local:9119",
+            "http://public.example": "http://public.example"
+        ]
+        for (input, expected) in cases {
+            XCTAssertEqual(try BotConnection.address(input).absoluteString, expected, input)
+        }
+        for invalid in ["", " ", "https://", "bad host", "192.168.1.999", "host/path", "host?key=x",
+                        "user:pass@host", "host:0", "host:65536", "ftp://host", "host#fragment"] {
+            XCTAssertThrowsError(try BotConnection.address(invalid), invalid)
+        }
+    }
+
+    func testAddressFailureIsVisibleBeforeAClientExists() async {
+        let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),
+            makeWire: { _ in XCTFail("Invalid input must not create a client"); return ConnectionSetupWire() }, discard: { _ in })
+        model.address = "host/not-supported"
+        let succeeded = await model.connect()
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(model.errorMessage, BotFailure.invalidAddress.localizedDescription)
+        XCTAssertFalse(model.isConnecting)
+    }
+
+    func testSuccessOnAnUnknownVersionKeepsSameAccountIdentityAndAllowsDismissal() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "old")
+        try store.save(old, server: server)
+        let wire = ConnectionSetupWire(); wire.serverVersion = "999.0"
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in wire },
+                                       discard: { _ in XCTFail("Same account must retain drafts and pairing") })
+        model.load(); model.address = "hermes.example"; model.password = "new"
+        let succeeded = await model.connect()
+        XCTAssertTrue(succeeded, "Every verified successful login can dismiss, irrespective of release")
+        XCTAssertNil(model.errorMessage)
+        let stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.id, old.id)
+        XCTAssertEqual(stored.password, "new")
+        XCTAssertEqual(stored.hermesVersion, "999.0")
+        XCTAssertGreaterThan(wire.closeCount, 0)
+    }
+
+    func testReplacingAnAccountClearsOnlyTheOldConnection() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "old")
+        let other = URL(string: "https://other-webui.example")!
+        try store.save(old, server: server); try store.save(old, server: other)
+        var discarded: [UUID] = []
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() },
+                                       discard: { discarded.append($0.id) })
+        model.load(); model.username = "someone-else"
+        let succeeded = await model.connect()
+        XCTAssertTrue(succeeded)
+        XCTAssertNotEqual(model.saved?.id, old.id)
+        XCTAssertEqual(discarded, [old.id])
+        XCTAssertEqual(try store.load(server: other), old)
+    }
+
+    func testFailedLoginAndSaveNeverReportSuccess() async throws {
+        let wire = ConnectionSetupWire(); wire.failure = BotFailure.rejected(401)
+        let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),
+                                       makeWire: { _ in wire }, discard: { _ in XCTFail("Failed login must not discard") })
+        model.address = "hermes.example"; model.username = "me"; model.password = "password"
+        let loggedIn = await model.connect()
+        XCTAssertFalse(loggedIn)
+        XCTAssertNil(model.saved)
+        XCTAssertEqual(model.errorMessage, BotFailure.rejected(401).localizedDescription)
+
+        let failing = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: ConnectionSetupFailingKeychain()),
+            makeWire: { _ in ConnectionSetupWire() }, discard: { _ in XCTFail("Failed save must not discard") })
+        failing.address = "hermes.example"; failing.username = "me"; failing.password = "password"
+        let saved = await failing.connect()
+        XCTAssertFalse(saved)
+        XCTAssertNotNil(failing.errorMessage)
+        XCTAssertNil(failing.saved)
+    }
+
+    func testDismissalDropsALateSuccessfulLogin() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let wire = ConnectionSetupWire()
+        let parked = expectation(description: "Login in flight")
+        wire.park = { parked.fulfill() }
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in wire }, discard: { _ in })
+        model.address = "hermes.example"; model.username = "me"; model.password = "password"
+        let task = Task { await model.connect() }
+        await fulfillment(of: [parked], timeout: 3)
+        model.cancel()
+        wire.continuation?.resume(); wire.continuation = nil
+        let result = await task.value
+        XCTAssertFalse(result)
+        XCTAssertNil(try store.load(server: server))
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isConnecting)
+        XCTAssertEqual(wire.calls, 0, "A dismissed attempt cannot load the roster or save credentials")
+    }
+}
+
+@MainActor private final class ConnectionSetupWire: BotTransport {
+    var replayEpoch: String? = "fixture"
+    var serverVersion: String? = "999.0"
+    var onEvent: ((BotJSON) -> Void)?
+    var onDisconnect: ((Error) -> Void)?
+    var failure: Error?
+    var park: (() -> Void)?
+    var continuation: CheckedContinuation<Void, Never>?
+    var closeCount = 0
+    var calls = 0
+    func connect() async throws {
+        if let park { await withCheckedContinuation { continuation = $0; park() } }
+        if let failure { throw failure }
+    }
+    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        try validateDispatch?(); calls += 1
+        XCTAssertEqual(method, "profiles.list")
+        return .object(["profiles": .array([])])
+    }
+    func close() { closeCount += 1 }
+}
+
+private struct ConnectionSetupFailingKeychain: KeychainStoring {
+    func save(_ value: String, forKey key: KeychainStore.Key) throws { throw CocoaError(.fileWriteNoPermission) }
+    func load(_ key: KeychainStore.Key) throws -> String? { nil }
+    func delete(_ key: KeychainStore.Key) throws {}
+    func save(_ value: String, forKey key: KeychainStore.Key, scope: String) throws { throw CocoaError(.fileWriteNoPermission) }
+    func load(_ key: KeychainStore.Key, scope: String) throws -> String? { nil }
+    func delete(_ key: KeychainStore.Key, scope: String) throws {}
 }

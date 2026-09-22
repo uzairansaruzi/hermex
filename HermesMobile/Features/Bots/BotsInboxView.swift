@@ -124,12 +124,21 @@ import SwiftUI
                     .listRowSeparator(.hidden)
                 }
             } else {
-                ContentUnavailableView("Connect to Hermes", systemImage: "bubble.left.and.bubble.right",
-                                       description: Text("Use your existing Hermes setup to talk to your bots."))
-                Button("Connect to Hermes") { showingSetup = true }
+                // The welcome is an overlay, so it has no list separators or disabled rows.
             }
         }
         .listStyle(.plain)
+        .overlay {
+            if inbox.connection == nil {
+                GeometryReader { geometry in
+                    ScrollView {
+                        BotConnectionWelcomeView(isCovered: showingSetup) { showingSetup = true }
+                            .frame(minHeight: geometry.size.height)
+                    }
+                    .background(Color(uiColor: .systemBackground))
+                }
+            }
+        }
         // Pushed from the session list's Bots row: the back button and the
         // toolbar are the whole header, so the pinned tiles sit at the top. The
         // title still names the screen for VoiceOver and for a pushed chat's

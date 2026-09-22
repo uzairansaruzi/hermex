@@ -116,6 +116,17 @@ struct BotRoomLog {
     private(set) var events: [BotRoomEvent] = []
     private var seen = Set<Int>()
     static func windowStart(before sequence: Int) -> Int { max(0, sequence - 200) }
+    /// Preserve system rows and the replay cursor without keeping an unbounded
+    /// seen-set or the entire paged history alive after leaving the room.
+    func recentWindow() -> Self {
+        var result = self
+        result.events = Array(events.suffix(500))
+        if events.count > 500, let first = result.events.first {
+            result.earlierBoundary = max(earlierBoundary, first.seq - 1)
+        }
+        result.seen = Set(result.events.map(\.seq))
+        return result
+    }
     mutating func begin(latest: Int) {
         self = Self(); cursor = Self.windowStart(before: latest); earlierBoundary = cursor
     }

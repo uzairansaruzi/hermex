@@ -288,3 +288,70 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertTrue(expired.isEmpty)
     }
 }
+
+final class BotRecentTranscriptTests: XCTestCase {
+    private let server = URL(string: "https://recent.example")!
+    private let connection = UUID()
+    private func key(_ profile: String = "bot") -> BotRecentTranscripts.Key {
+        .bot(server: server, connectionID: connection, profile: profile)
+    }
+    private func snapshot(_ text: String = "cached") -> BotRecentTranscripts.Snapshot {
+        .bot(.init(root: "root", messages: [ChatMessage(role: "assistant", content: text, timestamp: 100, messageId: "m")], activity: []))
+    }
+
+    func testNewestOwnerWinsAndEvictionBoundsRecentChats() {
+        let recent = BotRecentTranscripts(maximumEntries: 2)
+        let old = recent.begin(key()), new = recent.begin(key())
+        recent.save(snapshot("new"), for: key(), owner: new)
+        recent.save(snapshot("stale"), for: key(), owner: old)
+        guard case .bot(let stored)? = recent.snapshot(for: key()) else { return XCTFail("Missing recent chat") }
+        XCTAssertEqual(stored.messages.first?.content, "new")
+        recent.save(snapshot(), for: key("second"), owner: recent.begin(key("second")))
+        _ = recent.snapshot(for: key())
+        recent.save(snapshot(), for: key("third"), owner: recent.begin(key("third")))
+        XCTAssertNil(recent.snapshot(for: key("second")))
+        XCTAssertNotNil(recent.snapshot(for: key()))
+        XCTAssertNotNil(recent.snapshot(for: key("third")))
+    }
+
+    func testOversizedProjectionDoesNotKeepOldContentOrBreakTheBudget() {
+        let recent = BotRecentTranscripts(maximumBytes: 2048)
+        let owner = recent.begin(key())
+        recent.save(snapshot(), for: key(), owner: owner)
+        recent.save(snapshot(String(repeating: "large", count: 1000)), for: key(), owner: owner)
+        XCTAssertNil(recent.snapshot(for: key()))
+    }
+
+    func testClearAndRemovalInvalidateWarmValuesAndLateWriters() async throws {
+        let cache = BotHistoryCache()
+        let other = BotRecentTranscripts.Key.bot(server: URL(string: "https://other.example")!, connectionID: connection, profile: "bot")
+        let owner = cache.recent.begin(key())
+        cache.recent.save(snapshot(), for: key(), owner: owner)
+        cache.recent.save(snapshot("other"), for: other, owner: cache.recent.begin(other))
+        try await cache.remove(server: server)
+        cache.recent.save(snapshot("late"), for: key(), owner: owner)
+        XCTAssertNil(cache.recent.snapshot(for: key()))
+        XCTAssertNotNil(cache.recent.snapshot(for: other))
+
+        cache.recent.save(snapshot(), for: key(), owner: cache.recent.begin(key()))
+        try await cache.removeProfile(server: server, connectionID: connection, profileID: "bot")
+        XCTAssertNil(cache.recent.snapshot(for: key()))
+        cache.recent.save(snapshot(), for: key(), owner: cache.recent.begin(key()))
+        try await cache.remove(server: server, connectionID: connection)
+        XCTAssertNil(cache.recent.snapshot(for: key()))
+        XCTAssertNotNil(cache.recent.snapshot(for: other))
+    }
+
+    func testRoomRemovalAlsoClearsTheImmediateProjection() async throws {
+        let cache = BotHistoryCache()
+        let room = BotRoomKey(server: server, connectionID: connection, roomID: "fixture-room")
+        let key = BotRecentTranscripts.Key.room(room)
+        var log = BotRoomLog()
+        log.apply(RoomFixture.page([RoomFixture.event(1, kind: "room.renamed")], cursor: 1))
+        let owner = cache.recent.begin(key)
+        cache.recent.save(.room(log), for: key, owner: owner)
+        try await cache.removeRoom(room)
+        cache.recent.save(.room(log), for: key, owner: owner)
+        XCTAssertNil(cache.recent.snapshot(for: key))
+    }
+}

@@ -521,7 +521,7 @@ import XCTest
         XCTAssertEqual(socket.sentRequests.count, 5)
     }
 
-    func testStatusWithoutVersionStillConnectsAndShowsNoNote() async throws {
+    func testStatusWithoutVersionStillConnects() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
             case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
@@ -538,7 +538,7 @@ import XCTest
         XCTAssertNil(client.serverVersion)
         var record = connection()
         record.hermesVersion = client.serverVersion
-        XCTAssertNil(record.untestedVersionNote)
+        XCTAssertNil(record.hermesVersion)
         client.close()
     }
 

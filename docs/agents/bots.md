@@ -16,12 +16,26 @@ OAuth, webui fallback, server provisioning or competing-backend path.
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
 counterpart of `UPSTREAM_TESTED_SHA`. `BotClient.connect()` captures `version`
-and the connection screen stores it on the `BotConnection` record. A release
-other than `BotConnection.testedHermesVersion` shows a one-line "Untested Hermes
-version" note and keeps the screen up after a successful connect so the note is
-seen; a missing `version` shows nothing. Login is never blocked on it: each RPC
-validates the contract just in time. Advancing the pin is described in AGENTS.md
+and the connection screen stores it on the `BotConnection` record. Successful
+sign-in saves and dismisses regardless of version; no version warning is shown.
+Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md
 (Working with the server); update the file and the constant together.
+
+The disconnected inbox offers one Connect action with the editor's drawn,
+neutral-default playful faces. Motion pauses while covered or inactive and is
+still with Reduce Motion. Setup help copies a generic prompt for the user's
+agent; copying sends nothing and includes no credentials or configured address.
+The prompt discovers the existing backend and asks before changing setup.
+The same connection form serves Bots, Settings and push setup. A schemeless
+address defaults to HTTPS, except recognizable private/local IPs (including
+Tailscale ranges), local names and single-label hosts use HTTP. Explicit schemes
+and ports are preserved; TLS failures never trigger an HTTP downgrade. Invalid
+addresses display errors even before a transport exists. Cancellation invalidates
+the attempt before late replies can save credentials or dismiss the screen.
+The synchronous Keychain write is the commit point. Saved state changes with it;
+old-connection cleanup then finishes independently of sheet cancellation and the
+committed operation remains successful. Main-app ATS exceptions cover the same
+private/local IP ranges used by scheme inference; public hosts still require HTTPS.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
@@ -840,6 +854,31 @@ mutation was used. Socket dispatch, read completion and confirmations all valida
 the captured context; disconnect invalidates them and never retries a write.
 Older snapshots cannot overwrite an acknowledged workspace change. Rejections
 keep the previous value and preserve the host's error text.
+
+## Recent chat entry
+
+`BotHistoryCache.recent` keeps value snapshots for at most 12 recently visited
+bot/room chats within an 8 MiB estimated payload budget. It is memory-only and
+separate from the lossy disk search index. Bot snapshots retain the last 500
+messages (including long text and display metadata), settled tool/reasoning rows,
+and visible inflight text frozen as history. Room snapshots retain system events
+as well as messages, their replay cursor and earlier boundary. Thumbnails may
+still load separately.
+
+New views read the projection synchronously before starting network recovery.
+Only a fresh server response grants runtime identity, working state, approvals or
+send permissions. Refresh replaces bot history and continues room delta replay.
+Deep links must match the cached canonical root; a fresh lookup of a replacement
+Bot Chat discards the old preview. Already-open chats keep established read-only
+history on identity loss. Warm room search still anchors to its selected sequence.
+
+The store uses configured server hash + connection UUID + bot/room identity.
+Each recovery claims a writer token, so a superseded screen cannot overwrite a
+newer projection. Offline-cache clearing, connection/server removal, deletion and
+authoritative roster pruning invalidate the corresponding entries and writers.
+The small lock only protects in-memory value copies; disk work stays on the
+history actor. No sockets, credentials, pending actions or live permissions are
+cached. App termination discards all recent projections.
 
 ## Local search
 

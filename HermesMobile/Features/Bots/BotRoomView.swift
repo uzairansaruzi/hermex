@@ -78,7 +78,7 @@ import SwiftUI
             .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
             .onChange(of: pendingSequence.flatMap { sequence in
                 reader.events.contains(where: { $0.seq == sequence }) ? sequence : nil
-            }) { _, sequence in
+            }, initial: true) { _, sequence in
                 if let sequence {
                     handleFollowEvent(.userScrollBegin)
                     proxy.scrollTo(sequence, anchor: .center); pendingSequence = nil
