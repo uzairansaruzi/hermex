@@ -625,18 +625,21 @@ import XCTest
 
     func testComposerPillShowsOneThingHighestPriorityFirst() {
         let voice = ComposerVoiceStatus(text: "Listening...", systemImage: "waveform", isError: false)
-        XCTAssertEqual(BotComposerPill.resolve(requestText: "Waiting for your answer", errorText: "Send failed",
+        XCTAssertEqual(BotComposerPill.resolve(requestText: "Waiting for your answer", requestHasCard: true, errorText: "Send failed",
                                                voiceStatus: voice, offersReconnect: true, isUploading: true),
                        .request("Waiting for your answer"))
-        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: "Send failed", voiceStatus: voice,
+        XCTAssertEqual(BotComposerPill.resolve(requestText: "Needs attention", requestHasCard: false, errorText: nil,
+                                               voiceStatus: nil, offersReconnect: false, isUploading: false),
+                       .notice("Needs attention"), "no card to jump to means no button")
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: "Send failed", voiceStatus: voice,
                                                offersReconnect: true, isUploading: true), .error("Send failed"))
-        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: voice,
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: nil, voiceStatus: voice,
                                                offersReconnect: true, isUploading: true), .voice(voice))
-        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: nil,
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: nil, voiceStatus: nil,
                                                offersReconnect: true, isUploading: true), .reconnect)
-        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: nil,
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: nil, voiceStatus: nil,
                                                offersReconnect: false, isUploading: true), .uploading)
-        XCTAssertNil(BotComposerPill.resolve(requestText: nil, errorText: nil, voiceStatus: nil,
+        XCTAssertNil(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: nil, voiceStatus: nil,
                                              offersReconnect: false, isUploading: false),
                      "a connected, idle or working bot shows no text above the composer")
     }

@@ -29,10 +29,10 @@ struct BotChatComposerView: View {
     @State private var voiceInput = ComposerVoiceInputController()
 
     @State private var settingsPresented = false
-    /// The error text the user tapped away or that timed out. A new error with
-    /// different text shows again; the same one stays gone until the next send
-    /// clears it.
-    @State private var dismissedError: String?
+    /// Error texts the user tapped away or that timed out. A new error with
+    /// different text shows; a dismissed one stays gone until the next send
+    /// clears the set, so two lingering errors cannot take turns in the pill.
+    @State private var dismissedErrors: Set<String> = []
     @State private var mode = BotPromptMode.send
     @State private var redirectAction: BotConversation.PromptAction?
 
@@ -57,7 +57,7 @@ struct BotChatComposerView: View {
             if let pill {
                 BotComposerPillView(pill: pill, onReconnect: onReconnect, onShowRequest: onShowRequest,
                                     onCancelUpload: { model.cancelAttachmentUpload() },
-                                    onDismissError: { dismissedError = pill.errorText })
+                                    onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } })
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
             }
             composerContainer
@@ -67,18 +67,20 @@ struct BotChatComposerView: View {
         .task(id: pill?.errorText) {
             guard let text = pill?.errorText else { return }
             do { try await Task.sleep(for: .seconds(5)) } catch { return }
-            dismissedError = text
+            dismissedErrors.insert(text)
         }
         .onChange(of: model.submittingPrompt) { _, submitting in
-            if submitting != nil { dismissedError = nil }
+            if submitting != nil { dismissedErrors = [] }
         }
     }
 
     private var pill: BotComposerPill? {
         BotComposerPill.resolve(
             requestText: model.turn == .needsAttention ? requestText : nil,
+            // A request the phone could not read has no card to jump to.
+            requestHasCard: model.pendingRequest != nil,
             errorText: [model.errorMessage, model.chatControls.errorMessage, model.attachments.errorMessage,
-                        voiceInput.errorMessage].compactMap { $0 }.first { $0 != dismissedError },
+                        voiceInput.errorMessage].compactMap { $0 }.first { !dismissedErrors.contains($0) },
             voiceStatus: voiceStatus,
             offersReconnect: model.connectionState == .disconnected && !model.isReconnecting && model.errorMessage != nil,
             isUploading: model.isUploadingAttachments
@@ -91,6 +93,7 @@ struct BotChatComposerView: View {
     private var requestText: String {
         if model.pendingRequest?.isAnswerable == true { return String(localized: "Waiting for your answer") }
         if model.mayDecline { return String(localized: "Waiting on Hermes Desktop") }
+        if model.pendingRequest == nil { return String(localized: "Needs attention. Answer the request in Hermes Desktop on this same connection.") }
         return String(localized: "Hermes Desktop is handling this")
     }
 
@@ -535,15 +538,18 @@ enum BotVoiceInputPolicy {
 /// recovery because the user can read it; upload comes last because Cancel is
 /// only useful while nothing else is wrong.
 enum BotComposerPill: Equatable {
+    /// A blocking request with a card in the transcript to jump to.
     case request(String)
+    /// A blocking request the phone cannot show; the line is the whole message.
+    case notice(String)
     case error(String)
     case voice(ComposerVoiceStatus)
     case reconnect
     case uploading
 
-    static func resolve(requestText: String?, errorText: String?, voiceStatus: ComposerVoiceStatus?,
+    static func resolve(requestText: String?, requestHasCard: Bool, errorText: String?, voiceStatus: ComposerVoiceStatus?,
                         offersReconnect: Bool, isUploading: Bool) -> BotComposerPill? {
-        if let requestText { return .request(requestText) }
+        if let requestText { return requestHasCard ? .request(requestText) : .notice(requestText) }
         if let errorText { return .error(errorText) }
         if let voiceStatus { return .voice(voiceStatus) }
         if offersReconnect { return .reconnect }
@@ -568,6 +574,8 @@ private struct BotComposerPillView: View {
             switch pill {
             case .request(let text):
                 Button(action: onShowRequest) { Label(text, systemImage: "arrow.down.circle") }
+            case .notice(let text):
+                Label(text, systemImage: "exclamationmark.circle")
             case .error(let text):
                 Button(action: onDismissError) { Label(text, systemImage: "exclamationmark.triangle") }
                     .accessibilityHint(Text("Dismisses this message"))
