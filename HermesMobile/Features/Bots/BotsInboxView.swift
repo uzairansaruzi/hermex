@@ -94,35 +94,7 @@ import SwiftUI
                     case .bot(let profile):
                         row(profile, dimmed: profile.hidden)
                     case .room(let room):
-                        if let key = inbox.roomKey(room) {
-                            Button { openRoom(room) } label: {
-                                BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
-                            }
-                            .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
-                            .opacity(inbox.isRoomHidden(room) ? 0.5 : 1)
-                            .contextMenu { roomOrganizeMenu(room) }
-                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                Button {
-                                    inbox.setRoomPinned(!inbox.isRoomPinned(room), room)
-                                } label: {
-                                    Label(inbox.isRoomPinned(room) ? "Unpin" : "Pin", systemImage: inbox.isRoomPinned(room) ? "pin.slash" : "pin")
-                                }
-                                .tint(.orange)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    inbox.setRoomHidden(!inbox.isRoomHidden(room), room)
-                                } label: {
-                                    Label(inbox.isRoomHidden(room) ? "Unhide" : "Hide", systemImage: inbox.isRoomHidden(room) ? "eye" : "eye.slash")
-                                }
-                                .tint(.gray)
-                                if inbox.mayDisbandRoom(room) {
-                                    Button(role: .destructive) { disbanding = room } label: {
-                                        Label("Disband", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
+                        if let key = inbox.roomKey(room) { roomRow(room, key: key) }
                     }
                 }
                 if inbox.hiddenCount > 0 {
@@ -371,6 +343,36 @@ import SwiftUI
                 .id(connection.id.uuidString + profile.id)
         } else {
             ContentUnavailableView("Could Not Load Profiles", systemImage: "person.crop.circle.badge.questionmark")
+        }
+    }
+
+    /// Kept as its own function with the flags read once: inlined in the list
+    /// builder, the row's menus and swipes were too much for the type-checker.
+    private func roomRow(_ room: BotGroupRoom, key: BotRoomKey) -> some View {
+        let pinned = inbox.isRoomPinned(room)
+        let hidden = inbox.isRoomHidden(room)
+        return Button { openRoom(room) } label: {
+            BotRoomInboxRow(room: room, roster: inbox.profiles, avatars: inbox.avatars)
+        }
+        .id(key).buttonStyle(.plain).listRowSeparator(.hidden)
+        .opacity(hidden ? 0.5 : 1)
+        .contextMenu { roomOrganizeMenu(room) }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button { inbox.setRoomPinned(!pinned, room) } label: {
+                Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin")
+            }
+            .tint(.orange)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button { inbox.setRoomHidden(!hidden, room) } label: {
+                Label(hidden ? "Unhide" : "Hide", systemImage: hidden ? "eye" : "eye.slash")
+            }
+            .tint(.gray)
+            if inbox.mayDisbandRoom(room) {
+                Button(role: .destructive) { disbanding = room } label: {
+                    Label("Disband", systemImage: "trash")
+                }
+            }
         }
     }
 

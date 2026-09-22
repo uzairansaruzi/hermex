@@ -275,6 +275,12 @@ import XCTest
         XCTAssertEqual(inbox.hiddenCount, 1)
         inbox.showsHidden = true
         XCTAssertEqual(inbox.chats.map(\.id), ["room:triage", "bot:bot", "room:old"])
+        // Hiding a pinned room takes it off the tiles but keeps it reachable.
+        inbox.setRoomHidden(true, standup)
+        XCTAssertTrue(inbox.pinned.isEmpty)
+        XCTAssertEqual(inbox.chats.map(\.id), ["room:standup", "room:triage", "bot:bot", "room:old"])
+        inbox.setRoomHidden(false, standup)
+        inbox.showsHidden = false
 
         // Both marks survive a fresh inbox on the same connection, and a room the
         // host no longer lists takes its marks with it.

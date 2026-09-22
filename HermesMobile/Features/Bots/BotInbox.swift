@@ -40,7 +40,9 @@ import UIKit
     var chats: [ChatRow] {
         let rows = rows(matching: "")
         let bots = (rows.others + rows.hidden).map(ChatRow.bot)
-        let groups = visibleRooms.filter { !isRoomPinned($0) && (!isRoomHidden($0) || showsHidden) }.map(ChatRow.room)
+        // A hidden room lives in the revealed list whether or not it is also
+        // pinned, exactly as a hidden bot does, so it can always be unhidden.
+        let groups = visibleRooms.filter { isRoomHidden($0) ? showsHidden : !isRoomPinned($0) }.map(ChatRow.room)
         return Self.byActivity(bots + groups)
     }
 
