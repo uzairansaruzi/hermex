@@ -198,6 +198,8 @@ def main():
             lock_fds = (work_fd, sim_fd)
             print("Simulator: {name} ({udid}); serial tests".format(**device), flush=True)
             boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
+            # One deadline covers the first attempt and any retry.
+            deadline = time.monotonic() + args.test_timeout
             for attempt in ("", "-retry"):
                 terminate_app(device, run_dir, lock_fds, args.boot_timeout)
                 log = run_dir / ("test" + attempt + ".log")
@@ -212,7 +214,7 @@ def main():
                     "-collect-test-diagnostics", "never",
                 ] + ["-only-testing:" + test for test in args.only]
                 (run_dir / ("command" + attempt + ".json")).write_text(json.dumps(command, indent=2) + "\n")
-                code = run(command, log, args.test_timeout, lock_fds)
+                code = run(command, log, max(1, deadline - time.monotonic()), lock_fds)
                 summary = print_summary(result, run_dir / ("summary" + attempt + ".json"))
                 if not (code and not attempt and runner_hung(summary)):
                     break
