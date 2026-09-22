@@ -5805,8 +5805,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(reopenedStreamClient.startedURLs.count, 1)
         let reconnectURL = try XCTUnwrap(reopenedStreamClient.startedURLs.last)
         let reconnectQueryItems = URLComponents(url: reconnectURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertNil(reconnectQueryItems.first(where: { $0.name == "replay" }))
-        XCTAssertNil(reconnectQueryItems.first(where: { $0.name == "after_seq" }))
+        XCTAssertEqual(reconnectQueryItems.first(where: { $0.name == "replay" })?.value, "1")
+        XCTAssertEqual(reconnectQueryItems.first(where: { $0.name == "after_seq" })?.value, "4")
         XCTAssertEqual(reopenedViewModel.activeStreamID, "stream-123")
         XCTAssertEqual(reopenedViewModel.liveReasoningText, "Planning the tiger story.")
         XCTAssertEqual(reopenedViewModel.liveToolCalls.count, 1)
