@@ -43,11 +43,15 @@ team** — override locally instead:
 
    ```xcconfig
    DEVELOPMENT_TEAM = YOUR_TEAM_ID
-   // Optional — only needed if provisioning complains about the bundle ID.
+   // Required whenever you set your own team: use your own bundle ID prefix.
    // The app-group entitlement must stay in sync with the bundle ID.
-   // APP_BUNDLE_IDENTIFIER = com.yourname.hermex
-   // APP_GROUP_IDENTIFIER = group.com.yourname.hermex
+   APP_BUNDLE_IDENTIFIER = com.yourname.hermex
+   APP_GROUP_IDENTIFIER = group.com.yourname.hermex
    ```
+
+   Always override the bundle and app-group IDs along with the team. With the
+   committed defaults, Xcode registers any extension ID the maintainer hasn't
+   registered yet to *your* team, and the release can't use that ID afterwards.
 
 2. Build normally. `Config/Shared.xcconfig` is wired into the project and ends
    with `#include? "Local.xcconfig"`, so your local values override the
