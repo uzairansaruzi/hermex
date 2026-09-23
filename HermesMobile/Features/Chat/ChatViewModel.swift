@@ -1512,17 +1512,21 @@ final class ChatViewModel {
                 currentWorkspace = defaultWorkspace
             }
 
+            // Prefer the fresh switch payload over the picker row: the row can go
+            // stale while the menu is open and would pin the wrong provider onto
+            // the new default model for reasoning/chat requests.
+            let returnedSelection = response.profiles?
+                .first { $0.normalizedName == selectedProfileName }
             if let defaultModel = Self.nonEmpty(response.defaultModel) {
                 currentModel = defaultModel
-                currentModelProvider = Self.nonEmpty(profile.provider)
+                currentModelProvider = Self.nonEmpty(returnedSelection?.provider)
+                    ?? Self.nonEmpty(profile.provider)
             } else {
                 // The switch reply omitted the new default. Never carry the
                 // previous profile's route across the switch: resolve the pair
                 // from the returned selected profile when the reply included
                 // it, otherwise clear BOTH so the new profile seeds from its
                 // own configuration below.
-                let returnedSelection = response.profiles?
-                    .first { $0.normalizedName == selectedProfileName }
                 currentModel = Self.nonEmpty(returnedSelection?.model)
                 currentModelProvider = Self.nonEmpty(returnedSelection?.provider)
             }

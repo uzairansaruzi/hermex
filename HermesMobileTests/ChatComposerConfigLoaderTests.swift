@@ -352,12 +352,13 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(paths, Set(["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]))
     }
 
-    func testRecentProfileSwitchSeedHandoffIsConsumedOncePerHost() {
+    func testRecentProfileSwitchSeedHandoffIsConsumedOncePerServerURL() {
         RecentProfileSwitchSeed.resetForTests()
         defer { RecentProfileSwitchSeed.resetForTests() }
 
-        let server = URL(string: "https://example.test")!
-        let seed = ChatComposerProfileSeed(
+        let serverA = URL(string: "https://example.test:443")!
+        let serverB = URL(string: "https://example.test:8443")!
+        let seedA = ChatComposerProfileSeed(
             profiles: [
                 ProfileSummary(
                     name: "work",
@@ -375,13 +376,36 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
             defaultModel: "gpt-5.4",
             defaultWorkspace: "/tmp/ws"
         )
+        let seedB = ChatComposerProfileSeed(
+            profiles: [
+                ProfileSummary(
+                    name: "lab",
+                    path: nil,
+                    isDefault: false,
+                    isActive: true,
+                    gatewayRunning: nil,
+                    model: "gpt-5.4",
+                    provider: "openai",
+                    hasEnv: nil,
+                    skillCount: nil
+                )
+            ],
+            active: "lab",
+            defaultModel: "gpt-5.4",
+            defaultWorkspace: "/tmp/lab"
+        )
 
-        RecentProfileSwitchSeed.store(seed, for: server)
-        XCTAssertEqual(RecentProfileSwitchSeed.take(for: server)?.active, "work")
-        XCTAssertNil(RecentProfileSwitchSeed.take(for: server), "Seed must be one-shot")
+        RecentProfileSwitchSeed.store(seedA, for: serverA)
+        RecentProfileSwitchSeed.store(seedB, for: serverB)
+
+        // Same host, different port → independent seeds.
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverA)?.active, "work")
+        XCTAssertNil(RecentProfileSwitchSeed.take(for: serverA), "Seed must be one-shot")
+        // Looking up A must not wipe B.
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverB)?.active, "lab")
         XCTAssertNil(
             RecentProfileSwitchSeed.take(for: URL(string: "https://other.test")!),
-            "Foreign hosts must not observe another server's seed"
+            "Foreign servers must not observe another server's seed"
         )
     }
 

@@ -1117,7 +1117,10 @@ final class SessionListViewModel {
         }
     }
 
-    func loadProjects() async {
+    /// Returns the failure so parallel callers can auth-handle sessions and
+    /// projects independently without one overwriting the other's `lastError`.
+    @discardableResult
+    func loadProjects() async -> Error? {
         isLoadingProjects = true
         actionErrorMessage = nil
         // Do not clear `lastError` here: profile-switch refresh runs sessions and
@@ -1127,11 +1130,13 @@ final class SessionListViewModel {
         do {
             let response = try await client.projects()
             projects = response.projects ?? []
+            return nil
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard !isCancellationError(error) else { return nil }
 
             lastError = error
             actionErrorMessage = error.localizedDescription
+            return error
         }
     }
 

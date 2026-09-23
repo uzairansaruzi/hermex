@@ -1233,21 +1233,27 @@ struct SessionListView: View {
     private func loadSessions(parallelProjects: Bool = false) async {
         if parallelProjects {
             async let sessionsLoaded = viewModel.load(modelContext: modelContext)
-            async let projectsLoaded: Void = viewModel.loadProjects()
+            async let projectsError = viewModel.loadProjects()
             let didLoadSessions = await sessionsLoaded
-            await projectsLoaded
+            let projectLoadError = await projectsError
             guard !Task.isCancelled else { return }
-            // Match the serial path: only surface session-list errors when the
-            // network load failed hard. A cache fallback must not inherit a
-            // racing /api/projects error as a session-open failure.
-            if didLoadSessions, !viewModel.isViewingCachedData {
-                handleLastError()
-            } else if !didLoadSessions, !viewModel.isViewingCachedData {
-                handleLastError()
-            } else {
-                // Cached sessions: keep the list usable; clear action noise from
-                // the parallel projects attempt so open-session does not trip.
+
+            // Auth must see every failure: a 401 on sessions must not be lost
+            // when projects later writes a different lastError, and vice versa.
+            if let sessionError = viewModel.sessionLoadError {
+                authManager.handleAPIError(sessionError)
+            }
+            if let projectLoadError {
+                authManager.handleAPIError(projectLoadError)
+            }
+
+            // Match the serial path for UI: cache fallback stays usable and
+            // must not inherit a racing /api/projects error as a session-open
+            // failure. Online session failures still surface via lastError.
+            if viewModel.isViewingCachedData {
                 viewModel.clearActionErrorMessage()
+            } else if !didLoadSessions || projectLoadError != nil {
+                handleLastError()
             }
             return
         }

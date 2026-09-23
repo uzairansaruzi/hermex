@@ -97,43 +97,51 @@ struct ChatComposerProfileSeed: Sendable, Equatable {
 
 /// One-shot handoff so a replacement ChatView created after an empty-chat
 /// profile switch can skip `/api/profiles` the same way the in-place path does.
-/// Host-keyed, 5s TTL, consumed exactly once.
+/// Keyed by the full server URL (scheme + host + port + path), 5s TTL,
+/// consumed exactly once per server. Foreign lookups never wipe another
+/// server's pending seed.
 enum RecentProfileSwitchSeed {
     private static let lock = NSLock()
-    private static var entry: (host: String, seed: ChatComposerProfileSeed, expires: Date)?
+    private static var entries: [String: (seed: ChatComposerProfileSeed, expires: Date)] = [:]
 
-    private static func hostKey(for server: URL) -> String {
-        server.host?.lowercased() ?? server.absoluteString
+    /// Match multi-server identity: scheme/host/port matter; trailing slash does not.
+    private static func serverKey(for server: URL) -> String {
+        var components = URLComponents(url: server, resolvingAgainstBaseURL: false) ?? URLComponents()
+        components.fragment = nil
+        components.query = nil
+        let path = components.path
+        if path.count > 1, path.hasSuffix("/") {
+            components.path = String(path.dropLast())
+        }
+        let normalized = components.url?.absoluteString ?? server.absoluteString
+        return normalized.lowercased()
     }
 
     static func store(_ seed: ChatComposerProfileSeed, for server: URL) {
         lock.withLock {
-            entry = (hostKey(for: server), seed, Date().addingTimeInterval(5))
+            entries[serverKey(for: server)] = (seed, Date().addingTimeInterval(5))
         }
     }
 
     static func take(for server: URL) -> ChatComposerProfileSeed? {
         lock.withLock {
-            guard let current = entry else { return nil }
-            guard current.host == hostKey(for: server), current.expires > Date() else {
-                entry = nil
-                return nil
-            }
-            entry = nil
+            let key = serverKey(for: server)
+            guard let current = entries[key] else { return nil }
+            entries[key] = nil
+            guard current.expires > Date() else { return nil }
             return current.seed
         }
     }
 
     static func discard(for server: URL) {
         lock.withLock {
-            guard let current = entry, current.host == hostKey(for: server) else { return }
-            entry = nil
+            entries[serverKey(for: server)] = nil
         }
     }
 
-    /// Test hook: drop any pending seed without consuming it as a load.
+    /// Test hook: drop every pending seed without consuming one as a load.
     static func resetForTests() {
-        lock.withLock { entry = nil }
+        lock.withLock { entries.removeAll() }
     }
 }
 
