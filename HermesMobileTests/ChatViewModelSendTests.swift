@@ -9898,7 +9898,7 @@ private final class SpyChatLiveActivityManager: AgentLiveActivityManaging {
 
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date) {}
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {}
 
     func update(_ event: AgentLiveActivityEvent) {}
 

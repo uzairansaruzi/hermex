@@ -34,6 +34,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
                 streamID: "stream-123"
             )
         ])
+        // The run's own server, so a paired server's relay can take over on suspend (#566).
+        XCTAssertEqual(liveActivityManager.servers, [URL(string: "https://example.test")!])
     }
 
     @MainActor
@@ -2655,13 +2657,16 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
     /// Run starts handed to the widget, recorded alongside `starts` so the
     /// existing `Start` equality assertions stay independent of timing (#406).
     private(set) var startedAts: [Date] = []
+    /// The server each start named, so push registration finds its pairing (#566).
+    private(set) var servers: [URL] = []
     private(set) var updates: [AgentLiveActivityEvent] = []
     private(set) var markStaleCount = 0
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date) {
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {
         starts.append(Start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID))
         startedAts.append(startedAt)
+        servers.append(server)
     }
 
     func update(_ event: AgentLiveActivityEvent) {

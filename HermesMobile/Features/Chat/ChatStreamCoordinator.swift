@@ -1189,6 +1189,7 @@ final class ChatStreamCoordinator {
 
         liveActivityManager.start(
             sessionID: sessionID,
+            server: client.baseURL,
             sessionTitle: delegate?.streamCoordinatorDisplayTitle ?? String(localized: "Untitled Session"),
             streamID: streamID,
             startedAt: activeRunStartedAt ?? Date()

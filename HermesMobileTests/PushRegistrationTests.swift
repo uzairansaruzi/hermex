@@ -741,6 +741,31 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(wire.calls.map(\.action), ["delete"])
     }
 
+    /// A finished activity's cleanup (cold launch or an orphaned webui run, #566) must
+    /// not delete the route a new run in the same session is still registering.
+    func testRelaunchedActivityCleanupSparesARegistrationInFlightForTheSameSession() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let entered = expectation(description: "PUT entered")
+        var release: CheckedContinuation<Void, Never>?
+        wire.hold = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                entered.fulfill()
+            }
+        }
+        let register = Task { await registrar.register(owner: "new", server: serverA, sessionID: "runtime", token: "token") }
+        await fulfillment(of: [entered], timeout: 2)
+        let retire = Task { await registrar.retire(owner: "persisted", server: serverA, sessionID: "runtime") }
+        await Task.yield()
+        release?.resume()
+        await register.value
+        await retire.value
+        XCTAssertEqual(wire.calls.map(\.action), ["put:token"])
+        XCTAssertTrue(registrar.isRegistered("new"))
+    }
+
     // MARK: - Keychain access group
 
     /// The real store, in the real shared access group: the pairing round-trips,

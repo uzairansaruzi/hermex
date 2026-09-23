@@ -621,8 +621,15 @@ those values into manager calls.
   root are different IDs; plugin progress hooks use neither of them. After registration succeeds,
   suspension leaves freshness to push; the relay sets a fifteen-minute stale date
   and the widget uses ActivityKit's stale flag. Unpaired or failed registrations
-  still show "Not connected" / "Open to reconnect" on suspend. Webui activities
-  remain local-only (`pushType: nil`). There is no push-to-start.
+  still show "Not connected" / "Open to reconnect" on suspend. A webui run on a
+  paired server takes the same handoff (#566): its attributes carry the configured
+  server, it requests a token, and it registers under its webui session ID, which
+  webui also gives the agent. Webui runs on unpaired servers stay local-only
+  (`pushType: nil`). A compression that rotates the session ID mid-turn moves the
+  plugin's progress to an ID the relay does not know, so that activity goes stale.
+  Ending an orphaned webui activity, or finding one finished at cold launch,
+  retires its registration so the relay stops holding that session's banners.
+  There is no push-to-start.
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
@@ -1182,6 +1189,6 @@ a missing session leaves its session list without an error. It never searches an
 server or uses a stale cached session. A paired server suppresses local completion
 notifications from both chat and cold-launch Live Activity reconciliation; disabling
 push restores the existing global local-notification preference. Webui Live Activities
-remain local-only. Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
+on a paired server hand off to the relay like a bot's (see Bot Live Activity). Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
 banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
 not app code.

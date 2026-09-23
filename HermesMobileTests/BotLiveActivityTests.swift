@@ -114,6 +114,27 @@ import XCTest
         XCTAssertEqual(manager.drivenSessionID, bot.key)
     }
 
+    /// The relay route for each kind of activity (#566): a webui run pushes under its
+    /// own server and session ID, a bot under its destination's server and stored
+    /// agent session, and an activity that names neither cannot be pushed.
+    func testPushTargetRoutesWebuiRunsAndBotsToTheirOwnServerAndAgentSession() throws {
+        let webui = AgentRunActivityAttributes(sessionID: "webui-session", sessionTitle: "Plan",
+                                               startedAt: .now, server: server)
+        XCTAssertEqual(webui.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "webui-session"))
+
+        var bot = try XCTUnwrap(AgentRunActivityBot(destination()))
+        let unsettled = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage",
+                                                   startedAt: .now, bot: bot)
+        XCTAssertNil(unsettled.pushTarget, "A bot without its agent session ID has no route yet")
+        bot.pushSessionID = "tip"
+        let settled = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage",
+                                                 startedAt: .now, bot: bot)
+        XCTAssertEqual(settled.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "tip"))
+
+        let legacy = AgentRunActivityAttributes(sessionID: "webui-session", sessionTitle: "Plan", startedAt: .now)
+        XCTAssertNil(legacy.pushTarget)
+    }
+
     func testAnIdleBotNeverStartsAnActivityAndUnknownStateSaysNothing() {
         let spy = BotLiveActivitySpy()
         let feed = feed(spy)
@@ -351,7 +372,7 @@ import XCTest
     var staleCount = 0
     var drivenSessionID: String?
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date) {}
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {}
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
         started.append(Start(bot: bot, title: title, turn: turn))
         drivenSessionID = bot.key

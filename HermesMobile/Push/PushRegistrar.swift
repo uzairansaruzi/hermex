@@ -429,10 +429,12 @@ extension PushRegistrar: PushPairingEnabling {}
 
     func retire(owner: String, server: URL? = nil, sessionID: String? = nil) async {
         desired[owner] = nil
-        // A persisted activity may end before this process ever saw its token.
+        // A persisted activity may end before this process ever saw its token. Its
+        // cleanup must never delete a newer activity's route, registered or queued.
         if registered[owner] == nil, let server, let sessionID,
            let keys = pairing(server), let device = keys.registeredToken,
-           !registered.values.contains(where: { $0.desired.server == server && $0.desired.sessionID == sessionID }) {
+           !registered.values.contains(where: { $0.desired.server == server && $0.desired.sessionID == sessionID }),
+           !desired.values.contains(where: { $0.server == server && $0.sessionID == sessionID }) {
             registered[owner] = Registered(desired: Desired(server: server, sessionID: sessionID, token: ""),
                                            pairing: keys, deviceToken: device)
         }

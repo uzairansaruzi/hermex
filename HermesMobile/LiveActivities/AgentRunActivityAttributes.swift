@@ -147,13 +147,19 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     /// Set when a bot owns this activity: the tap target and the avatar. Nil for a
     /// webui session, and for an activity persisted by a build older than #489.
     var bot: AgentRunActivityBot?
+    /// The configured server a webui run belongs to, so its relay registration finds
+    /// that server's push pairing (#566). Nil for a bot, whose destination names the
+    /// server, and for an activity persisted by an older build.
+    var server: URL?
 
-    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date, bot: AgentRunActivityBot? = nil) {
+    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date,
+         bot: AgentRunActivityBot? = nil, server: URL? = nil) {
         self.sessionID = sessionID
         self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
         self.streamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
         self.startedAt = startedAt
         self.bot = bot
+        self.server = server
     }
 }
 

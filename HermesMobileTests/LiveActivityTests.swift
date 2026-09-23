@@ -3,6 +3,9 @@ import XCTest
 
 @MainActor
 final class LiveActivityTests: XCTestCase {
+    /// An unpaired server: these runs stay local-only.
+    private let server = URL(string: "https://webui.example")!
+
     override func tearDown() {
         LiveActivityURLProtocol.handler = nil
         super.tearDown()
@@ -1114,7 +1117,7 @@ final class LiveActivityTests: XCTestCase {
         let manager = AgentLiveActivityManager()
 
         // A live SSE connection claims the stream so the reconciler leaves it alone.
-        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc")
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
         // Suspension / transport trouble releases the claim — the suspended stream is
@@ -1123,7 +1126,7 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertNil(manager.activeConnectedStreamID)
 
         // Reconnecting the same stream re-claims it.
-        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc")
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
         // Finalizing the run releases the claim.
@@ -1142,6 +1145,7 @@ final class LiveActivityTests: XCTestCase {
 
         manager.start(
             sessionID: "session-1",
+            server: server,
             sessionTitle: "Title",
             streamID: "stream-abc",
             startedAt: discoveredAt
@@ -1150,6 +1154,7 @@ final class LiveActivityTests: XCTestCase {
 
         manager.start(
             sessionID: "session-1",
+            server: server,
             sessionTitle: "Title",
             streamID: "stream-abc",
             startedAt: serverStart
@@ -1159,6 +1164,7 @@ final class LiveActivityTests: XCTestCase {
         // A later stamp for the same run never pushes the widget timer forward.
         manager.start(
             sessionID: "session-1",
+            server: server,
             sessionTitle: "Title",
             streamID: "stream-abc",
             startedAt: discoveredAt.addingTimeInterval(30)
@@ -1186,7 +1192,7 @@ private final class SpyAgentLiveActivityManager: AgentLiveActivityManaging {
     private(set) var didMarkStale = false
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date) {
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {
         starts.append(Start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID))
     }
 

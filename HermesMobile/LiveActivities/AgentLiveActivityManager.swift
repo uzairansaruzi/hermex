@@ -35,13 +35,34 @@ struct OrphanedLiveActivity: Equatable {
     let updatedAt: Date
 }
 
+/// Where the relay delivers an activity's pushes: the paired server, and the agent
+/// session ID the plugin reports progress under.
+struct AgentRunActivityPushTarget: Equatable {
+    let server: URL
+    let sessionID: String
+}
+
+extension AgentRunActivityAttributes {
+    /// A bot resolves its target from its destination and stored agent session ID. A
+    /// webui run uses its own session ID, which webui also gives the agent (#566).
+    /// Nil when the activity cannot be pushed, such as one from an older build.
+    var pushTarget: AgentRunActivityPushTarget? {
+        guard let bot else { return server.map { AgentRunActivityPushTarget(server: $0, sessionID: sessionID) } }
+        guard let sessionID = bot.pushSessionID,
+              let destination = HermesDeepLink.botDestination(from: bot.destinationURL) else { return nil }
+        return AgentRunActivityPushTarget(server: destination.server, sessionID: sessionID)
+    }
+}
+
 @MainActor
 protocol AgentLiveActivityManaging: AnyObject {
     /// `startedAt` is when the *run* began, not when the widget was created: the
     /// coordinator passes the server-seeded run start so the widget's system
     /// elapsed timer counts the same span as the in-app "Working for" label
-    /// (#406). Callers without a seeded start pass `Date()`.
-    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date)
+    /// (#406). Callers without a seeded start pass `Date()`. `server` is the configured
+    /// server the run belongs to; a server paired for push lets the relay keep the
+    /// activity fresh after the app suspends (#566).
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date)
     /// Starts or re-adopts a bot's activity for one turn (#489). `turn` names the turn,
     /// so a reconnect inside it reuses the activity and the next turn gets a new one.
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date)
@@ -109,19 +130,22 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         self.minimumUpdateInterval = minimumUpdateInterval
     }
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date = Date()) {
-        start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID, startedAt: startedAt, bot: nil)
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date = Date()) {
+        start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID, startedAt: startedAt,
+              bot: nil, server: server)
     }
 
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
-        start(sessionID: bot.key, sessionTitle: title, streamID: bot.streamID(turn: turn), startedAt: startedAt, bot: bot)
+        start(sessionID: bot.key, sessionTitle: title, streamID: bot.streamID(turn: turn), startedAt: startedAt,
+              bot: bot, server: nil)
     }
 
     var drivenSessionID: String? {
         currentState?.isFinal == false ? currentSessionID : nil
     }
 
-    private func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date, bot: AgentRunActivityBot?) {
+    private func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date,
+                       bot: AgentRunActivityBot?, server: URL?) {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else { return }
         cancelPushHandoff()
@@ -188,6 +212,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 streamID: normalizedStreamID,
                 sessionTitle: state.sessionTitle,
                 bot: bot,
+                server: server,
                 state: state,
                 lifecycle: lifecycle
             )
@@ -265,7 +290,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         activeConnectedStreamID = nil
         guard currentState?.isFinal == false else { return }
         if let pushOwner, let registrar = pushRegistrar,
-           let bot = activity?.attributes.bot, canReceivePush(bot) {
+           let attributes = activity?.attributes, canReceivePush(attributes) {
             // Stop queued foreground writes; the relay owns freshness once it confirms.
             pendingUpdateTask?.cancel()
             pendingUpdateTask = nil
@@ -394,11 +419,20 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     }
 
     /// Cold launch adopts paired push activities without resuming a Bot session.
-    /// Legacy/unpaired activities still have no background source of truth.
-    func endBotActivitiesFromPreviousLaunch() async {
-        for persisted in Activity<AgentRunActivityAttributes>.activities
-        where persisted.attributes.bot != nil && persisted.id != activity?.id {
-            if let bot = persisted.attributes.bot, canReceivePush(bot),
+    /// Legacy/unpaired bot activities still have no background source of truth. A webui
+    /// activity the relay already finished must not keep holding its session's banners,
+    /// so its registration retires; a running one is left to the server-status
+    /// reconciler (#566).
+    func settleActivitiesFromPreviousLaunch() async {
+        for persisted in Activity<AgentRunActivityAttributes>.activities where persisted.id != activity?.id {
+            guard persisted.attributes.bot != nil else {
+                if persisted.activityState == .ended || persisted.activityState == .dismissed
+                    || persisted.content.state.isFinal {
+                    await retirePush(persisted)
+                }
+                continue
+            }
+            if canReceivePush(persisted.attributes),
                persisted.activityState != .ended, persisted.activityState != .dismissed,
                restoreBotOwnership(attributes: persisted.attributes, state: persisted.content.state) {
                 activity = persisted
@@ -444,6 +478,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 activity: activityLine,
                 state: persisted.content.state
             )
+            // The run is over, so the relay must stop holding this session's banners.
+            await retirePush(persisted)
             // `end(content:)` sets the final content directly and there is no
             // intervening render delay here, so a preceding `update` is redundant
             // (PR #266 review).
@@ -468,6 +504,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         streamID: String?,
         sessionTitle: String,
         bot: AgentRunActivityBot?,
+        server: URL?,
         state: AgentRunActivityAttributes.ContentState,
         lifecycle: Int
     ) async {
@@ -481,6 +518,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             let reusableActivity = existingActivities.first { existing in
                 existing.activityState != .ended && existing.activityState != .dismissed
                 && existing.attributes.bot?.pushSessionID == bot?.pushSessionID
+                && existing.attributes.server == server
                 && AgentLiveActivityReusePolicy.canReuseActivity(
                     existingSessionID: existing.attributes.sessionID,
                     existingStreamID: existing.attributes.streamID,
@@ -517,12 +555,16 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionTitle: sessionTitle,
                 streamID: streamID,
                 startedAt: state.startedAt,
-                bot: bot
+                bot: bot,
+                server: server
             )
+            // Every bot asks for a token; a webui run asks only when its server is
+            // paired, so webui-only users see no change (#566).
+            let wantsPushToken = bot != nil || server.map(isPaired) == true
             let requestedActivity = try Activity.request(
                 attributes: attributes,
                 content: ActivityContent(state: state, staleDate: staleDate(for: state)),
-                pushType: bot == nil ? nil : .token
+                pushType: wantsPushToken ? .token : nil
             )
             guard lifecycle == lifecycleGeneration else {
                 await requestedActivity.end(nil, dismissalPolicy: .immediate)
@@ -657,23 +699,25 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         return Date().addingTimeInterval(state.isStale ? 90 : 300)
     }
 
-    private func canReceivePush(_ bot: AgentRunActivityBot) -> Bool {
-        guard bot.pushSessionID != nil,
-              let destination = HermesDeepLink.botDestination(from: bot.destinationURL) else { return false }
-        return PushRegistrar.shared?.pairing(for: destination.server)?.registeredToken != nil
+    private func canReceivePush(_ attributes: AgentRunActivityAttributes) -> Bool {
+        attributes.pushTarget.map { isPaired($0.server) } == true
+    }
+
+    private func isPaired(_ server: URL) -> Bool {
+        PushRegistrar.shared?.pairing(for: server)?.registeredToken != nil
     }
 
     private func observePush(_ observed: Activity<AgentRunActivityAttributes>) {
-        guard let bot = observed.attributes.bot, let sessionID = bot.pushSessionID,
-              let destination = HermesDeepLink.botDestination(from: bot.destinationURL),
-              let registrar = pushRegistrar else { return }
+        // A webui run on an unpaired server has no token to forward; leave it local-only.
+        guard let target = observed.attributes.pushTarget, let registrar = pushRegistrar,
+              observed.attributes.bot != nil || isPaired(target.server) else { return }
         pushTokenTask?.cancel()
         pushStateTask?.cancel()
         pushOwner = observed.id
         pushTokenTask = Task { [weak self] in
             func forward(_ token: Data) async {
                 guard !Task.isCancelled else { return }
-                await registrar.register(owner: observed.id, server: destination.server, sessionID: sessionID,
+                await registrar.register(owner: observed.id, server: target.server, sessionID: target.sessionID,
                                          token: token.map { String(format: "%02x", $0) }.joined())
             }
             if let token = observed.pushToken { await forward(token) }
@@ -703,9 +747,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             pushStateTask = nil
             pushOwner = nil
         }
-        let bot = retiring.attributes.bot
-        let destination = bot.flatMap { HermesDeepLink.botDestination(from: $0.destinationURL) }
-        await pushRegistrar?.retire(owner: retiring.id, server: destination?.server, sessionID: bot?.pushSessionID)
+        let target = retiring.attributes.pushTarget
+        await pushRegistrar?.retire(owner: retiring.id, server: target?.server, sessionID: target?.sessionID)
     }
 
     private func reset() {
