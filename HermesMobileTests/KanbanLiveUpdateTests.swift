@@ -34,6 +34,31 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    func testReturningFromCardResumesStreamFromAdvancedCursorWithoutReload() async throws {
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+        stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
+        try await waitUntil { await client.boardCallCount == 2 }
+        XCTAssertEqual(state.liveCursor, 13)
+
+        // Push a Card, then pop back to the Board.
+        state.setVisible(false)
+        await state.loadIfNeeded()
+        state.setVisible(true)
+
+        XCTAssertEqual(stream.startURLs.count, 2)
+        XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "13")
+        let boardCallCount = await client.boardCallCount
+        XCTAssertEqual(boardCallCount, 2)
+        state.setVisible(false)
+    }
+
     func testLiveEventReconciliationMarksAdvisoryDispatchPreviewStale() async throws {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
         let stream = KanbanStreamSpy()
