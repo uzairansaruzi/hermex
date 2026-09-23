@@ -27,7 +27,7 @@ private struct AdaptiveGlassDebugFixture: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Adaptive surfaces")
+            Text(verbatim: "Adaptive surfaces")
                 .font(.headline)
 
             HStack(spacing: 14) {
@@ -52,7 +52,7 @@ private struct AdaptiveGlassDebugFixture: View {
 
             Button {
             } label: {
-                Label("Interactive", systemImage: "hand.tap")
+                Label { Text(verbatim: "Interactive") } icon: { Image(systemName: "hand.tap") }
                     .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -99,7 +99,7 @@ private struct AdaptiveGlassDebugFixture: View {
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title) adaptive surface")
+        .accessibilityLabel(Text(verbatim: "\(title) adaptive surface"))
     }
 }
 

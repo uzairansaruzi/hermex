@@ -1,7 +1,8 @@
 # Contributor CI: build and run the full XCTest suite on every pull request
-# that touches app code. PRs limited to docs (markdown, docs/, community files)
-# and local tooling (scripts/) skip the macOS runner entirely and pass via the
-# cheap gate job.
+# that touches app code, then check the build's extracted UI strings against
+# the String Catalog (ci/check_string_catalog.py). PRs limited to docs
+# (markdown, docs/, community files) and local tooling (scripts/) skip the
+# macOS runner entirely and pass via the cheap gate job.
 #
 # The required branch-protection check is "CI Gate", not "Build and Test":
 # a skipped required check would block merges forever, so the gate always
@@ -157,6 +158,13 @@ jobs:
             -parallel-testing-enabled YES \
             -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/tests.log"
+
+      - name: Check String Catalog coverage
+        # Reads the .stringsdata the build step already wrote; no extra build.
+        # Runs after failed tests too, so a flake can't hide a missing key,
+        # but only when the build succeeded and its output exists.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 ci/check_string_catalog.py --derived-data "${DERIVED_DATA_PATH}"
 
       - name: Report results
         if: always()

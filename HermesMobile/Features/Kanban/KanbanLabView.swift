@@ -2421,17 +2421,19 @@ struct KanbanLabView: View {
             .toolbar {
                 ToolbarItem(placement: .bottomBar) {
                     Menu {
-                        Picker("Scenario", selection: $scenario) {
+                        Picker(selection: $scenario) {
                             ForEach(KanbanLabScenario.allCases) { scenario in
                                 Text(scenario.title).tag(scenario)
                             }
+                        } label: {
+                            Text(verbatim: "Scenario")
                         }
                     } label: {
                         Image(systemName: "testtube.2")
                             .frame(minWidth: 44, minHeight: 44)
                     }
-                    .accessibilityLabel(Text("Kanban Lab Scenario"))
-                    .accessibilityHint(Text("Uses local fixtures and never contacts or changes a Kanban server."))
+                    .accessibilityLabel(Text(verbatim: "Kanban Lab Scenario"))
+                    .accessibilityHint(Text(verbatim: "Uses local fixtures and never contacts or changes a Kanban server."))
                 }
             }
             .task(id: scenario) {

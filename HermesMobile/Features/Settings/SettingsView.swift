@@ -622,7 +622,7 @@ struct SettingsView: View {
                 }
 
                 #if DEBUG
-                SettingsCard(title: String(localized: "Developer")) {
+                SettingsCard(title: "Developer") {
                     SettingsButton(String(localized: "Reset rating prompt state")) {
                         RatingPromptState.shared.reset()
                     }
@@ -630,7 +630,7 @@ struct SettingsView: View {
                     NavigationLink {
                         StreamingLabView()
                     } label: {
-                        SettingsAccessoryRow(title: String(localized: "Streaming Lab"), systemImage: "waveform.path.ecg")
+                        SettingsAccessoryRow(title: "Streaming Lab", systemImage: "waveform.path.ecg")
                     }
                     .buttonStyle(.plain)
 
@@ -641,7 +641,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
 
-                    SettingsFootnote(String(localized: "Debug builds only. Replay a canned reply and tune the streamed-text fade feel live."))
+                    SettingsFootnote("Debug builds only. Replay a canned reply and tune the streamed-text fade feel live.")
                 }
                 #endif
 

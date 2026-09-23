@@ -74,14 +74,16 @@ struct ProviderGlyphGalleryView: View {
     var body: some View {
         List {
             Section {
-                Button("Open Model Picker with Every Provider") {
+                Button {
                     showsPicker = true
+                } label: {
+                    Text(verbatim: "Open Model Picker with Every Provider")
                 }
             } footer: {
-                Text("Same picker as the composer, fed a synthetic catalog with one group per documented provider ID.")
+                Text(verbatim: "Same picker as the composer, fed a synthetic catalog with one group per documented provider ID.")
             }
 
-            Section("Documented provider IDs") {
+            Section {
                 ForEach(Self.documentedProviders, id: \.id) { provider in
                     HStack(spacing: 12) {
                         ZStack {
@@ -111,9 +113,11 @@ struct ProviderGlyphGalleryView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
+            } header: {
+                Text(verbatim: "Documented provider IDs")
             }
         }
-        .navigationTitle("Provider Glyphs")
+        .navigationTitle(Text(verbatim: "Provider Glyphs"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsPicker) {
             ModelPickerSheet(
