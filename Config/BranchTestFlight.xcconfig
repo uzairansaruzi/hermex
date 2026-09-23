@@ -7,7 +7,7 @@
 // - com.uzairansar.hermesmobile.branch
 // - com.uzairansar.hermesmobile.branch.shareextension
 // - com.uzairansar.hermesmobile.branch.liveactivitywidget
-// - com.uzairansar.hermesmobile.branch.notificationservice
+// - com.uzairansar.hermesmobile.branch.notifications
 
 APP_IDENTIFIER_SUFFIX = .branch
 APP_DISPLAY_NAME = Hermex Branch
