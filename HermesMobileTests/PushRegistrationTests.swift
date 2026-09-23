@@ -570,6 +570,66 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(wire.calls.last?.action, "delete")
     }
 
+    func testHandoffWaitsForAnActivityTokenThatArrivesLater() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let handoff = Task { await registrar.awaitRegistration("a", limit: .seconds(30)) }
+        await Task.yield()
+        await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "token")
+        let registered = await handoff.value
+        XCTAssertTrue(registered)
+    }
+
+    func testHandoffReportsARegistrationTheRelayRejected() async {
+        let wire = ActivityRelaySpy()
+        wire.failure = true
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let handoff = Task { await registrar.awaitRegistration("a", limit: .seconds(30)) }
+        await Task.yield()
+        await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "token")
+        let registered = await handoff.value
+        XCTAssertFalse(registered)
+    }
+
+    func testHandoffWaitsForAPutAlreadyInFlight() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let entered = expectation(description: "PUT entered")
+        var release: CheckedContinuation<Void, Never>?
+        wire.hold = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                entered.fulfill()
+            }
+        }
+        let register = Task { await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "token") }
+        await fulfillment(of: [entered], timeout: 2)
+        let handoff = Task { await registrar.awaitRegistration("a", limit: .seconds(30)) }
+        await Task.yield()
+        release?.resume()
+        await register.value
+        let registered = await handoff.value
+        XCTAssertTrue(registered)
+    }
+
+    func testHandoffGivesUpWhenNoActivityTokenArrives() async {
+        let registrar = PushActivityRegistrar(relay: ActivityRelaySpy(), pairing: { _ in nil })
+        let registered = await registrar.awaitRegistration("a", limit: .zero)
+        XCTAssertFalse(registered)
+    }
+
+    func testRetiringAnActivityEndsItsHandoffWait() async {
+        let registrar = PushActivityRegistrar(relay: ActivityRelaySpy(), pairing: { _ in nil })
+        let handoff = Task { await registrar.awaitRegistration("a", limit: .seconds(30)) }
+        await Task.yield()
+        await registrar.retire(owner: "a")
+        let registered = await handoff.value
+        XCTAssertFalse(registered)
+    }
+
     func testRetiringDuringPutDeletesBeforeTheReplacementRegisters() async {
         let wire = ActivityRelaySpy()
         let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")

@@ -367,6 +367,7 @@ extension PushRegistrar: PushPairingEnabling {}
     private var desired: [String: Desired] = [:]
     private var registered: [String: Registered] = [:]
     private var tail: Task<Void, Never>?
+    private var registrationWaiters: [String: [CheckedContinuation<Bool, Never>]] = [:]
 
     init(relay: any PushActivityRelaying, pairing: @escaping (URL) -> PushPairing?) {
         self.relay = relay
@@ -381,6 +382,35 @@ extension PushRegistrar: PushPairingEnabling {}
     func register(owner: String, server: URL, sessionID: String, token: String) async {
         desired[owner] = Desired(server: server, sessionID: sessionID, token: token)
         await enqueue(owner).value
+        resolveRegistrationWaiters(owner, registered: isRegistered(owner))
+    }
+
+    /// Waits for `owner`'s relay registration to settle, including an activity token
+    /// ActivityKit has not issued yet: true once the relay confirmed it, false when it
+    /// fails, is retired, or does not settle within `limit`. Lets a suspending app keep
+    /// a Live Activity's live state through a handoff that lands a moment later (#635).
+    func awaitRegistration(_ owner: String, limit: Duration) async -> Bool {
+        if isRegistered(owner) { return true }
+        let timeout = Task { [weak self] in
+            try? await Task.sleep(for: limit)
+            guard !Task.isCancelled else { return }
+            self?.resolveRegistrationWaiters(owner, registered: false)
+        }
+        defer { timeout.cancel() }
+        if desired[owner] != nil {
+            // The token is in hand, so its PUT is queued, finished, or failed.
+            let pending = tail
+            Task { [weak self] in
+                await pending?.value
+                guard let self else { return }
+                resolveRegistrationWaiters(owner, registered: isRegistered(owner))
+            }
+        }
+        return await withCheckedContinuation { registrationWaiters[owner, default: []].append($0) }
+    }
+
+    private func resolveRegistrationWaiters(_ owner: String, registered: Bool) {
+        for waiter in registrationWaiters.removeValue(forKey: owner) ?? [] { waiter.resume(returning: registered) }
     }
 
     func retire(owner: String, server: URL? = nil, sessionID: String? = nil) async {
@@ -393,6 +423,7 @@ extension PushRegistrar: PushPairingEnabling {}
                                            pairing: keys, deviceToken: device)
         }
         await enqueue(owner).value
+        resolveRegistrationWaiters(owner, registered: false)
     }
 
     func forget(server: URL) async {

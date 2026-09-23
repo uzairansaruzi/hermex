@@ -1,6 +1,7 @@
 import ActivityKit
 import Foundation
 import OSLog
+import UIKit
 
 private let liveActivityReconcilerLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile",
@@ -99,7 +100,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var pushTokenTask: Task<Void, Never>?
     private var pushStateTask: Task<Void, Never>?
     private var pushOwner: String?
+    private var pushHandoffTask: Task<Void, Never>?
     private var pushRegistrar: PushActivityRegistrar? { PushRegistrar.shared?.activities }
+    /// How long a suspending app waits for the relay to confirm an activity it is handing off.
+    private let pushHandoffLimit: Duration = .seconds(10)
 
     init(minimumUpdateInterval: TimeInterval = 1.5) {
         self.minimumUpdateInterval = minimumUpdateInterval
@@ -259,16 +263,50 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // stream is eligible for server-truth reconciliation again (PR #266 #3).
         activeConnectedStreamID = nil
         guard currentState?.isFinal == false else { return }
-        if let pushOwner, pushRegistrar?.isRegistered(pushOwner) == true {
-            // Stop queued foreground writes; the relay now owns freshness.
+        if let pushOwner, let registrar = pushRegistrar,
+           let bot = activity?.attributes.bot, canReceivePush(bot) {
+            // Stop queued foreground writes; the relay owns freshness once it confirms.
             pendingUpdateTask?.cancel()
             pendingUpdateTask = nil
-            _ = nextUpdateGeneration()
+            let generation = nextUpdateGeneration()
+            if !registrar.isRegistered(pushOwner) {
+                awaitPushHandoff(owner: pushOwner, registrar: registrar, generation: generation)
+            }
             return
         }
 
         updateCurrentState { state in
             AgentRunActivityStateReducer.stale(state: state)
+        }
+    }
+
+    /// The live connection dropped while the relay registration was still in flight,
+    /// usually because the user left the app right after sending (#635). Keep the last
+    /// state and stay awake until the registration settles, so a handoff that lands a
+    /// moment later never leaves "Not connected" on a run the relay now drives. Only a
+    /// failed or stalled registration marks the activity stale; any newer write wins.
+    private func awaitPushHandoff(owner: String, registrar: PushActivityRegistrar, generation: Int) {
+        pushHandoffTask?.cancel()
+        let lifecycle = lifecycleGeneration
+        var backgroundTask = UIBackgroundTaskIdentifier.invalid
+        let endBackgroundTask = {
+            guard backgroundTask != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Hermes Live Activity handoff") {
+            MainActor.assumeIsolated { endBackgroundTask() }
+        }
+        pushHandoffTask = Task { [weak self, pushHandoffLimit] in
+            defer { endBackgroundTask() }
+            let registered = await registrar.awaitRegistration(owner, limit: pushHandoffLimit)
+            guard let self, !registered, !Task.isCancelled, updateGeneration == generation,
+                  lifecycleGeneration == lifecycle, pushOwner == owner,
+                  let state = currentState, !state.isFinal else { return }
+            var stale = AgentRunActivityStateReducer.stale(state: state)
+            stale.chips = state.chips
+            currentState = stale
+            await sendUpdate(stale, staleDate: staleDate(for: stale), generation: nextUpdateGeneration())
         }
     }
 
