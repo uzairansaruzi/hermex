@@ -1225,10 +1225,33 @@ struct SessionListView: View {
             profilesAreExpanded = false
         }
 
-        await loadSessions()
+        // Sessions and projects are independent after the cookie flips — fetch
+        // them together so the post-switch spinner lasts one RTT, not two.
+        await loadSessions(parallelProjects: true)
     }
 
-    private func loadSessions() async {
+    private func loadSessions(parallelProjects: Bool = false) async {
+        if parallelProjects {
+            async let sessionsLoaded = viewModel.load(modelContext: modelContext)
+            async let projectsLoaded: Void = viewModel.loadProjects()
+            let didLoadSessions = await sessionsLoaded
+            await projectsLoaded
+            guard !Task.isCancelled else { return }
+            // Match the serial path: only surface session-list errors when the
+            // network load failed hard. A cache fallback must not inherit a
+            // racing /api/projects error as a session-open failure.
+            if didLoadSessions, !viewModel.isViewingCachedData {
+                handleLastError()
+            } else if !didLoadSessions, !viewModel.isViewingCachedData {
+                handleLastError()
+            } else {
+                // Cached sessions: keep the list usable; clear action noise from
+                // the parallel projects attempt so open-session does not trip.
+                viewModel.clearActionErrorMessage()
+            }
+            return
+        }
+
         await loadSessionRows()
         guard !Task.isCancelled else { return }
         await loadProjectsIfLive()
@@ -1774,6 +1797,10 @@ private struct PendingNewChatView: View {
     let draftStore: ChatDraftStore
 
     @State private var createdSession: SessionSummary?
+    // Keep the initial ChatView identity stable while its nested replacement
+    // reports the session that now owns the unsent draft.
+    @State private var draftRecoverySession: SessionSummary?
+    @State private var profileSwitchOwnership = ChatProfileSwitchOwnership()
     @State private var draftMessage = ""
     @State private var draftQuotes: [ComposerQuote] = []
     @State private var didStartCreation = false
@@ -1818,7 +1845,11 @@ private struct PendingNewChatView: View {
                     autoStartsVoiceInput: autoStartsVoiceInput,
                     draftStore: draftStore,
                     restoresDraftSettings: true,
-                    onConversationStarted: markConversationStarted
+                    profileSwitchOwnership: profileSwitchOwnership,
+                    onConversationStarted: markConversationStarted,
+                    onSessionReplaced: { replacement in
+                        draftRecoverySession = replacement
+                    }
                 )
             } else {
                 pendingContent
@@ -1838,6 +1869,7 @@ private struct PendingNewChatView: View {
             }
         }
         .onDisappear {
+            profileSwitchOwnership.abandon()
             restoreAbandonedDraftIfNeeded()
             flushDraftsBestEffort()
         }
@@ -2010,9 +2042,9 @@ private struct PendingNewChatView: View {
     }
 
     private func restoreAbandonedDraftIfNeeded() {
-        guard let createdSession else { return }
+        guard let session = draftRecoverySession ?? createdSession else { return }
         draftMessage = draftStore.restoreAbandonedNewChatDraft(
-            from: draftKey(for: createdSession),
+            from: draftKey(for: session),
             to: draftKey,
             didStartConversation: didStartConversation
         )?.text ?? draftMessage

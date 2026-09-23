@@ -431,6 +431,16 @@ final class ChatViewModel {
     }
     private(set) var isLoadingComposerConfiguration = false
     private(set) var isUpdatingComposerConfiguration = false
+    // Empty replacements stay fenced permanently; retained navigation parents
+    // resume only after restoring their original profile cookie on return.
+    private var isProfileSessionHandoff = false
+    private var profileToRestoreAfterNavigation: String?
+    // Non-nil only for failure recovery; a deliberate populated-chat Back
+    // navigation claims fresh ownership instead of reviving a failed operation.
+    private var profileRecoveryOwnership: UUID?
+    var canRetryProfileOwnership: Bool {
+        profileToRestoreAfterNavigation != nil && composerConfigurationErrorMessage != nil
+    }
     private(set) var composerConfigurationErrorMessage: String?
     var pendingAttachments: [PendingAttachment] { attachmentCoordinator.pendingAttachments }
     var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment }
@@ -1077,7 +1087,8 @@ final class ChatViewModel {
         pinnedEffectiveRouteNotice = nil
     }
 
-    func loadComposerConfiguration() async {
+    func loadComposerConfiguration(profileSeed: ChatComposerProfileSeed? = nil) async {
+        guard !isProfileSessionHandoff else { return }
         if isLoadingComposerConfiguration {
             needsComposerConfigurationReload = true
             return
@@ -1088,12 +1099,20 @@ final class ChatViewModel {
         lastError = nil
         defer { isLoadingComposerConfiguration = false }
 
+        // Prefer an explicit seed; otherwise consume a just-completed switch
+        // handoff so empty-chat replacement VMs skip another profiles RTT.
+        var pendingProfileSeed = profileSeed ?? RecentProfileSwitchSeed.take(for: server)
         repeat {
             needsComposerConfigurationReload = false
 
             let initialState = composerConfigurationState
+            // A profile-switch seed is one-shot: only the first pass may skip
+            // `/api/profiles`. A concurrent mutation that forces a reload must
+            // re-resolve against the live server.
+            let seedForPass = pendingProfileSeed
+            pendingProfileSeed = nil
             let result = await ChatComposerConfigLoader(client: client)
-                .loadConfiguration(from: initialState)
+                .loadConfiguration(from: initialState, profileSeed: seedForPass)
 
             guard composerConfigurationState == initialState else {
                 needsComposerConfigurationReload = true
@@ -1172,6 +1191,7 @@ final class ChatViewModel {
     }
 
     func refreshApprovalBypassState() async {
+        guard !isProfileSessionHandoff else { return }
         await pendingActionCoordinator.refreshApprovalBypassState()
     }
 
@@ -1183,6 +1203,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        guard !isProfileSessionHandoff else { return false }
         guard !option.matchesSelection(modelID: currentModel, providerID: currentModelProvider) else {
             return false
         }
@@ -1245,6 +1266,7 @@ final class ChatViewModel {
     /// model rejects. If the selected effort is no longer supported, snaps to the
     /// server's coerced `reasoning_effort`.
     func refreshReasoningEffortGating() async {
+        guard !isProfileSessionHandoff else { return }
         guard !isViewingCachedData else { return }
 
         reasoningGatingFetchToken += 1
@@ -1382,6 +1404,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        guard !isProfileSessionHandoff else { return false }
         let workspace = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !workspace.isEmpty else { return false }
 
@@ -1436,8 +1459,12 @@ final class ChatViewModel {
     func switchProfile(
         _ profile: ProfileSummary,
         startNewSession: Bool,
-        recordsInteraction: Bool = true
+        recordsInteraction: Bool = true,
+        canComplete: () -> Bool = { true }
     ) async -> ProfileSwitchOutcome? {
+        guard !isUpdatingComposerConfiguration, !isProfileSessionHandoff,
+              !isLoadingComposerConfiguration, !isUploadingAttachment,
+              !isStartingChat, !isSendingVoiceNote else { return nil }
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
@@ -1460,13 +1487,23 @@ final class ChatViewModel {
             return nil
         }
 
+        let previousState = composerConfigurationState
+        let previousExplicitPick = pendingExplicitModelPick
+        let previousRestoredModel = restoredSessionModel
+        let previousRestoredProvider = restoredSessionModelProvider
+        let previousProfile = requestProfileName ?? "default"
+        let ownership = UUID()
+        isProfileSessionHandoff = startNewSession
+        if startNewSession { cleanupPollingTasks() }
+        reasoningGatingFetchToken &+= 1
         isUpdatingComposerConfiguration = true
         composerConfigurationErrorMessage = nil
         lastError = nil
         defer { isUpdatingComposerConfiguration = false }
 
         do {
-            let response = try await client.switchProfile(name: profileName)
+            let response = try await client.switchProfile(name: profileName, ownership: ownership)
+            guard !Task.isCancelled, canComplete() else { throw CancellationError() }
             profileOptions = response.profiles ?? profileOptions
             selectedProfileName = response.active ?? profileName
             currentProfile = selectedProfileName
@@ -1494,13 +1531,24 @@ final class ChatViewModel {
             pendingExplicitModelPick = false
             restoredSessionModel = nil
             restoredSessionModelProvider = nil
-            clearEffectiveRouteNotice()
 
-            await loadComposerConfiguration()
+            // Reuse the switch payload so the follow-up config load skips
+            // another `/api/profiles` (+ possible re-switch) RTT.
+            let seed = ChatComposerProfileSeed(
+                switchResponse: response,
+                isSingleProfileMode: isSingleProfileMode,
+                fallbackProfiles: profileOptions
+            )
 
             guard startNewSession else {
+                await loadComposerConfiguration(profileSeed: seed)
+                clearEffectiveRouteNotice()
                 return ProfileSwitchOutcome(session: nil)
             }
+
+            // Empty/new-session switches rebuild ChatView; stash the seed so
+            // the replacement VM's first composer load skips profiles.
+            RecentProfileSwitchSeed.store(seed, for: server)
 
             let newSessionResponse = try await client.createSession(
                 workspace: currentWorkspace,
@@ -1509,13 +1557,50 @@ final class ChatViewModel {
                 profile: requestProfileName
             )
 
-            guard let session = newSessionResponse.session else {
-                composerConfigurationErrorMessage = String(localized: "The server did not return the new profile session.")
-                return nil
+            guard !Task.isCancelled, canComplete() else { throw CancellationError() }
+            guard let session = newSessionResponse.session,
+                  Self.nonEmpty(session.sessionId) != nil else {
+                throw APIError.decoding(underlying: URLError(.cannotParseResponse))
             }
 
+            if !messages.isEmpty {
+                // This VM stays on the back stack. Its session and route still
+                // belong to the original profile, not the new destination.
+                applyComposerConfigurationState(previousState)
+                pendingExplicitModelPick = previousExplicitPick
+                restoredSessionModel = previousRestoredModel
+                restoredSessionModelProvider = previousRestoredProvider
+                profileToRestoreAfterNavigation = previousProfile
+            } else {
+                clearEffectiveRouteNotice()
+            }
             return ProfileSwitchOutcome(session: SessionSummary(from: session))
         } catch {
+            RecentProfileSwitchSeed.discard(for: server)
+            // The cookie and composer must roll back together. If rollback
+            // fails, keep the old session fenced rather than issue writes in
+            // an unknown profile context.
+            profileToRestoreAfterNavigation = previousProfile
+            profileRecoveryOwnership = ownership
+            isProfileSessionHandoff = true
+            do {
+                if let response = try await client.restoreProfile(name: previousProfile, ownership: ownership) {
+                    if let active = Self.nonEmpty(response.active), active != previousProfile {
+                        throw APIError.decoding(underlying: URLError(.cannotParseResponse))
+                    }
+                    isProfileSessionHandoff = false
+                }
+                // nil means another screen owns the cookie now. Retire recovery
+                // without unlocking this old session or offering a stale retry.
+                profileToRestoreAfterNavigation = nil
+                profileRecoveryOwnership = nil
+            } catch {
+                isProfileSessionHandoff = true
+            }
+            applyComposerConfigurationState(previousState)
+            pendingExplicitModelPick = previousExplicitPick
+            restoredSessionModel = previousRestoredModel
+            restoredSessionModelProvider = previousRestoredProvider
             lastError = error
             composerConfigurationErrorMessage = error.localizedDescription
             return nil
@@ -1530,6 +1615,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        guard !isProfileSessionHandoff else { return false }
         let selectedEffort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !selectedEffort.isEmpty else { return false }
 
@@ -1642,7 +1728,8 @@ final class ChatViewModel {
     /// nil unless both the durable draft copy and server upload succeed.
     @discardableResult
     func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async -> PendingAttachment? {
-        await attachmentCoordinator.uploadAttachment(
+        guard !isProfileSessionHandoff else { return nil }
+        return await attachmentCoordinator.uploadAttachment(
             data: data,
             filename: filename,
             previewData: previewData
@@ -1654,7 +1741,8 @@ final class ChatViewModel {
     /// the caller reports in aggregate and keeps the record for a later retry.
     @discardableResult
     func reuploadDraftAttachment(_ draftAttachment: ChatDraftAttachment, data: Data) async -> PendingAttachment? {
-        await attachmentCoordinator.reuploadDraftAttachment(data: data, draftAttachment: draftAttachment)
+        guard !isProfileSessionHandoff else { return nil }
+        return await attachmentCoordinator.reuploadDraftAttachment(data: data, draftAttachment: draftAttachment)
     }
 
     func clearPendingAttachments() {
@@ -1689,6 +1777,7 @@ final class ChatViewModel {
     /// is for the chat's first load only: it takes over the request
     /// `prepareInitialMessageLoad` already sent instead of sending another.
     func loadMessages(modelContext: ModelContext? = nil, usesInitialPrefetch: Bool = false) async {
+        guard !isProfileSessionHandoff else { return }
         guard let sessionID else {
             errorMessage = String(localized: "The server did not provide a session ID.")
             return
@@ -2684,6 +2773,7 @@ final class ChatViewModel {
     }
 
     func sendMessage(_ draft: String, modelContext: ModelContext? = nil) async -> Bool {
+        guard !isProfileSessionHandoff else { return false }
         guard !isViewingCachedData else {
             sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
             return false
@@ -2737,6 +2827,7 @@ final class ChatViewModel {
     /// returns nothing. Returns true only if the chat send started.
     @discardableResult
     func sendVoiceNote(audioData: Data, filename: String, modelContext: ModelContext? = nil) async -> Bool {
+        guard !isProfileSessionHandoff else { return false }
         // Reentrancy guard: bail if a voice note OR a regular chat send is already
         // in flight. `performChatSend` has no internal guard, so two overlapping
         // sends would both flip `isStartingChat`/`isSendingVoiceNote` and race their
@@ -4852,7 +4943,44 @@ final class ChatViewModel {
         streamCoordinator.suspendActiveStreamConnection()
     }
 
+    /// Called only by the retained chat's navigation appearance, never by its
+    /// background reconnect/polling tasks while another profile is on screen.
+    func restoreProfileOwnershipAfterNavigation() async {
+        guard let profile = profileToRestoreAfterNavigation,
+              !isUpdatingComposerConfiguration else { return }
+        isUpdatingComposerConfiguration = true
+        defer { isUpdatingComposerConfiguration = false }
+        do {
+            let response: ProfileSwitchResponse
+            if let ownership = profileRecoveryOwnership {
+                guard let restored = try await client.restoreProfile(name: profile, ownership: ownership) else {
+                    profileToRestoreAfterNavigation = nil
+                    profileRecoveryOwnership = nil
+                    return // Retired recovery stays fenced; never reclaim another screen's cookie.
+                }
+                response = restored
+            } else {
+                let ownership = UUID()
+                profileRecoveryOwnership = ownership
+                response = try await client.switchProfile(name: profile, ownership: ownership)
+            }
+            if let active = Self.nonEmpty(response.active), active != profile {
+                throw APIError.decoding(underlying: URLError(.cannotParseResponse))
+            }
+            profileToRestoreAfterNavigation = nil
+            profileRecoveryOwnership = nil
+            isProfileSessionHandoff = false
+            composerConfigurationErrorMessage = nil
+            lastError = nil
+        } catch {
+            // Keep both the fence and retry context if ownership is uncertain.
+            lastError = error
+            composerConfigurationErrorMessage = error.localizedDescription
+        }
+    }
+
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
+        guard !isProfileSessionHandoff else { return }
         await streamCoordinator.reconnectIfNeeded(modelContext: modelContext)
     }
 

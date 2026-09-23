@@ -58,6 +58,85 @@ struct ChatComposerConfigLoadResult: Sendable {
     let configurationError: Error?
 }
 
+/// Seeds the loader with a just-completed profile switch so the client skips
+/// the redundant `/api/profiles` (+ possible re-switch) round trip.
+struct ChatComposerProfileSeed: Sendable, Equatable {
+    let profiles: [ProfileSummary]?
+    let active: String?
+    let defaultModel: String?
+    let defaultWorkspace: String?
+    /// Carried forward because switch responses omit `single_profile_mode`.
+    let isSingleProfileMode: Bool
+
+    init(
+        profiles: [ProfileSummary]?,
+        active: String?,
+        defaultModel: String? = nil,
+        defaultWorkspace: String? = nil,
+        isSingleProfileMode: Bool = false
+    ) {
+        self.profiles = profiles
+        self.active = active
+        self.defaultModel = defaultModel
+        self.defaultWorkspace = defaultWorkspace
+        self.isSingleProfileMode = isSingleProfileMode
+    }
+
+    init(
+        switchResponse: ProfileSwitchResponse,
+        isSingleProfileMode: Bool,
+        fallbackProfiles: [ProfileSummary] = []
+    ) {
+        self.profiles = switchResponse.profiles ?? fallbackProfiles
+        self.active = switchResponse.active
+        self.defaultModel = switchResponse.defaultModel
+        self.defaultWorkspace = switchResponse.defaultWorkspace
+        self.isSingleProfileMode = isSingleProfileMode
+    }
+}
+
+/// One-shot handoff so a replacement ChatView created after an empty-chat
+/// profile switch can skip `/api/profiles` the same way the in-place path does.
+/// Host-keyed, 5s TTL, consumed exactly once.
+enum RecentProfileSwitchSeed {
+    private static let lock = NSLock()
+    private static var entry: (host: String, seed: ChatComposerProfileSeed, expires: Date)?
+
+    private static func hostKey(for server: URL) -> String {
+        server.host?.lowercased() ?? server.absoluteString
+    }
+
+    static func store(_ seed: ChatComposerProfileSeed, for server: URL) {
+        lock.withLock {
+            entry = (hostKey(for: server), seed, Date().addingTimeInterval(5))
+        }
+    }
+
+    static func take(for server: URL) -> ChatComposerProfileSeed? {
+        lock.withLock {
+            guard let current = entry else { return nil }
+            guard current.host == hostKey(for: server), current.expires > Date() else {
+                entry = nil
+                return nil
+            }
+            entry = nil
+            return current.seed
+        }
+    }
+
+    static func discard(for server: URL) {
+        lock.withLock {
+            guard let current = entry, current.host == hostKey(for: server) else { return }
+            entry = nil
+        }
+    }
+
+    /// Test hook: drop any pending seed without consuming it as a load.
+    static func resetForTests() {
+        lock.withLock { entry = nil }
+    }
+}
+
 struct ChatComposerConfigLoader {
     private let client: APIClient
 
@@ -65,34 +144,125 @@ struct ChatComposerConfigLoader {
         self.client = client
     }
 
-    /// Loads the composer's server config for a chat. Profiles (and a switch to
-    /// the session's profile) go first because `/api/models` and
-    /// `/api/workspaces` are profile-scoped upstream. After that, models,
-    /// workspaces, and commands load concurrently; only reasoning waits, for the
-    /// model it is scoped to. Errors keep the serial order's precedence
-    /// (profiles, models, reasoning, workspaces), and commands load even when the
-    /// rest fails.
-    func loadConfiguration(from initialState: ChatComposerConfigState) async -> ChatComposerConfigLoadResult {
+    func loadConfiguration(
+        from initialState: ChatComposerConfigState,
+        profileSeed: ChatComposerProfileSeed? = nil
+    ) async -> ChatComposerConfigLoadResult {
         var state = initialState
         var configurationError: Error?
 
         do {
-            try await resolveProfile(into: &state)
-        } catch {
-            configurationError = error
-        }
+            try await resolveProfiles(into: &state, profileSeed: profileSeed)
 
-        async let agentCommands = loadAgentCommands()
-        if configurationError == nil {
-            async let workspaceResponse = client.workspaces()
-            do {
-                try await loadModelAndReasoning(into: &state)
-                applyWorkspaces(try await workspaceResponse, to: &state)
-            } catch {
+            let selectedProfile = Self.profileSummary(
+                matching: state.selectedProfileName,
+                in: state.profileOptions
+            )
+            if state.currentModel == nil {
+                state.currentModel = Self.nonEmpty(selectedProfile?.model)
+            }
+            if Self.nonEmpty(state.currentModelProvider) == nil {
+                state.currentModelProvider = Self.nonEmpty(selectedProfile?.provider)
+            }
+
+            // Profile resolution is the only serial dependency. Models,
+            // workspaces, commands, and reasoning (when the model is already
+            // known from the profile/seed) run as one concurrent wave so a
+            // profile switch pays roughly one network RTT instead of four.
+            let seededModel = Self.nonEmpty(state.currentModel)
+            let seededProvider = Self.nonEmpty(state.currentModelProvider)
+
+            async let modelsOutcome = fetchModels()
+            async let workspacesOutcome = fetchWorkspaces()
+            async let commandsOutcome = fetchCommands()
+            async let earlyReasoningOutcome = fetchReasoningIfModelKnown(
+                model: seededModel,
+                provider: seededProvider
+            )
+
+            let models = await modelsOutcome
+            let workspaces = await workspacesOutcome
+            let commands = await commandsOutcome
+            let earlyReasoning = await earlyReasoningOutcome
+
+            switch models {
+            case .success(let modelsResponse):
+                state.modelCatalogGroups = modelsResponse.catalogGroups
+                if state.currentModel == nil {
+                    state.currentModel = modelsResponse.defaultModel
+                }
+                if Self.nonEmpty(state.currentModelProvider) == nil {
+                    state.currentModelProvider = Self.nonEmpty(selectedProfile?.provider)
+                        ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
+                }
+            case .failure(let error):
                 configurationError = error
             }
+
+            switch workspaces {
+            case .success(let workspaceResponse):
+                state.workspaceRoots = workspaceResponse.workspaces ?? []
+                if state.currentWorkspace == nil {
+                    state.currentWorkspace = workspaceResponse.last
+                        ?? state.workspaceRoots.compactMap(\.path).first
+                }
+                state.workspaceSuggestions = state.workspaceRoots.compactMap(\.path)
+            case .failure(let error):
+                if configurationError == nil {
+                    configurationError = error
+                }
+            }
+
+            switch commands {
+            case .success(let commandsResponse):
+                state.agentCommands = commandsResponse.commands ?? []
+            case .failure:
+                // Commands stay best-effort, matching the previous loader.
+                state.agentCommands = []
+            }
+
+            // Scope the query to the session's resolved model/provider so the
+            // gating fields are model-accurate (issue #18); the seeded effort is
+            // the server's already-coerced value for that model.
+            let resolvedModel = Self.nonEmpty(state.currentModel)
+            let resolvedProvider = Self.nonEmpty(state.currentModelProvider)
+            let reasoning: Result<ReasoningStatusResponse, Error>?
+            if let earlyReasoning,
+               seededModel == resolvedModel,
+               seededProvider == resolvedProvider {
+                reasoning = earlyReasoning
+            } else if resolvedModel != nil || resolvedProvider != nil {
+                // Model only became known after `/api/models`, or the catalog
+                // changed the provider pairing — fetch with the final pair.
+                reasoning = await fetchReasoning(model: resolvedModel, provider: resolvedProvider)
+            } else {
+                reasoning = nil
+            }
+
+            if let reasoning {
+                switch reasoning {
+                case .success(let reasoningResponse):
+                    state.selectedReasoningEffort = reasoningResponse.effectiveEffort
+                    state.supportedReasoningEfforts = reasoningResponse.normalizedSupportedEfforts
+                    state.supportsReasoningEffort = reasoningResponse.supportsReasoningEffort
+                case .failure(let error):
+                    if configurationError == nil {
+                        configurationError = error
+                    }
+                }
+            }
+        } catch {
+            configurationError = error
+            // Still try commands on the profiles-only failure path so slash
+            // metadata can land even when profile resolution fails mid-flight.
+            if state.agentCommands.isEmpty {
+                if case .success(let commandsResponse) = await fetchCommands() {
+                    state.agentCommands = commandsResponse.commands ?? []
+                } else {
+                    state.agentCommands = []
+                }
+            }
         }
-        state.agentCommands = await agentCommands
 
         return ChatComposerConfigLoadResult(
             state: state,
@@ -100,7 +270,28 @@ struct ChatComposerConfigLoader {
         )
     }
 
-    private func resolveProfile(into state: inout ChatComposerConfigState) async throws {
+    private func resolveProfiles(
+        into state: inout ChatComposerConfigState,
+        profileSeed: ChatComposerProfileSeed?
+    ) async throws {
+        if let profileSeed {
+            state.profileOptions = profileSeed.profiles ?? state.profileOptions
+            state.isSingleProfileMode = profileSeed.isSingleProfileMode
+            state.selectedProfileName = Self.nonEmpty(state.currentProfile)
+                ?? Self.nonEmpty(profileSeed.active)
+                ?? state.selectedProfileName
+                ?? state.profileOptions.first?.normalizedName
+            state.currentProfile = state.selectedProfileName
+
+            if state.currentWorkspace == nil {
+                state.currentWorkspace = Self.nonEmpty(profileSeed.defaultWorkspace)
+            }
+            if state.currentModel == nil {
+                state.currentModel = Self.nonEmpty(profileSeed.defaultModel)
+            }
+            return
+        }
+
         let profilesResponse = try await client.profiles()
         state.profileOptions = profilesResponse.profiles ?? []
         state.isSingleProfileMode = profilesResponse.singleProfileMode ?? false
@@ -108,68 +299,64 @@ struct ChatComposerConfigLoader {
             ?? Self.nonEmpty(profilesResponse.active)
             ?? profilesResponse.effectiveDefaultProfileName
 
-        guard let sessionProfile = Self.nonEmpty(state.currentProfile),
-              Self.nonEmpty(profilesResponse.active) != sessionProfile
-        else { return }
+        if let sessionProfile = Self.nonEmpty(state.currentProfile),
+           Self.nonEmpty(profilesResponse.active) != sessionProfile {
+            let switchResponse = try await client.switchProfile(name: sessionProfile)
+            state.profileOptions = switchResponse.profiles ?? state.profileOptions
+            state.selectedProfileName = Self.nonEmpty(switchResponse.active) ?? sessionProfile
+            state.currentProfile = state.selectedProfileName
 
-        let switchResponse = try await client.switchProfile(name: sessionProfile)
-        state.profileOptions = switchResponse.profiles ?? state.profileOptions
-        state.selectedProfileName = Self.nonEmpty(switchResponse.active) ?? sessionProfile
-        state.currentProfile = state.selectedProfileName
+            if state.currentWorkspace == nil {
+                state.currentWorkspace = Self.nonEmpty(switchResponse.defaultWorkspace)
+            }
 
-        if state.currentWorkspace == nil {
-            state.currentWorkspace = Self.nonEmpty(switchResponse.defaultWorkspace)
-        }
-
-        if state.currentModel == nil {
-            state.currentModel = Self.nonEmpty(switchResponse.defaultModel)
+            if state.currentModel == nil {
+                state.currentModel = Self.nonEmpty(switchResponse.defaultModel)
+            }
         }
     }
 
-    private func loadModelAndReasoning(into state: inout ChatComposerConfigState) async throws {
-        let selectedProfile = Self.profileSummary(
-            matching: state.selectedProfileName,
-            in: state.profileOptions
-        )
-        if state.currentModel == nil {
-            state.currentModel = Self.nonEmpty(selectedProfile?.model)
+    private func fetchModels() async -> Result<ModelsResponse, Error> {
+        do {
+            return .success(try await client.models())
+        } catch {
+            return .failure(error)
         }
-
-        let modelsResponse = try await client.models()
-        state.modelCatalogGroups = modelsResponse.catalogGroups
-        if state.currentModel == nil {
-            state.currentModel = modelsResponse.defaultModel
-        }
-        if Self.nonEmpty(state.currentModelProvider) == nil {
-            state.currentModelProvider = Self.nonEmpty(selectedProfile?.provider)
-                ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
-        }
-
-        // Scope the query to the session's resolved model/provider so the
-        // gating fields are model-accurate (issue #18); the seeded effort is
-        // the server's already-coerced value for that model.
-        let reasoningResponse = try await client.reasoning(
-            model: Self.nonEmpty(state.currentModel),
-            provider: Self.nonEmpty(state.currentModelProvider)
-        )
-        state.selectedReasoningEffort = reasoningResponse.effectiveEffort
-        state.supportedReasoningEfforts = reasoningResponse.normalizedSupportedEfforts
-        state.supportsReasoningEffort = reasoningResponse.supportsReasoningEffort
     }
 
-    private func applyWorkspaces(
-        _ workspaceResponse: WorkspacesResponse,
-        to state: inout ChatComposerConfigState
-    ) {
-        state.workspaceRoots = workspaceResponse.workspaces ?? []
-        if state.currentWorkspace == nil {
-            state.currentWorkspace = workspaceResponse.last ?? state.workspaceRoots.compactMap(\.path).first
+    private func fetchWorkspaces() async -> Result<WorkspacesResponse, Error> {
+        do {
+            return .success(try await client.workspaces())
+        } catch {
+            return .failure(error)
         }
-        state.workspaceSuggestions = state.workspaceRoots.compactMap(\.path)
     }
 
-    private func loadAgentCommands() async -> [AgentCommand] {
-        (try? await client.commands())?.commands ?? []
+    private func fetchCommands() async -> Result<CommandsResponse, Error> {
+        do {
+            return .success(try await client.commands())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func fetchReasoning(
+        model: String?,
+        provider: String?
+    ) async -> Result<ReasoningStatusResponse, Error> {
+        do {
+            return .success(try await client.reasoning(model: model, provider: provider))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func fetchReasoningIfModelKnown(
+        model: String?,
+        provider: String?
+    ) async -> Result<ReasoningStatusResponse, Error>? {
+        guard model != nil || provider != nil else { return nil }
+        return await fetchReasoning(model: model, provider: provider)
     }
 
     private static func profileSummary(

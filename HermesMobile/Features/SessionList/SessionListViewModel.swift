@@ -1120,7 +1120,8 @@ final class SessionListViewModel {
     func loadProjects() async {
         isLoadingProjects = true
         actionErrorMessage = nil
-        lastError = nil
+        // Do not clear `lastError` here: profile-switch refresh runs sessions and
+        // projects concurrently, and wiping it would drop a session-load failure.
         defer { isLoadingProjects = false }
 
         do {
@@ -1132,6 +1133,10 @@ final class SessionListViewModel {
             lastError = error
             actionErrorMessage = error.localizedDescription
         }
+    }
+
+    func clearActionErrorMessage() {
+        actionErrorMessage = nil
     }
 
     func move(_ session: SessionSummary, to projectID: String?, modelContext: ModelContext? = nil) async {

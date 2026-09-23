@@ -251,6 +251,51 @@ private struct ListenPlaybackBar: View {
     }
 }
 
+/// Shared by a New Chat container and every empty-session replacement. A
+/// disappearance invalidates pending completions before draft recovery runs.
+@MainActor
+final class ChatProfileSwitchOwnership {
+    private enum State {
+        case ready, pending(UUID), completed, abandoned
+    }
+    private var state: State = .ready
+    private var activePresentationID: UUID?
+
+    func appear(presentationID: UUID? = nil) {
+        if activePresentationID != presentationID {
+            state = .ready
+        }
+        activePresentationID = presentationID
+        if case .abandoned = state { state = .ready }
+    }
+
+    func begin(presentationID: UUID? = nil) -> UUID? {
+        if let presentationID, presentationID != activePresentationID { return nil }
+        switch state {
+        case .pending, .abandoned: return nil
+        case .ready, .completed:
+            let token = UUID()
+            state = .pending(token)
+            return token
+        }
+    }
+
+    func owns(_ token: UUID) -> Bool {
+        if case .pending(let current) = state { return current == token }
+        return false
+    }
+
+    func finish(_ token: UUID) {
+        if owns(token) { state = .completed }
+    }
+
+    func abandon(presentationID: UUID? = nil) {
+        if let presentationID, presentationID != activePresentationID { return }
+        state = .abandoned
+        activePresentationID = nil
+    }
+}
+
 struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
     private let transcriptSpacing: CGFloat = 8
@@ -289,6 +334,7 @@ struct ChatView: View {
     /// load their configuration from the server and never re-apply a snapshot.
     let restoresDraftSettings: Bool
     let onConversationStarted: () -> Void
+    let onSessionReplaced: (SessionSummary) -> Void
 
     /// The composer's draft. Never read it in `body` or wrap it in a get/set
     /// binding for the composer: either re-runs this whole screen on every
@@ -311,6 +357,9 @@ struct ChatView: View {
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
     @State private var forkedSession: SessionSummary?
+    @State private var replacementProfileSession: SessionSummary?
+    @State private var profileSwitchOwnership: ChatProfileSwitchOwnership
+    @State private var profileSwitchPresentationID = UUID()
     @State private var editContext: MessageActionContext?
     @State private var editDraft = ""
     @State private var showEditSheet = false
@@ -384,7 +433,9 @@ struct ChatView: View {
         draftStore: ChatDraftStore? = nil,
         draftAttachmentStore: (any ChatDraftAttachmentStoring)? = nil,
         restoresDraftSettings: Bool = false,
-        onConversationStarted: @escaping () -> Void = {}
+        profileSwitchOwnership: ChatProfileSwitchOwnership? = nil,
+        onConversationStarted: @escaping () -> Void = {},
+        onSessionReplaced: @escaping (SessionSummary) -> Void = { _ in }
     ) {
         self.session = session
         self.server = server
@@ -395,7 +446,9 @@ struct ChatView: View {
         let resolvedDraftAttachmentStore = draftAttachmentStore ?? ChatDraftAttachmentStore.shared
         self.draftAttachmentStore = resolvedDraftAttachmentStore
         self.restoresDraftSettings = restoresDraftSettings
+        _profileSwitchOwnership = State(initialValue: profileSwitchOwnership ?? ChatProfileSwitchOwnership())
         self.onConversationStarted = onConversationStarted
+        self.onSessionReplaced = onSessionReplaced
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -739,6 +792,17 @@ struct ChatView: View {
 
                 BottomComposerMaterialFade(composerHeight: composerHeight)
 
+                if viewModel.canRetryProfileOwnership {
+                    Button("Retry Profile Connection") {
+                        Task {
+                            await viewModel.restoreProfileOwnershipAfterNavigation()
+                            await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
+                        }
+                    }
+                    .disabled(viewModel.isUpdatingComposerConfiguration)
+                    .accessibilityHint("Restore the original profile before continuing this chat.")
+                }
+
                 composerAccessoryStack
 
                 clarificationInset(maximumExpandedHeight: clarificationMaximumHeight)
@@ -791,6 +855,7 @@ struct ChatView: View {
                 viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
             }
             .onDisappear {
+                profileSwitchOwnership.abandon(presentationID: profileSwitchPresentationID)
                 flushDraftsBestEffort()
                 appearanceTask?.cancel()
                 appearanceTask = nil
@@ -801,8 +866,10 @@ struct ChatView: View {
                 viewModel.cleanupPollingTasks()
             }
             .onAppear {
+                profileSwitchOwnership.appear(presentationID: profileSwitchPresentationID)
                 appearanceTask?.cancel()
                 appearanceTask = Task {
+                    await viewModel.restoreProfileOwnershipAfterNavigation()
                     await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
                     guard !Task.isCancelled else { return }
                     if didCompleteInitialAppearance {
@@ -928,6 +995,27 @@ struct ChatView: View {
     }
 
     var body: some View {
+        if let replacementProfileSession {
+            // Replace an empty placeholder rather than pushing it onto the
+            // back stack, where it would still belong to the previous profile.
+            AnyView(ChatView(
+                session: replacementProfileSession,
+                server: server,
+                onAPIError: onAPIError,
+                loadsInitialMessages: false,
+                draftStore: draftStore,
+                draftAttachmentStore: draftAttachmentStore,
+                restoresDraftSettings: restoresDraftSettings,
+                profileSwitchOwnership: profileSwitchOwnership,
+                onConversationStarted: onConversationStarted,
+                onSessionReplaced: onSessionReplaced
+            ))
+        } else {
+            currentSessionBody
+        }
+    }
+
+    private var currentSessionBody: some View {
         chatContent
             .alert(
                 "Discard Later Messages?",
@@ -2370,7 +2458,10 @@ struct ChatView: View {
         }
 
         if viewModel.messages.isEmpty {
-            Task { await switchProfile(profile, startNewSession: false) }
+            // Composer mutations are session-scoped. Switching only the profile
+            // leaves the old placeholder ID behind and model/reasoning updates
+            // fail the server's cross-profile guard before the first send.
+            Task { await switchProfile(profile, startNewSession: true) }
         } else {
             pendingProfileSelection = profile
             showProfileNewSessionConfirmation = true
@@ -2378,11 +2469,18 @@ struct ChatView: View {
     }
 
     private func switchProfile(_ profile: ProfileSummary, startNewSession: Bool) async {
+        guard didHydrateDraft, !isRestoringDraftAttachments else { return }
+        guard let ownershipToken = profileSwitchOwnership.begin(presentationID: profileSwitchPresentationID) else { return }
+        defer { profileSwitchOwnership.finish(ownershipToken) }
+        let replacesEmptySession = viewModel.messages.isEmpty
+
         let outcome = await viewModel.switchProfile(
             profile,
             startNewSession: startNewSession,
-            recordsInteraction: false
+            recordsInteraction: false,
+            canComplete: { profileSwitchOwnership.owns(ownershipToken) }
         )
+        guard !Task.isCancelled, profileSwitchOwnership.owns(ownershipToken) else { return }
         pendingProfileSelection = nil
 
         if let lastError = viewModel.lastError {
@@ -2394,7 +2492,25 @@ struct ChatView: View {
         }
 
         if let session = outcome?.session {
-            forkedSession = session
+            if replacesEmptySession, let sessionID = session.sessionId {
+                draftStore.setContent(
+                    ComposerDraftContent(text: draftMessage, quotes: draftQuotes),
+                    for: draftKey
+                )
+                syncDraftAttachments()
+                // Keep content and durable attachment copies, but don't replay
+                // the previous profile's settings over the new defaults.
+                draftStore.setSettings(ChatDraftSettings(), for: draftKey)
+                draftStore.moveDraft(
+                    from: draftKey,
+                    to: .session(server: server, sessionID: sessionID)
+                )
+                didHydrateDraft = false
+                replacementProfileSession = session
+                onSessionReplaced(session)
+            } else {
+                forkedSession = session
+            }
         }
     }
 

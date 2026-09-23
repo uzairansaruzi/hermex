@@ -6309,12 +6309,12 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        // Config after the profile switch loads concurrently; the send follows it.
         let paths = requestPaths.values
+        // Profile resolution stays serial; the four follow-ups share one wave.
         XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
         XCTAssertEqual(
             Set(paths.dropFirst(2).dropLast()),
-            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
+            Set(["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"])
         )
         XCTAssertEqual(paths.last, "/api/chat/start")
         XCTAssertEqual(paths.count, 7)
@@ -6543,6 +6543,7 @@ final class ChatViewModelSendTests: XCTestCase {
             sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
         ) { request in
             let path = request.url?.path ?? ""
+            // Composer config now fans out concurrent GETs; lock the recorder.
             requestPaths.append(path)
             switch path {
             case "/api/profiles":
@@ -6603,11 +6604,12 @@ final class ChatViewModelSendTests: XCTestCase {
             expectedInteractionGeneration: expectedGeneration
         )
 
+        let paths = requestPaths.values
         XCTAssertEqual(viewModel.selectedProfileName, "work")
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
         XCTAssertEqual(viewModel.selectedWorkspacePath, "/tmp/workspace")
-        XCTAssertEqual(requestPaths.values.last, "/api/profile/switch")
-        XCTAssertFalse(requestPaths.values.contains("/api/session/update"))
+        XCTAssertEqual(paths.last, "/api/profile/switch")
+        XCTAssertFalse(paths.contains("/api/session/update"))
     }
 
     @MainActor
@@ -9803,6 +9805,402 @@ final class ChatViewModelSendTests: XCTestCase {
         )
 
         try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testPopulatedProfileNavigationReturnRestoresOwnershipBeforeWrites() async throws {
+        let requests = makeModelRouteRecorder()
+        let stream = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: stream, sessionSummary: try makeSession(profile: "work")) { request in
+            let body: [String: Any] = request.httpMethod == "POST" ? try apiTestJSONBody(from: request) : [:]
+            requests.append(["path": request.url?.path ?? "", "body": body])
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","profile":"work","model":"gpt-5.4","messages":[{"role":"user","content":"Existing conversation"}]}}"#, for: request)
+            case "/api/profile/switch":
+                let name = body["name"] as? String ?? ""
+                let workRestores = requests.all.filter {
+                    ($0["body"] as? [String: Any])?["name"] as? String == "work"
+                }.count
+                if name == "work", workRestores == 1 {
+                    throw URLError(.notConnectedToInternet)
+                }
+                return apiTestJSONResponse("{\"active\":\"\(name)\",\"default_model\":\"new-model\"}", for: request)
+            case "/api/session/new":
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","profile":"research","model":"new-model"}}"#, for: request)
+            case "/api/session/update":
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","profile":"work","workspace":"/returned"}}"#, for: request)
+            case "/api/chat/start":
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                XCTAssertEqual(body["profile"] as? String, "work")
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"returned-stream"}"#, for: request)
+            default:
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        await viewModel.loadMessages()
+        XCTAssertFalse(viewModel.messages.isEmpty)
+        let originalSelectedProfile = viewModel.selectedProfileName
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(research, startNewSession: true)
+        XCTAssertEqual(outcome?.session?.sessionId, "research-new")
+        let hiddenSend = await viewModel.sendMessage("Hidden parent must not send")
+        XCTAssertFalse(hiddenSend)
+        // Background reconnect must not steal ownership from the destination.
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertEqual(requests.all.filter { $0["path"] as? String == "/api/profile/switch" }.count, 1)
+        // Same boundary invoked by ChatView.onAppear when Back reveals this VM.
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertNotNil(viewModel.composerConfigurationErrorMessage)
+        let unsafeUpdate = await viewModel.selectWorkspacePath("/must-stay-fenced")
+        XCTAssertFalse(unsafeUpdate, "A failed cookie restore must not unlock the original session.")
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertNil(viewModel.composerConfigurationErrorMessage)
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertEqual(viewModel.selectedProfileName, originalSelectedProfile)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        let didUpdate = await viewModel.selectWorkspacePath("/returned")
+        XCTAssertTrue(didUpdate)
+        let didPickModel = await viewModel.selectComposerModel(ModelCatalogOption(
+            id: "returned-model", displayName: "Returned Model", providerID: "openai"
+        ))
+        XCTAssertTrue(didPickModel)
+        let didSend = await viewModel.sendMessage("Continue original conversation")
+        XCTAssertTrue(didSend)
+        let switches = requests.all.filter { $0["path"] as? String == "/api/profile/switch" }
+        XCTAssertEqual((switches.last?["body"] as? [String: Any])?["name"] as? String, "work")
+        viewModel.suspendStreamForNavigation()
+        viewModel.cleanupPollingTasks()
+    }
+
+    @MainActor
+    func testLeavingDuringSuspendedProfileCreationCannotRecreateRecoveredDraft() async throws {
+        let creationStarted = expectation(description: "Session creation suspended")
+        let releaseCreation = DispatchSemaphore(value: 0)
+        let requests = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                requests.append(body)
+                return apiTestJSONResponse("{\"active\":\"\(body["name"] as? String ?? "")\"}", for: request)
+            case "/api/session/new":
+                creationStarted.fulfill()
+                guard releaseCreation.wait(timeout: .now() + 10) == .success else {
+                    throw URLError(.timedOut)
+                }
+                return apiTestJSONResponse(#"{"session":{"session_id":"replacement-b","profile":"research"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request")
+                throw URLError(.badURL)
+            }
+        }
+        let owner = ChatProfileSwitchOwnership()
+        let token = try XCTUnwrap(owner.begin())
+        let server = URL(string: "https://example.com")!
+        actor DraftPersistence: ChatDraftPersisting {
+            func load() async -> [ChatDraftKey: ChatDraft] { [:] }
+            func write(_ drafts: [ChatDraftKey: ChatDraft]) async throws {}
+        }
+        let store = ChatDraftStore(persistence: DraftPersistence(), debounceDuration: .seconds(10))
+        let original = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        let replacement = ChatDraftKey.session(server: server, sessionID: "replacement-b")
+        let newChat = ChatDraftKey.newChat(server: server)
+        let content = ComposerDraftContent(text: "Do not duplicate", quotes: [ComposerQuote(text: "Quote")])
+        store.setContent(content, for: original)
+        let profile = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                     gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        var didNavigate = false
+        let switching = Task {
+            let outcome = await viewModel.switchProfile(profile, startNewSession: true, canComplete: { owner.owns(token) })
+            if outcome?.session != nil {
+                store.setContent(content, for: original)
+                store.moveDraft(from: original, to: replacement)
+                didNavigate = true
+            }
+            owner.finish(token)
+            return outcome
+        }
+        await fulfillment(of: [creationStarted], timeout: 3)
+        // The container invalidates completion ownership before recovering A.
+        owner.abandon()
+        _ = store.restoreAbandonedNewChatDraft(from: original, to: newChat, didStartConversation: false)
+        // Even a reappearance cannot give the old suspended operation ownership.
+        owner.appear()
+        releaseCreation.signal()
+        let outcome = await switching.value
+        XCTAssertNil(outcome)
+        XCTAssertFalse(didNavigate)
+        let recovered = await store.draft(for: newChat)
+        let stranded = await store.draft(for: replacement)
+        let old = await store.draft(for: original)
+        XCTAssertEqual(recovered?.text, content.text)
+        XCTAssertEqual(recovered?.quotes, content.quotes)
+        XCTAssertNil(stranded)
+        XCTAssertNil(old)
+        XCTAssertEqual(requests.all.last?["name"] as? String, "work")
+        XCTAssertNotNil(owner.begin(), "A fresh appearance can start a new operation.")
+    }
+
+    @MainActor
+    func testAbandonedCreationCannotRollBackNewerSessionListProfileOwner() async throws {
+        let creationStarted = expectation(description: "A creation suspended")
+        let releaseCreation = DispatchSemaphore(value: 0)
+        defer { releaseCreation.signal() }
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                switches.append(body)
+                return apiTestJSONResponse("{\"active\":\"\(body["name"] as? String ?? "")\"}", for: request)
+            case "/api/session/new":
+                creationStarted.fulfill()
+                guard releaseCreation.wait(timeout: .now() + 10) == .success else {
+                    throw URLError(.timedOut)
+                }
+                return apiTestJSONResponse(#"{"session":{"session_id":"replacement-b","profile":"research"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request")
+                throw URLError(.badURL)
+            }
+        }
+        let owner = ChatProfileSwitchOwnership()
+        let token = try XCTUnwrap(owner.begin())
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let switching = Task {
+            await viewModel.switchProfile(research, startNewSession: true, canComplete: { owner.owns(token) })
+        }
+        await fulfillment(of: [creationStarted], timeout: 3)
+        owner.abandon()
+
+        // A different screen owns a different APIClient, but the same server cookie.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let server = URL(string: "https://example.test")!
+        let list = SessionListViewModel(server: server, client: APIClient(baseURL: server, session: session))
+        let third = ProfileSummary(name: "third", path: nil, isDefault: nil, isActive: nil,
+                                   gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let didSwitch = await list.switchActiveProfile(third)
+        XCTAssertTrue(didSwitch)
+        XCTAssertEqual(list.activeProfileName, "third")
+        releaseCreation.signal()
+        let outcome = await switching.value
+        XCTAssertNil(outcome)
+        XCTAssertEqual(switches.all.compactMap { $0["name"] as? String }, ["research", "third"],
+                       "Retired A must not send a cookie-changing rollback after C owns the server.")
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertEqual(switches.all.last?["name"] as? String, "third", "Recovery must not revive retired ownership.")
+        let unsafeWrite = await viewModel.selectWorkspacePath("/retired")
+        XCTAssertFalse(unsafeWrite)
+    }
+
+    @MainActor
+    func testFailedRollbackRetryCannotReclaimNewerClientOwnership() async throws {
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                switches.append(body)
+                let name = body["name"] as? String ?? ""
+                if name == "work" { throw URLError(.notConnectedToInternet) }
+                return apiTestJSONResponse("{\"active\":\"\(name)\"}", for: request)
+            case "/api/session/new":
+                throw URLError(.notConnectedToInternet)
+            default:
+                XCTFail("Retired recovery must not write")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(research, startNewSession: true)
+        XCTAssertNil(outcome)
+        XCTAssertTrue(viewModel.canRetryProfileOwnership)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let other = APIClient(baseURL: URL(string: "https://example.test")!, session: session)
+        _ = try await other.switchProfile(name: "third")
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertEqual(switches.all.compactMap { $0["name"] as? String }, ["research", "work", "third"])
+        XCTAssertFalse(viewModel.canRetryProfileOwnership)
+        let unsafeWrite = await viewModel.selectWorkspacePath("/retired")
+        XCTAssertFalse(unsafeWrite)
+    }
+
+    @MainActor
+    func testFailedCreationAndRollbackRetainsRetryableOriginalOwnership() async throws {
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                switches.append(body)
+                let name = body["name"] as? String ?? ""
+                if name == "work", switches.all.count <= 3 {
+                    throw URLError(.notConnectedToInternet)
+                }
+                return apiTestJSONResponse("{\"active\":\"\(name)\"}", for: request)
+            case "/api/session/new":
+                throw URLError(.notConnectedToInternet)
+            case "/api/session/update":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["session_id"] as? String, "session-abc")
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","profile":"work","workspace":"/recovered"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "")")
+                throw URLError(.badURL)
+            }
+        }
+        let profile = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                     gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(profile, startNewSession: true)
+        XCTAssertNil(outcome)
+        XCTAssertTrue(viewModel.canRetryProfileOwnership)
+        let blocked = await viewModel.selectWorkspacePath("/unsafe")
+        XCTAssertFalse(blocked)
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        let stillBlocked = await viewModel.selectWorkspacePath("/unsafe")
+        XCTAssertFalse(stillBlocked)
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertEqual(switches.all.compactMap { $0["name"] as? String }, ["research", "work", "work", "work"])
+        XCTAssertFalse(viewModel.canRetryProfileOwnership)
+        XCTAssertNil(viewModel.composerConfigurationErrorMessage)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        let recovered = await viewModel.selectWorkspacePath("/recovered")
+        XCTAssertTrue(recovered)
+    }
+
+    @MainActor
+    func testNewProfileSessionFailureRestoresOriginalComposerAndCookie() async throws {
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                switches.append(body)
+                let name = body["name"] as? String ?? "research"
+                return apiTestJSONResponse("{\"active\": \"\(name)\", \"default_model\": \"new-model\"}", for: request)
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"research","profiles":[{"name":"research"}]}"#, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"new-model","groups":[]}"#, for: request)
+            case "/api/reasoning", "/api/workspaces", "/api/commands":
+                return apiTestJSONResponse("{}", for: request)
+            case "/api/session/new":
+                throw URLError(.notConnectedToInternet)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(research, startNewSession: true)
+        XCTAssertNil(outcome)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        XCTAssertEqual(switches.all.last?["name"] as? String, "work")
+        XCTAssertFalse(viewModel.isUpdatingComposerConfiguration)
+        XCTAssertNotNil(viewModel.composerConfigurationErrorMessage)
+    }
+
+    @MainActor
+    func testNewProfileSessionRejectsRapidSwitchAndOldSessionPolling() async throws {
+        let switchStarted = expectation(description: "Profile switch started")
+        let releaseSwitch = DispatchSemaphore(value: 0)
+        let requests = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            requests.append(["path": request.url?.path ?? ""])
+            switch request.url?.path {
+            case "/api/profile/switch":
+                if requests.all.filter({ $0["path"] as? String == "/api/profile/switch" }).count == 1 {
+                    switchStarted.fulfill()
+                    _ = releaseSwitch.wait(timeout: .now() + 5)
+                }
+                return apiTestJSONResponse(#"{"active":"research","default_model":"new-model"}"#, for: request)
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"research","profiles":[{"name":"research"}]}"#, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"new-model","groups":[]}"#, for: request)
+            case "/api/reasoning", "/api/workspaces", "/api/commands", "/api/session/yolo":
+                return apiTestJSONResponse("{}", for: request)
+            case "/api/session/new":
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","profile":"research"}}"#, for: request)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let first = Task { await viewModel.switchProfile(research, startNewSession: true) }
+        await fulfillment(of: [switchStarted], timeout: 2)
+        // Release before awaiting other requests: the fixture's URL loading queue
+        // may be serial, so holding it would test a semaphore, not ownership.
+        releaseSwitch.signal()
+        let second = await viewModel.switchProfile(research, startNewSession: true)
+        await viewModel.refreshApprovalBypassState()
+        let outcome = await first.value
+        XCTAssertNil(second)
+        XCTAssertEqual(outcome?.session?.sessionId, "research-new")
+        XCTAssertEqual(requests.all.filter { $0["path"] as? String == "/api/profile/switch" }.count, 1)
+        XCTAssertFalse(requests.all.contains { $0["path"] as? String == "/api/session/yolo" })
+    }
+
+    @MainActor
+    func testProfileReplacementUsesNewSessionForComposerWritesAndAttachmentRestore() async throws {
+        let old = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                return apiTestJSONResponse(#"{"active":"research","default_model":"new-model"}"#, for: request)
+            case "/api/session/new":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["profile"] as? String, "research")
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","profile":"research","model":"new-model"}}"#, for: request)
+            default:
+                XCTFail("Old session must not load configuration during handoff")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await old.switchProfile(research, startNewSession: true)
+        let session = try XCTUnwrap(outcome?.session)
+        await old.restoreProfileOwnershipAfterNavigation()
+        let oldSend = await old.sendMessage("Do not send to the old session")
+        XCTAssertFalse(oldSend)
+        await old.loadComposerConfiguration()
+        await old.refreshApprovalBypassState()
+
+        let replacement = try makeViewModel(sessionSummary: session) { request in
+            switch request.url?.path {
+            case "/api/session/update":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["session_id"] as? String, "research-new")
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","workspace":"/new-workspace"}}"#, for: request)
+            case "/api/upload":
+                let body = apiTestBodyData(from: request) ?? Data()
+                XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("research-new"))
+                return apiTestJSONResponse(#"{"filename":"notes.txt","path":"/research-new/notes.txt","size":5,"mime":"text/plain","is_image":false}"#, for: request)
+            default:
+                XCTFail("Unexpected replacement request: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let updated = await replacement.selectWorkspacePath("/new-workspace")
+        XCTAssertTrue(updated)
+        let record = ChatDraftAttachment(id: UUID(), name: "notes.txt", mime: "text/plain",
+                                         size: 5, isImage: false, file: "durable-notes.txt")
+        let attachment = await replacement.reuploadDraftAttachment(record, data: Data("notes".utf8))
+        XCTAssertEqual(attachment?.id, record.id)
+        XCTAssertEqual(attachment?.draftFileName, record.file)
+        XCTAssertEqual(attachment?.path, "/research-new/notes.txt")
     }
 
     // MARK: - Profile switch with omitted defaults (finding #3)
