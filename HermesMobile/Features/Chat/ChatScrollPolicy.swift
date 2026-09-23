@@ -191,7 +191,8 @@ extension EnvironmentValues {
 
 /// Keeps transcript reconciliation and other state-heavy startup work out of
 /// the system navigation transition. Cache preparation remains synchronous so
-/// an available transcript can participate in the destination's first layout.
+/// an available transcript can participate in the destination's first layout,
+/// and the transcript request is sent then too; only applying it waits.
 enum ChatInitialAppearancePolicy {
     static func shouldBeginAsyncWork(hasCompletedAppearance: Bool) -> Bool {
         hasCompletedAppearance

@@ -1757,22 +1757,23 @@ struct ChatView: View {
         let draftSettingsInteractionGeneration = viewModel.composerConfigurationInteractionGeneration
 
         if loadsInitialMessages {
-            await loadMessages(appliesInitialFocus: false)
+            await loadMessages(appliesInitialFocus: false, usesInitialPrefetch: true)
             guard !Task.isCancelled else { return }
         }
         if initialAttachments.isEmpty {
             isInitialComposerFocusContentReady = true
             applyInitialComposerFocusPolicyIfNeeded()
         }
+        // Approval and YOLO state are session-scoped, so they load alongside the
+        // profile-scoped composer config instead of waiting behind it (#678).
+        async let approvalBypassRefresh: Void = viewModel.refreshApprovalBypassState()
         await viewModel.loadComposerConfiguration()
-        guard !Task.isCancelled else { return }
-
-        await applyRestoredDraftSettingsIfNeeded(
-            expectedInteractionGeneration: draftSettingsInteractionGeneration
-        )
-        guard !Task.isCancelled else { return }
-
-        await viewModel.refreshApprovalBypassState()
+        if !Task.isCancelled {
+            await applyRestoredDraftSettingsIfNeeded(
+                expectedInteractionGeneration: draftSettingsInteractionGeneration
+            )
+        }
+        await approvalBypassRefresh
         guard !Task.isCancelled else { return }
 
         await uploadInitialAttachmentsIfNeeded()
@@ -1809,8 +1810,8 @@ struct ChatView: View {
         viewModel.isViewingCachedData || viewModel.activeStreamID != nil || viewModel.isSubmittingGoal
     }
 
-    private func loadMessages(appliesInitialFocus: Bool = true) async {
-        await viewModel.loadMessages(modelContext: modelContext)
+    private func loadMessages(appliesInitialFocus: Bool = true, usesInitialPrefetch: Bool = false) async {
+        await viewModel.loadMessages(modelContext: modelContext, usesInitialPrefetch: usesInitialPrefetch)
         await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
         if appliesInitialFocus {
             applyInitialComposerFocusPolicyIfNeeded()

@@ -3860,7 +3860,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testPrepareInitialMessageLoadPrimesCacheWithoutStartingNetwork() throws {
+    func testPrepareInitialMessageLoadSendsTranscriptRequestThatOnlyTheInitialLoadApplies() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
         try CacheStore.cacheMessages(
@@ -3873,20 +3873,111 @@ final class ChatViewModelSendTests: XCTestCase {
             in: context
         )
 
+        let sessionRequests = LockedCounter()
+        let sessionRequestStarted = expectation(description: "session request started")
+        let releaseSessionResponse = DispatchSemaphore(value: 0)
         let viewModel = try makeViewModel { request in
-            XCTFail("Cache preparation must not start a request: \(request.url?.absoluteString ?? "nil")")
-            throw URLError(.badURL)
+            XCTAssertEqual(request.url?.path, "/api/session")
+            _ = sessionRequests.increment()
+            sessionRequestStarted.fulfill()
+            XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
+            return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
         }
+        defer { releaseSessionResponse.signal() }
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
 
+        // The request goes out during the push transition while the cache paints.
+        await fulfillment(of: [sessionRequestStarted], timeout: 2)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question", "Cached answer"])
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
+
+        // A second first-pass preparation keeps the request already in flight.
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        releaseSessionResponse.signal()
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+        XCTAssertEqual(sessionRequests.count, 1)
     }
 
     @MainActor
-    func testPrepareInitialMessageLoadBoundsLargeCachedTranscriptToNewestPage() throws {
+    func testLoadMessagesWithoutInitialPrefetchDiscardsItAndRefetches() async throws {
+        let context = try makeContext()
+        let sessionRequests = LockedCounter()
+        let prefetchStarted = expectation(description: "prefetch started")
+        let releasePrefetch = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            if sessionRequests.increment() == 1 {
+                prefetchStarted.fulfill()
+                _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
+                return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Stale answer"), for: request)
+            }
+            return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
+        }
+        defer { releasePrefetch.signal() }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        await fulfillment(of: [prefetchStarted], timeout: 2)
+
+        // Any other load (refresh, reconnect, after a mutation) must not apply a
+        // response requested before it.
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+
+        // Nor may the initial load, which runs later, reuse the discarded prefetch.
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+        XCTAssertEqual(sessionRequests.count, 3)
+    }
+
+    @MainActor
+    func testInitialLoadRefetchesWhenAStreamStartedAfterThePrefetch() async throws {
+        let context = try makeContext()
+        let streamClient = SpySSEStreamingClient()
+        let sessionRequests = LockedCounter()
+        let prefetchStarted = expectation(description: "prefetch started")
+        let releasePrefetch = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/session":
+                if sessionRequests.increment() == 1 {
+                    prefetchStarted.fulfill()
+                    _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
+                    return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Before send"), for: request)
+                }
+                return apiTestJSONResponse(
+                    Self.initialLoadSessionJSON(content: "After send", activeStreamID: "stream-123"),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        defer { releasePrefetch.signal() }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        await fulfillment(of: [prefetchStarted], timeout: 2)
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        releasePrefetch.signal()
+
+        // The prefetch predates the stream, so it would read as the stream having
+        // ended; the initial load asks again instead.
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+
+        XCTAssertEqual(sessionRequests.count, 2)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+        XCTAssertTrue(viewModel.messages.contains { $0.content == "After send" })
+    }
+
+    @MainActor
+    func testPrepareInitialMessageLoadBoundsLargeCachedTranscriptToNewestPage() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
         let cachedMessages = (0..<75).map { index in
@@ -3905,8 +3996,7 @@ final class ChatViewModelSendTests: XCTestCase {
         )
 
         let viewModel = try makeViewModel { request in
-            XCTFail("Cache preparation must not start a request: \(request.url?.absoluteString ?? "nil")")
-            throw URLError(.badURL)
+            apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
         }
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
@@ -3916,6 +4006,24 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.content, "Cached message 74")
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
+
+        // Settle the transcript request prepare sent so it cannot outlive this test.
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+    }
+
+    private static func initialLoadSessionJSON(content: String, activeStreamID: String? = nil) -> String {
+        let activeStream = activeStreamID.map { #", "active_stream_id": "\#($0)""# } ?? ""
+        return """
+        {
+          "session": {
+            "session_id": "session-abc",
+            "title": "Planning"\(activeStream),
+            "messages": [
+              {"role": "assistant", "content": "\(content)", "timestamp": 1770000100, "message_id": "fresh-assistant"}
+            ]
+          }
+        }
+        """
     }
 
     @MainActor
@@ -6021,7 +6129,7 @@ final class ChatViewModelSendTests: XCTestCase {
     func testComposerConfigurationUsesSessionProfileDefaultBeforeSending() async throws {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
         let streamClient = SpySSEStreamingClient()
-        var requestPaths: [String] = []
+        let requestPaths = LockedStrings()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             sessionSummary: makeSession(model: nil, modelProvider: nil, profile: "work")
@@ -6097,15 +6205,15 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        XCTAssertEqual(requestPaths, [
-            "/api/profiles",
-            "/api/profile/switch",
-            "/api/models",
-            "/api/reasoning",
-            "/api/workspaces",
-            "/api/commands",
-            "/api/chat/start"
-        ])
+        // Config after the profile switch loads concurrently; the send follows it.
+        let paths = requestPaths.values
+        XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
+        XCTAssertEqual(
+            Set(paths.dropFirst(2).dropLast()),
+            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
+        )
+        XCTAssertEqual(paths.last, "/api/chat/start")
+        XCTAssertEqual(paths.count, 7)
     }
 
     @MainActor
@@ -6321,7 +6429,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
     @MainActor
     func testDraftSettingsRestoreStopsWhenSavedProfileSwitchFails() async throws {
-        var requestPaths: [String] = []
+        let requestPaths = LockedStrings()
         let viewModel = try makeViewModel(
             sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
         ) { request in
@@ -6389,8 +6497,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedProfileName, "work")
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
         XCTAssertEqual(viewModel.selectedWorkspacePath, "/tmp/workspace")
-        XCTAssertEqual(requestPaths.last, "/api/profile/switch")
-        XCTAssertFalse(requestPaths.contains("/api/session/update"))
+        XCTAssertEqual(requestPaths.values.last, "/api/profile/switch")
+        XCTAssertFalse(requestPaths.values.contains("/api/session/update"))
     }
 
     @MainActor
@@ -9847,7 +9955,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 }
 
-/// Every `/api/list` path a handler was asked for, in call order. Handlers run
+/// Every request path a handler was asked for, in call order. Handlers run
 /// off the test's thread, so the record needs its own lock.
 private final class LockedStrings: @unchecked Sendable {
     private let lock = NSLock()
