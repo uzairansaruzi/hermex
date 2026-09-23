@@ -20,6 +20,8 @@ branch="$(git branch --show-current)"
 [[ -n "$branch" && "$branch" != "master" ]] || { echo "Run from a feature branch, not master or a detached HEAD." >&2; exit 1 }
 [[ -z "$(git status --porcelain)" ]] || { echo "Commit or stash changes first so the build matches a commit." >&2; exit 1 }
 
+# Captured before the long archive so the report names the archived source.
+commit="$(git rev-parse --short HEAD)"
 build_number="$(date +%Y%m%d%H%M)"
 work_dir="build/branch-testflight/$build_number"
 archive_path="$work_dir/HermexBranch.xcarchive"
@@ -49,5 +51,5 @@ run_step "Uploading to App Store Connect" \
   -exportPath "$work_dir/export" -allowProvisioningUpdates
 
 version="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive_path/Info.plist")"
-echo "Uploaded Hermex Branch $version ($build_number) from $branch @ $(git rev-parse --short HEAD)."
+echo "Uploaded Hermex Branch $version ($build_number) from $branch @ $commit."
 echo "TestFlight shows it after App Store Connect finishes processing."
