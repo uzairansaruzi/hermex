@@ -234,7 +234,7 @@ Steps:
    scripts/branch-testflight
    ```
 
-   It archives Release with `Config/BranchTestFlight.xcconfig` and a `YYYYMMDDHHMM`
+   It archives Release with `Config/BranchTestFlight.xcconfig` and a `YYYYMMDDHHMMSS`
    build number, uploads with the internal-only `Config/BranchTestFlightExportOptions.plist`,
    and keeps the archive and log under `build/branch-testflight/<build-number>/`.
    It refuses to run on `master` or with uncommitted changes.

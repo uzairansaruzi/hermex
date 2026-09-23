@@ -22,7 +22,10 @@ branch="$(git branch --show-current)"
 
 # Captured before the long archive so the report names the archived source.
 commit="$(git rev-parse --short HEAD)"
-build_number="$(date +%Y%m%d%H%M)"
+# 14 digits: TestFlight offers the numerically highest build as the update, and
+# Hermex Branch already has 14-digit builds, so a shorter stamp never reaches
+# the phone. Seconds also keep back-to-back uploads from colliding.
+build_number="$(date +%Y%m%d%H%M%S)"
 work_dir="build/branch-testflight/$build_number"
 archive_path="$work_dir/HermexBranch.xcarchive"
 log_path="$work_dir/xcodebuild.log"
