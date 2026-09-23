@@ -292,6 +292,54 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertTrue(events.isEmpty)
     }
 
+    func testActiveRowPollPausesWhileChatCoversCompactList() {
+        let chat = SessionNavigationDestination.session(SessionSummary(sessionId: "streaming"))
+
+        XCTAssertTrue(activeRowMonitorID(isRegularWidth: false, destination: nil).shouldPoll)
+        XCTAssertFalse(activeRowMonitorID(isRegularWidth: false, destination: chat).shouldPoll)
+        XCTAssertFalse(
+            activeRowMonitorID(isRegularWidth: false, destination: .utility(.archived)).shouldPoll
+        )
+        // On regular width the sidebar stays on screen beside the chat.
+        XCTAssertTrue(activeRowMonitorID(isRegularWidth: true, destination: chat).shouldPoll)
+    }
+
+    func testActiveRowPollRestartsWhenReturningToCompactList() {
+        let chat = SessionNavigationDestination.session(SessionSummary(sessionId: "streaming"))
+
+        // A different task ID is what makes SwiftUI restart the paused poll.
+        XCTAssertNotEqual(
+            activeRowMonitorID(isRegularWidth: false, destination: chat),
+            activeRowMonitorID(isRegularWidth: false, destination: nil)
+        )
+        // Selecting another chat on regular width keeps the running poll.
+        XCTAssertEqual(
+            activeRowMonitorID(isRegularWidth: true, destination: chat),
+            activeRowMonitorID(isRegularWidth: true, destination: nil)
+        )
+    }
+
+    func testActiveRowPollStillSkipsIdleAndCachedLists() {
+        XCTAssertFalse(activeRowMonitorID(hasActiveRows: false).shouldPoll)
+        XCTAssertFalse(activeRowMonitorID(isViewingCachedData: true).shouldPoll)
+        XCTAssertEqual(ActiveSessionMonitorTaskID.pollInterval, .seconds(3))
+    }
+
+    private func activeRowMonitorID(
+        hasActiveRows: Bool = true,
+        isViewingCachedData: Bool = false,
+        isRegularWidth: Bool = false,
+        destination: SessionNavigationDestination? = nil
+    ) -> ActiveSessionMonitorTaskID {
+        ActiveSessionMonitorTaskID(
+            streamIDs: ["stream-1"],
+            hasActiveRows: hasActiveRows,
+            isViewingCachedData: isViewingCachedData,
+            isRegularWidth: isRegularWidth,
+            destination: destination
+        )
+    }
+
     func testRemovingSelectedSessionClearsDestinationAndRestorationID() {
         let session = SessionSummary(sessionId: "session-1")
         var state = SessionNavigationState()

@@ -1055,7 +1055,9 @@ struct SessionListView: View {
         return ActiveSessionMonitorTaskID(
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
             hasActiveRows: !activeSessions.isEmpty,
-            isViewingCachedData: viewModel.isViewingCachedData
+            isViewingCachedData: viewModel.isViewingCachedData,
+            isRegularWidth: horizontalSizeClass == .regular,
+            destination: navigationState.destination
         )
     }
 
@@ -1174,10 +1176,10 @@ struct SessionListView: View {
     private func monitorActiveSessionRows() async {
         while !Task.isCancelled {
             let taskID = activeSessionMonitorTaskID
-            guard taskID.hasActiveRows, !taskID.isViewingCachedData else { return }
+            guard taskID.shouldPoll else { return }
 
             do {
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+                try await Task.sleep(for: ActiveSessionMonitorTaskID.pollInterval)
             } catch {
                 return
             }
@@ -1647,10 +1649,36 @@ private struct SessionSearchTaskID: Hashable {
     let isViewingCachedData: Bool
 }
 
-private struct ActiveSessionMonitorTaskID: Hashable {
+/// Identity for the session list's active-row poll. SwiftUI restarts the poll
+/// whenever this changes, and the poll runs only while `shouldPoll` holds.
+/// On compact width a pushed destination covers the list, so the poll pauses
+/// until the user returns; `SessionListDestinationReturn` reloads the rows then.
+struct ActiveSessionMonitorTaskID: Hashable {
+    /// Wait between polls. The open chat watches its own run over SSE, so the
+    /// list only needs badges and the Working-to-done switch reasonably fresh.
+    static let pollInterval: Duration = .seconds(3)
+
     let streamIDs: [String]
     let hasActiveRows: Bool
     let isViewingCachedData: Bool
+    let isListVisible: Bool
+
+    init(
+        streamIDs: [String],
+        hasActiveRows: Bool,
+        isViewingCachedData: Bool,
+        isRegularWidth: Bool,
+        destination: SessionNavigationDestination?
+    ) {
+        self.streamIDs = streamIDs
+        self.hasActiveRows = hasActiveRows
+        self.isViewingCachedData = isViewingCachedData
+        isListVisible = isRegularWidth || destination == nil
+    }
+
+    var shouldPoll: Bool {
+        hasActiveRows && isListVisible && !isViewingCachedData
+    }
 }
 
 private struct PendingNewChatView: View {
