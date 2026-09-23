@@ -3934,6 +3934,36 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testCleanupPollingTasksDiscardsTheInitialPrefetch() async throws {
+        let context = try makeContext()
+        let sessionRequests = LockedCounter()
+        let prefetchStarted = expectation(description: "prefetch started")
+        let releasePrefetch = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            if sessionRequests.increment() == 1 {
+                prefetchStarted.fulfill()
+                _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
+                return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Stale answer"), for: request)
+            }
+            return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
+        }
+        defer { releasePrefetch.signal() }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        await fulfillment(of: [prefetchStarted], timeout: 2)
+
+        // Leaving the chat (ChatView.onDisappear) drops the in-flight prefetch, so
+        // a later initial load on the same view model asks the server again.
+        viewModel.cleanupPollingTasks()
+        releasePrefetch.signal()
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+        XCTAssertEqual(sessionRequests.count, 2)
+    }
+
+    @MainActor
     func testInitialLoadRefetchesWhenAStreamStartedAfterThePrefetch() async throws {
         let context = try makeContext()
         let streamClient = SpySSEStreamingClient()
