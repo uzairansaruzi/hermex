@@ -295,9 +295,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             UIApplication.shared.endBackgroundTask(backgroundTask)
             backgroundTask = .invalid
         }
-        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Hermes Live Activity handoff") {
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Hermes Live Activity handoff") { [weak self] in
             // Out of background time: stop waiting, which falls back to the stale state.
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 self?.cancelPushHandoff()
                 endBackgroundTask()
             }
