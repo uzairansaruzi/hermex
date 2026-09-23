@@ -133,6 +133,22 @@ final class ProfileSwitchAstraRegressionTests: APIClientTestCase {
         XCTAssertEqual(RecentProfileSwitchSeed.take(for: b, sessionID: "s-b")?.active, "b")
     }
 
+    func testExpiredSeedsAreSweptOnStoreAndDoNotAccumulate() {
+        let server = URL(string: "https://example.test")!
+        RecentProfileSwitchSeed.storeExpiredForTests(.init(profiles: [], active: "old"), for: server, sessionID: "abandoned-1")
+        RecentProfileSwitchSeed.storeExpiredForTests(.init(profiles: [], active: "old"), for: server, sessionID: "abandoned-2")
+        XCTAssertEqual(RecentProfileSwitchSeed.liveEntryCountForTests(), 0, "Expired entries must not linger after sweep")
+
+        RecentProfileSwitchSeed.store(.init(profiles: [], active: "live"), for: server, sessionID: "live-1")
+        // store() sweeps before insert; expired ghosts from abandoned navigations stay gone.
+        RecentProfileSwitchSeed.storeExpiredForTests(.init(profiles: [], active: "ghost"), for: server, sessionID: "ghost")
+        RecentProfileSwitchSeed.store(.init(profiles: [], active: "live2"), for: server, sessionID: "live-2")
+        XCTAssertEqual(RecentProfileSwitchSeed.liveEntryCountForTests(), 2)
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: server, sessionID: "live-1")?.active, "live")
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: server, sessionID: "live-2")?.active, "live2")
+        XCTAssertEqual(RecentProfileSwitchSeed.liveEntryCountForTests(), 0)
+    }
+
     @MainActor
     func testSeedIsNotStoredUntilCreateSessionSucceeds() async throws {
         let creationStarted = expectation(description: "creation pending")

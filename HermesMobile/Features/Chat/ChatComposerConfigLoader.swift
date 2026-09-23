@@ -125,6 +125,7 @@ enum RecentProfileSwitchSeed {
 
     static func store(_ seed: ChatComposerProfileSeed, for server: URL, sessionID: String) {
         lock.withLock {
+            sweepExpiredLocked(now: Date())
             guard let key = entryKey(for: server, sessionID: sessionID) else { return }
             entries[key] = (seed, Date().addingTimeInterval(5))
         }
@@ -132,18 +133,20 @@ enum RecentProfileSwitchSeed {
 
     static func take(for server: URL, sessionID: String?) -> ChatComposerProfileSeed? {
         lock.withLock {
+            let now = Date()
+            sweepExpiredLocked(now: now)
             guard let sessionID, let key = entryKey(for: server, sessionID: sessionID) else {
                 return nil
             }
-            guard let current = entries[key] else { return nil }
-            entries[key] = nil
-            guard current.expires > Date() else { return nil }
+            guard let current = entries.removeValue(forKey: key) else { return nil }
+            guard current.expires > now else { return nil }
             return current.seed
         }
     }
 
     static func discard(for server: URL, sessionID: String?) {
         lock.withLock {
+            sweepExpiredLocked(now: Date())
             guard let sessionID, let key = entryKey(for: server, sessionID: sessionID) else {
                 return
             }
@@ -154,6 +157,27 @@ enum RecentProfileSwitchSeed {
     /// Test hook: drop every pending seed without consuming one as a load.
     static func resetForTests() {
         lock.withLock { entries.removeAll() }
+    }
+
+    /// Test hook: how many live (non-expired) entries remain after a sweep.
+    static func liveEntryCountForTests() -> Int {
+        lock.withLock {
+            sweepExpiredLocked(now: Date())
+            return entries.count
+        }
+    }
+
+    /// Test hook: insert an already-expired seed so sweep behavior is deterministic.
+    static func storeExpiredForTests(_ seed: ChatComposerProfileSeed, for server: URL, sessionID: String) {
+        lock.withLock {
+            guard let key = entryKey(for: server, sessionID: sessionID) else { return }
+            entries[key] = (seed, Date().addingTimeInterval(-1))
+        }
+    }
+
+    /// Drop entries whose TTL already elapsed. Called under `lock`.
+    private static func sweepExpiredLocked(now: Date) {
+        entries = entries.filter { $0.value.expires > now }
     }
 }
 
