@@ -99,6 +99,9 @@ final class SessionListViewModel {
     private let unreadStore: SessionUnreadStore
     private var viewingSessionID: String?
     private var returnedFromSessionIDs: Set<String> = []
+    private var firstReturnLoadCounts: [String: Int] = [:]
+    private var returnRevision = 0
+    private var activeLoadCount = 0
 
     init(server: URL, client: APIClient? = nil, unreadStore: SessionUnreadStore = SessionUnreadStore()) {
         self.server = server
@@ -224,19 +227,37 @@ final class SessionListViewModel {
 
     @discardableResult
     func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
-        // A return mark belongs to this attempt only. If it fails or is
-        // cancelled, a later reply must not be silently marked read.
-        let returnedFromIDs = returnedFromSessionIDs
-        returnedFromSessionIDs.subtract(returnedFromIDs)
+        // Requests begun while the first return refresh is in flight share its
+        // mark. After that attempt ends, later refreshes track unread normally.
+        let revision = returnRevision
+        let firstReturnedIDs = returnedFromSessionIDs
+        let returnedFromIDs = firstReturnedIDs.union(firstReturnLoadCounts.keys)
+        returnedFromSessionIDs.removeAll()
+        for sessionID in firstReturnedIDs {
+            firstReturnLoadCounts[sessionID, default: 0] += 1
+        }
+        activeLoadCount += 1
         isLoading = true
         errorMessage = nil
         cacheErrorMessage = nil
         sessionLoadError = nil
         lastError = nil
-        defer { isLoading = false }
+        defer {
+            for sessionID in firstReturnedIDs {
+                let count = firstReturnLoadCounts[sessionID, default: 0]
+                if count <= 1 {
+                    firstReturnLoadCounts.removeValue(forKey: sessionID)
+                } else {
+                    firstReturnLoadCounts[sessionID] = count - 1
+                }
+            }
+            activeLoadCount -= 1
+            isLoading = activeLoadCount > 0
+        }
 
         do {
             let response = try await client.sessions()
+            guard revision == returnRevision else { return false }
             let allSessions = response.sessions ?? []
             let visibleSessions = allSessions
                 .filter {
@@ -259,6 +280,7 @@ final class SessionListViewModel {
             return true
         } catch {
             guard !isCancellationError(error) else { return false }
+            guard revision == returnRevision else { return false }
 
             lastError = error
             sessionLoadError = error
@@ -509,6 +531,7 @@ final class SessionListViewModel {
         guard let sessionID = Self.nonEmpty(session.sessionId) else { return }
         if viewingSessionID == sessionID { viewingSessionID = nil }
         returnedFromSessionIDs.insert(sessionID)
+        returnRevision &+= 1
     }
 
     func toggleUnread(_ session: SessionSummary) {

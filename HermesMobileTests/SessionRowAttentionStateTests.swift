@@ -239,6 +239,101 @@ final class SessionRowAttentionStateTests: XCTestCase {
     }
 
     @MainActor
+    func testOverlappingReturnRefreshesKeepTheViewedReplyRead() async throws {
+        let calls = LockedCounter()
+        let firstStarted = expectation(description: "first return refresh started")
+        let secondStarted = expectation(description: "overlapping refresh started")
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let releaseSecond = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            let timestamp: Int
+            switch calls.increment() {
+            case 1:
+                timestamp = 100
+            case 2:
+                firstStarted.fulfill()
+                releaseFirst.wait()
+                timestamp = 200
+            case 3:
+                secondStarted.fulfill()
+                releaseSecond.wait()
+                timestamp = 300
+            default:
+                timestamp = 400
+            }
+            return apiTestJSONResponse(
+                "{\"sessions\":[{\"session_id\":\"chat\",\"title\":\"Chat\",\"last_message_at\":\(timestamp)}]}",
+                for: request
+            )
+        }
+
+        await viewModel.load()
+        viewModel.beginViewing(viewModel.sessions[0])
+        viewModel.noteReturn(from: viewModel.sessions[0])
+
+        let first = Task { await viewModel.load() }
+        await fulfillment(of: [firstStarted], timeout: 5)
+        let second = Task { await viewModel.load() }
+        await fulfillment(of: [secondStarted], timeout: 5)
+
+        releaseFirst.signal()
+        let firstLoaded = await first.value
+        XCTAssertTrue(firstLoaded)
+        releaseSecond.signal()
+        let secondLoaded = await second.value
+        XCTAssertTrue(secondLoaded)
+        XCTAssertFalse(viewModel.isUnread(viewModel.sessions[0]))
+
+        await viewModel.load()
+        XCTAssertTrue(viewModel.isUnread(viewModel.sessions[0]), "a later refresh is outside the return window")
+    }
+
+    @MainActor
+    func testLoadStartedBeforeReturnCannotReplaceTheReturnSnapshot() async throws {
+        let calls = LockedCounter()
+        let priorStarted = expectation(description: "prior refresh started")
+        let returnStarted = expectation(description: "return refresh started")
+        let releasePrior = DispatchSemaphore(value: 0)
+        let releaseReturn = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            let timestamp: Int
+            switch calls.increment() {
+            case 1:
+                timestamp = 100
+            case 2:
+                priorStarted.fulfill()
+                releasePrior.wait()
+                timestamp = 200
+            default:
+                returnStarted.fulfill()
+                releaseReturn.wait()
+                timestamp = 300
+            }
+            return apiTestJSONResponse(
+                "{\"sessions\":[{\"session_id\":\"chat\",\"title\":\"Chat\",\"last_message_at\":\(timestamp)}]}",
+                for: request
+            )
+        }
+
+        await viewModel.load()
+        viewModel.beginViewing(viewModel.sessions[0])
+        let prior = Task { await viewModel.load() }
+        await fulfillment(of: [priorStarted], timeout: 5)
+        viewModel.noteReturn(from: viewModel.sessions[0])
+        let returned = Task { await viewModel.load() }
+        await fulfillment(of: [returnStarted], timeout: 5)
+
+        releaseReturn.signal()
+        let returnLoaded = await returned.value
+        XCTAssertTrue(returnLoaded)
+        releasePrior.signal()
+        let priorLoaded = await prior.value
+        XCTAssertFalse(priorLoaded)
+        XCTAssertEqual(viewModel.sessions[0].lastMessageAt, 300)
+        XCTAssertFalse(viewModel.isUnread(viewModel.sessions[0]))
+    }
+
+    @MainActor
     func testUnreadToggleAndSuccessfulLoadPrune() async throws {
         let responses = LockedQueue([
             #"{"sessions":[{"session_id":"keep","title":"Keep","last_message_at":100},{"session_id":"gone","title":"Gone","last_message_at":100}]}"#,
