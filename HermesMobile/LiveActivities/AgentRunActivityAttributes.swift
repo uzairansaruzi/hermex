@@ -141,11 +141,18 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         /// What a webui activity shows in place of reply text (#644): its counts, then
         /// how fresh the state is, or where the reply is once the run completed. Only a
         /// real update time is shown; an unknown one is left out rather than guessed.
+        /// An update from the run's first moments would only repeat the elapsed timer,
+        /// as it does for a whole turn without tools, so it is left out too.
         var detailChips: [AgentRunDetailChip] {
             let counts = (chips ?? []).map(AgentRunDetailChip.text)
             if isFinal { return status == .complete ? counts + [.openReply] : counts }
-            return updateTimeIsKnown ? counts + [.updated(updatedAt)] : counts
+            let addsToTimer = updatedAt.timeIntervalSince(startedAt) > Self.freshnessAfterStart
+            return updateTimeIsKnown && addsToTimer ? counts + [.updated(updatedAt)] : counts
         }
+
+        /// How long after the run's start an update must land before "Updated … ago"
+        /// says something the elapsed timer does not.
+        static let freshnessAfterStart: TimeInterval = 10
 
         /// Pushes omit identity and freshness flags: immutable attributes and
         /// ActivityKit's stale-date clock supply those to every widget surface.

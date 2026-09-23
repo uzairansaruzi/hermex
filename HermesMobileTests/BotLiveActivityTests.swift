@@ -361,10 +361,22 @@ import XCTest
         XCTAssertFalse(unstamped.updateTimeIsKnown)
         XCTAssertEqual(unstamped.detailChips, [.text("3 tools")], "A decode time is never presented as an update time")
 
-        let local = AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Plan")
+        var local = AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Plan",
+                                                               startedAt: Date().addingTimeInterval(-60))
+        local.updatedAt = Date()
         let written = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: JSONEncoder().encode(local))
         XCTAssertTrue(written.updateTimeIsKnown)
         XCTAssertEqual(written.detailChips, [.updated(local.updatedAt)])
+    }
+
+    /// A turn without tools sends nothing between its start and its end, so its last
+    /// update is the start: "Updated … ago" would tick in step with the elapsed timer.
+    func testAnUpdateFromTheRunsFirstMomentsDoesNotRepeatTheTimer() throws {
+        let early = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: Data(
+            #"{"v":1,"status":"running","started_at":1800000000,"updated_at":1800000002}"#.utf8))
+        XCTAssertEqual(early.detailChips, [])
+        let local = AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Plan")
+        XCTAssertEqual(local.detailChips, [], "The app's own first write is the start too")
     }
 
     func testFinishedDetailPointsToTheReplyOnlyAfterCompletion() throws {

@@ -649,7 +649,9 @@ The shared content state accepts both existing local fields and the relay's comp
 text, a webui activity shows `ContentState.detailChips` in place of the panel (#644):
 the relay's tool count, then "Updated … ago" drawn by the system, or "Open to read the
 reply" once complete. Only a real update time is shown: an app write, or a relay state
-with `updated_at`; a state from an older relay shows the count alone. Local writes keep
+with `updated_at`; a state from an older relay shows the count alone. An update within
+ten seconds of the run's start is left out too, since it would only repeat the elapsed
+timer (a turn without tools sends nothing between its start and its end). Local writes keep
 the count the activity already shows, since only the relay counts a webui run's tools. The wire status remains a
 string; unknown statuses or newer versions render a generic existing status.
 Identity/title come from immutable activity attributes when a push omits them.
