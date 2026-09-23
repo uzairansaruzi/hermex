@@ -105,6 +105,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var currentState: AgentRunActivityAttributes.ContentState?
     private var currentSessionID: String?
     private var currentStreamID: String?
+    /// The configured server of the webui run being driven; nil for a bot.
+    private var currentServer: URL?
     // StreamID of the run whose SSE is live in THIS process right now: set when the
     // coordinator (re)connects (`start`), cleared the moment it suspends/hits trouble
     // (`markStale`) or finalizes (`end`/`reset`). The orphan reconciler skips it so a
@@ -157,6 +159,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
            currentStreamID == normalizedStreamID,
            currentState?.isFinal == false,
            activity?.activityState != .ended, activity?.activityState != .dismissed,
+           currentServer == server,
            activity?.attributes.bot?.pushSessionID == bot?.pushSessionID {
             if let activity { observePush(activity) }
             updateCurrentState { state in
@@ -191,6 +194,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         rawResponseText = ""
         currentSessionID = normalizedSessionID
         currentStreamID = normalizedStreamID
+        currentServer = server
         let state = AgentRunActivityStateReducer.initialState(
             sessionID: normalizedSessionID,
             sessionTitle: sessionTitle,
@@ -452,6 +456,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         guard currentSessionID == nil, attributes.bot != nil, !state.isFinal else { return false }
         currentSessionID = attributes.sessionID
         currentStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(attributes.streamID)
+        currentServer = attributes.server
         currentState = state.presented(attributes: attributes, systemIsStale: false)
         rawResponseText = currentState?.responseExcerpt ?? ""
         lastSentUpdateAt = state.updatedAt
@@ -757,6 +762,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentState = nil
         currentSessionID = nil
         currentStreamID = nil
+        currentServer = nil
         activeConnectedStreamID = nil
         rawResponseText = ""
         lastSentUpdateAt = nil

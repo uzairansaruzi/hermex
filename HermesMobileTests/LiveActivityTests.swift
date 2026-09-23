@@ -1171,6 +1171,21 @@ final class LiveActivityTests: XCTestCase {
         )
         XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
     }
+
+    // #566: the same session and stream IDs on another configured server are a
+    // different run, so they get their own activity and relay route.
+    @MainActor
+    func testSameIDsOnAnotherServerStartAFreshActivity() throws {
+        let manager = AgentLiveActivityManager()
+        let firstStart = Date(timeIntervalSince1970: 1_000)
+        let laterStart = firstStart.addingTimeInterval(60)
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title",
+                      streamID: "stream-abc", startedAt: firstStart)
+        manager.start(sessionID: "session-1", server: URL(string: "https://other.example")!, sessionTitle: "Title",
+                      streamID: "stream-abc", startedAt: laterStart)
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, laterStart,
+                       "Reusing would keep the first server's earlier start")
+    }
 }
 
 @MainActor

@@ -766,6 +766,32 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertTrue(registrar.isRegistered("new"))
     }
 
+    /// If that replacement's PUT fails, nothing holds the route any more, so the
+    /// finished activity's cleanup still deletes it.
+    func testRelaunchedActivityCleanupDeletesTheRouteWhenTheReplacementFails() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let entered = expectation(description: "PUT entered")
+        var release: CheckedContinuation<Void, Never>?
+        wire.hold = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                entered.fulfill()
+            }
+        }
+        wire.failure = true
+        let register = Task { await registrar.register(owner: "new", server: serverA, sessionID: "runtime", token: "token") }
+        await fulfillment(of: [entered], timeout: 2)
+        let retire = Task { await registrar.retire(owner: "persisted", server: serverA, sessionID: "runtime") }
+        await Task.yield()
+        release?.resume()
+        await register.value
+        await retire.value
+        XCTAssertEqual(wire.calls.map(\.action), ["put:token", "delete"])
+        XCTAssertFalse(registrar.isRegistered("new"))
+    }
+
     // MARK: - Keychain access group
 
     /// The real store, in the real shared access group: the pairing round-trips,

@@ -429,12 +429,10 @@ extension PushRegistrar: PushPairingEnabling {}
 
     func retire(owner: String, server: URL? = nil, sessionID: String? = nil) async {
         desired[owner] = nil
-        // A persisted activity may end before this process ever saw its token. Its
-        // cleanup must never delete a newer activity's route, registered or queued.
+        // A persisted activity may end before this process ever saw its token.
         if registered[owner] == nil, let server, let sessionID,
            let keys = pairing(server), let device = keys.registeredToken,
-           !registered.values.contains(where: { $0.desired.server == server && $0.desired.sessionID == sessionID }),
-           !desired.values.contains(where: { $0.server == server && $0.sessionID == sessionID }) {
+           !registered.values.contains(where: { $0.desired.server == server && $0.desired.sessionID == sessionID }) {
             registered[owner] = Registered(desired: Desired(server: server, sessionID: sessionID, token: ""),
                                            pairing: keys, deviceToken: device)
         }
@@ -479,6 +477,14 @@ extension PushRegistrar: PushPairingEnabling {}
             if desired[owner] == old.desired, pairing(old.desired.server)?.hasSameRegistration(as: old.pairing) == true {
                 guard republish || !old.confirmed else { return }
                 registered[owner]?.confirmed = false
+            } else if desired[owner] == nil, registered.contains(where: { other, record in
+                other != owner && record.desired.server == old.desired.server
+                    && record.desired.sessionID == old.desired.sessionID
+            }) {
+                // A newer activity's PUT, settled while this cleanup waited in line, replaced
+                // the route; a DELETE now would revoke it (#566). A failed PUT leaves no
+                // receipt, so the finished activity's route is still deleted.
+                registered[owner] = nil
             } else {
                 do {
                     try await relay.deleteActivity(sessionID: old.desired.sessionID, deviceToken: old.deviceToken, pairing: old.pairing)
