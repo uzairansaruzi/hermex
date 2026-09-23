@@ -67,6 +67,8 @@ import XCTest
         XCTAssertEqual(create["model"], .string("gpt-6")); XCTAssertEqual(create["provider"], .string("openai"))
         XCTAssertEqual(create["share_auth"], .bool(true), "sharing is the default; nothing is copied")
         XCTAssertNil(create["mirror_credentials"]); XCTAssertNil(create["clone_from"])
+        XCTAssertNil(create["soul"], "empty instructions keep the host's default SOUL.md")
+        XCTAssertNil(create["no_skills"], "bundled skills are the default")
         let look = wire.calls[1].1
         XCTAssertEqual(look["name"], .string("home-hunter"))
         XCTAssertEqual(look["ui_meta_expected_revisions"], .object(["hermes-bots": .number(0)]))
@@ -82,6 +84,23 @@ import XCTest
         XCTAssertNil(creator.note)
     }
 
+    func testNewBotSendsTypedInstructionsAndTheSkillsOptOut() async throws {
+        let (creator, wire) = try makeCreator(roster: [])
+        creator.setTitle("Chief of Staff")
+        creator.setInstructions("  \n ")
+        creator.setSkipsBundledSkills(true)
+        await creator.create()
+        XCTAssertNil(wire.calls[0].1["soul"], "whitespace-only instructions are not sent")
+        XCTAssertEqual(wire.calls[0].1["no_skills"], .bool(true))
+
+        let (typed, typedWire) = try makeCreator(roster: [])
+        typed.setTitle("Chief of Staff")
+        typed.setInstructions("# Chief\nKeep my week in order.")
+        await typed.create()
+        XCTAssertEqual(typedWire.calls[0].1["soul"], .string("# Chief\nKeep my week in order."))
+        XCTAssertNil(typedWire.calls[0].1["no_skills"])
+    }
+
     func testDuplicateClonesTheSourceAndCopiesItsLookNotItsChat() async throws {
         let source = try XCTUnwrap(BotProfile(row("triage", look: ["title": .string("Triage"), "shape": .string("drop"), "color": .string("#14b8a6"),
                                                                      "sectionId": .string("desk"), "pinned": .bool(true)], description: "Sorts mail")))
@@ -90,11 +109,14 @@ import XCTest
         XCTAssertEqual(creator.name, "triage-copy")
         XCTAssertEqual(creator.draft.role, "Sorts mail")
         creator.setSharesCredentials(false)
+        creator.setInstructions("Ignored for a copy"); creator.setSkipsBundledSkills(true)
 
         await creator.create()
 
         let create = wire.calls[0].1
         XCTAssertEqual(create["clone_from"], .string("triage"))
+        XCTAssertNil(create["soul"], "a copy keeps the source's instructions")
+        XCTAssertNil(create["no_skills"], "the host refuses no_skills with clone_from")
         XCTAssertEqual(create["mirror_credentials"], .bool(false))
         XCTAssertNil(create["share_auth"])
         let look = try XCTUnwrap(wire.calls[1].1["ui_meta"]?["hermes-bots"].fields)

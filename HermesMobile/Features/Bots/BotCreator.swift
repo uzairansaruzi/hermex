@@ -58,6 +58,12 @@ enum BotProfileName {
         /// place. Off: `mirror_credentials: false`, the bot starts with none. Values
         /// never travel to the phone either way.
         var sharesCredentials = true
+        /// New bots only: becomes the Profile's `SOUL.md` when it has text; empty
+        /// keeps the host's default. A duplicate copies the source's instead.
+        var instructions = ""
+        /// New bots only: `no_skills`, so the host seeds only its essential skills.
+        /// The host refuses it with `clone_from`, since a copy brings the source's skills.
+        var skipsBundledSkills = false
     }
 
     let server: URL
@@ -130,6 +136,8 @@ enum BotProfileName {
     func setRole(_ value: String) { draft.role = value }
     func setModel(_ value: ModelCatalogOption?) { draft.model = value }
     func setSharesCredentials(_ value: Bool) { draft.sharesCredentials = value }
+    func setInstructions(_ value: String) { draft.instructions = value }
+    func setSkipsBundledSkills(_ value: Bool) { draft.skipsBundledSkills = value }
     func setShape(_ shape: BotAvatarShape) {
         draft.appearance.shape = shape.rawValue; draft.appearance.custom = true; draft.appearance.imageKind = "shape"
     }
@@ -224,7 +232,14 @@ enum BotProfileName {
         var params: [String: BotJSON] = ["name": .string(name)]
         let role = draft.role.trimmingCharacters(in: .whitespacesAndNewlines)
         if !role.isEmpty { params["description"] = .string(role) }
-        if let source { params["clone_from"] = .string(source.id) }
+        if let source {
+            params["clone_from"] = .string(source.id)
+        } else {
+            if !draft.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                params["soul"] = .string(draft.instructions)
+            }
+            if draft.skipsBundledSkills { params["no_skills"] = .bool(true) }
+        }
         if let model = draft.model, let provider = model.providerID {
             params["model"] = .string(model.id); params["provider"] = .string(provider)
         }

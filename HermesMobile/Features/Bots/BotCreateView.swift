@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The create and duplicate sheet: a live face, the name, an optional role, the
-/// drawn look, the model and the credential choice, then one Create button.
+/// drawn look, the model and the credential choice, plus instructions and the
+/// bundled-skills choice for a new bot, then one Create button.
 /// After a partial create the same sheet shows each step's outcome and Try Again.
 @MainActor struct BotCreateView: View {
     @State private var creator: BotCreator
@@ -69,6 +70,9 @@ import SwiftUI
                          ? "The bot signs in with the keys already saved on the host. Nothing is copied to this phone."
                          : "The bot starts with no API keys. Add them in Hermes Desktop before it can answer.")
                         .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
+
+                    // A duplicate copies the source's instructions and skills, so these are new-bot only.
+                    if !creator.isDuplicate { startingPoint.disabled(creator.hasStarted) }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
@@ -110,6 +114,41 @@ import SwiftUI
         // A clean create closes on its own; one with leftovers stays up so the
         // results and the note are read before Done.
         .onChange(of: creator.phase) { if creator.phase == .created, !creator.needsAttention { dismiss() } }
+    }
+
+    /// The new bot's instructions and whether it starts with the bundled skills.
+    @ViewBuilder private var startingPoint: some View {
+        sectionLabel("Instructions")
+        card {
+            TextEditor(text: Binding(get: { creator.draft.instructions }, set: { creator.setInstructions($0) }))
+                .frame(minHeight: 130)
+                .scrollContentBackground(.hidden)
+                .overlay(alignment: .topLeading) {
+                    if creator.draft.instructions.isEmpty {
+                        Text("How this bot should work (optional)")
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 8).padding(.leading, 5)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .accessibilityLabel("Instructions")
+                .padding(12)
+        }
+        Text("Leave empty to use the host’s default instructions.")
+            .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
+
+        sectionLabel("Skills")
+        card {
+            Toggle(isOn: Binding(get: { creator.draft.skipsBundledSkills }, set: { creator.setSkipsBundledSkills($0) })) {
+                Text("Start without bundled skills")
+            }
+            .padding(16)
+        }
+        Text(creator.draft.skipsBundledSkills
+             ? "Only the host’s essential skills. Add more later from the bot’s settings."
+             : "The bot starts with every skill that ships with Hermes.")
+            .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
     }
 
     private var lookCard: some View {
