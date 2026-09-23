@@ -79,6 +79,49 @@ final class ProfileSwitchAstraRegressionTests: APIClientTestCase {
         }
     }
 
+    /// Provider unknown until /api/models; early /api/reasoning 401 must still
+    /// win when the replacement reasoning call returns 500.
+    func testEarlyReasoningUnauthorizedSurvivesProviderDiscoveryRefetch() async throws {
+        var reasoningCalls = 0
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                // Model known, provider omitted → early reasoning runs without provider.
+                return apiTestJSONResponse(
+                    #"{"active":"work","profiles":[{"name":"work","model":"work-model"}]}"#,
+                    for: request
+                )
+            case "/api/models":
+                return apiTestJSONResponse(
+                    #"{"default_model":"work-model","groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"work-model","name":"Work"}]}]}"#,
+                    for: request
+                )
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[],"last":null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands":[]}"#, for: request)
+            case "/api/reasoning":
+                reasoningCalls += 1
+                if reasoningCalls == 1 {
+                    return self.errorResponse(401, request: request)
+                }
+                return self.errorResponse(500, request: request)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: .init(currentProfile: "work")
+        )
+        XCTAssertGreaterThanOrEqual(reasoningCalls, 2, "Provider discovery should re-query reasoning")
+        guard let error = result.configurationError, case APIError.unauthorized = error else {
+            return XCTFail(
+                "Early reasoning 401 must survive a 500 replacement: \(String(describing: result.configurationError))"
+            )
+        }
+    }
+
     func testForeignTakeDoesNotEvictUnconsumedOtherServers() {
         let a = URL(string: "https://example.test:443")!
         let b = URL(string: "https://example.test:8443")!

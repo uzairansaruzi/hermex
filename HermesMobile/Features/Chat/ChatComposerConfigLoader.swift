@@ -246,9 +246,17 @@ struct ChatComposerConfigLoader {
             } else if resolvedModel != nil || resolvedProvider != nil {
                 // Model only became known after `/api/models`, or the catalog
                 // changed the provider pairing — fetch with the final pair.
+                // Keep any early-wave 401 so AuthManager is not starved when the
+                // replacement request returns a non-auth failure.
+                if case .failure(let earlyError)? = earlyReasoning {
+                    configurationError = Self.preferredConfigurationError(
+                        existing: configurationError,
+                        incoming: earlyError
+                    )
+                }
                 reasoning = await fetchReasoning(model: resolvedModel, provider: resolvedProvider)
             } else {
-                reasoning = nil
+                reasoning = earlyReasoning
             }
 
             if let reasoning {
