@@ -224,6 +224,10 @@ final class SessionListViewModel {
 
     @discardableResult
     func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
+        // A return mark belongs to this attempt only. If it fails or is
+        // cancelled, a later reply must not be silently marked read.
+        let returnedFromIDs = returnedFromSessionIDs
+        returnedFromSessionIDs.subtract(returnedFromIDs)
         isLoading = true
         errorMessage = nil
         cacheErrorMessage = nil
@@ -240,7 +244,7 @@ final class SessionListViewModel {
                         && $0.archived != true
                         && $0.shouldAppearInSessionList
                 }
-            reconcileUnread(visibleSessions, allSessions: allSessions)
+            reconcileUnread(visibleSessions, allSessions: allSessions, returnedFromIDs: returnedFromIDs)
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 
@@ -499,8 +503,8 @@ final class SessionListViewModel {
         markSeen(session)
     }
 
-    /// The first successful list load after a chat closes stamps its freshest
-    /// server timestamp once, including a reply completed during that visit.
+    /// The next list load after a chat closes stamps its freshest server
+    /// timestamp if it succeeds, including a reply completed during that visit.
     func noteReturn(from session: SessionSummary) {
         guard let sessionID = Self.nonEmpty(session.sessionId) else { return }
         if viewingSessionID == sessionID { viewingSessionID = nil }
@@ -525,7 +529,11 @@ final class SessionListViewModel {
         persistSeen()
     }
 
-    private func reconcileUnread(_ visibleSessions: [SessionSummary], allSessions: [SessionSummary]) {
+    private func reconcileUnread(
+        _ visibleSessions: [SessionSummary],
+        allSessions: [SessionSummary],
+        returnedFromIDs: Set<String>
+    ) {
         let presentIDs = Set(allSessions.compactMap { Self.nonEmpty($0.sessionId) })
         var updated = seenMessageTimes.filter { presentIDs.contains($0.key) }
         for session in visibleSessions {
@@ -533,12 +541,11 @@ final class SessionListViewModel {
                   let timestamp = Self.messageTime(for: session)
             else { continue }
             if updated[sessionID] == nil
-                || returnedFromSessionIDs.contains(sessionID)
+                || returnedFromIDs.contains(sessionID)
                 || viewingSessionID == sessionID {
                 updated[sessionID] = max(updated[sessionID] ?? timestamp, timestamp)
             }
         }
-        returnedFromSessionIDs.removeAll()
         guard updated != seenMessageTimes else { return }
         seenMessageTimes = updated
         persistSeen()

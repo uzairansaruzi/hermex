@@ -214,6 +214,31 @@ final class SessionRowAttentionStateTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedReturnRefreshDoesNotMarkALaterReplyRead() async throws {
+        let responses = LockedQueue([
+            #"{"sessions":[{"session_id":"chat","title":"Chat","last_message_at":100}]}"#,
+            #"{"sessions":[{"session_id":"chat","title":"Chat","last_message_at":200}]}"#,
+            #"{"error":"offline"}"#,
+            #"{"sessions":[{"session_id":"chat","title":"Chat","last_message_at":300}]}"#
+        ])
+        let viewModel = try makeViewModel { request in
+            let body = responses.next()
+            return apiTestJSONResponse(body, for: request, status: body.contains("offline") ? 500 : 200)
+        }
+
+        await viewModel.load()
+        viewModel.beginViewing(viewModel.sessions[0])
+        await viewModel.load()
+        viewModel.noteReturn(from: viewModel.sessions[0])
+
+        let didLoad = await viewModel.load()
+        XCTAssertFalse(didLoad)
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.isUnread(viewModel.sessions[0]))
+    }
+
+    @MainActor
     func testUnreadToggleAndSuccessfulLoadPrune() async throws {
         let responses = LockedQueue([
             #"{"sessions":[{"session_id":"keep","title":"Keep","last_message_at":100},{"session_id":"gone","title":"Gone","last_message_at":100}]}"#,
