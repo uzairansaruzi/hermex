@@ -27,7 +27,10 @@ class CheckStringCatalogTests(unittest.TestCase):
         folder.mkdir(parents=True, exist_ok=True)
         entries = [{"key": key, "location": {"startingLine": line}} for key, line in keys]
         path = folder / f"{(source or self.source).stem}.stringsdata"
-        path.write_text(json.dumps({"source": str(source or self.source), "tables": {table: entries}}))
+        # One file per source holds every table that source uses, like the compiler's output.
+        data = json.loads(path.read_text()) if path.exists() else {"source": str(source or self.source), "tables": {}}
+        data["tables"].setdefault(table, []).extend(entries)
+        path.write_text(json.dumps(data))
 
     def every_target(self, keys):
         for target in TARGETS:
@@ -62,6 +65,8 @@ class CheckStringCatalogTests(unittest.TestCase):
         self.stringsdata("HermesMobile", [("Gone", 2)], source=self.root / "Deleted.swift")
         result = self.run_check(["Send"])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # The mixed-table file still contributes its Localizable key.
+        self.assertEqual(self.run_check([]).returncode, 1)
 
     def test_missing_target_output_is_an_error_not_a_pass(self):
         self.stringsdata("HermesMobile", [("Send", 3)])
