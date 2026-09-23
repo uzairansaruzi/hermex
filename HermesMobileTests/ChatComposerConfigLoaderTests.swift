@@ -395,18 +395,29 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
             defaultWorkspace: "/tmp/lab"
         )
 
-        RecentProfileSwitchSeed.store(seedA, for: serverA)
-        RecentProfileSwitchSeed.store(seedB, for: serverB)
+        RecentProfileSwitchSeed.store(seedA, for: serverA, sessionID: "chat-a")
+        RecentProfileSwitchSeed.store(seedB, for: serverB, sessionID: "chat-b")
 
         // Same host, different port → independent seeds.
-        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverA)?.active, "work")
-        XCTAssertNil(RecentProfileSwitchSeed.take(for: serverA), "Seed must be one-shot")
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverA, sessionID: "chat-a")?.active, "work")
+        XCTAssertNil(RecentProfileSwitchSeed.take(for: serverA, sessionID: "chat-a"), "Seed must be one-shot")
         // Looking up A must not wipe B.
-        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverB)?.active, "lab")
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverB, sessionID: "chat-b")?.active, "lab")
         XCTAssertNil(
-            RecentProfileSwitchSeed.take(for: URL(string: "https://other.test")!),
+            RecentProfileSwitchSeed.take(for: URL(string: "https://other.test")!, sessionID: "chat-a"),
             "Foreign servers must not observe another server's seed"
         )
+        // Same server, different session — sibling chat cannot steal the replacement seed.
+        RecentProfileSwitchSeed.store(seedA, for: serverA, sessionID: "replacement")
+        XCTAssertNil(
+            RecentProfileSwitchSeed.take(for: serverA, sessionID: "sibling"),
+            "A different session on the same server must not take the replacement seed"
+        )
+        XCTAssertNil(
+            RecentProfileSwitchSeed.take(for: serverA, sessionID: nil),
+            "A load without a session id must not take a replacement seed"
+        )
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverA, sessionID: "replacement")?.active, "work")
     }
 
     /// Artificial 80ms/endpoint latency: the pre-change serial schedule is five

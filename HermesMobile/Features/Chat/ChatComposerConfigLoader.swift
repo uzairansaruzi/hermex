@@ -97,9 +97,9 @@ struct ChatComposerProfileSeed: Sendable, Equatable {
 
 /// One-shot handoff so a replacement ChatView created after an empty-chat
 /// profile switch can skip `/api/profiles` the same way the in-place path does.
-/// Keyed by the full server URL (scheme + host + port + path), 5s TTL,
-/// consumed exactly once per server. Foreign lookups never wipe another
-/// server's pending seed.
+/// Keyed by the full server URL (scheme + host + port + path) AND the
+/// replacement session id, 5s TTL, consumed exactly once. Another chat on
+/// the same server cannot take this seed; foreign lookups never wipe it.
 enum RecentProfileSwitchSeed {
     private static let lock = NSLock()
     private static var entries: [String: (seed: ChatComposerProfileSeed, expires: Date)] = [:]
@@ -117,15 +117,24 @@ enum RecentProfileSwitchSeed {
         return normalized.lowercased()
     }
 
-    static func store(_ seed: ChatComposerProfileSeed, for server: URL) {
+    private static func entryKey(for server: URL, sessionID: String) -> String? {
+        let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return serverKey(for: server) + "\u{1e}" + trimmed
+    }
+
+    static func store(_ seed: ChatComposerProfileSeed, for server: URL, sessionID: String) {
         lock.withLock {
-            entries[serverKey(for: server)] = (seed, Date().addingTimeInterval(5))
+            guard let key = entryKey(for: server, sessionID: sessionID) else { return }
+            entries[key] = (seed, Date().addingTimeInterval(5))
         }
     }
 
-    static func take(for server: URL) -> ChatComposerProfileSeed? {
+    static func take(for server: URL, sessionID: String?) -> ChatComposerProfileSeed? {
         lock.withLock {
-            let key = serverKey(for: server)
+            guard let sessionID, let key = entryKey(for: server, sessionID: sessionID) else {
+                return nil
+            }
             guard let current = entries[key] else { return nil }
             entries[key] = nil
             guard current.expires > Date() else { return nil }
@@ -133,9 +142,12 @@ enum RecentProfileSwitchSeed {
         }
     }
 
-    static func discard(for server: URL) {
+    static func discard(for server: URL, sessionID: String?) {
         lock.withLock {
-            entries[serverKey(for: server)] = nil
+            guard let sessionID, let key = entryKey(for: server, sessionID: sessionID) else {
+                return
+            }
+            entries[key] = nil
         }
     }
 
@@ -246,15 +258,18 @@ struct ChatComposerConfigLoader {
             } else if resolvedModel != nil || resolvedProvider != nil {
                 // Model only became known after `/api/models`, or the catalog
                 // changed the provider pairing — fetch with the final pair.
-                // Keep any early-wave 401 so AuthManager is not starved when the
-                // replacement request returns a non-auth failure.
-                if case .failure(let earlyError)? = earlyReasoning {
+                reasoning = await fetchReasoning(model: resolvedModel, provider: resolvedProvider)
+                // Keep an early-wave 401 only when that replacement also fails,
+                // so AuthManager still sees expiry. Speculative non-auth errors
+                // (unscoped request → 4xx/5xx) must not remain after success.
+                if case .failure(_) = reasoning,
+                   case .failure(let earlyError)? = earlyReasoning,
+                   case .unauthorized = earlyError as? APIError {
                     configurationError = Self.preferredConfigurationError(
                         existing: configurationError,
                         incoming: earlyError
                     )
                 }
-                reasoning = await fetchReasoning(model: resolvedModel, provider: resolvedProvider)
             } else {
                 reasoning = earlyReasoning
             }

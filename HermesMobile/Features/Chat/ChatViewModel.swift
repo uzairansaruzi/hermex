@@ -1101,7 +1101,7 @@ final class ChatViewModel {
 
         // Prefer an explicit seed; otherwise consume a just-completed switch
         // handoff so empty-chat replacement VMs skip another profiles RTT.
-        var pendingProfileSeed = profileSeed ?? RecentProfileSwitchSeed.take(for: server)
+        var pendingProfileSeed = profileSeed ?? RecentProfileSwitchSeed.take(for: server, sessionID: sessionID)
         repeat {
             needsComposerConfigurationReload = false
 
@@ -1501,6 +1501,7 @@ final class ChatViewModel {
         lastError = nil
         defer { isUpdatingComposerConfiguration = false }
 
+        var publishedSeedSessionID: String?
         do {
             let response = try await client.switchProfile(name: profileName, ownership: ownership)
             guard !Task.isCancelled, canComplete() else { throw CancellationError() }
@@ -1562,13 +1563,15 @@ final class ChatViewModel {
 
             guard !Task.isCancelled, canComplete() else { throw CancellationError() }
             guard let session = newSessionResponse.session,
-                  Self.nonEmpty(session.sessionId) != nil else {
+                  let createdSessionID = Self.nonEmpty(session.sessionId) else {
                 throw APIError.decoding(underlying: URLError(.cannotParseResponse))
             }
 
             // Empty/new-session switches rebuild ChatView; stash the seed so
-            // the replacement VM's first composer load skips profiles.
-            RecentProfileSwitchSeed.store(seed, for: server)
+            // the replacement VM's first composer load skips profiles. Bind it
+            // to this session so a sibling chat on the same server cannot take it.
+            RecentProfileSwitchSeed.store(seed, for: server, sessionID: createdSessionID)
+            publishedSeedSessionID = createdSessionID
 
             if !messages.isEmpty {
                 // This VM stays on the back stack. Its session and route still
@@ -1584,7 +1587,7 @@ final class ChatViewModel {
             return ProfileSwitchOutcome(session: SessionSummary(from: session))
         } catch {
             let switchFailure = error
-            RecentProfileSwitchSeed.discard(for: server)
+            RecentProfileSwitchSeed.discard(for: server, sessionID: publishedSeedSessionID)
             // The cookie and composer must roll back together. If rollback
             // fails, keep the old session fenced rather than issue writes in
             // an unknown profile context.

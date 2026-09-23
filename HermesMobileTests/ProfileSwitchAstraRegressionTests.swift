@@ -125,11 +125,12 @@ final class ProfileSwitchAstraRegressionTests: APIClientTestCase {
     func testForeignTakeDoesNotEvictUnconsumedOtherServers() {
         let a = URL(string: "https://example.test:443")!
         let b = URL(string: "https://example.test:8443")!
-        RecentProfileSwitchSeed.store(.init(profiles: [], active: "a"), for: a)
-        RecentProfileSwitchSeed.store(.init(profiles: [], active: "b"), for: b)
-        XCTAssertNil(RecentProfileSwitchSeed.take(for: URL(string: "https://foreign.test")!))
-        XCTAssertEqual(RecentProfileSwitchSeed.take(for: a)?.active, "a")
-        XCTAssertEqual(RecentProfileSwitchSeed.take(for: b)?.active, "b")
+        RecentProfileSwitchSeed.store(.init(profiles: [], active: "a"), for: a, sessionID: "s-a")
+        RecentProfileSwitchSeed.store(.init(profiles: [], active: "b"), for: b, sessionID: "s-b")
+        XCTAssertNil(RecentProfileSwitchSeed.take(for: URL(string: "https://foreign.test")!, sessionID: "s-a"))
+        XCTAssertNil(RecentProfileSwitchSeed.take(for: a, sessionID: "other"))
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: a, sessionID: "s-a")?.active, "a")
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: b, sessionID: "s-b")?.active, "b")
     }
 
     @MainActor
@@ -164,14 +165,14 @@ final class ProfileSwitchAstraRegressionTests: APIClientTestCase {
 
         // While create is pending, no replacement seed may exist for another chat to steal.
         XCTAssertNil(
-            RecentProfileSwitchSeed.take(for: server),
+            RecentProfileSwitchSeed.take(for: server, sessionID: "replacement"),
             "Seed must not be published before createSession succeeds"
         )
 
         release.signal()
         let outcome = await switching.value
         XCTAssertNil(outcome)
-        XCTAssertNil(RecentProfileSwitchSeed.take(for: server))
+        XCTAssertNil(RecentProfileSwitchSeed.take(for: server, sessionID: "replacement"))
     }
 
     @MainActor
@@ -262,5 +263,129 @@ final class ProfileSwitchAstraRegressionTests: APIClientTestCase {
             startNewSession: true
         )
         XCTAssertEqual(outcome?.session?.sessionId, "replacement")
+    }
+
+    /// Early /api/reasoning 500 without a provider must not stick after the
+    /// provider-scoped refetch succeeds.
+    func testEarlyReasoningNonAuthFailureClearsWhenProviderScopedRequestSucceeds() async throws {
+        var reasoningCalls = 0
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse(
+                    #"{"active":"work","profiles":[{"name":"work","model":"work-model"}]}"#,
+                    for: request
+                )
+            case "/api/models":
+                return apiTestJSONResponse(
+                    #"{"default_model":"work-model","groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"work-model","name":"Work"}]}]}"#,
+                    for: request
+                )
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[],"last":null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands":[]}"#, for: request)
+            case "/api/reasoning":
+                reasoningCalls += 1
+                if reasoningCalls == 1 {
+                    return self.errorResponse(500, request: request)
+                }
+                return apiTestJSONResponse(#"{"reasoning_effort":"medium"}"#, for: request)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: .init(currentProfile: "work")
+        )
+        XCTAssertGreaterThanOrEqual(reasoningCalls, 2, "Provider discovery should re-query reasoning")
+        XCTAssertNil(
+            result.configurationError,
+            "A speculative early 500 must not surface after the provider-scoped request succeeds: \(String(describing: result.configurationError))"
+        )
+        XCTAssertEqual(result.state.selectedReasoningEffort, "medium")
+    }
+
+    /// Early 401 is only preserved when the replacement also fails. A successful
+    /// provider-scoped refetch means the composer loaded; do not keep the banner.
+    func testEarlyReasoningUnauthorizedDoesNotStickWhenReplacementSucceeds() async throws {
+        var reasoningCalls = 0
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse(
+                    #"{"active":"work","profiles":[{"name":"work","model":"work-model"}]}"#,
+                    for: request
+                )
+            case "/api/models":
+                return apiTestJSONResponse(
+                    #"{"default_model":"work-model","groups":[{"name":"OpenAI","provider_id":"openai","models":[{"id":"work-model","name":"Work"}]}]}"#,
+                    for: request
+                )
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[],"last":null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands":[]}"#, for: request)
+            case "/api/reasoning":
+                reasoningCalls += 1
+                if reasoningCalls == 1 {
+                    return self.errorResponse(401, request: request)
+                }
+                return apiTestJSONResponse(#"{"reasoning_effort":"low"}"#, for: request)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: .init(currentProfile: "work")
+        )
+        XCTAssertGreaterThanOrEqual(reasoningCalls, 2)
+        XCTAssertNil(
+            result.configurationError,
+            "Successful replacement must clear an early 401: \(String(describing: result.configurationError))"
+        )
+        XCTAssertEqual(result.state.selectedReasoningEffort, "low")
+    }
+
+    @MainActor
+    func testSiblingChatCannotStealReplacementProfileSeed() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                return apiTestJSONResponse(
+                    #"{"active":"research","default_model":"research-model","profiles":[{"name":"research","model":"research-model","provider":"openai"}]}"#,
+                    for: request
+                )
+            case "/api/session/new":
+                return apiTestJSONResponse(
+                    #"{"session":{"session_id":"replacement","profile":"research"}}"#,
+                    for: request
+                )
+            case "/api/profiles":
+                return apiTestJSONResponse(
+                    #"{"active":"work","profiles":[{"name":"work","model":"work-model","provider":"openai"}]}"#,
+                    for: request
+                )
+            case "/api/models", "/api/workspaces", "/api/commands", "/api/reasoning":
+                return apiTestJSONResponse("{}", for: request)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let original = ChatViewModel(session: try summary("work", id: "original"), server: server, client: client)
+        let outcome = await original.switchProfile(profile("research"), startNewSession: true)
+        XCTAssertEqual(outcome?.session?.sessionId, "replacement")
+
+        let sibling = ChatViewModel(session: try summary("work", id: "sibling"), server: server, client: client)
+        await sibling.loadComposerConfiguration()
+
+        XCTAssertEqual(
+            RecentProfileSwitchSeed.take(for: server, sessionID: "replacement")?.active,
+            "research",
+            "Sibling composer load on the same server must leave the replacement seed in place"
+        )
     }
 }
