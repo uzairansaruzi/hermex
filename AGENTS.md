@@ -10,7 +10,7 @@ Hermex is on the App Store and people run it against their own servers every day
 
 ### 1. Open at the core
 
-Hermex is truly open. We share our roadmap (GitHub Issues), we share how we think about things, and of course we share all our code. There is no Hermex relay, hosted backend, analytics service, or tracking layer: agent work and data stay on the user's hardware. We work in the open, and should strive to stay that way.
+Hermex is truly open. We share our roadmap (GitHub Issues), we share how we think about things, and of course we share all our code. There is no Hermex hosted backend, analytics service, or tracking layer: agent work and data stay on the user's hardware. Push notifications are the one exception, and they are optional and off until enabled: they route through an open-source, self-hostable relay (`uzairansaruzi/hermex-push`) that sees device tokens, notification metadata, and ciphertext, never message text, server URLs, or credentials. `docs/agents/push.md` has the details. We work in the open, and should strive to stay that way.
 
 ### 2. Performance without compromise
 
@@ -77,7 +77,7 @@ The most common defect in this repo is a change that works on the path you teste
 - **Reverse states.** If you added a way in, add the way out and the way to see it. Archive needs restore. Pin needs unpin. Start needs stop. Optimistic mutation needs rollback. A one-way door is a bug.
 - **Connection modes.** `localhost`, Tailscale, and tunnel behave differently; Cloudflare closes quiet streams. Backgrounding, reconnecting, and reattaching to a live stream instead of resending the message are real cases.
 - **Native quality.** Dynamic Type, VoiceOver labels, Reduce Motion, light and dark appearance, keyboard focus, and localization. Read `docs/agents/i18n.md` before touching the String Catalog, plurals, casing, or RTL.
-- **Docs.** Agent conventions live in `docs/agents/`; new vocabulary in `CONTEXT.md`; build and simulator mechanics in `DEVELOPMENT.md`; upstream parity status in `docs/agents/feature-gap-index.md`; Kanban contract and behavior rules in `docs/agents/kanban.md`. `CHANGELOG.md` is written at release time, not per PR.
+- **Docs.** Agent conventions live in `docs/agents/`; new vocabulary in `CONTEXT.md`; build and simulator mechanics in `DEVELOPMENT.md`; upstream parity status in `docs/agents/feature-gap-index.md`; Kanban contract and behavior rules in `docs/agents/kanban.md`. Push components, keys, and relay data in `docs/agents/push.md`. `CHANGELOG.md` is written at release time, not per PR.
 
 ## Working with the server
 
