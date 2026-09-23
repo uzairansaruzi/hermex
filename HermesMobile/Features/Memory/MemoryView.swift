@@ -51,9 +51,7 @@ struct MemoryView: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading && !viewModel.hasLoaded {
-            ProgressView("Loading memory...")
-        } else if let errorMessage = viewModel.errorMessage, !viewModel.hasLoaded {
+        if let errorMessage = viewModel.errorMessage, !viewModel.hasLoaded {
             ContentUnavailableView {
                 Label("Could Not Load Memory", systemImage: "exclamationmark.triangle")
             } description: {
@@ -115,6 +113,18 @@ struct MemoryView: View {
     }
 }
 
+private struct ModifiedAtLabel: View {
+    let modifiedAt: Date?
+
+    var body: some View {
+        if let modifiedAt {
+            Text("Modified \(modifiedAt, style: .relative) ago")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct MemorySectionHeader: View {
     let section: MemorySection
     let modifiedAt: Date?
@@ -125,11 +135,7 @@ private struct MemorySectionHeader: View {
         HStack(spacing: 8) {
             Label(section.title, systemImage: section.systemImage)
             Spacer()
-            if let modifiedAt {
-                Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            ModifiedAtLabel(modifiedAt: modifiedAt)
             Button(action: onEdit) {
                 Label("Edit \(section.title)", systemImage: "pencil")
                     .labelStyle(.iconOnly)
@@ -140,8 +146,7 @@ private struct MemorySectionHeader: View {
     }
 }
 
-/// Header for the read-only project-context document: no edit affordance — the
-/// server has no write path for this section — so a lock icon marks it read-only.
+/// Read-only project-context header — the server has no write path for this section.
 private struct ProjectContextSectionHeader: View {
     let modifiedAt: Date?
 
@@ -149,11 +154,7 @@ private struct ProjectContextSectionHeader: View {
         HStack(spacing: 8) {
             Label("Project Context", systemImage: "folder.badge.gearshape")
             Spacer()
-            if let modifiedAt {
-                Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            ModifiedAtLabel(modifiedAt: modifiedAt)
             Image(systemName: "lock.fill")
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(Text("Read-only"))
@@ -182,7 +183,7 @@ private struct MemorySectionContent: View {
     let content: String
 
     var body: some View {
-        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if content.isBlank {
             Text(section.emptyMessage)
                 .foregroundStyle(.secondary)
                 .italic()
