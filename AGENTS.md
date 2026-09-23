@@ -10,7 +10,7 @@ Hermex is on the App Store and people run it against their own servers every day
 
 ### 1. Open at the core
 
-Hermex is truly open. We share our roadmap (GitHub Issues), we share how we think about things, and of course we share all our code. There is no Hermex hosted backend, analytics service, or tracking layer: agent work and data stay on the user's hardware. Push notifications are the one exception, and they are optional and off until enabled: they route through an open-source, self-hostable relay (`uzairansaruzi/hermex-push`) that sees device tokens, notification metadata, and ciphertext, never message text, server URLs, or credentials. `docs/agents/push.md` has the details. We work in the open, and should strive to stay that way.
+Hermex is truly open. We share our roadmap (GitHub Issues), we share how we think about things, and of course we share all our code. There is no Hermex hosted backend, analytics service, or tracking layer: agent work and data stay on the user's hardware. Push notifications are the one exception, and they are optional and off until enabled: they route through an open-source, self-hostable relay (`uzairansaruzi/hermex-push`) that sees device tokens, notification metadata, and ciphertext, never message text, server URLs, or Hermes server credentials. `docs/agents/push.md` has the details. We work in the open, and should strive to stay that way.
 
 ### 2. Performance without compromise
 
