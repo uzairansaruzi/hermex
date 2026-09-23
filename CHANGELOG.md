@@ -7,6 +7,42 @@ Security sections per release.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-23
+
+### Added
+- Bot Mode (beta, off until enabled in Settings): connect directly to a Hermes
+  agent host and chat with its bots from a Bots inbox. Create, duplicate,
+  edit, and delete bots, including their face, model, capabilities, and
+  instructions. Follow tools, reasoning, and delegated work live; steer,
+  queue, or interrupt a working bot; answer approvals, questions, and
+  credential prompts; send attachments; mention teammates and files with `@`
+  and skills with `/`; dictate on-device; search bots and messages; and take
+  part in group rooms.
+- Optional push notifications through an open-source relay you can self-host.
+  Notification text is encrypted on your Hermes host and decrypted only on
+  the iPhone. Turn them on from the Hermes connection screen and tune them
+  under Settings > Interaction. Tapping a notification opens the right
+  session or bot.
+- Live Activities for working bots and WebUI runs keep updating while the
+  phone is locked, and show tool counts and how fresh the update is.
+- Session rows show unread replies.
+- Select text in responses and ask Hermex about the selection.
+- Steering hints appear inline in the transcript.
+- A custom photo and camera picker for attachments.
+- The Usage screen shows provider account limits.
+- An optional "Buy Uzi a coffee" link, and rating requests at quiet moments.
+
+### Fixed
+- Live streams resume from the last event after a reconnect, and the reconnect
+  probe retries after a transport drop.
+- Pending approvals stay visible across stream transitions, and clarification
+  requests stay above the keyboard.
+- Long conversations scroll with less lag and do less math formatting work.
+- Native composer text gestures and manual composer scrolling work again, and
+  the profile chip stays inside the composer.
+- Attachment thumbnails are cached per server.
+- Reduce Motion is honored in chat, Git toasts, and onboarding.
+
 ## [1.6.0] - 2026-09-05
 
 ### Added
