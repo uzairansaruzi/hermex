@@ -252,7 +252,7 @@ Steps:
 
 ## Full-App Manual Regression Checklist
 
-Use this before internal TestFlight smoke builds and again before adding external testers.
+Run this on the first release candidate of each marketing version ([TESTFLIGHT.md](TESTFLIGHT.md#test-the-release-candidate)).
 Capture bugs, polish notes, and follow-up ideas in [GitHub Issues](https://github.com/uzairansaruzi/hermex/issues).
 
 ### Onboarding/Auth

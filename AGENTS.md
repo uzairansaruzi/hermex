@@ -110,7 +110,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 ## Pull requests
 
 - Never push a branch, open or update a PR, or merge unless the developer explicitly asks you to do so.
-- One issue → one short `issue/<n>-slug` branch → one PR (`chore/` or `fix/` for approved work without an issue). `master` is the protected internal-TestFlight candidate: keep it buildable, never do feature work on it.
+- One issue → one short `issue/<n>-slug` branch → one PR (`chore/` or `fix/` for approved work without an issue). `master` is the protected release-candidate branch: keep it buildable, never do feature work on it.
 - Conventional commit titles, plain language: `fix(chat): recover the active stream after foregrounding`.
 - Body: follow the PR template. `Fixes #<n>`, the problem in a sentence or two, then how you fixed it and exactly how it was tested. End with the model and harness that did the work.
 - UI changes need before/after images. Motion or timing needs a short video.

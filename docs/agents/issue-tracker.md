@@ -37,7 +37,7 @@ GitHub Issues are the work queue; pull requests are the review and merge record.
 - Use the PR for review: GitHub/Copilot review, CI, external agent review, and human comments should live there when possible.
 - Address PR review comments by triaging them first; do not blindly accept automated review feedback.
 - Merge into `master` only after validation passes, review feedback is resolved, and the human approves.
-- Keep `master` buildable because it is the internal TestFlight candidate branch.
+- Keep `master` buildable because it is the release-candidate branch.
 
 ## Upstream Parity Tracking
 

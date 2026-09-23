@@ -135,7 +135,7 @@ class TestFlightBuildNumberSelector
       raise SelectionError,
             "The #{marketing_version} pre-release train is closed: App Store version #{blocking} is already approved. " \
             "Bump MARKETING_VERSION in HermesMobile.xcodeproj/project.pbxproj above #{blocking}, land it on master, " \
-            "and re-run this workflow (see TESTFLIGHT.md, Upload External-Capable Build)."
+            "and re-run this workflow (see TESTFLIGHT.md, Upload a release candidate)."
     end
 
     warn "Pre-release train #{marketing_version} is open: no approved App Store version at or above it."
