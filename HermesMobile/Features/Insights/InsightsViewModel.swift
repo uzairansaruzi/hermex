@@ -195,9 +195,10 @@ final class InsightsViewModel {
             } catch {
                 guard activeLoadID == loadID, !Task.isCancelled else { return }
                 lastError = error
-                if hadLoadedAnalytics {
-                    fallbackReason = error.localizedDescription
-                } else {
+                // Keep the insights error as the fallback reason: it is why we
+                // are on the fallback at all. The sessions failure reaches the
+                // user through lastError.
+                if !hadLoadedAnalytics {
                     errorMessage = error.localizedDescription
                     dataSource = .local
                 }
