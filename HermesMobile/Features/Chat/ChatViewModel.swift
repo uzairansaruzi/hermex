@@ -1550,10 +1550,9 @@ final class ChatViewModel {
                 return ProfileSwitchOutcome(session: nil)
             }
 
-            // Empty/new-session switches rebuild ChatView; stash the seed so
-            // the replacement VM's first composer load skips profiles.
-            RecentProfileSwitchSeed.store(seed, for: server)
-
+            // Create first, then stash the seed. Storing before create lets an
+            // unrelated chat on the same server consume a destination seed while
+            // creation is still pending (and can fail).
             let newSessionResponse = try await client.createSession(
                 workspace: currentWorkspace,
                 model: currentModel,
@@ -1566,6 +1565,10 @@ final class ChatViewModel {
                   Self.nonEmpty(session.sessionId) != nil else {
                 throw APIError.decoding(underlying: URLError(.cannotParseResponse))
             }
+
+            // Empty/new-session switches rebuild ChatView; stash the seed so
+            // the replacement VM's first composer load skips profiles.
+            RecentProfileSwitchSeed.store(seed, for: server)
 
             if !messages.isEmpty {
                 // This VM stays on the back stack. Its session and route still
@@ -1580,6 +1583,7 @@ final class ChatViewModel {
             }
             return ProfileSwitchOutcome(session: SessionSummary(from: session))
         } catch {
+            let switchFailure = error
             RecentProfileSwitchSeed.discard(for: server)
             // The cookie and composer must roll back together. If rollback
             // fails, keep the old session fenced rather than issue writes in
@@ -1587,6 +1591,7 @@ final class ChatViewModel {
             profileToRestoreAfterNavigation = previousProfile
             profileRecoveryOwnership = ownership
             isProfileSessionHandoff = true
+            var reportedError: Error = switchFailure
             do {
                 if let response = try await client.restoreProfile(name: previousProfile, ownership: ownership) {
                     if let active = Self.nonEmpty(response.active), active != previousProfile {
@@ -1600,13 +1605,17 @@ final class ChatViewModel {
                 profileRecoveryOwnership = nil
             } catch {
                 isProfileSessionHandoff = true
+                // A 401 on rollback must reach AuthManager even when create failed first.
+                if case .unauthorized = error as? APIError {
+                    reportedError = error
+                }
             }
             applyComposerConfigurationState(previousState)
             pendingExplicitModelPick = previousExplicitPick
             restoredSessionModel = previousRestoredModel
             restoredSessionModelProvider = previousRestoredProvider
-            lastError = error
-            composerConfigurationErrorMessage = error.localizedDescription
+            lastError = reportedError
+            composerConfigurationErrorMessage = reportedError.localizedDescription
             return nil
         }
     }
@@ -4361,6 +4370,13 @@ final class ChatViewModel {
     }
 
     private func canRunConfigurationSlashCommand(_ actionDescription: String) -> Bool {
+        if isProfileSessionHandoff {
+            composerConfigurationErrorMessage = String(
+                localized: "Restore the original profile before you \(actionDescription)."
+            )
+            return false
+        }
+
         if isViewingCachedData {
             composerConfigurationErrorMessage = String(localized: "Reconnect to the server to \(actionDescription).")
             return false

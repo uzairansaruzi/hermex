@@ -204,7 +204,10 @@ struct ChatComposerConfigLoader {
                         ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
                 }
             case .failure(let error):
-                configurationError = error
+                configurationError = Self.preferredConfigurationError(
+                    existing: configurationError,
+                    incoming: error
+                )
             }
 
             switch workspaces {
@@ -216,9 +219,10 @@ struct ChatComposerConfigLoader {
                 }
                 state.workspaceSuggestions = state.workspaceRoots.compactMap(\.path)
             case .failure(let error):
-                if configurationError == nil {
-                    configurationError = error
-                }
+                configurationError = Self.preferredConfigurationError(
+                    existing: configurationError,
+                    incoming: error
+                )
             }
 
             switch commands {
@@ -254,9 +258,10 @@ struct ChatComposerConfigLoader {
                     state.supportedReasoningEfforts = reasoningResponse.normalizedSupportedEfforts
                     state.supportsReasoningEffort = reasoningResponse.supportsReasoningEffort
                 case .failure(let error):
-                    if configurationError == nil {
-                        configurationError = error
-                    }
+                    configurationError = Self.preferredConfigurationError(
+                        existing: configurationError,
+                        incoming: error
+                    )
                 }
             }
         } catch {
@@ -365,6 +370,18 @@ struct ChatComposerConfigLoader {
     ) async -> Result<ReasoningStatusResponse, Error>? {
         guard model != nil || provider != nil else { return nil }
         return await fetchReasoning(model: model, provider: provider)
+    }
+
+    private static func preferredConfigurationError(existing: Error?, incoming: Error) -> Error {
+        // Parallel wave can return several failures. Auth expiry must win so
+        // AuthManager.handleAPIError still signs the user out.
+        if let existing, case .unauthorized = existing as? APIError {
+            return existing
+        }
+        if case .unauthorized = incoming as? APIError {
+            return incoming
+        }
+        return existing ?? incoming
     }
 
     private static func profileSummary(
