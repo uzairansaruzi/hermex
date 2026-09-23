@@ -48,21 +48,29 @@ struct PushPairing: Codable, Equatable, Sendable {
     private static let lowercaseHex = Set("0123456789abcdef")
 }
 
-/// Device choices sent as `prefs` to the relay. Missing fields preserve its defaults.
+/// Device choices sent as `prefs` to the relay. Missing fields take the relay's
+/// defaults, except `presenceSuppression`.
 struct PushPreferences: Codable, Equatable, Sendable {
     var replies = true
     var muteSubagents = true
     var previews = true
+    /// Keeps the open conversation's replies from showing a banner while the app is
+    /// in the foreground (`PushPresence`). The app alone enforces it and never sends
+    /// the relay a presence lease, so it defaults on even though the relay's
+    /// default is off.
+    var presenceSuppression = true
 
-    init(replies: Bool = true, muteSubagents: Bool = true, previews: Bool = true) {
+    init(replies: Bool = true, muteSubagents: Bool = true, previews: Bool = true, presenceSuppression: Bool = true) {
         self.replies = replies
         self.muteSubagents = muteSubagents
         self.previews = previews
+        self.presenceSuppression = presenceSuppression
     }
 
     enum CodingKeys: String, CodingKey {
         case replies, previews
         case muteSubagents = "mute_subagents"
+        case presenceSuppression = "presence_suppression"
     }
 
     init(from decoder: Decoder) throws {
@@ -70,6 +78,7 @@ struct PushPreferences: Codable, Equatable, Sendable {
         replies = try values.decodeIfPresent(Bool.self, forKey: .replies) ?? true
         muteSubagents = try values.decodeIfPresent(Bool.self, forKey: .muteSubagents) ?? true
         previews = try values.decodeIfPresent(Bool.self, forKey: .previews) ?? true
+        presenceSuppression = try values.decodeIfPresent(Bool.self, forKey: .presenceSuppression) ?? true
     }
 }
 

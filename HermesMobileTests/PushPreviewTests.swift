@@ -2,8 +2,9 @@ import UserNotifications
 import XCTest
 @testable import HermesMobile
 
-/// The sealed-preview decrypt, the banner rewrite and the tap route (#559). The vector
-/// is the plugin's own `plugin/hermex_push_tests/fixtures/sealed_preview.json`.
+/// The sealed-preview decrypt, the banner rewrite, the tap route (#559) and foreground
+/// presentation (#566). The vector is the plugin's own
+/// `plugin/hermex_push_tests/fixtures/sealed_preview.json`.
 @MainActor final class PushPreviewTests: XCTestCase {
     private let keys = PushPreviewKeys(
         installKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -168,6 +169,47 @@ import XCTest
         let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
         XCTAssertEqual(PushNotificationRouter.webuiDestination(
             userInfo: info, pairings: [server: pairing, other: unrelated], activeServer: other)?.server, server)
+    }
+
+    func testForegroundShowsRelayPushesButQuietsTheOpenChatsReplies() {
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        let open = PushPresence.Viewer(server: server, sessionID: "s1")
+        let reply = banner(sealed: nil).userInfo
+        let shown: UNNotificationPresentationOptions = [.banner, .list, .sound]
+        XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: open, pairings: [server: pairing]), [])
+        for kind in ["approval", "clarify", "input", "turn_error"] {
+            var info = reply
+            info["kind"] = kind
+            XCTAssertEqual(PushPresence.presentation(userInfo: info, viewer: open, pairings: [server: pairing]), shown)
+        }
+        XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: nil, pairings: [server: pairing]), shown)
+        XCTAssertEqual(PushPresence.presentation(
+            userInfo: reply, viewer: .init(server: server, sessionID: "s2"), pairings: [server: pairing]), shown)
+        // The same session ID open on another server's install is a different conversation.
+        let other = URL(string: "https://other.example")!
+        let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
+        XCTAssertEqual(PushPresence.presentation(
+            userInfo: reply, viewer: .init(server: other, sessionID: "s1"), pairings: [server: pairing, other: unrelated]), shown)
+
+        var loud = pairing
+        loud.preferences = PushPreferences(presenceSuppression: false)
+        XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: open, pairings: [server: loud]), shown)
+        // Local alerts and pushes from an install this phone no longer holds keep the
+        // system default of showing nothing in the foreground.
+        XCTAssertEqual(PushPresence.presentation(userInfo: [:], viewer: nil, pairings: [server: pairing]), [])
+        XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: nil, pairings: [:]), [])
+    }
+
+    func testPresenceOnlyClearsForTheScreenThatEntered() {
+        let presence = PushPresence()
+        let first = PushPresence.Viewer(server: server, sessionID: "s1")
+        let second = PushPresence.Viewer(server: server, sessionID: "s2")
+        presence.enter(first)
+        presence.enter(second)
+        presence.leave(first)
+        XCTAssertEqual(presence.viewer, second)
+        presence.leave(second)
+        XCTAssertNil(presence.viewer)
     }
 
     /// A banner as the relay's `bannerPush` builds it.

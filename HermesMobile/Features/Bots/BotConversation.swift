@@ -215,6 +215,11 @@ import Observation
         liveActivityFeed?.sync(liveActivitySnapshot, profile: profile)
     }
 
+    /// Push presence names a bot by its live agent session, as the plugin reports it.
+    var pushPresence: PushPresence.Viewer? {
+        tip.map { PushPresence.Viewer(server: server, sessionID: $0) }
+    }
+
     var artifactContext: BotArtifactContext? {
         guard connectionState == .connected, let tip else { return nil }
         return BotArtifactContext(connectionID: connection.id, profile: profile.id, sessionID: tip, generation: generation)

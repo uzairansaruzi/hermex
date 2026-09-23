@@ -53,6 +53,7 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(decoded.effectivePreferences, PushPreferences())
         let partial = try JSONDecoder().decode(PushPreferences.self, from: Data(#"{"previews":false,"future":true}"#.utf8))
         XCTAssertEqual(partial, PushPreferences(previews: false))
+        XCTAssertTrue(partial.presenceSuppression, "Only the app enforces it, so it defaults on unlike the relay")
     }
 
     func testPreferencesPersistForOnlyTheirServerAndSurviveRefreshAndRotation() async throws {
@@ -489,7 +490,8 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(json["device_token"] as? String, "0a1b")
         XCTAssertEqual(json["bundle_id"] as? String, "com.uzairansar.hermesmobile")
         XCTAssertEqual(json["environment"] as? String, "sandbox")
-        XCTAssertEqual(json["prefs"] as? [String: Bool], ["replies": false, "mute_subagents": false, "previews": false])
+        XCTAssertEqual(json["prefs"] as? [String: Bool],
+                       ["replies": false, "mute_subagents": false, "previews": false, "presence_suppression": true])
     }
 
     func testRelayDeleteAddressesTheDeviceTokenAndSurfacesTheStatus() async {

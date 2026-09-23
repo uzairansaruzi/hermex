@@ -746,6 +746,7 @@ struct ChatView: View {
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
+        .pushPresence(viewModel.pushPresence)
         .task(id: didCompleteInitialAppearance) {
             await handleInitialAppearanceTask()
         }

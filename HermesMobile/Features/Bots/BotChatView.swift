@@ -222,6 +222,7 @@ import SwiftUI
             else { stopAction = nil; model.suspend() }
         }
         .onDisappear { stopAction = nil; model.suspend() }
+        .pushPresence(model.pushPresence)
         .onChange(of: model.linkedRootIsStale) {
             // The link named a conversation this bot has replaced: hand it back to
             // the inbox, which reports it (#554).

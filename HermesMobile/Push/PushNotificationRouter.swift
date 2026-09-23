@@ -1,4 +1,5 @@
-import Foundation
+import SwiftUI
+import UserNotifications
 
 /// Turns a tapped relay banner into the conversation it is about. A tap only ever navigates:
 /// an approval push lands on the conversation, where approving is its own deliberate
@@ -103,5 +104,82 @@ struct WebuiPushDestination: Hashable {
         guard state.server == server else { return .switchServer(account) }
         if case .loggedIn = state { return .open }
         return .waitForSignIn
+    }
+}
+
+/// The conversation on screen, and what a relay push may show while the app is open
+/// (#566). Chat screens report themselves; `PushAppDelegate` asks `presentation`
+/// when a push arrives in the foreground.
+@MainActor final class PushPresence {
+    static let shared = PushPresence()
+
+    struct Viewer: Hashable {
+        let server: URL
+        /// The session the plugin reports under: a webui session's own ID, or a
+        /// bot's live agent session.
+        let sessionID: String
+    }
+
+    /// Kinds that ask something of the user. They show even over their own conversation.
+    static let attentionKinds: Set<String> = ["approval", "clarify", "input", "turn_error"]
+
+    private(set) var viewer: Viewer?
+
+    func enter(_ viewer: Viewer) { self.viewer = viewer }
+
+    /// Only the screen that entered can clear it, so an old chat disappearing after
+    /// its replacement appeared leaves the new one on record.
+    func leave(_ viewer: Viewer) {
+        if self.viewer == viewer { self.viewer = nil }
+    }
+
+    /// A relay push shows as a banner unless it is about `viewer`'s conversation,
+    /// asks nothing of the user, and that server has presence suppression on.
+    /// Anything else, such as a local completion alert or a push from an install
+    /// no longer paired, keeps the system default of showing nothing in the foreground.
+    static func presentation(
+        userInfo: [AnyHashable: Any], viewer: Viewer?, pairings: [URL: PushPairing]
+    ) -> UNNotificationPresentationOptions {
+        let payload = PushPayload(userInfo: userInfo)
+        guard let hash = payload.installHash else { return [] }
+        let servers = pairings.filter {
+            PushPreviewKeys(installKey: $0.value.installKey, previewKey: $0.value.previewKey).installHash == hash
+        }
+        guard !servers.isEmpty else { return [] }
+        if let viewer, viewer.sessionID == payload.sessionID,
+           servers[viewer.server]?.effectivePreferences.presenceSuppression == true,
+           !attentionKinds.contains(payload.kind ?? "") {
+            return []
+        }
+        return [.banner, .list, .sound]
+    }
+}
+
+extension View {
+    /// Records `viewer` as the conversation on screen while this view is visible.
+    func pushPresence(_ viewer: PushPresence.Viewer?) -> some View {
+        modifier(PushPresenceModifier(viewer: viewer))
+    }
+}
+
+private struct PushPresenceModifier: ViewModifier {
+    let viewer: PushPresence.Viewer?
+    @State private var isVisible = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                isVisible = true
+                if let viewer { PushPresence.shared.enter(viewer) }
+            }
+            .onDisappear {
+                isVisible = false
+                if let viewer { PushPresence.shared.leave(viewer) }
+            }
+            .onChange(of: viewer) { old, new in
+                // A bot's live session can arrive after the screen or move mid-turn.
+                if let old { PushPresence.shared.leave(old) }
+                if isVisible, let new { PushPresence.shared.enter(new) }
+            }
     }
 }

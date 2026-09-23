@@ -29,9 +29,22 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         MainActor.assumeIsolated { PushRegistrar.shared?.didFailToRegisterForRemoteNotifications(error: error) }
     }
 
+    /// A relay push that arrives while the app is open shows as a banner, except the
+    /// open conversation's quiet kinds (`PushPresence`).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        let userInfo = notification.request.content.userInfo
+        Task { @MainActor in
+            completionHandler(PushPresence.presentation(
+                userInfo: userInfo, viewer: PushPresence.shared.viewer, pairings: Self.configuredPairings() ?? [:]))
+        }
+    }
+
     /// A tapped banner queues the conversation deep link on `AppIntentRouter`, which
-    /// `ContentView` drains on cold and warm launch alike. Foreground presentation
-    /// is deliberately not implemented, so it stays the system default.
+    /// `ContentView` drains on cold and warm launch alike.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -45,9 +58,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         // The system does not promise a thread here, so hop rather than assume.
         Task { @MainActor in
             let activeServer = ServerRegistry.shared.activeServerID.flatMap(URL.init(string:))
-            if let stored = try? KeychainPushPairingStore()?.allPairings() {
-                let configured = Set(ServerRegistry.shared.servers.map(\.id))
-                let pairings = stored.filter { configured.contains($0.key.absoluteString) }
+            if let pairings = Self.configuredPairings() {
                 if let destination = PushNotificationRouter.webuiDestination(
                     userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
                     AppIntentRouter.shared.requestDeepLink(destination.url)
@@ -58,5 +69,12 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             }
             completionHandler()
         }
+    }
+
+    /// Stored pairings for servers still configured; nil when the Keychain can't be read.
+    @MainActor private static func configuredPairings() -> [URL: PushPairing]? {
+        guard let stored = try? KeychainPushPairingStore()?.allPairings() else { return nil }
+        let configured = Set(ServerRegistry.shared.servers.map(\.id))
+        return stored.filter { configured.contains($0.key.absoluteString) }
     }
 }

@@ -450,6 +450,10 @@ final class ChatViewModel {
     private var currentProfile: String?
     private let isCLISession: Bool
     private let server: URL
+    /// A webui session reports pushes under its own ID.
+    var pushPresence: PushPresence.Viewer? {
+        sessionID.map { PushPresence.Viewer(server: server, sessionID: $0) }
+    }
     let client: APIClient
     private let streamCoordinator: ChatStreamCoordinator
     private let pendingActionCoordinator: ChatPendingActionCoordinator

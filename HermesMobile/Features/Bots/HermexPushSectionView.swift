@@ -82,7 +82,9 @@ import SwiftUI
                 preferenceToggle(String(localized: "Subagent Notifications"), keyPath: \.muteSubagents, inverted: true)
                 Divider()
                 preferenceToggle(String(localized: "Show Previews"), keyPath: \.previews)
-                Text("For this iPhone and the selected server. Previews include message text; your iPhone’s notification settings still apply.")
+                Divider()
+                preferenceToggle(String(localized: "Quiet the Open Chat"), keyPath: \.presenceSuppression)
+                Text("For this iPhone and the selected server. Quiet the Open Chat hides banners for the chat on screen, except approvals, questions and errors. Previews include message text; your iPhone’s notification settings still apply.")
                     .font(AppFont.caption()).foregroundStyle(.secondary)
             }
             if provisioner.phase == .savingPreferences {

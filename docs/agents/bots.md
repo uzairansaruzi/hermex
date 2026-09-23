@@ -1090,11 +1090,12 @@ stays gated. Its copy says "Hermes connection" and why a webui-only user would
 add one.
 
 Notification controls live in Settings → Interaction → Notifications, collapsed by
-default. That group owns push setup/disable, the per-device reply/subagent/preview
+default. That group owns push setup/disable, the per-device reply/subagent/preview/open-chat
 choices for the selected server, and the existing global local-alert and Live
 Activity excerpt controls. The Hermes connection screen only edits the host login.
 Push preferences live with the pairing in server-scoped Keychain storage; older
-pairings adopt the relay defaults (replies and previews on, subagents muted).
+pairings adopt the relay defaults (replies and previews on, subagents muted) plus
+"Quiet the Open Chat" on.
 Registration refreshes and preference writes run in order so a launch or token
 rotation cannot overwrite an accepted choice. Failed saves keep the confirmed
 values visible. A durable pending-sync marker is saved before remote writes; if
@@ -1199,3 +1200,13 @@ push restores the existing global local-notification preference. Webui Live Acti
 on a paired server hand off to the relay like a bot's (see Bot Live Activity). Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
 banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
 not app code.
+
+While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
+otherwise show none, approvals included. `PushPresence` records the conversation on
+screen (a webui session ID, or a bot's live agent session) and, when that server's
+"Quiet the Open Chat" preference is on (the default), hides its pushes except
+`approval`, `clarify`, `input` and `turn_error`. The preference travels to the relay as
+`presence_suppression`, but the app never sends the relay's `active_session_id` /
+`active_until` lease: the app knows exactly what is on screen, and a lease would keep
+muting replies for up to two minutes after the user leaves. Local completion alerts are
+still never shown in the foreground.
