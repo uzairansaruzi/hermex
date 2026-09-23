@@ -249,7 +249,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(calls, [.configuration, .configuration])
     }
 
-    func testReappearingAfterACancelledSupplementaryReadColdLoadsAgain() async {
+    func testReappearingAfterACancelledSupplementaryReadFinishesItWithoutColdLoad() async {
         let client = KanbanClientStub(cancelsFirstStatsRead: true)
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
         await Task { await state.loadIfNeeded() }.value
@@ -263,9 +263,8 @@ final class KanbanFeatureStateTests: XCTestCase {
         let calls = await client.calls()
         XCTAssertEqual(calls, [
             .configuration, .boards, .board(KanbanBoardRequest(board: "main")), .stats("main"),
-            .configuration, .boards, .board(KanbanBoardRequest(board: "main")), .stats("main"),
-            .assignees("main")
-        ])
+            .board(KanbanBoardRequest(board: "main")), .stats("main"), .assignees("main")
+        ], "Finishing the reads must keep the loaded Board instead of repeating the handshake.")
     }
 
     func testReappearingWithALoadedBoardKeepsArchiveUndo() async throws {

@@ -982,13 +982,18 @@ final class KanbanFeatureState {
         }
     }
 
-    /// Cold-loads only when no Board is loaded, or when a pop cancelled the first load
-    /// before its stats and assignee reads settled. `KanbanView` calls this every time the
+    /// Cold-loads only when no Board is loaded. `KanbanView` calls this every time the
     /// Board reappears, so returning from a pushed Card keeps its rows, scroll position,
     /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
+    /// When a pop cancelled the first load before its stats and assignee reads settled,
+    /// this finishes them with a Board refresh instead of starting over.
     func loadIfNeeded() async {
-        guard snapshot == nil || !supplementaryReadsSettled else { return }
-        await load()
+        guard snapshot != nil else {
+            await load()
+            return
+        }
+        guard !supplementaryReadsSettled else { return }
+        _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
     }
 
     /// Each supplementary read either returned a value or recorded its warning.
