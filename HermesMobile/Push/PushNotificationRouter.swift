@@ -123,14 +123,16 @@ struct WebuiPushDestination: Hashable {
     /// Kinds that ask something of the user. They show even over their own conversation.
     static let attentionKinds: Set<String> = ["approval", "clarify", "input", "turn_error"]
 
-    private(set) var viewer: Viewer?
+    private var entry: (owner: UUID, viewer: Viewer)?
+    var viewer: Viewer? { entry?.viewer }
 
-    func enter(_ viewer: Viewer) { self.viewer = viewer }
+    func enter(_ viewer: Viewer, owner: UUID) { entry = (owner, viewer) }
 
     /// Only the screen that entered can clear it, so an old chat disappearing after
-    /// its replacement appeared leaves the new one on record.
-    func leave(_ viewer: Viewer) {
-        if self.viewer == viewer { self.viewer = nil }
+    /// its replacement appeared, even one for the same conversation, leaves the new
+    /// one on record.
+    func leave(owner: UUID) {
+        if entry?.owner == owner { entry = nil }
     }
 
     /// A relay push shows as a banner unless it is about `viewer`'s conversation,
@@ -164,22 +166,27 @@ extension View {
 
 private struct PushPresenceModifier: ViewModifier {
     let viewer: PushPresence.Viewer?
+    @State private var owner = UUID()
     @State private var isVisible = false
 
     func body(content: Content) -> some View {
         content
             .onAppear {
                 isVisible = true
-                if let viewer { PushPresence.shared.enter(viewer) }
+                record(viewer)
             }
             .onDisappear {
                 isVisible = false
-                if let viewer { PushPresence.shared.leave(viewer) }
+                PushPresence.shared.leave(owner: owner)
             }
-            .onChange(of: viewer) { old, new in
+            .onChange(of: viewer) {
                 // A bot's live session can arrive after the screen or move mid-turn.
-                if let old { PushPresence.shared.leave(old) }
-                if isVisible, let new { PushPresence.shared.enter(new) }
+                if isVisible { record(viewer) }
             }
+    }
+
+    private func record(_ viewer: PushPresence.Viewer?) {
+        if let viewer { PushPresence.shared.enter(viewer, owner: owner) }
+        else { PushPresence.shared.leave(owner: owner) }
     }
 }

@@ -202,13 +202,14 @@ import XCTest
 
     func testPresenceOnlyClearsForTheScreenThatEntered() {
         let presence = PushPresence()
-        let first = PushPresence.Viewer(server: server, sessionID: "s1")
-        let second = PushPresence.Viewer(server: server, sessionID: "s2")
-        presence.enter(first)
-        presence.enter(second)
-        presence.leave(first)
-        XCTAssertEqual(presence.viewer, second)
-        presence.leave(second)
+        let chat = PushPresence.Viewer(server: server, sessionID: "s1")
+        let (old, replacement) = (UUID(), UUID())
+        // A deep link can rebuild the same conversation before the old screen disappears.
+        presence.enter(chat, owner: old)
+        presence.enter(chat, owner: replacement)
+        presence.leave(owner: old)
+        XCTAssertEqual(presence.viewer, chat)
+        presence.leave(owner: replacement)
         XCTAssertNil(presence.viewer)
     }
 
