@@ -228,27 +228,18 @@ Steps:
 
 1. Validate the branch first: at minimum `git diff --check` plus a simulator build; run
    focused or full tests based on the branch's risk.
-2. Use a unique `CURRENT_PROJECT_VERSION` for every upload — prefer a timestamp-like
-   number such as `YYYYMMDDHHMM`.
-3. Archive with the reusable branch build config `Config/BranchTestFlight.xcconfig`:
+2. Commit the work, then run from the feature branch:
 
    ```zsh
-   xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release \
-     -destination 'generic/platform=iOS' -archivePath build/HermesAgentBranch.xcarchive \
-     -xcconfig Config/BranchTestFlight.xcconfig CURRENT_PROJECT_VERSION=<unique-build-number> \
-     archive -allowProvisioningUpdates
+   scripts/branch-testflight
    ```
 
-4. Upload with the reusable export config `Config/BranchTestFlightExportOptions.plist`:
-
-   ```zsh
-   xcodebuild -exportArchive -archivePath build/HermesAgentBranch.xcarchive \
-     -exportOptionsPlist Config/BranchTestFlightExportOptions.plist \
-     -exportPath build/HermesAgentBranchExport -allowProvisioningUpdates
-   ```
-
-5. After upload succeeds, tell the owner the version/build number and that App Store
-   Connect/TestFlight may need processing time before it appears on the phone.
+   It archives Release with `Config/BranchTestFlight.xcconfig` and a `YYYYMMDDHHMM`
+   build number, uploads with the internal-only `Config/BranchTestFlightExportOptions.plist`,
+   and keeps the archive and log under `build/branch-testflight/<build-number>/`.
+   It refuses to run on `master` or with uncommitted changes.
+3. Tell the owner the version and build number it prints. TestFlight shows the build
+   after App Store Connect finishes processing.
 
 ## Full-App Manual Regression Checklist
 

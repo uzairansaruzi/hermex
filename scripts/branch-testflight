@@ -1,0 +1,53 @@
+#!/bin/zsh
+# Uploads the current feature branch to the side-by-side Hermex Branch
+# TestFlight app (com.uzairansar.hermesmobile.branch): the "push to branch
+# testflight" command. This is a TestFlight upload, not a Git push. The build is
+# internal-only, so it never reaches external testers or the App Store.
+#
+# Usage: scripts/branch-testflight
+#
+# Validate the branch first (AGENTS.md § Verifying). Signing and upload use the
+# Xcode account signed in on this Mac; no App Store Connect API key is needed.
+# The script stops once the upload is accepted: TestFlight notifies the owner
+# when processing finishes. Full xcodebuild output goes to a log file, printed
+# only on failure.
+set -euo pipefail
+
+repo_root="${0:A:h:h}"
+cd "$repo_root"
+
+branch="$(git branch --show-current)"
+[[ -n "$branch" && "$branch" != "master" ]] || { echo "Run from a feature branch, not master or a detached HEAD." >&2; exit 1 }
+[[ -z "$(git status --porcelain)" ]] || { echo "Commit or stash changes first so the build matches a commit." >&2; exit 1 }
+
+build_number="$(date +%Y%m%d%H%M)"
+work_dir="build/branch-testflight/$build_number"
+archive_path="$work_dir/HermexBranch.xcarchive"
+log_path="$work_dir/xcodebuild.log"
+mkdir -p "$work_dir"
+
+# Runs one xcodebuild step with output captured in the log.
+run_step() {
+  local step="$1"; shift
+  echo "$step..."
+  if ! xcodebuild "$@" >>"$log_path" 2>&1; then
+    tail -n 40 "$log_path" >&2
+    echo "$step failed. Full log: $log_path" >&2
+    exit 1
+  fi
+}
+
+run_step "Archiving build $build_number" \
+  -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release \
+  -destination 'generic/platform=iOS' -archivePath "$archive_path" \
+  -xcconfig Config/BranchTestFlight.xcconfig CURRENT_PROJECT_VERSION="$build_number" \
+  -allowProvisioningUpdates archive
+
+run_step "Uploading to App Store Connect" \
+  -exportArchive -archivePath "$archive_path" \
+  -exportOptionsPlist Config/BranchTestFlightExportOptions.plist \
+  -exportPath "$work_dir/export" -allowProvisioningUpdates
+
+version="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive_path/Info.plist")"
+echo "Uploaded Hermex Branch $version ($build_number) from $branch @ $(git rev-parse --short HEAD)."
+echo "TestFlight shows it after App Store Connect finishes processing."

@@ -162,7 +162,7 @@ Canonical vocabulary: `CONTEXT.md`.
 
 ## Branch TestFlight (maintainer-only)
 
-"push to branch testflight" means upload the current branch to the side-by-side **Hermex Branch** internal TestFlight app (`com.uzairansar.hermesmobile.branch`). It is a TestFlight upload, **not** a git push. Validate first, use a unique `CURRENT_PROJECT_VERSION` (e.g. `YYYYMMDDHHMM`), and follow the archive and export commands in `DEVELOPMENT.md`. Never touch the production `com.uzairansar.hermesmobile` app, invite testers, or change App Store Connect state unless explicitly asked. `TESTFLIGHT.md` owns release gates.
+"push to branch testflight" means upload the current branch to the side-by-side **Hermex Branch** internal TestFlight app (`com.uzairansar.hermesmobile.branch`). It is a TestFlight upload, **not** a git push. Validate and commit first, then run `scripts/branch-testflight` from the feature branch (`DEVELOPMENT.md` has the details). Never touch the production `com.uzairansar.hermesmobile` app, invite testers, or change App Store Connect state unless explicitly asked. `TESTFLIGHT.md` owns release gates.
 
 ## Additional tips
 
