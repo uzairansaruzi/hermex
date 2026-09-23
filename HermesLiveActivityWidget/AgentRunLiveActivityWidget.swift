@@ -60,9 +60,9 @@ private struct AgentRunExpandedIslandBottomView: View {
     let state: AgentRunActivityAttributes.ContentState
     let isBot: Bool
 
-    /// One line for a bot: what it is doing, then its counts.
-    private var botLine: String {
-        let lead = state.isStale ? String(localized: "Not connected") : state.currentActivity
+    /// One line without reply text: what the agent is doing, then its counts.
+    private var countsLine: String {
+        let lead = isBot && state.isStale ? String(localized: "Not connected") : state.currentActivity
         return ([lead] + (state.chips ?? [])).joined(separator: " · ")
     }
 
@@ -70,23 +70,17 @@ private struct AgentRunExpandedIslandBottomView: View {
         VStack(alignment: .leading, spacing: 4) {
             AgentRunProgressRail(status: state.status)
 
-            if isBot, state.responseExcerpt.isEmpty {
-                Text(botLine)
+            if state.responseExcerpt.isEmpty {
+                Text(countsLine)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
-            } else if !state.responseExcerpt.isEmpty {
+            } else {
                 Text(state.responseExcerpt)
                     .font(.caption2)
                     .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
                     .lineLimit(2)
-                    .truncationMode(.tail)
-            } else {
-                Text(state.currentActivity)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
-                    .lineLimit(1)
                     .truncationMode(.tail)
             }
         }
@@ -105,7 +99,12 @@ private struct AgentRunLockScreenView: View {
             header
             activityProgressRow(progressWidth: 112)
             if isBot, context.presentedState.responseExcerpt.isEmpty, !botChips.isEmpty {
-                AgentRunChipRow(chips: botChips, isDimmed: context.presentedState.isStale)
+                AgentRunChipRow(chips: botChips.map(AgentRunDetailChip.text), isDimmed: context.presentedState.isStale)
+            } else if !isBot, context.presentedState.responseExcerpt.isEmpty {
+                // No reply text to show: the relay's counts and freshness, or nothing
+                // at all rather than filler (#644).
+                let chips = context.presentedState.detailChips
+                if !chips.isEmpty { AgentRunChipRow(chips: chips, isDimmed: false) }
             } else {
                 transcriptPanel
             }
@@ -209,17 +208,18 @@ private struct AgentRunLockScreenView: View {
     }
 }
 
-/// Bounded count chips for a bot's activity. Static: nothing here repaints on its own.
+/// Bounded detail chips: a bot's counts, or a webui run's counts and freshness (#644).
+/// Only the system-drawn relative time moves; the app never repaints this row.
 private struct AgentRunChipRow: View {
-    let chips: [String]
+    let chips: [AgentRunDetailChip]
     let isDimmed: Bool
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(chips, id: \.self) { chip in
-                Text(chip)
+                label(for: chip)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(isDimmed ? AgentRunLiveActivityTheme.secondaryText : AgentRunLiveActivityTheme.primaryText)
+                    .foregroundStyle(isDimmed || !chip.isCount ? AgentRunLiveActivityTheme.secondaryText : AgentRunLiveActivityTheme.primaryText)
                     .lineLimit(1)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -228,6 +228,18 @@ private struct AgentRunChipRow: View {
         }
         .accessibilityElement(children: .combine)
     }
+
+    private func label(for chip: AgentRunDetailChip) -> Text {
+        switch chip {
+        case .text(let text): Text(text)
+        case .updated(let date): Text("Updated \(Text(date, style: .relative)) ago")
+        case .openReply: Text("Open to read the reply")
+        }
+    }
+}
+
+private extension AgentRunDetailChip {
+    var isCount: Bool { if case .text = self { true } else { false } }
 }
 
 /// The bot's avatar with its status as a corner badge, or the plain status dot for a

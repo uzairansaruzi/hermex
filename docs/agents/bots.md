@@ -645,7 +645,12 @@ those values into manager calls.
   entitlement. A missing file falls back to the status dot.
 
 The shared content state accepts both existing local fields and the relay's compact
-`v`, `status`, `tool`, `tool_calls`, `started_at` shape. The wire status remains a
+`v`, `status`, `tool`, `tool_calls`, `started_at`, `updated_at` shape. With no reply
+text, a webui activity shows `ContentState.detailChips` in place of the panel (#644):
+the relay's tool count, then "Updated … ago" drawn by the system, or "Open to read the
+reply" once complete. Only a real update time is shown: an app write, or a relay state
+with `updated_at`; a state from an older relay shows the count alone. Local writes keep
+the count the activity already shows, since only the relay counts a webui run's tools. The wire status remains a
 string; unknown statuses or newer versions render a generic existing status.
 Identity/title come from immutable activity attributes when a push omits them.
 The app and widget share this decoder; the share and notification extensions do

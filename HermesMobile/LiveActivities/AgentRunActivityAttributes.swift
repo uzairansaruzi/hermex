@@ -40,6 +40,10 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         /// reply text, so it is safe on a locked phone. Nil for a webui session, and
         /// optional so an activity persisted by an older build still decodes (#489).
         var chips: [String]?
+        /// False only for a relay state that arrived without `updated_at`: its
+        /// `updatedAt` is then just when it was decoded, so nothing may present it
+        /// as the time of the last update (#644). Re-encoding keeps it false.
+        var updateTimeIsKnown = true
 
         init(
             sessionID: String,
@@ -67,9 +71,9 @@ struct AgentRunActivityAttributes: ActivityAttributes {
 
         enum CodingKeys: String, CodingKey {
             case schemaVersion = "v", rawStatus = "status", tool, toolCalls = "tool_calls"
-            case pushStartedAt = "started_at"
+            case pushStartedAt = "started_at", pushUpdatedAt = "updated_at"
             case sessionID, sessionTitle, currentActivity, responseExcerpt, startedAt, updatedAt
-            case isStale, isFinal, errorSummary, chips
+            case isStale, isFinal, errorSummary, chips, updatedAtEstimated
         }
 
         init(from decoder: Decoder) throws {
@@ -83,9 +87,15 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             let unixStart = try c.decodeIfPresent(Double.self, forKey: .pushStartedAt)
             startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
                 ?? unixStart.map(Date.init(timeIntervalSince1970:)) ?? .distantPast
-            // The compact relay state has no end timestamp. Freeze the final timer
-            // at receipt time rather than showing a zero-length completed run.
-            updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+            // The relay stamps `updated_at` with its send time. A state without one
+            // (an older relay) freezes the final timer at receipt time rather than
+            // showing a zero-length completed run.
+            let unixUpdate = try c.decodeIfPresent(Double.self, forKey: .pushUpdatedAt)
+            let knownUpdate = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
+                ?? unixUpdate.map(Date.init(timeIntervalSince1970:))
+            updatedAt = knownUpdate ?? Date()
+            let estimated = try c.decodeIfPresent(Bool.self, forKey: .updatedAtEstimated) ?? false
+            updateTimeIsKnown = knownUpdate != nil && !estimated
             isStale = try c.decodeIfPresent(Bool.self, forKey: .isStale) ?? false
             isFinal = try c.decodeIfPresent(Bool.self, forKey: .isFinal)
                 ?? (schemaVersion <= 1 && ["done", "failed"].contains(rawStatus))
@@ -121,10 +131,20 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             try c.encode(responseExcerpt, forKey: .responseExcerpt)
             try c.encode(startedAt, forKey: .startedAt)
             try c.encode(updatedAt, forKey: .updatedAt)
+            if !updateTimeIsKnown { try c.encode(true, forKey: .updatedAtEstimated) }
             try c.encode(isStale, forKey: .isStale)
             try c.encode(isFinal, forKey: .isFinal)
             try c.encodeIfPresent(errorSummary, forKey: .errorSummary)
             try c.encodeIfPresent(chips, forKey: .chips)
+        }
+
+        /// What a webui activity shows in place of reply text (#644): its counts, then
+        /// how fresh the state is, or where the reply is once the run completed. Only a
+        /// real update time is shown; an unknown one is left out rather than guessed.
+        var detailChips: [AgentRunDetailChip] {
+            let counts = (chips ?? []).map(AgentRunDetailChip.text)
+            if isFinal { return status == .complete ? counts + [.openReply] : counts }
+            return updateTimeIsKnown ? counts + [.updated(updatedAt)] : counts
         }
 
         /// Pushes omit identity and freshness flags: immutable attributes and
@@ -161,6 +181,14 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         self.bot = bot
         self.server = server
     }
+}
+
+/// One chip in an activity's detail row. The widget renders `updated` as system-drawn
+/// relative time, so the row stays current without the app repainting it.
+enum AgentRunDetailChip: Hashable {
+    case text(String)
+    case updated(Date)
+    case openReply
 }
 
 /// The bot behind a Live Activity (#489). `key` stands in for the session id, so an

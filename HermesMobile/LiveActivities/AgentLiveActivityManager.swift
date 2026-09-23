@@ -54,6 +54,17 @@ extension AgentRunActivityAttributes {
     }
 }
 
+extension AgentRunActivityAttributes.ContentState {
+    /// This state with `shown`'s counts when it has none of its own: the app's local
+    /// reducers never count a webui run's tools, the relay does (#644).
+    func keepingCounts(from shown: Self) -> Self {
+        guard chips == nil else { return self }
+        var kept = self
+        kept.chips = shown.chips
+        return kept
+    }
+}
+
 @MainActor
 protocol AgentLiveActivityManaging: AnyObject {
     /// `startedAt` is when the *run* began, not when the widget was created: the
@@ -478,11 +489,11 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         where AgentLiveActivityReusePolicy.normalizedStreamID(persisted.attributes.streamID) == normalized {
             guard persisted.content.state.isFinal == false else { continue }
 
-            let finalState = AgentRunActivityStateReducer.final(
+            let finalState = Self.keepingRelayCounts(AgentRunActivityStateReducer.final(
                 status: status,
                 activity: activityLine,
                 state: persisted.content.state
-            )
+            ), on: persisted)
             // The run is over, so the relay must stop holding this session's banners.
             await retirePush(persisted)
             // `end(content:)` sets the final content directly and there is no
@@ -547,7 +558,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             if let existing = reusableActivity {
                 activity = existing
                 observePush(existing)
-                let latestState = currentState ?? state
+                let latestState = Self.keepingRelayCounts(currentState ?? state, on: existing)
                 await existing.update(
                     ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
                 )
@@ -646,6 +657,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         guard generation == updateGeneration else { return }
         guard let activity else { return }
 
+        let state = Self.keepingRelayCounts(state, on: activity)
         await activity.update(ActivityContent(state: state, staleDate: staleDate))
         lastSentUpdateAt = Date()
     }
@@ -664,6 +676,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 
         await retirePush(endingActivity)
         let policy = dismissalPolicy(for: status)
+        let finalState = Self.keepingRelayCounts(finalState, on: endingActivity)
 
         await endingActivity.update(ActivityContent(state: finalState, staleDate: nil))
         if status == .complete {
@@ -702,6 +715,13 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             return Date().addingTimeInterval(15 * 60)
         }
         return Date().addingTimeInterval(state.isStale ? 90 : 300)
+    }
+
+    /// A webui run's counts come only from the relay (#644), so a local write keeps the
+    /// count the activity already shows rather than dropping it. A bot's feed owns its chips.
+    private static func keepingRelayCounts(_ state: AgentRunActivityAttributes.ContentState,
+                                           on shown: Activity<AgentRunActivityAttributes>) -> AgentRunActivityAttributes.ContentState {
+        shown.attributes.bot == nil ? state.keepingCounts(from: shown.content.state) : state
     }
 
     private func canReceivePush(_ attributes: AgentRunActivityAttributes) -> Bool {

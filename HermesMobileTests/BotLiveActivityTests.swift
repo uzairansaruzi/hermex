@@ -347,6 +347,48 @@ import XCTest
         }
     }
 
+    // MARK: Detail chips (#644)
+
+    func testOnlyARealUpdateTimeIsShownAsFreshness() throws {
+        let stamped = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: Data(
+            #"{"v":1,"status":"running","tool_calls":3,"started_at":1800000000,"updated_at":1800000042}"#.utf8))
+        let sentAt = Date(timeIntervalSince1970: 1_800_000_042)
+        XCTAssertEqual(stamped.updatedAt, sentAt)
+        XCTAssertEqual(stamped.detailChips, [.text("3 tools"), .updated(sentAt)])
+
+        let unstamped = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: Data(
+            #"{"v":1,"status":"running","tool_calls":3,"started_at":1800000000}"#.utf8))
+        XCTAssertFalse(unstamped.updateTimeIsKnown)
+        XCTAssertEqual(unstamped.detailChips, [.text("3 tools")], "A decode time is never presented as an update time")
+
+        let local = AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Plan")
+        let written = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: JSONEncoder().encode(local))
+        XCTAssertTrue(written.updateTimeIsKnown)
+        XCTAssertEqual(written.detailChips, [.updated(local.updatedAt)])
+    }
+
+    func testFinishedDetailPointsToTheReplyOnlyAfterCompletion() throws {
+        func relay(_ status: String) throws -> AgentRunActivityAttributes.ContentState {
+            try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: Data(
+                #"{"v":1,"status":"\#(status)","tool_calls":5,"updated_at":1800000042}"#.utf8))
+        }
+        XCTAssertEqual(try relay("done").detailChips, [.text("5 tools"), .openReply])
+        XCTAssertEqual(try relay("failed").detailChips, [.text("5 tools")])
+        let silent = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self,
+                                              from: Data(#"{"v":1,"status":"running"}"#.utf8))
+        XCTAssertEqual(silent.detailChips, [], "Nothing to say leaves the row out")
+    }
+
+    func testLocalWritesKeepTheCountTheRelayShowed() throws {
+        let shown = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self,
+                                             from: Data(#"{"v":1,"status":"running","tool_calls":3}"#.utf8))
+        let local = AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Plan")
+        XCTAssertEqual(local.keepingCounts(from: shown).chips, ["3 tools"])
+        var counted = local
+        counted.chips = ["Plan 2 of 5"]
+        XCTAssertEqual(counted.keepingCounts(from: shown).chips, ["Plan 2 of 5"], "A state's own chips win")
+    }
+
     // MARK: Shared model
 
     func testAnActivityPersistedByAnOlderBuildStillDecodes() throws {
