@@ -615,6 +615,42 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertTrue(registered)
     }
 
+    func testHandoffFollowsATokenRotatedDuringThePut() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        let entered = expectation(description: "first PUT entered")
+        var release: CheckedContinuation<Void, Never>?
+        wire.hold = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                entered.fulfill()
+            }
+        }
+        let first = Task { await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "old") }
+        await fulfillment(of: [entered], timeout: 2)
+        wire.hold = nil
+        let handoff = Task { await registrar.awaitRegistration("a", limit: .seconds(30)) }
+        await Task.yield()
+        let rotated = Task { await registrar.register(owner: "a", server: serverA, sessionID: "runtime", token: "new") }
+        await Task.yield()
+        release?.resume()
+        await first.value
+        await rotated.value
+        let registered = await handoff.value
+        XCTAssertTrue(registered)
+        XCTAssertEqual(wire.calls.last?.action, "put:new")
+    }
+
+    func testCancellingAHandoffEndsItsWaitAtOnce() async {
+        let registrar = PushActivityRegistrar(relay: ActivityRelaySpy(), pairing: { _ in nil })
+        let handoff = Task { await registrar.awaitRegistration("a", limit: .seconds(30)) }
+        await Task.yield()
+        handoff.cancel()
+        let registered = await handoff.value
+        XCTAssertFalse(registered)
+    }
+
     func testHandoffGivesUpWhenNoActivityTokenArrives() async {
         let registrar = PushActivityRegistrar(relay: ActivityRelaySpy(), pairing: { _ in nil })
         let registered = await registrar.awaitRegistration("a", limit: .zero)

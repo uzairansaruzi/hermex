@@ -367,7 +367,7 @@ extension PushRegistrar: PushPairingEnabling {}
     private var desired: [String: Desired] = [:]
     private var registered: [String: Registered] = [:]
     private var tail: Task<Void, Never>?
-    private var registrationWaiters: [String: [CheckedContinuation<Bool, Never>]] = [:]
+    private var registrationWaiters: [String: [UUID: CheckedContinuation<Bool, Never>]] = [:]
 
     init(relay: any PushActivityRelaying, pairing: @escaping (URL) -> PushPairing?) {
         self.relay = relay
@@ -380,15 +380,19 @@ extension PushRegistrar: PushPairingEnabling {}
     }
 
     func register(owner: String, server: URL, sessionID: String, token: String) async {
-        desired[owner] = Desired(server: server, sessionID: sessionID, token: token)
+        let wanted = Desired(server: server, sessionID: sessionID, token: token)
+        desired[owner] = wanted
         await enqueue(owner).value
+        // A rotated token queued its own PUT, and that call settles the waiters.
+        guard desired[owner] == wanted else { return }
         resolveRegistrationWaiters(owner, registered: isRegistered(owner))
     }
 
     /// Waits for `owner`'s relay registration to settle, including an activity token
     /// ActivityKit has not issued yet: true once the relay confirmed it, false when it
-    /// fails, is retired, or does not settle within `limit`. Lets a suspending app keep
-    /// a Live Activity's live state through a handoff that lands a moment later (#635).
+    /// fails, is retired, is cancelled, or does not settle within `limit`. Lets a
+    /// suspending app keep a Live Activity's live state through a handoff that lands a
+    /// moment later (#635).
     func awaitRegistration(_ owner: String, limit: Duration) async -> Bool {
         if isRegistered(owner) { return true }
         let timeout = Task { [weak self] in
@@ -397,20 +401,30 @@ extension PushRegistrar: PushPairingEnabling {}
             self?.resolveRegistrationWaiters(owner, registered: false)
         }
         defer { timeout.cancel() }
-        if desired[owner] != nil {
+        if let wanted = desired[owner] {
             // The token is in hand, so its PUT is queued, finished, or failed.
             let pending = tail
             Task { [weak self] in
                 await pending?.value
-                guard let self else { return }
+                guard let self, desired[owner] == wanted else { return }
                 resolveRegistrationWaiters(owner, registered: isRegistered(owner))
             }
         }
-        return await withCheckedContinuation { registrationWaiters[owner, default: []].append($0) }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { return continuation.resume(returning: false) }
+                registrationWaiters[owner, default: [:]][id] = continuation
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.registrationWaiters[owner]?.removeValue(forKey: id)?.resume(returning: false)
+            }
+        }
     }
 
     private func resolveRegistrationWaiters(_ owner: String, registered: Bool) {
-        for waiter in registrationWaiters.removeValue(forKey: owner) ?? [] { waiter.resume(returning: registered) }
+        for waiter in (registrationWaiters.removeValue(forKey: owner) ?? [:]).values { waiter.resume(returning: registered) }
     }
 
     func retire(owner: String, server: URL? = nil, sessionID: String? = nil) async {
