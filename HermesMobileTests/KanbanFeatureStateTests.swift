@@ -215,6 +215,56 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(state.isLoading)
     }
 
+    // MARK: - Returning to a loaded Board (#672)
+
+    func testReappearingWithALoadedBoardKeepsItWithoutRequests() async {
+        let client = KanbanClientStub()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.loadIfNeeded()
+        let loadedCards = state.allCards
+
+        await state.loadIfNeeded()
+
+        XCTAssertEqual(state.state, .compatible)
+        XCTAssertEqual(state.allCards, loadedCards)
+        let calls = await client.calls()
+        XCTAssertEqual(calls, [
+            .configuration,
+            .boards,
+            .board(KanbanBoardRequest(board: "main")),
+            .stats("main"),
+            .assignees("main")
+        ], "Returning to a loaded Board must not repeat the handshake.")
+    }
+
+    func testReappearingWithoutALoadedBoardColdLoadsAgain() async {
+        let client = KanbanClientStub(configurationResult: .failure(CancellationError()))
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.loadIfNeeded()
+        XCTAssertEqual(state.state, .idle)
+
+        await state.loadIfNeeded()
+
+        let calls = await client.calls()
+        XCTAssertEqual(calls, [.configuration, .configuration])
+    }
+
+    func testReappearingWithALoadedBoardKeepsArchiveUndo() async throws {
+        let client = ImmediateMutationClient(statusResults: [
+            .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"archived"}}"#))
+        ])
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.loadIfNeeded()
+        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
+        await state.archiveCard(card)
+        XCTAssertTrue(state.hasAvailableArchiveUndo)
+
+        await state.loadIfNeeded()
+
+        XCTAssertTrue(state.hasAvailableArchiveUndo)
+        XCTAssertFalse(state.allCards.contains { $0.cardID == card.cardID })
+    }
+
     func testStatusSearchUnknownStatusAndClearFiltersUseLoadedBoardData() async {
         let state = KanbanFeatureState(
             server: URL(string: "https://example.test")!,

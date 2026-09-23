@@ -982,6 +982,14 @@ final class KanbanFeatureState {
         }
     }
 
+    /// Cold-loads only when no Board is loaded. `KanbanView` calls this every time the
+    /// Board reappears, so returning from a pushed Card keeps its rows, scroll position,
+    /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
+    func loadIfNeeded() async {
+        guard snapshot == nil else { return }
+        await load()
+    }
+
     func retry() async {
         if snapshot == nil {
             await load()
