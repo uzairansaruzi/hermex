@@ -135,8 +135,7 @@ import SwiftUI
                 .accessibilityLabel("Instructions")
                 .padding(12)
         }
-        Text("Leave empty to use the host’s default instructions.")
-            .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
+        caption("Leave empty to use the host’s default instructions.")
 
         sectionLabel("Skills")
         card {
@@ -145,10 +144,16 @@ import SwiftUI
             }
             .padding(16)
         }
-        Text(creator.draft.skipsBundledSkills
-             ? "Only the host’s essential skills. Add more later from the bot’s settings."
-             : "The bot starts with every skill that ships with Hermes.")
-            .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
+        caption(creator.draft.skipsBundledSkills
+                ? "Only the host’s essential skills. Add more later from the bot’s settings."
+                : "The bot starts with every skill that ships with Hermes.")
+    }
+
+    /// Footnote under a card, leading-aligned however short it is.
+    private func caption(_ text: LocalizedStringKey) -> some View {
+        Text(text).font(.caption2).foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.top, 7)
     }
 
     private var lookCard: some View {
