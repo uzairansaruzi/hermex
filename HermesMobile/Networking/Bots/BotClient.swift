@@ -292,15 +292,17 @@ import Foundation
         switch method {
         case "profiles.create":
             guard let name = params["name"]?.text, BotProfileName.isValid(name) else { throw BotFailure.unsupported }
-            let allowed: Set<String> = ["name", "description", "clone_from", "soul", "model", "provider", "share_auth", "mirror_credentials"]
+            let allowed: Set<String> = ["name", "description", "clone_from", "soul", "model", "provider", "share_auth", "mirror_credentials", "no_skills"]
             guard allowed.isSuperset(of: params.keys) else { throw BotFailure.unsupported }
             for key in ["description", "clone_from", "soul", "model", "provider"] where params[key] != nil {
                 guard params[key]?.text?.isEmpty == false else { throw BotFailure.unsupported }
             }
-            for key in ["share_auth", "mirror_credentials"] where params[key] != nil {
+            for key in ["share_auth", "mirror_credentials", "no_skills"] where params[key] != nil {
                 guard params[key]?.flag != nil else { throw BotFailure.unsupported }
             }
             guard (params["model"] == nil) == (params["provider"] == nil) else { throw BotFailure.unsupported }
+            // The host refuses `no_skills` on a clone: cloning copies the source's skills.
+            guard params["no_skills"] == nil || params["clone_from"] == nil else { throw BotFailure.unsupported }
         case "session.create":
             guard params["profile"]?.text?.isEmpty == false, params["title"]?.text == BotConversation.canonicalTitle,
                   params["hidden"]?.flag == true, params["follow_profile_config"]?.flag == true,

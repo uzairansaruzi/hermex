@@ -277,17 +277,21 @@ import XCTest
             "name": .string("home-hunter"), "description": .string("Finds flats"), "clone_from": .string("inbox-triage"),
             "model": .string("gpt-6"), "provider": .string("openai"), "share_auth": .bool(true)
         ])
+        _ = try await client.call("profiles.create", [
+            "name": .string("chief"), "soul": .string("Keep my week in order."), "no_skills": .bool(true)
+        ])
         _ = try await client.call("session.create", [
             "profile": .string("home-hunter"), "title": .string("Bot Chat"), "hidden": .bool(true), "follow_profile_config": .bool(true)
         ])
         _ = try await client.call("session.title", ["session_id": .string("runtime"), "title": .string("Bot Chat")])
-        XCTAssertEqual(socket.sentTextFrames, 3)
+        XCTAssertEqual(socket.sentTextFrames, 4)
 
         let rejected: [(String, [String: BotJSON])] = [
             ("profiles.create", ["name": .string("default")]),
             ("profiles.create", ["name": .string("Home Hunter")]),
             ("profiles.create", ["name": .string("home-hunter"), "clone_all": .bool(true)]),
             ("profiles.create", ["name": .string("home-hunter"), "model": .string("gpt-6")]),
+            ("profiles.create", ["name": .string("home-hunter"), "no_skills": .bool(true), "clone_from": .string("inbox-triage")]),
             ("session.create", ["profile": .string("home-hunter"), "title": .string("Scratch"), "hidden": .bool(true), "follow_profile_config": .bool(true)]),
             ("session.create", ["profile": .string("home-hunter"), "title": .string("Bot Chat"), "hidden": .bool(true), "follow_profile_config": .bool(true), "messages": .array([])]),
             ("session.title", ["session_id": .string("runtime"), "title": .string("Renamed")])
@@ -300,7 +304,7 @@ import XCTest
                 XCTAssertEqual(error as? BotFailure, .unsupported)
             }
         }
-        XCTAssertEqual(socket.sentTextFrames, 3)
+        XCTAssertEqual(socket.sentTextFrames, 4)
 
         try await client.deleteProfile("home-hunter")
         XCTAssertEqual(deletes.map(\.0), ["DELETE"]); XCTAssertEqual(deletes.first?.1, "/api/profiles/home-hunter")
