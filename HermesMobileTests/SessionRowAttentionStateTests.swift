@@ -4,8 +4,12 @@ import XCTest
 /// The session row's attention state: the pure precedence rule, and the bound
 /// on how often the list asks the server about it.
 final class SessionRowAttentionStateTests: XCTestCase {
+    private let unreadSuite = "SessionRowAttentionStateTests." + UUID().uuidString
+    private lazy var unreadDefaults = UserDefaults(suiteName: unreadSuite)!
+
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
+        unreadDefaults.removePersistentDomain(forName: unreadSuite)
         super.tearDown()
     }
 
@@ -139,6 +143,114 @@ final class SessionRowAttentionStateTests: XCTestCase {
             SessionRowView.accessibilityStateLabels(for: streaming, isViewingCachedData: false),
             ["Working"]
         )
+    }
+
+    func testCachedRowCanReadUnreadWithoutHidingTheCachedState() {
+        let session = SessionSummary(sessionId: "s", lastMessageAt: 200)
+
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: session, isViewingCachedData: true, isUnread: true
+            ),
+            ["Unread", "Cached"]
+        )
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(
+                for: session, isViewingCachedData: false,
+                attentionState: .approval, isUnread: true
+            ),
+            ["Waiting for approval"]
+        )
+    }
+
+    @MainActor
+    func testUnreadSeedsExistingRowsAndOnlyShowsSettledNewerReplies() async throws {
+        let responses = LockedQueue([
+            #"{"sessions":[{"session_id":"done","title":"Done","last_message_at":100},{"session_id":"working","title":"Working","last_message_at":100,"is_streaming":true},{"session_id":"pending","title":"Pending","last_message_at":100,"has_pending_user_message":true}]}"#,
+            #"{"sessions":[{"session_id":"done","title":"Done","last_message_at":200},{"session_id":"working","title":"Working","last_message_at":200,"is_streaming":true},{"session_id":"pending","title":"Pending","last_message_at":200,"has_pending_user_message":true},{"session_id":"new","title":"New","last_message_at":200}]}"#,
+            #"{"sessions":[{"session_id":"done","title":"Done","last_message_at":200},{"session_id":"working","title":"Working","last_message_at":300,"is_streaming":false},{"session_id":"pending","title":"Pending","last_message_at":300,"has_pending_user_message":false},{"session_id":"new","title":"New","last_message_at":200}]}"#
+        ])
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(responses.next(), for: request)
+        }
+
+        await viewModel.load()
+        XCTAssertTrue(viewModel.sessions.allSatisfy { !viewModel.isUnread($0) })
+
+        await viewModel.load()
+        XCTAssertTrue(viewModel.isUnread(try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "done" })))
+        XCTAssertFalse(viewModel.isUnread(try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "working" })))
+        XCTAssertFalse(viewModel.isUnread(try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "pending" })))
+        XCTAssertFalse(viewModel.isUnread(try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "new" })))
+
+        await viewModel.load()
+        XCTAssertTrue(viewModel.isUnread(try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "working" })))
+        XCTAssertTrue(viewModel.isUnread(try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "pending" })))
+    }
+
+    @MainActor
+    func testOpeningAndReturningMarksOnlyTheViewedReply() async throws {
+        let responses = LockedQueue([100, 200, 300, 400, 500].map {
+            "{\"sessions\":[{\"session_id\":\"chat\",\"title\":\"Chat\",\"last_message_at\":\($0)}]}"
+        })
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(responses.next(), for: request)
+        }
+
+        await viewModel.load()
+        await viewModel.load()
+        viewModel.beginViewing(viewModel.sessions[0])
+        XCTAssertFalse(viewModel.isUnread(viewModel.sessions[0]))
+
+        await viewModel.load()
+        XCTAssertFalse(viewModel.isUnread(viewModel.sessions[0]), "a reply while chat is open is seen")
+
+        viewModel.noteReturn(from: viewModel.sessions[0])
+        await viewModel.load()
+        XCTAssertFalse(viewModel.isUnread(viewModel.sessions[0]), "the first list load after return is seen")
+
+        await viewModel.load()
+        XCTAssertTrue(viewModel.isUnread(viewModel.sessions[0]), "later replies are unread again")
+    }
+
+    @MainActor
+    func testUnreadToggleAndSuccessfulLoadPrune() async throws {
+        let responses = LockedQueue([
+            #"{"sessions":[{"session_id":"keep","title":"Keep","last_message_at":100},{"session_id":"gone","title":"Gone","last_message_at":100}]}"#,
+            #"{"sessions":[{"session_id":"keep","title":"Keep","last_message_at":100}]}"#
+        ])
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(responses.next(), for: request)
+        }
+
+        await viewModel.load()
+        let keep = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "keep" })
+        viewModel.toggleUnread(keep)
+        XCTAssertTrue(viewModel.isUnread(keep))
+        viewModel.toggleUnread(keep)
+        XCTAssertFalse(viewModel.isUnread(keep))
+        viewModel.toggleUnread(keep)
+        XCTAssertTrue(viewModel.isUnread(keep))
+
+        await viewModel.load()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        XCTAssertEqual(SessionUnreadStore(defaults: unreadDefaults).load(for: server).keys.sorted(), ["keep"])
+        XCTAssertTrue(viewModel.isUnread(viewModel.sessions[0]))
+    }
+
+    func testUnreadStoreScopesEqualSessionIDsByServer() throws {
+        let store = SessionUnreadStore(defaults: unreadDefaults)
+        let first = try XCTUnwrap(URL(string: "https://first.test"))
+        let second = try XCTUnwrap(URL(string: "https://second.test"))
+
+        store.save(["same": 100], for: first)
+        store.save(["same": 200], for: second)
+        XCTAssertEqual(store.load(for: first), ["same": 100])
+        XCTAssertEqual(store.load(for: second), ["same": 200])
+
+        store.remove(for: first)
+        XCTAssertTrue(store.load(for: first).isEmpty)
+        XCTAssertEqual(store.load(for: second), ["same": 200])
     }
 
     // MARK: - View model bound
@@ -289,6 +401,7 @@ final class SessionRowAttentionStateTests: XCTestCase {
 
     @MainActor
     private func makeViewModel(
+        unreadStore: SessionUnreadStore? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) throws -> SessionListViewModel {
         MockURLProtocol.requestHandler = handler
@@ -300,7 +413,8 @@ final class SessionRowAttentionStateTests: XCTestCase {
 
         return SessionListViewModel(
             server: server,
-            client: APIClient(baseURL: server, session: session)
+            client: APIClient(baseURL: server, session: session),
+            unreadStore: unreadStore ?? SessionUnreadStore(defaults: unreadDefaults)
         )
     }
 }

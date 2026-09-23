@@ -4,6 +4,7 @@ import UIKit
 struct SessionListRowActions {
     let retryLoad: () -> Void
     let open: (SessionSummary) -> Void
+    let toggleUnread: (SessionSummary) -> Void
     let togglePinned: (SessionSummary) -> Void
     let archive: (SessionSummary) -> Void
     let delete: (SessionSummary) -> Void
@@ -541,6 +542,7 @@ struct SessionInteractiveRow: View {
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
                 isViewingCachedData: viewModel.isViewingCachedData,
+                isUnread: viewModel.isUnread(session),
                 attentionState: viewModel.attentionState(for: session),
                 searchExcerpt: viewModel.searchExcerpt(for: session, searchText: searchText)
             )
@@ -570,6 +572,8 @@ struct SessionInteractiveRow: View {
                 isMovingSession: viewModel.isMovingSession,
                 isLoadingProjects: viewModel.isLoadingProjects,
                 isMutating: viewModel.isMutating(session),
+                isUnread: viewModel.isUnread(session),
+                canToggleUnread: viewModel.canToggleUnread(session),
                 actions: actions
             )
         }
@@ -766,6 +770,8 @@ struct SessionRowContextMenu: View {
     let isMovingSession: Bool
     let isLoadingProjects: Bool
     let isMutating: Bool
+    let isUnread: Bool
+    let canToggleUnread: Bool
     let actions: SessionListRowActions
 
     var body: some View {
@@ -781,6 +787,13 @@ struct SessionRowContextMenu: View {
                 Label("Copy Full Title", systemImage: "doc.on.doc")
             }
         }
+
+        Button {
+            actions.toggleUnread(session)
+        } label: {
+            Label(isUnread ? "Mark as Read" : "Mark as Unread", systemImage: isUnread ? "envelope.open" : "envelope.badge")
+        }
+        .disabled(!canToggleUnread)
 
         if SessionRowActionPolicy.offersMutationActions(for: session) {
             Button {

@@ -9,6 +9,7 @@ struct SessionRowView: View {
     var showsMessageCount = true
     var showsWorkspace = true
     var isViewingCachedData = false
+    var isUnread = false
     /// The resolved attention state for this row, supplied by the screen that
     /// polls the server (`SessionListViewModel`). Screens that do not poll pass
     /// nothing and the row falls back to what the session itself reports.
@@ -19,9 +20,15 @@ struct SessionRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            if Self.isActiveStreaming(session) {
+            if Self.isActiveStreaming(session) && !isViewingCachedData {
                 ActiveSessionStreamingIndicator()
                     .padding(.top, streamingIndicatorTopPadding)
+            } else if isUnread && effectiveAttentionState == nil {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 10, height: 10)
+                    .padding(.top, streamingIndicatorTopPadding)
+                    .accessibilityHidden(true)
             }
 
             rowContent
@@ -87,7 +94,8 @@ struct SessionRowView: View {
     static func accessibilityStateLabels(
         for session: SessionSummary,
         isViewingCachedData: Bool,
-        attentionState: SessionRowAttentionState? = nil
+        attentionState: SessionRowAttentionState? = nil,
+        isUnread: Bool = false
     ) -> [String] {
         var labels: [String] = []
 
@@ -97,6 +105,8 @@ struct SessionRowView: View {
             isViewingCachedData: isViewingCachedData
         ) {
             labels.append(state.accessibilityLabel)
+        } else if isUnread {
+            labels.append(String(localized: "Unread"))
         }
 
         if session.pinned == true {
@@ -383,7 +393,8 @@ struct SessionRowView: View {
         parts.append(contentsOf: Self.accessibilityStateLabels(
             for: session,
             isViewingCachedData: isViewingCachedData,
-            attentionState: attentionState
+            attentionState: attentionState,
+            isUnread: isUnread
         ))
 
         if let metadataLabel {
@@ -399,8 +410,8 @@ struct SessionRowView: View {
 }
 
 /// What one session row is asking of the user, shown where the relative time
-/// otherwise sits. `nil` means ready: nothing is waiting and the row shows its
-/// time as usual.
+/// otherwise sits. `nil` means no attention is pending: the row shows its
+/// time, with an unread dot when a newer settled reply exists.
 enum SessionRowAttentionState: String, Equatable {
     case approval
     case input

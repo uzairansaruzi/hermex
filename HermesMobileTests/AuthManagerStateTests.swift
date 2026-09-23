@@ -338,6 +338,28 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(registry.servers.map(\.id), ["https://b.test"])
     }
 
+    func testSignOutAndServerRemovalClearOnlyTheirUnreadMarks() async throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = ServerRegistry.inMemory(keychain: keychain)
+        let (manager, _, bAccount) = try await makeTwoServerManager(keychain: keychain, registry: registry)
+        let first = try XCTUnwrap(URL(string: "https://a.test"))
+        let second = try XCTUnwrap(URL(string: "https://b.test"))
+        let store = SessionUnreadStore()
+        defer {
+            store.remove(for: first)
+            store.remove(for: second)
+        }
+        store.save(["same": 100], for: first)
+        store.save(["same": 200], for: second)
+
+        await manager.signOut()
+        XCTAssertTrue(store.load(for: first).isEmpty)
+        XCTAssertEqual(store.load(for: second), ["same": 200])
+
+        await manager.removeServer(bAccount)
+        XCTAssertTrue(store.load(for: second).isEmpty)
+    }
+
     func testConfiguringASecondServerAddsItAndMakesItActive() async throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory(keychain: keychain)

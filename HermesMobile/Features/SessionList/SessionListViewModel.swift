@@ -84,6 +84,7 @@ final class SessionListViewModel {
     /// have an entry, and the map is reassigned only when a value actually
     /// changes so rows do not invalidate once a second.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
+    private(set) var seenMessageTimes: [String: Double]
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
     /// `match_preview` per content-matched session from the last search, so a
@@ -95,9 +96,14 @@ final class SessionListViewModel {
     private let client: APIClient
     private let sessionMutator: SessionMutator
     private let server: URL
+    private let unreadStore: SessionUnreadStore
+    private var viewingSessionID: String?
+    private var returnedFromSessionIDs: Set<String> = []
 
-    init(server: URL, client: APIClient? = nil) {
+    init(server: URL, client: APIClient? = nil, unreadStore: SessionUnreadStore = SessionUnreadStore()) {
         self.server = server
+        self.unreadStore = unreadStore
+        seenMessageTimes = unreadStore.load(for: server)
         let resolvedClient = client ?? APIClient(baseURL: server)
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
@@ -227,12 +233,14 @@ final class SessionListViewModel {
 
         do {
             let response = try await client.sessions()
-            let visibleSessions = (response.sessions ?? [])
+            let allSessions = response.sessions ?? []
+            let visibleSessions = allSessions
                 .filter {
                     Self.nonEmpty($0.sessionId) != nil
                         && $0.archived != true
                         && $0.shouldAppearInSessionList
                 }
+            reconcileUnread(visibleSessions, allSessions: allSessions)
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 
@@ -463,6 +471,86 @@ final class SessionListViewModel {
     func attentionState(for session: SessionSummary) -> SessionRowAttentionState? {
         guard let sessionID = Self.nonEmpty(session.sessionId) else { return nil }
         return attentionStatesBySessionID[sessionID]
+    }
+
+    /// A settled row is unread only when its server timestamp moved past the
+    /// last timestamp this device showed. No phone clock enters the comparison.
+    func isUnread(_ session: SessionSummary) -> Bool {
+        guard let sessionID = Self.nonEmpty(session.sessionId),
+              let timestamp = Self.messageTime(for: session),
+              let seen = seenMessageTimes[sessionID],
+              !SessionRowView.isActiveStreaming(session),
+              session.hasPendingUserMessage != true
+        else { return false }
+        return timestamp > seen
+    }
+
+    func canToggleUnread(_ session: SessionSummary) -> Bool {
+        Self.nonEmpty(session.sessionId) != nil
+            && Self.messageTime(for: session) != nil
+            && !SessionRowView.isActiveStreaming(session)
+            && session.hasPendingUserMessage != true
+    }
+
+    /// Every chat entry point selects a destination, so this one stamp covers
+    /// rows, deep links, push, App Intents and Live Activity navigation.
+    func beginViewing(_ session: SessionSummary) {
+        viewingSessionID = Self.nonEmpty(session.sessionId)
+        markSeen(session)
+    }
+
+    /// The first successful list load after a chat closes stamps its freshest
+    /// server timestamp once, including a reply completed during that visit.
+    func noteReturn(from session: SessionSummary) {
+        guard let sessionID = Self.nonEmpty(session.sessionId) else { return }
+        if viewingSessionID == sessionID { viewingSessionID = nil }
+        returnedFromSessionIDs.insert(sessionID)
+    }
+
+    func toggleUnread(_ session: SessionSummary) {
+        guard canToggleUnread(session),
+              let sessionID = Self.nonEmpty(session.sessionId),
+              let timestamp = Self.messageTime(for: session)
+        else { return }
+        seenMessageTimes[sessionID] = isUnread(session) ? timestamp : timestamp.nextDown
+        persistSeen()
+    }
+
+    private func markSeen(_ session: SessionSummary) {
+        guard let sessionID = Self.nonEmpty(session.sessionId),
+              let timestamp = Self.messageTime(for: session),
+              (seenMessageTimes[sessionID] ?? 0) < timestamp
+        else { return }
+        seenMessageTimes[sessionID] = timestamp
+        persistSeen()
+    }
+
+    private func reconcileUnread(_ visibleSessions: [SessionSummary], allSessions: [SessionSummary]) {
+        let presentIDs = Set(allSessions.compactMap { Self.nonEmpty($0.sessionId) })
+        var updated = seenMessageTimes.filter { presentIDs.contains($0.key) }
+        for session in visibleSessions {
+            guard let sessionID = Self.nonEmpty(session.sessionId),
+                  let timestamp = Self.messageTime(for: session)
+            else { continue }
+            if updated[sessionID] == nil
+                || returnedFromSessionIDs.contains(sessionID)
+                || viewingSessionID == sessionID {
+                updated[sessionID] = max(updated[sessionID] ?? timestamp, timestamp)
+            }
+        }
+        returnedFromSessionIDs.removeAll()
+        guard updated != seenMessageTimes else { return }
+        seenMessageTimes = updated
+        persistSeen()
+    }
+
+    private func persistSeen() {
+        unreadStore.save(seenMessageTimes, for: server)
+    }
+
+    private static func messageTime(for session: SessionSummary) -> Double? {
+        guard let timestamp = session.lastMessageAt, timestamp.isFinite, timestamp > 0 else { return nil }
+        return timestamp
     }
 
     /// One approval probe and one clarification probe per streaming row, on the

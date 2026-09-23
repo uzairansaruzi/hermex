@@ -331,6 +331,13 @@ struct SessionListView: View {
                 selectedProjectID = nil
             }
             .onChange(of: navigationState.destination) { oldValue, newValue in
+                if case .session(let previous)? = oldValue,
+                   oldValue?.selectedSessionID != newValue?.selectedSessionID {
+                    viewModel.noteReturn(from: previous)
+                }
+                if case .session(let current)? = newValue {
+                    viewModel.beginViewing(current)
+                }
                 ratingRequestID = nil
                 if oldValue != nil, newValue == nil {
                     ratingMoment = .returnedToSessionList
@@ -1059,6 +1066,9 @@ struct SessionListView: View {
             },
             open: { session in
                 startOpeningSession(session)
+            },
+            toggleUnread: { session in
+                viewModel.toggleUnread(session)
             },
             togglePinned: { session in
                 Task { await togglePinned(session) }
