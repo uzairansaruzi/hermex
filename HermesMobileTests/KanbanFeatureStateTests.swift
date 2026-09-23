@@ -249,6 +249,25 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(calls, [.configuration, .configuration])
     }
 
+    func testReappearingAfterACancelledSupplementaryReadColdLoadsAgain() async {
+        let client = KanbanClientStub(cancelsFirstStatsRead: true)
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await Task { await state.loadIfNeeded() }.value
+        XCTAssertNotNil(state.snapshot)
+        XCTAssertNil(state.assigneeHistory)
+
+        await state.loadIfNeeded()
+
+        XCTAssertNotNil(state.stats)
+        XCTAssertNotNil(state.assigneeHistory)
+        let calls = await client.calls()
+        XCTAssertEqual(calls, [
+            .configuration, .boards, .board(KanbanBoardRequest(board: "main")), .stats("main"),
+            .configuration, .boards, .board(KanbanBoardRequest(board: "main")), .stats("main"),
+            .assignees("main")
+        ])
+    }
+
     func testReappearingWithALoadedBoardKeepsArchiveUndo() async throws {
         let client = ImmediateMutationClient(statusResults: [
             .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"archived"}}"#))
@@ -2175,16 +2194,19 @@ private actor KanbanClientStub: KanbanDataClient {
     private let configurationResult: Result<KanbanConfiguration, Error>
     private let boardsResult: Result<KanbanBoardsResponse, Error>
     private let boardResult: Result<KanbanBoardSnapshot, Error>
+    private var cancelsNextStatsRead: Bool
     private var recordedCalls: [Call] = []
 
     init(
         configurationResult: Result<KanbanConfiguration, Error> = .success(KanbanFixtures.configuration),
         boardsResult: Result<KanbanBoardsResponse, Error> = .success(KanbanFixtures.boards),
-        boardResult: Result<KanbanBoardSnapshot, Error> = .success(KanbanFixtures.snapshot)
+        boardResult: Result<KanbanBoardSnapshot, Error> = .success(KanbanFixtures.snapshot),
+        cancelsFirstStatsRead: Bool = false
     ) {
         self.configurationResult = configurationResult
         self.boardsResult = boardsResult
         self.boardResult = boardResult
+        self.cancelsNextStatsRead = cancelsFirstStatsRead
     }
 
     func kanbanConfiguration() throws -> KanbanConfiguration {
@@ -2202,8 +2224,14 @@ private actor KanbanClientStub: KanbanDataClient {
         return try boardResult.get()
     }
 
-    func kanbanStats(board: String) -> KanbanStats {
+    func kanbanStats(board: String) throws -> KanbanStats {
         recordedCalls.append(.stats(board))
+        if cancelsNextStatsRead {
+            cancelsNextStatsRead = false
+            // Models a pop that cancels the Board's `.task` after the snapshot arrived.
+            withUnsafeCurrentTask { $0?.cancel() }
+            throw CancellationError()
+        }
         return KanbanFixtures.stats
     }
 
