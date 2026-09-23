@@ -82,7 +82,7 @@ final class SessionListViewModel {
     /// Attention state per streaming session, refreshed on the same tick that
     /// already checks stream liveness. Only sessions with an active stream ever
     /// have an entry, and the map is reassigned only when a value actually
-    /// changes so rows do not invalidate once a second.
+    /// changes so rows do not invalidate on every poll tick.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
     private(set) var seenMessageTimes: [String: Double]
 

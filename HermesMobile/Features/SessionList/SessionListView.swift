@@ -1651,8 +1651,10 @@ private struct SessionSearchTaskID: Hashable {
 
 /// Identity for the session list's active-row poll. SwiftUI restarts the poll
 /// whenever this changes, and the poll runs only while `shouldPoll` holds.
-/// On compact width a pushed destination covers the list, so the poll pauses
-/// until the user returns; `SessionListDestinationReturn` reloads the rows then.
+/// On compact width a pushed chat or utility screen covers the list, so the
+/// poll pauses until the user returns; `SessionListDestinationReturn` reloads
+/// the rows then. Scheduled sessions shows live rows from the same view model,
+/// so it keeps the poll running.
 struct ActiveSessionMonitorTaskID: Hashable {
     /// Wait between polls. The open chat watches its own run over SSE, so the
     /// list only needs badges and the Working-to-done switch reasonably fresh.
@@ -1673,7 +1675,7 @@ struct ActiveSessionMonitorTaskID: Hashable {
         self.streamIDs = streamIDs
         self.hasActiveRows = hasActiveRows
         self.isViewingCachedData = isViewingCachedData
-        isListVisible = isRegularWidth || destination == nil
+        isListVisible = isRegularWidth || destination == nil || destination == .utility(.scheduled)
     }
 
     var shouldPoll: Bool {

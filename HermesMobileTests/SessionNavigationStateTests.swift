@@ -300,6 +300,10 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertFalse(
             activeRowMonitorID(isRegularWidth: false, destination: .utility(.archived)).shouldPoll
         )
+        // Scheduled sessions renders live rows, so its badges keep updating.
+        XCTAssertTrue(
+            activeRowMonitorID(isRegularWidth: false, destination: .utility(.scheduled)).shouldPoll
+        )
         // On regular width the sidebar stays on screen beside the chat.
         XCTAssertTrue(activeRowMonitorID(isRegularWidth: true, destination: chat).shouldPoll)
     }
