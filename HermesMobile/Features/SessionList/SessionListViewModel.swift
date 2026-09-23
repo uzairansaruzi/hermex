@@ -99,7 +99,7 @@ final class SessionListViewModel {
     private let unreadStore: SessionUnreadStore
     private var viewingSessionID: String?
     private var returnedFromSessionIDs: Set<String> = []
-    private var firstReturnLoadCounts: [String: Int] = [:]
+    private var firstReturnLoad: (revision: Int, sessionIDs: Set<String>)?
     private var returnRevision = 0
     private var activeLoadCount = 0
 
@@ -227,14 +227,15 @@ final class SessionListViewModel {
 
     @discardableResult
     func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
-        // Requests begun while the first return refresh is in flight share its
-        // mark. After that attempt ends, later refreshes track unread normally.
+        // Overlapping requests for the same return share its mark. A later
+        // return starts a new window, even if the prior load is still in flight.
         let revision = returnRevision
         let firstReturnedIDs = returnedFromSessionIDs
-        let returnedFromIDs = firstReturnedIDs.union(firstReturnLoadCounts.keys)
+        let inFlightIDs = firstReturnLoad?.revision == revision ? firstReturnLoad?.sessionIDs ?? [] : []
+        let returnedFromIDs = firstReturnedIDs.union(inFlightIDs)
         returnedFromSessionIDs.removeAll()
-        for sessionID in firstReturnedIDs {
-            firstReturnLoadCounts[sessionID, default: 0] += 1
+        if !firstReturnedIDs.isEmpty {
+            firstReturnLoad = (revision, firstReturnedIDs)
         }
         activeLoadCount += 1
         isLoading = true
@@ -243,13 +244,8 @@ final class SessionListViewModel {
         sessionLoadError = nil
         lastError = nil
         defer {
-            for sessionID in firstReturnedIDs {
-                let count = firstReturnLoadCounts[sessionID, default: 0]
-                if count <= 1 {
-                    firstReturnLoadCounts.removeValue(forKey: sessionID)
-                } else {
-                    firstReturnLoadCounts[sessionID] = count - 1
-                }
+            if !firstReturnedIDs.isEmpty && firstReturnLoad?.revision == revision {
+                firstReturnLoad = nil
             }
             activeLoadCount -= 1
             isLoading = activeLoadCount > 0

@@ -289,6 +289,61 @@ final class SessionRowAttentionStateTests: XCTestCase {
     }
 
     @MainActor
+    func testReturningFromAnotherSessionDoesNotInheritAnEarlierReturnMark() async throws {
+        let calls = LockedCounter()
+        let firstStarted = expectation(description: "first session return refresh started")
+        let secondStarted = expectation(description: "second session return refresh started")
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let releaseSecond = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            let aTime: Int
+            let bTime: Int
+            switch calls.increment() {
+            case 1:
+                (aTime, bTime) = (100, 100)
+            case 2:
+                firstStarted.fulfill()
+                releaseFirst.wait()
+                (aTime, bTime) = (200, 100)
+            default:
+                secondStarted.fulfill()
+                releaseSecond.wait()
+                (aTime, bTime) = (300, 200)
+            }
+            return apiTestJSONResponse(
+                "{\"sessions\":[{\"session_id\":\"a\",\"title\":\"A\",\"last_message_at\":\(aTime)},{\"session_id\":\"b\",\"title\":\"B\",\"last_message_at\":\(bTime)}]}",
+                for: request
+            )
+        }
+
+        await viewModel.load()
+        let a = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "a" })
+        let b = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "b" })
+        viewModel.beginViewing(a)
+        viewModel.noteReturn(from: a)
+        let first = Task { await viewModel.load() }
+        await fulfillment(of: [firstStarted], timeout: 5)
+
+        viewModel.beginViewing(b)
+        viewModel.noteReturn(from: b)
+        let second = Task { await viewModel.load() }
+        await fulfillment(of: [secondStarted], timeout: 5)
+
+        releaseSecond.signal()
+        let secondLoaded = await second.value
+        XCTAssertTrue(secondLoaded)
+        let currentA = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "a" })
+        let currentB = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "b" })
+        XCTAssertTrue(viewModel.isUnread(currentA), "A's later reply was not seen while viewing B")
+        XCTAssertFalse(viewModel.isUnread(currentB), "B's reply belongs to the second return")
+
+        releaseFirst.signal()
+        let firstLoaded = await first.value
+        XCTAssertFalse(firstLoaded)
+        XCTAssertTrue(viewModel.isUnread(currentA))
+    }
+
+    @MainActor
     func testLoadStartedBeforeReturnCannotReplaceTheReturnSnapshot() async throws {
         let calls = LockedCounter()
         let priorStarted = expectation(description: "prior refresh started")
