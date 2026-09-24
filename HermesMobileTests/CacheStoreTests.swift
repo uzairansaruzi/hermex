@@ -529,6 +529,11 @@ final class CacheStoreTests: XCTestCase {
 
         XCTAssertEqual(try fetchCachedSessions(in: context).map(\.sessionID), ["fresh-session"])
         XCTAssertTrue(try fetchCachedMessages(in: context).isEmpty)
+
+        // The expiry delete must reach the store, not just this context.
+        let storeContext = ModelContext(context.container)
+        XCTAssertEqual(try fetchCachedSessions(in: storeContext).map(\.sessionID), ["fresh-session"])
+        XCTAssertTrue(try fetchCachedMessages(in: storeContext).isEmpty)
     }
 
     func testCacheMaintenanceEvictsOldestMessagesAboveLimit() throws {
