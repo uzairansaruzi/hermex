@@ -241,7 +241,8 @@ enum ReviewDiffLoader {
     private enum Event {
         /// Nil when the fetch was cancelled.
         case file(FileResult?, [ReviewDiffRow])
-        case flush
+        /// Carries the token it was scheduled with; a publish in between makes it stale.
+        case flush(Int)
     }
 
     /// Returns when every file has landed, or early once `isCurrent` turns false or the
@@ -265,9 +266,13 @@ enum ReviewDiffLoader {
         let clock = ContinuousClock()
         var lastPublish: ContinuousClock.Instant?
         var pending = 0
+        var scheduledFlush: Int?
+        var flushCount = 0
         func publishRows() {
             publish(files.flatMap { rowsByFileID[$0.id] ?? [] })
             pending = 0
+            // Answers after this publish get a fresh interval, not the rest of an old one.
+            scheduledFlush = nil
         }
         publishRows()
 
@@ -277,7 +282,6 @@ enum ReviewDiffLoader {
             ordered.insert(firstFile, at: 0)
         }
         var inFlight = 0
-        var isFlushScheduled = false
         var reportedError = false
         await withTaskGroup(of: Event.self) { group in
             var queue = ordered.makeIterator()
@@ -296,8 +300,9 @@ enum ReviewDiffLoader {
                     return
                 }
                 switch event {
-                case .flush:
-                    isFlushScheduled = false
+                case .flush(let token):
+                    guard token == scheduledFlush else { continue }
+                    scheduledFlush = nil
                     if pending > 0 {
                         publishRows()
                         lastPublish = clock.now
@@ -321,13 +326,15 @@ enum ReviewDiffLoader {
                     let now = clock.now
                     let elapsed = lastPublish.map { $0.duration(to: now) }
                     if let elapsed, elapsed < coalescing.interval, pending < coalescing.batch {
-                        guard !isFlushScheduled else { continue }
-                        isFlushScheduled = true
+                        guard scheduledFlush == nil else { continue }
+                        flushCount += 1
+                        let token = flushCount
+                        scheduledFlush = token
                         let delay = coalescing.interval - elapsed
                         let sleep = coalescing.sleep
                         group.addTask {
                             try? await sleep(delay)
-                            return .flush
+                            return .flush(token)
                         }
                     } else {
                         publishRows()

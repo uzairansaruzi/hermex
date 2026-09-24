@@ -174,4 +174,72 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         openGate.finish()
         await load.value
     }
+
+    /// Records flush sleeps. The first waits for the test's gate; later ones sleep for real
+    /// and end when the load cancels them.
+    private final class FlushSleeps: @unchecked Sendable {
+        private let lock = NSLock()
+        private var delays: [Duration] = []
+        let firstGate: AsyncStream<Void>
+        let secondScheduled: XCTestExpectation
+
+        init(firstGate: AsyncStream<Void>, secondScheduled: XCTestExpectation) {
+            self.firstGate = firstGate
+            self.secondScheduled = secondScheduled
+        }
+
+        var recorded: [Duration] { lock.withLock { delays } }
+
+        func sleep(for delay: Duration) async throws {
+            let index = lock.withLock { delays.append(delay); return delays.count }
+            if index == 1 {
+                for await _ in firstGate { break }
+                return
+            }
+            if index == 2 { secondScheduled.fulfill() }
+            try await Task.sleep(for: delay)
+        }
+    }
+
+    @MainActor
+    func testLoaderRestartsTheFlushIntervalAfterABatchPublish() async throws {
+        let files = try ["a", "b", "c", "d", "e"].map { try file("\($0).swift") }
+        let results = try Dictionary(uniqueKeysWithValues: files.map { ($0.id, try loadedDiff(for: $0)) })
+        let (firstFlushGate, openFirstFlush) = AsyncStream<Void>.makeStream()
+        let (lastFileGate, openLastFile) = AsyncStream<Void>.makeStream()
+        let sleeps = FlushSleeps(firstGate: firstFlushGate, secondScheduled: expectation(description: "d gets its own flush"))
+        var published: [[ReviewDiffRow]] = []
+
+        // One fetch at a time: a paints, b waits on flush 1, c fills the batch and paints,
+        // d must wait a fresh interval instead of riding flush 1, and e is the last answer.
+        let load = Task { @MainActor in
+            await ReviewDiffLoader.load(
+                files: files,
+                firstFile: nil,
+                maxConcurrent: 1,
+                coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 2, sleep: { try await sleeps.sleep(for: $0) }),
+                fetch: { file in
+                    if file.id == "e.swift" { for await _ in lastFileGate { break } }
+                    return results[file.id]
+                },
+                isCurrent: { true },
+                publish: { published.append($0) },
+                onError: { XCTFail("Unexpected error \($0)") }
+            )
+        }
+
+        await fulfillment(of: [sleeps.secondScheduled], timeout: 5)
+        let delays = sleeps.recorded
+        XCTAssertEqual(delays.count, 2)
+        XCTAssertGreaterThan(delays[1], .seconds(3599), "The interval restarts at the batch publish.")
+
+        // The stale flush 1 publishes nothing, whichever order it and e land in.
+        openFirstFlush.yield()
+        openFirstFlush.finish()
+        openLastFile.yield()
+        openLastFile.finish()
+        await load.value
+        // Loading placeholders, a, the batch at c, and the last answer.
+        XCTAssertEqual(published.count, 4)
+    }
 }
