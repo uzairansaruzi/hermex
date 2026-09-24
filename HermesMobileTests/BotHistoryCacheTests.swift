@@ -30,15 +30,64 @@ final class BotHistoryCacheTests: XCTestCase {
         try await cache.appendRoom(key: key, room: room, page: RoomFixture.page([
             RoomFixture.event(2, kind: "message.member"), RoomFixture.event(3, kind: "turn.failed"),
             RoomFixture.event(4, kind: "future.event")], cursor: 4), since: 1)
+        XCTAssertEqual(try Data(contentsOf: file), before, "Invisible events move the cursor without rewriting the file")
+        let live = try await cache.roomHistory(key)
+        XCTAssertEqual(live?.cursor, 4)
+        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: [message("one", "Newport")])
         let restored = BotHistoryCache(directory: directory)
         let snapshot = try await restored.roomHistory(key)
         XCTAssertEqual(snapshot?.messages.compactMap(\.seq), [1, 2])
-        XCTAssertEqual(snapshot?.cursor, 4, "Invisible events still advance the persisted cursor")
+        XCTAssertEqual(snapshot?.cursor, 4, "The next real write persists the newer cursor")
         let hits = try await restored.search("Message", scope: scope, profileIDs: [], roomIDs: [key.roomID])
         XCTAssertEqual(hits.map(\.message.seq), [2, 1])
         XCTAssertEqual(hits.first?.message.sender, "chief-of-staff")
         XCTAssertEqual(hits.first?.snapshot.profileName, "Comms")
         XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains(server.absoluteString))
+    }
+
+    func testReopenAfterKillRereadsFromTheOlderPersistedCursorWithoutDuplicates() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = BotHistoryCache(directory: directory), key = roomKey()
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page([RoomFixture.event(1)], cursor: 1), since: 0)
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page(
+            [RoomFixture.event(2, kind: "tool.started")], cursor: 2), since: 1)
+        // Killed here: the relaunched cache holds the older cursor and re-reads from it.
+        let relaunched = BotHistoryCache(directory: directory)
+        let saved = try await relaunched.roomHistory(key)
+        XCTAssertEqual(saved?.cursor, 1)
+        try await relaunched.appendRoom(key: key, room: room, page: RoomFixture.page([
+            RoomFixture.event(2, kind: "tool.started"), RoomFixture.event(3, kind: "message.member")], cursor: 3), since: 1)
+        let reopened = try await BotHistoryCache(directory: directory).roomHistory(key)
+        XCTAssertEqual(reopened?.messages.compactMap(\.seq), [1, 3])
+        XCTAssertEqual(reopened?.cursor, 3)
+        XCTAssertEqual(reopened?.earlierBoundary, 0)
+    }
+
+    func testPruneEvictsOldestSnapshotsToTheCountAndByteBudgets() async throws {
+        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
+        func savedProfiles(_ directory: URL, _ profiles: Set<String>) async throws -> Set<String> {
+            let hits = try await BotHistoryCache(directory: directory).search("Newport", scope: scope, profileIDs: profiles)
+            return Set(hits.map(\.snapshot.profileID))
+        }
+        let counted = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sized = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { for directory in [counted, sized] { try? FileManager.default.removeItem(at: directory) } }
+        let cache = BotHistoryCache(directory: counted)
+        for index in 0...100 {
+            try await cache.replace(scope: scope, profileID: "bot\(index)", root: "r", tip: "t", messages: [message("m", "Newport")])
+        }
+        let afterCount = try await savedProfiles(counted, ["bot0", "bot1", "bot100"])
+        XCTAssertEqual(afterCount, ["bot1", "bot100"], "The 101st snapshot evicts the oldest")
+        let large = BotHistoryCache(directory: sized)
+        let rows = (0..<300).map { message(String($0), "Newport " + String(repeating: "x", count: 16_000)) }
+        for profile in ["large1", "large2"] {
+            try await large.replace(scope: scope, profileID: profile, root: "r", tip: "t", messages: rows)
+        }
+        let afterBytes = try await savedProfiles(sized, ["large1", "large2"])
+        XCTAssertEqual(afterBytes, ["large2"], "Two 4.8 MB snapshots exceed the 8 MB budget")
+        XCTAssertLessThanOrEqual(try Data(contentsOf: sized.appendingPathComponent("history.json")).count,
+                                 BotHistoryCache.maximumBytes)
     }
 
     func testSameNamedRoomsStayScopedAndRemovalRejectsLatePages() async throws {
