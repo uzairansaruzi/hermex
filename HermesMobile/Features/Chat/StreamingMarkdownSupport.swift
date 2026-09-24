@@ -20,7 +20,7 @@ enum StreamingMarkdownBlockSplitter {
     static func split(_ text: String) -> StreamingMarkdownBlockSegments {
         var lineStart = text.startIndex
         var chunkStart = text.startIndex
-        var isInsideFence = false
+        var openFence: FenceRun?
         var stableChunks: [StreamingMarkdownChunk] = []
 
         while lineStart < text.endIndex {
@@ -30,12 +30,14 @@ enum StreamingMarkdownBlockSplitter {
             let trimmedLine = trimmed(text[lineStart..<lineEnd])
 
             var stableBoundary: String.Index?
-            if isFenceDelimiter(trimmedLine) {
-                isInsideFence.toggle()
-                if !isInsideFence {
+            if let fence = openFence {
+                if fence.isClosed(by: trimmedLine) {
+                    openFence = nil
                     stableBoundary = nextLineStart
                 }
-            } else if !isInsideFence, hasLineBreak {
+            } else if let fence = FenceRun(openingLine: trimmedLine) {
+                openFence = fence
+            } else if hasLineBreak {
                 if trimmedLine.isEmpty || isStableSingleLineBlock(trimmedLine) {
                     stableBoundary = nextLineStart
                 }
@@ -109,8 +111,25 @@ enum StreamingMarkdownBlockSplitter {
 
     private static let whitespacesAndNewlines = CharacterSet.whitespacesAndNewlines
 
-    private static func isFenceDelimiter(_ trimmedLine: Substring) -> Bool {
-        trimmedLine.hasPrefix("```") || trimmedLine.hasPrefix("~~~")
+    /// The opening run of a fenced code block. Per CommonMark, only a line of the same
+    /// character, at least as long, with no info string closes it, so a ```` fence can
+    /// hold ``` lines and a ~~~ fence can hold ``` lines.
+    private struct FenceRun {
+        let character: Character
+        let length: Int
+
+        init?(openingLine: Substring) {
+            guard let first = openingLine.first, first == "`" || first == "~" else { return nil }
+            let length = openingLine.prefix(while: { $0 == first }).count
+            guard length >= 3 else { return nil }
+            character = first
+            self.length = length
+        }
+
+        func isClosed(by trimmedLine: Substring) -> Bool {
+            let run = trimmedLine.prefix(while: { $0 == character }).count
+            return run >= length && run == trimmedLine.count
+        }
     }
 
     private static func isStableSingleLineBlock(_ trimmedLine: Substring) -> Bool {

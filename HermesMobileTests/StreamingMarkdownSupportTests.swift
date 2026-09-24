@@ -27,6 +27,19 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
         XCTAssertTrue(segments.activeMarkdown.contains("Still streaming"))
     }
 
+    /// A longer or different fence can hold ``` lines (Markdown about Markdown); only the
+    /// matching closing run ends it, so a chunk never seals inside the outer fence.
+    func testNestedFenceSealsOnlyAfterItsOwnClosingRun() {
+        let prose = String(repeating: "Line of prose.\n", count: 400)
+        for (open, close) in [("````markdown", "````"), ("~~~markdown", "~~~")] {
+            let fence = "\(open)\n```swift\nlet a = 1\n\nlet b = 2\n```\n\(close)\n"
+            let segments = StreamingMarkdownBlockSplitter.split(prose + fence + "After\n")
+
+            XCTAssertEqual(segments.stableChunks.map(\.text), [prose + fence], open)
+            XCTAssertEqual(segments.activeMarkdown, "After\n", open)
+        }
+    }
+
     func testHeadingBoundaryCanSealWithoutFence() {
         let prose = String(repeating: "Line of prose.\n", count: 500)
         let text = prose + "## Next section\nMore text"
