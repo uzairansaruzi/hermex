@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Settled Bot rows render through the cached Markdown path. The live reply uses
-/// the streaming renderer without its reveal fade, so each coalesced snapshot
-/// re-lays out only its growing tail and code stays plain until it settles.
+/// the streaming renderer without its reveal fade: it bypasses the shared layout
+/// cache, chunks sealed past 6,000 characters skip re-layout, and code in the
+/// growing part stays plain until the reply settles.
 /// Reuse the transcript parser; only the download and preview ownership are Bot-specific.
 struct BotArtifactMessageView: View {
     let message: ChatMessage

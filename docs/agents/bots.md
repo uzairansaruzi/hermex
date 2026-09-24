@@ -61,9 +61,10 @@ history; the shared Sessions down-arrow resumes following. Its visibility uses
 Sessions’ scroll observer, follow latch and near-bottom thresholds,
 so it disappears on reaching the bottom. The live reply renders each coalesced
 text snapshot through the streaming Markdown renderer with its reveal fade off
-(`allowsStreamedTextAnimation`): only the growing tail is re-laid out, the
-shared layout cache stays untouched, and code highlights once the reply
-settles. A whole snapshot fading in would leave the trailing viewport blank; an
+(`allowsStreamedTextAnimation`). The live reply bypasses the shared layout
+cache; past the renderer's 6,000-character stable-chunk threshold, sealed
+chunks skip re-layout and their code highlights once, and code in the growing
+part stays plain until the reply settles. A whole snapshot fading in would leave the trailing viewport blank; an
 XCTest renders evolving snapshots and checks the actual visible output.
 
 Settled messages reuse the Sessions transcript's long-press seam.
