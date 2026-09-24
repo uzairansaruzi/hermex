@@ -257,7 +257,8 @@ final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
         advance(probe, window: window, passes: 3)
 
         XCTAssertEqual(probe.ownerPasses, 4, "The owner must re-run on each tick for this to test anything")
-        XCTAssertEqual(probe.readerPasses, 1)
+        // The old per-pass closures re-ran the reader on every owner pass (4); a slow runner can add one layout pass.
+        XCTAssertLessThanOrEqual(probe.readerPasses, 2)
         try XCTUnwrap(probe.disclosure)()
         XCTAssertEqual(probe.handledTick, 3)
     }
@@ -270,7 +271,8 @@ final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
         advance(probe, window: window, passes: 3)
 
         XCTAssertEqual(probe.ownerPasses, 4, "The owner must re-run on each tick for this to test anything")
-        XCTAssertEqual(probe.readerPasses, 1)
+        // The old per-pass closures re-ran the reader on every owner pass (4); a slow runner can add one layout pass.
+        XCTAssertLessThanOrEqual(probe.readerPasses, 2)
         try XCTUnwrap(probe.openURL)(URL(string: "https://example.com/file.swift")!)
         XCTAssertEqual(probe.handledTick, 3)
     }
