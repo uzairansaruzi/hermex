@@ -152,7 +152,11 @@ original selection automatically.
 ## Live updates, offline behavior, and Dispatcher
 
 SSE is primary while Kanban is visible. Coalesce event bursts before refetching
-affected Board/Card state. After repeated stream failures, use 30-second event polling
+affected Board/Card state. A burst refetches only the Board (stats and assignee history
+refresh on load, pull, foreground, and mutations, or on a burst only while they have not
+settled yet or the burst's refetch superseded a refresh still reading them), and a burst
+that lands mid-refetch queues one debounced follow-up refetch instead of cancelling the
+one in flight. After repeated stream failures, use 30-second event polling
 and show a subtle persistent **Live updates delayed** notice. Pull-to-refresh performs
 a full reload and retries SSE. Suspend live refresh in the background and reconcile
 immediately on foreground.

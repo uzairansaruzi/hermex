@@ -393,6 +393,14 @@ final class KanbanFeatureState {
     private var streamFailureCount = 0
     private var reconnectTask: Task<Void, Never>?
     private var coalescingTask: Task<Void, Never>?
+    /// True while `coalescingTask` is past its first debounce: fetching the Board or
+    /// waiting out the debounce before a follow-up fetch.
+    @ObservationIgnored private var liveRefreshIsFetching = false
+    /// A burst landed during that fetch; the running task refreshes once more.
+    @ObservationIgnored private var needsLiveRefresh = false
+    /// A refresh asked for stats and assignee history and has not finished reading them;
+    /// a live refresh that supersedes it reads them instead.
+    @ObservationIgnored private var supplementaryRefreshPending = false
     private var pollingTask: Task<Void, Never>?
     private var activeCardMutationIDs: [String: UUID] = [:]
     private var pendingOptimisticStatuses: [String: String] = [:]
@@ -2340,6 +2348,7 @@ final class KanbanFeatureState {
         guard let board = selectedBoardSlug else { return false }
         let boardLoadID = UUID()
         activeBoardLoadID = boardLoadID
+        if refreshSupplementary { supplementaryRefreshPending = true }
         isRefreshing = true
         if !preserveRefreshFailure {
             refreshFailed = false
@@ -2488,16 +2497,46 @@ final class KanbanFeatureState {
         }
     }
 
+    /// Debounces live event bursts into one Board-only refresh; stats and assignee
+    /// history refresh on load, pull, foreground, and mutations instead, unless they
+    /// have not settled yet or this refresh supersedes one that was still reading them.
+    /// A burst that lands while that refresh is fetching queues one follow-up pass
+    /// rather than cancelling the in-flight download; the follow-up waits out the same
+    /// debounce, so writes unlock between passes. `suspendLiveUpdates` clears both flags.
     private func scheduleCoalescedReconciliation(board: String, generation: Int) {
+        if liveRefreshIsFetching {
+            needsLiveRefresh = true
+            return
+        }
         let sleep = self.sleep
         let delay = timing.coalescingDelay
         coalescingTask?.cancel()
         coalescingTask = Task { @MainActor [weak self] in
             do { try await sleep(delay) } catch { return }
             guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
-            let succeeded = await self.refreshBoard(usingCursor: false, refreshSupplementary: true)
-            guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
-            if !succeeded, self.isOffline { self.startPollingIfNeeded() }
+            self.liveRefreshIsFetching = true
+            defer {
+                // A suspend already cleared the flag, and a newer generation may own it.
+                if self.liveGeneration == generation { self.liveRefreshIsFetching = false }
+            }
+            repeat {
+                self.needsLiveRefresh = false
+                let succeeded = await self.refreshBoard(
+                    usingCursor: false,
+                    refreshSupplementary: !self.supplementaryReadsSettled
+                        || self.supplementaryRefreshPending
+                )
+                guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
+                if !succeeded, self.isOffline {
+                    self.startPollingIfNeeded()
+                    return
+                }
+                if self.needsLiveRefresh {
+                    // Bursts keep folding into the flag while this debounce runs.
+                    do { try await sleep(delay) } catch { return }
+                    guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
+                }
+            } while self.needsLiveRefresh
         }
     }
 
@@ -2570,6 +2609,8 @@ final class KanbanFeatureState {
         reconnectTask = nil
         coalescingTask?.cancel()
         coalescingTask = nil
+        liveRefreshIsFetching = false
+        needsLiveRefresh = false
         pollingTask?.cancel()
         pollingTask = nil
     }
@@ -2648,6 +2689,7 @@ final class KanbanFeatureState {
             capabilityWarnings.insert(.profileHistoryUnavailable)
             forwardAuthentication(error)
         }
+        supplementaryRefreshPending = false
         updatePartialState()
     }
 

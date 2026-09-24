@@ -29,8 +29,136 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertNil(lastRequest?.since)
         let statsCallCount = await client.statsCallCount
         let assigneeCallCount = await client.assigneeCallCount
+        // Only the initial load reads stats and assignees; the live burst fetches the Board alone.
+        XCTAssertEqual(statsCallCount, 1)
+        XCTAssertEqual(assigneeCallCount, 1)
+        state.setVisible(false)
+    }
+
+    func testBurstDuringLiveRefreshQueuesOneFollowUpInsteadOfCancelling() async throws {
+        let client = GatedLiveKanbanClient()
+        let stream = KanbanStreamSpy()
+        let probe = RefreshingProbe()
+        let state = makeState(client: client, stream: stream, sleep: { duration in
+            probe.recordSleep()
+            try await Task.sleep(for: duration)
+        })
+        probe.state = state
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+        try await waitUntil { await client.boardCallCount == 2 }
+
+        // Two more bursts land while the live refresh is still downloading.
+        stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
+        stream.emit(Self.eventsFrame(cursor: 14, kind: "task.updated"))
+        await client.release(.cursor12)
+
+        // The in-flight refresh was applied, then exactly one follow-up started.
+        try await waitUntil { await client.boardCallCount == 3 }
+        XCTAssertEqual(state.snapshot?.latestEventID, 12)
+        await client.release(.cursor14)
+        try await waitUntil { state.snapshot?.latestEventID == 14 && !state.isRefreshing }
+
+        let boardCallCount = await client.boardCallCount
+        let statsCallCount = await client.statsCallCount
+        let assigneeCallCount = await client.assigneeCallCount
+        XCTAssertEqual(boardCallCount, 3)
+        XCTAssertEqual(statsCallCount, 1)
+        XCTAssertEqual(assigneeCallCount, 1)
+        // The follow-up waited out its own debounce with the refresh flag down, so
+        // writes unlock between passes.
+        XCTAssertEqual(probe.refreshingAtEachSleep, [false, false])
+        state.setVisible(false)
+    }
+
+    func testLiveRefreshThatSupersedesAPullFinishesItsStatsAndAssigneeReads() async throws {
+        let client = GatedLiveKanbanClient()
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+
+        // A pull is still downloading the Board when a burst's live refresh takes over.
+        let pull = Task { await state.refresh() }
+        try await waitUntil { await client.boardCallCount == 2 }
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+        try await waitUntil { await client.boardCallCount == 3 }
+        await client.release(.cursor12)
+        await pull.value
+        await client.release(.cursor12)
+
+        // The live refresh reads the stats and assignees the superseded pull never did.
+        try await waitUntil { await client.assigneeCallCount == 2 && !state.isRefreshing }
+        let statsCallCount = await client.statsCallCount
         XCTAssertEqual(statsCallCount, 2)
-        XCTAssertEqual(assigneeCallCount, 2)
+        state.setVisible(false)
+    }
+
+    func testSuspendDuringLiveRefreshDoesNotSwallowTheNextBurst() async throws {
+        let client = GatedLiveKanbanClient()
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+        try await waitUntil { await client.boardCallCount == 2 }
+
+        // Push a Card mid-refresh, pop back, and receive a new burst.
+        state.setVisible(false)
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 12, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
+
+        try await waitUntil { await client.boardCallCount == 3 }
+        await client.release(.cursor12)
+        // Once the client has returned the stale result, the stale refresh finishes on
+        // the main actor before this test resumes there.
+        try await waitUntil { await client.resumedFetchCount == 1 }
+
+        // The stale refresh must not clear the new refresh's in-flight flag: this burst
+        // queues a follow-up instead of cancelling the fetch holding cursor 14.
+        stream.emit(Self.eventsFrame(cursor: 15, kind: "task.updated"))
+        await client.release(.cursor14)
+        try await waitUntil { await client.boardCallCount == 4 }
+        XCTAssertEqual(state.snapshot?.latestEventID, 14)
+        await client.release(.cursor15)
+        try await waitUntil { state.snapshot?.latestEventID == 15 && !state.isRefreshing }
+        state.setVisible(false)
+    }
+
+    func testLiveRefreshThatSupersedesUnsettledReadsFinishesThem() async throws {
+        let client = GatedLiveKanbanClient(cancelsFirstStatsRead: true)
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        // A pop cancelled the first load after its Board arrived.
+        await Task { await state.load() }.value
+        XCTAssertNotNil(state.snapshot)
+        XCTAssertNil(state.stats)
+
+        // Returning resumes the stream while `loadIfNeeded` refetches to finish the reads.
+        state.setVisible(true)
+        let reappear = Task { await state.loadIfNeeded() }
+        try await waitUntil { await client.boardCallCount == 2 }
+
+        // A backlog burst supersedes that refresh before its Board returns.
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+        try await waitUntil { await client.boardCallCount == 3 }
+        await client.release(.cursor12)
+        await reappear.value
+        await client.release(.cursor12)
+
+        try await waitUntil { state.stats != nil && state.assigneeHistory != nil }
+        let statsCallCount = await client.statsCallCount
+        XCTAssertEqual(statsCallCount, 2)
         state.setVisible(false)
     }
 
@@ -407,7 +535,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
     }
 
     private func makeState(
-        client: LiveKanbanClient,
+        client: any KanbanDataClient,
         stream: KanbanStreamSpy,
         timing: KanbanLiveUpdateTiming = KanbanLiveUpdateTiming(
             coalescingDelay: .milliseconds(5),
@@ -415,6 +543,9 @@ final class KanbanLiveUpdateTests: XCTestCase {
             pollingInterval: .seconds(60),
             failuresBeforePolling: 3
         ),
+        sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
+            try await Task.sleep(for: duration)
+        },
         defaults: UserDefaults = .standard
     ) -> KanbanFeatureState {
         KanbanFeatureState(
@@ -422,6 +553,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
             client: client,
             streamClient: stream,
             timing: timing,
+            sleep: sleep,
             defaults: defaults
         )
     }
@@ -535,6 +667,69 @@ private actor LiveKanbanClient: KanbanDataClient {
     }
 }
 
+/// Records whether the Board was refreshing each time the state started a sleep.
+@MainActor
+private final class RefreshingProbe {
+    weak var state: KanbanFeatureState?
+    private(set) var refreshingAtEachSleep: [Bool] = []
+
+    func recordSleep() {
+        refreshingAtEachSleep.append(state?.isRefreshing ?? true)
+    }
+}
+
+/// Returns the first Board load at once, then holds every later Board fetch until
+/// the test releases it, so a burst can land while a live refresh is in flight.
+/// `cancelsFirstStatsRead` models a pop that cancels the first load mid-reads.
+private actor GatedLiveKanbanClient: KanbanDataClient {
+    private(set) var boardCallCount = 0
+    private(set) var statsCallCount = 0
+    private(set) var assigneeCallCount = 0
+    /// Held fetches that were released and handed their result back to the caller.
+    private(set) var resumedFetchCount = 0
+    private var pending: [CheckedContinuation<KanbanBoardSnapshot, Never>] = []
+    private var cancelsNextStatsRead: Bool
+
+    init(cancelsFirstStatsRead: Bool = false) {
+        cancelsNextStatsRead = cancelsFirstStatsRead
+    }
+
+    func kanbanConfiguration() -> KanbanConfiguration { .liveConfiguration }
+    func kanbanBoards() -> KanbanBoardsResponse { .single }
+
+    func kanbanBoard(_ request: KanbanBoardRequest) async -> KanbanBoardSnapshot {
+        boardCallCount += 1
+        guard boardCallCount > 1 else { return .rich }
+        let snapshot = await withCheckedContinuation { pending.append($0) }
+        resumedFetchCount += 1
+        return snapshot
+    }
+
+    /// Resumes the oldest held Board fetch with `snapshot`.
+    func release(_ snapshot: KanbanBoardSnapshot) {
+        guard !pending.isEmpty else { return }
+        pending.removeFirst().resume(returning: snapshot)
+    }
+
+    func kanbanStats(board: String) throws -> KanbanStats {
+        statsCallCount += 1
+        if cancelsNextStatsRead {
+            cancelsNextStatsRead = false
+            // Models a pop that cancels the Board's `.task` after the snapshot arrived.
+            withUnsafeCurrentTask { $0?.cancel() }
+            throw CancellationError()
+        }
+        return .emptyStats
+    }
+
+    func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
+        assigneeCallCount += 1
+        return .emptyHistory
+    }
+
+    func kanbanEvents(_ request: KanbanEventsRequest) -> KanbanEventsEnvelope { .events(cursor: 11) }
+}
+
 private actor ForegroundBoardSwitchClient: KanbanDataClient {
     private var boardCallCount = 0
     private var foregroundContinuation: CheckedContinuation<Void, Never>?
@@ -587,6 +782,9 @@ private extension KanbanBoardsResponse {
 private extension KanbanBoardSnapshot {
     static let rich: Self = decode(#"{"changed":true,"latest_event_id":11,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"CARD-1","status":"ready"}]}]}"#)
     static let newer: Self = decode(#"{"changed":true,"latest_event_id":13,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"CARD-2","status":"ready"}]}]}"#)
+    static let cursor12: Self = decode(#"{"changed":true,"latest_event_id":12,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"CARD-1","status":"ready"}]}]}"#)
+    static let cursor14: Self = decode(#"{"changed":true,"latest_event_id":14,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"CARD-3","status":"ready"}]}]}"#)
+    static let cursor15: Self = decode(#"{"changed":true,"latest_event_id":15,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"CARD-4","status":"ready"}]}]}"#)
     static let release: Self = decode(#"{"changed":true,"latest_event_id":20,"read_only":false,"columns":[{"name":"triage","tasks":[]}]}"#)
     static let releaseUpdated: Self = decode(#"{"changed":true,"latest_event_id":21,"read_only":false,"columns":[{"name":"triage","tasks":[{"id":"REL-1","status":"triage"}]}]}"#)
 }
