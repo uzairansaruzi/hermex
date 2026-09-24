@@ -43,6 +43,9 @@ struct ModelPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The system's minimum row height, read outside the List, which runs
+    /// with none (see `body`).
+    @Environment(\.defaultMinListRowHeight) private var systemMinRowHeight
     @State private var searchText = ""
     @State private var customModelID = ""
     @State private var customProviderID = ""
@@ -53,13 +56,17 @@ struct ModelPickerSheet: View {
     private let savedCustomGroupID = "saved-custom-models"
 
     var body: some View {
+        // Derived once per body pass: the group rows and the search-empty
+        // placeholder both read it, and each derivation walks every model.
+        let groups = filteredModelGroups
+
         NavigationStack {
             List {
                 if let errorMessage {
                     Text(verbatim: errorMessage)
                         .font(.caption)
                         .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: rowContentMinHeight(verticalInsets: 8), alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
                         .listRowSeparator(.hidden)
                 }
@@ -70,7 +77,7 @@ struct ModelPickerSheet: View {
                         .listRowSeparator(.hidden)
                 }
 
-                ForEach(filteredModelGroups) { group in
+                ForEach(groups) { group in
                     modelGroupDisclosure(group)
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 12))
                         .listRowSeparator(.hidden)
@@ -80,10 +87,15 @@ struct ModelPickerSheet: View {
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 12))
                     .listRowSeparator(.hidden)
 
-                statusPlaceholder
+                statusPlaceholder(groups: groups)
                     .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
+            // Model rows, their dividers, and the overflow toggle are rows of
+            // their own and size to their content, like the stack they
+            // replaced. Rows that relied on the system minimum restore it
+            // through `rowContentMinHeight(verticalInsets:)`.
+            .environment(\.defaultMinListRowHeight, 0)
             .scrollContentBackground(.hidden)
             .navigationTitle(configuration.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -121,11 +133,18 @@ struct ModelPickerSheet: View {
         }
     }
 
+    /// The content height that keeps a row at the system minimum row height,
+    /// given the row's top plus bottom insets.
+    private func rowContentMinHeight(verticalInsets: CGFloat) -> CGFloat {
+        max(0, systemMinRowHeight - verticalInsets)
+    }
+
     /// Loading and load-failure states for surfaces that load inside the sheet,
     /// and the search-empty state for everyone. All three only stand in for an
     /// empty group list, so a stale catalog keeps rendering during a refresh.
+    /// `groups` is the body's already-filtered catalog.
     @ViewBuilder
-    private var statusPlaceholder: some View {
+    private func statusPlaceholder(groups: [ModelCatalogGroup]) -> some View {
         if modelGroups.isEmpty, loadStatus == .loading {
             ContentUnavailableView {
                 ProgressView()
@@ -138,7 +157,7 @@ struct ModelPickerSheet: View {
             } description: {
                 Text(verbatim: message)
             }
-        } else if filteredModelGroups.isEmpty, !trimmedSearchQuery.isEmpty {
+        } else if groups.isEmpty, !trimmedSearchQuery.isEmpty {
             ContentUnavailableView.search(text: searchText)
         }
     }
@@ -180,7 +199,7 @@ struct ModelPickerSheet: View {
     /// rows above it (body text, 48pt rows, 12pt radius) so it reads as part
     /// of the same list rather than a separate form.
     private var customModelEntry: some View {
-        DisclosureGroup("Custom Model") {
+        DisclosureGroup {
             VStack(spacing: 6) {
                 TextField("Exact model ID", text: $customModelID)
                     .textInputAutocapitalization(.never)
@@ -256,6 +275,10 @@ struct ModelPickerSheet: View {
                 .padding(.top, 2)
             }
             .padding(.top, 4)
+        } label: {
+            // Row insets 12 + 8 and the 2 + 2 vertical padding below.
+            Text("Custom Model")
+                .frame(minHeight: rowContentMinHeight(verticalInsets: 24), alignment: .leading)
         }
         .padding(.vertical, 2)
     }
@@ -291,10 +314,19 @@ struct ModelPickerSheet: View {
         return isFavorite ? Color.primary : Color(.tertiaryLabel)
     }
 
+    /// One provider group. Inside a List, each view in the disclosure content
+    /// becomes its own row, so every model is a separate, reusable List row and
+    /// only the rows on screen get built. A single container row here would
+    /// build all of them at once, which is hundreds after "Show all models".
     private func modelGroupDisclosure(_ group: ModelCatalogGroup) -> some View {
         let displayedModels = overflowExpansion.displayedModels(in: group)
         let totalModelCount = group.allModels.count
+        let allowsDelete = group.id == savedCustomGroupID
+        let showsOverflowToggle = shouldShowOverflowToggle(for: group)
+        let lastModel = displayedModels.last
 
+        // The insets keep the spacing of the single stack these rows replaced:
+        // 9pt above the divider, 1pt between rows, 5pt below the group.
         return DisclosureGroup(
             isExpanded: Binding(
                 get: { sectionExpansion.isExpanded(groupID: group.id) },
@@ -303,24 +335,24 @@ struct ModelPickerSheet: View {
                 }
             )
         ) {
-            VStack(spacing: 1) {
-                Divider()
-                    .padding(.leading, 10)
+            groupDivider
+                .listRowInsets(EdgeInsets(top: 9, leading: 16, bottom: 1, trailing: 12))
 
-                LazyVStack(spacing: 1) {
-                    ForEach(displayedModels, id: \.self) { option in
-                        modelOptionRow(option, allowsDelete: group.id == savedCustomGroupID)
-                    }
-                }
-
-                if shouldShowOverflowToggle(for: group) {
-                    Divider()
-                        .padding(.leading, 10)
-
-                    overflowToggle(for: group)
-                }
+            ForEach(displayedModels, id: \.self) { option in
+                let endsGroup = option == lastModel && !showsOverflowToggle
+                modelOptionRow(option, allowsDelete: allowsDelete)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: endsGroup ? 5 : 1, trailing: 12))
+                    .listRowSeparator(.hidden)
             }
-            .padding(.top, 4)
+
+            if showsOverflowToggle {
+                groupDivider
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 1, trailing: 12))
+
+                overflowToggle(for: group)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 5, trailing: 12))
+                    .listRowSeparator(.hidden)
+            }
         } label: {
             HStack(spacing: 8) {
                 if ProviderGlyphKind.resolve(providerID: group.providerID) != nil {
@@ -348,9 +380,20 @@ struct ModelPickerSheet: View {
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 7)
+            .frame(minHeight: rowContentMinHeight(verticalInsets: 10))
             .contentShape(Rectangle())
         }
         .tint(Color(.secondaryLabel))
+    }
+
+    /// The hairline under a group header and above its overflow toggle. The
+    /// stack keeps it horizontal now that it is a row of its own.
+    private var groupDivider: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .padding(.leading, 10)
+        }
+        .listRowSeparator(.hidden)
     }
 
     private func shouldShowOverflowToggle(for group: ModelCatalogGroup) -> Bool {
@@ -535,6 +578,7 @@ struct ModelPickerSheet: View {
 
     private var customModelGroups: [ModelCatalogGroup] {
         var groups: [ModelCatalogGroup] = []
+        let storedCustomOptions = storedCustomOptions
 
         if configuration.showsCurrentCustomModelGroup,
            let selectedCustomOption,

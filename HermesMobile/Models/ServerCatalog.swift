@@ -676,6 +676,12 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
     let providerID: String?
     let models: [ModelCatalogOption]
     let extraModels: [ModelCatalogOption]
+    /// All models in the group, including the overflow tail the server
+    /// exposes as `extra_models` (visible `models` + searchable `extraModels`),
+    /// de-duplicated by `id` to keep ForEach identity unique. Stored rather
+    /// than computed because the picker reads it many times per body pass, and
+    /// OpenRouter or Nous tails run to hundreds of models.
+    let allModels: [ModelCatalogOption]
 
     init(
         id: String,
@@ -689,6 +695,8 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
         self.providerID = providerID
         self.models = models
         self.extraModels = extraModels
+        var seen = Set<String>()
+        self.allModels = (models + extraModels).filter { seen.insert($0.id).inserted }
     }
 
     init(
@@ -704,18 +712,6 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
             models: models,
             extraModels: []
         )
-    }
-}
-
-extension ModelCatalogGroup {
-    /// All models in the group, including the overflow tail the server
-    /// exposes as `extra_models` (visible `models` + searchable `extraModels`).
-    /// `slashAutocompleteModels` was the old name — it happens to be the same
-    /// set, but the concept is broader than one consumer. De-duplicated by `id`
-    /// to keep ForEach identity unique.
-    var allModels: [ModelCatalogOption] {
-        var seen = Set<String>()
-        return (models + extraModels).filter { seen.insert($0.id).inserted }
     }
 }
 

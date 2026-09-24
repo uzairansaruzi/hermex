@@ -59,15 +59,28 @@ struct ProviderGlyphGalleryView: View {
         ("custom", "Custom Endpoint"),
     ]
 
+    /// Two sample models per provider, except OpenRouter, which gets the size
+    /// the server really returns for it: 15 visible models and a 385-model
+    /// `extra_models` tail, so "Show all models" and search can be checked
+    /// against a large catalog.
     private static let sampleGroups: [ModelCatalogGroup] = documentedProviders.map { provider in
-        ModelCatalogGroup(
+        let samples = [
+            ModelCatalogOption(id: "\(provider.id)-sample-1", displayName: "\(provider.name) Sample", providerID: provider.id),
+            ModelCatalogOption(id: "\(provider.id)-sample-2", displayName: "\(provider.name) Sample Mini", providerID: provider.id),
+        ]
+        guard provider.id == "openrouter" else {
+            return ModelCatalogGroup(id: provider.id, name: provider.id, providerID: provider.id, models: samples)
+        }
+
+        let tail = (3...400).map { index in
+            ModelCatalogOption(id: "openrouter-sample-\(index)", displayName: "OpenRouter Sample \(index)", providerID: provider.id)
+        }
+        return ModelCatalogGroup(
             id: provider.id,
             name: provider.id,
             providerID: provider.id,
-            models: [
-                ModelCatalogOption(id: "\(provider.id)-sample-1", displayName: "\(provider.name) Sample", providerID: provider.id),
-                ModelCatalogOption(id: "\(provider.id)-sample-2", displayName: "\(provider.name) Sample Mini", providerID: provider.id),
-            ]
+            models: samples + tail.prefix(13),
+            extraModels: Array(tail.dropFirst(13))
         )
     }
 
@@ -80,7 +93,7 @@ struct ProviderGlyphGalleryView: View {
                     Text(verbatim: "Open Model Picker with Every Provider")
                 }
             } footer: {
-                Text(verbatim: "Same picker as the composer, fed a synthetic catalog with one group per documented provider ID.")
+                Text(verbatim: "Same picker as the composer, fed a synthetic catalog with one group per documented provider ID. OpenRouter carries 400 models to exercise Show all models.")
             }
 
             Section {
