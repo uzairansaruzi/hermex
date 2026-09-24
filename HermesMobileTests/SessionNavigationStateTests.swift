@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import HermesMobile
 
@@ -556,4 +557,106 @@ private actor SessionInitialLoadEventRecorder {
     func snapshot() -> [Event] {
         events
     }
+}
+
+/// Hosts the regular-width shell in a real window. Creation counts show which
+/// column a root selection re-identifies; the hosted `UISplitViewController`'s
+/// display mode shows what the selection does to the sidebar's visibility.
+@MainActor
+final class SessionSplitViewIdentityTests: XCTestCase {
+    func testRootSelectionRebuildsOnlyTheDetailColumn() throws {
+        let log = SplitColumnCreationLog()
+        let (host, window) = try hostSplitView(log: log, size: CGSize(width: 1_194, height: 834))
+        defer { tearDown(window) }
+        XCTAssertEqual(log.sidebar, 1)
+        XCTAssertEqual(log.detail, 1)
+
+        host.rootView = splitView(rootRevision: 1, log: log)
+        host.view.layoutIfNeeded()
+
+        XCTAssertEqual(log.sidebar, 1, "A root selection must not rebuild the sidebar")
+        XCTAssertEqual(log.detail, 2, "A root selection must reset the detail stack")
+    }
+
+    func testRootSelectionClosesASidebarOpenedOverThePortraitDetail() throws {
+        let log = SplitColumnCreationLog()
+        let (host, window) = try hostSplitView(log: log, size: CGSize(width: 834, height: 1_194))
+        defer { tearDown(window) }
+        let split = try XCTUnwrap(splitViewController(in: host))
+        XCTAssertEqual(split.displayMode, .secondaryOnly)
+        split.show(.primary)
+        host.view.layoutIfNeeded()
+        XCTAssertNotEqual(split.displayMode, .secondaryOnly)
+
+        host.rootView = splitView(rootRevision: 1, log: log)
+        host.view.layoutIfNeeded()
+        // The split view applies the new visibility on the next main-queue turn.
+        let applied = expectation(description: "visibility applied")
+        DispatchQueue.main.async { applied.fulfill() }
+        wait(for: [applied], timeout: 1)
+
+        XCTAssertEqual(split.displayMode, .secondaryOnly, "Picking a root must close a sidebar the user opened")
+        XCTAssertEqual(log.sidebar, 1)
+    }
+
+    /// The hosted test above covers the portrait wiring. A collapsed sidebar can't be
+    /// told apart from `.automatic` in an iPhone-idiom host, so the policy pins it.
+    func testRootSelectionHidesAnOpenedSidebarButKeepsACollapsedOne() {
+        XCTAssertEqual(NavigationSplitViewVisibility.all.afterRootSelection, .automatic)
+        XCTAssertEqual(NavigationSplitViewVisibility.doubleColumn.afterRootSelection, .automatic)
+        XCTAssertEqual(NavigationSplitViewVisibility.automatic.afterRootSelection, .automatic)
+        XCTAssertEqual(NavigationSplitViewVisibility.detailOnly.afterRootSelection, .detailOnly)
+    }
+
+    private func hostSplitView(
+        log: SplitColumnCreationLog,
+        size: CGSize
+    ) throws -> (UIHostingController<ProbeSplitView>, UIWindow) {
+        let host = UIHostingController(rootView: splitView(rootRevision: 0, log: log))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.traitOverrides.horizontalSizeClass = .regular
+        window.frame = CGRect(origin: .zero, size: size)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        return (host, window)
+    }
+
+    private func tearDown(_ window: UIWindow) {
+        window.isHidden = true
+        window.rootViewController = nil
+    }
+
+    private func splitViewController(in root: UIViewController) -> UISplitViewController? {
+        if let split = root as? UISplitViewController { return split }
+        return root.children.lazy.compactMap { self.splitViewController(in: $0) }.first
+    }
+
+    private func splitView(rootRevision: Int, log: SplitColumnCreationLog) -> ProbeSplitView {
+        SessionSplitView(rootRevision: rootRevision) {
+            SplitColumnProbe { log.sidebar += 1 }
+        } detail: {
+            SplitColumnProbe { log.detail += 1 }
+        }
+    }
+}
+
+private typealias ProbeSplitView = SessionSplitView<SplitColumnProbe, SplitColumnProbe>
+
+@MainActor
+private final class SplitColumnCreationLog {
+    var sidebar = 0
+    var detail = 0
+}
+
+private struct SplitColumnProbe: UIViewRepresentable {
+    let onCreate: @MainActor () -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        onCreate()
+        return UIView()
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }

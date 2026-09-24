@@ -452,16 +452,12 @@ struct SessionListView: View {
     @ViewBuilder
     private var navigationContainer: some View {
         if horizontalSizeClass == .regular {
-            NavigationSplitView {
+            SessionSplitView(rootRevision: navigationState.rootRevision) {
                 sessionListSurface
                     .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
             } detail: {
-                NavigationStack {
-                    regularWidthDetail
-                }
+                regularWidthDetail
             }
-            .navigationSplitViewStyle(.balanced)
-            .id(navigationState.rootRevision)
         } else {
             NavigationStack {
                 sessionListSurface

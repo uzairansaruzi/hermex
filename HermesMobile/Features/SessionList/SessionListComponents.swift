@@ -1,6 +1,42 @@
 import SwiftUI
 import UIKit
 
+/// The regular-width shell (iPad, landscape Plus/Max). A sidebar root selection
+/// bumps `rootRevision`, which re-identifies only the detail stack so its pushed
+/// path resets (#116). The sidebar keeps its identity, scroll position, and row
+/// state across selections (#689); its visibility follows `afterRootSelection`.
+struct SessionSplitView<Sidebar: View, Detail: View>: View {
+    let rootRevision: Int
+    @ViewBuilder let sidebar: Sidebar
+    @ViewBuilder let detail: Detail
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            sidebar
+        } detail: {
+            NavigationStack {
+                detail
+            }
+            .id(rootRevision)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: rootRevision) {
+            columnVisibility = columnVisibility.afterRootSelection
+        }
+    }
+}
+
+extension NavigationSplitViewVisibility {
+    /// The sidebar visibility after a root selection. An opened sidebar returns to
+    /// the system default, which hides it where it covers the detail (portrait) and
+    /// keeps it where it sits beside the detail (landscape). A sidebar the user
+    /// collapsed stays collapsed.
+    var afterRootSelection: Self {
+        self == .detailOnly ? .detailOnly : .automatic
+    }
+}
+
 struct SessionListRowActions {
     let retryLoad: () -> Void
     let open: (SessionSummary) -> Void
