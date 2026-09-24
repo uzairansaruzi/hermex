@@ -38,14 +38,11 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
 private final class DetailColumnNavigation {
     weak var navigationController: UINavigationController?
 
+    /// Pops the old root's screens as the selection lands, before the new root
+    /// appears, so the new root starts on an empty stack and can push right away.
     func popToRoot() {
-        // Runs from a SwiftUI update; pop once it finishes.
-        DispatchQueue.main.async { [weak self] in
-            guard let navigationController = self?.navigationController,
-                  navigationController.viewControllers.count > 1
-            else { return }
-            navigationController.popToRootViewController(animated: false)
-        }
+        guard let navigationController, navigationController.viewControllers.count > 1 else { return }
+        navigationController.popToRootViewController(animated: false)
     }
 }
 

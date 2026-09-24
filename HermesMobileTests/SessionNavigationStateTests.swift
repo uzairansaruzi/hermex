@@ -561,8 +561,9 @@ private actor SessionInitialLoadEventRecorder {
 
 /// Hosts the regular-width shell in a real window. Creation counts show which
 /// column a root selection re-identifies; the detail column's navigation stack
-/// shows what it pops; the hosted `UISplitViewController`'s display mode shows
-/// what the selection does to the sidebar's visibility.
+/// shows what it pops and keeps; probe views entering and leaving the window mark
+/// when the sidebar and pushed screens actually change, so tests wait on those
+/// events rather than on a number of main-queue turns.
 @MainActor
 final class SessionSplitViewIdentityTests: XCTestCase {
     func testRootSelectionRebuildsOnlyTheDetailColumn() throws {
@@ -585,16 +586,12 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         defer { tearDown(window) }
         let split = try XCTUnwrap(splitViewController(in: host))
         XCTAssertEqual(split.displayMode, .secondaryOnly)
-        split.show(.primary)
-        host.view.layoutIfNeeded()
-        XCTAssertNotEqual(split.displayMode, .secondaryOnly)
+        waitForSidebar(onScreen: true, log: log) { split.show(.primary) }
 
-        host.rootView = splitView(rootRevision: 1, log: log)
-        host.view.layoutIfNeeded()
-        // The split view applies the new visibility on the next main-queue turn.
-        let applied = expectation(description: "visibility applied")
-        DispatchQueue.main.async { applied.fulfill() }
-        wait(for: [applied], timeout: 1)
+        // The split view applies the new visibility on a later frame.
+        waitForSidebar(onScreen: false, log: log) {
+            host.rootView = splitView(rootRevision: 1, log: log)
+        }
 
         XCTAssertEqual(split.displayMode, .secondaryOnly, "Picking a root must close a sidebar the user opened")
         XCTAssertEqual(log.sidebar, 1)
@@ -617,31 +614,86 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         let host = UIHostingController(rootView: pushingSplitView(rootRevision: 0, log: log))
         let window = try hostWindow(host, size: CGSize(width: 1_194, height: 834))
         defer { tearDown(window) }
-        try push(from: log, in: host)
-        let detailStack = try XCTUnwrap(log.pushedScreen.flatMap(owningNavigationController))
+        let detailStack = try waitForPushedScreen(log: log) { try push(from: log, in: host) }
         XCTAssertEqual(detailStack.viewControllers.count, 2)
 
+        let oldScreenLeft = expectation(description: "old root's screen left the window")
+        oldScreenLeft.assertForOverFulfill = false
+        log.pushedScreenMoved = { isOnScreen in
+            if !isOnScreen { oldScreenLeft.fulfill() }
+        }
+        let newRootAppeared = expectation(description: "new root appeared")
+        newRootAppeared.assertForOverFulfill = false
+        log.rootDidAppear = { newRootAppeared.fulfill() }
         host.rootView = pushingSplitView(rootRevision: 1, log: log)
-        UIView.performWithoutAnimation { host.view.layoutIfNeeded() }
-        // The pop runs on the next main-queue turn, after SwiftUI's update.
-        let popped = expectation(description: "pushed screens popped")
-        DispatchQueue.main.async { popped.fulfill() }
-        wait(for: [popped], timeout: 1)
+        host.view.layoutIfNeeded()
+        wait(for: [oldScreenLeft, newRootAppeared], timeout: 2)
+        log.pushedScreenMoved = { _ in }
+        log.rootDidAppear = {}
 
         XCTAssertEqual(detailStack.viewControllers.count, 1, "A root selection must pop screens pushed inside the old detail")
         XCTAssertEqual(log.roots, 2, "A root selection must reset the detail stack")
         XCTAssertEqual(log.sidebar, 1, "A root selection must not rebuild the sidebar")
 
-        try push(from: log, in: host)
+        _ = try waitForPushedScreen(log: log) { try push(from: log, in: host) }
         XCTAssertEqual(detailStack.viewControllers.count, 2, "The new root must still push")
+    }
+
+    /// A deep link can select a root that pushes as soon as it appears, even while the
+    /// old root's screen still covers it. The selection pops only the old screen.
+    func testRootSelectionKeepsAScreenTheNewRootPushes() throws {
+        let log = DetailPushLog()
+        let host = UIHostingController(rootView: pushingSplitView(rootRevision: 0, log: log))
+        let window = try hostWindow(host, size: CGSize(width: 1_194, height: 834))
+        defer { tearDown(window) }
+        let detailStack = try waitForPushedScreen(log: log) { try push(from: log, in: host) }
+        let oldScreen = try XCTUnwrap(detailStack.topViewController)
+
+        _ = try waitForPushedScreen(log: log) {
+            host.rootView = pushingSplitView(rootRevision: 1, log: log, pushesOnAppear: true)
+            host.view.layoutIfNeeded()
+        }
+        // Main-queue work the selection deferred ran before this turn.
+        let deferredWorkRan = expectation(description: "deferred work ran")
+        DispatchQueue.main.async { deferredWorkRan.fulfill() }
+        wait(for: [deferredWorkRan], timeout: 1)
+
+        XCTAssertFalse(detailStack.viewControllers.contains(oldScreen), "A root selection must pop the old root's screen")
+        XCTAssertEqual(detailStack.viewControllers.count, 2, "A root selection must keep the new root's own push")
+    }
+
+    private func waitForSidebar(onScreen: Bool, log: SplitColumnCreationLog, after change: () -> Void) {
+        let moved = expectation(description: onScreen ? "sidebar shown" : "sidebar hidden")
+        moved.assertForOverFulfill = false
+        log.sidebarMoved = { isOnScreen in
+            if isOnScreen == onScreen { moved.fulfill() }
+        }
+        change()
+        wait(for: [moved], timeout: 2)
+        log.sidebarMoved = { _ in }
+    }
+
+    /// Runs `change` and returns the detail column's navigation controller once the
+    /// screen it pushes is on screen.
+    private func waitForPushedScreen(
+        log: DetailPushLog,
+        after change: () throws -> Void
+    ) throws -> UINavigationController {
+        let pushed = expectation(description: "screen pushed")
+        pushed.assertForOverFulfill = false
+        log.pushedScreenMoved = { isOnScreen in
+            if isOnScreen { pushed.fulfill() }
+        }
+        try change()
+        wait(for: [pushed], timeout: 2)
+        log.pushedScreenMoved = { _ in }
+        return try XCTUnwrap(log.pushedScreen.flatMap(owningNavigationController))
     }
 
     private func push(from log: DetailPushLog, in host: UIViewController) throws {
         let push = try XCTUnwrap(log.push)
-        UIView.performWithoutAnimation {
-            push()
-            host.view.layoutIfNeeded()
-        }
+        push()
+        host.view.layoutIfNeeded()
     }
 
     private func owningNavigationController(of view: UIView) -> UINavigationController? {
@@ -653,11 +705,15 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         return nil
     }
 
-    private func pushingSplitView(rootRevision: Int, log: DetailPushLog) -> PushingSplitView {
+    private func pushingSplitView(
+        rootRevision: Int,
+        log: DetailPushLog,
+        pushesOnAppear: Bool = false
+    ) -> PushingSplitView {
         SessionSplitView(rootRevision: rootRevision) {
             SplitColumnProbe { log.sidebar += 1 }
         } detail: {
-            PushingDetailProbe(log: log)
+            PushingDetailProbe(log: log, pushesOnAppear: pushesOnAppear)
         }
     }
 
@@ -692,7 +748,7 @@ final class SessionSplitViewIdentityTests: XCTestCase {
 
     private func splitView(rootRevision: Int, log: SplitColumnCreationLog) -> ProbeSplitView {
         SessionSplitView(rootRevision: rootRevision) {
-            SplitColumnProbe { log.sidebar += 1 }
+            SplitColumnProbe(onCreate: { log.sidebar += 1 }, onWindowChange: { log.sidebarMoved($0) })
         } detail: {
             SplitColumnProbe { log.detail += 1 }
         }
@@ -706,50 +762,67 @@ private typealias PushingSplitView = SessionSplitView<SplitColumnProbe, PushingD
 private final class DetailPushLog {
     var sidebar = 0
     var roots = 0
-    /// Pushes a screen from the current detail root.
+    /// Pushes a screen from the detail root that appeared last.
     var push: (() -> Void)?
+    var rootDidAppear: () -> Void = {}
     weak var pushedScreen: UIView?
+    var pushedScreenMoved: (Bool) -> Void = { _ in }
 }
 
 /// A detail root that pushes a screen the way Settings and the file browser do.
 private struct PushingDetailProbe: View {
     let log: DetailPushLog
+    let pushesOnAppear: Bool
     @State private var isPushed = false
 
     var body: some View {
         SplitColumnProbe { log.roots += 1 }
-            .onAppear { log.push = { isPushed = true } }
+            .onAppear {
+                log.push = { isPushed = true }
+                if pushesOnAppear { isPushed = true }
+                log.rootDidAppear()
+            }
             .navigationDestination(isPresented: $isPushed) {
-                PushedScreenProbe(log: log)
+                SplitColumnProbe(
+                    onCreate: {},
+                    onWindowChange: { log.pushedScreenMoved($0) },
+                    onMake: { log.pushedScreen = $0 }
+                )
             }
     }
-}
-
-private struct PushedScreenProbe: UIViewRepresentable {
-    let log: DetailPushLog
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        log.pushedScreen = view
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 @MainActor
 private final class SplitColumnCreationLog {
     var sidebar = 0
     var detail = 0
+    var sidebarMoved: (Bool) -> Void = { _ in }
 }
 
+/// Reports when SwiftUI creates it and when its view enters or leaves the window.
 private struct SplitColumnProbe: UIViewRepresentable {
     let onCreate: @MainActor () -> Void
+    var onWindowChange: @MainActor (Bool) -> Void = { _ in }
+    var onMake: @MainActor (UIView) -> Void = { _ in }
 
-    func makeUIView(context: Context) -> UIView {
+    func makeUIView(context: Context) -> WindowReportingView {
         onCreate()
-        return UIView()
+        let view = WindowReportingView()
+        view.onWindowChange = onWindowChange
+        onMake(view)
+        return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ view: WindowReportingView, context: Context) {
+        view.onWindowChange = onWindowChange
+    }
+}
+
+private final class WindowReportingView: UIView {
+    var onWindowChange: @MainActor (Bool) -> Void = { _ in }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        onWindowChange(window != nil)
+    }
 }
