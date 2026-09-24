@@ -116,9 +116,10 @@ final class SharedDraftStoreTests: XCTestCase {
         let reservation = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: directory))
         let attachment = try XCTUnwrap(reservation.sharedImport.attachments.first)
 
-        XCTAssertEqual(attachment.data, attachmentData)
         XCTAssertTrue(isFileBacked(attachment.data), "staged files must be mapped, not read into memory")
 
+        // The app consumes the reservation before uploading, so the first read
+        // of the mapped bytes happens after their staged file is removed.
         try HermesShareDraft.consume(reservation, from: directory)
         XCTAssertEqual(attachment.data, attachmentData, "the mapping outlives the consumed reservation")
     }
