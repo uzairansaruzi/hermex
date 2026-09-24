@@ -3,7 +3,7 @@ import SwiftUI
 /// Every changed file in one scroll: sticky file headers, per-file collapse and viewed
 /// state, word-level highlights, and line selection that feeds the composer. Diffs
 /// load one file at a time (a few in flight) so the first file paints before the rest
-/// arrive; rows rebuild off the main thread as each answer lands.
+/// arrive; each file's rows build once, off the main thread, as its answer lands.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
     /// Receives the selected lines as Markdown. Nil hides "Add to prompt", for hosts
@@ -15,10 +15,8 @@ struct GitDiffView: View {
     private let initialFile: GitFile?
     private let apiClient: APIClient
 
-    @State private var statesByFileID: [String: ReviewDiffFileState] = [:]
     @State private var rows: [ReviewDiffRow] = []
     @State private var rowsVersion = 0
-    @State private var rowsBuildGeneration = 0
     @State private var loadGeneration = 0
     @State private var hasLoaded = false
     @State private var isRefreshing = false
@@ -170,55 +168,29 @@ struct GitDiffView: View {
         let generation = loadGeneration
         guard let sessionID = session.sessionId else {
             let message = String(localized: "Session ID is missing.")
-            for file in files { statesByFileID[file.id] = .failed(message) }
-            rebuildRows()
+            publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) })
             return
         }
-        for file in files { statesByFileID[file.id] = .loading }
-        rebuildRows()
-
-        // The file the reader asked for loads first; the rest follow a few at a time.
-        var ordered = files
-        if let initialFile, let index = ordered.firstIndex(of: initialFile) {
-            ordered.remove(at: index)
-            ordered.insert(initialFile, at: 0)
-        }
-        var reportedError = false
-        await withTaskGroup(of: FileDiffResult?.self) { group in
-            var pending = ordered.makeIterator()
-            func enqueueNext() {
-                guard let file = pending.next() else { return }
-                let client = apiClient
-                group.addTask { await Self.fetchDiff(for: file, sessionID: sessionID, apiClient: client) }
-            }
-            for _ in 0..<Self.maxConcurrentDiffLoads { enqueueNext() }
-            for await result in group {
-                // A dismissed sheet or a newer load owns the rest; stop fetching and
-                // leave the state alone.
-                guard !Task.isCancelled, generation == loadGeneration else {
-                    group.cancelAll()
-                    return
-                }
-                guard let result else { continue }
-                statesByFileID[result.fileID] = result.state
-                if let error = result.error, !reportedError {
-                    reportedError = true
-                    onAPIError(error)
-                }
-                rebuildRows()
-                enqueueNext()
-            }
-        }
+        let client = apiClient
+        await ReviewDiffLoader.load(
+            files: files,
+            firstFile: initialFile,
+            maxConcurrent: Self.maxConcurrentDiffLoads,
+            fetch: { file in await Self.fetchDiff(for: file, sessionID: sessionID, apiClient: client) },
+            // A dismissed sheet or a newer load owns the rest.
+            isCurrent: { generation == loadGeneration },
+            publish: publish,
+            onError: onAPIError
+        )
     }
 
-    private struct FileDiffResult {
-        let fileID: String
-        let state: ReviewDiffFileState
-        let error: Error?
+    private func publish(_ built: [ReviewDiffRow]) {
+        rows = built
+        rowsVersion += 1
     }
 
     /// Nil when the request was cancelled: not a failure to show or report.
-    private static func fetchDiff(for file: GitFile, sessionID: String, apiClient: APIClient) async -> FileDiffResult? {
+    private static func fetchDiff(for file: GitFile, sessionID: String, apiClient: APIClient) async -> ReviewDiffLoader.FileResult? {
         do {
             let diff = try await apiClient.gitDiff(
                 sessionID: sessionID,
@@ -226,12 +198,12 @@ struct GitDiffView: View {
                 kind: file.preferredDiffKind
             ).diff
             guard let diff else {
-                return FileDiffResult(fileID: file.id, state: .failed(String(localized: "Could Not Load Changes")), error: nil)
+                return ReviewDiffLoader.FileResult(fileID: file.id, state: .failed(String(localized: "Could Not Load Changes")), error: nil)
             }
-            return FileDiffResult(fileID: file.id, state: .loaded(diff), error: nil)
+            return ReviewDiffLoader.FileResult(fileID: file.id, state: .loaded(diff), error: nil)
         } catch {
             if isCancellation(error) { return nil }
-            return FileDiffResult(fileID: file.id, state: .failed(error.localizedDescription), error: error)
+            return ReviewDiffLoader.FileResult(fileID: file.id, state: .failed(error.localizedDescription), error: error)
         }
     }
 
@@ -245,18 +217,123 @@ struct GitDiffView: View {
         }
         return (underlying as? URLError)?.code == .cancelled
     }
+}
 
-    /// Rows build off the main thread; a newer build supersedes an older one.
-    private func rebuildRows() {
-        rowsBuildGeneration += 1
-        let generation = rowsBuildGeneration
-        let inputs = files.map { ReviewDiffFileInput(file: $0, state: statesByFileID[$0.id] ?? .loading) }
-        Task.detached(priority: .userInitiated) {
-            let built = ReviewDiffRowBuilder.rows(for: inputs)
-            await MainActor.run {
-                guard generation == rowsBuildGeneration else { return }
-                rows = built
-                rowsVersion += 1
+/// Fetches per-file diffs a few at a time (the first file first) and publishes the
+/// flat row list as answers land. Each file's rows build once, next to its fetch and
+/// off the main actor, so a landed answer never re-parses the files before it. The
+/// first answer publishes at once; later ones coalesce to one publish per `interval`
+/// or per `batch` answers, so a large change set lays out a bounded number of times.
+enum ReviewDiffLoader {
+    struct FileResult {
+        let fileID: String
+        let state: ReviewDiffFileState
+        let error: Error?
+    }
+
+    struct Coalescing {
+        var interval: Duration = .milliseconds(150)
+        var batch = 4
+        /// Waits out the rest of an interval before a trailing publish.
+        var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    }
+
+    private enum Event {
+        /// Nil when the fetch was cancelled.
+        case file(FileResult?, [ReviewDiffRow])
+        case flush
+    }
+
+    /// Returns when every file has landed, or early once `isCurrent` turns false or the
+    /// calling task is cancelled; nothing publishes after that.
+    @MainActor
+    static func load(
+        files: [GitFile],
+        firstFile: GitFile?,
+        maxConcurrent: Int,
+        coalescing: Coalescing = Coalescing(),
+        fetch: @escaping @Sendable (GitFile) async -> FileResult?,
+        buildRows: @escaping @Sendable (ReviewDiffFileInput) -> [ReviewDiffRow] = { ReviewDiffRowBuilder.rows(for: $0) },
+        isCurrent: () -> Bool,
+        publish: ([ReviewDiffRow]) -> Void,
+        onError: (Error) -> Void
+    ) async {
+        var rowsByFileID: [String: [ReviewDiffRow]] = [:]
+        for file in files {
+            rowsByFileID[file.id] = ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: file, state: .loading))
+        }
+        let clock = ContinuousClock()
+        var lastPublish: ContinuousClock.Instant?
+        var pending = 0
+        func publishRows() {
+            publish(files.flatMap { rowsByFileID[$0.id] ?? [] })
+            pending = 0
+        }
+        publishRows()
+
+        var ordered = files
+        if let firstFile, let index = ordered.firstIndex(of: firstFile) {
+            ordered.remove(at: index)
+            ordered.insert(firstFile, at: 0)
+        }
+        var inFlight = 0
+        var isFlushScheduled = false
+        var reportedError = false
+        await withTaskGroup(of: Event.self) { group in
+            var queue = ordered.makeIterator()
+            func enqueueNext() {
+                guard let file = queue.next() else { return }
+                inFlight += 1
+                group.addTask {
+                    guard let result = await fetch(file) else { return .file(nil, []) }
+                    return .file(result, buildRows(ReviewDiffFileInput(file: file, state: result.state)))
+                }
+            }
+            for _ in 0..<maxConcurrent { enqueueNext() }
+            for await event in group {
+                guard !Task.isCancelled, isCurrent() else {
+                    group.cancelAll()
+                    return
+                }
+                switch event {
+                case .flush:
+                    isFlushScheduled = false
+                    if pending > 0 {
+                        publishRows()
+                        lastPublish = clock.now
+                    }
+                case .file(let result, let rows):
+                    inFlight -= 1
+                    guard let result else { continue }
+                    rowsByFileID[result.fileID] = rows
+                    pending += 1
+                    if let error = result.error, !reportedError {
+                        reportedError = true
+                        onError(error)
+                    }
+                    enqueueNext()
+                    if inFlight == 0 {
+                        // Everything landed: paint it now and drop a waiting flush.
+                        publishRows()
+                        group.cancelAll()
+                        continue
+                    }
+                    let now = clock.now
+                    let elapsed = lastPublish.map { $0.duration(to: now) }
+                    if let elapsed, elapsed < coalescing.interval, pending < coalescing.batch {
+                        guard !isFlushScheduled else { continue }
+                        isFlushScheduled = true
+                        let delay = coalescing.interval - elapsed
+                        let sleep = coalescing.sleep
+                        group.addTask {
+                            try? await sleep(delay)
+                            return .flush
+                        }
+                    } else {
+                        publishRows()
+                        lastPublish = now
+                    }
+                }
             }
         }
     }

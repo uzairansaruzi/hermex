@@ -94,4 +94,84 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         XCTAssertEqual(rows.filter(\.isFileHeader).map(\.fileID), ["one.swift", "two.swift"])
         XCTAssertEqual(rows.count, 2 + 4)
     }
+
+    // MARK: - Loader
+
+    /// Counts per-file builds of loaded diffs; placeholder rows are not counted.
+    private final class BuildCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var loaded = 0
+        var loadedBuilds: Int { lock.withLock { loaded } }
+
+        func rows(for input: ReviewDiffFileInput) -> [ReviewDiffRow] {
+            if case .loaded = input.state { lock.withLock { loaded += 1 } }
+            return ReviewDiffRowBuilder.rows(for: input)
+        }
+    }
+
+    private func loadedDiff(for file: GitFile) throws -> ReviewDiffLoader.FileResult {
+        let raw = "@@ -1,2 +1,2 @@\n context\n-let \(file.id) = old\n+let \(file.id) = new"
+        return ReviewDiffLoader.FileResult(fileID: file.id, state: .loaded(try diff(raw)), error: nil)
+    }
+
+    @MainActor
+    func testLoaderBuildsEachLandedFileOnceAndBatchesPublishes() async throws {
+        let files = try (0..<10).map { try file("f\($0).swift") }
+        let results = try Dictionary(uniqueKeysWithValues: files.map { ($0.id, try loadedDiff(for: $0)) })
+        let counter = BuildCounter()
+        var published: [[ReviewDiffRow]] = []
+
+        await ReviewDiffLoader.load(
+            files: files,
+            firstFile: files[7],
+            maxConcurrent: 4,
+            // An interval longer than the test, so only the batch size and the last answer publish.
+            coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4),
+            fetch: { results[$0.id] },
+            buildRows: { counter.rows(for: $0) },
+            isCurrent: { true },
+            publish: { published.append($0) },
+            onError: { XCTFail("Unexpected error \($0)") }
+        )
+
+        XCTAssertEqual(counter.loadedBuilds, files.count, "Each file parses and word-diffs once, not once per later answer.")
+        // Loading placeholders, the first answer, answers 5 and 9 (batches of four), and the last answer.
+        XCTAssertEqual(published.count, 5)
+        XCTAssertEqual(published.first, ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: .loading) }))
+        let expected = ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: results[$0.id]!.state) })
+        XCTAssertEqual(published.last, expected, "The final rows match a full build, in display order.")
+    }
+
+    @MainActor
+    func testLoaderPublishesAPendingAnswerWithoutWaitingForTheNextOne() async throws {
+        let files = try ["a.swift", "b.swift", "c.swift"].map { try file($0) }
+        let results = try Dictionary(uniqueKeysWithValues: files.map { ($0.id, try loadedDiff(for: $0)) })
+        let (gate, openGate) = AsyncStream<Void>.makeStream()
+        let bothEarlyFilesShown = expectation(description: "a and b painted while c loads")
+
+        let load = Task { @MainActor in
+            await ReviewDiffLoader.load(
+                files: files,
+                firstFile: nil,
+                maxConcurrent: 3,
+                // The interval never elapses by itself; the trailing flush is what paints the second answer.
+                coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4, sleep: { _ in }),
+                fetch: { file in
+                    if file.id == "c.swift" { for await _ in gate { break } }
+                    return results[file.id]
+                },
+                isCurrent: { true },
+                publish: { rows in
+                    let loadingFiles = Set(rows.filter { $0.kind == .notice(String(localized: "Loading…")) }.map(\.fileID))
+                    if loadingFiles == ["c.swift"] { bothEarlyFilesShown.fulfill() }
+                },
+                onError: { XCTFail("Unexpected error \($0)") }
+            )
+        }
+
+        await fulfillment(of: [bothEarlyFilesShown], timeout: 5)
+        openGate.yield()
+        openGate.finish()
+        await load.value
+    }
 }
