@@ -23,6 +23,23 @@ struct ScheduledSessionGroups: Equatable {
     let scheduled: [SessionSummary]
     let totalScheduledCount: Int
 
+    /// Splits the visible rows in one pass, keeping their order: cron rows go
+    /// to `scheduled` unless archived, everything else to `ordinary`.
+    init(partitioning visible: [SessionSummary], totalScheduledCount: Int) {
+        var ordinary: [SessionSummary] = []
+        var scheduled: [SessionSummary] = []
+        for session in visible {
+            if session.isCronSession {
+                if session.archived != true { scheduled.append(session) }
+            } else {
+                ordinary.append(session)
+            }
+        }
+        self.ordinary = ordinary
+        self.scheduled = scheduled
+        self.totalScheduledCount = totalScheduledCount
+    }
+
     var scheduledPreview: [SessionSummary] {
         Array(scheduled.prefix(5))
     }
@@ -163,13 +180,49 @@ final class SessionListViewModel {
         .filter { !$0.sessions.isEmpty }
     }
 
+    /// The rows the list shows for this search, project filter, and automated
+    /// visibility: local matches sorted, then loaded remote content matches.
     func visibleSessions(
-        searchText rawSearchText: String,
+        searchText: String,
         selectedProjectID: String?,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> [SessionSummary] {
+        visibleSessions(
+            among: sessions,
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedVisibility
+        )
+    }
+
+    /// The visible rows that are still streaming, for the list's active-row
+    /// monitor. Filters to streaming rows first (usually zero to two), so a
+    /// body pass does not filter and sort every session to find them.
+    func visibleActiveSessions(
+        searchText: String,
+        selectedProjectID: String?,
+        automatedVisibility: AutomatedSessionVisibility = .showAll
+    ) -> [SessionSummary] {
+        let activeSessions = sessions.filter(SessionRowView.isActiveStreaming)
+        guard !activeSessions.isEmpty else { return [] }
+        return visibleSessions(
+            among: activeSessions,
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedVisibility
+        )
+    }
+
+    /// Visibility is decided per row, so running this over a subset of
+    /// `sessions` yields exactly the visible rows of that subset.
+    private func visibleSessions(
+        among candidates: [SessionSummary],
+        searchText rawSearchText: String,
+        selectedProjectID: String?,
+        automatedVisibility: AutomatedSessionVisibility
+    ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
-        let baseSessions = sessions.filter { automatedVisibility.shows($0) }
+        let baseSessions = candidates.filter { automatedVisibility.shows($0) }
         let projectFilteredSessions = baseSessions.filter { session in
             guard let selectedProjectID else { return true }
             return session.projectId == selectedProjectID
@@ -205,20 +258,12 @@ final class SessionListViewModel {
         selectedProjectID: String?,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> ScheduledSessionGroups {
-        let ordinaryCandidates = visibleSessions(
-            searchText: searchText,
-            selectedProjectID: selectedProjectID,
-            automatedVisibility: automatedVisibility
-        )
-        let scheduledCandidates = visibleSessions(
-            searchText: searchText,
-            selectedProjectID: selectedProjectID,
-            automatedVisibility: automatedVisibility
-        )
-
-        return ScheduledSessionGroups(
-            ordinary: ordinaryCandidates.filter { !$0.isCronSession },
-            scheduled: scheduledCandidates.filter { $0.isCronSession && $0.archived != true },
+        ScheduledSessionGroups(
+            partitioning: visibleSessions(
+                searchText: searchText,
+                selectedProjectID: selectedProjectID,
+                automatedVisibility: automatedVisibility
+            ),
             totalScheduledCount: automatedVisibility.showsCron
                 ? sessions.filter { $0.isCronSession && $0.archived != true }.count
                 : 0

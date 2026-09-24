@@ -3007,6 +3007,90 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(groups.totalScheduledCount, 2)
     }
 
+    func testScheduledSessionGroupsPartitionVisibleRowsInOrderAndDropArchivedCron() {
+        let groups = ScheduledSessionGroups(
+            partitioning: [
+                SessionSummary(sessionId: "cron_new"),
+                SessionSummary(sessionId: "ordinary-1"),
+                SessionSummary(sessionId: "cron_archived", archived: true),
+                SessionSummary(sessionId: "ordinary-archived", archived: true),
+                SessionSummary(sessionId: "cron_old"),
+                SessionSummary(sessionId: "ordinary-2")
+            ],
+            totalScheduledCount: 9
+        )
+
+        XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary-1", "ordinary-archived", "ordinary-2"])
+        XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["cron_new", "cron_old"])
+        XCTAssertEqual(groups.totalScheduledCount, 9)
+    }
+
+    @MainActor
+    func testVisibleActiveSessionsMatchStreamingRowsOfVisibleSessions() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {"session_id":"needle-streaming","title":"Needle run","project_id":"project-1","active_stream_id":"stream-1"},
+                    {"session_id":"needle-flagged","title":"Needle flag","project_id":"project-1","is_streaming":true},
+                    {"session_id":"needle-idle","title":"Needle idle","project_id":"project-1"},
+                    {"session_id":"content-streaming","title":"Budget","project_id":"project-1","active_stream_id":"stream-2"},
+                    {"session_id":"other-project","title":"Needle elsewhere","project_id":"project-2","active_stream_id":"stream-3"},
+                    {"session_id":"unmatched","title":"Roadmap","project_id":"project-1","active_stream_id":"stream-4"},
+                    {"session_id":"cron_needle","title":"Needle scheduled","project_id":"project-1","active_stream_id":"stream-5"}
+                  ]
+                }
+                """, for: request)
+            case "/api/sessions/search":
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [{"session_id": "content-streaming", "title": "Budget", "match_type": "content"}],
+                  "query": "needle",
+                  "count": 1
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        await viewModel.searchSessions(query: "needle", debounceNanoseconds: 0)
+
+        let hideCron = AutomatedSessionVisibility(showsCron: false, showsCli: true)
+        let cases: [(String, String?, AutomatedSessionVisibility)] = [
+            ("", nil, .showAll),
+            ("needle", "project-1", .showAll),
+            ("needle", "project-1", hideCron),
+            ("needle", nil, hideCron)
+        ]
+        for (searchText, projectID, visibility) in cases {
+            let expected = viewModel.visibleSessions(
+                searchText: searchText,
+                selectedProjectID: projectID,
+                automatedVisibility: visibility
+            ).filter(SessionRowView.isActiveStreaming)
+            let active = viewModel.visibleActiveSessions(
+                searchText: searchText,
+                selectedProjectID: projectID,
+                automatedVisibility: visibility
+            )
+            XCTAssertEqual(
+                Set(active.compactMap(\.sessionId)),
+                Set(expected.compactMap(\.sessionId)),
+                "search \(searchText), project \(projectID ?? "all")"
+            )
+        }
+        XCTAssertEqual(
+            Set(viewModel.visibleActiveSessions(searchText: "needle", selectedProjectID: "project-1", automatedVisibility: hideCron)
+                .compactMap(\.sessionId)),
+            ["needle-streaming", "needle-flagged", "content-streaming"]
+        )
+    }
+
     @MainActor
     func testVisibleSessionsFiltersCronAndCliIndependently() async throws {
         let viewModel = try makeViewModel { request in

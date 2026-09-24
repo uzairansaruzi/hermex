@@ -580,7 +580,9 @@ struct SessionListView: View {
     }
 
     private var content: some View {
-        List {
+        // Computed once per body: grouping filters and sorts every session.
+        let groups = scheduledSessionGroups
+        return List {
             header
                 .sessionsTopChromeListRow()
 
@@ -616,12 +618,12 @@ struct SessionListView: View {
                 )
             }
 
-            if scheduledSessionGroups.showsDisclosure(isSearchActive: isSearchingSessions) {
+            if groups.showsDisclosure(isSearchActive: isSearchingSessions) {
                 ScheduledSessionsDisclosure(
                     viewModel: viewModel,
                     searchText: searchText,
-                    sessions: scheduledSessionGroups.scheduled,
-                    totalCount: scheduledSessionGroups.totalScheduledCount,
+                    sessions: groups.scheduled,
+                    totalCount: groups.totalScheduledCount,
                     isSearchActive: isSearchingSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
@@ -637,7 +639,7 @@ struct SessionListView: View {
             SessionListRowsSection(
                 viewModel: viewModel,
                 searchText: searchText,
-                sessions: scheduledSessionGroups.ordinary,
+                sessions: groups.ordinary,
                 emptyTitle: emptySessionsTitle,
                 emptyDescription: emptySessionsDescription,
                 isSearchActive: isSearchingSessions,
@@ -647,7 +649,7 @@ struct SessionListView: View {
                     ? navigationState.selectedSessionID
                     : nil,
                 actions: sessionRowActions,
-                suppressEmptyState: !scheduledSessionGroups.scheduled.isEmpty
+                suppressEmptyState: !groups.scheduled.isEmpty
             )
 
             if showsArchivedEntry {
@@ -867,14 +869,6 @@ struct SessionListView: View {
         .accessibilityLabel("New Session")
     }
 
-    private var visibleSessions: [SessionSummary] {
-        viewModel.visibleSessions(
-            searchText: searchText,
-            selectedProjectID: selectedProjectID,
-            automatedVisibility: automatedSessionVisibility
-        )
-    }
-
     private var scheduledSessionGroups: ScheduledSessionGroups {
         viewModel.scheduledSessionGroups(
             searchText: searchText,
@@ -1062,7 +1056,11 @@ struct SessionListView: View {
     }
 
     private var activeSessionMonitorTaskID: ActiveSessionMonitorTaskID {
-        let activeSessions = visibleSessions.filter(SessionRowView.isActiveStreaming)
+        let activeSessions = viewModel.visibleActiveSessions(
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedSessionVisibility
+        )
         return ActiveSessionMonitorTaskID(
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
             hasActiveRows: !activeSessions.isEmpty,
