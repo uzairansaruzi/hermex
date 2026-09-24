@@ -302,7 +302,11 @@ struct SessionListView: View {
             }
             .task(id: returnRefreshID) {
                 guard returnRefreshID != nil else { return }
-                await refreshSessionsAndActiveProfile()
+                await SessionListReturnRefresh.run(
+                    refreshSessions: { await refreshSessionsAndActiveProfile() },
+                    monitorTaskID: { activeSessionMonitorTaskID },
+                    refreshActiveRows: { taskID in await refreshActiveSessionRows(taskID) }
+                )
             }
             .onAppear {
                 openPendingSharedImportIfNeeded()
@@ -1186,13 +1190,18 @@ struct SessionListView: View {
 
             guard !Task.isCancelled else { return }
 
-            let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
-                streamIDs: taskID.streamIDs,
-                modelContext: modelContext
-            )
-            if refreshResult == .reloaded || refreshResult == .failed {
-                handleLastError()
-            }
+            await refreshActiveSessionRows(taskID)
+        }
+    }
+
+    /// One poll tick: checks the active rows' streams and attention probes.
+    private func refreshActiveSessionRows(_ taskID: ActiveSessionMonitorTaskID) async {
+        let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
+            streamIDs: taskID.streamIDs,
+            modelContext: modelContext
+        )
+        if refreshResult == .reloaded || refreshResult == .failed {
+            handleLastError()
         }
     }
 
@@ -1514,6 +1523,26 @@ enum SessionListInitialLoad {
     }
 }
 
+/// Runs the return refresh that `SessionListDestinationReturn` requests. It
+/// reloads the rows, then runs one poll tick when the poll was paused while a
+/// destination covered the compact list, so badges such as Approval do not
+/// stay as they were before the push until the restarted poll's first tick.
+enum SessionListReturnRefresh {
+    @MainActor
+    static func run(
+        refreshSessions: @MainActor () async -> Void,
+        monitorTaskID: @MainActor () -> ActiveSessionMonitorTaskID,
+        refreshActiveRows: @MainActor (ActiveSessionMonitorTaskID) async -> Void
+    ) async {
+        await refreshSessions()
+        guard !Task.isCancelled else { return }
+        // Read after the reload so the tick uses the rows that are streaming now.
+        let taskID = monitorTaskID()
+        guard taskID.needsTickOnReturn else { return }
+        await refreshActiveRows(taskID)
+    }
+}
+
 /// Refreshes the session list whenever the user leaves one destination for
 /// another, so a row reflects whatever just happened in the chat it opened
 /// (a rename, a `/clear`, new messages). Driven from the `destination`
@@ -1652,8 +1681,8 @@ private struct SessionSearchTaskID: Hashable {
 /// Identity for the session list's active-row poll. SwiftUI restarts the poll
 /// whenever this changes, and the poll runs only while `shouldPoll` holds.
 /// On compact width a pushed chat or utility screen covers the list, so the
-/// poll pauses until the user returns; `SessionListDestinationReturn` reloads
-/// the rows then. Scheduled sessions shows live rows from the same view model,
+/// poll pauses until the user returns; `SessionListReturnRefresh` reloads the
+/// rows and runs one tick then. Scheduled sessions shows live rows from the same view model,
 /// so it keeps the poll running.
 struct ActiveSessionMonitorTaskID: Hashable {
     /// Wait between polls. The open chat watches its own run over SSE, so the
@@ -1664,6 +1693,7 @@ struct ActiveSessionMonitorTaskID: Hashable {
     let hasActiveRows: Bool
     let isViewingCachedData: Bool
     let isListVisible: Bool
+    let isRegularWidth: Bool
 
     init(
         streamIDs: [String],
@@ -1675,11 +1705,18 @@ struct ActiveSessionMonitorTaskID: Hashable {
         self.streamIDs = streamIDs
         self.hasActiveRows = hasActiveRows
         self.isViewingCachedData = isViewingCachedData
+        self.isRegularWidth = isRegularWidth
         isListVisible = isRegularWidth || destination == nil || destination == .utility(.scheduled)
     }
 
     var shouldPoll: Bool {
         hasActiveRows && isListVisible && !isViewingCachedData
+    }
+
+    /// Whether a return to the list needs an immediate tick. Only compact width
+    /// pauses the poll; the regular-width sidebar keeps polling throughout.
+    var needsTickOnReturn: Bool {
+        shouldPoll && !isRegularWidth
     }
 }
 

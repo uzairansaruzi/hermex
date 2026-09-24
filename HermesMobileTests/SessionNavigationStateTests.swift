@@ -329,6 +329,52 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(ActiveSessionMonitorTaskID.pollInterval, .seconds(3))
     }
 
+    @MainActor
+    func testReturnToCompactListTicksOnceAfterReloadingRows() async {
+        var events: [String] = []
+        var streamIDs = ["before-reload"]
+
+        await SessionListReturnRefresh.run(
+            refreshSessions: {
+                events.append("reload")
+                streamIDs = ["after-reload"]
+            },
+            monitorTaskID: {
+                ActiveSessionMonitorTaskID(
+                    streamIDs: streamIDs,
+                    hasActiveRows: true,
+                    isViewingCachedData: false,
+                    isRegularWidth: false,
+                    destination: nil
+                )
+            },
+            refreshActiveRows: { taskID in
+                events.append("tick:\(taskID.streamIDs.joined())")
+            }
+        )
+
+        // The tick runs right away, on the rows the reload found, rather than
+        // leaving stale Approval or Input badges up until the poll's first tick.
+        XCTAssertEqual(events, ["reload", "tick:after-reload"])
+    }
+
+    @MainActor
+    func testReturnSkipsTheTickWhenThePollNeverPaused() async {
+        for monitorID in [
+            activeRowMonitorID(isRegularWidth: true),
+            activeRowMonitorID(hasActiveRows: false),
+            activeRowMonitorID(isViewingCachedData: true),
+        ] {
+            var ticks = 0
+            await SessionListReturnRefresh.run(
+                refreshSessions: {},
+                monitorTaskID: { monitorID },
+                refreshActiveRows: { _ in ticks += 1 }
+            )
+            XCTAssertEqual(ticks, 0)
+        }
+    }
+
     private func activeRowMonitorID(
         hasActiveRows: Bool = true,
         isViewingCachedData: Bool = false,
