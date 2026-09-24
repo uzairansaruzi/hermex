@@ -542,6 +542,18 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
         XCTAssertEqual(caughtUp.count - window.start(in: caughtUp), BotRoomTranscriptWindow.pageSize)
     }
 
+    func testReconnectWithATrimmedTranscriptFallsBackToTheNewestPage() {
+        var window = BotRoomTranscriptWindow()
+        let loaded = Self.events(1...600)
+        window.seed(loaded, live: true)
+        window.reveal(10, in: loaded)
+
+        let restored = Self.events(101...600)
+        XCTAssertEqual(window.start(in: restored), 450, "Reconnecting must not build the whole snapshot")
+        window.seed(restored, live: true)
+        XCTAssertEqual(restored[window.start(in: restored)].seq, 551)
+    }
+
     func testPrependedHistoryStaysHiddenAndNewEventsStillShow() {
         var window = BotRoomTranscriptWindow()
         window.seed(Self.events(201...300), live: true)

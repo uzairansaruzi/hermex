@@ -196,25 +196,34 @@ struct BotRoomTranscriptWindow: Equatable {
     private var oldestShown: Int?
 
     /// Index of the first shown event in `events`, which are sorted by sequence.
-    /// `keeping` widens the window to a search hit that is present, so its
-    /// row is built by the time the jump runs (#553).
+    /// An anchor outside the events (a reconnect restored a trimmed transcript,
+    /// or the room restarted) falls back to the newest page. `keeping` widens the
+    /// window to a search hit that is present, so its row is built by the time
+    /// the jump runs (#553).
     func start(in events: [BotRoomEvent], keeping sequence: Int? = nil) -> Int {
         let newestPage = max(0, events.count - Self.pageSize)
-        let start = oldestShown.flatMap { oldest in events.firstIndex { $0.seq >= oldest } } ?? newestPage
+        let start = oldestShown.flatMap { oldest in
+            Self.contains(oldest, in: events) ? events.firstIndex { $0.seq >= oldest } : nil
+        } ?? newestPage
         guard let sequence, let hit = events.firstIndex(where: { $0.seq == sequence }) else { return start }
         return min(start, hit)
     }
 
     /// Anchors the window on the newest page once the room is live, and again
-    /// after the room empties (closed) or restarts below the anchor. Until then
-    /// `start` follows the newest page, so the open-time catch-up after a stale
-    /// cache restore is not built in full.
+    /// after the room empties (closed) or its events no longer cover the anchor.
+    /// Until then `start` follows the newest page, so the open-time catch-up
+    /// after a stale cache restore is not built in full.
     mutating func seed(_ events: [BotRoomEvent], live: Bool) {
-        guard let last = events.last else { oldestShown = nil; return }
+        guard !events.isEmpty else { oldestShown = nil; return }
         guard live else { return }
-        if oldestShown.map({ last.seq < $0 }) ?? true {
+        if !(oldestShown.map { Self.contains($0, in: events) } ?? false) {
             oldestShown = events[max(0, events.count - Self.pageSize)].seq
         }
+    }
+
+    private static func contains(_ sequence: Int, in events: [BotRoomEvent]) -> Bool {
+        guard let first = events.first, let last = events.last else { return false }
+        return (first.seq...last.seq).contains(sequence)
     }
 
     /// Keeps a search hit shown after its jump lands.
