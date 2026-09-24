@@ -437,9 +437,8 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertEqual(decision, .highlight(language: "json", engine: .highlightr))
     }
 
-    @MainActor
-    func testMarkdownCodeHighlighterRendersSwiftCodeWithSplash() {
-        let result = MarkdownCodeHighlighter.highlightedCode(
+    func testMarkdownCodeHighlighterRendersSwiftCodeWithSplash() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
                 code: "let value = 1",
                 language: "swift",
@@ -455,9 +454,8 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertEqual(highlightedCode.string, "let value = 1")
     }
 
-    @MainActor
-    func testMarkdownCodeHighlighterRendersLightModeSwiftForegroundColors() {
-        let result = MarkdownCodeHighlighter.highlightedCode(
+    func testMarkdownCodeHighlighterRendersLightModeSwiftForegroundColors() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
                 code: "func greet(name: String) -> String {\n    return \"Hello\"\n}",
                 language: "swift",
@@ -474,9 +472,8 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertGreaterThan(colors.count, 1)
     }
 
-    @MainActor
-    func testMarkdownCodeHighlighterRendersNonSwiftCodeWithHighlightr() {
-        let result = MarkdownCodeHighlighter.highlightedCode(
+    func testMarkdownCodeHighlighterRendersNonSwiftCodeWithHighlightr() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
                 code: #"{"value": 1}"#,
                 language: "json",
@@ -494,9 +491,8 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertTrue(renderedCode.contains("1"))
     }
 
-    @MainActor
-    func testMarkdownCodeHighlighterRendersLightModeNonSwiftForegroundColors() {
-        let result = MarkdownCodeHighlighter.highlightedCode(
+    func testMarkdownCodeHighlighterRendersLightModeNonSwiftForegroundColors() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
                 code: """
                 {
@@ -518,9 +514,8 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertGreaterThan(colors.count, 1)
     }
 
-    @MainActor
-    func testMarkdownCodeHighlighterSkipsStreamingBlocks() {
-        let result = MarkdownCodeHighlighter.highlightedCode(
+    func testMarkdownCodeHighlighterSkipsStreamingBlocks() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
                 code: #"{"value": 1}"#,
                 language: "json",
@@ -535,6 +530,73 @@ final class MarkdownMathRendererTests: XCTestCase {
 
         XCTAssertEqual(reason, .streaming)
         XCTAssertEqual(normalizedLanguage, "json")
+    }
+
+    func testMarkdownCodeHighlighterCachesSettledResultsForASynchronousPeek() async {
+        let highlighter = MarkdownCodeHighlighter()
+        let request = MarkdownCodeHighlightRequest(
+            code: #"{"value": 1}"#,
+            language: "json",
+            colorScheme: .light,
+            isStreaming: false
+        )
+        XCTAssertNil(highlighter.cachedHighlight(for: request))
+
+        guard case .highlighted(let first) = await highlighter.highlightedCode(for: request),
+              case .highlighted(let second) = await highlighter.highlightedCode(for: request) else {
+            return XCTFail("Expected Highlightr to highlight JSON code.")
+        }
+
+        // A remount reads the stored result instead of running highlight.js again.
+        XCTAssertTrue(highlighter.cachedHighlight(for: request) === first)
+        XCTAssertTrue(second === first)
+    }
+
+    func testMarkdownCodeHighlighterCacheIsKeyedByAppearanceAndSkipsStreaming() async {
+        let highlighter = MarkdownCodeHighlighter()
+        let code = "let value = 1"
+        let light = MarkdownCodeHighlightRequest(code: code, language: "swift", colorScheme: .light, isStreaming: false)
+        _ = await highlighter.highlightedCode(for: light)
+
+        XCTAssertNotNil(highlighter.cachedHighlight(for: light))
+        XCTAssertNil(highlighter.cachedHighlight(
+            for: MarkdownCodeHighlightRequest(code: code, language: "swift", colorScheme: .dark, isStreaming: false)
+        ))
+        XCTAssertNil(highlighter.cachedHighlight(
+            for: MarkdownCodeHighlightRequest(code: code, language: "swift", colorScheme: .light, isStreaming: true)
+        ))
+    }
+
+    func testMarkdownCodeHighlighterCacheKeySeparatesLanguageFromCode() async {
+        let highlighter = MarkdownCodeHighlighter()
+        // Both fences normalize to Swift; a plain `language|code` key would read "swift a|b|c" for each.
+        let cached = MarkdownCodeHighlightRequest(code: "b|c", language: "swift a", colorScheme: .light, isStreaming: false)
+        _ = await highlighter.highlightedCode(for: cached)
+
+        XCTAssertNotNil(highlighter.cachedHighlight(for: cached))
+        XCTAssertNil(highlighter.cachedHighlight(
+            for: MarkdownCodeHighlightRequest(code: "c", language: "swift a|b", colorScheme: .light, isStreaming: false)
+        ))
+    }
+
+    func testMarkdownCodeHighlighterSkipsThePassForACancelledTask() async {
+        let highlighter = MarkdownCodeHighlighter()
+        let request = MarkdownCodeHighlightRequest(
+            code: #"{"value": 1}"#,
+            language: "json",
+            colorScheme: .light,
+            isStreaming: false
+        )
+        let result = await Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await highlighter.highlightedCode(for: request)
+        }.value
+
+        guard case .plain(let reason, _) = result else {
+            return XCTFail("Expected a cancelled task to skip highlighting.")
+        }
+        XCTAssertEqual(reason, .cancelled)
+        XCTAssertNil(highlighter.cachedHighlight(for: request))
     }
 
     func testMarkdownHighlightPolicyAllowsLargeCodeBlocksWithinMarkdownLimit() {

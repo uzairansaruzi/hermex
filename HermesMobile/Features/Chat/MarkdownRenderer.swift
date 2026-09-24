@@ -531,9 +531,13 @@ private struct ChatCodeBlock: View {
             : SwiftUI.Color(.secondarySystemBackground)
     }
 
+    /// Falls back to a synchronous cache peek so a block that was already highlighted
+    /// (reopen, scrolling back, or a sealed stable chunk at the streaming-to-settled swap)
+    /// draws highlighted on its first frame, before its task runs.
     @ViewBuilder
     private var codeText: some View {
-        if let highlightedCode {
+        if let highlightedCode = highlightedCode
+            ?? MarkdownCodeHighlighter.shared.cachedHighlight(for: highlightRequest) {
             HighlightedCodeBlockText(content: highlightedCode, wraps: wrapsCodeBlockLines)
         } else {
             PlainCodeBlockText(content: content, wraps: wrapsCodeBlockLines)
@@ -565,15 +569,19 @@ private struct ChatCodeBlock: View {
         )
     }
 
+    /// Seeds from the cache when it can; otherwise shows plain text while the
+    /// highlighter works off main, and drops the result if the block moved on.
     @MainActor
     private func updateHighlightedCode(for request: MarkdownCodeHighlightRequest) async {
+        let highlighter = MarkdownCodeHighlighter.shared
+        if let cached = highlighter.cachedHighlight(for: request) {
+            highlightedCode = cached
+            return
+        }
+
         highlightedCode = nil
-        await Task.yield()
-
-        guard !Task.isCancelled else { return }
-
-        let result = MarkdownCodeHighlighter.highlightedCode(for: request)
-        guard !Task.isCancelled else { return }
+        let result = await highlighter.highlightedCode(for: request)
+        guard !Task.isCancelled, request == highlightRequest else { return }
 
         switch result {
         case .highlighted(let attributedString):
@@ -899,6 +907,8 @@ enum MarkdownHighlightFallbackReason: String, Equatable {
     case tooManyLines
     case lineTooLong
     case highlighterUnavailable
+    /// The owning block's task was cancelled before the highlight pass ran.
+    case cancelled
 }
 
 enum MarkdownHighlightDecision: Equatable {
@@ -1008,6 +1018,13 @@ enum MarkdownHighlightPolicy {
         }
 
         return .plain(reason: .unsupportedLanguage, normalizedLanguage: normalizedLanguage)
+    }
+
+    /// Whether a fence language can ever be highlighted. Reads only the language,
+    /// so it is a cheap gate before any work that touches the code.
+    static func canHighlight(language: String?) -> Bool {
+        guard let normalized = normalizedLanguage(from: language) else { return false }
+        return splashSwiftLanguages.contains(normalized) || highlightrLanguages.contains(normalized)
     }
 
     static func normalizedLanguage(from language: String?) -> String? {
@@ -1129,36 +1146,102 @@ enum MarkdownCodeHighlightResult {
     case plain(reason: MarkdownHighlightFallbackReason, normalizedLanguage: String?)
 }
 
-enum MarkdownCodeHighlighter {
-    @MainActor
-    static func highlightedCode(for request: MarkdownCodeHighlightRequest) -> MarkdownCodeHighlightResult {
+/// Highlights settled chat code blocks off the main actor. Highlightr runs
+/// highlight.js in a JSContext, so both the context load and each block's pass
+/// stay off main. Results are cached by appearance, fence language, and code;
+/// a remounted block that was highlighted before (session reopen, scrolling back,
+/// or code in a sealed stable chunk at the streaming-to-settled swap) reads its
+/// result synchronously through `cachedHighlight(for:)` instead of flashing plain.
+/// Code in a reply's unsealed streaming tail is first highlighted at the swap.
+actor MarkdownCodeHighlighter {
+    static let shared = MarkdownCodeHighlighter()
+
+    /// NSCache is thread-safe, which is what lets the main actor peek it synchronously.
+    /// Content-addressed: a hit needs the code itself, so entries never reveal
+    /// one server's transcript under another.
+    private nonisolated(unsafe) let cache: NSCache<NSString, NSAttributedString> = {
+        let cache = NSCache<NSString, NSAttributedString>()
+        cache.countLimit = 256
+        // Cost is the UTF-16 length held by the key and the result, each of which
+        // carries the code; the largest highlighted block is 80k characters.
+        cache.totalCostLimit = 2_000_000
+        return cache
+    }()
+    private var highlightrsByAppearance: [ColorScheme: Highlightr] = [:]
+
+    /// A fresh instance with its own cache; the app uses `shared`.
+    init() {}
+
+    /// The cached highlight for a settled request, or nil when it has not been highlighted yet.
+    /// Requests that can never highlight return before building a key from the code.
+    nonisolated func cachedHighlight(for request: MarkdownCodeHighlightRequest) -> NSAttributedString? {
+        guard !request.isStreaming,
+              MarkdownHighlightPolicy.canHighlight(language: request.language) else { return nil }
+        return cache.object(forKey: Self.cacheKey(for: request))
+    }
+
+    func highlightedCode(for request: MarkdownCodeHighlightRequest) -> MarkdownCodeHighlightResult {
+        if let cached = cachedHighlight(for: request) {
+            return .highlighted(cached)
+        }
+
         let decision = MarkdownHighlightPolicy.decision(
             for: request.code,
             language: request.language,
             isStreaming: request.isStreaming
         )
 
+        // A block that scrolled away while queued on this actor skips its pass.
+        if case .highlight(let normalizedLanguage, _) = decision, Task.isCancelled {
+            return .plain(reason: .cancelled, normalizedLanguage: normalizedLanguage)
+        }
+
+        let highlighted: NSAttributedString
         switch decision {
         case .highlight(_, .splashSwift):
-            return .highlighted(
-                SplashSwiftCodeHighlighter.highlightedAttributedString(
-                    for: request.code,
-                    colorScheme: request.colorScheme
-                )
+            highlighted = SplashSwiftCodeHighlighter.highlightedAttributedString(
+                for: request.code,
+                colorScheme: request.colorScheme
             )
         case .highlight(let normalizedLanguage, .highlightr):
-            guard let highlighted = StableHighlightrStore.shared.highlight(
+            guard let result = highlightr(for: request.colorScheme)?.highlight(
                 request.code,
-                language: normalizedLanguage,
-                colorScheme: request.colorScheme
+                as: normalizedLanguage,
+                fastRender: true
             ) else {
                 return .plain(reason: .highlighterUnavailable, normalizedLanguage: normalizedLanguage)
             }
-
-            return .highlighted(highlighted)
+            highlighted = result
         case .plain(let reason, let normalizedLanguage):
             return .plain(reason: reason, normalizedLanguage: normalizedLanguage)
         }
+
+        // Freeze the result so a cached string never aliases a mutable one.
+        let frozen = highlighted.copy() as? NSAttributedString ?? highlighted
+        let key = Self.cacheKey(for: request)
+        cache.setObject(frozen, forKey: key, cost: key.length + frozen.length)
+        return .highlighted(frozen)
+    }
+
+    private func highlightr(for colorScheme: ColorScheme) -> Highlightr? {
+        if let highlightr = highlightrsByAppearance[colorScheme] {
+            return highlightr
+        }
+
+        guard let highlightr = Highlightr() else {
+            return nil
+        }
+
+        highlightr.setTheme(to: colorScheme == .dark ? "github-dark" : "xcode")
+        highlightrsByAppearance[colorScheme] = highlightr
+        return highlightr
+    }
+
+    private static func cacheKey(for request: MarkdownCodeHighlightRequest) -> NSString {
+        let scheme = request.colorScheme == .dark ? "dark" : "light"
+        // Length-prefix the language so a `|` in it or in the code can't shift the boundary.
+        let language = request.language ?? ""
+        return "\(scheme)|\(language.utf16.count):\(language)|\(request.code)" as NSString
     }
 }
 
@@ -1172,39 +1255,6 @@ private enum SplashSwiftCodeHighlighter {
             format: AttributedStringOutputFormat(theme: theme)
         )
         return highlighter.highlight(code)
-    }
-}
-
-@MainActor
-private final class StableHighlightrStore {
-    static let shared = StableHighlightrStore()
-
-    private enum ThemeKey: Hashable {
-        case light
-        case dark
-    }
-
-    private var highlightrs: [ThemeKey: Highlightr] = [:]
-
-    private init() {}
-
-    func highlight(_ code: String, language: String, colorScheme: ColorScheme) -> NSAttributedString? {
-        return highlightr(for: colorScheme)?.highlight(code, as: language, fastRender: true)
-    }
-
-    private func highlightr(for colorScheme: ColorScheme) -> Highlightr? {
-        let key: ThemeKey = colorScheme == .dark ? .dark : .light
-        if let highlightr = highlightrs[key] {
-            return highlightr
-        }
-
-        guard let highlightr = Highlightr() else {
-            return nil
-        }
-
-        highlightr.setTheme(to: key == .dark ? "github-dark" : "xcode")
-        highlightrs[key] = highlightr
-        return highlightr
     }
 }
 
