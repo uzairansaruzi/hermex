@@ -2622,6 +2622,80 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testStreamTicksAndKeystrokesReuseTheStoredReasoningGroups() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Reasoning",
+                    "messages": [
+                      {"role": "user", "content": "First question", "message_id": "user-1"},
+                      {
+                        "role": "assistant",
+                        "content": "First answer.",
+                        "reasoning": "Work through the first question.",
+                        "message_id": "assistant-1"
+                      },
+                      {"role": "user", "content": "Second question", "message_id": "user-2"},
+                      {
+                        "role": "assistant",
+                        "content": "Second answer.",
+                        "reasoning": "Work through the second question.",
+                        "message_id": "assistant-2"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let groups = viewModel.displayedReasoningGroups
+        XCTAssertEqual(groups.map(\.text), ["Work through the first question.", "Work through the second question."])
+        XCTAssertEqual(viewModel.reasoningGroupsByAnchorID["assistant-2"]?.map(\.text), ["Work through the second question."])
+
+        // A keystroke-only ChatView pass reads the groups again; it must get the stored buffer back.
+        XCTAssertTrue(sharesStorage(groups, viewModel.displayedReasoningGroups))
+
+        let didStart = await viewModel.sendMessage("Third question")
+        XCTAssertTrue(didStart)
+        let probe = ObservationChangeProbe()
+        withObservationTracking {
+            _ = viewModel.displayedReasoningGroups
+            _ = viewModel.reasoningGroupsByAnchorID
+        } onChange: {
+            probe.increment()
+        }
+
+        streamClient.emit(.token("Streaming the third answer"))
+
+        XCTAssertEqual(viewModel.messages.last?.content, "Streaming the third answer")
+        XCTAssertEqual(probe.value, 0, "a stream tick that leaves the cards unchanged must not invalidate them")
+        XCTAssertTrue(sharesStorage(groups, viewModel.displayedReasoningGroups))
+    }
+
+    private func sharesStorage(_ lhs: [ReasoningGroup], _ rhs: [ReasoningGroup]) -> Bool {
+        lhs.withUnsafeBufferPointer { lhsBuffer in
+            rhs.withUnsafeBufferPointer { $0.baseAddress == lhsBuffer.baseAddress }
+        }
+    }
+
+    @MainActor
     func testColdReopenActiveStreamReplaysFromStartWithoutDuplicatingLoadedState() async throws {
         ChatViewModel.resetActiveStreamSnapshotsForTesting()
         let streamClient = SpySSEStreamingClient()

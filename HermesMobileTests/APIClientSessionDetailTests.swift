@@ -1413,6 +1413,74 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertFalse(reasoningGroups[2].text.contains(finalAnswer))
     }
 
+    func testReasoningCandidateCacheRederivesOnlyChangedOrUnseenCandidates() {
+        var cache = ReasoningCandidateCache()
+        var derivedIDs: [String] = []
+        func pass(_ candidates: [(id: String, reasoning: String, visibleText: String)]) {
+            for candidate in candidates {
+                _ = cache.derived(id: candidate.id, reasoning: candidate.reasoning, visibleText: candidate.visibleText) {
+                    derivedIDs.append(candidate.id)
+                    return ReasoningCandidateCache.Derived(text: candidate.reasoning, dedupeKey: candidate.reasoning)
+                }
+            }
+            cache.finishPass()
+        }
+
+        pass([("settled", "Settled thinking", "Settled reply"), ("streaming", "Live thinking", "Part")])
+        // A stream tick: only the streaming reply's visible text grew.
+        pass([("settled", "Settled thinking", "Settled reply"), ("streaming", "Live thinking", "Partial")])
+        XCTAssertEqual(derivedIDs, ["settled", "streaming", "streaming"])
+
+        // A pass that skips an entry drops it, so the memo stays bounded to the transcript.
+        pass([("streaming", "Live thinking", "Partial")])
+        pass([("settled", "Settled thinking", "Settled reply")])
+        XCTAssertEqual(derivedIDs, ["settled", "streaming", "streaming", "settled"])
+    }
+
+    func testMemoizedReasoningDisplayGroupsMatchAFreshDerivationAfterAStreamTick() {
+        let echo = "The streamed reply paragraph that the reasoning also echoes."
+        func transcript(streamingContent: String) -> [ChatMessage] {
+            [
+                ChatMessage(role: "user", content: "First question", timestamp: nil, messageId: "user-1"),
+                ChatMessage(
+                    role: "assistant",
+                    content: "A settled answer to the first question.",
+                    timestamp: nil,
+                    messageId: "assistant-1",
+                    reasoning: "Work through the first question step by step."
+                ),
+                ChatMessage(role: "user", content: "Second question", timestamp: nil, messageId: "user-2"),
+                ChatMessage(
+                    role: "assistant",
+                    content: streamingContent,
+                    timestamp: nil,
+                    messageId: "assistant-2",
+                    reasoning: "Plan the second reply carefully.\n\n\(echo)"
+                )
+            ]
+        }
+        let archived = [ReasoningGroup(id: "archived-1", anchorMessageID: nil, text: "Archived thinking with no anchor row.")]
+        var cache = ReasoningCandidateCache()
+
+        _ = ChatViewModel.reasoningDisplayGroups(
+            messages: transcript(streamingContent: "Partial"),
+            messageOffset: nil,
+            archivedGroups: archived,
+            cache: &cache
+        )
+        // The streaming reply now contains the echo, so its cached stripping is stale.
+        let tickMessages = transcript(streamingContent: "Partial\n\n\(echo)")
+        let memoized = ChatViewModel.reasoningDisplayGroups(
+            messages: tickMessages,
+            messageOffset: nil,
+            archivedGroups: archived,
+            cache: &cache
+        )
+
+        XCTAssertEqual(memoized, ChatViewModel.reasoningDisplayGroups(messages: tickMessages, archivedGroups: archived))
+        XCTAssertEqual(memoized.map(\.text).last, "Plan the second reply carefully.")
+    }
+
     func testPartialPersistedToolCallsMergeMissingMessageToolCalls() {
         let messages = [
             ChatMessage(

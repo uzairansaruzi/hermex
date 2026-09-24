@@ -2682,7 +2682,8 @@ private final class CoordinatorSpyLiveActivityManager: AgentLiveActivityManaging
     }
 }
 
-private final class ObservationChangeProbe: @unchecked Sendable {
+/// Counts `withObservationTracking` change callbacks; shared by the chat test classes.
+final class ObservationChangeProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
 

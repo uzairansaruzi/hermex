@@ -267,13 +267,15 @@ final class ChatViewModel {
     private(set) var completedReasoningGroups: [ReasoningGroup] = [] {
         didSet { recomputeDisplayedTranscriptMessages() }
     }
-    var displayedReasoningGroups: [ReasoningGroup] {
-        Self.reasoningDisplayGroups(
-            messages: messages,
-            messageOffset: messagesOffset,
-            archivedGroups: completedReasoningGroups
-        )
-    }
+    /// Reasoning cards for the loaded transcript. Derived in
+    /// `recomputeDisplayedTranscriptMessages()` and reassigned only when the
+    /// cards change, so a stream tick or a keystroke neither re-derives them nor
+    /// hands the transcript rows a fresh array to compare.
+    private(set) var displayedReasoningGroups: [ReasoningGroup] = []
+    /// `displayedReasoningGroups` bucketed by anchor message ID (nil holds the
+    /// unanchored cards), so each transcript row receives only its own cards.
+    private(set) var reasoningGroupsByAnchorID: [String?: [ReasoningGroup]] = [:]
+    @ObservationIgnored private var reasoningCandidateCache = ReasoningCandidateCache()
     func completedToolCallGroupsForAnchor(_ anchorMessageID: String?) -> [ToolCallGroup] {
         completedToolCallGroupLookup.groups(anchorMessageID: anchorMessageID)
     }
@@ -295,6 +297,16 @@ final class ChatViewModel {
     }
 
     private func recomputeDisplayedTranscriptMessages() {
+        let reasoningGroups = Self.reasoningDisplayGroups(
+            messages: messages,
+            messageOffset: messagesOffset,
+            archivedGroups: completedReasoningGroups,
+            cache: &reasoningCandidateCache
+        )
+        if reasoningGroups != displayedReasoningGroups {
+            displayedReasoningGroups = reasoningGroups
+            reasoningGroupsByAnchorID = Dictionary(grouping: reasoningGroups, by: \.anchorMessageID)
+        }
         let renderedActivityAnchorIDs = Self.transcriptActivityAnchorIDs(
             reasoningGroups: displayedReasoningGroups,
             toolCallGroups: completedToolCallGroups
@@ -6173,6 +6185,23 @@ extension ChatViewModel {
         messageOffset: Int? = nil,
         archivedGroups: [ReasoningGroup]
     ) -> [ReasoningGroup] {
+        var cache = ReasoningCandidateCache()
+        return reasoningDisplayGroups(
+            messages: messages,
+            messageOffset: messageOffset,
+            archivedGroups: archivedGroups,
+            cache: &cache
+        )
+    }
+
+    /// Same as above, reusing `cache` from the previous pass so only candidates
+    /// whose reasoning or visible reply changed are stripped and normalized again.
+    nonisolated static func reasoningDisplayGroups(
+        messages: [ChatMessage],
+        messageOffset: Int?,
+        archivedGroups: [ReasoningGroup],
+        cache: inout ReasoningCandidateCache
+    ) -> [ReasoningGroup] {
         let turnKeysByMessageID = TranscriptTurnClassifier.assistantTurnKeysByAnchorID(
             messages,
             messageOffset: messageOffset
@@ -6188,12 +6217,14 @@ extension ChatViewModel {
         for group in archivedGroups {
             let visibleText = group.anchorMessageID.flatMap { assistantMessagesByID[$0]?.content }
             appendReasoningCandidate(
+                cacheID: "archived:\(group.id)",
                 text: group.text,
                 anchorMessageID: group.anchorMessageID,
                 turnKey: group.anchorMessageID.flatMap { turnKeysByMessageID[$0] } ?? "archived:\(group.anchorMessageID ?? group.id)",
                 visibleText: visibleText,
                 order: &order,
-                candidates: &candidates
+                candidates: &candidates,
+                cache: &cache
             )
         }
 
@@ -6206,23 +6237,26 @@ extension ChatViewModel {
             let turnKey = turnKeysByMessageID[anchorID] ?? "message:\(anchorID)"
             for text in reasoningTexts(from: message) {
                 appendReasoningCandidate(
+                    cacheID: "message:\(anchorID)",
                     text: text,
                     anchorMessageID: anchorID,
                     turnKey: turnKey,
                     visibleText: message.content,
                     order: &order,
-                    candidates: &candidates
+                    candidates: &candidates,
+                    cache: &cache
                 )
             }
         }
+        cache.finishPass()
 
         var latestCandidateIndexByKey: [String: Int] = [:]
         for (index, candidate) in candidates.enumerated() {
-            latestCandidateIndexByKey["\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"] = index
+            latestCandidateIndexByKey["\(candidate.turnKey)::\(candidate.dedupeKey)"] = index
         }
 
         return candidates.enumerated().compactMap { index, candidate in
-            let key = "\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"
+            let key = "\(candidate.turnKey)::\(candidate.dedupeKey)"
             guard latestCandidateIndexByKey[key] == index else { return nil }
 
             return ReasoningGroup(
@@ -6345,23 +6379,29 @@ extension ChatViewModel {
     }
 
     nonisolated private static func appendReasoningCandidate(
+        cacheID: String,
         text: String,
         anchorMessageID: String?,
         turnKey: String,
         visibleText: String?,
         order: inout Int,
-        candidates: inout [ReasoningDisplayCandidate]
+        candidates: inout [ReasoningDisplayCandidate],
+        cache: inout ReasoningCandidateCache
     ) {
-        guard let text = strippedVisibleAssistantEcho(fromReasoning: text, visibleText: visibleText) else {
-            return
+        let derived = cache.derived(id: cacheID, reasoning: text, visibleText: visibleText) {
+            strippedVisibleAssistantEcho(fromReasoning: text, visibleText: visibleText).map { stripped in
+                ReasoningCandidateCache.Derived(text: stripped, dedupeKey: normalizedReasoningKey(stripped))
+            }
         }
+        guard let derived else { return }
 
         candidates.append(
             ReasoningDisplayCandidate(
                 order: order,
                 anchorMessageID: anchorMessageID,
                 turnKey: turnKey,
-                text: text
+                text: derived.text,
+                dedupeKey: derived.dedupeKey
             )
         )
         order += 1
@@ -6477,6 +6517,54 @@ private struct ReasoningDisplayCandidate {
     let anchorMessageID: String?
     let turnKey: String
     let text: String
+    let dedupeKey: String
+}
+
+/// Memo for the costly per-candidate work in
+/// `ChatViewModel.reasoningDisplayGroups`: stripping the visible reply's echo
+/// from the reasoning and normalizing the dedupe key. `ChatViewModel` keeps one
+/// across transcript recomputes, so a stream tick re-derives only the reply that
+/// changed. An entry is reused only when its inputs are equal to the current
+/// ones, and each pass keeps only the entries it used.
+struct ReasoningCandidateCache {
+    struct Derived {
+        let text: String
+        let dedupeKey: String
+    }
+
+    private struct Entry {
+        let reasoning: String
+        let visibleText: String?
+        /// Nil when nothing is left once the visible echo is stripped.
+        let derived: Derived?
+    }
+
+    private var previousPass: [String: Entry] = [:]
+    private var currentPass: [String: Entry] = [:]
+
+    /// Returns the derived candidate for `id`, calling `derive` only when the
+    /// previous pass saw different inputs for it.
+    mutating func derived(
+        id: String,
+        reasoning: String,
+        visibleText: String?,
+        derive: () -> Derived?
+    ) -> Derived? {
+        let entry: Entry
+        if let cached = previousPass[id], cached.reasoning == reasoning, cached.visibleText == visibleText {
+            entry = cached
+        } else {
+            entry = Entry(reasoning: reasoning, visibleText: visibleText, derived: derive())
+        }
+        currentPass[id] = entry
+        return entry.derived
+    }
+
+    /// Ends a pass; entries the pass did not use are dropped.
+    mutating func finishPass() {
+        previousPass = currentPass
+        currentPass = [:]
+    }
 }
 
 private extension ToolCall {

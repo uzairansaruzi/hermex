@@ -1357,14 +1357,13 @@ struct ChatView: View {
 
     @ViewBuilder
     private var messageContent: some View {
-        let reasoningGroups = viewModel.displayedReasoningGroups
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,
-            reasoningGroups: reasoningGroups,
+            reasoningGroupsByAnchorID: viewModel.reasoningGroupsByAnchorID,
             completedToolCallGroupsForAnchor: { anchorMessageID in
                 viewModel.completedToolCallGroupsForAnchor(anchorMessageID)
             },
@@ -1425,7 +1424,7 @@ struct ChatView: View {
             onUpdateScrollMetrics: updateScrollMetrics,
             onFollowEvent: handleFollowEvent,
             onDisclosureToggle: handleDisclosureToggle,
-            turnFolds: turnFolds(reasoningGroups: reasoningGroups),
+            turnFolds: turnFolds(reasoningGroups: viewModel.displayedReasoningGroups),
             terminalReplyRenderIDs: terminalReplyRenderIDs,
             expandedTurnKeys: expandedTurnKeys,
             onToggleTurnFold: toggleTurnFold,
