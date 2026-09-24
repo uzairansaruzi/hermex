@@ -52,9 +52,10 @@ to `CacheStore`. Two consequences:
   `serverURLString` and run their stale-row cleanup under a `serverURLString`-
   scoped `FetchDescriptor`, so re-caching one server **cannot** delete another
   server's rows.
-- TTL expiry and the 5,000-message overflow eviction (`performMaintenance`) are
-  intentionally **global** cache-health policies — a shared on-device budget
-  across all servers, not a per-server leak.
+- TTL expiry (a store-side `delete(model:where:)`) and the 5,000-message
+  overflow eviction (counted with `fetchCount` first), both run by
+  `saveAndTrim`, are intentionally **global** cache-health policies — a shared
+  on-device budget across all servers, not a per-server leak.
 - All call sites pass the active `server` URL: `SessionListViewModel` and
   `ChatViewModel`.
 
