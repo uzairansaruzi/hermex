@@ -4,6 +4,9 @@ import SwiftData
 enum CachePolicy {
     static let ttl: TimeInterval = 7 * 24 * 60 * 60
     static let maxMessages = 5_000
+    /// How stale an unchanged cached message may get before a window write
+    /// bumps its `cachedAt`/`expiresAt` again (see `CachedMessage.refresh`).
+    static let rowRefreshInterval: TimeInterval = 60 * 60
 }
 
 @Model
