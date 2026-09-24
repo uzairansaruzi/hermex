@@ -324,6 +324,10 @@ enum AgentRunActivitySanitizer {
     static let maximumSessionTitleCharacters = 42
     static let maximumActivityCharacters = 64
     static let maximumExcerptCharacters = 140
+    /// How much of a reply callers hand `responseExcerpt`. The excerpt is a prefix,
+    /// and this much text still normalizes to well past it, so reading the whole
+    /// reply on every token or frame would only repeat work (#676).
+    static let maximumExcerptSourceLength = 2_048
     static let maximumToolLabelCharacters = 28
     static let maximumChips = 3
     static let maximumChipCharacters = 24

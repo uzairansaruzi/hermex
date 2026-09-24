@@ -1186,6 +1186,77 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(manager.currentStateForTesting()?.startedAt, laterStart,
                        "Reusing would keep the first server's earlier start")
     }
+
+    // #676: only entering Thinking skips the throttle; a burst of reasoning events
+    // joins the coalesced path, and a reasoning event after a stale mark clears it at once.
+    @MainActor
+    func testRepeatedReasoningJoinsTheThrottleAndStillClearsStale() throws {
+        let manager = AgentLiveActivityManager()
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
+
+        for _ in 0..<100 { manager.update(.reasoning("step")) }
+        XCTAssertEqual(manager.immediateWriteCountForTesting, 1)
+
+        manager.markStale()
+        manager.update(.reasoning("step"))
+        manager.update(.reasoning("step"))
+        let state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(state.status, .thinking)
+        XCTAssertFalse(state.isStale)
+        XCTAssertEqual(manager.immediateWriteCountForTesting, 3, "stale mark and the one clearing it")
+    }
+
+    // #676: the excerpt is a prefix, so once the buffered reply covers it, more
+    // tokens neither re-read the reply nor rewrite the state.
+    @MainActor
+    func testTokensStopRewritingTheExcerptOnceItsPrefixIsFull() throws {
+        let manager = AgentLiveActivityManager()
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
+
+        for _ in 0..<1_000 { manager.update(.token("word ")) }
+        let full = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(full.responseExcerpt,
+                       AgentRunActivitySanitizer.responseExcerpt(String(repeating: "word ", count: 1_000)))
+
+        for _ in 0..<1_000 { manager.update(.token("more ")) }
+        XCTAssertEqual(manager.currentStateForTesting(), full)
+
+        // A token after a status change still puts "Writing response" back.
+        manager.update(.reasoning("step"))
+        manager.update(.token("more "))
+        var state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(state.status, .responding)
+        XCTAssertEqual(state.currentActivity, String(localized: "Writing response"))
+        XCTAssertEqual(state.responseExcerpt, full.responseExcerpt)
+
+        manager.update(.toolCompleted)
+        manager.update(.token("more "))
+        XCTAssertEqual(manager.currentStateForTesting()?.currentActivity, String(localized: "Writing response"))
+
+        manager.markStale()
+        manager.update(.token("more "))
+        state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertFalse(state.isStale)
+
+        // A new reply segment starts filling again.
+        manager.update(.clearResponseExcerpt)
+        manager.update(.token("next"))
+        XCTAssertEqual(manager.currentStateForTesting()?.responseExcerpt, "next")
+    }
+
+    // #676: leading whitespace does not fill the bounded buffer, so a reply that
+    // opens with a lot of it still reaches "Writing response".
+    @MainActor
+    func testLeadingWhitespaceDoesNotFillTheExcerptBuffer() throws {
+        let manager = AgentLiveActivityManager()
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
+
+        for _ in 0..<1_000 { manager.update(.token(" \n\t")) }
+        manager.update(.token("Hello"))
+        let state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(state.status, .responding)
+        XCTAssertEqual(state.responseExcerpt, "Hello")
+    }
 }
 
 @MainActor

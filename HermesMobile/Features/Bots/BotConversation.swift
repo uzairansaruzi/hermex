@@ -194,7 +194,12 @@ import Observation
         if turn == .needsAttention {
             if case .approval = pendingRequest { work = .waitingForApproval } else { work = .waitingForAnswer }
         } else if let tool = liveActivity.toolCalls.last, !tool.isCompleted { work = .tool(tool.name) }
-        else if !reply.isEmpty { work = .responding(AgentRunActivitySanitizer.responseExcerpt(reply)) }
+        else if !reply.isEmpty {
+            // The excerpt is a prefix: read only the reply's head on every frame (#676).
+            // Leading whitespace never reaches it, so skip that before taking the head.
+            let head = String(reply.drop(while: \.isWhitespace).prefix(AgentRunActivitySanitizer.maximumExcerptSourceLength))
+            work = .responding(AgentRunActivitySanitizer.responseExcerpt(head))
+        }
         else if liveActivity.toolCalls.last != nil { work = .toolDone }
         else if !liveActivity.reasoning.isEmpty { work = .thinking }
         else { work = .starting }

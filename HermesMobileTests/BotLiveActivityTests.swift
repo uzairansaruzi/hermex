@@ -207,6 +207,18 @@ import XCTest
                         liveActivityFeed: feed, reconnectDelay: { _ in })
     }
 
+    // #676: the snapshot reads a bounded head of the reply, but leading whitespace
+    // does not use up that head.
+    func testReplyExcerptSkipsLeadingWhitespaceBeforeTheBoundedHead() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let reply = String(repeating: " \n", count: 3_000) + "Hello"
+        wire.inflight = .object(["started_at": .number(100), "assistant": .string(reply)])
+        let model = conversation(wire)
+        await model.recover()
+
+        XCTAssertEqual(model.liveActivitySnapshot.work, .responding("Hello"))
+    }
+
     func testRunningTurnProjectsBoundedCountsAndSuspendGoesStale() async {
         let wire = BotFixtureWire(); wire.running = true
         wire.inflight = .object(["started_at": .number(100), "assistant": .string("secret reply")])

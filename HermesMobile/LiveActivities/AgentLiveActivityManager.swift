@@ -240,6 +240,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentState
     }
 
+    /// Test seam: how many state writes asked to skip the update throttle.
+    private(set) var immediateWriteCountForTesting = 0
+
     func update(_ event: AgentLiveActivityEvent) {
         guard currentState != nil else { return }
 
@@ -250,7 +253,20 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             }
         case .token(let text):
             guard !text.isEmpty else { return }
-            rawResponseText += text
+            // Once the buffer covers the excerpt prefix, more tokens cannot change the
+            // excerpt; they only matter to put "Writing response" back after a
+            // reasoning, tool, or stale write replaced it.
+            let limit = AgentRunActivitySanitizer.maximumExcerptSourceLength
+            if rawResponseText.utf8.count < limit {
+                // Leading whitespace never reaches the excerpt; skipping it means a full
+                // buffer always yields one. Clipping keeps one huge token from blowing the bound.
+                let piece = rawResponseText.isEmpty ? text.drop(while: \.isWhitespace) : Substring(text)
+                guard !piece.isEmpty else { return }
+                rawResponseText += piece.prefix(limit)
+            } else if let state = currentState, state.status == .responding, !state.isStale, !state.isFinal,
+                      state.currentActivity == String(localized: "Writing response") {
+                return
+            }
             updateCurrentState(immediate: false) { state in
                 AgentRunActivityStateReducer.settingInterimAssistant(rawResponseText, on: state)
             }
@@ -267,7 +283,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 AgentRunActivityStateReducer.clearingResponseExcerpt(state: state)
             }
         case .reasoning(let text):
-            updateCurrentState { state in
+            // The Lock Screen only says "Thinking": entering it (or leaving stale) is
+            // immediate, and repeats join the throttle instead of one write per event.
+            let alreadyShown = currentState?.status == .thinking && currentState?.isStale == false
+            updateCurrentState(immediate: !alreadyShown) { state in
                 AgentRunActivityStateReducer.reasoning(text, state: state)
             }
         case .toolStarted(let name):
@@ -609,6 +628,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         var updatedState = transform(currentState)
         updatedState.chips = currentState.chips
         self.currentState = updatedState
+        if immediate { immediateWriteCountForTesting += 1 }
 
         guard activity != nil else { return }
         scheduleUpdate(updatedState, immediate: immediate)
