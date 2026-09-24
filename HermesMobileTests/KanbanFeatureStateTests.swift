@@ -427,6 +427,23 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.allCards.first?.cardID, "NEW")
     }
 
+    func testFilterChangeShowsTheLoadingRowOverTheOldFilterSnapshot() async {
+        let client = DeferredBoardClient()
+        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
+        await state.load()
+
+        let filter = Task { await state.setTenantFilter("ops") }
+        await client.waitForDeferredRead()
+
+        // The Cards on screen came from the unfiltered read, so the list says it is loading.
+        XCTAssertNotNil(state.snapshot)
+        XCTAssertTrue(state.showsBoardLoadingRow)
+
+        await client.resumeDeferredRead()
+        await filter.value
+        XCTAssertFalse(state.showsBoardLoadingRow)
+    }
+
     func testCanonicalStatusAndCardAccessibilityCopy() throws {
         XCTAssertEqual(KanbanStatusPresentation("triage").title, String(localized: "Triage"))
         XCTAssertEqual(KanbanStatusPresentation("todo").title, String(localized: "To Do"))

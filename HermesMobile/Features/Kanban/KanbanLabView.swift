@@ -1095,6 +1095,10 @@ struct KanbanStatusFocusView: View {
                     Spacer()
                 }
                 .listRowSeparator(.hidden)
+            }
+
+            if model.isRefreshing, model.snapshot == nil {
+                EmptyView()
             } else if model.visibleCards.isEmpty {
                 emptyContent
                     .listRowSeparator(.hidden)

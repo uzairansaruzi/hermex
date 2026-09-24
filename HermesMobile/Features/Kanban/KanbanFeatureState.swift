@@ -453,11 +453,25 @@ final class KanbanFeatureState {
         self.defaults = defaults
     }
 
-    /// Whether the Card list shows its "Refreshing Board" row: only while a Board loads with
-    /// no snapshot on screen (first load, Board switch). Live, poll, mutation, and pull
-    /// refreshes of a Board already on screen update the rows in place without it.
+    /// Whether the Card list shows its "Refreshing Board" row: while a Board loads with no
+    /// snapshot on screen (first load, Board switch) or with one fetched under other filters
+    /// (a filter change). Live, poll, mutation, and pull refreshes of the Board on screen
+    /// update the rows in place without it.
     var showsBoardLoadingRow: Bool {
-        isRefreshing && snapshot == nil
+        isRefreshing && (snapshot == nil || snapshotRequest != filteredBoardRequest)
+    }
+
+    /// The selected Board with the current server-side filters, without `since`.
+    private var filteredBoardRequest: KanbanBoardRequest? {
+        selectedBoardSlug.map {
+            KanbanBoardRequest(
+                board: $0,
+                tenant: selectedTenant,
+                assignee: selectedProfile,
+                includeArchived: includeArchived,
+                onlyMine: onlyMine
+            )
+        }
     }
 
     /// Future write slices must use this single seam before exposing any
@@ -2370,7 +2384,9 @@ final class KanbanFeatureState {
         refreshSupplementary: Bool = false,
         preserveRefreshFailure: Bool = false
     ) async -> KanbanBoardRefreshOutcome {
-        guard let board = selectedBoardSlug else { return .failed }
+        guard let board = selectedBoardSlug, let filteredRequest = filteredBoardRequest else {
+            return .failed
+        }
         let boardLoadID = UUID()
         activeBoardLoadID = boardLoadID
         // Missing stats or assignee history (never read, or a failed read that left only a
@@ -2385,13 +2401,6 @@ final class KanbanFeatureState {
             if activeBoardLoadID == boardLoadID { isRefreshing = false }
         }
 
-        let filteredRequest = KanbanBoardRequest(
-            board: board,
-            tenant: selectedTenant,
-            assignee: selectedProfile,
-            includeArchived: includeArchived,
-            onlyMine: onlyMine
-        )
         var request = filteredRequest
         if usingCursor, snapshotRequest == filteredRequest {
             request.since = snapshot?.latestEventID
