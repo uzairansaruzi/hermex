@@ -153,13 +153,19 @@ original selection automatically.
 
 SSE is primary while Kanban is visible. Coalesce event bursts before refetching
 affected Board/Card state. A burst refetches only the Board (stats and assignee history
-refresh on load, pull, foreground, and mutations, or on a burst only while they have not
-settled yet or the burst's refetch superseded a refresh still reading them), and a burst
+refresh on load, pull, a foreground that finds the Board changed, and mutations, or on
+a burst only while they have not settled yet or the burst's refetch superseded a
+refresh still reading them), and a burst
 that lands mid-refetch queues one debounced follow-up refetch instead of cancelling the
 one in flight. After repeated stream failures, use 30-second event polling
 and show a subtle persistent **Live updates delayed** notice. Pull-to-refresh performs
-a full reload and retries SSE. Suspend live refresh in the background and reconcile
-immediately on foreground.
+a full reload and retries SSE. Suspend live refresh only in the background; `.inactive`
+overlays (Control Center, Notification Center, the app switcher) keep the stream. On
+foreground, fetch the Board with `since` set to the snapshot's cursor: a `changed:false`
+answer keeps the Board, stats, and Board list and resumes SSE from the cursor, and a
+changed Board also reconciles the Board list, stats, and assignee history. Upstream's
+`latest_event_id` ignores filters, so send `since` only when the snapshot came from the
+current Board and filters; otherwise fetch in full.
 
 When connectivity drops, preserve the in-memory snapshot, mark it
 **Offline—showing previously loaded data**, mark loaded detail stale, and disable all
