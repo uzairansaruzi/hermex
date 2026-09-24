@@ -1474,7 +1474,7 @@ struct ChatView: View {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
-        .environment(\.openURL, OpenURLAction(handler: handleTranscriptLink))
+        .transcriptLinks(perform: handleTranscriptLink)
         .environment(\.chatWorkspaceRoot, session.workspace)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()

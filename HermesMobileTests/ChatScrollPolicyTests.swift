@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import HermesMobile
 
@@ -238,5 +239,166 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertNil(
             ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false, isDisclosureSettling: false)
         )
+    }
+}
+
+/// The transcript's disclosure and link actions reach every row through the
+/// environment. The owners rebuild their closures on each pass (every stream
+/// tick and keystroke), so these pin that readers behind a skipped boundary
+/// (the transcript's `.equatable()` rows) are not re-evaluated, while a tap
+/// still runs the latest closure.
+@MainActor
+final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
+    func testDisclosureReadersSkipOwnerPassesAndRunTheLatestHandler() throws {
+        let probe = EnvironmentStabilityProbe()
+        let window = host(DisclosureOwner(probe: probe))
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        advance(probe, window: window, passes: 3)
+
+        XCTAssertEqual(probe.ownerPasses, 4, "The owner must re-run on each tick for this to test anything")
+        XCTAssertEqual(probe.readerPasses, 1)
+        try XCTUnwrap(probe.disclosure)()
+        XCTAssertEqual(probe.handledTick, 3)
+    }
+
+    func testLinkReadersSkipOwnerPassesAndRouteThroughTheLatestHandler() throws {
+        let probe = EnvironmentStabilityProbe()
+        let window = host(LinkOwner(probe: probe))
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        advance(probe, window: window, passes: 3)
+
+        XCTAssertEqual(probe.ownerPasses, 4, "The owner must re-run on each tick for this to test anything")
+        XCTAssertEqual(probe.readerPasses, 1)
+        try XCTUnwrap(probe.openURL)(URL(string: "https://example.com/file.swift")!)
+        XCTAssertEqual(probe.handledTick, 3)
+    }
+
+    /// The owners pass method references, which capture the view and so its
+    /// state. Holding them must not keep that state alive after the screen goes.
+    func testHandlersThatCaptureTheOwnerDoNotOutliveIt() {
+        let released = expectation(description: "The owner's state is released with its screen")
+        autoreleasepool {
+            let window = host(SelfCapturingOwner(onRelease: released.fulfill))
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        wait(for: [released], timeout: 2)
+    }
+
+    private func host(_ view: some View) -> UIWindow {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        return window
+    }
+
+    private func advance(_ probe: EnvironmentStabilityProbe, window: UIWindow, passes: Int) {
+        for _ in 0..<passes {
+            probe.tick += 1
+            window.rootViewController?.view.setNeedsLayout()
+            window.layoutIfNeeded()
+        }
+    }
+}
+
+@Observable
+private final class EnvironmentStabilityProbe {
+    var tick = 0
+    @ObservationIgnored var ownerPasses = 0
+    @ObservationIgnored var readerPasses = 0
+    @ObservationIgnored var handledTick: Int?
+    @ObservationIgnored var disclosure: ChatDisclosureToggleAction?
+    @ObservationIgnored var openURL: OpenURLAction?
+}
+
+/// Rebuilds its disclosure closure on every tick, as the transcript does per stream tick.
+private struct DisclosureOwner: View {
+    let probe: EnvironmentStabilityProbe
+
+    var body: some View {
+        let tick = probe.tick
+        probe.ownerPasses += 1
+        return VStack {
+            Text("\(tick)")
+            SettledRow(probe: probe)
+        }
+        .chatDisclosureToggled { probe.handledTick = tick }
+    }
+}
+
+/// Rebuilds its link closure on every tick, as ChatView does per stream tick and keystroke.
+private struct LinkOwner: View {
+    let probe: EnvironmentStabilityProbe
+
+    var body: some View {
+        let tick = probe.tick
+        probe.ownerPasses += 1
+        return VStack {
+            Text("\(tick)")
+            SettledRow(probe: probe)
+        }
+        .transcriptLinks { _ in
+            probe.handledTick = tick
+            return .handled
+        }
+    }
+}
+
+/// Stands in for a settled transcript row: its inputs never change, so only an
+/// environment change can reach the readers inside it.
+private struct SettledRow: View {
+    let probe: EnvironmentStabilityProbe
+
+    var body: some View {
+        KeyReader(probe: probe)
+    }
+}
+
+private struct KeyReader: View {
+    let probe: EnvironmentStabilityProbe
+    @Environment(\.chatDisclosureToggled) private var disclosure
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        probe.readerPasses += 1
+        probe.disclosure = disclosure
+        probe.openURL = openURL
+        return Color.clear.frame(width: 1, height: 1)
+    }
+}
+
+
+private final class OwnedModel {
+    let onRelease: () -> Void
+
+    init(onRelease: @escaping () -> Void) { self.onRelease = onRelease }
+
+    deinit { onRelease() }
+}
+
+/// Mirrors ChatView and BotChatView: the handlers are methods on a view that
+/// owns a model in `@State`.
+private struct SelfCapturingOwner: View {
+    @State private var model: OwnedModel
+    @State private var toggles = 0
+
+    init(onRelease: @escaping () -> Void) {
+        _model = State(initialValue: OwnedModel(onRelease: onRelease))
+    }
+
+    var body: some View {
+        Text("\(toggles)")
+            .chatDisclosureToggled(perform: toggled)
+            .transcriptLinks(perform: open)
+    }
+
+    private func toggled() { toggles += 1 }
+
+    private func open(_ url: URL) -> OpenURLAction.Result {
+        toggles += 1
+        return .handled
     }
 }

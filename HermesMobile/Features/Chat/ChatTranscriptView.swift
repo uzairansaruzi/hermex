@@ -345,7 +345,7 @@ struct ChatTranscriptView: View {
         .padding(.horizontal, transcriptHorizontalPadding)
         .frame(width: viewportWidth, alignment: .leading)
         .clipped()
-        .environment(\.chatDisclosureToggled) {
+        .chatDisclosureToggled {
             pinReader(proxy: proxy)
             onDisclosureToggle()
         }

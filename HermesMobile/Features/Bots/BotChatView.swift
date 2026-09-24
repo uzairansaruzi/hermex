@@ -103,7 +103,7 @@ import SwiftUI
                     // A tapped row must stay under the finger: stop following so
                     // neither the size-change anchor nor the next activity update
                     // moves the reader. Latest brings them back.
-                    .environment(\.chatDisclosureToggled) { handleFollowEvent(.userScrollBegin) }
+                    .chatDisclosureToggled { handleFollowEvent(.userScrollBegin) }
                     .background {
                         ChatScrollObserver(isStreaming: isStreaming, onFollowEvent: handleFollowEvent, onMetrics: updateScrollMetrics)
                             .accessibilityHidden(true)

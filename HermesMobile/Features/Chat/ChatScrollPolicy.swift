@@ -178,14 +178,74 @@ enum ChatScrollPolicy {
 /// Transcript disclosure controls (reasoning blocks, tool cards, tool groups,
 /// turn folds) call this right before they toggle so the transcript can pin
 /// the reader's offset and suspend follow scrolls through the size change.
+///
+/// A reference, not a closure: SwiftUI cannot compare closures, so a closure
+/// rebuilt on each transcript pass (every stream tick and keystroke) would
+/// invalidate every reader. `chatDisclosureToggled(perform:)` keeps one
+/// instance and refreshes `handler` in place, which nothing observes, so
+/// readers see the same value on every pass.
+final class ChatDisclosureToggleAction {
+    var handler: () -> Void = {}
+
+    func callAsFunction() { handler() }
+}
+
 struct ChatDisclosureToggledKey: EnvironmentKey {
-    static let defaultValue: () -> Void = {}
+    static let defaultValue = ChatDisclosureToggleAction()
 }
 
 extension EnvironmentValues {
-    var chatDisclosureToggled: () -> Void {
+    var chatDisclosureToggled: ChatDisclosureToggleAction {
         get { self[ChatDisclosureToggledKey.self] }
         set { self[ChatDisclosureToggledKey.self] = newValue }
+    }
+}
+
+/// Routes transcript link taps through one `OpenURLAction` that outlives body
+/// passes, for the same reason as `ChatDisclosureToggleAction`.
+final class TranscriptLinkRouter {
+    var handler: (URL) -> OpenURLAction.Result = { _ in .systemAction }
+
+    private(set) lazy var openURL = OpenURLAction { [weak self] url in
+        self?.handler(url) ?? .systemAction
+    }
+}
+
+extension View {
+    /// Publishes `handler` to the transcript's disclosure controls without
+    /// invalidating them when the caller rebuilds the closure.
+    func chatDisclosureToggled(perform handler: @escaping () -> Void) -> some View {
+        modifier(ChatDisclosureToggledModifier(handler: handler))
+    }
+
+    /// Installs `handler` as the transcript's `openURL` without invalidating
+    /// link readers when the caller rebuilds the closure.
+    func transcriptLinks(perform handler: @escaping (URL) -> OpenURLAction.Result) -> some View {
+        modifier(TranscriptLinksModifier(handler: handler))
+    }
+}
+
+// The stable instances live in these modifiers' own state, not the caller's.
+// Handlers usually capture the calling view, whose state would otherwise hold
+// the instance that holds the handler: a cycle that outlives the screen.
+
+private struct ChatDisclosureToggledModifier: ViewModifier {
+    let handler: () -> Void
+    @State private var action = ChatDisclosureToggleAction()
+
+    func body(content: Content) -> some View {
+        action.handler = handler
+        return content.environment(\.chatDisclosureToggled, action)
+    }
+}
+
+private struct TranscriptLinksModifier: ViewModifier {
+    let handler: (URL) -> OpenURLAction.Result
+    @State private var router = TranscriptLinkRouter()
+
+    func body(content: Content) -> some View {
+        router.handler = handler
+        return content.environment(\.openURL, router.openURL)
     }
 }
 
