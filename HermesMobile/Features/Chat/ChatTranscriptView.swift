@@ -36,7 +36,9 @@ struct ChatTranscriptView: View {
     let latestTranscriptMessageRole: String?
     let isScrolledNearBottom: Bool
     let activeStreamID: String?
-    let streamingScrollTrigger: Int
+    /// Reads the stream's coalesced scroll trigger. Only `StreamingFollowTrigger`
+    /// calls it, so a bump re-runs that leaf rather than this view and its owner.
+    let streamingScrollTrigger: () -> Int
     let transcriptRelayoutScrollToken: Int
     let bottomAnchorID: String
     let transcriptSpacing: CGFloat
@@ -177,17 +179,19 @@ struct ChatTranscriptView: View {
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
                 .background(Color(.systemBackground))
+                .background {
+                    StreamingFollowTrigger(trigger: streamingScrollTrigger) {
+                        if isFollowingLatestContent {
+                            releasingHold { onScrollToLatestContent(proxy, true) }
+                        }
+                    }
+                }
                 .onChange(of: messages.count) {
                     guard isFollowingLatestContent else { return }
 
                     if latestTranscriptMessageRole == "user" {
                         releasingHold { onScrollToLatestTranscriptMessage(proxy) }
                     } else {
-                        releasingHold { onScrollToLatestContent(proxy, true) }
-                    }
-                }
-                .onChange(of: streamingScrollTrigger) {
-                    if isFollowingLatestContent {
                         releasingHold { onScrollToLatestContent(proxy, true) }
                     }
                 }
@@ -516,6 +520,22 @@ struct ChatTranscriptView: View {
                 ToolActivityGroupView(group: group)
             }
         }
+    }
+}
+
+/// Runs `onFire` each time the stream's scroll trigger bumps.
+///
+/// The trigger bumps once per drain tick while a reply streams and feeds only
+/// this scroll. Reading it in a leaf keeps each bump from re-running the chat
+/// screen's content (transcript derivations, every row's equality check, the
+/// composer) just to scroll.
+struct StreamingFollowTrigger: View {
+    let trigger: () -> Int
+    let onFire: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onChange(of: trigger()) { onFire() }
     }
 }
 

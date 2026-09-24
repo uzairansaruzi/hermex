@@ -290,6 +290,10 @@ struct ChatView: View {
     let restoresDraftSettings: Bool
     let onConversationStarted: () -> Void
 
+    /// The composer's draft. Never read it in `body` or wrap it in a get/set
+    /// binding for the composer: either re-runs this whole screen on every
+    /// keystroke. The composer gets `$draftMessage` and reports its edits to
+    /// `persistDraftEdit`.
     @State private var draftMessage = ""
     @State private var draftQuotes: [ComposerQuote] = []
     @State private var draftRevision = 0
@@ -414,7 +418,7 @@ struct ChatView: View {
     // "unable to type-check in reasonable time" limit).
     private var messageComposer: some View {
         MessageComposerView(
-            draftMessage: persistedDraftBinding,
+            draftMessage: $draftMessage,
             quotes: persistedQuotesBinding,
             isFocused: $composerIsFocused,
             isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote,
@@ -549,6 +553,10 @@ struct ChatView: View {
             onSelectFileReference: { path in
                 viewModel.recordFileChipReference(path)
             },
+            onFileReferenceCandidatesChange: { draft in
+                await viewModel.loadFileChipReferences(draft: draft)
+            },
+            onDraftEdit: persistDraftEdit,
             onOpenFileReference: { path in
                 openedFileReference = FileReference(path: path, line: nil, column: nil)
             },
@@ -1069,7 +1077,8 @@ struct ChatView: View {
     /// Drops a diff selection from a Git sheet into the composer and closes the sheet.
     private func addDiffSelectionToDraft(_ snippet: String) {
         let separator = draftMessage.isEmpty ? "" : (draftMessage.hasSuffix("\n") ? "\n" : "\n\n")
-        persistedDraftBinding.wrappedValue = draftMessage + separator + snippet + "\n"
+        draftMessage += separator + snippet + "\n"
+        persistDraftEdit(draftMessage)
         activeGitSheet = nil
         turnDiffPresentation = nil
     }
@@ -1384,7 +1393,7 @@ struct ChatView: View {
             latestTranscriptMessageRole: latestTranscriptMessageRole,
             isScrolledNearBottom: isScrolledNearBottom,
             activeStreamID: viewModel.activeStreamID,
-            streamingScrollTrigger: viewModel.streamingScrollTrigger,
+            streamingScrollTrigger: { viewModel.streamingScrollTrigger },
             transcriptRelayoutScrollToken: viewModel.transcriptRelayoutScrollToken,
             bottomAnchorID: bottomAnchorID,
             transcriptSpacing: transcriptSpacing,
@@ -1479,29 +1488,26 @@ struct ChatView: View {
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }
-        .task(id: fileChipReferenceScanToken) {
+        .task(id: transcriptFileChipScanToken) {
+            // The draft is read here, not in body, so a keystroke never re-runs
+            // this screen. Draft edits trigger their own scan from the composer.
             await viewModel.loadFileChipReferences(draft: draftMessage)
         }
     }
 
-    /// Changes whenever there is new text that could name a workspace file, or
-    /// whenever the answers already given have been thrown away: the transcript
-    /// grew, was swapped for the server's copy (which can rewrite a message in
-    /// the middle without changing the count or the last id), the workspace
-    /// moved, or the draft gained or lost a finished `@…`.
+    /// Changes whenever the transcript has new text that could name a workspace
+    /// file, or whenever the answers already given have been thrown away: the
+    /// transcript grew, was swapped for the server's copy (which can rewrite a
+    /// message in the middle without changing the count or the last id), or the
+    /// workspace moved. The composer asks for a scan when the draft gains or
+    /// loses a finished `@…`.
     ///
-    /// Everything here is O(1) or bounded by the draft, because it runs on every
-    /// transcript update, including each token of a live stream. The scan of the
-    /// transcript itself is the view model's, and it skips candidates the server
-    /// has already answered for.
-    private var fileChipReferenceScanToken: String {
-        let draftCandidates = ComposerChipTokenizer.fileReferenceCandidates(in: draftMessage)
-        return [
-            String(viewModel.messages.count),
-            String(viewModel.transcriptRevision),
-            String(viewModel.fileChipScopeRevision),
-            draftCandidates.joined(separator: " ")
-        ].joined(separator: "|")
+    /// Everything here is O(1), because it runs on every transcript update,
+    /// including each token of a live stream. The scan of the transcript itself
+    /// is the view model's, and it skips candidates the server has already
+    /// answered for.
+    private var transcriptFileChipScanToken: [Int] {
+        [viewModel.messages.count, viewModel.transcriptRevision, viewModel.fileChipScopeRevision]
     }
 
     /// How many sent messages look like they name a skill.
@@ -2103,17 +2109,15 @@ struct ChatView: View {
         )
     }
 
-    private var persistedDraftBinding: Binding<String> {
-        Binding(
-            get: { draftMessage },
-            set: { newValue in
-                draftMessage = newValue
-                draftRevision &+= 1
-                draftStore.setContent(
-                    ComposerDraftContent(text: newValue, quotes: draftQuotes),
-                    for: draftKey
-                )
-            }
+    /// Records a draft edit the user made, after it lands in `draftMessage`:
+    /// bumps the revision a failed send checks before restoring, and persists
+    /// the draft. Writes that are not the user's (clearing on send, restoring,
+    /// hydrating) skip it.
+    private func persistDraftEdit(_ text: String) {
+        draftRevision &+= 1
+        draftStore.setContent(
+            ComposerDraftContent(text: text, quotes: draftQuotes),
+            for: draftKey
         )
     }
 

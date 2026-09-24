@@ -404,3 +404,46 @@ private struct SelfCapturingOwner: View {
         return .handled
     }
 }
+
+/// The stream bumps its scroll trigger once per drain tick. Only the
+/// `StreamingFollowTrigger` leaf reads it, so each bump fires the follow scroll
+/// without re-running the transcript and the chat screen that own the leaf.
+@MainActor
+final class StreamingFollowTriggerTests: XCTestCase {
+    func testBumpsFireTheScrollWithoutReRunningTheOwner() {
+        let probe = FollowTriggerProbe()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        window.rootViewController = UIHostingController(rootView: FollowTriggerOwner(probe: probe))
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        for _ in 0..<3 {
+            probe.trigger += 1
+            window.rootViewController?.view.setNeedsLayout()
+            window.layoutIfNeeded()
+        }
+
+        XCTAssertEqual(probe.fires, 3)
+        XCTAssertEqual(probe.ownerPasses, 1)
+    }
+}
+
+@Observable
+private final class FollowTriggerProbe {
+    var trigger = 0
+    @ObservationIgnored var ownerPasses = 0
+    @ObservationIgnored var fires = 0
+}
+
+/// Stands in for ChatView and the transcript: it hands the leaf a reader, never the value.
+private struct FollowTriggerOwner: View {
+    let probe: FollowTriggerProbe
+
+    var body: some View {
+        probe.ownerPasses += 1
+        return Color.clear.background {
+            StreamingFollowTrigger(trigger: { probe.trigger }) { probe.fires += 1 }
+        }
+    }
+}

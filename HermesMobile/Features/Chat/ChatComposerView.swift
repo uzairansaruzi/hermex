@@ -96,6 +96,9 @@ struct MessageComposerView: View {
     private let circleSize = ChatComposerMetrics.actionSize
     private let pillInset = ChatComposerMetrics.pillInset
 
+    /// The draft. Pass the owner's plain `$state`, not a get/set binding:
+    /// SwiftUI re-runs the owner of a get/set binding on every keystroke. The
+    /// owner hears about edits through `onDraftEdit` instead.
     @Binding var draftMessage: String
     @Binding var quotes: [ComposerQuote]
     @Binding var isFocused: Bool
@@ -180,6 +183,14 @@ struct MessageComposerView: View {
     let onDismissUploadAttachmentError: () -> Void
     /// A workspace file the user just picked, for the chip catalog.
     let onSelectFileReference: (String) -> Void
+    /// The draft, each time its finished `@…` references change (and once on
+    /// appear), so the owner can confirm which name workspace files. Scanned
+    /// here because this view already re-runs per keystroke; the owner never
+    /// has to read the draft in its own body.
+    let onFileReferenceCandidatesChange: (String) async -> Void
+    /// Each edit the user makes to the draft here (typing, completions,
+    /// dictation), after it lands in `draftMessage`, for the owner to persist.
+    let onDraftEdit: (String) -> Void
     /// A file chip the user tapped, by workspace-relative path.
     let onOpenFileReference: (String) -> Void
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
@@ -305,13 +316,20 @@ struct MessageComposerView: View {
         !(slashTrigger?.startsDraft ?? true)
     }
 
+    /// Every write the user makes to the draft goes through here, so the owner
+    /// can persist it.
+    private func editDraft(_ text: String) {
+        draftMessage = text
+        onDraftEdit(text)
+    }
+
     /// Swaps the `/…` at the caret for `replacement` and leaves the caret just
     /// after it, so the rest of the draft survives accepting a row.
     private func applyCompletion(_ replacement: String) {
         guard let trigger = slashTrigger else { return }
 
         let completed = trigger.applying(replacement, to: draftMessage)
-        draftMessage = completed.draft
+        editDraft(completed.draft)
         composerSelection = composerSelection.moved(to: completed.selection)
     }
 
@@ -329,7 +347,7 @@ struct MessageComposerView: View {
             match.isDirectory ? "@\(match.path)/" : "@\(match.path) ",
             to: draftMessage
         )
-        draftMessage = completed.draft
+        editDraft(completed.draft)
         composerSelection = composerSelection.moved(to: completed.selection)
 
         if !match.isDirectory {
@@ -500,6 +518,9 @@ struct MessageComposerView: View {
         }
         .task(id: draftMayReferenceSkill) {
             await loadSkillSuggestionsForChipsIfNeeded()
+        }
+        .task(id: ComposerChipTokenizer.fileReferenceCandidates(in: draftMessage)) {
+            await onFileReferenceCandidatesChange(draftMessage)
         }
         .task(id: slashAutocompleteLoadKey) {
             await loadSlashAutocompleteSubArgsIfNeeded()
@@ -712,7 +733,7 @@ struct MessageComposerView: View {
 
             HStack(alignment: .center, spacing: 4) {
                 ComposerTextInputView(
-                    text: $draftMessage,
+                    text: Binding(get: { draftMessage }, set: editDraft),
                     selection: $composerSelection,
                     isFocused: $isFocused,
                     inputHeight: $textInputHeight,
@@ -1205,7 +1226,7 @@ struct MessageComposerView: View {
         voiceInput.locale = .current
         Task {
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
-                draftMessage = newDraft
+                editDraft(newDraft)
             }
         }
     }

@@ -792,6 +792,34 @@ import XCTest
         XCTAssertEqual(editor.sourceText, "Draft a short reply.")
     }
 
+    /// ChatView keeps the draft out of its own body so a keystroke never re-runs
+    /// the transcript derivations. The composer reports each edit for
+    /// persistence, and scans the draft for `@path` references only when a
+    /// finished one comes or goes. A get/set draft binding (the old wiring)
+    /// re-runs the owner on every keystroke and fails the pass count.
+    func testSessionsComposerScansFileReferencesWithoutReRunningItsOwnerPerKeystroke() async throws {
+        let focus = SessionFixtureFocus()
+        let probe = SessionFixtureProbe()
+        let window = try show(SessionChatPresentationFixture(focus: focus, probe: probe))
+        defer { close(window) }
+        await renderFrames()
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        focus.isFocused = true
+        await renderFrames()
+        let ownerPasses = probe.ownerPasses
+
+        for keystroke in ["read ", "@a.md", " ", "and more"] {
+            editor.insertText(keystroke)
+            await renderFrames()
+        }
+
+        XCTAssertEqual(editor.sourceText, "read @a.md and more")
+        XCTAssertEqual(probe.ownerPasses, ownerPasses, "A keystroke must not re-run the composer's owner")
+        XCTAssertEqual(probe.scannedDrafts, ["", "read @a.md "])
+        XCTAssertEqual(probe.editedDrafts, ["read ", "read @a.md", "read @a.md ", "read @a.md and more"])
+        XCTAssertEqual(probe.draftSeenOnAppear, "")
+    }
+
     /// The activity rows are the Sessions log rows, whose only motion is
     /// `ChatMotion.disclosure`, which is nil under Reduce Motion (covered in
     /// `TranscriptDisplayModelTests`); the Bot views add no animation of their own.
@@ -1150,8 +1178,18 @@ private struct AttachmentOverlayHarnessView: View {
     var isFocused = false
 }
 
+/// Counts the Sessions fixture's own body passes, and records the drafts its
+/// composer asked to scan for `@path` references and reported as edits.
+@MainActor private final class SessionFixtureProbe {
+    var ownerPasses = 0
+    var scannedDrafts: [String] = []
+    var editedDrafts: [String] = []
+    var draftSeenOnAppear: String?
+}
+
 private struct SessionChatPresentationFixture: View {
     @Bindable var focus: SessionFixtureFocus
+    var probe = SessionFixtureProbe()
     @State private var draft = ""
     @State private var quotes: [ComposerQuote] = []
     @State private var paths = ComposerFilePathSearch()
@@ -1160,13 +1198,19 @@ private struct SessionChatPresentationFixture: View {
     )
 
     var body: some View {
-        VStack {
+        probe.ownerPasses += 1
+        return VStack {
             Spacer()
             composer
         }
+        // ChatView reads the draft outside body (tasks, actions); that must not
+        // make it depend on the draft either.
+        .task { probe.draftSeenOnAppear = draft }
     }
 
     private var composer: some View {
+        // Wired like ChatView: a plain `$state` draft the body never reads,
+        // with edits reported for persistence.
         MessageComposerView(
             draftMessage: $draft, quotes: $quotes, isFocused: $focus.isFocused,
             isSending: false, isCompressingSession: false, isWaitingForStream: false,
@@ -1189,7 +1233,9 @@ private struct SessionChatPresentationFixture: View {
             onPhotoMediaSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in }, onPasteImageProviders: { _ in }, onPasteImages: { _ in },
             onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {},
-            onSelectFileReference: { _ in }, onOpenFileReference: { _ in }, onSelectGitBranch: { _ in },
+            onSelectFileReference: { _ in }, onFileReferenceCandidatesChange: { probe.scannedDrafts.append($0) },
+            onDraftEdit: { probe.editedDrafts.append($0) },
+            onOpenFileReference: { _ in }, onSelectGitBranch: { _ in },
             onCreateGitBranch: { _ in }, onRefreshGitBranches: {}
         )
     }
