@@ -604,8 +604,9 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
 /// path, then serves a 200 for every other request — capturing the request of
 /// the hop *after* the redirect ("second hop") so a test can assert which headers
 /// survived. It carries the first request's headers onto the follow-up to mimic a
-/// server redirect; `URLSession` then consults the session's redirect delegate
-/// (the system under test), which is what must strip them.
+/// server redirect; `URLSession` then consults the task's redirect delegate (the
+/// client's per-task `CrossOriginHeaderStripper`, the system under test), which is
+/// what must strip them.
 final class RedirectingMockURLProtocol: URLProtocol {
     struct Redirect {
         let fromPath: String
