@@ -7,6 +7,8 @@ Security sections per release.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-24
+
 ### Added
 - Bot Mode (beta, off until enabled in Settings): connect directly to a Hermes
   agent host and chat with its bots from a Bots inbox. Create, duplicate,
