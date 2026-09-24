@@ -36,6 +36,27 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    func testLiveRefreshOfBoardOnScreenHidesTheLoadingRow() async throws {
+        let client = GatedLiveKanbanClient()
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream)
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
+        try await waitUntil { await client.boardCallCount == 2 }
+
+        // Writes stay gated while the refresh runs, but the Card list keeps its shape.
+        XCTAssertTrue(state.isRefreshing)
+        XCTAssertNotNil(state.snapshot)
+        XCTAssertFalse(state.showsBoardLoadingRow)
+
+        await client.release(.cursor12)
+        try await waitUntil { state.snapshot?.latestEventID == 12 && !state.isRefreshing }
+        state.setVisible(false)
+    }
+
     func testBurstDuringLiveRefreshQueuesOneFollowUpInsteadOfCancelling() async throws {
         let client = GatedLiveKanbanClient()
         let stream = KanbanStreamSpy()

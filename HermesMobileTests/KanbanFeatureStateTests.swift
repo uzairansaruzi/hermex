@@ -374,6 +374,8 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertNil(state.stats)
         XCTAssertNil(state.assigneeHistory)
         XCTAssertTrue(state.isRefreshing)
+        // With no Cards on screen, the list shows the loading row.
+        XCTAssertTrue(state.showsBoardLoadingRow)
 
         await client.resumeReleaseRead()
         await switchBoard.value

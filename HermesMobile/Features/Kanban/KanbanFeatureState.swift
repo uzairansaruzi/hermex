@@ -453,6 +453,13 @@ final class KanbanFeatureState {
         self.defaults = defaults
     }
 
+    /// Whether the Card list shows its "Refreshing Board" row: only while a Board loads with
+    /// no snapshot on screen (first load, Board switch). Live, poll, mutation, and pull
+    /// refreshes of a Board already on screen update the rows in place without it.
+    var showsBoardLoadingRow: Bool {
+        isRefreshing && snapshot == nil
+    }
+
     /// Future write slices must use this single seam before exposing any
     /// mutation, Dispatcher, or shared-state action.
     var canUseServerAuthoritativeActions: Bool {

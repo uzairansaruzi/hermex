@@ -1088,17 +1088,13 @@ struct KanbanStatusFocusView: View {
 
     private var cardList: some View {
         List {
-            if model.isRefreshing {
+            if model.showsBoardLoadingRow {
                 HStack {
                     Spacer()
                     ProgressView("Refreshing Board")
                     Spacer()
                 }
                 .listRowSeparator(.hidden)
-            }
-
-            if model.isRefreshing, model.snapshot == nil {
-                EmptyView()
             } else if model.visibleCards.isEmpty {
                 emptyContent
                     .listRowSeparator(.hidden)
