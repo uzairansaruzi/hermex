@@ -526,22 +526,33 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
         var window = BotRoomTranscriptWindow()
         XCTAssertEqual(window.start(in: events), 250, "The first frame must already be bounded")
 
-        window.seed(events)
+        window.seed(events, live: true)
         XCTAssertEqual(window.start(in: events), 250)
         XCTAssertEqual(window.start(in: []), 0)
     }
 
+    func testOpenTimeCatchUpAfterACacheRestoreStaysOnTheNewestPage() {
+        var window = BotRoomTranscriptWindow()
+        let restored = Self.events(1...300)
+        window.seed(restored, live: false)
+        XCTAssertEqual(window.start(in: restored), 250)
+
+        let caughtUp = Self.events(1...500)
+        window.seed(caughtUp, live: true)
+        XCTAssertEqual(caughtUp.count - window.start(in: caughtUp), BotRoomTranscriptWindow.pageSize)
+    }
+
     func testPrependedHistoryStaysHiddenAndNewEventsStillShow() {
         var window = BotRoomTranscriptWindow()
-        window.seed(Self.events(201...300))
+        window.seed(Self.events(201...300), live: true)
         let firstShown = 251
 
         let prepended = Self.events(1...300)
-        window.seed(prepended)
+        window.seed(prepended, live: true)
         XCTAssertEqual(prepended[window.start(in: prepended)].seq, firstShown)
 
         let appended = Self.events(1...310)
-        window.seed(appended)
+        window.seed(appended, live: true)
         XCTAssertEqual(appended[window.start(in: appended)].seq, firstShown)
         XCTAssertEqual(appended.count - window.start(in: appended), 60)
     }
@@ -549,7 +560,7 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
     func testLoadEarlierRevealsHiddenPagesBeforeAskingTheRoom() {
         let events = Self.events(1...120)
         var window = BotRoomTranscriptWindow()
-        window.seed(events)
+        window.seed(events, live: true)
 
         XCTAssertTrue(window.showEarlier(in: events))
         XCTAssertEqual(window.start(in: events), 20)
@@ -561,7 +572,7 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
     func testSearchHitOlderThanTheWindowIsBuiltAndStaysShown() {
         let events = Self.events(1...300)
         var window = BotRoomTranscriptWindow()
-        window.seed(events)
+        window.seed(events, live: true)
 
         XCTAssertEqual(window.start(in: events, keeping: 40), 39, "The hit's row must exist before the jump")
         XCTAssertEqual(window.start(in: events, keeping: 999), 250, "An absent hit does not widen the window")
@@ -571,15 +582,15 @@ final class BotRoomTranscriptWindowTests: XCTestCase {
 
     func testClosingOrRestartingTheRoomReanchorsOnTheNewestPage() {
         var window = BotRoomTranscriptWindow()
-        window.seed(Self.events(1...300))
+        window.seed(Self.events(1...300), live: true)
         _ = window.showEarlier(in: Self.events(1...300))
 
-        window.seed([])
-        window.seed(Self.events(1...300))
+        window.seed([], live: true)
+        window.seed(Self.events(1...300), live: true)
         XCTAssertEqual(window.start(in: Self.events(1...300)), 250)
 
         let restarted = Self.events(1...80)
-        window.seed(restarted)
+        window.seed(restarted, live: true)
         XCTAssertEqual(window.start(in: restarted), 30)
     }
 

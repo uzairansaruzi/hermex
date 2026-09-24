@@ -77,7 +77,8 @@ import SwiftUI
                     proxy.scrollTo(sequence, anchor: .center); pendingSequence = nil
                 }
             }
-            .onChange(of: reader.events.last?.seq, initial: true) { window.seed(reader.events) }
+            .onChange(of: reader.events.last?.seq, initial: true) { seedWindow() }
+            .onChange(of: reader.link) { seedWindow() }
             .onChange(of: reader.events.last?.seq) {
                 if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
             }
@@ -141,6 +142,8 @@ import SwiftUI
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
+    private func seedWindow() { window.seed(reader.events, live: reader.link == .live) }
+
     /// Reveals a page of events already in memory, or fetches one from the room
     /// when none are hidden, then keeps the event the reader was on at the top,
     /// since the new rows push everything below them down.
@@ -202,10 +205,13 @@ struct BotRoomTranscriptWindow: Equatable {
         return min(start, hit)
     }
 
-    /// Anchors the window on the newest page when events first arrive, and again
-    /// after the room empties (closed) or restarts below the anchor.
-    mutating func seed(_ events: [BotRoomEvent]) {
+    /// Anchors the window on the newest page once the room is live, and again
+    /// after the room empties (closed) or restarts below the anchor. Until then
+    /// `start` follows the newest page, so the open-time catch-up after a stale
+    /// cache restore is not built in full.
+    mutating func seed(_ events: [BotRoomEvent], live: Bool) {
         guard let last = events.last else { oldestShown = nil; return }
+        guard live else { return }
         if oldestShown.map({ last.seq < $0 }) ?? true {
             oldestShown = events[max(0, events.count - Self.pageSize)].seq
         }
