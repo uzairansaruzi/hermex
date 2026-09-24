@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import HermesMobile
 
@@ -113,5 +114,51 @@ final class ModelPickerSheetTests: XCTestCase {
                 )
             )
         }
+    }
+
+    // MARK: Row laziness
+
+    /// An expanded group must hand each model to the List as its own row, so
+    /// the List builds only the rows on screen. One container row per group
+    /// would build all 400 in a single cell (#692).
+    @MainActor
+    func testExpandedGroupGivesEachModelItsOwnLazyListRow() async throws {
+        let models = (1...400).map { option("m\($0)", provider: "openrouter") }
+        let group = ModelCatalogGroup(id: "openrouter", name: "OpenRouter", providerID: "openrouter", models: models)
+        let host = UIHostingController(
+            rootView: ModelPickerSheet(
+                configuration: .composer,
+                modelGroups: [group],
+                selectedModelID: "m1",
+                selectedModelProviderID: "openrouter",
+                // The selected model's group opens expanded on appear.
+                isSelected: { $0.id == "m1" },
+                onSelect: { _ in }
+            )
+        )
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        host.view.layoutIfNeeded()
+
+        let list = try XCTUnwrap(descendants(of: host.view).compactMap { $0 as? UICollectionView }.first)
+        list.layoutIfNeeded()
+        let rowCount = (0..<list.numberOfSections).reduce(0) { $0 + list.numberOfItems(inSection: $1) }
+
+        XCTAssertGreaterThanOrEqual(rowCount, 400, "every model is a List row of its own")
+        XCTAssertLessThan(list.visibleCells.count, 50, "only the rows on screen are built")
+    }
+
+    private func descendants(of view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { descendants(of: $0) }
     }
 }
