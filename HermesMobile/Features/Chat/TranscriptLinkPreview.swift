@@ -219,6 +219,13 @@ enum TranscriptLinkPreviewExtractor {
 }
 
 enum TranscriptLinkPreviewEligibility {
+    /// The URL a settled user or assistant row previews, if any. Memoized by
+    /// content: a transcript-wide flag flip (Send, a reply finishing)
+    /// re-evaluates every row, and the scan runs `NSDataDetector` over every
+    /// line of a message that usually has no URL at all. Streaming rows never
+    /// preview, so partial text never enters the cache. The result is a
+    /// function of the content alone, so entries cannot carry anything from one
+    /// server to another.
     static func previewURL(for message: ChatMessage, isStreaming: Bool) -> URL? {
         guard !isStreaming,
               message.role == "user" || message.role == "assistant",
@@ -227,6 +234,36 @@ enum TranscriptLinkPreviewEligibility {
             return nil
         }
 
-        return TranscriptLinkPreviewExtractor.firstWebURL(in: content)
+        let key = content as NSString
+        if let cached = storage.object(forKey: key) {
+            return cached.url
+        }
+
+        let url = TranscriptLinkPreviewExtractor.firstWebURL(in: content)
+        storage.setObject(Box(url), forKey: key)
+        return url
     }
+
+    /// Test seam: drop memoized scans so a test can observe a cold pass.
+    static func removeAll() {
+        storage.removeAllObjects()
+    }
+
+    /// Test seam: whether `content` currently has a memoized scan.
+    static func hasCachedScan(for content: String) -> Bool {
+        storage.object(forKey: content as NSString) != nil
+    }
+
+    /// Boxes the optional so a message without a URL, the common case, is
+    /// cached too.
+    private final class Box {
+        let url: URL?
+        init(_ url: URL?) { self.url = url }
+    }
+
+    private static let storage: NSCache<NSString, Box> = {
+        let cache = NSCache<NSString, Box>()
+        cache.countLimit = 240
+        return cache
+    }()
 }

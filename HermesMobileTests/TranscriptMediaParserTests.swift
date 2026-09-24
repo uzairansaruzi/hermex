@@ -369,4 +369,46 @@ final class TranscriptMediaParserTests: XCTestCase {
             return nil
         }
     }
+
+    // MARK: - Segment cache (#680)
+
+    /// A settled row parses once; later body evaluations read the memoized
+    /// segments, which must match a fresh parse.
+    func testSettledSegmentsAreMemoized() {
+        TranscriptMediaSegmentCache.removeAll()
+        let markdown = "Screenshot: MEDIA:/tmp/cache-680.png done"
+
+        XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
+        let first = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: false)
+        XCTAssertTrue(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
+
+        XCTAssertEqual(first, TranscriptMediaParser.segments(in: markdown))
+        XCTAssertEqual(TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: false), first)
+    }
+
+    /// Streaming text changes per token; caching it would evict settled rows.
+    func testStreamingSegmentsDoNotPopulateTheCache() {
+        TranscriptMediaSegmentCache.removeAll()
+        let markdown = "Still streaming MEDIA:/tmp/cache-680.png"
+
+        let segments = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: true)
+
+        XCTAssertEqual(segments, TranscriptMediaParser.segments(in: markdown))
+        XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
+    }
+
+    /// A relative image resolves against the workspace root, so the same text
+    /// under two roots must not share an entry.
+    func testWorkspaceRootIsPartOfTheSegmentCacheKey() {
+        TranscriptMediaSegmentCache.removeAll()
+        let markdown = "![](./shots/login.png)"
+
+        let first = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: "/srv/one", isStreaming: false)
+        XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: "/srv/two"))
+        let second = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: "/srv/two", isStreaming: false)
+
+        XCTAssertEqual(first, TranscriptMediaParser.segments(in: markdown, workspaceRoot: "/srv/one"))
+        XCTAssertEqual(second, TranscriptMediaParser.segments(in: markdown, workspaceRoot: "/srv/two"))
+        XCTAssertNotEqual(first, second)
+    }
 }

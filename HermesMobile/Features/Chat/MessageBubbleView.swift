@@ -83,7 +83,9 @@ struct MessageBubbleView: View {
     }
 
     private var userMessageRow: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        let previewURL = linkPreviewURL
+
+        return VStack(alignment: .trailing, spacing: 8) {
             if !textOnly, let attachments = message.attachments, !attachments.isEmpty {
                 attachmentPreviews
             }
@@ -91,14 +93,14 @@ struct MessageBubbleView: View {
             // When the attachment-path line is hidden, an attachment-only
             // message has no bubble text left; skip the empty pill so only the
             // attachment grid shows.
-            if hasVisibleUserBubbleText || hasLinkPreview {
+            if hasVisibleUserBubbleText || previewURL != nil {
                 HStack(alignment: .bottom, spacing: 0) {
                     Spacer(minLength: userBubbleLeadingGutter)
                     VStack(alignment: .trailing, spacing: 8) {
                         if hasVisibleUserBubbleText {
                             userBubble
                         }
-                        linkPreview
+                        linkPreview(previewURL)
                     }
                     .chatMessageContextMenu(contextMenuActions)
                 }
@@ -148,9 +150,10 @@ struct MessageBubbleView: View {
     }
 
     private var assistantMessageRow: some View {
-        let segments = TranscriptMediaParser.segments(
+        let segments = TranscriptMediaSegmentCache.segments(
             in: messageText,
-            workspaceRoot: chatWorkspaceRoot
+            workspaceRoot: chatWorkspaceRoot,
+            isStreaming: isStreaming
         )
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -170,7 +173,7 @@ struct MessageBubbleView: View {
                 } action: { responseIsVisible = $0 }
             }
 
-            linkPreview
+            linkPreview(linkPreviewURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // While this row is the active streaming message, animate its height
@@ -338,16 +341,19 @@ struct MessageBubbleView: View {
         )
     }
 
+    /// Read once per row body; the user row needs it both to decide whether to
+    /// draw the bubble stack and to draw the preview inside it.
+    private var linkPreviewURL: URL? {
+        guard !textOnly else { return nil }
+        return TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming)
+    }
+
     @ViewBuilder
-    private var linkPreview: some View {
-        if !textOnly, let url = TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) {
+    private func linkPreview(_ url: URL?) -> some View {
+        if let url {
             TranscriptLinkPreviewView(url: url)
                 .frame(maxWidth: 300)
         }
-    }
-
-    private var hasLinkPreview: Bool {
-        !textOnly && TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) != nil
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked

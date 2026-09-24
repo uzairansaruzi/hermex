@@ -132,6 +132,77 @@ enum TranscriptMediaSegment: Equatable {
     case media(TranscriptMediaReference)
 }
 
+/// Memoizes `TranscriptMediaParser.segments` for settled transcript rows.
+///
+/// Every assistant bubble parses its text on each body evaluation, and a
+/// transcript-wide flag flip (Send, a reply finishing) re-evaluates every row.
+/// The parse is pure over its content and workspace root, so a settled row pays
+/// it once. The result is a function of the key alone, so entries cannot carry
+/// anything from one server to another. `NSCache` evicts under memory pressure
+/// and is thread-safe.
+enum TranscriptMediaSegmentCache {
+    private static let storage: NSCache<Key, Box> = {
+        let cache = NSCache<Key, Box>()
+        cache.countLimit = 240
+        return cache
+    }()
+
+    private final class Key: NSObject {
+        let markdown: String
+        let workspaceRoot: String?
+
+        init(markdown: String, workspaceRoot: String?) {
+            self.markdown = markdown
+            self.workspaceRoot = workspaceRoot
+        }
+
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(markdown)
+            hasher.combine(workspaceRoot)
+            return hasher.finalize()
+        }
+
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? Key else { return false }
+            return markdown == other.markdown && workspaceRoot == other.workspaceRoot
+        }
+    }
+
+    private final class Box {
+        let segments: [TranscriptMediaSegment]
+        init(_ segments: [TranscriptMediaSegment]) { self.segments = segments }
+    }
+
+    /// The transcript row's segments. Streaming text changes on nearly every
+    /// token, so it is parsed without touching the cache; storing it would
+    /// only evict the settled rows the cache exists for.
+    static func segments(in markdown: String, workspaceRoot: String?, isStreaming: Bool) -> [TranscriptMediaSegment] {
+        guard !isStreaming else {
+            return TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspaceRoot)
+        }
+
+        let key = Key(markdown: markdown, workspaceRoot: workspaceRoot)
+        if let cached = storage.object(forKey: key) {
+            return cached.segments
+        }
+
+        let segments = TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspaceRoot)
+        storage.setObject(Box(segments), forKey: key)
+        return segments
+    }
+
+    /// Test seam: drop memoized segments so a test can observe a cold pass.
+    static func removeAll() {
+        storage.removeAllObjects()
+    }
+
+    /// Test seam: whether this content and root currently have a memoized entry.
+    static func hasCachedSegments(in markdown: String, workspaceRoot: String?) -> Bool {
+        storage.object(forKey: Key(markdown: markdown, workspaceRoot: workspaceRoot)) != nil
+    }
+}
+
 enum TranscriptMediaParser {
     /// Splits an assistant message into text and media. `workspaceRoot` only resolves the
     /// relative forms of `![alt](path)`; an absolute path or a `file:` URL needs no root,
