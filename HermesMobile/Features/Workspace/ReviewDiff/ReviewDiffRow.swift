@@ -30,7 +30,7 @@ struct ReviewDiffRow: Equatable, Identifiable {
     var columnCount: Int {
         switch kind {
         case .hunk(let text): return text.count
-        case .line(let line): return line.content.count
+        case .line(let line): return line.columnCount
         case .file, .notice: return 0
         }
     }
@@ -59,8 +59,40 @@ struct ReviewDiffLine: Equatable {
     let newLineNumber: Int?
     /// Character offsets into `content` to highlight as the changed words.
     var wordDiffRanges: [Range<Int>] = []
+    /// `content.count`, counted once: layout and drawing ask for it on every frame, and
+    /// a minified line can run to hundreds of thousands of characters.
+    let columnCount: Int
+
+    init(content: String, change: DiffLine.Kind, oldLineNumber: Int?, newLineNumber: Int?, wordDiffRanges: [Range<Int>] = []) {
+        self.content = content
+        self.change = change
+        self.oldLineNumber = oldLineNumber
+        self.newLineNumber = newLineNumber
+        self.wordDiffRanges = wordDiffRanges
+        columnCount = content.count
+    }
 
     var displayLineNumber: Int? { newLineNumber ?? oldLineNumber }
+
+    /// The `characters` of `content` split into visual lines of `wrapColumns` characters,
+    /// or one line when `wrapColumns` is nil. Slices by `Character`, so graphemes stay whole.
+    func visualLines(in characters: Range<Int>, wrapColumns: Int?) -> [Substring] {
+        let lower = min(max(0, characters.lowerBound), columnCount)
+        let upper = min(max(lower, characters.upperBound), columnCount)
+        guard lower < upper else { return [] }
+        let start = content.index(content.startIndex, offsetBy: lower)
+        let end = upper == columnCount ? content.endIndex : content.index(start, offsetBy: upper - lower)
+        guard let wrapColumns else { return [content[start..<end]] }
+
+        var lines: [Substring] = []
+        var lineStart = start
+        while lineStart < end {
+            let lineEnd = content.index(lineStart, offsetBy: wrapColumns, limitedBy: end) ?? end
+            lines.append(content[lineStart..<lineEnd])
+            lineStart = lineEnd
+        }
+        return lines
+    }
 }
 
 /// What the host knows about one file's diff while the surface is on screen.

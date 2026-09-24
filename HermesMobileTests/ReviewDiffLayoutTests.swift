@@ -105,3 +105,45 @@ extension ReviewDiffLayoutTests {
         XCTAssertEqual(unwrapped.maxColumnCountsByFileID, ["s": 25])
     }
 }
+
+extension ReviewDiffLayoutTests {
+    /// A 400 KB minified line must typeset only what can be on screen, not the whole row.
+    func testDrawnCharactersStopAtTheReachableColumnsOrTheVisibleWrappedLines() {
+        let columns = 400_000
+        let unwrapped = ReviewDiffLayout(rows: [], collapsedFileIDs: [], metrics: metrics)
+        XCTAssertEqual(unwrapped.drawnCharacterRange(columnCount: columns, reachableColumns: 400, visibleMinY: 0, visibleMaxY: 600), 0..<400)
+        XCTAssertEqual(unwrapped.drawnCharacterRange(columnCount: 12, reachableColumns: 400, visibleMinY: 0, visibleMaxY: 600), 0..<12)
+
+        let wrapMetrics = ReviewDiffMetrics(rowHeight: 20, fileHeaderHeight: 50, noticeHeight: 44, wrappedLineHeight: 14)
+        let wrapped = ReviewDiffLayout(rows: [], collapsedFileIDs: [], metrics: wrapMetrics, wrapColumns: 45)
+        // A 280 pt window 1,000 lines down: lines 1000...1020 plus one either side.
+        XCTAssertEqual(
+            wrapped.drawnCharacterRange(columnCount: columns, reachableColumns: 400, visibleMinY: 14_000, visibleMaxY: 14_280),
+            (999 * 45)..<(1_022 * 45)
+        )
+        XCTAssertEqual(
+            wrapped.drawnCharacterRange(columnCount: columns, reachableColumns: 400, visibleMinY: -300, visibleMaxY: 20),
+            0..<(4 * 45),
+            "The row's top on screen draws its first lines."
+        )
+        XCTAssertEqual(
+            wrapped.drawnCharacterRange(columnCount: 100, reachableColumns: 400, visibleMinY: 0, visibleMaxY: 600),
+            0..<100,
+            "The last visual line ends at the text, not at a whole line."
+        )
+        XCTAssertTrue(
+            wrapped.drawnCharacterRange(columnCount: 100, reachableColumns: 400, visibleMinY: 1_000, visibleMaxY: 1_300).isEmpty,
+            "Nothing of a row above the window is drawn."
+        )
+    }
+
+    func testVisualLinesSliceWholeCharacters() {
+        // "e" + combining acute and a skin-tone emoji are one Character each.
+        let line = ReviewDiffLine(content: "ab👍🏽cde\u{301}", change: .context, oldLineNumber: nil, newLineNumber: 1)
+        XCTAssertEqual(line.columnCount, 6)
+        XCTAssertEqual(line.visualLines(in: 2..<6, wrapColumns: 2), ["👍🏽c", "de\u{301}"])
+        XCTAssertEqual(line.visualLines(in: 0..<3, wrapColumns: nil), ["ab👍🏽"])
+        XCTAssertEqual(line.visualLines(in: 4..<99, wrapColumns: 5), ["de\u{301}"])
+        XCTAssertEqual(line.visualLines(in: 6..<6, wrapColumns: 5), [])
+    }
+}

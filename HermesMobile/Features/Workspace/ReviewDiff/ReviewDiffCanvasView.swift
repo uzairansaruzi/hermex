@@ -68,6 +68,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     var viewportWidth: CGFloat = 0 {
         didSet {
             guard viewportWidth != oldValue else { return }
+            drawnCodeColumnsByRowID.removeAll()
             if wrapsLines {
                 rebuildLayout(rows: layout.rows, collapsedFileIDs: layout.collapsedFileIDs)
             } else {
@@ -102,6 +103,9 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     private(set) var contentWidthsByFileID: [String: CGFloat] = [:]
     private var horizontalOffsetsByFileID: [String: CGFloat] = [:]
     private var headerPathOffsetsByFileID: [String: CGFloat] = [:]
+    /// `drawnCodeColumns(for:)` of long unwrapped rows, cleared when rows, style, wrap,
+    /// or viewport width change, so a pan frame does not re-measure.
+    private var drawnCodeColumnsByRowID: [String: Int] = [:]
     private var panStartHorizontalOffset: CGFloat = 0
     private var activePanFileID: String?
     private var activePanKind: HorizontalPanKind?
@@ -195,6 +199,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
             return max(0, min(style.maxContentWidth, measured))
         }
         accessibilityElementsByRowIndex.removeAll()
+        drawnCodeColumnsByRowID.removeAll()
         clampHorizontalOffsets()
         reviewDiffSignposter.endInterval("RebuildLayout", state, "rows=\(rows.count)")
         onContentHeightChange?()
@@ -207,6 +212,37 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         guard wrapsLines else { return nil }
         let available = viewportWidth - style.codeStartX - style.codePadding
         return max(8, Int(available / max(style.codeCharacterWidth, 1)))
+    }
+
+    /// Characters of an unwrapped code row a pan can ever bring on screen: the widest
+    /// pannable content plus one viewport of slack. Drawing typesets no further.
+    var reachableCodeColumns: Int {
+        Int(ceil((style.maxContentWidth + viewportWidth) / max(style.codeCharacterWidth, 1)))
+    }
+
+    /// Characters of an unwrapped `line` drawing typesets. Starts at `reachableCodeColumns`
+    /// and doubles while that prefix renders narrower than the reach, because glyphs
+    /// narrower than the grid (zero-width characters, proportional fallback fonts) put
+    /// more characters on screen than the grid predicts.
+    func drawnCodeColumns(for line: ReviewDiffLine) -> Int {
+        let reach = style.maxContentWidth + viewportWidth
+        let attributes: [NSAttributedString.Key: Any] = [.font: style.codeFont, .ligature: 0]
+        var columns = reachableCodeColumns
+        while columns < line.columnCount {
+            let prefix = line.visualLines(in: 0..<columns, wrapColumns: nil).first ?? ""
+            if (String(prefix) as NSString).size(withAttributes: attributes).width >= reach { return columns }
+            columns *= 2
+        }
+        return line.columnCount
+    }
+
+    /// `drawnCodeColumns(for:)` for the row being drawn, measured once per long row.
+    func drawnCodeColumns(forRowID rowID: String, line: ReviewDiffLine) -> Int {
+        guard line.columnCount > reachableCodeColumns else { return line.columnCount }
+        if let cached = drawnCodeColumnsByRowID[rowID] { return cached }
+        let columns = drawnCodeColumns(for: line)
+        drawnCodeColumnsByRowID[rowID] = columns
+        return columns
     }
 
     // MARK: - Geometry

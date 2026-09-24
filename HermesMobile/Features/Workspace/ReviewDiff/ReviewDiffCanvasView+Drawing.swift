@@ -30,7 +30,7 @@ extension ReviewDiffCanvasView {
             guard let frame = frame(forRowAt: rowIndex), frame.height > 0 else { continue }
             let rowStart = frame.minY + verticalOffset
             if rowStart + frame.height < visibleMinY || rowStart > visibleMaxY { continue }
-            drawRow(rows[rowIndex], rect: frame, context: context)
+            drawRow(rows[rowIndex], rect: frame, dirtyRect: rect, context: context)
         }
 
         if let sticky = stickyHeaderTarget() {
@@ -38,7 +38,7 @@ extension ReviewDiffCanvasView {
         }
     }
 
-    private func drawRow(_ row: ReviewDiffRow, rect: CGRect, context: CGContext) {
+    private func drawRow(_ row: ReviewDiffRow, rect: CGRect, dirtyRect: CGRect, context: CGContext) {
         switch row.kind {
         case .file:
             drawFileRow(row, rect: rect, context: context)
@@ -47,7 +47,7 @@ extension ReviewDiffCanvasView {
         case .notice(let text):
             drawNoticeRow(text, rect: rect, context: context)
         case .line(let line):
-            drawCodeRow(row, line: line, rect: rect, context: context)
+            drawCodeRow(row, line: line, rect: rect, dirtyRect: dirtyRect, context: context)
         }
     }
 
@@ -218,7 +218,7 @@ extension ReviewDiffCanvasView {
         )
     }
 
-    private func drawCodeRow(_ row: ReviewDiffRow, line: ReviewDiffLine, rect: CGRect, context: CGContext) {
+    private func drawCodeRow(_ row: ReviewDiffRow, line: ReviewDiffLine, rect: CGRect, dirtyRect: CGRect, context: CGContext) {
         let horizontalOffset = horizontalOffset(for: row.fileID)
         rowBackground(for: line.change).setFill()
         context.fill(rect)
@@ -260,46 +260,62 @@ extension ReviewDiffCanvasView {
         context.clip(to: CGRect(x: style.stickyWidth, y: rect.minY, width: max(0, viewportWidth - style.stickyWidth), height: rect.height))
         drawWordDiffRanges(line, rowRect: rect, horizontalOffset: horizontalOffset)
         drawCodeText(
-            line.content,
+            line,
+            rowID: row.id,
             runs: tokensByRowID[row.id] ?? [],
             origin: CGPoint(x: style.codeStartX - horizontalOffset, y: rect.minY + (style.metrics.rowHeight - style.codeFont.lineHeight) / 2),
+            dirtyRect: dirtyRect,
             color: line.change == .context ? theme.text.withAlphaComponent(0.85) : theme.text
         )
         context.restoreGState()
     }
 
     /// Code text with optional syntax colour runs, split into visual lines of
-    /// `wrapColumns` characters when the layout wraps. The plain, unwrapped case stays
-    /// a single string draw so diff rows cost what they did before.
-    private func drawCodeText(_ text: String, runs: [SourceHighlightRun], origin: CGPoint, color: UIColor) {
+    /// `wrapColumns` characters when the layout wraps. Only the characters this pass can
+    /// show are typeset: the reachable columns of an unwrapped row, or the visual lines
+    /// of a wrapped row inside `dirtyRect`, so a minified 400 KB line draws like a short one.
+    private func drawCodeText(
+        _ line: ReviewDiffLine,
+        rowID: String,
+        runs: [SourceHighlightRun],
+        origin: CGPoint,
+        dirtyRect: CGRect,
+        color: UIColor
+    ) {
         let wrapColumns = layout.wrapColumns
-        if runs.isEmpty, wrapColumns == nil || text.count <= wrapColumns! {
-            drawText(text, at: origin, color: color, font: style.codeFont)
-            return
-        }
-
-        let attributed = NSMutableAttributedString(
-            string: text,
-            attributes: [.font: style.codeFont, .foregroundColor: color, .ligature: 0]
+        let characters = layout.drawnCharacterRange(
+            columnCount: line.columnCount,
+            reachableColumns: wrapColumns == nil ? drawnCodeColumns(forRowID: rowID, line: line) : 0,
+            visibleMinY: dirtyRect.minY - origin.y,
+            visibleMaxY: dirtyRect.maxY - origin.y
         )
-        let bounds = NSRange(location: 0, length: attributed.length)
-        for run in runs {
-            let clamped = NSIntersectionRange(run.range, bounds)
-            guard clamped.length > 0 else { continue }
-            attributed.addAttribute(.foregroundColor, value: run.color, range: clamped)
-        }
-
-        guard let wrapColumns, text.count > wrapColumns else {
-            attributed.draw(at: origin)
-            return
-        }
-        var y = origin.y
-        var start = text.startIndex
-        while start < text.endIndex {
-            let end = text.index(start, offsetBy: wrapColumns, limitedBy: text.endIndex) ?? text.endIndex
-            attributed.attributedSubstring(from: NSRange(start..<end, in: text)).draw(at: CGPoint(x: origin.x, y: y))
-            y += style.metrics.wrappedLineHeight
-            start = end
+        let firstVisualLine = wrapColumns.map { characters.lowerBound / $0 } ?? 0
+        let text = line.content
+        for (offset, visualLine) in line.visualLines(in: characters, wrapColumns: wrapColumns).enumerated() {
+            let point = CGPoint(
+                x: origin.x,
+                y: origin.y + CGFloat(firstVisualLine + offset) * style.metrics.wrappedLineHeight
+            )
+            guard !runs.isEmpty else {
+                drawText(String(visualLine), at: point, color: color, font: style.codeFont)
+                continue
+            }
+            // Runs are UTF-16 offsets into the whole line; shift them onto this slice.
+            let lineRange = NSRange(visualLine.startIndex..<visualLine.endIndex, in: text)
+            let attributed = NSMutableAttributedString(
+                string: String(visualLine),
+                attributes: [.font: style.codeFont, .foregroundColor: color, .ligature: 0]
+            )
+            for run in runs {
+                let clamped = NSIntersectionRange(run.range, lineRange)
+                guard clamped.length > 0 else { continue }
+                attributed.addAttribute(
+                    .foregroundColor,
+                    value: run.color,
+                    range: NSRange(location: clamped.location - lineRange.location, length: clamped.length)
+                )
+            }
+            attributed.draw(at: point)
         }
     }
 

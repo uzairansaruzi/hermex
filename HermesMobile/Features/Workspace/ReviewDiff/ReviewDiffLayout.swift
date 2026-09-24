@@ -79,6 +79,27 @@ struct ReviewDiffLayout {
         return max(1, (columns + wrapColumns - 1) / wrapColumns)
     }
 
+    /// The characters of a line row a draw pass has to typeset. Unwrapped, only the first
+    /// `reachableColumns` (the most a pan can bring on screen). Wrapped, only the visual
+    /// lines between `visibleMinY` and `visibleMaxY`, measured from the top of the row's
+    /// first visual line, plus one line either side for glyph overhang. The lower bound
+    /// is always a whole visual line, so it also says which line drawing starts on.
+    func drawnCharacterRange(
+        columnCount: Int,
+        reachableColumns: Int,
+        visibleMinY: CGFloat,
+        visibleMaxY: CGFloat
+    ) -> Range<Int> {
+        guard let wrapColumns else { return 0..<min(columnCount, max(0, reachableColumns)) }
+        let lineHeight = metrics.wrappedLineHeight
+        guard lineHeight > 0, visibleMinY <= visibleMaxY else { return 0..<columnCount }
+        let lineCount = max(1, (columnCount + wrapColumns - 1) / wrapColumns)
+        let first = max(0, Int(floor(visibleMinY / lineHeight)) - 1)
+        let last = min(lineCount - 1, Int(ceil(visibleMaxY / lineHeight)) + 1)
+        guard first <= last else { return 0..<0 }
+        return min(first * wrapColumns, columnCount)..<min((last + 1) * wrapColumns, columnCount)
+    }
+
     /// Vertical extent of a row in content coordinates.
     func frame(forRowAt index: Int) -> (minY: CGFloat, height: CGFloat)? {
         guard rows.indices.contains(index) else { return nil }

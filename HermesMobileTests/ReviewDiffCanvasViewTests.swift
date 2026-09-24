@@ -58,6 +58,50 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertGreaterThan(canvas.layout.visualLineCount(forRowAt: 0), 1)
     }
 
+    /// The unwrapped draw cap has to cover every column the widest pan can show.
+    func testReachableColumnsCoverTheFurthestPan() throws {
+        let long = ReviewDiffRow(
+            id: "s:0",
+            fileID: "s",
+            kind: .line(ReviewDiffLine(content: String(repeating: "x", count: 400_000), change: .context, oldLineNumber: nil, newLineNumber: 1))
+        )
+        let canvas = ReviewDiffCanvasView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), presentation: .source)
+        canvas.viewportWidth = 390
+        canvas.setRows([long])
+
+        let style = canvas.style
+        let furthestVisibleX = canvas.maxHorizontalOffset(for: "s", kind: .code) + canvas.viewportWidth - style.codeStartX
+        XCTAssertGreaterThanOrEqual(CGFloat(canvas.reachableCodeColumns) * style.codeCharacterWidth, furthestVisibleX)
+        XCTAssertLessThan(canvas.reachableCodeColumns, 1_000, "A pan reaches a few hundred columns, not the whole line.")
+        XCTAssertEqual(canvas.drawnCodeColumns(for: try XCTUnwrap(long.line)), canvas.reachableCodeColumns)
+    }
+
+    /// Zero-width characters take no room, so text after a long run of them is still on
+    /// screen and still has to be drawn. The count is measured once per row until the rows change.
+    func testDrawnColumnsGrowPastZeroWidthCharactersAndAreMeasuredOncePerRow() {
+        func row(_ content: String) -> ReviewDiffRow {
+            ReviewDiffRow(id: "s:0", fileID: "s", kind: .line(ReviewDiffLine(content: content, change: .context, oldLineNumber: nil, newLineNumber: 1)))
+        }
+        let plain = String(repeating: "x", count: 10_000)
+        let zeroWidthFirst = String(repeating: "\u{200B}", count: 5_000) + String(repeating: "x", count: 5_000)
+        let canvas = ReviewDiffCanvasView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), presentation: .source)
+        canvas.viewportWidth = 390
+        canvas.setRows([row(plain)])
+        let reachable = canvas.reachableCodeColumns
+
+        XCTAssertEqual(canvas.drawnCodeColumns(forRowID: "s:0", line: row(plain).line!), reachable)
+        XCTAssertEqual(
+            canvas.drawnCodeColumns(forRowID: "s:0", line: row(zeroWidthFirst).line!),
+            reachable,
+            "A row is measured once, not on every draw."
+        )
+
+        canvas.setRows([row(zeroWidthFirst)])
+        let drawn = canvas.drawnCodeColumns(forRowID: "s:0", line: row(zeroWidthFirst).line!)
+        XCTAssertGreaterThan(drawn, 5_000 + reachable / 2, "The printable text past the zero-width run is drawn.")
+        XCTAssertLessThanOrEqual(drawn, 10_000)
+    }
+
     /// Toggling wrap grows the rows above the viewport; the row at the top must stay put.
     func testWrapToggleKeepsTheTopRowWhereItIs() throws {
         let rows = (0..<60).map { index in
