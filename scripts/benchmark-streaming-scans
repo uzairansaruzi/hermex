@@ -1,0 +1,16 @@
+#!/bin/bash
+# Optimized host benchmark of the whole-reply scans a streaming assistant row runs
+# per update (media parse, block split), without simulator startup.
+# Optional source root permits comparing another checkout with identical fixtures.
+set -euo pipefail
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+source_root="${1:-$repo_root}"
+benchmark_dir="$(mktemp -d "${TMPDIR:-/tmp}/hermex-streaming-benchmark.XXXXXX")"
+trap 'rm -f "$benchmark_dir/benchmark"; rmdir "$benchmark_dir"' EXIT
+xcrun swiftc -O -swift-version 5 -enable-bare-slash-regex \
+  "$source_root/HermesMobile/Features/Chat/TranscriptMedia.swift" \
+  "$source_root/HermesMobile/Features/Chat/StreamingMarkdownSupport.swift" \
+  "$source_root/HermesMobile/Features/Workspace/FileReference.swift" \
+  "$repo_root/scripts/benchmarks/StreamingScans.swift" \
+  -o "$benchmark_dir/benchmark"
+"$benchmark_dir/benchmark"

@@ -46,6 +46,31 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
         XCTAssertFalse(segments.stableChunks.isEmpty)
         XCTAssertTrue(segments.activeMarkdown.contains("More text"))
     }
+
+    /// The seal threshold counts UTF-8 bytes: 2,600 characters of Japanese
+    /// prose are about 7,300 bytes, so they seal at the heading.
+    func testStableChunkThresholdCountsUTF8Bytes() {
+        let prose = String(repeating: "日本語の文章です。\n", count: 260)
+        XCTAssertLessThan(prose.count, StreamingMarkdownBlockSplitter.stableChunkTargetUTF8Count)
+        let text = prose + "## 次の節\nMore text"
+
+        let segments = StreamingMarkdownBlockSplitter.split(text)
+
+        XCTAssertEqual(segments.stableChunks.map(\.text), [prose + "## 次の節\n"])
+        XCTAssertEqual(segments.activeMarkdown, "More text")
+    }
+
+    /// Fence lines are recognised after trimming surrounding whitespace, so
+    /// blank lines inside an indented fence never seal it half-open.
+    func testIndentedFenceWithTrailingWhitespaceKeepsItsBody() {
+        let fence = "   ```swift \t\n" + String(repeating: "let x = 1\n\n", count: 700) + "\t```\t\n"
+        let text = fence + "tail"
+
+        let segments = StreamingMarkdownBlockSplitter.split(text)
+
+        XCTAssertEqual(segments.stableChunks.map(\.text), [fence])
+        XCTAssertEqual(segments.activeMarkdown, "tail")
+    }
 }
 
 final class StreamingReasoningTextStateTests: XCTestCase {

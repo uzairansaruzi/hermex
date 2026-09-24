@@ -215,8 +215,14 @@ enum TranscriptMediaParser {
         includesLocalFileLinks: Bool = false
     ) -> [TranscriptMediaSegment] {
         guard !markdown.isEmpty else { return [] }
+        // Most replies name no media at all, and most lines of those that do
+        // name none either; a byte scan settles that before the
+        // per-character parse.
+        guard mayContainMedia(markdown, includesLocalFileLinks: includesLocalFileLinks) else {
+            return [.text(markdown)]
+        }
 
-        var segments: [TranscriptMediaSegment] = []
+        var segments = SegmentBuilder()
         var index = markdown.startIndex
         var isInFence = false
         var fenceCharacter: Character?
@@ -226,28 +232,30 @@ enum TranscriptMediaParser {
             let line = String(markdown[lineRange])
 
             if isInFence {
-                appendText(line, to: &segments)
+                segments.appendText(line)
                 if fenceMarker(in: line) == fenceCharacter {
                     isInFence = false
                     fenceCharacter = nil
                 }
             } else if let marker = fenceMarker(in: line) {
-                appendText(line, to: &segments)
+                segments.appendText(line)
                 isInFence = true
                 fenceCharacter = marker
-            } else {
+            } else if mayContainMedia(line, includesLocalFileLinks: includesLocalFileLinks) {
                 appendMediaSegments(in: line, to: &segments, workspaceRoot: workspaceRoot, includesLocalFileLinks: includesLocalFileLinks)
+            } else {
+                segments.appendText(line)
             }
 
             index = lineRange.upperBound
         }
 
-        return segments
+        return segments.finish()
     }
 
     private static func appendMediaSegments(
         in line: String,
-        to segments: inout [TranscriptMediaSegment],
+        to segments: inout SegmentBuilder,
         workspaceRoot: String?,
         includesLocalFileLinks: Bool
     ) {
@@ -260,8 +268,8 @@ enum TranscriptMediaParser {
                !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
                let image = markdownImage(in: line, from: cursor),
                let reference = markdownImageReference(for: image, workspaceRoot: workspaceRoot, includesLocalFileLinks: includesLocalFileLinks) {
-                appendText(String(line[textStart..<cursor]), to: &segments)
-                segments.append(.media(reference))
+                segments.appendText(line[textStart..<cursor])
+                segments.appendMedia(reference)
 
                 cursor = image.end
                 textStart = cursor
@@ -275,10 +283,10 @@ enum TranscriptMediaParser {
                    from: line.index(cursor, offsetBy: 6),
                    syntax: .mediaToken
                ) {
-                appendText(String(line[textStart..<cursor]), to: &segments)
+                segments.appendText(line[textStart..<cursor])
 
                 let reference = TranscriptMediaReference(rawReference: String(line[referenceRange]))
-                segments.append(.media(reference))
+                segments.appendMedia(reference)
 
                 cursor = referenceRange.upperBound
                 textStart = cursor
@@ -294,13 +302,13 @@ enum TranscriptMediaParser {
                    from: line.index(cursor, offsetBy: fileURLMarker.count),
                    syntax: .fileURL
                ) {
-                appendText(String(line[textStart..<cursor]), to: &segments)
+                segments.appendText(line[textStart..<cursor])
 
                 let rawURL = String(line[cursor..<pathRange.upperBound])
                 let reference = TranscriptMediaReference(
                     rawReference: normalizedLocalPath(fromFileURL: rawURL)
                 )
-                segments.append(.media(reference))
+                segments.appendMedia(reference)
 
                 cursor = pathRange.upperBound
                 textStart = cursor
@@ -310,7 +318,7 @@ enum TranscriptMediaParser {
             cursor = line.index(after: cursor)
         }
 
-        appendText(String(line[textStart..<line.endIndex]), to: &segments)
+        segments.appendText(line[textStart..<line.endIndex])
     }
 
     /// One inline Markdown image or file link, already split apart.
@@ -456,13 +464,64 @@ enum TranscriptMediaParser {
         return reference.isRasterImageCandidate ? reference : nil
     }
 
-    private static func appendText(_ text: String, to segments: inout [TranscriptMediaSegment]) {
-        guard !text.isEmpty else { return }
+    /// Collects parsed segments. Adjacent text accumulates in one pending run
+    /// that grows in place and is flushed only when media interrupts it, so a
+    /// long reply parses in linear time instead of recopying the text so far
+    /// on every line.
+    private struct SegmentBuilder {
+        private var segments: [TranscriptMediaSegment] = []
+        private var pendingText = ""
 
-        if case let .text(existing) = segments.last {
-            segments[segments.count - 1] = .text(existing + text)
-        } else {
-            segments.append(.text(text))
+        mutating func appendText(_ text: some StringProtocol) {
+            pendingText.append(contentsOf: text)
+        }
+
+        mutating func appendMedia(_ reference: TranscriptMediaReference) {
+            flushText()
+            segments.append(.media(reference))
+        }
+
+        mutating func finish() -> [TranscriptMediaSegment] {
+            flushText()
+            return segments
+        }
+
+        private mutating func flushText() {
+            guard !pendingText.isEmpty else { return }
+            segments.append(.text(pendingText))
+            pendingText = ""
+        }
+    }
+
+    /// False when `markdown` holds none of the markers a media segment starts
+    /// with (`![`, `MEDIA:`, `file://`, or any `[` for opted-in file links),
+    /// so the whole reply is one text segment. One pass over the UTF-8 bytes.
+    private static func mayContainMedia(_ markdown: String, includesLocalFileLinks: Bool) -> Bool {
+        var markdown = markdown
+        return markdown.withUTF8 { bytes in
+            let mediaToken = Array("MEDIA:".utf8)
+            let fileURL = Array(fileURLMarker.utf8)
+
+            func hasPrefix(_ marker: [UInt8], at offset: Int) -> Bool {
+                guard bytes.count - offset >= marker.count else { return false }
+                return marker.indices.allSatisfy { bytes[offset + $0] == marker[$0] }
+            }
+
+            for offset in bytes.indices {
+                switch bytes[offset] {
+                case UInt8(ascii: "["):
+                    if includesLocalFileLinks || (offset > 0 && bytes[offset - 1] == UInt8(ascii: "!")) {
+                        return true
+                    }
+                case UInt8(ascii: "M"):
+                    if hasPrefix(mediaToken, at: offset) { return true }
+                case UInt8(ascii: "f"):
+                    if hasPrefix(fileURL, at: offset) { return true }
+                default:
+                    break
+                }
+            }
+            return false
         }
     }
 

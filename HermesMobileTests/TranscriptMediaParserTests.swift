@@ -370,6 +370,48 @@ final class TranscriptMediaParserTests: XCTestCase {
         }
     }
 
+    // MARK: - Streaming scan cost (#675)
+
+    /// A reply with no media marker is the whole input as one text segment,
+    /// including near-misses the byte pre-scan must not mistake for markers.
+    func testReplyWithoutMediaMarkersIsOneTextSegment() {
+        let markdown = String(
+            repeating: "Run `echo $HOME` [docs](https://example.test) ! [x] MEDIA file:/tmp\n",
+            count: 400
+        )
+
+        XCTAssertEqual(TranscriptMediaParser.segments(in: markdown), [.text(markdown)])
+    }
+
+    /// Text runs across many lines stay merged into one segment per gap
+    /// between media, with a marker as the very last bytes of the reply.
+    func testTextAroundMediaMergesIntoOneRunPerGap() {
+        let before = String(repeating: "Line before the image.\n", count: 200)
+        let between = String(repeating: "Line between.\n", count: 200)
+        let markdown = before + "MEDIA:/tmp/first.png\n" + between + "MEDIA:/tmp/second.png"
+
+        XCTAssertEqual(
+            TranscriptMediaParser.segments(in: markdown),
+            [
+                .text(before),
+                .media(.init(rawReference: "/tmp/first.png")),
+                .text("\n" + between),
+                .media(.init(rawReference: "/tmp/second.png"))
+            ]
+        )
+    }
+
+    /// Bots opt into plain `[label](path)` file links, so any `[` must still
+    /// reach the full parse.
+    func testLocalFileLinkWithoutImageMarkerStillParsesForBots() {
+        let segments = TranscriptMediaParser.segments(
+            in: "Saved [chart](/tmp/chart.png)",
+            includesLocalFileLinks: true
+        )
+
+        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/chart.png"])
+    }
+
     // MARK: - Segment cache (#680)
 
     /// A settled row parses once; later body evaluations read the memoized

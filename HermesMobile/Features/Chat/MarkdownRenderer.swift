@@ -84,7 +84,6 @@ struct MarkdownRenderer: View {
 struct StreamingMarkdownRenderer: View {
     let content: String
 
-    @Environment(\.colorScheme) private var colorScheme
     @State private var displayedContent: String
 
     init(content: String) {
@@ -93,23 +92,43 @@ struct StreamingMarkdownRenderer: View {
     }
 
     var body: some View {
-        Group {
-            if displayedContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(verbatim: " ")
-            } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: displayedContent) {
-                PlainMarkdownFallbackView(
-                    content: displayedContent,
-                    reason: fallbackReason
-                )
-            } else {
-                streamingMarkdownContent
+        // `content` changes first and `displayedContent` catches up after the
+        // yield, so the first body pass of each update hands the child the
+        // text it already drew. `.equatable()` skips the child's whole-reply
+        // work (trim, fallback policy, math layout) on that pass.
+        StreamingMarkdownDisplayedContentView(content: displayedContent)
+            .equatable()
+            .task(id: content) {
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                guard displayedContent != content else { return }
+                displayedContent = content
             }
-        }
-        .task(id: content) {
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            guard displayedContent != content else { return }
-            displayedContent = content
+    }
+}
+
+/// The streaming reply as `StreamingMarkdownRenderer` currently displays it.
+/// Equatable on `content` so a parent pass with unchanged text is free;
+/// environment changes (color scheme) still update it.
+private struct StreamingMarkdownDisplayedContentView: View, Equatable {
+    let content: String
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.content == rhs.content
+    }
+
+    var body: some View {
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(verbatim: " ")
+        } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
+            PlainMarkdownFallbackView(
+                content: content,
+                reason: fallbackReason
+            )
+        } else {
+            streamingMarkdownContent
         }
     }
 
@@ -118,7 +137,7 @@ struct StreamingMarkdownRenderer: View {
         // Streaming text changes on nearly every token, so this deliberately
         // does not memoize; it only avoids the redundant second full-string
         // `replacingInlineMath` pass the no-math branch used to run.
-        switch MarkdownMathLayoutCache.uncachedLayout(for: displayedContent) {
+        switch MarkdownMathLayoutCache.uncachedLayout(for: content) {
         case .segmented(let segments):
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
@@ -181,12 +200,14 @@ private struct StreamingMarkdownChunkedView: View {
     /// blocks (paragraphs, list items) appear in reading order even when a
     /// fast stream backlogs a block's queue toward `maxStampLead`.
     @State private var chain = StreamingTextFadeStampChain()
-
-    private var segments: StreamingMarkdownBlockSegments {
-        StreamingMarkdownBlockSplitter.split(content)
-    }
+    /// The active tail as of the last fade-window update, so an append can be
+    /// told apart from a replacement without re-splitting the old content.
+    @State private var lastActiveMarkdown = ""
 
     var body: some View {
+        // The one whole-reply split per update; the fade-window callbacks
+        // below reuse it.
+        let segments = StreamingMarkdownBlockSplitter.split(content)
         let blockSplit = StreamingTextFadeTailSplitter.split(
             segments.activeMarkdown,
             firstFadeOrdinal: StreamedTextAnimationSettings.effectiveFirstFadeOrdinal(
@@ -235,19 +256,24 @@ private struct StreamingMarkdownChunkedView: View {
             }
         }
         .onAppear {
-            anchorFadeWindowAtCurrentBlock()
+            anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
         }
-        .onChange(of: content) { oldContent, newContent in
-            advanceFadeWindow(from: oldContent, to: newContent)
+        .onChange(of: content) { _, newContent in
+            // This closure comes from the body pass that split `newContent`;
+            // re-split only if SwiftUI hands over some other value.
+            let newActive = newContent == content
+                ? segments.activeMarkdown
+                : StreamingMarkdownBlockSplitter.split(newContent).activeMarkdown
+            advanceFadeWindow(to: newActive)
         }
         .onChange(of: isStreamedTextAnimationEnabled) { _, isEnabled in
             if isEnabled {
-                anchorFadeWindowAtCurrentBlock()
+                anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
             }
         }
         .onChange(of: reduceMotion) { _, reduceMotion in
             if !reduceMotion {
-                anchorFadeWindowAtCurrentBlock()
+                anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
             }
         }
         .task(id: content) {
@@ -267,18 +293,21 @@ private struct StreamingMarkdownChunkedView: View {
     /// keeps advancing while fades route to the head, so without re-anchoring
     /// the reopened window would arm blocks the user is already reading and
     /// visibly re-fade them.
-    private func anchorFadeWindowAtCurrentBlock() {
-        let split = StreamingTextFadeTailSplitter.split(segments.activeMarkdown, firstFadeOrdinal: 0)
+    private func anchorFadeWindowAtCurrentBlock(_ activeMarkdown: String) {
+        let split = StreamingTextFadeTailSplitter.split(activeMarkdown, firstFadeOrdinal: 0)
         firstFadeOrdinal = split.boundaryCount
         mountBoundaryCount = split.boundaryCount
         lastBoundaryCount = split.boundaryCount
         lastTouchedAt = [:]
+        lastActiveMarkdown = activeMarkdown
     }
 
-    private func advanceFadeWindow(from oldContent: String, to newContent: String) {
+    /// Advances the fade window to the new active tail. Called once per
+    /// content change with the tail the body already split.
+    private func advanceFadeWindow(to newActive: String) {
         let now = Date().timeIntervalSinceReferenceDate
-        let oldActive = StreamingMarkdownBlockSplitter.split(oldContent).activeMarkdown
-        let newActive = StreamingMarkdownBlockSplitter.split(newContent).activeMarkdown
+        let oldActive = lastActiveMarkdown
+        lastActiveMarkdown = newActive
         let split = StreamingTextFadeTailSplitter.split(newActive, firstFadeOrdinal: firstFadeOrdinal)
 
         if !newActive.hasPrefix(oldActive) {
