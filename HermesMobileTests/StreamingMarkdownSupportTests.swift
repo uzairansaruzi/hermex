@@ -73,6 +73,71 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
     }
 }
 
+final class MarkdownPreviewChunkerTests: XCTestCase {
+    /// About 60 KB of sections, each a heading, a paragraph, and a fenced code
+    /// block, shaped like a long CHANGELOG. Shared with the file preview view model test.
+    static func largeDocument() -> String {
+        (1...120).map { index in
+            """
+            ## Release \(index)
+
+            \(String(repeating: "Fixed a stream reattach edge case after a tunnel idle timeout. ", count: 6))
+
+            ```swift
+            let cursor = stream.lastEventID // \(index)
+
+            try await client.resume(from: cursor)
+            ```
+
+            """
+        }.joined() + "Final paragraph.\n"
+    }
+
+    func testSmallMarkdownStaysOneDocument() {
+        let small = String(repeating: "Short paragraph.\n\n", count: 300)
+        XCTAssertLessThanOrEqual(small.count, StreamingMarkdownBlockSplitter.stableChunkTargetCharacterCount)
+
+        XCTAssertNil(MarkdownPreviewChunker.chunks(for: small))
+    }
+
+    func testLargeMarkdownWithoutSafeBoundaryStaysOneDocument() {
+        let oneParagraph = String(repeating: "word ", count: 2_000)
+
+        XCTAssertNil(MarkdownPreviewChunker.chunks(for: oneParagraph))
+    }
+
+    func testLargeMarkdownSplitsLosslesslyWithoutBreakingFences() throws {
+        let document = Self.largeDocument()
+        let chunks = try XCTUnwrap(MarkdownPreviewChunker.chunks(for: document))
+
+        XCTAssertGreaterThanOrEqual(chunks.count, 8)
+        XCTAssertEqual(chunks.map(\.text).joined(), document)
+        XCTAssertEqual(chunks.map(\.id), Array(chunks.indices))
+        XCTAssertEqual(chunks.first?.topSpacing, 0)
+        for chunk in chunks {
+            let fences = chunk.text.split(separator: "\n").filter { $0.hasPrefix("```") }
+            XCTAssertTrue(fences.count.isMultiple(of: 2), "Chunk \(chunk.id) splits a code fence.")
+        }
+    }
+
+    func testSeamSpacingMatchesSingleDocumentBlockMargins() {
+        let paragraph = "Some text.\n\n"
+        let fence = "```swift\nlet x = 1\n```\n"
+
+        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "More text."), 16)
+        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "\n## Next\n"), 24)
+        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: fence), 16)
+        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: fence, before: "More text."), 12)
+        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: fence, before: "# Next"), 24)
+        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: "Text.\n\n---\n", before: "More text."), 24)
+        XCTAssertEqual(
+            MarkdownPreviewChunker.seamSpacing(after: "Setext title\n---\n", before: "More text."),
+            16,
+            "A setext underline is a heading, not a rule."
+        )
+    }
+}
+
 final class StreamingReasoningTextStateTests: XCTestCase {
     func testReasoningBlockDisplayTextPreservesExistingBoundaryTrimming() {
         XCTAssertEqual(

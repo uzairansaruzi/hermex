@@ -226,14 +226,30 @@ struct FilePreviewView: View {
         .background(Color(.systemBackground))
     }
 
+    /// Small files render as one document. Large ones render the chunks the view
+    /// model split on load in a lazy stack, so opening the file only lays out and
+    /// highlights the chunks near the screen.
     private func markdownContent(_ content: String) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                fileHeader
-                MarkdownRenderer(content: content, isStreaming: false)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if let chunks = viewModel.markdownChunks {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    fileHeader
+                        .padding(.bottom, 12)
+                    ForEach(chunks) { chunk in
+                        MarkdownRenderer(content: chunk.text, isStreaming: false)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, chunk.topSpacing)
+                    }
+                }
+                .padding()
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    fileHeader
+                    MarkdownRenderer(content: content, isStreaming: false)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding()
             }
-            .padding()
         }
         .contentShape(Rectangle())
         .contextMenu {
@@ -258,7 +274,7 @@ struct FilePreviewView: View {
 
     private var isMarkdownFile: Bool {
         guard let path = entry.path else { return false }
-        return ["md", "markdown", "mdown", "mkd"].contains((path as NSString).pathExtension.lowercased())
+        return FilePreviewViewModel.isMarkdownPath(path)
     }
 
     @ViewBuilder

@@ -8,6 +8,8 @@ final class FilePreviewViewModel {
     private let apiClient: APIClient
 
     private(set) var preview: FilePreviewContent?
+    /// Lazy-render chunks for a large Markdown preview; nil renders the file as one document.
+    private(set) var markdownChunks: [MarkdownPreviewChunk]?
     private(set) var isLoading = false
     private(set) var isExporting = false
     private(set) var errorMessage: String?
@@ -29,6 +31,11 @@ final class FilePreviewViewModel {
         self.path = path
         self.apiClient = apiClient ?? APIClient(baseURL: server)
         self.prefetchedFile = prefetchedFile
+    }
+
+    /// True for paths the preview renders as Markdown rather than as source.
+    static func isMarkdownPath(_ path: String) -> Bool {
+        ["md", "markdown", "mdown", "mkd"].contains(pathExtension(of: path))
     }
 
     /// True for paths that load through `/api/file` as text rather than as image or raw bytes.
@@ -86,6 +93,9 @@ final class FilePreviewViewModel {
                     file = try await apiClient.file(sessionID: sessionID, path: path)
                 }
                 exportData = Data((file.content ?? "").utf8)
+                markdownChunks = Self.isMarkdownPath(path)
+                    ? MarkdownPreviewChunker.chunks(for: file.content ?? "")
+                    : nil
                 preview = .text(file)
             }
         } catch {
@@ -170,6 +180,83 @@ final class FilePreviewViewModel {
     private var exportFilename: String {
         let lastPathComponent = URL(fileURLWithPath: path).lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
         return lastPathComponent.isEmpty ? String(localized: "Hermes File") : lastPathComponent
+    }
+}
+
+/// One slice of a large Markdown preview, laid out lazily. `topSpacing` is the gap
+/// the whole document would have drawn above this chunk's first block.
+struct MarkdownPreviewChunk: Identifiable, Equatable {
+    let id: Int
+    let text: String
+    let topSpacing: CGFloat
+}
+
+/// Splits a large Markdown file once, on load, at the streaming splitter's safe block
+/// boundaries (blank lines, headings, closed fences), so the preview lays out and
+/// highlights only the chunks near the screen instead of the whole file on open.
+enum MarkdownPreviewChunker {
+    /// Returns nil when the file should render as one document: at or under the
+    /// splitter's chunk size, or without a safe boundary to split on.
+    static func chunks(for content: String) -> [MarkdownPreviewChunk]? {
+        guard content.count > StreamingMarkdownBlockSplitter.stableChunkTargetCharacterCount else { return nil }
+        let segments = StreamingMarkdownBlockSplitter.split(content)
+        var texts = segments.stableChunks.map(\.text)
+        if !segments.activeMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            texts.append(segments.activeMarkdown)
+        }
+        guard texts.count > 1 else { return nil }
+
+        return texts.indices.map { index in
+            MarkdownPreviewChunk(
+                id: index,
+                text: texts[index],
+                topSpacing: index == 0 ? 0 : seamSpacing(after: texts[index - 1], before: texts[index])
+            )
+        }
+    }
+
+    /// MarkdownUI drops a document's outer block margins, so each seam restores the gap
+    /// one document would draw: the larger of the previous block's bottom margin and the
+    /// next block's top margin. Values mirror `MarkdownUI.Theme.chat` in MarkdownRenderer.
+    static func seamSpacing(after previous: String, before next: String) -> CGFloat {
+        max(bottomMargin(ofLastBlockIn: previous), topMargin(ofFirstBlockIn: next))
+    }
+
+    private static func bottomMargin(ofLastBlockIn text: String) -> CGFloat {
+        let lines = trimmedLines(in: text)
+        guard let lastIndex = lines.lastIndex(where: { !$0.isEmpty }) else { return 16 }
+        let last = lines[lastIndex]
+        if isFenceDelimiter(last) { return 12 }
+        // `---` directly under text is a setext heading underline, not a rule.
+        let isRule = isThematicBreak(last) && (lastIndex == 0 || lines[lastIndex - 1].isEmpty)
+        return isRule ? 24 : 16
+    }
+
+    private static func topMargin(ofFirstBlockIn text: String) -> CGFloat {
+        guard let first = trimmedLines(in: text).first(where: { !$0.isEmpty }) else { return 0 }
+        if isHeading(first) || isThematicBreak(first) { return 24 }
+        return isFenceDelimiter(first) ? 4 : 0
+    }
+
+    private static func trimmedLines(in text: String) -> [String] {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func isFenceDelimiter(_ line: String) -> Bool {
+        line.hasPrefix("```") || line.hasPrefix("~~~")
+    }
+
+    private static func isHeading(_ line: String) -> Bool {
+        let markers = line.prefix(while: { $0 == "#" }).count
+        guard (1...6).contains(markers) else { return false }
+        return line.dropFirst(markers).first.map(\.isWhitespace) ?? true
+    }
+
+    private static func isThematicBreak(_ line: String) -> Bool {
+        let marks = line.filter { !$0.isWhitespace }
+        guard marks.count >= 3, let mark = marks.first, "-*_".contains(mark) else { return false }
+        return marks.allSatisfy { $0 == mark }
     }
 }
 

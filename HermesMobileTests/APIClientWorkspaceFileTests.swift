@@ -668,4 +668,37 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         }
         XCTAssertEqual(file.content, "fresh")
     }
+
+    // MARK: - Chunked Markdown
+
+    @MainActor
+    func testFilePreviewSplitsOnlyLargeMarkdownIntoChunks() async throws {
+        let large = MarkdownPreviewChunkerTests.largeDocument()
+
+        let largeMarkdown = try await loadedMarkdownChunks(path: "docs/CHANGELOG.md", content: large)
+        XCTAssertGreaterThan(largeMarkdown?.count ?? 0, 1)
+        XCTAssertEqual(largeMarkdown?.map(\.text).joined(), large)
+
+        let smallMarkdown = try await loadedMarkdownChunks(path: "README.md", content: "# Title\n\nShort.\n")
+        XCTAssertNil(smallMarkdown, "Small Markdown must keep rendering as one document.")
+
+        let largeSource = try await loadedMarkdownChunks(path: "Sources/Notes.txt", content: large)
+        XCTAssertNil(largeSource, "Only Markdown previews are chunked.")
+    }
+
+    @MainActor
+    private func loadedMarkdownChunks(path: String, content: String) async throws -> [MarkdownPreviewChunk]? {
+        let body = try JSONSerialization.data(withJSONObject: ["path": path, "content": content])
+        let client = makeClient { request in
+            apiTestJSONResponse(String(decoding: body, as: UTF8.self), for: request)
+        }
+        let viewModel = try FilePreviewViewModel(
+            session: makeFilePreviewSession(),
+            server: XCTUnwrap(URL(string: "https://example.test")),
+            path: path,
+            apiClient: client
+        )
+        await viewModel.load()
+        return viewModel.markdownChunks
+    }
 }
