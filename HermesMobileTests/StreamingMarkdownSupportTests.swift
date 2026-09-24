@@ -139,6 +139,11 @@ final class MarkdownPreviewChunkerTests: XCTestCase {
 
         XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "More text."), 16)
         XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "\n## Next\n"), 24)
+        XCTAssertEqual(
+            MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "\r\n## Next\n"),
+            24,
+            "A CRLF blank line before the heading still counts as blank."
+        )
         XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: fence), 16)
         XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: fence, before: "More text."), 12)
         XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: fence, before: "# Next"), 24)

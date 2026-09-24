@@ -240,7 +240,7 @@ enum MarkdownPreviewChunker {
 
     private static func trimmedLines(in text: String) -> [String] {
         text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private static func isFenceDelimiter(_ line: String) -> Bool {
