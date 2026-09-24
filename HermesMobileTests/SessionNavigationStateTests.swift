@@ -99,9 +99,12 @@ final class SessionNavigationStateTests: XCTestCase {
                 try? await Task.sleep(nanoseconds: 50_000_000)
                 await recorder.record(.deepLinkFinished)
             },
-            refreshSessionsAndActiveProfile: {
+            loadSessions: {
                 await recorder.record(.refreshStarted)
-            }
+            },
+            restoreSelection: {},
+            loadProjects: {},
+            loadActiveProfile: {}
         )
 
         let events = await recorder.snapshot()
@@ -112,6 +115,44 @@ final class SessionNavigationStateTests: XCTestCase {
         }
 
         XCTAssertLessThan(refreshIndex, deepLinkFinishIndex)
+    }
+
+    /// Over a tunnel each held request is a round trip, so restore must not
+    /// wait for projects or the profile, and neither of those waits for the other.
+    @MainActor
+    func testInitialLoadRestoresBeforeProjectsAndProfileAndLoadsThemTogether() async {
+        let log = InitialLoadLog()
+        let projects = HeldInitialLoad()
+        let profile = HeldInitialLoad()
+        let restoredWithBothLoadsInFlight = expectation(description: "restore while projects and profile are held")
+        restoredWithBothLoadsInFlight.expectedFulfillmentCount = 2
+
+        let initialLoad = Task { @MainActor in
+            await SessionListInitialLoad.run(
+                resolvePendingDeepLink: { log.events.append("deepLink") },
+                loadSessions: { log.events.append("sessions") },
+                restoreSelection: { log.events.append("restore") },
+                loadProjects: {
+                    restoredWithBothLoadsInFlight.fulfill()
+                    await projects.wait()
+                    log.events.append("projects")
+                },
+                loadActiveProfile: {
+                    restoredWithBothLoadsInFlight.fulfill()
+                    await profile.wait()
+                    log.events.append("profile")
+                }
+            )
+        }
+
+        await fulfillment(of: [restoredWithBothLoadsInFlight], timeout: 5)
+        XCTAssertEqual(Set(log.events), ["deepLink", "sessions", "restore"])
+        XCTAssertEqual(log.events.last, "restore")
+
+        profile.release()
+        projects.release()
+        await initialLoad.value
+        XCTAssertEqual(Set(log.events.suffix(2)), ["projects", "profile"])
     }
 
     func testExplicitNewChatRouteOverridesStoredSelection() {
@@ -474,6 +515,29 @@ final class SessionNavigationStateTests: XCTestCase {
 private enum DestinationReturnEvent: Equatable {
     case suppressedPlaceholders
     case refreshedSessions
+}
+
+@MainActor
+private final class InitialLoadLog {
+    var events: [String] = []
+}
+
+/// Holds a scripted load open until the test releases it.
+@MainActor
+private final class HeldInitialLoad {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+
+    func wait() async {
+        guard !isReleased else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func release() {
+        isReleased = true
+        continuation?.resume()
+        continuation = nil
+    }
 }
 
 private actor SessionInitialLoadEventRecorder {

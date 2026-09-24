@@ -273,7 +273,7 @@ struct SessionListView: View {
                 AddServerView(authManager: authManager)
             }
             .task {
-                // Start the normal refresh immediately so a slow direct session
+                // Start the session rows immediately so a slow direct session
                 // request cannot leave the sidebar empty. Deep-link resolution still
                 // owns navigation precedence and is awaited before stored selection
                 // restoration.
@@ -281,15 +281,22 @@ struct SessionListView: View {
                     resolvePendingDeepLink: {
                         await openPendingDeepLinkedSessionIfNeeded()
                     },
-                    refreshSessionsAndActiveProfile: {
-                        await refreshSessionsAndActiveProfile()
+                    loadSessions: {
+                        await loadSessionRows()
+                    },
+                    restoreSelection: {
+                        didCompleteInitialLoad = true
+                        // Ordered after the deep link so restoreIfNeeded() sees the
+                        // explicit destination and leaves the stored selection alone.
+                        restoreLastSelectedSessionIfNeeded()
+                    },
+                    loadProjects: {
+                        await loadProjectsIfLive()
+                    },
+                    loadActiveProfile: {
+                        await viewModel.loadActiveProfile()
                     }
                 )
-                guard !Task.isCancelled else { return }
-                didCompleteInitialLoad = true
-                // Ordered after the deep link so restoreIfNeeded() sees the explicit
-                // destination and leaves the stored selection alone.
-                restoreLastSelectedSessionIfNeeded()
             }
             .task(id: pendingWebuiPush) {
                 await openPendingWebuiPush()
@@ -1107,9 +1114,12 @@ struct SessionListView: View {
     }
 
     private func refreshSessionsAndActiveProfile() async {
-        await loadSessions()
+        await loadSessionRows()
         guard !Task.isCancelled else { return }
-        await viewModel.loadActiveProfile()
+        await SessionListInitialLoad.loadProjectsAndActiveProfile(
+            loadProjects: { await loadProjectsIfLive() },
+            loadActiveProfile: { await viewModel.loadActiveProfile() }
+        )
     }
 
     private func closeSearch() {
@@ -1220,15 +1230,24 @@ struct SessionListView: View {
     }
 
     private func loadSessions() async {
+        await loadSessionRows()
+        guard !Task.isCancelled else { return }
+        await loadProjectsIfLive()
+    }
+
+    private func loadSessionRows() async {
         await viewModel.load(modelContext: modelContext)
         guard !Task.isCancelled else { return }
         handleLastError()
+    }
 
-        if !viewModel.isViewingCachedData {
-            await viewModel.loadProjects()
-            guard !Task.isCancelled else { return }
-            handleLastError()
-        }
+    /// Skipped while the list shows cached rows: the server was unreachable a
+    /// moment ago, so a projects request would only add a second error.
+    private func loadProjectsIfLive() async {
+        guard !viewModel.isViewingCachedData else { return }
+        await viewModel.loadProjects()
+        guard !Task.isCancelled else { return }
+        handleLastError()
     }
 
     private func togglePinned(_ session: SessionSummary) async {
@@ -1511,15 +1530,36 @@ struct SessionListView: View {
 
 }
 
+/// Orders the session list's cold-start load. Restore needs only the session
+/// rows, so it runs as soon as they arrive and the pending deep link has
+/// resolved; projects and the active profile load afterwards, side by side.
 enum SessionListInitialLoad {
     @MainActor
     static func run(
         resolvePendingDeepLink: @escaping @MainActor () async -> Void,
-        refreshSessionsAndActiveProfile: @escaping @MainActor () async -> Void
+        loadSessions: @escaping @MainActor () async -> Void,
+        restoreSelection: @MainActor () -> Void,
+        loadProjects: @escaping @MainActor () async -> Void,
+        loadActiveProfile: @escaping @MainActor () async -> Void
     ) async {
-        async let initialRefresh: Void = refreshSessionsAndActiveProfile()
+        async let sessions: Void = loadSessions()
         await resolvePendingDeepLink()
-        await initialRefresh
+        await sessions
+        guard !Task.isCancelled else { return }
+        restoreSelection()
+        await loadProjectsAndActiveProfile(loadProjects: loadProjects, loadActiveProfile: loadActiveProfile)
+    }
+
+    /// Runs the two loads concurrently; neither depends on the other. Also used
+    /// by every later refresh of the list.
+    @MainActor
+    static func loadProjectsAndActiveProfile(
+        loadProjects: @escaping @MainActor () async -> Void,
+        loadActiveProfile: @escaping @MainActor () async -> Void
+    ) async {
+        async let activeProfile: Void = loadActiveProfile()
+        await loadProjects()
+        await activeProfile
     }
 }
 
