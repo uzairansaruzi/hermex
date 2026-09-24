@@ -198,7 +198,7 @@ enum MarkdownPreviewChunker {
     /// Returns nil when the file should render as one document: at or under the
     /// splitter's chunk size, or without a safe boundary to split on.
     static func chunks(for content: String) -> [MarkdownPreviewChunk]? {
-        guard content.count > StreamingMarkdownBlockSplitter.stableChunkTargetCharacterCount else { return nil }
+        guard content.utf8.count > StreamingMarkdownBlockSplitter.stableChunkTargetUTF8Count else { return nil }
         let segments = StreamingMarkdownBlockSplitter.split(content)
         var texts = segments.stableChunks.map(\.text)
         if !segments.activeMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

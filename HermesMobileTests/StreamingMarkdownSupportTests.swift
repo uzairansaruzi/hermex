@@ -108,7 +108,7 @@ final class MarkdownPreviewChunkerTests: XCTestCase {
 
     func testSmallMarkdownStaysOneDocument() {
         let small = String(repeating: "Short paragraph.\n\n", count: 300)
-        XCTAssertLessThanOrEqual(small.count, StreamingMarkdownBlockSplitter.stableChunkTargetCharacterCount)
+        XCTAssertLessThanOrEqual(small.utf8.count, StreamingMarkdownBlockSplitter.stableChunkTargetUTF8Count)
 
         XCTAssertNil(MarkdownPreviewChunker.chunks(for: small))
     }
