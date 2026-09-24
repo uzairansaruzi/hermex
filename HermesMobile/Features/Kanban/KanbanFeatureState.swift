@@ -985,14 +985,16 @@ final class KanbanFeatureState {
     /// Cold-loads only when no Board is loaded. `KanbanView` calls this every time the
     /// Board reappears, so returning from a pushed Card keeps its rows, scroll position,
     /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
-    /// When a pop cancelled the first load before its stats and assignee reads settled,
-    /// this finishes them with a Board refresh instead of starting over.
+    /// When a pop cancelled a live refresh (the stream already moved `liveCursor` past the
+    /// Board on screen) or the first load's stats and assignee reads, this refreshes the
+    /// Board in place instead of starting over.
     func loadIfNeeded() async {
-        guard snapshot != nil else {
+        guard let snapshot else {
             await load()
             return
         }
-        guard !supplementaryReadsSettled else { return }
+        let boardIsBehindStream = liveCursor > (snapshot.latestEventID ?? 0)
+        guard boardIsBehindStream || !supplementaryReadsSettled else { return }
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
     }
 

@@ -44,7 +44,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
         stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 2 }
+        try await waitUntil { state.snapshot?.latestEventID == 13 }
         XCTAssertEqual(state.liveCursor, 13)
 
         // Push a Card, then pop back to the Board.
@@ -56,6 +56,39 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "13")
         let boardCallCount = await client.boardCallCount
         XCTAssertEqual(boardCallCount, 2)
+        state.setVisible(false)
+    }
+
+    func testReturningFromCardRefreshesBoardWhenPopCancelledLiveRefresh() async throws {
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
+        let stream = KanbanStreamSpy()
+        let state = makeState(
+            client: client,
+            stream: stream,
+            timing: KanbanLiveUpdateTiming(
+                coalescingDelay: .seconds(60),
+                reconnectDelays: [.milliseconds(5)],
+                pollingInterval: .seconds(60),
+                failuresBeforePolling: 3
+            )
+        )
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.hello(cursor: 11, board: "main"))
+        stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
+        XCTAssertEqual(state.liveCursor, 13)
+
+        // The pop lands inside the coalescing window, so the burst's refresh never runs.
+        state.setVisible(false)
+        await state.loadIfNeeded()
+        state.setVisible(true)
+
+        XCTAssertEqual(state.snapshot?.latestEventID, 13)
+        let requests = await client.boardRequests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertNil(requests.last?.since)
+        XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "13")
         state.setVisible(false)
     }
 
