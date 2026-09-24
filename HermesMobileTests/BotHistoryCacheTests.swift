@@ -81,6 +81,10 @@ final class BotHistoryCacheTests: XCTestCase {
         let saved = try await BotHistoryCache(directory: directory).roomHistory(key, now: later)
         XCTAssertEqual(saved?.cursor, 3)
         XCTAssertEqual(saved?.savedAt, later, "The saved retention timestamp follows an active room")
+        let file = directory.appendingPathComponent("history.json"), before = try Data(contentsOf: file)
+        try await BotHistoryCache(directory: directory).appendRoom(key: key, room: room, page: RoomFixture.page(
+            [RoomFixture.event(4, kind: "tool.started")], cursor: 4), since: 3, receivedAt: later + 1)
+        XCTAssertEqual(try Data(contentsOf: file), before, "A relaunch does not rewrite on its first cursor-only poll")
     }
 
     func testPruneEvictsOldestSnapshotsToTheCountAndByteBudgets() async throws {

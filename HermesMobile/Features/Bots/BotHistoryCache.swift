@@ -275,6 +275,8 @@ actor BotHistoryCache {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= Self.maximumBytes * 2 else { return }
         snapshots = try JSONDecoder().decode([Snapshot].self, from: Data(contentsOf: file))
+        // The newest saved timestamp dates the last write, so a relaunch does not rewrite on its first cursor-only poll.
+        lastRoomWriteAt = snapshots.map(\.savedAt).max() ?? .distantPast
         let previousCount = snapshots.count
         prune(now: Date())
         persistPruning(previousCount: previousCount)
