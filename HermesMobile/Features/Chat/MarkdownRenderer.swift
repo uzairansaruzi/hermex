@@ -145,11 +145,26 @@ struct StreamingMarkdownRenderer: View {
 
 }
 
+/// Lets a surface keep the streaming renderer's cost savings without its
+/// reveal fade. Bot Chat sets it false: its text arrives in coalesced
+/// snapshots, and a whole snapshot fading in leaves the latest edge blank.
+struct AllowsStreamedTextAnimationKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var allowsStreamedTextAnimation: Bool {
+        get { self[AllowsStreamedTextAnimationKey.self] }
+        set { self[AllowsStreamedTextAnimationKey.self] = newValue }
+    }
+}
+
 private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.allowsStreamedTextAnimation) private var allowsStreamedTextAnimation
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
 
     /// First block ordinal still in the fade window. Starts at `Int.max`
@@ -177,7 +192,7 @@ private struct StreamingMarkdownChunkedView: View {
             firstFadeOrdinal: StreamedTextAnimationSettings.effectiveFirstFadeOrdinal(
                 firstFadeOrdinal,
                 reduceMotion: reduceMotion,
-                isEnabled: isStreamedTextAnimationEnabled
+                isEnabled: isStreamedTextAnimationEnabled && allowsStreamedTextAnimation
             )
         )
 

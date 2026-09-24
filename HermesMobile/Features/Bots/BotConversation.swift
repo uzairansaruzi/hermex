@@ -547,6 +547,9 @@ import Observation
             let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             workStatus = payload["kind"].text == "ready" || text.isEmpty ? nil : text
         default:
+            // A mutating call notifies observers even when it changes nothing, so
+            // `message.delta` and other unconsumed types must not reach the reducer.
+            guard BotTurnActivity.handles(type) else { return false }
             return liveActivity.apply(type: type, payload: payload)
         }
         return true

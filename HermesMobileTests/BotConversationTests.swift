@@ -827,6 +827,31 @@ import Vision
         model.suspend()
     }
 
+    /// `message.delta` arrives once per token and carries text the snapshot owns.
+    /// Touching the activity reducer for it would notify observers anyway and
+    /// redraw the whole Bot Chat screen at the token rate, live or replayed.
+    func testMessageDeltaNeverNotifiesLiveActivityObservers() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        XCTAssertEqual(model.turn, .running)
+        let live = ObservationChangeProbe()
+        withObservationTracking { _ = model.liveActivity } onChange: { live.increment() }
+        wire.onEvent?(typed(1, "message.delta", .object(["text": .string("Hel")])))
+        wire.onEvent?(typed(2, "message.delta", .object(["text": .string("lo")])))
+        XCTAssertEqual(live.value, 0)
+
+        wire.replay = BotFixtureWire.replay(latest: 4, events: [
+            typed(3, "message.delta", .object(["text": .string(" there")])),
+            typed(4, "message.delta", .object(["text": .string("!")]))
+        ])
+        let replayed = ObservationChangeProbe()
+        withObservationTracking { _ = model.liveActivity } onChange: { replayed.increment() }
+        await model.recover()
+        XCTAssertFalse(model.replayWasReset)
+        XCTAssertEqual(replayed.value, 0)
+        model.suspend()
+    }
+
     func testReplayRebuildsCurrentTurnActivityOnlyWhenTheRingHoldsIt() async {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover()
@@ -912,6 +937,28 @@ import Vision
             await renderBotFrames()
             try assertBotOutputVisible(window)
         }
+    }
+
+    /// Each snapshot replaces the live reply with a longer string. On the settled
+    /// path every one of them would be parsed whole and stored in the shared
+    /// layout cache, evicting the settled rows it exists for.
+    func testLiveReplyRendersOffTheSharedLayoutCache() async throws {
+        let model = make(BotFixtureWire())
+        let content = "Live reply \(UUID().uuidString)"
+        let reply = ChatMessage(role: "assistant", content: content, timestamp: nil, messageId: "live-assistant")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        window.makeKeyAndVisible()
+
+        window.rootViewController = UIHostingController(rootView: BotArtifactMessageView(message: reply, model: model, isLive: true))
+        await renderBotFrames()
+        XCTAssertFalse(MarkdownMathLayoutCache.hasCachedLayout(for: content))
+
+        window.rootViewController = UIHostingController(rootView: BotArtifactMessageView(message: reply, model: model))
+        await renderBotFrames()
+        XCTAssertTrue(MarkdownMathLayoutCache.hasCachedLayout(for: content), "the settled row keeps the cached path")
     }
 
     private func renderBotFrames() async {

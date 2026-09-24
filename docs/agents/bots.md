@@ -59,10 +59,12 @@ host errors still surface actionable messages; commands are never retried.
 The transcript follows a stable trailing anchor until the user scrolls into
 history; the shared Sessions down-arrow resumes following. Its visibility uses
 Sessions’ scroll observer, follow latch and near-bottom thresholds,
-so it disappears on reaching the bottom. Coalesced text snapshots use synchronous
-Markdown rendering without token reveal animations. The deferred streaming
-renderer can leave a growing Bot response's trailing viewport blank; an XCTest
-renders evolving snapshots and checks the actual visible output.
+so it disappears on reaching the bottom. The live reply renders each coalesced
+text snapshot through the streaming Markdown renderer with its reveal fade off
+(`allowsStreamedTextAnimation`): only the growing tail is re-laid out, the
+shared layout cache stays untouched, and code highlights once the reply
+settles. A whole snapshot fading in would leave the trailing viewport blank; an
+XCTest renders evolving snapshots and checks the actual visible output.
 
 Settled messages reuse the Sessions transcript's long-press seam.
 `chatMessageContextMenu` supplies the menu from a plain
@@ -232,7 +234,7 @@ writes a permanent host rule without a second confirmation.
 Returned artifacts use the existing transcript media parser with local Markdown
 file-link recognition enabled only for Bots. Assistant images, `MEDIA:` references,
 `file:` links and local document links open in native Quick Look; image thumbnails
-are downsampled off the main actor. Text stays synchronous while snapshots grow.
+are downsampled off the main actor. Text never fades in while snapshots grow.
 Ordinary external web links retain their normal behavior. Remote image URLs and
 unknown media forms do not gain authenticated access to other hosts.
 

@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Bot snapshots render text synchronously, including during a live response.
+/// Settled Bot rows render through the cached Markdown path. The live reply uses
+/// the streaming renderer without its reveal fade, so each coalesced snapshot
+/// re-lays out only its growing tail and code stays plain until it settles.
 /// Reuse the transcript parser; only the download and preview ownership are Bot-specific.
 struct BotArtifactMessageView: View {
     let message: ChatMessage
@@ -64,7 +66,8 @@ struct BotArtifactMessageView: View {
             ForEach(Array(TranscriptMediaParser.segments(in: message.content ?? "", includesLocalFileLinks: true).enumerated()), id: \.offset) { _, segment in
                 switch segment {
                 case .text(let text):
-                    MarkdownRenderer(content: text)
+                    MarkdownRenderer(content: text, isStreaming: isLive)
+                        .environment(\.allowsStreamedTextAnimation, false)
                 case .media(let reference):
                     BotArtifactRow(reference: reference, model: model) {
                         previewContext = model.artifactContext
