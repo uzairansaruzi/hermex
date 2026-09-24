@@ -547,6 +547,10 @@ enum HermesShareDraft {
         )
     }
 
+    /// Maps each staged attachment rather than reading it, so reserving an
+    /// import on the main actor stays cheap; pages fault in at upload time. The
+    /// mapping stays valid after the reservation is consumed and its files are
+    /// removed, and nothing rewrites a staged file in place.
     private static func loadAttachments(
         from payload: SharedDraftPayload,
         in itemURL: URL
@@ -558,7 +562,8 @@ enum HermesShareDraft {
                 let storedFileName = attachment.storedFileName,
                 isSafeStoredFileName(storedFileName),
                 let data = try? Data(
-                    contentsOf: directory.appendingPathComponent(storedFileName, isDirectory: false)
+                    contentsOf: directory.appendingPathComponent(storedFileName, isDirectory: false),
+                    options: .alwaysMapped
                 ),
                 !data.isEmpty
             else {
@@ -587,7 +592,8 @@ enum HermesShareDraft {
                     contentsOf: attachmentsDirectory.appendingPathComponent(
                         storedFileName,
                         isDirectory: false
-                    )
+                    ),
+                    options: .alwaysMapped
                 ),
                 !data.isEmpty
             else {
