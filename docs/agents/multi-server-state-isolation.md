@@ -79,6 +79,15 @@ per-server:
   on/off behavior is global; only the *color* it applies (Header Logo Color) is
   per-server.
 
+`APIClient`'s HTTP sessions (`APIClient.sharedSession` and
+`sharedPublicMediaSession`) are also process-wide and outlive server switches,
+so a newly opened chat reuses warm connections (#688). They hold nothing
+server-specific: connections pool per host, auth cookies live in the shared jar
+(scoped as in the table above), custom headers are applied per request, and the
+#277 cross-origin redirect guard is a per-task delegate bound to each client's
+server. Never invalidate these sessions or give them a session delegate.
+`CrossOriginRedirectHeaderTests` covers the sharing and the per-task guard.
+
 "Which server am I on" is surfaced only by the avatar + Settings (+ the #283
 long-press menu) — there is no separate on-screen server label.
 

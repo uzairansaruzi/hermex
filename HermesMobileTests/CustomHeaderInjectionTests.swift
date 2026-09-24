@@ -729,28 +729,34 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertNil(outgoing.value(forHTTPHeaderField: "X-Api-Key"))
     }
 
+    /// A mock-backed session built like the shared production sessions: no
+    /// session delegate, so only the client's per-task guard can strip headers.
+    private func delegateLessRedirectingSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RedirectingMockURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private func clientSendingAPIKey() -> APIClient {
+        APIClient(baseURL: baseURL, customHeaderProvider: {
+            [CustomHeader(name: "X-Api-Key", value: "k1")]
+        })
+    }
+
     // AC4: end-to-end via a redirect-emitting URLProtocol — the production guard,
-    // wired into the client's session, strips the custom header so the actual
-    // second hop on the wire (cross-origin) never carries it. Exercises the real
-    // `downloadData` path: the header is applied on the same-origin first hop and
-    // removed when the server redirects off-origin.
+    // attached per task, strips the custom header so the actual second hop on the
+    // wire (cross-origin) never carries it. Exercises the real `downloadData`
+    // path: the header is applied on the same-origin first hop and removed when
+    // the server redirects off-origin.
     func testStripsCustomHeaderEndToEndOnURLProtocolRedirect() async throws {
         RedirectingMockURLProtocol.redirect = .init(
             fromPath: "/api/media",
             to: try XCTUnwrap(URL(string: "https://third-party.example/leak"))
         )
-        let client = APIClient(baseURL: baseURL, customHeaderProvider: {
-            [CustomHeader(name: "X-Api-Key", value: "k1")]
-        })
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [RedirectingMockURLProtocol.self]
-        let session = URLSession(
-            configuration: configuration,
-            delegate: client.redirectHeaderStripper,
-            delegateQueue: nil
-        )
+        let session = delegateLessRedirectingSession()
+        defer { session.invalidateAndCancel() }
 
-        _ = try? await client.downloadData(
+        _ = try? await clientSendingAPIKey().downloadData(
             from: try XCTUnwrap(URL(string: "https://example.test/api/media?path=/x.png")),
             using: session,
             mapsUnauthorized: false
@@ -759,5 +765,44 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         let secondHop = try XCTUnwrap(RedirectingMockURLProtocol.secondHopRequest)
         XCTAssertEqual(secondHop.url?.host, "third-party.example")
         XCTAssertNil(secondHop.value(forHTTPHeaderField: "X-Api-Key"))
+    }
+
+    // Same guarantee on the JSON/multipart send path (`sendPreparedRequest`).
+    func testStripsCustomHeaderEndToEndOnAPIRequestRedirect() async throws {
+        RedirectingMockURLProtocol.redirect = .init(
+            fromPath: "/health",
+            to: try XCTUnwrap(URL(string: "https://third-party.example/leak"))
+        )
+        let session = delegateLessRedirectingSession()
+        defer { session.invalidateAndCancel() }
+        let client = APIClient(baseURL: baseURL, session: session, customHeaderProvider: {
+            [CustomHeader(name: "X-Api-Key", value: "k1")]
+        })
+
+        _ = try? await client.sendData(endpoint: .health, method: "GET")
+
+        let secondHop = try XCTUnwrap(RedirectingMockURLProtocol.secondHopRequest)
+        XCTAssertEqual(secondHop.url?.host, "third-party.example")
+        XCTAssertNil(secondHop.value(forHTTPHeaderField: "X-Api-Key"))
+    }
+
+    // #688: clients share the process-wide sessions (one connection pool per
+    // host, even across servers) instead of each opening a cold one. Those
+    // sessions have no delegate, which is why the guard above is per-task.
+    func testDefaultClientsShareDelegateLessSessions() async {
+        let first = APIClient(baseURL: baseURL)
+        let second = APIClient(baseURL: URL(string: "https://other.test")!)
+        let session = await first.session
+        let publicMediaSession = await first.publicMediaSession
+
+        let secondSession = await second.session
+        let secondPublicMediaSession = await second.publicMediaSession
+        XCTAssertTrue(session === secondSession)
+        XCTAssertTrue(publicMediaSession === secondPublicMediaSession)
+        XCTAssertFalse(session === publicMediaSession)
+        XCTAssertNil(session.delegate)
+        XCTAssertNil(publicMediaSession.delegate)
+        XCTAssertTrue(session.configuration.httpCookieStorage === HTTPCookieStorage.shared)
+        XCTAssertNil(publicMediaSession.configuration.httpCookieStorage)
     }
 }
