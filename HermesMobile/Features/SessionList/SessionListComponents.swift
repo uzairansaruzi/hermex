@@ -2,14 +2,15 @@ import SwiftUI
 import UIKit
 
 /// The regular-width shell (iPad, landscape Plus/Max). A sidebar root selection
-/// bumps `rootRevision`, which re-identifies only the detail stack so its pushed
-/// path resets (#116). The sidebar keeps its identity, scroll position, and row
-/// state across selections (#689); its visibility follows `afterRootSelection`.
+/// bumps `rootRevision`, which rebuilds only the detail root and pops any screen
+/// pushed above it (#116). The sidebar keeps its identity, scroll position, and
+/// row state across selections (#689); its visibility follows `afterRootSelection`.
 struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var detailColumn = DetailColumnNavigation()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -17,14 +18,64 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
         } detail: {
             NavigationStack {
                 detail
+                    .background { DetailColumnNavigationReader(column: detailColumn) }
             }
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: rootRevision) {
             columnVisibility = columnVisibility.afterRootSelection
+            detailColumn.popToRoot()
         }
     }
+}
+
+/// The detail column's `UINavigationController`. The split view adopts the detail
+/// `NavigationStack` into it, and it outlives the stack's identity: re-identifying
+/// the stack rebuilds the root but leaves screens the old root pushed (Settings
+/// subpages, workspace files, forks) on top. A root selection pops them here.
+@MainActor
+private final class DetailColumnNavigation {
+    weak var navigationController: UINavigationController?
+
+    func popToRoot() {
+        // Runs from a SwiftUI update; pop once it finishes.
+        DispatchQueue.main.async { [weak self] in
+            guard let navigationController = self?.navigationController,
+                  navigationController.viewControllers.count > 1
+            else { return }
+            navigationController.popToRootViewController(animated: false)
+        }
+    }
+}
+
+/// Records the detail column's navigation controller once the detail root is attached.
+private struct DetailColumnNavigationReader: UIViewControllerRepresentable {
+    let column: DetailColumnNavigation
+
+    final class Controller: UIViewController {
+        var column: DetailColumnNavigation?
+
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            if let navigationController {
+                column?.navigationController = navigationController
+            }
+        }
+    }
+
+    func makeUIViewController(context: Context) -> Controller {
+        let controller = Controller()
+        controller.column = column
+        return controller
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {}
 }
 
 extension NavigationSplitViewVisibility {
