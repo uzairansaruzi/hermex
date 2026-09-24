@@ -78,9 +78,12 @@ actor BotHistoryCache {
     static let maximumBytes = 8 * 1024 * 1024
     static let maximumHits = 100
     static let lifetime: TimeInterval = 30 * 24 * 60 * 60
+    /// Longest a cursor-only room change stays unsaved while other writes are absent.
+    static let cursorOnlySaveInterval: TimeInterval = 10 * 60
     private let directory: URL?
     private var loaded = false
     private var needsPrunePersistence = false
+    private var lastRoomWriteAt = Date.distantPast
     private var snapshots: [Snapshot] = []
     private struct RoomIdentity: Hashable {
         let scope: Scope
@@ -189,9 +192,11 @@ actor BotHistoryCache {
         snapshots.append(next)
         // Invisible events move only the cursor: keep it in memory and let the next real
         // write persist it. After a kill, reopening re-reads from the older saved cursor
-        // and the overlap merge above absorbs the repeated pages.
-        guard !cursorOnly else { return }
+        // and the overlap merge above absorbs the repeated pages. A periodic save keeps a
+        // long-running room's saved `savedAt` fresh so it cannot expire on relaunch.
+        guard !cursorOnly || receivedAt.timeIntervalSince(lastRoomWriteAt) >= Self.cursorOnlySaveInterval else { return }
         try persist(prune(now: receivedAt))
+        lastRoomWriteAt = receivedAt
     }
 
     func roomHistory(_ key: BotRoomKey, now: Date = Date()) throws -> Snapshot? {

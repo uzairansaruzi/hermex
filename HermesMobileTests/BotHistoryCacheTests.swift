@@ -64,6 +64,25 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertEqual(reopened?.earlierBoundary, 0)
     }
 
+    func testCursorOnlyMovesAreSavedPeriodicallySoActiveRoomsKeepTheirRetention() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = BotHistoryCache(directory: directory), key = roomKey()
+        let start = Date()
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page([RoomFixture.event(1)], cursor: 1),
+                                   since: 0, receivedAt: start)
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page(
+            [RoomFixture.event(2, kind: "tool.started")], cursor: 2), since: 1, receivedAt: start + 1)
+        let unsaved = try await BotHistoryCache(directory: directory).roomHistory(key, now: start + 1)
+        XCTAssertEqual(unsaved?.cursor, 1)
+        let later = start + BotHistoryCache.cursorOnlySaveInterval + 1
+        try await cache.appendRoom(key: key, room: room, page: RoomFixture.page(
+            [RoomFixture.event(3, kind: "tool.started")], cursor: 3), since: 2, receivedAt: later)
+        let saved = try await BotHistoryCache(directory: directory).roomHistory(key, now: later)
+        XCTAssertEqual(saved?.cursor, 3)
+        XCTAssertEqual(saved?.savedAt, later, "The saved retention timestamp follows an active room")
+    }
+
     func testPruneEvictsOldestSnapshotsToTheCountAndByteBudgets() async throws {
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
         func savedProfiles(_ directory: URL, _ profiles: Set<String>) async throws -> Set<String> {
