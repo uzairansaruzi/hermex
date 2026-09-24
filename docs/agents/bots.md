@@ -95,7 +95,8 @@ landed on the wrong rows (`testLongInflightResponseRemainsVisibleAtLatestEdge`,
 on a cold first iteration). Eager is affordable only over a bounded list,
 which is what incident #463 was about: `BotTranscriptWindow` draws the latest
 50 settled messages with Load earlier above them, the way Sessions pages, and
-rooms are bounded by their own Load earlier. The host still sends the whole
+`BotRoomTranscriptWindow` draws a room's newest 50 events, anchored by sequence
+number because room history is prepended. The host still sends the whole
 history; the window limits only what is built.
 
 Activity comes from two sources that never overlap. The full snapshot's
@@ -972,7 +973,7 @@ members. Search matches room names and previously loaded room messages through t
 restores cached messages first, then reads state and drains pages from the saved
 cursor until `has_more` is false. Without cache it starts at
 `max(0, latest_seq - 200)` (or the selected search sequence). Each completed replay window
-updates the best-effort cache; cache read/write failures never stop live reading. Load earlier reads the preceding 200-event window. Duplicate
+updates the best-effort cache; cache read/write failures never stop live reading. Load earlier first reveals up to 50 loaded events the room view is hiding, then reads the preceding 200-event window. Duplicate
 `seq` values are ignored, events sort by sequence, and invisible/unknown kinds
 still advance the cursor. Authority epochs never reset the cursor. An authority
 change triggers a state read; a foreign gateway shows “Managed by another Hermes”.

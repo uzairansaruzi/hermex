@@ -205,6 +205,26 @@ import XCTest
         XCTAssertFalse(after.contains("No saved messages found"), after)
     }
 
+    func testWarmRoomBuildsOnlyTheNewestPageOfReplies() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 300)))
+        let cache = BotHistoryCache()
+        let key = BotRoomKey(server: server, connectionID: connection.id, roomID: room.id)
+        var log = BotRoomLog()
+        log.apply(RoomFixture.page((1...300).map { RoomFixture.event($0, kind: "message.member") }, cursor: 300))
+        cache.recent.save(.room(log), for: .room(key), owner: cache.recent.begin(.room(key)))
+        let reader = BotRoomReader(key: key, connection: connection, room: room, cache: cache, makeWire: { _ in RoomWire() })
+        let window = try show(NavigationStack {
+            BotRoomView(reader: reader, roster: [], avatars: [:])
+        }.environment(\.scenePhase, .inactive))
+        defer { reader.close(); close(window) }
+        await renderFrames(4)
+        let hosts = descendants(window).filter { $0.next is ResponseSelectionController }
+        XCTAssertEqual(reader.events.count, 300)
+        XCTAssertEqual(hosts.count, BotRoomTranscriptWindow.pageSize, "Each built reply hosts one selection controller")
+    }
+
     func testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages() async throws {
         try await assertRoomSearchTarget(warm: false)
     }

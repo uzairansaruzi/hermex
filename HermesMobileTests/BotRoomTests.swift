@@ -520,6 +520,74 @@ import XCTest
     }
 }
 
+final class BotRoomTranscriptWindowTests: XCTestCase {
+    func testOpensOnTheNewestPageBeforeAndAfterSeeding() {
+        let events = Self.events(1...300)
+        var window = BotRoomTranscriptWindow()
+        XCTAssertEqual(window.start(in: events), 250, "The first frame must already be bounded")
+
+        window.seed(events)
+        XCTAssertEqual(window.start(in: events), 250)
+        XCTAssertEqual(window.start(in: []), 0)
+    }
+
+    func testPrependedHistoryStaysHiddenAndNewEventsStillShow() {
+        var window = BotRoomTranscriptWindow()
+        window.seed(Self.events(201...300))
+        let firstShown = 251
+
+        let prepended = Self.events(1...300)
+        window.seed(prepended)
+        XCTAssertEqual(prepended[window.start(in: prepended)].seq, firstShown)
+
+        let appended = Self.events(1...310)
+        window.seed(appended)
+        XCTAssertEqual(appended[window.start(in: appended)].seq, firstShown)
+        XCTAssertEqual(appended.count - window.start(in: appended), 60)
+    }
+
+    func testLoadEarlierRevealsHiddenPagesBeforeAskingTheRoom() {
+        let events = Self.events(1...120)
+        var window = BotRoomTranscriptWindow()
+        window.seed(events)
+
+        XCTAssertTrue(window.showEarlier(in: events))
+        XCTAssertEqual(window.start(in: events), 20)
+        XCTAssertTrue(window.showEarlier(in: events))
+        XCTAssertEqual(window.start(in: events), 0)
+        XCTAssertFalse(window.showEarlier(in: events), "Only a room fetch can go further back")
+    }
+
+    func testSearchHitOlderThanTheWindowIsBuiltAndStaysShown() {
+        let events = Self.events(1...300)
+        var window = BotRoomTranscriptWindow()
+        window.seed(events)
+
+        XCTAssertEqual(window.start(in: events, keeping: 40), 39, "The hit's row must exist before the jump")
+        XCTAssertEqual(window.start(in: events, keeping: 999), 250, "An absent hit does not widen the window")
+        window.reveal(40, in: events)
+        XCTAssertEqual(window.start(in: events), 39)
+    }
+
+    func testClosingOrRestartingTheRoomReanchorsOnTheNewestPage() {
+        var window = BotRoomTranscriptWindow()
+        window.seed(Self.events(1...300))
+        _ = window.showEarlier(in: Self.events(1...300))
+
+        window.seed([])
+        window.seed(Self.events(1...300))
+        XCTAssertEqual(window.start(in: Self.events(1...300)), 250)
+
+        let restarted = Self.events(1...80)
+        window.seed(restarted)
+        XCTAssertEqual(window.start(in: restarted), 30)
+    }
+
+    private static func events(_ range: ClosedRange<Int>) -> [BotRoomEvent] {
+        range.compactMap { BotRoomEvent(RoomFixture.event($0)) }
+    }
+}
+
 /// Synthesized protocol fixtures. Live host fixtures are kept separately when available.
 enum RoomFixture {
     static let approval = BotJSON.object(["kind": .string("approval"), "member_id": .string("chief"),

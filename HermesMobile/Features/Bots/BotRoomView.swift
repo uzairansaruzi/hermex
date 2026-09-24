@@ -12,6 +12,7 @@ import SwiftUI
     @State private var pendingSequence: Int?
     @State private var showRequestID = UUID()
     @State private var dismissedErrors: Set<String> = []
+    @State private var window = BotRoomTranscriptWindow()
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
@@ -23,31 +24,22 @@ import SwiftUI
 
     var body: some View {
         ScrollViewReader { proxy in
+            let start = window.start(in: reader.events, keeping: pendingSequence)
+            let hasHiddenEvents = start > 0
             ScrollView {
-                // Eager: member replies are hosted selection documents, and a lazy
-                // stack places unbuilt rows from an estimate, so the jump to a
-                // search hit missed on a cold open (issue #553). History pages
-                // in through Load earlier, which bounds what this builds.
+                // Eager over a bounded window, like Bot Chat: member replies are
+                // hosted selection documents, and a lazy stack places unbuilt rows
+                // from an estimate, so the jump to a search hit missed on a cold
+                // open (issue #553). The window keeps the build to the newest page.
                 VStack(spacing: 16) {
-                    if reader.hasEarlier {
-                        // The new page pushes everything below it down, so bring the
-                        // event the reader was on back to the top afterwards.
-                        Button("Load earlier") {
-                            handleFollowEvent(.userScrollBegin)
-                            let firstShown = reader.events.first?.seq
-                            Task {
-                                await reader.loadEarlier()
-                                guard let firstShown, reader.events.first?.seq != firstShown else { return }
-                                await Task.yield()
-                                proxy.scrollTo(firstShown, anchor: .top)
-                            }
-                        }
-                            .disabled(reader.loadingEarlier || reader.link != .live)
+                    if hasHiddenEvents || reader.hasEarlier {
+                        Button("Load earlier") { loadEarlier(proxy: proxy) }
+                            .disabled(!hasHiddenEvents && (reader.loadingEarlier || reader.link != .live))
                     }
                     if reader.foreignAuthority {
                         Text("Managed by another Hermes").font(.caption).foregroundStyle(.secondary)
                     }
-                    ForEach(reader.events) { event in
+                    ForEach(reader.events[start...]) { event in
                         BotRoomEventView(
                             event: event,
                             room: reader.room,
@@ -81,9 +73,11 @@ import SwiftUI
             }, initial: true) { _, sequence in
                 if let sequence {
                     handleFollowEvent(.userScrollBegin)
+                    window.reveal(sequence, in: reader.events)
                     proxy.scrollTo(sequence, anchor: .center); pendingSequence = nil
                 }
             }
+            .onChange(of: reader.events.last?.seq, initial: true) { window.seed(reader.events) }
             .onChange(of: reader.events.last?.seq) {
                 if pendingSequence == nil && followsLatest { proxy.scrollTo("room-bottom", anchor: .bottom) }
             }
@@ -147,6 +141,23 @@ import SwiftUI
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
+    /// Reveals a page of events already in memory, or fetches one from the room
+    /// when none are hidden, then keeps the event the reader was on at the top,
+    /// since the new rows push everything below them down.
+    private func loadEarlier(proxy: ScrollViewProxy) {
+        handleFollowEvent(.userScrollBegin)
+        let firstShown = reader.events.isEmpty ? nil : reader.events[window.start(in: reader.events)].seq
+        Task {
+            if !window.showEarlier(in: reader.events) {
+                await reader.loadEarlier()
+                guard window.showEarlier(in: reader.events) else { return }
+            }
+            guard let firstShown else { return }
+            await Task.yield()
+            proxy.scrollTo(firstShown, anchor: .top)
+        }
+    }
+
     private func handleFollowEvent(_ event: ChatScrollPolicy.FollowEvent) {
         let next = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
         if next != followLatch { followLatch = next }
@@ -169,6 +180,49 @@ import SwiftUI
         BotComposerPill.room(link: reader.link, blocked: reader.status.blocked,
             hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend,
             errorText: errorTexts.first { !dismissedErrors.contains($0) })
+    }
+}
+
+/// The room events BotRoomView builds: the newest page when the room opens,
+/// anchored by sequence number because room history is prepended. History the
+/// reader loads stays hidden until asked for, and new events always show, so
+/// neither shifts what is on screen. Load earlier reveals hidden events in
+/// pages before the room fetches more.
+struct BotRoomTranscriptWindow: Equatable {
+    static let pageSize = 50
+    private var oldestShown: Int?
+
+    /// Index of the first shown event in `events`, which are sorted by sequence.
+    /// `keeping` widens the window to a search hit that is present, so its
+    /// row is built by the time the jump runs (#553).
+    func start(in events: [BotRoomEvent], keeping sequence: Int? = nil) -> Int {
+        let newestPage = max(0, events.count - Self.pageSize)
+        let start = oldestShown.flatMap { oldest in events.firstIndex { $0.seq >= oldest } } ?? newestPage
+        guard let sequence, let hit = events.firstIndex(where: { $0.seq == sequence }) else { return start }
+        return min(start, hit)
+    }
+
+    /// Anchors the window on the newest page when events first arrive, and again
+    /// after the room empties (closed) or restarts below the anchor.
+    mutating func seed(_ events: [BotRoomEvent]) {
+        guard let last = events.last else { oldestShown = nil; return }
+        if oldestShown.map({ last.seq < $0 }) ?? true {
+            oldestShown = events[max(0, events.count - Self.pageSize)].seq
+        }
+    }
+
+    /// Keeps a search hit shown after its jump lands.
+    mutating func reveal(_ sequence: Int, in events: [BotRoomEvent]) {
+        guard !events.isEmpty else { return }
+        oldestShown = min(events[start(in: events)].seq, sequence)
+    }
+
+    /// Shows up to one more page of hidden events; false when none are hidden.
+    mutating func showEarlier(in events: [BotRoomEvent]) -> Bool {
+        let start = start(in: events)
+        guard start > 0 else { return false }
+        oldestShown = events[max(0, start - Self.pageSize)].seq
+        return true
     }
 }
 
