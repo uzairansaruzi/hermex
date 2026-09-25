@@ -1183,7 +1183,7 @@ import Vision
         window.makeKeyAndVisible()
         defer { model.suspend(); window.isHidden = true; window.rootViewController = nil }
         await model.recover()
-        await renderBotFrames()
+        await settle(window)
         for step in 1...6 {
             wire.inflight = .object(["assistant": .string(
                 (1...(100 + step * 50)).map { "\($0) VISIBLE LIVE OUTPUT" }.joined(separator: "\n")
@@ -1192,7 +1192,7 @@ import Vision
             withObservationTracking { _ = model.liveMessages } onChange: { updated.fulfill() }
             wire.onEvent?(event(step))
             await fulfillment(of: [updated], timeout: 3)
-            await renderBotFrames()
+            await settle(window)
             try assertBotOutputVisible(window)
         }
     }
@@ -1211,20 +1211,12 @@ import Vision
         window.makeKeyAndVisible()
 
         window.rootViewController = UIHostingController(rootView: BotArtifactMessageView(message: reply, model: model, isLive: true))
-        await renderBotFrames()
+        await settle(window)
         XCTAssertFalse(MarkdownMathLayoutCache.hasCachedLayout(for: content))
 
         window.rootViewController = UIHostingController(rootView: BotArtifactMessageView(message: reply, model: model))
-        await renderBotFrames()
+        await settle(window)
         XCTAssertTrue(MarkdownMathLayoutCache.hasCachedLayout(for: content), "the settled row keeps the cached path")
-    }
-
-    private func renderBotFrames() async {
-        let rendered = expectation(description: "Transcript layout committed")
-        let driver = BotRenderFrameDriver { rendered.fulfill() }
-        driver.start()
-        await fulfillment(of: [rendered], timeout: 10)
-        driver.stop()
     }
 
     /// Reads the lower half of the window, where the latest edge of the
@@ -1443,26 +1435,21 @@ import Vision
     }
 }
 
-/// Drives real display-link frames so a capture happens after layout, never
-/// after a wall-clock sleep. `target` is how many frames to let pass: a view
-/// whose content arrives from a live event needs more than the default.
-@MainActor final class BotRenderFrameDriver: NSObject {
-    private let completion: () -> Void
-    private let target: Int
-    private var link: CADisplayLink?
-    private var frames = 0
-    init(target: Int = 3, completion: @escaping () -> Void) {
-        self.target = target
-        self.completion = completion
-    }
-    func start() {
-        link = CADisplayLink(target: self, selector: #selector(tick))
-        link?.add(to: .main, forMode: .common)
-    }
-    func stop() { link?.invalidate(); link = nil }
-    @objc private func tick() {
-        frames += 1
-        if frames == target { stop(); completion() }
+extension XCTestCase {
+    /// Lets a hosted SwiftUI window apply pending state before a test reads it.
+    /// Each pass yields one main-queue turn, so queued main-actor work (a view's
+    /// `.task`, an observation callback, a deferred focus change) runs, then
+    /// lays the window out, which is where the hosting view applies that state.
+    /// Display cadence plays no part, so a runner whose display link stalls
+    /// cannot time a test out. Content produced off the main queue needs its own
+    /// signal: await the model first, or read until the content shows.
+    @MainActor func settle(_ window: UIWindow, passes: Int = 3) async {
+        for _ in 0..<passes {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+            window.layoutIfNeeded()
+        }
     }
 }
 
