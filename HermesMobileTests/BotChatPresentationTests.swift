@@ -663,7 +663,7 @@ import XCTest
     /// field must keep it first responder, and drag-down dismissal stays.
     func testQuestionFieldKeepsTheKeyboardWhenComposerFocusClears() async throws {
         let wire = BotFixtureWire(); wire.running = true
-        wire.pendingClarify = BotFixtureWire.clarify()
+        wire.openClarify = BotFixtureWire.clarify()
         let model = make(wire)
         let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
         defer { model.suspend(); close(window) }
