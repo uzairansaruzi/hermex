@@ -71,9 +71,11 @@ Settled messages reuse the Sessions transcript's long-press seam.
 `chatMessageContextMenu` supplies the menu from a plain
 `[ChatMessageActionItem]`, so a transcript names its own actions without owning
 a chat view model; `BotMessageActions` builds that list, and for a Bot it is
-Copy alone over the Markdown source, because the host owns the history and
-edit, regenerate and branch have nothing to act on. Group rooms use the same
-seam.
+Copy alone over the Markdown source, by the canonical-chat policy of #481. The
+host does support rewind (`prompt.submit` with `confirm_truncate` and a
+`truncate_before_row_id` taken from the snapshot's durable `row_id`) and
+`session.branch`; Bot Chat does not offer edit, regenerate or branch yet
+(#745). Group rooms use the same seam.
 
 Settled bot replies and room member messages sit in a `ResponseTextSelection`
 document, so text selects in place as it does in Sessions. The scroll-view
@@ -117,7 +119,11 @@ overlap never duplicates a card. Presentation reuses the Sessions log rows
 (`ReasoningBlockView`, `ToolActivityGroupView`, `TranscriptLogRowView`) and the
 global Chat display toggles; the plan row stays visible with cards off. Tool
 output is text only. `message.react` and `learning.frames` are deliberately
-not wired: the snapshot carries no reactions to show back, and the frames are
+not wired. The host stores reactions in each message's
+`display_metadata.reactions`, which the snapshot passes through, and emits the
+agent's own as `message.reaction`; they are stored and synced whatever the host
+config (`display.message_reactions` only decides whether the model sees them
+and can react). Hermex neither shows nor sends them yet (#761). The frames are
 terminal-sized renders.
 
 Delegated work stays attached to its owning Bot conversation. A toolbar count
@@ -408,12 +414,13 @@ stopped, and makes pin and hide inert until the next `open()`.
 
 Roster organization is Desktop's. `pinned` and `hidden` in
 `ui_meta["hermes-bots"]` are honored: pinned bots sit above the list as large
-avatar tiles with the name beneath, the rest follow in server order, and hidden
+avatar tiles with the name beneath, the rest follow newest first, and hidden
 bots stay out unless revealed for the session (dimmed, in place) or named by a
 search. Pin, Unpin, Hide and Unhide are the row's long-press menu. Desktop's
-user sections are not shown because their catalog (`bot-sections-v1`) lives in
-the Desktop renderer's `localStorage` and only an opaque `sectionId` reaches the
-phone; named section headers need upstream to publish the catalog on the host.
+user sections are not shown yet (#742). Desktop now writes `sectionName` beside
+`sectionId` on every filing and backfills it for older members, so named
+headers are possible without upstream work; section order and empty sections
+stay in Desktop's plugin storage (`bot-sections-v1`) and never reach the phone.
 `groups` are executable group rooms, not Desktop organization sections. Their read-only viewer is described below. A
 description of 24 characters or fewer reads as a role chip beside the name when
 the chat has a preview; the activity label is the time today, the weekday within
@@ -541,8 +548,9 @@ starts with no keys. Secret values never reach the phone. A create whose reply
 reports neither `model_set` nor `mirrored.model_inherited` shows a one-line
 note to pick a model. Duplicates clone config, skills and `SOUL.md` through
 `clone_from`; the drawn look is copied, the photo asset and Desktop
-organization (`pinned`, `sectionId`) are not, and the chat stays with the
-original. Create-from-description (`llm.oneshot`) is not offered.
+organization (`pinned`, `sectionId`, `sectionName`) are not, and the chat
+stays with the original. Create-from-description (`llm.oneshot`) is not
+offered.
 
 Delete is `DELETE /api/profiles/{name}` over the client's authenticated cookie
 session, because the gateway has no `profiles.delete` RPC; only a 200 with
@@ -576,9 +584,12 @@ missing mark so a fresh install starts quiet; opening a chat marks it seen, and
 returning marks the next roster read seen once so activity that was on screen
 during the visit does not come back as unread. Removing the connection deletes
 its marks with its drafts. Working and needs-attention states are not shown in
-the inbox: the roster row carries no turn state for the canonical chat, and the
-only live signal, `worker_session` heartbeats, describes kanban and tool
-workers rather than the conversation.
+the inbox yet (#741). The roster row carries no turn state for the canonical
+chat, and its `worker_session` heartbeats describe kanban and tool workers
+rather than the conversation. The live signal is `session.active_list`: each
+live session's `session_key` and a `status` of `idle`, `starting`, `waiting`,
+`working`, `streaming` or `resuming`, scoped to the sessions held by that
+gateway process (Desktop polls it per socket).
 
 Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
 by default and owned by the Settings "Bot Mode (beta)" row (#496), which sits

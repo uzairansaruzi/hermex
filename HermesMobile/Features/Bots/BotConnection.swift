@@ -86,9 +86,10 @@ struct BotConnection: Codable, Equatable, Identifiable {
 /// One `profiles.list` row. Identity comes only from server fields: the Desktop
 /// title, then the core `display_name`, then the Profile name (`default` reads as
 /// Hermes, as in Desktop). Description follows the same Desktop-then-core order.
-/// Pinned and hidden are Desktop's roster organization; its user sections are
-/// not here because their catalog lives in Desktop's local storage, so a bare
-/// `sectionId` cannot be named, and `groups` are executable group rooms, not sections.
+/// Pinned and hidden are Desktop's roster organization. Its user sections are
+/// not read yet (#742), though Desktop now writes a `sectionName` beside each
+/// `sectionId`, so a section can be named; `groups` are executable group rooms,
+/// not sections.
 struct BotProfile: Identifiable, Hashable {
     let id: String
     let name: String
