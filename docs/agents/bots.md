@@ -210,7 +210,8 @@ reads all three tolerantly: an unknown `kind`, `action` or `state` keeps its row
 but offers nothing, and an operation with no readable row is needs-attention
 without a card. The card answers with `connection.respond {session_id, op_id,
 result}`, where `result` is one row's `approved` (with `env` for an MCP
-install's `required_env`) or `skipped`, or `{settled_by: "continue"}` alone;
+install's `required_env`; a plain field starts at its `default` and sends it,
+since the host never fills one in) or `skipped`, or `{settled_by: "continue"}` alone;
 `BotClient` refuses every other shape. A managed connector's `connect_url`
 opens in the browser and the host notices the new account by itself. An MCP
 sign-in (`authorize`, or an install that turns into OAuth) redirects to the

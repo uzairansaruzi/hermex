@@ -796,6 +796,8 @@ import XCTest
         let secret = try XCTUnwrap(fields.first(where: \.isSecureTextEntry), "The token is never in the clear")
         XCTAssertEqual(secret.textContentType, .password)
         XCTAssertEqual(fields.filter(\.isSecureTextEntry).count, 1, "The host name is not a secret")
+        let host = try XCTUnwrap(fields.first { !$0.isSecureTextEntry })
+        XCTAssertEqual(host.text, "github.com", "A plain field starts at its default")
 
         XCTAssertTrue(secret.becomeFirstResponder())
         secret.insertText("ghp_1")
@@ -803,7 +805,7 @@ import XCTest
         // Return on the keyboard, which the field submits as Connect.
         secret.sendActions(for: .editingDidEndOnExit)
         await renderFrames()
-        XCTAssertEqual(sent, [.connect(target: "github", env: ["GITHUB_TOKEN": "ghp_1"])])
+        XCTAssertEqual(sent, [.connect(target: "github", env: ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": "github.com"])])
         XCTAssertEqual(secret.text ?? "", "", "The value leaves the field once it is handed over")
     }
 

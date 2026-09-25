@@ -536,13 +536,7 @@ private struct BotConnectionTargetRow: View {
 
     private var canAct: Bool { isEnabled && !isAnswering }
 
-    /// The values to send: trimmed, and only the ones typed.
-    private var env: [String: String] {
-        target.requiredEnv.reduce(into: [:]) { env, field in
-            let value = (values[field.name] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { env[field.name] = value }
-        }
-    }
+    private var env: [String: String] { target.env(from: values) }
 
     private var canConnect: Bool { canAct && target.accepts(env) }
 
@@ -696,7 +690,7 @@ private struct BotConnectionTargetRow: View {
                     SecureField("Secret value", text: binding(for: field))
                         .textContentType(.password)
                 } else {
-                    TextField(field.defaultValue ?? String(localized: "Value"), text: binding(for: field))
+                    TextField(String(localized: "Value"), text: binding(for: field))
                 }
             }
             .textInputAutocapitalization(.never)
@@ -710,7 +704,7 @@ private struct BotConnectionTargetRow: View {
     }
 
     private func binding(for field: BotConnectionOperation.EnvField) -> Binding<String> {
-        Binding(get: { values[field.name] ?? "" }, set: { values[field.name] = $0 })
+        Binding(get: { field.value(in: values) }, set: { values[field.name] = $0 })
     }
 
     private func connect() {

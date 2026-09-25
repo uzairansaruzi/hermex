@@ -1074,6 +1074,14 @@ extension BotPendingRequestParsingTests {
         XCTAssertNil(future.kind); XCTAssertNil(future.action); XCTAssertNil(future.state)
         XCTAssertFalse(future.canSkip); XCTAssertFalse(future.canConnect)
         XCTAssertNil(future.linkToOpen); XCTAssertFalse(future.finishesOnTheMac)
+
+        // A known kind and state do not make an unknown action answerable.
+        var teleport = BotConnectionFixture.gmail().fields!
+        teleport["action"] = .string("teleport")
+        let unknownAction = try XCTUnwrap(BotConnectionOperation.Target(.object(teleport)))
+        XCTAssertNil(unknownAction.action)
+        XCTAssertFalse(unknownAction.canSkip)
+        XCTAssertNil(unknownAction.linkToOpen)
     }
 
     func testAConnectionOperationWithoutAnIdCounterDeadlineOrRowIsNotShown() {
@@ -1133,6 +1141,26 @@ extension BotPendingRequestParsingTests {
         let enable = try row(.object(["name": .string("notion"), "kind": .string("mcp"), "action": .string("enable"),
                                       "state": .string("pending")]))
         XCTAssertTrue(enable.accepts([:]))
+    }
+
+    /// A plain field starts at its default and Connect sends it, because the host
+    /// never fills one in: a required one is ready untouched, and only emptying it
+    /// holds Connect back.
+    func testConnectionFieldsSendTheirDefaultUntouched() throws {
+        let linear = try XCTUnwrap(BotConnectionOperation.Target(.object([
+            "name": .string("linear"), "kind": .string("mcp"), "action": .string("install"), "state": .string("pending"),
+            "required_env": .array([.object(["name": .string("LINEAR_URL"), "required": .bool(true),
+                                             "secret": .bool(false), "default": .string("https://api.linear.app")])])
+        ])))
+        XCTAssertEqual(linear.env(from: [:]), ["LINEAR_URL": "https://api.linear.app"])
+        XCTAssertTrue(linear.accepts(linear.env(from: [:])))
+        XCTAssertEqual(linear.env(from: ["LINEAR_URL": " https://linear.example "]), ["LINEAR_URL": "https://linear.example"])
+        XCTAssertFalse(linear.accepts(linear.env(from: ["LINEAR_URL": " "])))
+
+        // An optional default rides along too; a secret never has one.
+        let github = try XCTUnwrap(BotConnectionOperation.Target(BotConnectionFixture.github()))
+        XCTAssertEqual(github.env(from: ["GITHUB_TOKEN": "ghp_1"]), ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": "github.com"])
+        XCTAssertEqual(github.env(from: ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": ""]), ["GITHUB_TOKEN": "ghp_1"])
     }
 
     func testConnectionAnswersUseTheHostsResultShape() {

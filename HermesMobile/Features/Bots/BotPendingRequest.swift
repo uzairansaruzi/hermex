@@ -345,11 +345,17 @@ struct BotConnectionOperation: Equatable {
         let name: String
         let isRequired: Bool
         let isSecret: Bool
-        /// The catalog's value for a non-secret field, which applies when it is left empty.
+        /// The catalog's value for a non-secret field. The field starts with it,
+        /// as on Desktop, because the host never fills a default in by itself.
         let defaultValue: String?
         let prompt: String?
 
         var id: String { name }
+
+        /// What the field holds: the user's edit, else the default it starts with.
+        func value(in values: [String: String]) -> String {
+            values[name] ?? defaultValue ?? ""
+        }
 
         init?(_ json: BotJSON) {
             guard let name = json["name"].text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
@@ -400,7 +406,7 @@ struct BotConnectionOperation: Equatable {
         /// The host lets the user skip any row still open: pending, started,
         /// failed or expired. Connected and skipped rows are already resolved.
         var canSkip: Bool {
-            guard kind != nil, let state else { return false }
+            guard kind != nil, action != nil, let state else { return false }
             return [.pending, .initiated, .failed, .expired].contains(state)
         }
 
@@ -408,7 +414,7 @@ struct BotConnectionOperation: Equatable {
         /// host notices the new account by itself, so the phone sends nothing back.
         /// Only an https link opens: a failed or expired row's link is dead.
         var linkToOpen: URL? {
-            guard kind == .connector, state == .pending || state == .initiated,
+            guard kind == .connector, action != nil, state == .pending || state == .initiated,
                   let connectURL, connectURL.scheme?.lowercased() == "https" else { return nil }
             return connectURL
         }
@@ -425,6 +431,15 @@ struct BotConnectionOperation: Equatable {
         var canConnect: Bool {
             kind == .mcp && (action == .enable || action == .install) && connectURL == nil
                 && (state == .pending || state == .failed)
+        }
+
+        /// The values Connect sends for what the fields hold: trimmed, and an
+        /// emptied field left out.
+        func env(from values: [String: String]) -> [String: String] {
+            requiredEnv.reduce(into: [:]) { env, field in
+                let value = field.value(in: values).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { env[field.name] = value }
+            }
         }
 
         /// True when this row connects with `env`: every required field filled,
