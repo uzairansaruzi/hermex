@@ -511,6 +511,39 @@ final class SessionNavigationStateTests: XCTestCase {
             "second-session"
         )
     }
+
+    func testCompletedSessionListRefreshesWhenTheAppReturnsToForeground() {
+        XCTAssertTrue(
+            SessionListForegroundRefreshPolicy.shouldRefresh(
+                previousPhase: .background,
+                currentPhase: .active,
+                didCompleteInitialLoad: true,
+                isLoading: false
+            )
+        )
+    }
+
+    func testInitialSceneActivationDoesNotDuplicateTheInitialLoad() {
+        XCTAssertFalse(
+            SessionListForegroundRefreshPolicy.shouldRefresh(
+                previousPhase: .inactive,
+                currentPhase: .active,
+                didCompleteInitialLoad: false,
+                isLoading: false
+            )
+        )
+    }
+
+    func testForegroundActivationDoesNotOverlapAnExistingRefresh() {
+        XCTAssertFalse(
+            SessionListForegroundRefreshPolicy.shouldRefresh(
+                previousPhase: .background,
+                currentPhase: .active,
+                didCompleteInitialLoad: true,
+                isLoading: true
+            )
+        )
+    }
 }
 
 private enum DestinationReturnEvent: Equatable {
