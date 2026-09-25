@@ -177,20 +177,8 @@ final class Capture {
             "provider": .string("basic"), "username": .string(secrets.username), "password": .string(secrets.password)
         ]))
         guard try await http("api/auth/me")["provider"].text == "basic" else { throw Failure("unexpected identity provider") }
-        guard let ticket = try await http("api/auth/ws-ticket", body: .object([:]))["ticket"].text, !ticket.isEmpty else {
-            throw Failure("no socket ticket")
-        }
-        var parts = URLComponents(url: secrets.address.appendingPathComponent("api/ws"), resolvingAgainstBaseURL: false)!
-        parts.scheme = secrets.address.scheme == "https" ? "wss" : "ws"
-        let task = session.webSocketTask(with: parts.url!, protocols: ["hermes-gateway-v1", "hermes-gateway-ticket." + ticket])
-        task.maximumMessageSize = 16 * 1024 * 1024
-        task.resume()
-        socket = task
-        defer { task.cancel(with: .normalClosure, reason: nil) }
-        let ready = try await receive(timeout: 30)
-        guard ready["params"]["type"].text == "gateway.ready" else { throw Failure("the socket did not open with gateway.ready") }
-        // The same first frame BotClient sends, so the host treats this socket as Hermex.
-        _ = try await call("client.capabilities", ["server_requests": .bool(true)])
+        defer { socket?.cancel(with: .normalClosure, reason: nil) }
+        let ticket = try await openSocket()
         let profiles = try await call("profiles.list", ["include_sessions": .bool(true)])
 
         var runtimes: [String] = []
@@ -224,11 +212,35 @@ final class Capture {
                 "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
             ]), ticket)
         } catch {
-            do { try await cleanUp(runtimes: runtimes, stored: stored) } catch let cleanup {
+            do {
+                // A timeout or a dropped connection ends the only socket; cleanup needs a live one.
+                if socket?.state != .running { _ = try await openSocket() }
+                try await cleanUp(runtimes: runtimes, stored: stored)
+            } catch let cleanup {
                 throw Failure("\(error); cleanup also failed (\(cleanup)). Remove by hand: runtime ids \(runtimes), stored id \(stored ?? "none")")
             }
             throw error
         }
+    }
+
+    /// Opens a socket the way `BotClient.connect` does: a fresh ticket, the ticket
+    /// subprotocol, `gateway.ready`, then `client.capabilities`. Returns the ticket.
+    private func openSocket() async throws -> String {
+        guard let ticket = try await http("api/auth/ws-ticket", body: .object([:]))["ticket"].text, !ticket.isEmpty else {
+            throw Failure("no socket ticket")
+        }
+        var parts = URLComponents(url: secrets.address.appendingPathComponent("api/ws"), resolvingAgainstBaseURL: false)!
+        parts.scheme = secrets.address.scheme == "https" ? "wss" : "ws"
+        let task = session.webSocketTask(with: parts.url!, protocols: ["hermes-gateway-v1", "hermes-gateway-ticket." + ticket])
+        task.maximumMessageSize = 16 * 1024 * 1024
+        socket?.cancel(with: .normalClosure, reason: nil)
+        task.resume()
+        socket = task
+        let ready = try await receive(timeout: 30)
+        guard ready["params"]["type"].text == "gateway.ready" else { throw Failure("the socket did not open with gateway.ready") }
+        // The same first frame BotClient sends, so the host treats this socket as Hermex.
+        _ = try await call("client.capabilities", ["server_requests": .bool(true)])
+        return ticket
     }
 
     /// Closes every runtime the capture touched, then deletes the stored row and
