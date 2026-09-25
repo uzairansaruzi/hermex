@@ -68,16 +68,34 @@ enum MarkdownDiffFormatter {
 
     /// The styled document for a code fence, or nil when the fence renders as plain code:
     /// it is still streaming, is not diff or patch, is empty, or is past the highlighter's
-    /// size guards (characters, lines, line length).
+    /// size guards (characters, lines, line length). Settled results are cached by source,
+    /// so a body pass from the wrap toggle, Show all, or appearance never re-parses.
     static func document(for code: String, language: String?, isStreaming: Bool) -> MarkdownDiffDocument? {
         guard !isStreaming,
               let normalized = MarkdownHighlightPolicy.normalizedLanguage(from: language),
-              languages.contains(normalized),
-              // Diff reaches `.highRiskLanguage` only after the empty and size guards pass.
-              MarkdownHighlightPolicy.decision(for: code, language: normalized, isStreaming: false)
-                == .plain(reason: .highRiskLanguage, normalizedLanguage: normalized)
+              languages.contains(normalized)
         else { return nil }
-        return parse(code)
+
+        let key = code as NSString
+        if let cached = cache.object(forKey: key) { return cached.document }
+        // Diff reaches `.highRiskLanguage` only after the empty and size guards pass.
+        let document = MarkdownHighlightPolicy.decision(for: code, language: normalized, isStreaming: false)
+            == .plain(reason: .highRiskLanguage, normalizedLanguage: normalized) ? parse(code) : nil
+        cache.setObject(CacheBox(document), forKey: key)
+        return document
+    }
+
+    /// Settled diff documents keyed by the exact fence source (diff and patch parse the
+    /// same). `NSCache` evicts under memory pressure and is thread-safe.
+    private static let cache: NSCache<NSString, CacheBox> = {
+        let cache = NSCache<NSString, CacheBox>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    private final class CacheBox {
+        let document: MarkdownDiffDocument?
+        init(_ document: MarkdownDiffDocument?) { self.document = document }
     }
 
     /// Classifies every line. An `@@ -a,b +c,d @@` header opens a hunk whose counts
@@ -96,7 +114,8 @@ enum MarkdownDiffFormatter {
             let kind: MarkdownDiffLineKind
             if text.hasPrefix("@@") {
                 kind = .hunk
-                remaining = hunkCounts(in: text).flatMap { $0.old + $0.new > 0 ? $0 : nil }
+                // Compared, never summed: a header like `-1,9223372036854775807` must not overflow.
+                remaining = hunkCounts(in: text).flatMap { $0.old > 0 || $0.new > 0 ? $0 : nil }
             } else if var counts = remaining, let counted = countedKind(of: text) {
                 kind = counted
                 switch counted {

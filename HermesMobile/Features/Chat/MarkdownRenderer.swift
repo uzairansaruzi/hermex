@@ -461,6 +461,7 @@ private struct ChatCodeBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @State private var highlightedCode: NSAttributedString?
     /// Whether a long settled diff shows every line instead of the first `collapsedLineLimit`.
     @State private var showsAllDiffLines = false
@@ -573,6 +574,8 @@ private struct ChatCodeBlock: View {
 
         if diff.isCollapsible {
             Button {
+                // Pins the reader's offset while the block grows or shrinks by up to 1,920 rows.
+                chatDisclosureToggled()
                 showsAllDiffLines.toggle()
             } label: {
                 HStack(spacing: 6) {

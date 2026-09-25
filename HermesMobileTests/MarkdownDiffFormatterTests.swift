@@ -110,6 +110,16 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         """), [.hunk, .removed, .added, .fileHeader])
     }
 
+    /// Agent-written counts can be anything; an `Int.max` count must bound the hunk, not trap.
+    func testMaximalHunkCountsDoNotOverflow() {
+        XCTAssertEqual(kinds("""
+        @@ -1,9223372036854775807 +1,9223372036854775807 @@
+        -a
+        +b
+        --- c
+        """), [.hunk, .removed, .added, .removed])
+    }
+
     /// LLMs write a bare `@@`: no counts bound the hunk, so prefix rules apply and a
     /// `--- `/`+++ ` pair reads as the next file's headers.
     func testBareHunkHeaderFallsBackToPrefixRules() {
