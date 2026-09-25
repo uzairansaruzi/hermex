@@ -149,7 +149,7 @@ private struct BotQuickReplyEditSheet: View {
                         .lineLimit(1...8)
                         .focused($isFocused)
                 } footer: {
-                    Text("Text only. It fills the Bot Chat draft exactly as written; a leading /skill runs as a skill when you send.")
+                    Text("Text only. It fills the Bot Chat draft; a leading /skill runs as a skill when you send.")
                 }
             }
             .navigationTitle(isNew ? Text("Add Reply") : Text("Edit Reply"))
