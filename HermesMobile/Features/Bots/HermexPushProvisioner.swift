@@ -26,7 +26,9 @@ import UserNotifications
     /// A step that did not finish, in the step's own words, so the user knows what to retry.
     struct Failure: Equatable { let title: String; let message: String }
 
-    enum Phase: Equatable { case idle, enabling(Step), disabling, savingPreferences, refreshing, failed(Failure) }
+    /// `checkingPermission` covers the iOS prompt at the start of setup: it blocks re-entry
+    /// but names no host step, since none has run yet.
+    enum Phase: Equatable { case idle, checkingPermission, enabling(Step), disabling, savingPreferences, refreshing, failed(Failure) }
 
     let server: URL
     private(set) var pairing: PushPairing?
@@ -74,7 +76,7 @@ import UserNotifications
 
     var isWorking: Bool {
         switch phase {
-        case .enabling, .disabling, .savingPreferences, .refreshing: return true
+        case .checkingPermission, .enabling, .disabling, .savingPreferences, .refreshing: return true
         case .idle, .failed: return false
         }
     }
@@ -130,12 +132,13 @@ import UserNotifications
         guard !isWorking else { return }
         guard let connection else { return fail(Step.relayURL.title, HermexPushFailure.noConnection) }
         completed = []
-        var step = Step.relayURL
-        phase = .enabling(step)
+        phase = .checkingPermission
         // Permission comes first: a phone that cannot show a notification must not get as
         // far as reinstalling the plugin and restarting the gateway.
         notificationsOff = !(await notificationsAllowed())
         guard !notificationsOff else { phase = .idle; return }
+        var step = Step.relayURL
+        phase = .enabling(step)
         let client = dashboard(connection)
         do { try await client.signIn() } catch { return failSignIn(error) }
         do {

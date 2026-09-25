@@ -115,7 +115,8 @@ import SwiftUI
                 notificationsOffRow(title: String(localized: "Notifications are off for Hermex"),
                                     message: String(localized: "Allow notifications for Hermex in iOS Settings, then turn this on again."))
             }
-            if provisioner.isWorking || provisioner.failure != nil {
+            // No step rows while iOS asks for permission: no host step has started yet.
+            if (provisioner.isWorking && provisioner.phase != .checkingPermission) || provisioner.failure != nil {
                 ForEach(HermexPushProvisioner.Step.allCases) { step in stepRow(step) }
             }
             Text("Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext.")

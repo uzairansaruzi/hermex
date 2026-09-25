@@ -275,10 +275,13 @@ import XCTest
         PushHTTPFixture.handler = { _ in nil }
         let permission = FakeNotificationPermission(status: .notDetermined, grants: true)
         let provisioner = makeProvisioner(server: serverA, registrar: registrar, notifications: permission)
+        var phaseDuringPrompt: HermexPushProvisioner.Phase?
+        permission.onRequest = { phaseDuringPrompt = provisioner.phase }
 
         await provisioner.enable()
 
         XCTAssertEqual(permission.hostCallsBeforeRequest, [0])
+        XCTAssertEqual(phaseDuringPrompt, .checkingPermission, "The prompt claims no host step")
         XCTAssertFalse(provisioner.notificationsOff)
         XCTAssertNil(provisioner.failure)
         XCTAssertNotNil(registrar.pairing(for: serverA))
@@ -577,6 +580,8 @@ private final class FakeNotificationPermission: ResponseCompletionNotificationSc
     let grants: Bool
     private(set) var hostCallsBeforeRequest: [Int] = []
     var requests: Int { hostCallsBeforeRequest.count }
+    /// Runs while the prompt is up, so a test can read the provisioner's state behind it.
+    var onRequest: (@MainActor () -> Void)?
 
     init(status: UNAuthorizationStatus, grants: Bool = true) {
         self.status = status
@@ -587,6 +592,7 @@ private final class FakeNotificationPermission: ResponseCompletionNotificationSc
 
     func requestAuthorization() async -> Bool {
         hostCallsBeforeRequest.append(PushHTTPFixture.calls.count)
+        await onRequest?()
         if status == .notDetermined { status = grants ? .authorized : .denied }
         return status == .authorized
     }
