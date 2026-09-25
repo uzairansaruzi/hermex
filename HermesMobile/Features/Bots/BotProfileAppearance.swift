@@ -199,6 +199,8 @@ struct BotAvatarView: View {
     let size: CGFloat
     /// Photos never move; a drawn face blinks unless the caller asks for a frozen frame.
     var motion: BotFaceMotion = .idle
+    /// Replaces the pinned expression on a drawn face, for a state the title shows; photos ignore it.
+    var expression: BotAvatarExpression? = nil
 
     var body: some View {
         if let avatar {
@@ -206,8 +208,14 @@ struct BotAvatarView: View {
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         } else {
-            BotAnimatedFaceView(name: profile.id, appearance: BotProfileAppearance(profile: profile), size: size, motion: motion)
+            BotAnimatedFaceView(name: profile.id, appearance: appearance, size: size, motion: motion)
         }
+    }
+
+    private var appearance: BotProfileAppearance {
+        var appearance = BotProfileAppearance(profile: profile)
+        if let expression { appearance.expression = expression.rawValue }
+        return appearance
     }
 }
 

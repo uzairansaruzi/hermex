@@ -171,12 +171,13 @@ import SwiftUI
                     HStack(spacing: 8) {
                         BotAvatarView(profile: model.profile,
                                       avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id],
-                                      size: 30, motion: titleFaceMotion)
+                                      size: 30, motion: titleFaceMotion, expression: model.titleFace.expression)
                         Text(model.profile.name).font(.headline).foregroundStyle(.primary).lineLimit(1)
                     }
                     .modifier(BotChatTitlePillFallback())
                 }
                 .accessibilityLabel(model.profile.name)
+                .accessibilityValue(model.titleFace.accessibilityValue ?? "")
                 .accessibilityHint(Text("Opens this bot’s profile."))
             }
             if model.delegatedWork.hasWorkers {
@@ -327,10 +328,11 @@ import SwiftUI
     private var isStreaming: Bool { [.running, .needsAttention, .stopping].contains(model.turn) }
 
     /// The title face sways for one beat after work starts or the app returns mid-turn,
-    /// then holds a still lean; it never moves while the app is inactive.
+    /// then holds a still lean; it never moves while the app is inactive. Waiting and
+    /// failed faces only blink, so an approval never runs the 15 fps sway.
     private var titleFaceMotion: BotFaceMotion {
         guard scenePhase == .active else { return .still }
-        return isStreaming ? .working(since: workingBeat.start) : .idle
+        return model.titleFace == .working ? .working(since: workingBeat.start) : .idle
     }
 
     private var showsScrollToBottomButton: Bool {

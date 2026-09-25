@@ -6,6 +6,30 @@ import Observation
     static let canonicalTitle = "Bot Chat"
     enum ConnectionState { case disconnected, recovering, connected }
     enum TurnState { case unknown, idle, submitting, running, needsAttention, stopping, uncertain, interrupted }
+    /// What the Bot Chat title face shows for the current turn (#757). Waiting and failed
+    /// override the pinned expression, since a pin is only the resting face; every other
+    /// surface keeps the pin. Only `.working` moves beyond a blink.
+    enum TitleFace {
+        case resting, working, waiting, failed
+
+        /// The eyes that replace the pinned expression, or nil to keep it.
+        var expression: BotAvatarExpression? {
+            switch self {
+            case .waiting: return .curious
+            case .failed: return .sad
+            case .resting, .working: return nil
+            }
+        }
+
+        /// What VoiceOver adds after the bot's name; nil when the face shows no state.
+        var accessibilityValue: String? {
+            switch self {
+            case .waiting: return String(localized: "Needs attention")
+            case .failed: return String(localized: "Turn failed")
+            case .resting, .working: return nil
+            }
+        }
+    }
     struct StopAction: Equatable { let generation: Int; let revision: Int; let runtime: String }
     /// The identity an answer is bound to, captured when the user taps and
     /// revalidated at the socket write so a stale card cannot answer a newer
@@ -245,6 +269,18 @@ import Observation
     var mayStop: Bool {
         connectionState == .connected && [.running, .needsAttention].contains(turn)
             && !localOperation && !uncertainStop
+    }
+
+    /// Waiting covers any blocking request, including one the phone cannot read. Failed
+    /// lasts while the host keeps the turn's error, so it survives reopening the chat and
+    /// clears on the next send; a user Stop rests. A disconnect resets `turn`, so it rests too.
+    var titleFace: TitleFace {
+        switch turn {
+        case .needsAttention: return .waiting
+        case .interrupted: return turnFailed ? .failed : .resting
+        case .running, .stopping: return .working
+        case .unknown, .idle, .submitting, .uncertain: return .resting
+        }
     }
 
     var mayGuide: Bool {

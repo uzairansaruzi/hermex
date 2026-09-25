@@ -391,6 +391,12 @@ mid-turn, then holds a still lean that only blinks (`BotWorkingBeat` owns the
 rule). An arriving approval, opening the chat onto one, stopping, and the
 `.unknown` reconciliations of stream events and same-turn reconnects never
 start a beat, and the face is still while the app is inactive.
+The title face also reads the turn (`BotConversation.titleFace`): while the bot
+needs attention (any blocking request, readable or not) it shows Curious eyes and
+only blinks, and after a host-reported failure it shows Sad eyes until the next
+send; a user Stop rests. These state faces override a pinned expression, and
+VoiceOver adds "Needs attention" or "Turn failed" after the name. Inbox rows,
+pinned tiles, rooms, chips and the Live Activity avatar keep the pinned expression.
 Reduce Motion, the shape and expression picker tiles, photos and the extensions
 render one still frame; inbox rows and pinned tiles blink.
 The drawn face's rest `expression` (sixteen Bloub-derived eye geometries in

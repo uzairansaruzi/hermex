@@ -89,7 +89,7 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
 /// The working face's `TimelineView` schedule: 15 fps for `beat` seconds from `start`,
 /// then only the bot's blink edges. `start` is when the current beat began (the turn
 /// started working, or the app came back to the foreground mid-turn), so a two-hour
-/// run or an unattended approval stops repainting after the beat.
+/// run stops repainting after the beat. A waiting face never uses it (#757).
 struct BotWorkingSchedule: TimelineSchedule, Equatable {
     static let beat = 30.0
     static let frameInterval = 1.0 / 15
@@ -130,7 +130,7 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
 /// `.unknown` on many stream events and on a same-turn reconnect; those, an arriving
 /// approval and `.running` to `.stopping` never start one, so a long turn settles.
 struct BotWorkingBeat: Equatable {
-    /// `.distantPast` until the first beat, so a chat opened onto a pending approval holds the lean.
+    /// `.distantPast` until the first beat, so a face that never saw work start holds the lean.
     private(set) var start = Date.distantPast
     private var armed = true
 
