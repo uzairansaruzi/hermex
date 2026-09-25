@@ -436,9 +436,10 @@ it for older members (0.21.4 and later); section order and empty sections stay
 in each Desktop's plugin storage (`bot-sections-v1`) and never reach the phone.
 The phone groups by `sectionId`, heads each section with the name most members
 carry (ties go to the first member in `profiles.list` order), and treats a bot
-with no name, or a null `sectionId` after a delete, as unfiled. Sections sort A–Z (`localizedStandardCompare`, ties by id); unfiled bots
-and every group room follow as one final block, headed "Other chats" only when a
-named section is on screen. With no named sections the list has no headers.
+with no name, or a null `sectionId` after a delete, as unfiled. Sections sort
+A–Z (`localizedStandardCompare`, ties by id); unfiled bots and every group room
+follow as one final block, headed "Other chats" only when a named section is on
+screen. With no named sections the list has no headers.
 Rooms are never sectioned: Desktop keeps a room's section on the machine that
 filed it. Section changes arrive with the next roster read (open, pull to
 refresh, or a `sessions.changed` reload), as pin and hide changes do. The phone
