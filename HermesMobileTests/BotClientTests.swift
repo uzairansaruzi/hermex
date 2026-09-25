@@ -647,6 +647,49 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 1)
     }
 
+    func testReactAllowlistAdmitsYourOwnReactionAndRejectsEverythingElse() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        _ = try await client.call("message.react", ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍")])
+        _ = try await client.call("message.react", ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .null])
+        XCTAssertEqual(socket.sentTextFrames, 2)
+
+        let rejected: [[String: BotJSON]] = [
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍"), "author": .string("agent")],
+            ["session_id": .string("runtime"), "newest_role": .string("assistant"), "emoji": .string("👍")],
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍"), "newest_role": .string("user")],
+            ["session_id": .string("runtime"), "row_id": .number(4.5), "emoji": .string("👍")],
+            ["session_id": .string("runtime"), "row_id": .string("42"), "emoji": .string("👍")],
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("  ")],
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .bool(true)],
+            ["session_id": .string("runtime"), "row_id": .number(42)],
+            ["session_id": .string(""), "row_id": .number(42), "emoji": .string("👍")]
+        ]
+        for params in rejected {
+            do {
+                _ = try await client.call("message.react", params)
+                XCTFail("Invalid message.react call dispatched: \(params)")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 2)
+    }
+
     func testCancelCompletionKeepsSocketAvailableWithoutResendingIt() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

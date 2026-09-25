@@ -139,6 +139,9 @@ import Observation
     private(set) var requestResolution: BotRequestResolution?
     /// The last action the host confirmed, for the chat view's haptic.
     private(set) var feedback: BotFeedback?
+    /// Rows with a `message.react` in flight. Their Tapbacks and chips stay
+    /// inert until the reply, so a late reply never overwrites a newer choice.
+    private(set) var reactingRowIDs: Set<Int> = []
     /// On once a snapshot shows the turn busy, so the snapshot that settles it
     /// idle plays one completion. A Stop, an interruption, a new runtime and
     /// `suspend()` turn it off: a stopped turn, one that ended while the app was
@@ -439,6 +442,61 @@ import Observation
             "profile": .string(profile.id)
         ], owner: generation)
         return BotFilePathSearch.matches(from: reply)
+    }
+
+    /// Whether the settled row can take a Tapback now. Live rows have no
+    /// `rowID`, and a chat still reconnecting shows its rows read-only.
+    func mayReact(to message: ChatMessage) -> Bool {
+        guard connectionState == .connected, runtime != nil, let rowID = message.rowID else { return false }
+        return !reactingRowIDs.contains(rowID)
+    }
+
+    /// Sets your Tapback on one settled row, or clears it with nil. Picking
+    /// the emoji you already have also clears it: the host toggles a repeat,
+    /// so the phone always sends the intent (null) rather than the emoji again.
+    /// Not optimistic: the row changes only from the host's reply, which lists
+    /// the row's reactions in full. A rejected call leaves the row as it was
+    /// and says so; a lost reply is never resent, and the next full snapshot
+    /// shows what the host kept.
+    func react(to message: ChatMessage, emoji: String?) async {
+        guard mayReact(to: message), let rowID = message.rowID, let runtime,
+              let current = messages.first(where: { $0.rowID == rowID }) else { return }
+        let mine = current.botReactions.first { $0.author == .user }?.emoji
+        let intent = emoji == mine ? nil : emoji
+        guard intent != nil || mine != nil else { return }
+        let owner = generation
+        reactingRowIDs.insert(rowID)
+        defer { if generation == owner { reactingRowIDs.remove(rowID) } }
+        do {
+            let reply = try await request("message.react", [
+                "session_id": .string(runtime), "row_id": .number(Double(rowID)),
+                "emoji": intent.map(BotJSON.string) ?? .null
+            ], owner: owner) { [weak self] in
+                guard let self else { throw BotFailure.stale }
+                try self.check(owner)
+                guard self.runtime == runtime else { throw BotFailure.stale }
+            }
+            guard reply["row_id"].integer == rowID, reply["reactions"].list != nil else { throw BotFailure.unsupported }
+            applyReactions(rowID: rowID, reply["reactions"])
+        } catch {
+            guard generation == owner, !Task.isCancelled, error as? BotFailure != .stale else { return }
+            if case BotFailure.rejected = error {
+                // The host answered over a live socket: nothing changed.
+            } else if error as? BotFailure == .unsupported {
+                // An unreadable reply: the write may have landed. Re-read, never resend.
+                fullSnapshotNeeded = true; snapshotDirty = true; scheduleRefresh()
+            } else {
+                disconnected(error)
+            }
+            errorMessage = String(localized: "Could not update the reaction.")
+        }
+    }
+
+    /// Puts the host's reaction list on the row it names; an unknown row is ignored.
+    private func applyReactions(rowID: Int?, _ reactions: BotJSON) {
+        guard let rowID, reactions.list != nil,
+              let index = messages.firstIndex(where: { $0.rowID == rowID }) else { return }
+        messages[index] = messages[index].replacingBotReactions(reactions.jsonValue)
     }
 
     /// Ask Hermex on a passage selected in the transcript. Durable straight
@@ -1338,6 +1396,12 @@ import Observation
         let type = event["type"].text ?? ""
         // A newer frame than any snapshot already in flight, like a live request.
         if applyConnectionEvent(type: type, payload: event["payload"]) { requestRevision += 1 }
+        // The agent's `react_to_message` tool paints its Tapback live; the
+        // payload carries the row's full list, so it changes nothing else.
+        if type == "message.reaction" {
+            applyReactions(rowID: event["payload"]["row_id"].integer, event["payload"]["reactions"])
+            if !discontinuity { return }
+        }
         if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
             "subagent.tool", "subagent.complete"].contains(type) {
             delegatedWork.noteSubagentEvent()
@@ -1472,6 +1536,7 @@ import Observation
         wire.close()
         localOperation = false; submittingPrompt = nil
         serverRequests = []; connectionOperation = nil; answeringRequestID = nil
+        reactingRowIDs = []
         connectionState = .disconnected; turn = .unknown
         syncLiveActivity()
     }

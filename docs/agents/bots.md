@@ -118,8 +118,8 @@ Settled messages reuse the Sessions transcript's long-press seam.
 `chatMessageContextMenu` supplies the menu from a plain
 `[ChatMessageActionItem]`, so a transcript names its own actions without owning
 a chat view model; `BotMessageActions` builds that list, and for a Bot it is
-Copy alone over the Markdown source, by the canonical-chat policy of #481. The
-host does support rewind (`prompt.submit` with `confirm_truncate` and a
+Copy over the Markdown source, by the canonical-chat policy of #481. The host
+does support rewind (`prompt.submit` with `confirm_truncate` and a
 `truncate_before_row_id` taken from the snapshot's durable `row_id`) and
 `session.branch`; Bot Chat does not offer edit, regenerate or branch yet
 (#745). Group rooms use the same seam. Under a settled message, one reply
@@ -129,6 +129,26 @@ Settings → Chat → Message Timestamps; a dated separator (`TranscriptTimeline
 opens the window and any row 30+ minutes after the previous stamped one, and
 shows even with that setting off. Later footer parts join this row rather than
 adding one.
+
+Bot Chat rows take Desktop's Tapbacks (#761). `session.resume` rows carry the
+durable `row_id` (projected as `ChatMessage.rowID`) and
+`display_metadata.reactions` (`[{emoji, author: user|agent, at?, seen?}]`, one
+per author, read tolerantly as `BotReaction`). A settled reply's footer has a
+"…" menu holding React, Desktop's six quick reactions as one inline row; a
+prompt's long-press menu puts the same row above Copy, plus Remove Reaction
+once you have one. Chips follow in the footer: yours removes it, the Bot's is
+static ("reacted by <Bot>"). `message.react({session_id, row_id, emoji})` is a
+typed `BotClient` exception (`emoji` a non-empty string or null; `author` and
+`newest_role` refused). The host toggles a repeated emoji, so picking yours
+sends null. Writes are not optimistic and serialize per row
+(`BotConversation.reactingRowIDs`): the reply's full list patches the row, a
+rejection leaves it and says so, and a lost reply is never resent; the next full
+snapshot decides. The agent's live `message.reaction` event patches its row
+the same way. Live rows, rooms and the offline cache have no reactions.
+Reactions are display-only sync with Desktop unless the host enables
+`display.message_reactions` (a Desktop Appearance toggle Hermex never writes);
+then the next user turn tells the model once, and Desktop sessions give the
+agent `react_to_message`.
 
 Settled bot replies and room member messages sit in a `ResponseTextSelection`
 document, so text selects in place as it does in Sessions. The scroll-view
@@ -183,13 +203,8 @@ while its prompt is only live and once the host has persisted it mid-turn
 (`activePromptMessageID`: the last prompt or delivery dated at or after the
 turn's start, since a slash skill's row shows the invocation, not the
 in-flight text). Rooms never fold. Tool
-output is text only. `message.react` and `learning.frames` are deliberately
-not wired. The host stores reactions in each message's
-`display_metadata.reactions`, which the snapshot passes through, and emits the
-agent's own as `message.reaction`; they are stored and synced whatever the host
-config (`display.message_reactions` only decides whether the model sees them
-and can react). Hermex neither shows nor sends them yet (#761). The frames are
-terminal-sized renders.
+output is text only. `learning.frames` is deliberately not wired: the frames
+are terminal-sized renders.
 
 Delegated work stays attached to its owning Bot conversation. A toolbar count
 appears only while `subagent.list({session_id})` reports live workers; it opens a

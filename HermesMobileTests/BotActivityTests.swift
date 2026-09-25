@@ -149,6 +149,49 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(projected.messages.map(\.timestamp), [1_790_251_200.5, nil, nil])
     }
 
+    func testSnapshotProjectionCarriesTheHostRowIDAndDropsNonIntegers() {
+        let projected = BotTranscriptProjection.project(history: [
+            .object(["role": .string("user"), "text": .string("Ping"), "row_id": .number(41)]),
+            .object(["role": .string("assistant"), "text": .string("Pong"), "row_id": .string("42")]),
+            .object(["role": .string("assistant"), "text": .string("Later"), "row_id": .number(43.5)]),
+            .object(["role": .string("assistant"), "text": .string("Legacy")])
+        ], root: "root")
+        XCTAssertEqual(projected.messages.map(\.rowID), [41, nil, nil, nil])
+    }
+
+    func testReactionsParseTolerantlyOnePerAuthor() {
+        let projected = BotTranscriptProjection.project(history: [
+            .object(["role": .string("assistant"), "text": .string("Done"), "row_id": .number(7),
+                     "display_metadata": .object(["reactions": .array([
+                        .string("❤️"),
+                        .object(["emoji": .string(""), "author": .string("user")]),
+                        .object(["emoji": .string("👍"), "author": .string("stranger")]),
+                        .object(["emoji": .number(1), "author": .string("user")]),
+                        .object(["emoji": .string("👍"), "author": .string("user"), "at": .number(1), "seen": .bool(true)]),
+                        .object(["emoji": .string("😂"), "author": .string("user")]),
+                        .object(["emoji": .string("‼️"), "author": .string("agent"), "future": .null])
+                     ])])])
+        ], root: "root")
+        XCTAssertEqual(projected.messages.first?.botReactions, [
+            BotReaction(emoji: "👍", author: .user), BotReaction(emoji: "‼️", author: .agent)
+        ])
+        XCTAssertEqual(ChatMessage(role: "user", content: "x", timestamp: nil, messageId: "m").botReactions, [])
+    }
+
+    func testReplacingReactionsKeepsOtherMetadataAndAnEmptyListRemovesTheKey() {
+        let message = ChatMessage(role: "assistant", content: "Done", timestamp: 5, messageId: "root/1",
+                                  displayMetadata: ["delivery": .string("async")], rowID: 7)
+        let reacted = message.replacingBotReactions(.array([.object(["emoji": .string("❤️"), "author": .string("user")])]))
+        XCTAssertEqual(reacted.botReactions, [BotReaction(emoji: "❤️", author: .user)])
+        XCTAssertEqual(reacted.displayMetadata?["delivery"], .string("async"))
+        XCTAssertEqual(reacted.rowID, 7)
+        XCTAssertEqual(reacted.id, message.id)
+
+        let cleared = reacted.replacingBotReactions(.array([]))
+        XCTAssertEqual(cleared.displayMetadata, ["delivery": .string("async")])
+        XCTAssertEqual(cleared.botReactions, [])
+    }
+
     func testSnapshotProjectionUsesTypedDelegationDeliveryInsteadOfUserAuthorship() throws {
         let report = "[ASYNC DELEGATION BATCH COMPLETE — deleg_123]\nFull worker report"
         let projected = BotTranscriptProjection.project(history: [

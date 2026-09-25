@@ -40,18 +40,35 @@ enum TranscriptMessageMetaPolicy {
 }
 
 /// The row under a message bubble: timestamp, copy, and completed-response actions.
-/// User rows read `[time][copy]` against the trailing edge, assistant rows
-/// `[copy][actions][time]` against the leading edge, so Copy always sits at the
-/// outer edge and RTL mirrors both through the semantic alignments.
-struct ChatMessageMetaRow: View {
+/// User rows read `[accessory][time][copy]` against the trailing edge, assistant
+/// rows `[copy][actions][accessory][time]` against the leading edge, so Copy
+/// always sits at the outer edge and RTL mirrors both through the semantic
+/// alignments. The accessory is the Bot reply footer's reactions; Sessions has none.
+struct ChatMessageMetaRow<Accessory: View>: View {
     let isUserMessage: Bool
     let timeText: String?
     let onCopy: (() -> Void)?
-    var actionMenu: ChatMessageActionMenu? = nil
+    var actionMenu: ChatMessageActionMenu?
+    let accessory: Accessory
+
+    init(
+        isUserMessage: Bool,
+        timeText: String?,
+        onCopy: (() -> Void)?,
+        actionMenu: ChatMessageActionMenu? = nil,
+        @ViewBuilder accessory: () -> Accessory
+    ) {
+        self.isUserMessage = isUserMessage
+        self.timeText = timeText
+        self.onCopy = onCopy
+        self.actionMenu = actionMenu
+        self.accessory = accessory()
+    }
 
     var body: some View {
         HStack(spacing: 4) {
             if isUserMessage {
+                accessory
                 time
                 copyButton
             } else {
@@ -66,6 +83,7 @@ struct ChatMessageMetaRow: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("More")
                 }
+                accessory
                 time
             }
         }
@@ -87,6 +105,14 @@ struct ChatMessageMetaRow: View {
         if let onCopy {
             ChatCopyButton(action: onCopy)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+extension ChatMessageMetaRow where Accessory == EmptyView {
+    init(isUserMessage: Bool, timeText: String?, onCopy: (() -> Void)?, actionMenu: ChatMessageActionMenu? = nil) {
+        self.init(isUserMessage: isUserMessage, timeText: timeText, onCopy: onCopy, actionMenu: actionMenu) {
+            EmptyView()
         }
     }
 }

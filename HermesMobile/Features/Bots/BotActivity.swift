@@ -155,6 +155,7 @@ struct BotSettledActivity: Identifiable, Equatable {
 /// Projects the snapshot's `messages` rows into text messages plus settled
 /// activity. Message identity stays `<root>/<row index>`, so ids are stable
 /// across refreshes and unaffected by how many tool rows sit between messages.
+/// The host's durable `row_id` rides along as `rowID` for `message.react`.
 enum BotTranscriptProjection {
     static func project(history: [BotJSON], root: String) -> (messages: [ChatMessage], activity: [BotSettledActivity]) {
         var messages: [ChatMessage] = []
@@ -203,7 +204,8 @@ enum BotTranscriptProjection {
                     timestamp: row["timestamp"].number,
                     messageId: id,
                     displayKind: steerText != nil ? ChatMessage.steerDisplayKind : displayKind,
-                    displayMetadata: row["display_metadata"].argumentDictionary
+                    displayMetadata: row["display_metadata"].argumentDictionary,
+                    rowID: row["row_id"].integer
                 ))
             default:
                 continue
