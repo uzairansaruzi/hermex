@@ -21,7 +21,10 @@ see [Push provisioning](bots.md#push-provisioning) and
   and a call count. Title, subtitle, body, profile name, and request id stay
   inside the sealed blob, which the relay cannot open.
 - **App.** `HermesMobile/Push/` provisions the host, stores the pairing,
-  registers the device token with every paired relay, and routes taps.
+  registers the device token with every paired relay, and routes taps. The
+  app target carries the Time Sensitive entitlement, so the relay's
+  non-reply banners (approval, clarify, turn error) can break through a Focus
+  when the user allows it; the extension leaves the interruption level alone.
 - **Notification Service Extension.** `HermesNotificationService` opens the
   sealed preview on device with the preview key and rewrites the banner. On
   any failure the banner stays content-free.
