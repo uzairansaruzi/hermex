@@ -60,10 +60,10 @@ addresses display errors even before a transport exists. Cancellation invalidate
 the attempt before late replies can save credentials or dismiss the screen.
 The synchronous Keychain write is the commit point. Saved state changes with it;
 old-connection cleanup then finishes independently of sheet cancellation and the
-committed operation remains successful. Main-app ATS allows plain HTTP to everything
-scheme inference sends over HTTP: `NSAllowsLocalNetworking` for local and single-label
-names, CIDR exceptions for the private/local and Tailscale IP ranges, plus `ts.net`
-with subdomains for an explicit `http://` Tailscale name. Public hosts still require HTTPS.
+committed operation remains successful. Main-app ATS allows plain HTTP to `.local` and
+single-label names through `NSAllowsLocalNetworking`, private/local and Tailscale IPs
+through CIDR exceptions, and explicit `http://` Tailscale names through the `ts.net`
+subdomain exception. Public hosts still require HTTPS.
 A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable host,
 a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
 status. The inbox and chat use the same copy for the messages they show.
