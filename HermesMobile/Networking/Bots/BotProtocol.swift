@@ -168,3 +168,76 @@ extension BotTransport {
         try await call(method, params, validateDispatch: nil)
     }
 }
+
+/// The public `GET /api/status` fields the connection screen shows. Every field is
+/// optional because hosts add, omit and rename them between releases.
+struct BotHostStatus: Equatable {
+    var version: String?
+    var gatewayRunning: Bool?
+    /// `starting`, `running`, `draining`, `degraded`, `startup_failed` or `stopped` at
+    /// the pin; any other value is shown as unknown.
+    var gatewayState: String?
+    /// Null after a clean stop.
+    var gatewayExitReason: String?
+    /// Seconds since the gateway's last heartbeat, set only while its process is alive
+    /// but wedged.
+    var heartbeatStale: Double?
+    var platformsConnected: Int?
+    var platformsConfigured: Int?
+
+    init(_ json: BotJSON) {
+        version = json["version"].text
+        gatewayRunning = json["gateway_running"].flag
+        gatewayState = json["gateway_state"].text
+        gatewayExitReason = json["gateway_exit_reason"].text
+        heartbeatStale = json["gateway_heartbeat_stale_s"].number
+        platformsConnected = json["components"]["platforms"]["connected"].integer
+        platformsConfigured = json["components"]["platforms"]["configured"].integer
+    }
+}
+
+/// Why the status probe produced no status. Kept apart from `BotFailure`, whose copy
+/// is about chats.
+enum BotHostProbeFailure: Error, Equatable {
+    /// The transport failed; carries the system's reason.
+    case unreachable(String)
+    /// Something in front of Hermes refused the public route: a 401 or 403, or a
+    /// redirect to another host such as an access sign-in page.
+    case blocked
+    case answered(Int)
+    /// A 200 whose body is not a JSON object.
+    case notHermes
+}
+
+/// One unauthenticated `GET /api/status` on its own short-lived session. It sends no
+/// cookies or credentials, so checking never counts against the host's sign-in limit.
+struct BotHostStatusProbe {
+    let configuration: URLSessionConfiguration
+
+    init(configuration: URLSessionConfiguration = .ephemeral) {
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 15
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil
+        self.configuration = configuration
+    }
+
+    func check(_ address: URL) async -> Result<BotHostStatus, BotHostProbeFailure> {
+        let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
+        let url = BotEndpoint.status.url(base: address)
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let response = response as? HTTPURLResponse else { return .failure(.notHermes) }
+            if response.url?.host != url.host || [401, 403].contains(response.statusCode) { return .failure(.blocked) }
+            guard response.statusCode == 200 else { return .failure(.answered(response.statusCode)) }
+            guard let json = try? JSONDecoder().decode(BotJSON.self, from: data), json.fields != nil else {
+                return .failure(.notHermes)
+            }
+            return .success(BotHostStatus(json))
+        } catch {
+            return .failure(.unreachable(error.localizedDescription))
+        }
+    }
+}

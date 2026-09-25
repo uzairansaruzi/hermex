@@ -279,6 +279,58 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertFalse(model.isConnecting)
         XCTAssertEqual(wire.calls, 0, "A dismissed attempt cannot load the roster or save credentials")
     }
+
+    func testStatusCheckReadsOnlyThisServersSavedHost() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        var probed: [URL] = []
+        var relayServers: [URL] = []
+        let reply = BotHostStatus(.object(["version": .string("0.21.5")]))
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { _ in },
+                                       probe: { probed.append($0); return .success(reply) },
+                                       relay: { relayServers.append($0); return URL(string: "https://push.example")! })
+        model.load(); await model.checkStatus()
+        XCTAssertTrue(probed.isEmpty, "No saved connection means no probe")
+        XCTAssertNil(model.hostStatus)
+
+        let saved = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "pw")
+        try store.save(saved, server: server)
+        model.load(); await model.checkStatus()
+        XCTAssertEqual(probed, [saved.address])
+        XCTAssertEqual(model.hostStatus, .reachable(reply))
+        XCTAssertEqual(relayServers, [server, server], "Notification state is read for this server only")
+        XCTAssertEqual(model.notificationRelay?.host, "push.example")
+    }
+
+    func testCancelAndNewerChecksDropALateStatusReply() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!,
+                                     username: "me", password: "pw"), server: server)
+        var pending: [CheckedContinuation<Result<BotHostStatus, BotHostProbeFailure>, Never>] = []
+        var parked = expectation(description: "First probe in flight")
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { _ in },
+                                       probe: { _ in await withCheckedContinuation { pending.append($0); parked.fulfill() } },
+                                       relay: { _ in nil })
+        model.load()
+        let first = Task { await model.checkStatus() }
+        await fulfillment(of: [parked], timeout: 3)
+        XCTAssertEqual(model.hostStatus, .checking)
+        model.cancel()
+        pending[0].resume(returning: .success(BotHostStatus(.object([:]))))
+        await first.value
+        XCTAssertEqual(model.hostStatus, .checking, "A reply after cancel() never writes state")
+
+        parked = expectation(description: "Older probe in flight")
+        let older = Task { await model.checkStatus() }
+        await fulfillment(of: [parked], timeout: 3)
+        parked = expectation(description: "Newer probe in flight")
+        let newer = Task { await model.checkStatus() }
+        await fulfillment(of: [parked], timeout: 3)
+        pending[2].resume(returning: .failure(.answered(502)))
+        await newer.value
+        pending[1].resume(returning: .success(BotHostStatus(.object([:]))))
+        await older.value
+        XCTAssertEqual(model.hostStatus, .unreachable(.answered(502)), "Only the newest check writes")
+    }
 }
 
 @MainActor private final class ConnectionSetupWire: BotTransport {
@@ -350,4 +402,127 @@ final class BotConnectionAdviceTests: XCTestCase {
             XCTAssertEqual(BotConnectionAdvice.message(for: error, address: address), expected, "\(error)")
         }
     }
+}
+
+/// The public status probe: one credential-free GET whose replies map to screen
+/// states. Transport faults use a raw-body fixture so non-JSON replies are testable.
+@MainActor final class BotHostStatusTests: XCTestCase {
+    private let host = URL(string: "https://hermes.example")!
+
+    override func tearDown() {
+        BotStatusHTTPFixture.handler = nil
+        super.tearDown()
+    }
+
+    private func check(_ status: Int = 200, _ body: String,
+                       configuration: URLSessionConfiguration = .ephemeral) async -> Result<BotHostStatus, BotHostProbeFailure> {
+        BotStatusHTTPFixture.handler = { _ in (status, Data(body.utf8)) }
+        configuration.protocolClasses = [BotStatusHTTPFixture.self]
+        return await BotHostStatusProbe(configuration: configuration).check(host)
+    }
+
+    func testDecodesTheLiveShapedPayload() async throws {
+        let body = #"{"version":"0.21.5","release_date":"2026.9.20","gateway_running":true,"gateway_state":"running","#
+            + #""gateway_exit_reason":null,"gateway_heartbeat_stale_s":null,"overall":"ok","gateway_platforms":{"#
+            + #""hermex":{"state":"connected","error_code":null,"error_message":null,"updated_at":"2026-09-24T15:56:13Z","#
+            + #""needs_attention":false,"retrying_since":null}},"components":{"gateway":{"status":"ok","state":"running"},"#
+            + #""platforms":{"status":"degraded","configured":5,"connected":4}},"auth_required":true}"#
+        let status = try await check(200, body).get()
+        XCTAssertEqual(status.version, "0.21.5")
+        XCTAssertEqual(status.gatewayRunning, true)
+        XCTAssertEqual(status.gatewayState, "running")
+        XCTAssertNil(status.gatewayExitReason)
+        XCTAssertNil(status.heartbeatStale)
+        XCTAssertEqual(status.platformsConnected, 4)
+        XCTAssertEqual(status.platformsConfigured, 5)
+        XCTAssertEqual(status.gatewayTitle, String(localized: "Running"))
+        XCTAssertNil(status.gatewayNote)
+    }
+
+    func testMinimalAndUnknownStatesDecodeTolerantly() async throws {
+        let empty = try await check(200, "{}").get()
+        XCTAssertEqual(empty, BotHostStatus(.object([:])))
+        XCTAssertNil(empty.version)
+        XCTAssertEqual(empty.gatewayTitle, String(localized: "Unknown"))
+        XCTAssertNil(empty.gatewayNote)
+
+        let unknown = BotHostStatus(.object(["gateway_running": .bool(true), "gateway_state": .string("hibernating")]))
+        XCTAssertEqual(unknown.gatewayTitle, String(localized: "Unknown"))
+        XCTAssertNil(unknown.gatewayNote)
+
+        let wedged = BotHostStatus(.object(["gateway_running": .bool(true), "gateway_state": .string("running"),
+                                            "gateway_heartbeat_stale_s": .number(240)]))
+        XCTAssertEqual(wedged.gatewayTitle, String(localized: "Not responding"))
+        XCTAssertEqual(wedged.gatewayNote, String(localized: "Scheduled Tasks may not run until it responds."))
+    }
+
+    func testStartupFailureShowsItsReasonAndOnlyTheTaskConsequence() async throws {
+        let failed = try await check(200, #"{"gateway_running":false,"gateway_state":"startup_failed","#
+            + #""gateway_exit_reason":"telegram: Unauthorized"}"#).get()
+        XCTAssertEqual(failed.gatewayTitle, String(localized: "Startup failed"))
+        let note = try XCTUnwrap(failed.gatewayNote)
+        XCTAssertTrue(note.hasPrefix("telegram: Unauthorized"))
+        XCTAssertTrue(note.hasSuffix(String(localized: "Scheduled Tasks won’t run until it starts.")))
+        XCTAssertFalse(note.localizedCaseInsensitiveContains("notification"), "Chat notifications do not depend on the gateway")
+
+        let stopped = BotHostStatus(.object(["gateway_running": .bool(false), "gateway_state": .string("stopped")]))
+        XCTAssertEqual(stopped.gatewayTitle, String(localized: "Stopped"))
+        XCTAssertEqual(stopped.gatewayNote, String(localized: "Scheduled Tasks won’t run until it starts."))
+    }
+
+    func testProbeSendsNoCredentialsOrCookies() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        var seen: URLRequest?
+        BotStatusHTTPFixture.handler = { request in seen = request; return (200, Data("{}".utf8)) }
+        configuration.protocolClasses = [BotStatusHTTPFixture.self]
+        let probe = BotHostStatusProbe(configuration: configuration)
+        XCTAssertNil(probe.configuration.httpCookieStorage, "The session can neither send nor keep cookies")
+        XCTAssertFalse(probe.configuration.httpShouldSetCookies)
+        XCTAssertNil(probe.configuration.urlCredentialStorage)
+        XCTAssertEqual(probe.configuration.timeoutIntervalForRequest, 15)
+        _ = try await probe.check(host).get()
+        let request = try XCTUnwrap(seen)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.absoluteString, "https://hermes.example/api/status")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(request.httpBody)
+    }
+
+    func testFailuresMapToScreenStatesWithoutChatCopy() async {
+        let html = await check(200, "<html>Sign in</html>")
+        let array = await check(200, "[1, 2]")
+        let badGateway = await check(502, "Bad gateway")
+        let blocked = await check(403, "error code: 1010")
+        XCTAssertEqual(html, .failure(.notHermes))
+        XCTAssertEqual(array, .failure(.notHermes))
+        XCTAssertEqual(badGateway, .failure(.answered(502)))
+        XCTAssertEqual(blocked, .failure(.blocked))
+        BotStatusHTTPFixture.handler = { _ in throw URLError(.timedOut) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotStatusHTTPFixture.self]
+        guard case .failure(.unreachable(let reason)) = await BotHostStatusProbe(configuration: configuration).check(host) else {
+            return XCTFail("A transport error reads as unreachable")
+        }
+        XCTAssertFalse(reason.isEmpty)
+    }
+}
+
+private final class BotStatusHTTPFixture: URLProtocol {
+    static var handler: ((URLRequest) throws -> (Int, Data))?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        do {
+            guard let handler = Self.handler else { throw URLError(.cannotConnectToHost) }
+            let (status, body) = try handler(request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+    override func stopLoading() {}
 }

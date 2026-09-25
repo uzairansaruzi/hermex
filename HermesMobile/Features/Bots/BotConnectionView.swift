@@ -7,11 +7,14 @@ import Observation
     @State private var operation: Task<Void, Never>?
     @State private var confirmingRemoval = false
     @State private var copiedPrompt = false
+    @State private var copiedAddress = false
+    @State private var statusCheck: Task<Void, Never>?
 
     init(server: URL) { _setup = State(initialValue: BotConnectionSetup(server: server)) }
 
     var body: some View {
         Form {
+            if let saved = setup.saved { statusSection(saved) }
             Section {
                 Text("Connect to your dashboard").font(.title3.bold())
                 Text("Use your Hermes dashboard sign-in.").foregroundStyle(.secondary)
@@ -79,8 +82,8 @@ import Observation
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-        .task { setup.load() }
-        .onDisappear { operation?.cancel(); setup.cancel() }
+        .task { setup.load(); await setup.checkStatus() }
+        .onDisappear { operation?.cancel(); statusCheck?.cancel(); setup.cancel() }
         .confirmationDialog("Remove this connection from Hermex?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Remove Hermes connection", role: .destructive) {
                 operation = Task { if await setup.remove(), !Task.isCancelled { dismiss() } }
@@ -88,6 +91,110 @@ import Observation
         } message: {
             Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host.")
         }
+    }
+
+    /// Read-only rows from the host's public status. Gateway rows appear only after
+    /// the host answered; the version falls back to the one stored at sign-in.
+    @ViewBuilder private func statusSection(_ saved: BotConnection) -> some View {
+        let live: BotHostStatus? = if case .reachable(let status) = setup.hostStatus { status } else { nil }
+        Section {
+            statusRow("Reachability", value: setup.hostStatus?.title ?? String(localized: "Checking…"),
+                      note: setup.hostStatus?.note)
+            if let version = live?.version {
+                statusRow("Hermes", value: version)
+            } else if let version = saved.hermesVersion {
+                statusRow("Hermes", value: version, note: String(localized: "at last sign-in"))
+            }
+            if let live {
+                statusRow("Messaging gateway", value: live.gatewayTitle, note: live.gatewayNote)
+                if let configured = live.platformsConfigured, configured > 0, let connected = live.platformsConnected {
+                    statusRow("Platforms", value: String(localized: "\(connected) of \(configured) connected"))
+                }
+            }
+            statusRow("Notifications", value: setup.notificationRelay.map {
+                String(localized: "On · \($0.host ?? $0.absoluteString)")
+            } ?? String(localized: "Off"))
+            HStack {
+                Text(saved.address.absoluteString).textSelection(.enabled)
+                Spacer()
+                Button(copiedAddress ? String(localized: "Copied") : String(localized: "Copy"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = saved.address.absoluteString
+                    copiedAddress = true
+                }
+                .buttonStyle(.borderless)
+            }
+            Button("Check again") {
+                statusCheck?.cancel()
+                statusCheck = Task { await setup.checkStatus() }
+            }
+            .disabled(setup.hostStatus == .checking)
+        } header: {
+            Text("Status")
+        } footer: {
+            if live != nil {
+                Text("The messaging gateway runs scheduled Tasks and messaging platforms. Bot chat notifications still arrive while it is stopped.")
+            }
+        }
+    }
+
+    private func statusRow(_ label: LocalizedStringKey, value: String, note: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent(label, value: value)
+            if let note { Text(note).font(.footnote).foregroundStyle(.secondary) }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private extension BotConnectionSetup.HostStatus {
+    var title: String {
+        switch self {
+        case .checking: return String(localized: "Checking…")
+        case .reachable: return String(localized: "Reachable")
+        case .unreachable(.unreachable): return String(localized: "Can’t reach this address")
+        case .unreachable(.blocked): return String(localized: "An access check blocked this request")
+        case .unreachable(.answered(let code)): return String(localized: "The host answered \(code)")
+        case .unreachable(.notHermes): return String(localized: "This address isn’t a Hermes dashboard")
+        }
+    }
+
+    var note: String? {
+        if case .unreachable(.unreachable(let reason)) = self { return reason }
+        return nil
+    }
+}
+
+extension BotHostStatus {
+    /// Upstream reports a dead gateway process as `stopped`, `startup_failed` or a
+    /// watchdog `degraded`, so `gateway_running` decides whether scheduled Tasks run.
+    var gatewayStopped: Bool {
+        gatewayRunning == false || (gatewayRunning == nil && ["stopped", "startup_failed"].contains(gatewayState))
+    }
+
+    var gatewayTitle: String {
+        if heartbeatStale != nil && !gatewayStopped { return String(localized: "Not responding") }
+        switch gatewayState ?? gatewayRunning.map({ $0 ? "running" : "stopped" }) ?? "" {
+        case "starting": return String(localized: "Starting")
+        case "running": return String(localized: "Running")
+        case "draining": return String(localized: "Draining")
+        case "degraded": return String(localized: "Degraded")
+        case "startup_failed": return String(localized: "Startup failed")
+        case "stopped": return String(localized: "Stopped")
+        default: return String(localized: "Unknown")
+        }
+    }
+
+    /// Only scheduled Tasks depend on the gateway: Bot chat and WebUI reply
+    /// notifications come from the process running the turn, so the copy never
+    /// claims those stop.
+    var gatewayNote: String? {
+        if gatewayStopped {
+            let consequence = String(localized: "Scheduled Tasks won’t run until it starts.")
+            guard let reason = gatewayExitReason, !reason.isEmpty else { return consequence }
+            return reason + "\n" + consequence
+        }
+        if heartbeatStale != nil { return String(localized: "Scheduled Tasks may not run until it responds.") }
+        return nil
     }
 }
 
@@ -104,17 +211,32 @@ import Observation
     private(set) var isConnecting = false
     /// The address whose host reported a different `install_id` on the last attempt.
     private(set) var differentHostAddress: URL?
+    /// The saved host's public status; nil while no connection is saved.
+    private(set) var hostStatus: HostStatus?
+    /// The relay this server's notifications are paired with; nil when they are off.
+    private(set) var notificationRelay: URL?
     @ObservationIgnored private let store: BotConnectionStore
     @ObservationIgnored private let makeWire: (BotConnection) -> any BotTransport
     @ObservationIgnored private let discard: (BotConnection) async -> Void
     @ObservationIgnored private var client: (any BotTransport)?
+    @ObservationIgnored private let probe: (URL) async -> Result<BotHostStatus, BotHostProbeFailure>
+    @ObservationIgnored private let relay: (URL) -> URL?
     @ObservationIgnored private var attempt: UUID?
+    @ObservationIgnored private var statusCheck: UUID?
+
+    enum HostStatus: Equatable {
+        case checking, reachable(BotHostStatus), unreachable(BotHostProbeFailure)
+    }
 
     init(server: URL, store: BotConnectionStore? = nil,
          makeWire: ((BotConnection) -> any BotTransport)? = nil,
-         discard: ((BotConnection) async -> Void)? = nil) {
+         discard: ((BotConnection) async -> Void)? = nil,
+         probe: ((URL) async -> Result<BotHostStatus, BotHostProbeFailure>)? = nil,
+         relay: ((URL) -> URL?)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore()
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
+        self.probe = probe ?? { await BotHostStatusProbe().check($0) }
+        self.relay = relay ?? { PushRegistrar.shared?.pairing(for: $0)?.relayURL }
         self.discard = discard ?? { old in
             await PushRegistrar.shared?.forget(for: server)
             try? await BotHistoryCache.shared.remove(server: server, connectionID: old.id)
@@ -143,10 +265,26 @@ import Observation
             name = saved?.name ?? ""; address = saved?.address.absoluteString ?? ""
             username = saved?.username ?? ""; password = saved?.password ?? ""
         } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
+        notificationRelay = relay(server)
     }
 
     func cancel() {
         attempt = nil; client?.close(); client = nil; isConnecting = false
+        statusCheck = nil
+    }
+
+    /// Reads the saved host's public status once. Nothing retries; a newer check,
+    /// `cancel()` or a changed saved address drops a late reply.
+    func checkStatus() async {
+        guard let address = saved?.address else { hostStatus = nil; return }
+        let id = UUID(); statusCheck = id; hostStatus = .checking
+        let result = await probe(address)
+        guard statusCheck == id, !Task.isCancelled, saved?.address == address else { return }
+        statusCheck = nil
+        switch result {
+        case .success(let status): hostStatus = .reachable(status)
+        case .failure(let failure): hostStatus = .unreachable(failure)
+        }
     }
 
     /// Signs in and saves the connection. The UUID, and with it drafts, cache and push
