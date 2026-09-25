@@ -6,6 +6,9 @@ import SwiftUI
 struct BotQuickRepliesEditorView: View {
     @AppStorage(BotQuickReplyStore.storageKey) private var storedReplies = ""
     @State private var editing: EditTarget?
+    /// Owned here so deleting the last reply can leave edit mode: the Edit
+    /// button hides with an empty list and would otherwise strand it active.
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         let replies = BotQuickReplyStore.decode(storedReplies)
@@ -72,6 +75,10 @@ struct BotQuickRepliesEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !replies.isEmpty { EditButton() }
+        }
+        .environment(\.editMode, $editMode)
+        .onChange(of: replies.isEmpty) { _, isEmpty in
+            if isEmpty { editMode = .inactive }
         }
         .sheet(item: $editing) { target in
             BotQuickReplyEditSheet(target: target) { text in
