@@ -183,6 +183,29 @@ final class HermexAttachmentPickerPolicyTests: XCTestCase {
         XCTAssertEqual(HermexAttachmentCameraPermissionPolicy.status(for: .restricted), .restricted)
     }
 
+    /// Detaching the preview makes AVCaptureSession rebuild its graph and wait
+    /// for it; on device that held the main thread for ~9 s after leaving the
+    /// camera (#809). The detach must happen off the main thread.
+    @MainActor
+    func testCameraPreviewDetachesOffTheMainThread() {
+        let controller = HermexAttachmentCameraController()
+        let layer = AVCaptureVideoPreviewLayer(session: controller.session)
+        let detached = expectation(description: "preview layer detached")
+        var detachedOnMain: Bool?
+        let observation = layer.observe(\.session, options: [.new]) { layer, _ in
+            guard layer.session == nil else { return }
+            detachedOnMain = Thread.isMainThread
+            detached.fulfill()
+        }
+
+        controller.detachPreviewLayer(layer)
+
+        wait(for: [detached], timeout: 5)
+        observation.invalidate()
+        XCTAssertEqual(detachedOnMain, false)
+        XCTAssertNil(layer.session)
+    }
+
     @MainActor
     func testImageProcessorNormalizesSelectedMediaToBoundedJPEG() async throws {
         let format = UIGraphicsImageRendererFormat.default()

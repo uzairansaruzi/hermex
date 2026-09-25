@@ -107,6 +107,15 @@ final class HermexAttachmentCameraController: NSObject, ObservableObject, @unche
         sessionQueue.async { [weak self] in self?.captureRotationAngle = angle }
     }
 
+    /// Detaching a preview layer makes AVCaptureSession rebuild its graph and
+    /// wait for it to finish, which takes seconds on device. Run it on the
+    /// session queue so the main thread never blocks on it.
+    func detachPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
+        sessionQueue.async {
+            layer.session = nil
+        }
+    }
+
     @MainActor
     func capturePhoto(completion: @MainActor @escaping (Result<Data, Error>) -> Void) {
         guard status == .ready else { return }
@@ -359,7 +368,8 @@ struct HermexAttachmentCameraPanel: View {
                 HermexAttachmentCameraPreview(
                     session: controller.session,
                     device: device,
-                    onCaptureAngleChanged: controller.setCaptureRotationAngle
+                    onCaptureAngleChanged: controller.setCaptureRotationAngle,
+                    detachPreviewLayer: controller.detachPreviewLayer
                 )
                 .transition(.opacity)
             }
@@ -521,6 +531,7 @@ private struct HermexAttachmentCameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     let device: AVCaptureDevice
     let onCaptureAngleChanged: (CGFloat) -> Void
+    let detachPreviewLayer: (AVCaptureVideoPreviewLayer) -> Void
 
     func makeUIView(context: Context) -> HermexAttachmentCameraPreviewView {
         let view = HermexAttachmentCameraPreviewView()
@@ -530,12 +541,17 @@ private struct HermexAttachmentCameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ view: HermexAttachmentCameraPreviewView, context: Context) {
+        view.detachPreviewLayer = detachPreviewLayer
         view.update(device: device, onCaptureAngleChanged: onCaptureAngleChanged)
     }
 
     static func dismantleUIView(_ view: HermexAttachmentCameraPreviewView, coordinator: Void) {
         view.teardown()
-        view.previewLayer.session = nil
+        if let detach = view.detachPreviewLayer {
+            detach(view.previewLayer)
+        } else {
+            view.previewLayer.session = nil
+        }
     }
 }
 
@@ -555,6 +571,7 @@ private final class HermexAttachmentCameraPreviewView: UIView, @unchecked Sendab
     private var previewObservation: NSKeyValueObservation?
     private var captureObservation: NSKeyValueObservation?
     private var captureAngleChanged: ((CGFloat) -> Void)?
+    var detachPreviewLayer: ((AVCaptureVideoPreviewLayer) -> Void)?
 
     func update(device: AVCaptureDevice, onCaptureAngleChanged: @escaping (CGFloat) -> Void) {
         captureAngleChanged = onCaptureAngleChanged
