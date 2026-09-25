@@ -535,6 +535,15 @@ import XCTest
         XCTAssertEqual(stopped.footerTimes, ["u1": 1_000, "a1": 1_010, "u2": 1_030],
                        "a text-less reasoning row gets no time and the visible reply before it ends the turn")
 
+        let lateSteer = [
+            botRow("u1", "user", at: 1_000),
+            botRow("a1", "assistant", at: 1_010),
+            botRow("s1", "user", at: 1_020, displayKind: ChatMessage.steerDisplayKind),
+            botRow("u2", "user", at: 1_030)
+        ]
+        let steered = BotTranscriptTimes(messages: lateSteer, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        XCTAssertEqual(steered.footerTimes["a1"], 1_010, "a steer the turn never answered doesn't make its last reply interim")
+
         let running = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: 1_085, isMidTurn: true)
         XCTAssertNil(running.footerTimes["a5"], "the last reply of a turn still running is interim")
         let answeringNext = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,

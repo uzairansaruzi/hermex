@@ -121,7 +121,12 @@ final class ChatMessageMetaTests: XCTestCase {
         let lastWeek = now.timeIntervalSince1970 - 7 * 86_400
         let lastYear = now.timeIntervalSince1970 - 365 * 86_400
 
-        XCTAssertEqual(separator(monday, now: now, locale: english, timeZone: utc), "Monday 4:24\u{202F}PM")
+        // The weekday and the locale's own short time, without pinning ICU punctuation.
+        let weekday = try XCTUnwrap(separator(monday, now: now, locale: english, timeZone: utc))
+        XCTAssertTrue(weekday.hasPrefix("Monday"), weekday)
+        XCTAssertTrue(weekday.contains(ChatMessageTimestampFormatter.shortTime(
+            forUnixTimestamp: monday, locale: english, timeZone: utc
+        ) ?? "-"), weekday)
         let sameYear = try XCTUnwrap(separator(lastWeek, now: now, locale: english, timeZone: utc))
         XCTAssertTrue(sameYear.hasPrefix("Sep 17"), sameYear)
         XCTAssertFalse(sameYear.contains("2026"), sameYear)

@@ -393,10 +393,10 @@ struct BotChatTitlePillFallback: ViewModifier {
 /// window with comparisons only. Gap separators ignore Message Timestamps
 /// (D22); the per-message footer follows it. User messages and turn-ending
 /// replies carry a time, as in Sessions: a reply with visible text ends its
-/// turn when the next drawn settled row is a user message or a delegation
-/// delivery, or when it is the last and no turn is still running past it. Steer rows, delegation cards and the live
-/// turn get none. The live prompt is dated only by the host's turn start,
-/// never the phone clock.
+/// turn when the next drawn settled row past any steer is a user message or a
+/// delegation delivery, or when it is the last and no turn is still running
+/// past it. Steer rows, delegation cards and the live turn get none. The live
+/// prompt is dated only by the host's turn start, never the phone clock.
 struct BotTranscriptTimes {
     let start: Int
     let gapStarts: Set<String>
@@ -433,12 +433,15 @@ struct BotTranscriptTimes {
         footerTimes = times
     }
 
-    /// Whether the reply at `index` is its turn's last visible one. Text-less
-    /// assistant rows (reasoning kept after an interrupted tool step) draw
-    /// nothing, so they are skipped. An async delegation delivery is a host
-    /// injected user turn, so the reply before it closed its own turn.
+    /// Whether the reply at `index` is its turn's last visible one. Steers ride
+    /// inside the turn, and text-less assistant rows (reasoning kept after an
+    /// interrupted tool step) draw nothing, so both are skipped. An async
+    /// delegation delivery is a host-injected user turn, so the reply before
+    /// it closed its own turn.
     private static func endsTurn(after index: Int, in messages: [ChatMessage], lastTurnIsSettled: Bool) -> Bool {
-        guard let next = messages[(index + 1)...].first(where: { $0.role != "assistant" || hasVisibleText($0) }) else {
+        guard let next = messages[(index + 1)...].first(where: {
+            !$0.isSteerMessage && ($0.role != "assistant" || hasVisibleText($0))
+        }) else {
             return lastTurnIsSettled
         }
         return TranscriptTurnClassifier.isUserTurnBoundary(next) || next.role == "delegation_completion"
