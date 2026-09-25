@@ -631,6 +631,17 @@ import Vision
         XCTAssertEqual(BotConversation.TitleFace.failed.expression, .sad)
         XCTAssertNil(BotConversation.TitleFace.working.expression)
         XCTAssertNil(BotConversation.TitleFace.resting.expression)
+
+        let beat = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(BotConversation.TitleFace.working.motion(beatStart: beat), .working(since: beat))
+        XCTAssertEqual(BotConversation.TitleFace.waiting.motion(beatStart: beat), .idle, "An approval never sways")
+        XCTAssertEqual(BotConversation.TitleFace.failed.motion(beatStart: beat), .idle)
+        XCTAssertEqual(BotConversation.TitleFace.resting.motion(beatStart: beat), .idle)
+
+        XCTAssertEqual(BotConversation.TitleFace.waiting.accessibilityValue, String(localized: "Needs attention"))
+        XCTAssertEqual(BotConversation.TitleFace.failed.accessibilityValue, String(localized: "Turn failed"))
+        XCTAssertNil(BotConversation.TitleFace.working.accessibilityValue)
+        XCTAssertNil(BotConversation.TitleFace.resting.accessibilityValue)
     }
 
     func testReplayFaultsReplaceHistoryWithoutAppendingOverlap() async {

@@ -329,10 +329,10 @@ import SwiftUI
 
     /// The title face sways for one beat after work starts or the app returns mid-turn,
     /// then holds a still lean; it never moves while the app is inactive. Waiting and
-    /// failed faces only blink, so an approval never runs the 15 fps sway.
+    /// failed faces only blink (`TitleFace.motion`).
     private var titleFaceMotion: BotFaceMotion {
         guard scenePhase == .active else { return .still }
-        return model.titleFace == .working ? .working(since: workingBeat.start) : .idle
+        return model.titleFace.motion(beatStart: workingBeat.start)
     }
 
     private var showsScrollToBottomButton: Bool {

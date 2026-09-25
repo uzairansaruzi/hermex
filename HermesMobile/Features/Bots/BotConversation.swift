@@ -21,6 +21,12 @@ import Observation
             }
         }
 
+        /// The motion for an active scene: only work sways (from `beatStart`); every other
+        /// face just blinks, so a pending approval never runs the 15 fps beat.
+        func motion(beatStart: Date) -> BotFaceMotion {
+            self == .working ? .working(since: beatStart) : .idle
+        }
+
         /// What VoiceOver adds after the bot's name; nil when the face shows no state.
         var accessibilityValue: String? {
             switch self {
