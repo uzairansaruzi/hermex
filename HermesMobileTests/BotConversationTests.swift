@@ -1412,6 +1412,21 @@ import Vision
         model.suspend()
     }
 
+    func testALateAgentReactionEventKeepsYourNewerReaction() async throws {
+        let wire = BotFixtureWire(); wire.running = true; wire.history = [Self.reactedRow]
+        let model = make(wire); await model.recover()
+        wire.react = { _ in .object(["row_id": .number(7), "reactions": Self.reactions([("‼️", "agent"), ("❤️", "user")])]) }
+        await model.react(to: model.messages[0], emoji: "❤️")
+
+        // The agent's tool wrote before your react but its event lands after the reply.
+        wire.onEvent?(typed(1, "message.reaction", .object([
+            "row_id": .number(7), "reactions": Self.reactions([("‼️", "agent")]), "role": .string("assistant")
+        ])))
+
+        XCTAssertEqual(Set(model.messages[0].botReactions), [.init(emoji: "‼️", author: .agent), .init(emoji: "❤️", author: .user)])
+        model.suspend()
+    }
+
     func testLiveRowsAndAnOfflineChatCannotReact() async throws {
         let wire = BotFixtureWire(); wire.running = true
         wire.history = [Self.reactedRow]

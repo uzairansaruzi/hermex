@@ -143,8 +143,9 @@ typed `BotClient` exception (`emoji` a non-empty string or null; `author` and
 sends null. Writes are not optimistic and serialize per row
 (`BotConversation.reactingRowIDs`): the reply's full list patches the row, a
 rejection leaves it and says so, and a lost reply is never resent; the next full
-snapshot decides. The agent's live `message.reaction` event patches its row
-the same way. A full snapshot requested before a patch keeps the patched row's
+snapshot decides. The agent's live `message.reaction` event patches only the
+agent's entry on its row: the tool writes on another host thread, so the event
+can land after a newer `message.react` reply and must not replace yours. A full snapshot requested before a patch keeps the patched row's
 list (`reactionPatches`): `session.resume` runs on the host's worker pool and
 can read history before a `message.react` commits. Live rows, rooms and the offline cache have no reactions.
 Reactions are display-only sync with Desktop unless the host enables

@@ -500,12 +500,25 @@ import Observation
     }
 
     /// Puts the host's reaction list on the row it names; an unknown row is ignored.
-    private func applyReactions(rowID: Int?, _ reactions: BotJSON) {
-        guard let rowID, reactions.list != nil,
+    /// With `author`, only that author's entries are taken and the row keeps the
+    /// rest: the agent's live event is written on another host thread and can
+    /// land after a newer `message.react` reply, so it must not replace yours.
+    private func applyReactions(rowID: Int?, _ reactions: BotJSON, author: BotReaction.Author? = nil) {
+        guard let rowID, case .array(let incoming) = reactions.jsonValue,
               let index = messages.firstIndex(where: { $0.rowID == rowID }) else { return }
+        var list = incoming
+        if let author {
+            func isTheirs(_ entry: JSONValue) -> Bool {
+                guard case .object(let fields) = entry, case .string(let name)? = fields["author"] else { return false }
+                return name == author.rawValue
+            }
+            let kept: [JSONValue]
+            if case .array(let current)? = messages[index].displayMetadata?["reactions"] { kept = current } else { kept = [] }
+            list = kept.filter { !isTheirs($0) } + incoming.filter(isTheirs)
+        }
         reactionRevision += 1
-        reactionPatches[rowID] = (reactionRevision, reactions.jsonValue)
-        messages[index] = messages[index].replacingBotReactions(reactions.jsonValue)
+        reactionPatches[rowID] = (reactionRevision, .array(list))
+        messages[index] = messages[index].replacingBotReactions(.array(list))
     }
 
     /// Ask Hermex on a passage selected in the transcript. Durable straight
@@ -1411,10 +1424,10 @@ import Observation
         let type = event["type"].text ?? ""
         // A newer frame than any snapshot already in flight, like a live request.
         if applyConnectionEvent(type: type, payload: event["payload"]) { requestRevision += 1 }
-        // The agent's `react_to_message` tool paints its Tapback live; the
-        // payload carries the row's full list, so it changes nothing else.
+        // The agent's `react_to_message` tool paints its Tapback live; only the
+        // agent's entry is taken from the payload, so it changes nothing else.
         if type == "message.reaction" {
-            applyReactions(rowID: event["payload"]["row_id"].integer, event["payload"]["reactions"])
+            applyReactions(rowID: event["payload"]["row_id"].integer, event["payload"]["reactions"], author: .agent)
             if !discontinuity { return }
         }
         if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
