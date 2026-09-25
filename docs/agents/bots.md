@@ -634,6 +634,10 @@ those values into manager calls.
   Ending an orphaned webui activity, or finding one finished at cold launch,
   retires its registration so the relay stops holding that session's banners.
   There is no push-to-start.
+- **Attention.** Entering an approval or a question alerts: a paired server's relay
+  sends the banner, and otherwise the app's write carries an `AlertConfiguration` when
+  it is not in the foreground (`AgentLiveActivityAlertPolicy`, #740). A repeated
+  waiting event stays silent.
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
@@ -1202,8 +1206,9 @@ server or uses a stale cached session. A paired server suppresses local completi
 notifications from both chat and cold-launch Live Activity reconciliation; disabling
 push restores the existing global local-notification preference. Webui Live Activities
 on a paired server hand off to the relay like a bot's (see Bot Live Activity). Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
-banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
-not app code.
+reply or error banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
+not app code. Approvals and questions still banner during an activity, since its
+`waiting` update is silent (#740).
 
 While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
 otherwise show none, approvals included. `PushPresence` records the conversation on

@@ -54,6 +54,18 @@ extension AgentRunActivityAttributes {
     }
 }
 
+/// Whether a local write should alert: only when the run first stops for an approval or
+/// an answer, the app is not in the foreground, and the relay does not drive the activity.
+/// A paired server's relay banners approvals and questions itself (#740), so alerting
+/// here too would buzz twice; a repeated waiting event keeps the status and stays silent.
+enum AgentLiveActivityAlertPolicy {
+    static func alerts(previous: AgentRunActivityStatus, next: AgentRunActivityStatus,
+                       canReceivePush: Bool, appIsActive: Bool) -> Bool {
+        next != previous && (next == .waitingForApproval || next == .waitingForClarification)
+            && !canReceivePush && !appIsActive
+    }
+}
+
 extension AgentRunActivityAttributes.ContentState {
     /// This state with `shown`'s counts when it has none of its own: the app's local
     /// reducers never count a webui run's tools, the relay does (#644).
@@ -630,13 +642,31 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         self.currentState = updatedState
         if immediate { immediateWriteCountForTesting += 1 }
 
-        guard activity != nil else { return }
-        scheduleUpdate(updatedState, immediate: immediate)
+        guard let activity else { return }
+        let alert = alert(from: currentState, to: updatedState, on: activity)
+        scheduleUpdate(updatedState, immediate: immediate || alert != nil, alert: alert)
+    }
+
+    /// The system alert for a write that newly needs the user, or nil (#740).
+    private func alert(
+        from previous: AgentRunActivityAttributes.ContentState,
+        to next: AgentRunActivityAttributes.ContentState,
+        on activity: Activity<AgentRunActivityAttributes>
+    ) -> AlertConfiguration? {
+        guard AgentLiveActivityAlertPolicy.alerts(
+            previous: previous.status, next: next.status,
+            canReceivePush: canReceivePush(activity.attributes),
+            appIsActive: UIApplication.shared.applicationState == .active
+        ) else { return nil }
+        let body: LocalizedStringResource = next.status == .waitingForApproval
+            ? "Waiting for approval" : "Needs clarification"
+        return AlertConfiguration(title: "\(next.sessionTitle)", body: body, sound: .default)
     }
 
     private func scheduleUpdate(
         _ state: AgentRunActivityAttributes.ContentState,
-        immediate: Bool
+        immediate: Bool,
+        alert: AlertConfiguration? = nil
     ) {
         let now = Date()
         if immediate || lastSentUpdateAt == nil || now.timeIntervalSince(lastSentUpdateAt!) >= minimumUpdateInterval {
@@ -644,7 +674,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             pendingUpdateTask = nil
             let generation = nextUpdateGeneration()
             Task { [weak self, generation] in
-                await self?.sendUpdate(state, staleDate: self?.staleDate(for: state), generation: generation)
+                await self?.sendUpdate(state, staleDate: self?.staleDate(for: state), generation: generation, alert: alert)
             }
             return
         }
@@ -672,13 +702,14 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private func sendUpdate(
         _ state: AgentRunActivityAttributes.ContentState,
         staleDate: Date?,
-        generation: Int
+        generation: Int,
+        alert: AlertConfiguration? = nil
     ) async {
         guard generation == updateGeneration else { return }
         guard let activity else { return }
 
         let state = Self.keepingRelayCounts(state, on: activity)
-        await activity.update(ActivityContent(state: state, staleDate: staleDate))
+        await activity.update(ActivityContent(state: state, staleDate: staleDate), alertConfiguration: alert)
         lastSentUpdateAt = Date()
     }
 
