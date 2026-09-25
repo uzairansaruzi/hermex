@@ -200,6 +200,8 @@ private struct BotReactionControls: View {
                         }
                     }
                     .pickerStyle(.palette)
+                    // One pick reacts and closes, like the long-press Tapback row.
+                    .menuActionDismissBehavior(.enabled)
                 }
             } label: {
                 Image(systemName: "ellipsis")
