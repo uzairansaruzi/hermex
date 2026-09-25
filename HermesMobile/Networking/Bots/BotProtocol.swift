@@ -37,20 +37,69 @@ indirect enum BotJSON: Codable, Hashable, Sendable {
 }
 
 enum BotFailure: Error, Equatable, LocalizedError {
-    case stale, unsupported, missingChat, wrongIdentity, differentHost, rejected(Int), transport, invalidAddress
+    /// `notDashboard`: the address answered `/api/status` with 401, 404 or a body that
+    /// is not JSON, so it is not a Hermes dashboard (often the webui address). Permanent.
+    case stale, unsupported, missingChat, wrongIdentity, differentHost, rejected(Int), transport, invalidAddress, notDashboard
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
-        case .unsupported: return String(localized: "This Hermes connection does not support Bot chat here.")
+        // `BotConnectionAdvice` names the host for `.notDashboard`; this is the hostless fallback.
+        case .unsupported, .notDashboard: return String(localized: "This Hermes connection does not support Bot chat here.")
         case .missingChat: return String(localized: "Open this bot’s chat in Hermes Desktop, then refresh.")
         case .wrongIdentity: return String(localized: "The conversation identity changed. Check this bot in Desktop.")
         case .differentHost: return String(localized: "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
-        case .rejected(401), .rejected(403): return String(localized: "Sign in again. Check your Bot connection username and password.")
+        case .rejected(401): return String(localized: "Sign in again. Check your Bot connection username and password.")
+        // Hermes never answers 403, 502-504 or 520-530 itself; a proxy or Cloudflare does.
+        case .rejected(403): return String(localized: "Something in front of Hermes, such as Cloudflare Access, blocked the request.")
+        case .rejected(502...504): return String(localized: "Your proxy answered, but Hermes didn't. Check that the dashboard is running on the host.")
+        case .rejected(520...530): return String(localized: "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.")
         case .rejected(-32601): return String(localized: "This Hermes connection does not support Bot chat here.")
         case .rejected(4090): return String(localized: "Another Hermes process owns this conversation. Resolve it on the host, then refresh.")
         case .rejected(4130): return String(localized: "This conversation is too large to open here. Use Desktop.")
         case .invalidAddress: return String(localized: "Enter a Hermes HTTP or HTTPS address without a path, credentials or query.")
         default: return String(localized: "Connection lost. The bot may still be working. Reconnect to check its current conversation.")
+        }
+    }
+}
+
+/// What to check when a Bot connection fails, for the connection form, the inbox and a
+/// chat. Names only the host of the connection's own address, never a credential.
+/// `URLError`s pass through `BotClient` unwrapped on purpose: reconnect logic reads any
+/// non-`BotFailure` error as transport, so only the copy maps them.
+enum BotConnectionAdvice {
+    static func message(for error: Error, address: URL) -> String {
+        let host = address.host ?? address.absoluteString
+        if let error = error as? URLError {
+            switch error.code {
+            case .cannotFindHost, .dnsLookupFailed:
+                return String(localized: "Couldn't find \(host). Check the address. For a Tailscale or VPN name, make sure this iPhone is connected to it.")
+            case .cannotConnectToHost:
+                return String(localized: "\(host) refused the connection. Check the port and that the Hermes dashboard is running.")
+            case .timedOut:
+                return String(localized: "\(host) didn't answer. Check that this iPhone can reach it on this network, or use your tunnel address.")
+            case .notConnectedToInternet, .dataNotAllowed:
+                return String(localized: "This iPhone is offline.")
+            case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+                 .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
+                return String(localized: "Couldn't make a secure connection to \(host). Check its certificate. A dashboard on your local network without HTTPS needs http://.")
+            case .appTransportSecurityRequiresSecureConnection:
+                return String(localized: "iOS blocked this insecure HTTP connection. Use HTTPS, a local network address, or a Tailscale name or IP.")
+            default:
+                return String(localized: "Couldn't reach \(host). Check the address and network.")
+            }
+        }
+        switch error as? BotFailure {
+        case .rejected(400)?:
+            // Host-header refusal: the dashboard trusts only its bound host and `dashboard.public_url`.
+            return String(localized: "Hermes doesn't accept \(host) as its address. On the host, set dashboard.public_url to \(address.absoluteString), then restart the dashboard.")
+        case .rejected(429)?:
+            return String(localized: "Too many sign-in attempts. Wait a minute, then try again.")
+        case .notDashboard?:
+            return String(localized: "\(host) isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.")
+        case let failure?:
+            return failure.localizedDescription
+        case nil:
+            return String(localized: "Couldn't reach \(host). Check the address and network.")
         }
     }
 }

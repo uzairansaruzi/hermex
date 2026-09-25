@@ -162,8 +162,26 @@ final class BotConnectionVersionTests: XCTestCase {
         failing.address = "hermes.example"; failing.username = "me"; failing.password = "password"
         let saved = await failing.connect()
         XCTAssertFalse(saved)
-        XCTAssertNotNil(failing.errorMessage)
+        XCTAssertEqual(failing.errorMessage, "Could not save sign-in details on this iPhone.")
         XCTAssertNil(failing.saved)
+    }
+
+    func testAFailedSignInNamesWhatToCheckAndSavesNothing() async throws {
+        let rows: [(Error, String)] = [
+            (URLError(.cannotFindHost), "Couldn't find hermes.example. Check the address. For a Tailscale or VPN name, make sure this iPhone is connected to it."),
+            (BotFailure.rejected(530), "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.")
+        ]
+        for (failure, expected) in rows {
+            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+            let wire = ConnectionSetupWire(); wire.failure = failure
+            let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in wire },
+                                           discard: { _ in XCTFail("A failed sign-in must not discard") })
+            model.address = "hermes.example"; model.username = "me"; model.password = "password"
+            let succeeded = await model.connect()
+            XCTAssertFalse(succeeded)
+            XCTAssertEqual(model.errorMessage, expected)
+            XCTAssertNil(try store.load(server: server))
+        }
     }
 
     func testANewAddressAndUsernameOnTheSameInstallKeepTheConnection() async throws {
@@ -291,4 +309,40 @@ private struct ConnectionSetupFailingKeychain: KeychainStoring {
     func save(_ value: String, forKey key: KeychainStore.Key, scope: String) throws { throw CocoaError(.fileWriteNoPermission) }
     func load(_ key: KeychainStore.Key, scope: String) throws -> String? { nil }
     func delete(_ key: KeychainStore.Key, scope: String) throws {}
+}
+
+/// One assertion per row of #751's copy table. Tests run in English, so the copy is literal.
+final class BotConnectionAdviceTests: XCTestCase {
+    func testEachConnectionFailureNamesWhatToCheck() {
+        let address = URL(string: "https://hermes.example:8443")!
+        let find = "Couldn't find hermes.example. Check the address. For a Tailscale or VPN name, make sure this iPhone is connected to it."
+        let secure = "Couldn't make a secure connection to hermes.example. Check its certificate. A dashboard on your local network without HTTPS needs http://."
+        let proxy = "Your proxy answered, but Hermes didn't. Check that the dashboard is running on the host."
+        let tunnel = "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host."
+        let rows: [(Error, String)] = [
+            (URLError(.cannotFindHost), find),
+            (URLError(.dnsLookupFailed), find),
+            (URLError(.cannotConnectToHost), "hermes.example refused the connection. Check the port and that the Hermes dashboard is running."),
+            (URLError(.timedOut), "hermes.example didn't answer. Check that this iPhone can reach it on this network, or use your tunnel address."),
+            (URLError(.notConnectedToInternet), "This iPhone is offline."),
+            (URLError(.dataNotAllowed), "This iPhone is offline."),
+            (URLError(.secureConnectionFailed), secure),
+            (URLError(.serverCertificateUntrusted), secure),
+            (URLError(.appTransportSecurityRequiresSecureConnection),
+             "iOS blocked this insecure HTTP connection. Use HTTPS, a local network address, or a Tailscale name or IP."),
+            (BotFailure.rejected(400), "Hermes doesn't accept hermes.example as its address. On the host, set dashboard.public_url to https://hermes.example:8443, then restart the dashboard."),
+            (BotFailure.rejected(403), "Something in front of Hermes, such as Cloudflare Access, blocked the request."),
+            (BotFailure.notDashboard, "hermes.example isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI."),
+            (BotFailure.rejected(429), "Too many sign-in attempts. Wait a minute, then try again."),
+            (BotFailure.rejected(502), proxy),
+            (BotFailure.rejected(504), proxy),
+            (BotFailure.rejected(520), tunnel),
+            (BotFailure.rejected(530), tunnel),
+            (BotFailure.rejected(401), "Sign in again. Check your Bot connection username and password."),
+            (URLError(.networkConnectionLost), "Couldn't reach hermes.example. Check the address and network.")
+        ]
+        for (error, expected) in rows {
+            XCTAssertEqual(BotConnectionAdvice.message(for: error, address: address), expected, "\(error)")
+        }
+    }
 }

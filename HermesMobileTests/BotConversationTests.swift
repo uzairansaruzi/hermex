@@ -232,6 +232,24 @@ import Vision
         model.suspend()
     }
 
+    func testReconnectStopsWithAdviceWhenTheAddressIsNotADashboard() async {
+        let wire = BotFixtureWire()
+        var delays = 0
+        let model = make(wire, reconnectDelay: { _ in
+            delays += 1
+            wire.lookupFailure = .notDashboard
+        })
+        await model.recover()
+        let stopped = expectation(description: "The address needs the user's attention")
+        wire.onDisconnect?(BotFailure.transport)
+        withObservationTracking { _ = model.isReconnecting } onChange: { stopped.fulfill() }
+        await fulfillment(of: [stopped], timeout: 3)
+        XCTAssertEqual(delays, 1, "no retry is scheduled after .notDashboard")
+        XCTAssertEqual(model.connectionState, .disconnected)
+        XCTAssertEqual(model.errorMessage, "hermes.local isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.")
+        model.suspend()
+    }
+
     func testFailedDraftClearAfterAcknowledgmentKeepsTextDurablyHeld() async throws {
         let persistence = BotFailingDraftClear()
         let wire = BotFixtureWire(); wire.running = true

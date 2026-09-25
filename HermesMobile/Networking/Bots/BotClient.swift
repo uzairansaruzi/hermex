@@ -68,7 +68,12 @@ import Foundation
             guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
         }
         do {
-            let status = try await http(.status)
+            let status: BotJSON
+            do { status = try await http(.status) }
+            // `/api/status` is public on every dashboard, so a 401, a 404 or a non-JSON
+            // body there means the address is something else, such as the webui.
+            catch BotFailure.rejected(let code) where code == 401 || code == 404 { throw BotFailure.notDashboard }
+            catch is DecodingError { throw BotFailure.notDashboard }
             try check()
             serverVersion = status["version"].text
             serverInstallID = BotConnection.installID(in: status)

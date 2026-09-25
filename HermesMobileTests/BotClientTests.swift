@@ -771,6 +771,39 @@ import XCTest
         }
     }
 
+    func testAnAddressWhoseStatusIsRefusedOrMissingIsNotADashboard() async {
+        for code in [401, 404] {
+            var paths: [String] = []
+            BotHTTPFixture.handler = { request in
+                paths.append(request.url!.path)
+                return (code, .object(["detail": .string("Not Found")]))
+            }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [BotHTTPFixture.self]
+            let client = BotClient(connection: connection(), configuration: configuration)
+            do { try await client.connect(); XCTFail("Expected not a dashboard") }
+            catch { XCTAssertEqual(error as? BotFailure, .notDashboard, "\(code)") }
+            XCTAssertEqual(paths, ["/api/status"], "No password reaches an address that is not a dashboard")
+            client.close()
+        }
+    }
+
+    func testARefusedPasswordStaysASignInFailure() async {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (401, .object(["detail": .string("Invalid credentials")]))
+            default: XCTFail("Must stop at the login"); return (500, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration)
+        do { try await client.connect(); XCTFail("Expected a refused login") }
+        catch { XCTAssertEqual(error as? BotFailure, .rejected(401)) }
+        client.close()
+    }
+
     func testExpiredIdentityStopsBeforeTicket() async {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

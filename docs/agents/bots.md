@@ -62,6 +62,9 @@ The synchronous Keychain write is the commit point. Saved state changes with it;
 old-connection cleanup then finishes independently of sheet cancellation and the
 committed operation remains successful. Main-app ATS exceptions cover the same
 private/local IP ranges used by scheme inference; public hosts still require HTTPS.
+A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable host,
+a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
+status. The inbox and chat use the same copy for the messages they show.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
@@ -580,8 +583,10 @@ The inbox socket reconnects on its own. A lost socket or a failed roster read
 keeps the roster on screen and retries quietly with delays of 1, 2, 4, 8, 16
 and then 30 seconds for as long as the inbox is open; nothing is shown and no
 button is needed. Only a refusal the user must act on (sign-in, identity, an
-unsupported host, a 4xx) shows the message and the Reconnect button. Leaving
-the screen or backgrounding cancels the retry.
+unsupported host, a 4xx) shows the message and the Reconnect button. The one
+exception is an empty roster after three route failures in a row (`URLError`,
+502-504, 520-530): the skeleton gives way to what to check and Reconnect while
+the quiet retry continues. Leaving the screen or backgrounding cancels the retry.
 
 The hero face on the create and edit screens is `BotInteractiveFaceView`, after
 Bloub: it blinks on the shared schedule, its eyes follow a finger dragged over

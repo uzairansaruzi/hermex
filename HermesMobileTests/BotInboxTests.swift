@@ -611,6 +611,48 @@ import XCTest
         XCTAssertEqual(spare, 1, "no automatic retry after a 404")
     }
 
+    func testAWebUIAddressShowsTheAdviceInsteadOfRetryingForever() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.notDashboard
+        var spare = 0
+        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        XCTAssertEqual(inbox.errorMessage, "mac.example isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.")
+        XCTAssertFalse(inbox.isLoadingRoster)
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(spare, 1, "no automatic retry for an address that is not a dashboard")
+    }
+
+    func testAnUnreachableHostReplacesTheSkeletonWithAdviceAfterThreeTriesAndKeepsRetrying() async throws {
+        let failing = (0..<3).map { _ in
+            let wire = BotInboxFixtureWire(roster: [row("triage")])
+            wire.connectError = URLError(.cannotConnectToHost)
+            return wire
+        }
+        let back = BotInboxFixtureWire(roster: [row("triage")])
+        back.holdsConnect = true
+        let inbox = try makeInbox(wires: failing + [back])
+        await inbox.open()
+        XCTAssertNil(inbox.routeAdvice, "a single route failure stays quiet")
+        XCTAssertTrue(inbox.isLoadingRoster)
+
+        await settle(inbox) { $0.routeAdvice != nil }
+        XCTAssertEqual(inbox.routeAdvice, "mac.example refused the connection. Check the port and that the Hermes dashboard is running.")
+        XCTAssertNil(inbox.errorMessage, "the advice is not a refusal; nothing stops retrying")
+        XCTAssertFalse(inbox.isLoadingRoster)
+
+        // The quiet retry goes on, and the attempt does not blank the advice.
+        await settle(inbox) { $0.link == .connecting }
+        XCTAssertNotNil(inbox.routeAdvice)
+        back.release()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertNil(inbox.routeAdvice)
+        XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
+    }
+
     func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.connectError = BotFailure.rejected(401)

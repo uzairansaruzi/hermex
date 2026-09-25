@@ -181,7 +181,10 @@ import Observation
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
             let old = saved
-            try store.save(candidate, server: server)
+            do { try store.save(candidate, server: server) } catch {
+                errorMessage = String(localized: "Could not save sign-in details on this iPhone.")
+                return false
+            }
             saved = candidate
             // Persistence is the commit point, with no suspension after the last
             // cancellation check. Old-account cleanup must finish even if the
@@ -194,8 +197,9 @@ import Observation
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
             if error as? BotFailure == .differentHost { differentHostAddress = attempted }
-            errorMessage = (error as? BotFailure)?.localizedDescription
-                ?? String(localized: "Could not save sign-in details or connect to Hermes.")
+            // Only the address parse throws before `attempted` is set.
+            errorMessage = attempted.map { BotConnectionAdvice.message(for: error, address: $0) }
+                ?? (error as? BotFailure ?? .invalidAddress).localizedDescription
             return false
         }
     }

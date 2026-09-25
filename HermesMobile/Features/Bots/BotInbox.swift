@@ -155,6 +155,10 @@ import UIKit
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
+    /// What to check once an empty inbox has failed to reach the host
+    /// `routeFailuresBeforeAdvice` times in a row. The quiet retry goes on behind it,
+    /// and `open()` leaves it alone so it holds steady between attempts.
+    private(set) var routeAdvice: String?
     /// Outcome of the last pin, hide or section write when it did not apply.
     private(set) var notice: String?
     /// Profiles with a look write in flight; their actions stay inert.
@@ -171,6 +175,8 @@ import UIKit
     private var wire: (any BotTransport)?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempts = 0
+    private var routeFailures = 0
+    private static let routeFailuresBeforeAdvice = 3
     private var reloadTask: Task<Void, Never>?
     private var reloadWanted = false
     private var reloadSerial = 0
@@ -252,6 +258,7 @@ import UIKit
             if connection?.id != saved?.id {
                 profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
                 roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []
+                routeFailures = 0; routeAdvice = nil
             }
             connection = saved
             guard let saved else { link = .idle; return }
@@ -276,7 +283,7 @@ import UIKit
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
-            reconnectAttempts = 0
+            reconnectAttempts = 0; routeFailures = 0; routeAdvice = nil
             await refreshAvatars(opened)
         } catch {
             guard !Task.isCancelled else { return }
@@ -321,12 +328,13 @@ import UIKit
     /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
     /// a refusal the user has to act on shows a message and the Reconnect button:
     /// sign-in, an unsupported host or address, an address that now reaches a
-    /// different host, and any other permanent HTTP
+    /// different host or is not a dashboard, and any other permanent HTTP
     /// client error (a 404 is not a Hermes host). Server errors, rate limits and
-    /// JSON-RPC faults other than "method missing" are the retry loop's problem.
+    /// JSON-RPC faults other than "method missing" are the retry loop's problem;
+    /// an empty inbox shows `routeAdvice` if the host stays unreachable.
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
-        case .unsupported, .wrongIdentity, .differentHost, .invalidAddress: return false
+        case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)
@@ -334,10 +342,18 @@ import UIKit
         }
     }
 
+    /// The host could not be reached at all: no answer, or a proxy or Cloudflare
+    /// answering for it. Repeated, these replace an empty inbox's skeleton with advice.
+    private static func isRouteFailure(_ error: Error) -> Bool {
+        if error is URLError { return true }
+        guard case .rejected(let code)? = error as? BotFailure else { return false }
+        return (502...504).contains(code) || (520...530).contains(code)
+    }
+
     /// True until the first roster lands: the inbox shows a skeleton instead of a
     /// connection message while it connects, or quietly retries, with nothing to show.
     var isLoadingRoster: Bool {
-        connection != nil && profiles.isEmpty && errorMessage == nil && link != .live
+        connection != nil && profiles.isEmpty && errorMessage == nil && routeAdvice == nil && link != .live
     }
 
     func mayEdit(_ profile: BotProfile) -> Bool { link == .live && !editing.contains(profile.id) }
@@ -692,9 +708,16 @@ import UIKit
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         client.close(); wire = nil
         link = .disconnected
+        let address = connection?.address
         guard Self.isRetryable(error) else {
-            errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+            routeFailures = 0; routeAdvice = nil
+            errorMessage = address.map { BotConnectionAdvice.message(for: error, address: $0) }
+                ?? (error as? BotFailure ?? .transport).localizedDescription
             return
+        }
+        if Self.isRouteFailure(error) { routeFailures += 1 } else { routeFailures = 0; routeAdvice = nil }
+        if routeFailures >= Self.routeFailuresBeforeAdvice, profiles.isEmpty, let address {
+            routeAdvice = BotConnectionAdvice.message(for: error, address: address)
         }
         let delay = reconnectDelays[min(reconnectAttempts, reconnectDelays.count - 1)]
         reconnectAttempts += 1

@@ -65,8 +65,8 @@ import SwiftUI
     private var list: some View {
         List {
             if inbox.connection != nil {
-                if let errorMessage = inbox.errorMessage {
-                    Text(errorMessage).font(.callout)
+                if let message = inbox.errorMessage ?? inbox.routeAdvice {
+                    Text(message).font(.callout)
                     Button("Reconnect") { revision = UUID() }
                 } else if inbox.isLoadingRoster {
                     // The first row speaks for the set, so VoiceOver hears one

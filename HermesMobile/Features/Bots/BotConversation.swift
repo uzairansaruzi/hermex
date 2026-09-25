@@ -1365,7 +1365,7 @@ import Observation
         case .rejected(let code): shouldRetryConnection = [408, 429].contains(code) || (500...599).contains(code)
         default: shouldRetryConnection = false
         }
-        errorMessage = shouldRetryConnection ? nil : failure.localizedDescription
+        errorMessage = shouldRetryConnection ? nil : BotConnectionAdvice.message(for: failure, address: connection.address)
         syncLiveActivity()
         scheduleReconnect()
     }
