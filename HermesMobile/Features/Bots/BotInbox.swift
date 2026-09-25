@@ -685,7 +685,7 @@ struct BotUnreadStore {
 }
 
 /// Phone-local order of Desktop's named sections, keyed by configured server and
-/// connection UUID. Desktop's own order lives in its local storage and is never
+/// connection UUID. Desktop's own order lives in its plugin storage and is never
 /// read or written from here, so this is plain `UserDefaults` like the unread marks.
 struct BotSectionOrderStore {
     var defaults: UserDefaults = .standard
