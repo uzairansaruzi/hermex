@@ -109,6 +109,7 @@ import Observation
             BotAvatarStore.shared.removeAll(connectionID: old.id)
             BotUnreadStore().remove(connectionID: old.id)
             BotRoomOrganizeStore().remove(connectionID: old.id)
+            BotSectionOrderStore().remove(server: server, connectionID: old.id)
         }
     }
 

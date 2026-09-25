@@ -159,7 +159,8 @@ import XCTest
     }
 
     func testHideRoundTripsDesktopFieldsAndConflictShowsNoSuccess() async throws {
-        let look: [String: BotJSON] = ["title": .string("Triage"), "sectionId": .string("sec-1"), "groups": .array([.string("ops")]),
+        let look: [String: BotJSON] = ["title": .string("Triage"), "sectionId": .string("sec-1"), "sectionName": .string("Ops"),
+                                       "groups": .array([.string("ops")]),
                                        "color": .string("teal"), "pinned": .bool(true)]
         let wire = BotInboxFixtureWire(roster: [row("triage", look: look, revision: 4)])
         var configured: [String: BotJSON]?
@@ -229,19 +230,107 @@ import XCTest
         ]
         let inbox = try makeInbox(wires: [wire, wire])
         await inbox.open()
-        XCTAssertEqual(inbox.chats.map(\.id), [
+        XCTAssertEqual(chatIDs(inbox), [
             "room:shared", "bot:shared", "room:middle", "bot:older", "bot:undated", "room:undated"
         ])
         XCTAssertEqual(inbox.rows(matching: "").pinned.map(\.id), ["pinned"])
+        XCTAssertEqual(inbox.sections.map(\.name), [nil], "no named section leaves one headerless block, the flat list")
         inbox.showsHidden = true
-        XCTAssertEqual(inbox.chats.first?.id, "bot:hidden")
+        XCTAssertEqual(chatIDs(inbox).first, "bot:hidden")
         inbox.showsHidden = false
-        XCTAssertFalse(inbox.chats.contains { $0.id == "bot:hidden" })
+        XCTAssertFalse(chatIDs(inbox).contains("bot:hidden"))
 
         // A host losing room support must remove its rooms from the timeline.
         wire.rooms = nil
         await inbox.open()
-        XCTAssertEqual(inbox.chats.map(\.id), ["bot:shared", "bot:older", "bot:undated"])
+        XCTAssertEqual(chatIDs(inbox), ["bot:shared", "bot:older", "bot:undated"])
+    }
+
+    func testNamedSectionsSortAToZWithActivityInsideAndUnfiledChatsLast() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("deploy", lastActive: 100, look: section("sec-ops", "Ops")),
+            row("globex", lastActive: 200, look: section("sec-clients", "  Clients ")),
+            row("acme", lastActive: 300, look: section("sec-clients", "Clients")),
+            row("chief", lastActive: 900, look: section("sec-clients", "Clients", ["pinned": .bool(true)])),
+            row("writer", lastActive: 400),
+            row("orphan", lastActive: 500, look: ["sectionId": .string("sec-ops")]),
+            row("blank", lastActive: 50, look: section("sec-ops", "   ")),
+            row("deleted", lastActive: 60, look: ["sectionId": .null, "sectionName": .null])
+        ])
+        wire.rooms = [.object(["room_id": .string("standup"), "updated_at": .number(450)])]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        XCTAssertEqual(inbox.sectionNames, [.init(id: "sec-clients", name: "Clients"), .init(id: "sec-ops", name: "Ops")])
+        XCTAssertEqual(inbox.sections.map(\.name), ["Clients", "Ops", nil])
+        XCTAssertEqual(inbox.sections.map { $0.chats.map(\.id) }, [
+            ["bot:acme", "bot:globex"],
+            ["bot:deploy"],
+            // A member without a name cannot be headed, and rooms are never sectioned.
+            ["bot:orphan", "room:standup", "bot:writer", "bot:deleted", "bot:blank"]
+        ])
+        XCTAssertEqual(inbox.pinned.map(\.id), ["bot:chief"], "a pinned bot sits only in the tiles")
+    }
+
+    func testSectionTakesItsMembersMajorityNameAndTheFirstMemberBreaksATie() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("a", look: section("sec-1", "Old")),
+            row("b", look: section("sec-1", "New")),
+            row("c", look: section("sec-1", "New")),
+            row("d", look: section("sec-2", "First")),
+            row("e", look: section("sec-2", "Second"))
+        ])
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.sectionNames.map(\.name), ["First", "New"])
+    }
+
+    func testRevealedHiddenBotsStayDimmedInTheirOwnSection() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("acme", lastActive: 100, look: section("sec-clients", "Clients")),
+            row("old", lastActive: 200, look: section("sec-clients", "Clients", ["hidden": .bool(true)])),
+            row("legacy", lastActive: 300, look: section("sec-archive", "Archive", ["hidden": .bool(true)])),
+            row("writer", lastActive: 50)
+        ])
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.sections.map(\.name), ["Clients", nil], "a section of only hidden bots draws nothing")
+        inbox.showsHidden = true
+        XCTAssertEqual(inbox.sections.map(\.name), ["Archive", "Clients", nil])
+        XCTAssertEqual(inbox.sections.map { $0.chats.map(\.id) }, [["bot:legacy"], ["bot:old", "bot:acme"], ["bot:writer"]])
+    }
+
+    func testPlacedSectionsKeepTheirOrderPerConnectionAndResetReturnsToAToZ() async throws {
+        let roster = [
+            row("a", look: section("sec-a", "Alpha")),
+            row("b", look: section("sec-b", "Bravo")),
+            row("c", look: section("sec-c", "Charlie"))
+        ]
+        let store = try connectedStore()
+        let inbox = try makeInbox(wires: [BotInboxFixtureWire(roster: roster)], store: store)
+        await inbox.open()
+        inbox.setSectionOrder(["sec-c", "gone", "sec-a"])
+        XCTAssertEqual(inbox.sectionNames.map(\.name), ["Charlie", "Alpha", "Bravo"],
+                       "placed first, a missing id ignored, the unplaced rest A–Z")
+
+        // The order survives a fresh inbox on the same connection; a section
+        // Desktop adds later follows A–Z after the placed ones.
+        let grown = roster + [row("z", look: section("sec-0", "Aardvark"))]
+        let again = try makeInbox(wires: [BotInboxFixtureWire(roster: grown)], store: store)
+        await again.open()
+        XCTAssertEqual(again.sectionNames.map(\.name), ["Charlie", "Alpha", "Aardvark", "Bravo"])
+
+        // Another connection, or the same connection id on another server, starts A–Z.
+        let other = try makeInbox(wires: [BotInboxFixtureWire(roster: roster)])
+        await other.open()
+        XCTAssertEqual(other.sectionNames.map(\.name), ["Alpha", "Bravo", "Charlie"])
+        let connectionID = try XCTUnwrap(inbox.connection?.id)
+        XCTAssertEqual(BotSectionOrderStore(defaults: defaults).load(server: URL(string: "https://two.example")!,
+                                                                    connectionID: connectionID), [])
+
+        again.resetSectionOrder()
+        XCTAssertEqual(again.sectionNames.map(\.name), ["Aardvark", "Alpha", "Bravo", "Charlie"])
+        XCTAssertEqual(BotSectionOrderStore(defaults: defaults).load(server: server, connectionID: connectionID), [])
     }
 
     func testEqualChatTimesUseStableDistinctIdentities() async throws {
@@ -252,7 +341,7 @@ import XCTest
         ]
         let inbox = try makeInbox(wires: [wire])
         await inbox.open()
-        XCTAssertEqual(inbox.chats.map(\.id), ["bot:a", "bot:z", "room:a", "room:z"])
+        XCTAssertEqual(chatIDs(inbox), ["bot:a", "bot:z", "room:a", "room:z"])
     }
 
     func testRoomPinAndHideLiveOnThisPhoneAndStayWithTheirConnection() async throws {
@@ -271,14 +360,14 @@ import XCTest
         inbox.setRoomPinned(true, standup)
         inbox.setRoomHidden(true, triage)
         XCTAssertEqual(inbox.pinned.map(\.id), ["room:standup"], "a pinned room joins the tiles")
-        XCTAssertEqual(inbox.chats.map(\.id), ["bot:bot", "room:old"], "pinned and hidden rooms leave the timeline")
+        XCTAssertEqual(chatIDs(inbox), ["bot:bot", "room:old"], "pinned and hidden rooms leave the timeline")
         XCTAssertEqual(inbox.hiddenCount, 1)
         inbox.showsHidden = true
-        XCTAssertEqual(inbox.chats.map(\.id), ["room:triage", "bot:bot", "room:old"])
+        XCTAssertEqual(chatIDs(inbox), ["room:triage", "bot:bot", "room:old"])
         // Hiding a pinned room takes it off the tiles but keeps it reachable.
         inbox.setRoomHidden(true, standup)
         XCTAssertTrue(inbox.pinned.isEmpty)
-        XCTAssertEqual(inbox.chats.map(\.id), ["room:standup", "room:triage", "bot:bot", "room:old"])
+        XCTAssertEqual(chatIDs(inbox), ["room:standup", "room:triage", "bot:bot", "room:old"])
         inbox.setRoomHidden(false, standup)
         inbox.showsHidden = false
 
@@ -295,7 +384,7 @@ import XCTest
         let other = try makeInbox(wires: [wire], store: connectedStore())
         await other.open()
         XCTAssertTrue(other.pinned.isEmpty)
-        XCTAssertEqual(other.chats.map(\.id), ["room:standup", "bot:bot"])
+        XCTAssertEqual(chatIDs(other), ["room:standup", "bot:bot"])
     }
 
     func testRenameAndDisbandGoToTheHostAndOnlyApplyOnItsWord() async throws {
@@ -452,6 +541,7 @@ import XCTest
         var queue = wires
         return BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
                         roomStore: BotRoomOrganizeStore(defaults: defaults),
+                        sectionOrderStore: BotSectionOrderStore(defaults: defaults),
                         avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in queue.removeFirst() }
     }
 
@@ -474,6 +564,14 @@ import XCTest
         if let look { fields["ui_meta"] = .object(["hermes-bots": .object(look)]) }
         if let revision { fields["ui_meta_revisions"] = .object(["hermes-bots": .number(Double(revision))]) }
         return .object(fields)
+    }
+
+    /// The whole list under the tiles, flattened across sections.
+    private func chatIDs(_ inbox: BotInbox) -> [String] { inbox.sections.flatMap(\.chats).map(\.id) }
+
+    /// Desktop's `ui_meta["hermes-bots"]` for a bot filed under one section.
+    private func section(_ id: String, _ name: String, _ extra: [String: BotJSON] = [:]) -> [String: BotJSON] {
+        extra.merging(["sectionId": .string(id), "sectionName": .string(name)]) { $1 }
     }
 
     /// Waits for `condition` through Observation rather than sleeping: each change to

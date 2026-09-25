@@ -19,6 +19,7 @@ import SwiftUI
     @State private var renamingRoom: BotGroupRoom?
     @State private var roomName = ""
     @State private var disbanding: BotGroupRoom?
+    @State private var showingSectionOrder = false
     @State private var selection = BotInboxSelection()
     @State private var searchedRoom: BotRoomKey?
     @State private var searchedSequence: Int?
@@ -108,14 +109,7 @@ import SwiftUI
                     .padding(.vertical, 20)
                     .listRowSeparator(.hidden)
                 }
-                ForEach(inbox.chats) { chat in
-                    switch chat {
-                    case .bot(let profile):
-                        row(profile, dimmed: profile.hidden)
-                    case .room(let room):
-                        if let key = inbox.roomKey(room) { roomRow(room, key: key) }
-                    }
-                }
+                chatSections(inbox.sections)
                 if inbox.hiddenCount > 0 {
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
@@ -160,6 +154,10 @@ import SwiftUI
                             onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
                     }
                     .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
+                    if inbox.sectionNames.count >= 2 {
+                        Divider()
+                        Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
+                    }
                 } label: { Label("New chat", systemImage: "plus") }
                 .disabled(inbox.link != .live)
             }
@@ -196,6 +194,40 @@ import SwiftUI
            inbox.rooms.contains(where: { $0.id == key.roomID }) { roomSequence = searchedSequence; selection.room = key; return }
         guard let searched = searchedProfile, inbox.connection?.id == searched.connectionID else { return }
         selection.profile = inbox.profiles.first { $0.id == searched.profileID }
+    }
+
+    /// The list under the tiles. Headers appear only when a named section is on
+    /// screen; without one the unfiled block reads as the flat list it always was.
+    @ViewBuilder private func chatSections(_ sections: [BotInbox.ChatSection]) -> some View {
+        let headed = sections.contains { $0.name != nil }
+        ForEach(sections) { section in
+            if headed {
+                Section {
+                    chatRows(section.chats)
+                } header: {
+                    // A Desktop name is the user's own text, never a catalog key.
+                    Group {
+                        if let name = section.name { Text(verbatim: name) } else { Text("Other chats") }
+                    }
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.tail).textCase(nil)
+                    .accessibilityAddTraits(.isHeader)
+                }
+            } else {
+                chatRows(section.chats)
+            }
+        }
+    }
+
+    private func chatRows(_ chats: [BotInbox.ChatRow]) -> some View {
+        ForEach(chats) { chat in
+            switch chat {
+            case .bot(let profile):
+                row(profile, dimmed: profile.hidden)
+            case .room(let room):
+                if let key = inbox.roomKey(room) { roomRow(room, key: key) }
+            }
+        }
     }
 
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
@@ -429,6 +461,10 @@ extension BotsInboxView {
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
                 deleting = nil
                 renamingRoom = nil; disbanding = nil
+                showingSectionOrder = false
+            }
+            .sheet(isPresented: $showingSectionOrder) {
+                BotSectionOrderView(inbox: inbox)
             }
             .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
                 NavigationStack { BotConnectionView(server: server) }
@@ -463,6 +499,42 @@ extension BotsInboxView {
                 else { inbox.close() }
             }
             .onDisappear { inbox.close() }
+    }
+}
+
+/// Places Desktop's named sections for this phone's inbox. Every drag saves the
+/// whole list at once; Reset to A–Z forgets the placement. The unfiled block is
+/// not listed because it always stays last.
+private struct BotSectionOrderView: View {
+    @Environment(\.dismiss) private var dismiss
+    let inbox: BotInbox
+
+    var body: some View {
+        let sections = inbox.sectionNames
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(sections) { section in
+                        Text(verbatim: section.name).lineLimit(1)
+                    }
+                    .onMove { from, to in
+                        var ids = sections.map(\.id)
+                        ids.move(fromOffsets: from, toOffset: to)
+                        inbox.setSectionOrder(ids)
+                    }
+                }
+                Section {
+                    Button("Reset to A–Z") { inbox.resetSectionOrder() }
+                        .disabled(inbox.sectionOrder.isEmpty)
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("Reorder Sections")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
     }
 }
 

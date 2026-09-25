@@ -1,16 +1,17 @@
 import Observation
 import UIKit
 
-/// The Bots inbox for one configured server: the roster, Desktop's pin and hidden
-/// organization, device-local unread marks, and one live subscription that lasts
-/// while the inbox is visible. `open()` owns the transport and `close()` ends it;
-/// every late reply is dropped by the wire identity check, so a replaced or closed
-/// connection never writes into the screen.
+/// The Bots inbox for one configured server: the roster, Desktop's pin, hidden and
+/// section organization, device-local unread marks and section order, and one
+/// live subscription that lasts while the inbox is visible. `open()` owns the
+/// transport and `close()` ends it; every late reply is dropped by the wire
+/// identity check, so a replaced or closed connection never writes into the screen.
 @MainActor @Observable final class BotInbox {
     enum Link: Equatable { case idle, connecting, live, disconnected }
 
     /// The roster split the way Desktop draws it: pinned first, the rest in server
     /// order, hidden bots apart and only when revealed or when a search names them.
+    /// The inbox list regroups these into `sections`; search reads them flat.
     struct Rows: Equatable {
         var pinned: [BotProfile] = []
         var others: [BotProfile] = []
@@ -36,14 +37,78 @@ import UIKit
         }
     }
 
-    /// Pinned tiles stay separate; all other visible chats share one timeline.
-    var chats: [ChatRow] {
+    /// One of Desktop's named sections, as this roster names it.
+    struct SectionName: Identifiable, Equatable {
+        let id: String
+        let name: String
+    }
+
+    /// One block of the list under the tiles: a named section, or the final
+    /// unfiled block (`name == nil`) holding unfiled bots and every room.
+    struct ChatSection: Identifiable {
+        let id: String
+        let name: String?
+        let chats: [ChatRow]
+    }
+
+    /// Everything except the pinned tiles, as sections in `sectionNames` order with
+    /// the unfiled block last. Each block is newest first; an empty one is left out.
+    /// With no named sections this is one unfiled block, the flat list as before.
+    var sections: [ChatSection] {
         let rows = rows(matching: "")
-        let bots = (rows.others + rows.hidden).map(ChatRow.bot)
-        // A hidden room lives in the revealed list whether or not it is also
-        // pinned, exactly as a hidden bot does, so it can always be unhidden.
-        let groups = visibleRooms.filter { isRoomHidden($0) ? showsHidden : !isRoomPinned($0) }.map(ChatRow.room)
-        return Self.byActivity(bots + groups)
+        var filed: [String: [ChatRow]] = [:]
+        var unfiled: [ChatRow] = []
+        for profile in rows.others + rows.hidden {
+            if let id = profile.sectionID, profile.sectionName != nil { filed[id, default: []].append(.bot(profile)) }
+            else { unfiled.append(.bot(profile)) }
+        }
+        // Rooms are never sectioned: Desktop keeps a room's section on the machine
+        // that filed it. A hidden room lives in the revealed list whether or not it
+        // is also pinned, exactly as a hidden bot does, so it can always be unhidden.
+        unfiled += visibleRooms.filter { isRoomHidden($0) ? showsHidden : !isRoomPinned($0) }.map(ChatRow.room)
+        var blocks = sectionNames.compactMap { section in
+            filed[section.id].map { ChatSection(id: "section:" + section.id, name: section.name, chats: Self.byActivity($0)) }
+        }
+        if !unfiled.isEmpty { blocks.append(ChatSection(id: "unfiled", name: nil, chats: Self.byActivity(unfiled))) }
+        return blocks
+    }
+
+    /// Every named section on the roster, pinned and hidden members included, in
+    /// this phone's order: the ids the user placed first, the rest A–Z. A section
+    /// takes the name most of its members carry, ties going to the first member in
+    /// roster order, so a rename still being stamped across members reads calmly.
+    var sectionNames: [SectionName] {
+        var tallies: [String: [(name: String, count: Int)]] = [:]
+        var ids: [String] = []
+        for profile in profiles {
+            guard let id = profile.sectionID, let name = profile.sectionName else { continue }
+            if tallies[id] == nil { ids.append(id) }
+            if let index = tallies[id, default: []].firstIndex(where: { $0.name == name }) { tallies[id]![index].count += 1 }
+            else { tallies[id, default: []].append((name, 1)) }
+        }
+        let named = ids.map { id in
+            let names = tallies[id]!
+            // Strictly greater keeps the earliest name on a tie.
+            let winner = names.dropFirst().reduce(names[0]) { $1.count > $0.count ? $1 : $0 }
+            return SectionName(id: id, name: winner.name)
+        }
+        return Self.ordered(named, placed: sectionOrder)
+    }
+
+    /// Placed ids keep their position; unplaced sections follow A–Z by name (ties
+    /// by id). Placed ids the roster no longer has are ignored.
+    static func ordered(_ sections: [SectionName], placed: [String]) -> [SectionName] {
+        let byID = Dictionary(sections.map { ($0.id, $0) }) { first, _ in first }
+        var used = Set<String>()
+        let front = placed.compactMap { id in used.insert(id).inserted ? byID[id] : nil }
+        let rest = sections.filter { !used.contains($0.id) }.sorted {
+            switch $0.name.localizedStandardCompare($1.name) {
+            case .orderedAscending: return true
+            case .orderedDescending: return false
+            case .orderedSame: return $0.id < $1.id
+            }
+        }
+        return front + rest
     }
 
     /// The tiles above the timeline: Desktop's pinned bots, then rooms pinned on
@@ -75,6 +140,9 @@ import UIKit
     /// Rooms pinned or hidden on this phone. The host has no such fields for
     /// rooms, so unlike a bot's pin these never reach Desktop.
     private(set) var roomFlags = BotRoomOrganizeStore.Flags()
+    /// Section ids in the order the user placed them on this phone; empty means A–Z.
+    /// Desktop keeps its own order locally and never sees this one.
+    private(set) var sectionOrder: [String] = []
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
@@ -101,6 +169,7 @@ import UIKit
     private let store: BotConnectionStore
     private let unread: BotUnreadStore
     private let roomStore: BotRoomOrganizeStore
+    private let sectionOrderStore: BotSectionOrderStore
     private let avatarStore: BotAvatarStore
     private let historyCache: BotHistoryCache
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
@@ -114,11 +183,13 @@ import UIKit
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
+         sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
+        self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         self.reconnectDelays = reconnectDelays; self.historyCache = historyCache
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
@@ -171,12 +242,13 @@ import UIKit
             let saved = try store.load(server: server)
             if connection?.id != saved?.id {
                 profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
-                roomFlags = BotRoomOrganizeStore.Flags()
+                roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []
             }
             connection = saved
             guard let saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
             if roomFlags == BotRoomOrganizeStore.Flags() { roomFlags = roomStore.load(connectionID: saved.id) }
+            if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
             let opened = makeWire(saved)
             client = opened
             wire = opened; link = .connecting; errorMessage = nil; notice = nil
@@ -432,6 +504,17 @@ import UIKit
         persistRoomFlags()
     }
 
+    /// Places the named sections in `ids` order on this phone only. Sections not in
+    /// `ids`, including ones Desktop adds later, follow A–Z after them.
+    func setSectionOrder(_ ids: [String]) {
+        guard let connection, ids != sectionOrder else { return }
+        sectionOrder = ids
+        sectionOrderStore.save(ids, server: server, connectionID: connection.id)
+    }
+
+    /// Back to A–Z: forgets every placement for this connection.
+    func resetSectionOrder() { setSectionOrder([]) }
+
     /// Rename and disband follow the room screen's gates: the host must offer the
     /// method, the room must be this gateway's own, and no write for it may be in
     /// flight. A room under another gateway's authority is read-only from here.
@@ -578,6 +661,30 @@ struct BotUnreadStore {
 
     func remove(connectionID: UUID) {
         defaults.removeObject(forKey: key(connectionID))
+    }
+}
+
+/// Phone-local order of Desktop's named sections, keyed by configured server and
+/// connection UUID. Desktop's own order lives in its local storage and is never
+/// read or written from here, so this is plain `UserDefaults` like the unread marks.
+struct BotSectionOrderStore {
+    var defaults: UserDefaults = .standard
+
+    private func key(_ server: URL, _ connectionID: UUID) -> String {
+        "bot-inbox-section-order." + connectionID.uuidString + "|" + server.absoluteString
+    }
+
+    func load(server: URL, connectionID: UUID) -> [String] {
+        defaults.stringArray(forKey: key(server, connectionID)) ?? []
+    }
+
+    func save(_ ids: [String], server: URL, connectionID: UUID) {
+        if ids.isEmpty { remove(server: server, connectionID: connectionID) }
+        else { defaults.set(ids, forKey: key(server, connectionID)) }
+    }
+
+    func remove(server: URL, connectionID: UUID) {
+        defaults.removeObject(forKey: key(server, connectionID))
     }
 }
 

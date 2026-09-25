@@ -86,10 +86,10 @@ struct BotConnection: Codable, Equatable, Identifiable {
 /// One `profiles.list` row. Identity comes only from server fields: the Desktop
 /// title, then the core `display_name`, then the Profile name (`default` reads as
 /// Hermes, as in Desktop). Description follows the same Desktop-then-core order.
-/// Pinned and hidden are Desktop's roster organization. Its user sections are
-/// not read yet (#742), though Desktop now writes a `sectionName` beside each
-/// `sectionId`, so a section can be named; `groups` are executable group rooms,
-/// not sections.
+/// Pinned, hidden and the user section are Desktop's roster organization. Desktop
+/// stamps each filed bot with the section's id and name (`sectionId`,
+/// `sectionName`); its section list and order stay in Desktop's plugin storage.
+/// `groups` are executable group rooms, not sections.
 struct BotProfile: Identifiable, Hashable {
     let id: String
     let name: String
@@ -100,6 +100,10 @@ struct BotProfile: Identifiable, Hashable {
     let lastActive: Date?
     let pinned: Bool
     let hidden: Bool
+    /// Desktop's user section, trimmed; nil when unfiled. A bot with an id but no
+    /// name cannot be headed, so the inbox treats it as unfiled.
+    let sectionID: String?
+    let sectionName: String?
     /// Desktop's `ui_meta["hermes-bots"]` object as received. A pin or hide write
     /// sends it back whole with one field changed, so Desktop-only fields survive.
     let look: [String: BotJSON]
@@ -122,6 +126,8 @@ struct BotProfile: Identifiable, Hashable {
         lastActive = row["canonical_session"]["last_active"].number.map(Date.init(timeIntervalSince1970:))
         pinned = look["pinned"].flag == true
         hidden = look["hidden"].flag == true
+        sectionID = Self.firstText(look["sectionId"])
+        sectionName = Self.firstText(look["sectionName"])
         self.look = look.fields ?? [:]
         hasAvatar = row["has_avatar"].flag == true
         lookRevision = row["ui_meta_revisions"]["hermes-bots"].integer
