@@ -464,7 +464,6 @@ private struct ChatCodeBlock: View {
     @State private var highlightedCode: NSAttributedString?
     /// Whether a long settled diff shows every line instead of the first `collapsedLineLimit`.
     @State private var showsAllDiffLines = false
-    @State private var diffViewportWidth: CGFloat = 0
 
     private let logger = Logger.hermesMarkdownRendering
 
@@ -566,11 +565,7 @@ private struct ChatCodeBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                ScrollView(.horizontal) {
-                    DiffCodeBlockText(lines: lines, minRowWidth: diffViewportWidth)
-                        .fixedSize(horizontal: true, vertical: true)
-                }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { diffViewportWidth = $0 }
+                DiffCodeBlockScrollBody(lines: lines)
             }
         }
         .padding(.top, 8)

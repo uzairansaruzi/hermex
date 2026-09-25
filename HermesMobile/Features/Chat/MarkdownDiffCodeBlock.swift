@@ -169,6 +169,23 @@ enum MarkdownDiffFormatter {
     }
 }
 
+/// The horizontal-scroll layout of a settled diff. It owns the viewport width so the
+/// post-layout width write re-renders only this view, not `ChatCodeBlock` (which
+/// would re-parse the diff).
+struct DiffCodeBlockScrollBody: View {
+    let lines: [MarkdownDiffLine]
+
+    @State private var viewportWidth: CGFloat = 0
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            DiffCodeBlockText(lines: lines, minRowWidth: viewportWidth)
+                .fixedSize(horizontal: true, vertical: true)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
+    }
+}
+
 /// The settled body of a diff fence inside `ChatCodeBlock`: one row per line, tinted
 /// edge to edge by kind with the text kept primary and the `+`/`-` prefix visible,
 /// so color is never the only signal. Tints match the Git review sheet.
