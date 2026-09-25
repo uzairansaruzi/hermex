@@ -877,6 +877,36 @@ import Vision
         model.suspend()
     }
 
+    /// A slash skill's saved row shows its invocation while the in-flight `user`
+    /// is the expanded body, and a delegation delivery saves as a card: text
+    /// can't match either, so the turn clock names the running turn's row.
+    func testRunningSkillOrDelegationTurnNamesItsSavedRowByTheTurnClock() async {
+        let wire = BotFixtureWire(); wire.running = true; wire.turnStartedAt = 200
+        let reply: BotJSON = .object(["role": .string("assistant"), "text": .string("Looking"), "timestamp": .number(215)])
+        let rows: [BotJSON] = [
+            .object(["role": .string("user"), "text": .string("/work fix the leak"),
+                     "display_kind": .string("skill_invocation"), "timestamp": .number(210)]),
+            .object(["role": .string("user"), "text": .string("[ASYNC DELEGATION BATCH COMPLETE — d1]\nReport"),
+                     "display_kind": .string(BotDelegationCompletion.displayKind), "timestamp": .number(210)])
+        ]
+        wire.inflight = .object(["user": .string("Expanded skill body"), "assistant": .string("Once")])
+        let model = make(wire)
+        for row in rows {
+            wire.history = [row, reply]
+            await model.recover()
+            XCTAssertEqual(model.activePromptMessageID, model.messages.first?.id)
+            XCTAssertFalse(model.liveMessages.contains { $0.role == "user" }, "the saved row already opens this turn")
+        }
+
+        // Dated before this turn began, it is last turn's row: the prompt shows live.
+        wire.history = [.object(["role": .string("user"), "text": .string("/work fix the leak"),
+                                 "display_kind": .string("skill_invocation"), "timestamp": .number(150)]), reply]
+        await model.recover()
+        XCTAssertNil(model.activePromptMessageID)
+        XCTAssertEqual(model.liveMessages.map(\.content), ["Expanded skill body", "Once"])
+        model.suspend()
+    }
+
     func testLongResponseInterleavesToolEventsThenSettlesWithoutDuplicateRows() async {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover()

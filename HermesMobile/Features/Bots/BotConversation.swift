@@ -68,9 +68,10 @@ import Observation
     @ObservationIgnored private var recentRoot: String?
     @ObservationIgnored private var recentOwner: UUID?
     private(set) var liveMessages: [ChatMessage] = []
-    /// The settled row of the prompt the running turn answers, once the host
-    /// has persisted it into `messages`; nil while the prompt is only live or
-    /// no prompt is in flight. The live prompt row draws only when this is nil.
+    /// The settled row that opened the running turn (its prompt or delegation
+    /// delivery), once the host has persisted it into `messages`; nil while the
+    /// prompt is only live or none is in flight. The live prompt row draws
+    /// only when this is nil.
     private(set) var activePromptMessageID: String?
     private(set) var errorMessage: String?
     let chatControls = BotChatControls()
@@ -675,17 +676,23 @@ import Observation
         if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt; turnObservedAt = Date() }
         liveMessages = []
         var activePrompt: String?
-        // The host persists each step mid-turn, so `messages` can list the
-        // prompt, and replies or reasoning after it, while it is still the
-        // in-flight `user`. The settled row wins when the last user turn (steers
-        // ride inside it) is this prompt; a same-text prompt from an earlier turn
-        // (dated before this turn began) does not count, so a repeated message
-        // still shows while history lags.
+        // The host saves the running turn's opening row (a prompt, or a
+        // delegation delivery) and each step after it mid-turn, so `messages`
+        // can list it while it is still the in-flight `user`. The settled row
+        // wins when the last turn boundary (steers ride inside a turn) is dated
+        // at or after this turn began: the host stamps it after starting the
+        // turn. Text can't decide: a slash skill's row shows its invocation,
+        // not the expanded prompt in flight. Only an undated row falls back to
+        // the text, so a repeated message from an earlier turn still shows
+        // while history lags.
         if let text = inflight["user"].text, !text.isEmpty {
             let display = BotMentions.displayText(text)
-            let settled = messages.last(where: TranscriptTurnClassifier.isUserTurnBoundary)
-            let fromEarlierTurn = startedAt.map { start in (settled?.timestamp ?? start) < start } ?? false
-            if let settled, settled.content == display, !fromEarlierTurn {
+            let settled = messages.last(where: BotTranscriptProjection.isTurnBoundary)
+            let isThisTurn = settled.map { row in
+                guard let start = startedAt, let stamp = row.timestamp else { return row.content == display }
+                return stamp >= start
+            } ?? false
+            if let settled, isThisTurn {
                 activePrompt = settled.id
             } else {
                 liveMessages.append(ChatMessage(role: "user", content: display, timestamp: nil, messageId: "live-user"))

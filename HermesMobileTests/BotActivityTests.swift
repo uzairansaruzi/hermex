@@ -186,9 +186,11 @@ final class BotActivityTests: XCTestCase {
 
     // MARK: - Fold Finished Turns
 
-    private func row(_ role: String, _ text: String? = nil, reasoning: String? = nil, at timestamp: Double? = nil) -> BotJSON {
+    private func row(_ role: String, _ text: String? = nil, reasoning: String? = nil, at timestamp: Double? = nil,
+                     kind: String? = nil) -> BotJSON {
         var fields: [String: BotJSON] = ["role": .string(role)]
         if let text { fields["text"] = .string(text) }
+        if let kind { fields["display_kind"] = .string(kind) }
         if let reasoning { fields["reasoning"] = .string(reasoning) }
         if let timestamp { fields["timestamp"] = .number(timestamp) }
         return .object(fields)
@@ -263,6 +265,58 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(folds.folds.map(\.turnKey), ["turn:user:0"])
         XCTAssertNil(folds.rowState(for: "r/7", expandedTurnKeys: []))
         XCTAssertNil(folds.rowState(for: "r/9", expandedTurnKeys: []))
+    }
+
+    func testRunningSlashSkillOrDelegationTurnStaysOpen() {
+        // A skill turn's row shows its invocation and a delivery projects as a
+        // card, so neither matches the in-flight text; the model still names the
+        // row by the turn clock, so no prompt is only live and the turn stays open.
+        let skill = workedTurn() + [row("user", "/work fix the leak", at: 210, kind: "skill_invocation")]
+            + workedTurn(from: 210).dropFirst()
+        let delivery = workedTurn() + [row("user", "Report", at: 210, kind: BotDelegationCompletion.displayKind)]
+            + workedTurn(from: 210).dropFirst()
+        for history in [skill, delivery] {
+            let (folds, messages) = folds(history, isStreaming: true)
+            XCTAssertEqual(folds.folds.map(\.turnKey), ["turn:user:0"], "only the finished turn folds")
+            for message in messages[4...] { XCTAssertNil(folds.rowState(for: message.id, expandedTurnKeys: [])) }
+        }
+    }
+
+    func testDelegationDeliveryOpensItsOwnTurnTimedFromTheDelivery() throws {
+        let kind = BotDelegationCompletion.displayKind
+        let history = [row("user", "Research X", at: 1000), row("assistant", "Delegated", at: 1010),
+                       row("user", "Report 1", at: 5000, kind: kind),
+                       row("assistant", "Reading", reasoning: "Scan it", at: 5005), row("tool"),
+                       row("assistant", "Findings 1", at: 5010),
+                       row("user", "Report 2", at: 9000, kind: kind), row("assistant", "Findings 2", at: 9005)]
+        let (folds, messages) = folds(history)
+        XCTAssertEqual(messages.map(\.id), ["r/0", "r/1", "r/2", "r/3", "r/5", "r/6", "r/7"])
+        let fold = try XCTUnwrap(folds.folds.first)
+        XCTAssertEqual(folds.folds.count, 1, "each delivery's answer is its own turn")
+        XCTAssertEqual(fold.turnKey, "turn:user:2")
+        XCTAssertEqual(fold.label, .worked(elapsed: ChatWorkingElapsedFormatter.label(seconds: 10)),
+                       "timed from the delivery, not across the delegation wait")
+        for id in ["r/1", "r/3", "r/5", "r/7"] {
+            XCTAssertNotEqual(folds.rowState(for: id, expandedTurnKeys: [])?.hidesBubble, true, "\(id) stays visible")
+        }
+        XCTAssertNil(folds.rowState(for: "r/2", expandedTurnKeys: []), "the delivery card never folds")
+    }
+
+    func testLoadEarlierFindsTheTurnThatWouldHideTheFirstShownReply() throws {
+        // The window starts at the interim reply: the partial turn keeps it visible
+        // until widening brings its prompt in and folds it.
+        let history = workedTurn() + workedTurn(from: 200)
+        let interim = "r/9"
+        let (before, messages) = folds(history, windowStart: 6)
+        XCTAssertEqual(messages[6].id, interim)
+        XCTAssertNotEqual(before.rowState(for: interim, expandedTurnKeys: [])?.hidesBubble, true)
+
+        let (after, _) = folds(history, windowStart: 0)
+        XCTAssertEqual(after.rowState(for: interim, expandedTurnKeys: [])?.hidesBubble, true)
+        let turnKey = try XCTUnwrap(BotTranscriptProjection.turnKey(of: interim, messages: messages, windowStart: 0))
+        XCTAssertEqual(turnKey, "turn:user:4")
+        XCTAssertEqual(after.rowState(for: interim, expandedTurnKeys: [turnKey])?.hidesBubble, false,
+                       "opening that turn keeps the reader's reply built")
     }
 
     func testActivityAnchoredToAUserRowOrAfterTheLastMessageNeverFolds() {

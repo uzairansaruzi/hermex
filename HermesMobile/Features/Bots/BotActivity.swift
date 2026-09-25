@@ -213,12 +213,35 @@ enum BotTranscriptProjection {
         return (messages, activity)
     }
 
+    /// Whether a row opens a Bot turn: a prompt (steers ride inside a turn) or
+    /// a delegation delivery, which the host runs as a turn of its own.
+    static func isTurnBoundary(_ message: ChatMessage) -> Bool {
+        TranscriptTurnClassifier.isUserTurnBoundary(turnClassified(message))
+    }
+
+    /// Key of the turn a window row folds under, as `turnFolds` names it; nil
+    /// for rows outside the window or that are not replies.
+    static func turnKey(of messageID: String, messages: [ChatMessage], windowStart: Int) -> String? {
+        guard messages.indices.contains(windowStart) else { return nil }
+        return TranscriptTurnClassifier.assistantTurnKeysByAnchorID(
+            messages[windowStart...].map(turnClassified), messageOffset: windowStart
+        )[messageID]
+    }
+
+    /// The row as the Sessions classifier reads it: a delegation delivery
+    /// becomes a prompt so it opens a turn, and its time starts that turn.
+    private static func turnClassified(_ message: ChatMessage) -> ChatMessage {
+        guard message.role == "delegation_completion" else { return message }
+        return ChatMessage(role: "user", content: message.content, timestamp: message.timestamp, messageId: message.messageId)
+    }
+
     /// Fold Finished Turns for the Bot transcript, through the Sessions engine
     /// over the window only (`windowStart...`), so the work stays bounded and
     /// turn keys stay absolute across Load earlier. Only assistant rows fold:
     /// activity anchored to a user row or trailing the last message, live rows
-    /// and delegation cards never do. The host sends no turn duration, so the
-    /// label reads the gap from the prompt to the turn's last timestamp.
+    /// and delegation cards never do; each delegation delivery opens its own
+    /// turn. The host sends no turn duration, so the label reads the gap from
+    /// the turn's opening row to its last timestamp.
     /// - Parameters:
     ///   - activityByAnchor: `BotConversation.settledActivityByAnchor`.
     ///   - showsCards: the Thinking and Tool Cards setting; with cards off, a
@@ -226,9 +249,9 @@ enum BotTranscriptProjection {
     ///   - isStreaming: the bot is working on a turn.
     ///   - hasLivePrompt: the running turn's prompt is only live (not yet in
     ///     `messages`), so every settled turn has finished. Otherwise the latest
-    ///     settled turn is the running one, whether its prompt has settled
-    ///     (`BotConversation.activePromptMessageID`) or it has none (a Desktop
-    ///     or delegation turn), and it stays open.
+    ///     settled turn is the running one, whether its opening row has settled
+    ///     (`BotConversation.activePromptMessageID`) or no prompt is in flight
+    ///     (a Desktop or continuation turn), and it stays open.
     static func turnFolds(
         messages: [ChatMessage],
         windowStart: Int,
@@ -247,7 +270,7 @@ enum BotTranscriptProjection {
             transcriptMessages: window.enumerated().map { index, message in
                 TranscriptMessage(loadedIndex: index, renderID: message.id, anchorID: message.id, message: message)
             },
-            messages: window,
+            messages: window.map(turnClassified),
             messageOffset: windowStart,
             activityAnchorIDs: activityAnchorIDs,
             rendersBubble: { !($0.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },

@@ -64,11 +64,7 @@ import SwiftUI
                         messages: model.messages, start: window.start(count: model.messages.count),
                         livePrompt: livePrompt, turnStartedAt: model.turnStartedAt, isMidTurn: isStreaming
                     )
-                    let folds = BotTranscriptProjection.turnFolds(
-                        messages: model.messages, windowStart: times.start,
-                        activityByAnchor: model.settledActivityByAnchor, showsCards: showsThinkingAndToolCards,
-                        foldsTurns: foldsSettledTurns, isStreaming: isStreaming, hasLivePrompt: livePrompt != nil
-                    )
+                    let folds = turnFolds(windowStart: times.start, hasLivePrompt: livePrompt != nil)
                     VStack(alignment: .leading, spacing: 8) {
                         if window.hasEarlier(count: model.messages.count) {
                             // The window widens in place, so there is no loading state.
@@ -354,16 +350,33 @@ import SwiftUI
         }
     }
 
+    private func turnFolds(windowStart: Int, hasLivePrompt: Bool) -> TranscriptTurnFolds {
+        BotTranscriptProjection.turnFolds(
+            messages: model.messages, windowStart: windowStart,
+            activityByAnchor: model.settledActivityByAnchor, showsCards: showsThinkingAndToolCards,
+            foldsTurns: foldsSettledTurns, isStreaming: isStreaming, hasLivePrompt: hasLivePrompt
+        )
+    }
+
     private var followsLatest: Bool { followLatch.isFollowing }
 
     /// Reveals one more page and keeps the message the reader was on at the top,
-    /// since the new rows push everything below them down.
+    /// since the new rows push everything below them down. Widening can pull that
+    /// message's prompt into view and fold it as an interim reply; its turn opens
+    /// so the reader keeps their place.
     private func loadEarlier(proxy: ScrollViewProxy) {
         let count = model.messages.count
         let firstShown = model.messages[window.start(count: count)...].first?.id
         handleFollowEvent(.userScrollBegin)
         window.loadEarlier()
         guard let firstShown else { return }
+        let start = window.start(count: count)
+        let hasLivePrompt = model.liveMessages.contains { $0.role == "user" }
+        if turnFolds(windowStart: start, hasLivePrompt: hasLivePrompt)
+            .rowState(for: firstShown, expandedTurnKeys: expandedTurnKeys)?.hidesBubble == true,
+           let turnKey = BotTranscriptProjection.turnKey(of: firstShown, messages: model.messages, windowStart: start) {
+            expandedTurnKeys.insert(turnKey)
+        }
         Task { @MainActor in
             await Task.yield()
             proxy.scrollTo(firstShown, anchor: .top)
