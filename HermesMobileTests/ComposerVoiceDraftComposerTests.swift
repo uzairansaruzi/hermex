@@ -272,6 +272,19 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(selected, "de-de")
     }
 
+    func testSpeechLocaleSelectionMatchesScriptTaggedPreferredLanguages() {
+        let selected = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: Locale(identifier: "zh-Hans_US"),
+                preferredLanguages: ["zh-Hans-CN", "zh-Hant-TW"]
+            ),
+            supportedLocales: [Locale(identifier: "zh-CN"), Locale(identifier: "zh-TW"), Locale(identifier: "en-US")],
+            recognizer: { $0.identifier }
+        )
+
+        XCTAssertEqual(selected, "zh-CN")
+    }
+
     func testSpeechLocaleSelectionReturnsNilWhenNoCandidateHasAModel() {
         let selected = ComposerSpeechLocalePolicy.firstAvailable(
             in: ComposerSpeechLocalePolicy.candidates(

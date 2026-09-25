@@ -918,8 +918,15 @@ enum ComposerSpeechLocalePolicy {
         return nil
     }
 
-    /// `en_US`, `en-US`, and `en_US@rg=pkzzzz` all normalize to `en-us`.
+    /// Language plus region, lowercased: `en_US`, `en-US`, and `en_US@rg=pkzzzz`
+    /// all normalize to `en-us`, and `zh-Hans-CN` to `zh-cn`, because
+    /// `SFSpeechRecognizer.supportedLocales()` lists Chinese without a script.
+    /// An identifier without a region (`en`) keeps its separator-normalized form.
     static func normalizedIdentifier(_ identifier: String) -> String {
+        let language = Locale(identifier: identifier).language
+        if let code = language.languageCode?.identifier, let region = language.region?.identifier {
+            return "\(code)-\(region)".lowercased()
+        }
         let base = identifier.split(separator: "@", maxSplits: 1).first.map(String.init) ?? identifier
         return base.replacingOccurrences(of: "_", with: "-").lowercased()
     }
