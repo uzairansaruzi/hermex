@@ -6,6 +6,9 @@ import UIKit
 struct BotChatComposerView: View {
     let model: BotConversation
     var mentionAvatars: [String: UIImage] = [:]
+    /// Owned by the screen, as in Sessions, so a transcript tap can put the
+    /// keyboard away without reaching into the composer.
+    @Binding var isFocused: Bool
     let onStop: () -> Void
     let onReconnect: () -> Void
     /// Scrolls the transcript back to the pending request card.
@@ -21,7 +24,6 @@ struct BotChatComposerView: View {
     @State private var shouldRestoreFocusAfterPicker = false
     @State private var picker: BotAttachmentPicker?
     @State private var preview: PendingAttachment?
-    @State private var isFocused = false
     @State private var selection = ComposerSelection()
     @State private var inputHeight: CGFloat = 22
     @State private var measuredHeight: CGFloat = 0

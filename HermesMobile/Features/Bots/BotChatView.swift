@@ -24,6 +24,7 @@ import SwiftUI
     @State private var showingDelegatedWork = false
     /// Measured composer height; sizes the material fade behind it, as the main chat does.
     @State private var composerHeight: CGFloat = 52
+    @State private var composerFocused = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var window = BotTranscriptWindow()
 
@@ -113,6 +114,10 @@ import SwiftUI
                 .onChange(of: model.messages.count, initial: true) { _, count in window.seed(count: count) }
                 .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
+                // Simultaneous so links, rows and selection keep their taps. Only the
+                // composer loses focus: the request card has fields of its own.
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { if composerFocused { composerFocused = false } })
                 .onChange(of: model.messages.count) { followLatest(proxy) }
                 .onChange(of: model.liveMessages.last?.content) { followLatest(proxy) }
                 .onChange(of: model.liveActivity.toolCalls.count) { followLatest(proxy) }
@@ -339,7 +344,7 @@ import SwiftUI
     /// transcripts end identically. The fade reaches 34 pt above the composer.
     private var composer: some View {
         BotChatComposerView(
-            model: model, mentionAvatars: mentionAvatars,
+            model: model, mentionAvatars: mentionAvatars, isFocused: $composerFocused,
             onStop: { stopAction = model.prepareStop() },
             onReconnect: { recoveryID = UUID() },
             onShowRequest: { showRequestID = UUID() }

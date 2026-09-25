@@ -358,7 +358,7 @@ import XCTest
             "fast": .bool(false), "usage": .object(["context_used": .number(24000), "context_max": .number(100000)])]), idle: true)
         let window = try show(VStack {
             Spacer()
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
+            BotComposerFixture(model: model)
         })
         window.overrideUserInterfaceStyle = .dark
         defer { close(window); model.suspend() }
@@ -378,7 +378,7 @@ import XCTest
         await model.send(); await model.recover()
         XCTAssertFalse(model.uncertainSend)
         let window = try show(NavigationStack {
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
+            BotComposerFixture(model: model)
         })
         defer { model.suspend(); close(window) }
         await renderFrames()
@@ -438,7 +438,7 @@ import XCTest
         }
         await model.attachments.stage(data: photo, filename: "photo.jpg")
         let window = try show(NavigationStack {
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
+            BotComposerFixture(model: model)
         })
         var finishUpload: CheckedContinuation<String, Error>?
         let uploadStarted = expectation(description: "upload started")
@@ -475,7 +475,7 @@ import XCTest
     func testSendOnAWorkingBotAsksSteerQueueOrInterruptBeforeWriting() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover(); model.editDraft("Focus on reconnect")
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
@@ -512,7 +512,7 @@ import XCTest
         let wire = BotFixtureWire()
         let model = make(wire)
         await model.recover()
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let ready = try screenshot(window, name: "ready-no-status")
@@ -533,7 +533,7 @@ import XCTest
         XCTAssertFalse(model.mayEditDraft)
         await model.recover()
         model.editDraft("Persistent text")
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
@@ -556,6 +556,65 @@ import XCTest
         XCTAssertTrue(editor.isKeyboardSendEnabled, "Command-Return opens the send-choice card while working")
         XCTAssertTrue(editor.isEditable, "Unsent drafts remain editable while the Bot works")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
+    }
+
+    /// A transcript tap clears the screen-owned focus; the editor resigns and
+    /// keeps the draft, and nothing is sent.
+    func testClearingComposerFocusHidesKeyboardWithoutLosingDraft() async throws {
+        let wire = BotFixtureWire()
+        let model = make(wire)
+        await model.recover()
+        let focus = ComposerFixtureFocus()
+        let window = try show(BotComposerFixture(model: model, focus: focus))
+        defer { model.suspend(); close(window) }
+        await renderFrames()
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await renderFrames()
+        XCTAssertTrue(focus.isFocused, "The editor reports its focus to the screen")
+        editor.insertText("Unsent bot draft")
+        await renderFrames()
+
+        focus.isFocused = false
+        await renderFrames()
+        XCTAssertFalse(editor.isFirstResponder)
+        XCTAssertEqual(model.draft, "Unsent bot draft")
+        XCTAssertEqual(editor.sourceText, model.draft)
+        XCTAssertTrue(descendants(window).contains { $0 === editor })
+
+        focus.isFocused = true
+        await renderFrames()
+        XCTAssertTrue(editor.isFirstResponder, "The same editor can be focused again after dismissal")
+        XCTAssertFalse(wire.calls.contains { $0.0 == "prompt.submit" }, "Dismissing the keyboard must not send the draft")
+    }
+
+    /// The question card's field sits inside the transcript, which is why the
+    /// transcript tap clears only the composer's focus: moving into the card
+    /// field must keep it first responder, and drag-down dismissal stays.
+    func testQuestionFieldKeepsTheKeyboardWhenComposerFocusClears() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.pendingClarify = BotFixtureWire.clarify()
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        _ = try await screenshot(window, name: "739-question-card", awaiting: ["Type a response"])
+        let views = descendants(window)
+        let transcript = try XCTUnwrap(views.compactMap { $0 as? UIScrollView }.first {
+            !($0 is UITextView) && ($0.keyboardDismissMode == .interactive || $0.keyboardDismissMode == .interactiveWithAccessory)
+        }, "Drag-down dismissal stays on the Bot Chat transcript")
+        let editor = try XCTUnwrap(views.compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertFalse(editor.isDescendant(of: transcript))
+        let field = try XCTUnwrap(views.compactMap { $0 as? UITextView }.first {
+            !($0 is ComposerChipTextView) && $0.isEditable && $0.isDescendant(of: transcript)
+        }, "Expected the question card's response field inside the transcript")
+
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await renderFrames()
+        XCTAssertTrue(field.becomeFirstResponder())
+        await renderFrames()
+        XCTAssertTrue(field.isFirstResponder, "Clearing composer focus must not take the card field's keyboard")
+        XCTAssertFalse(editor.isFirstResponder)
     }
 
     /// Typing `/` in a Bot chat opens the panel with this connection's skills.
@@ -583,7 +642,7 @@ import XCTest
         await model.recover()
         await model.loadSlashCatalog()
         XCTAssertEqual(model.slashSkills.map(\.name), ["triage-inbox", "write-tests"])
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
@@ -672,7 +731,7 @@ import XCTest
         await model.recover()
         XCTAssertTrue(model.uncertainStop)
         XCTAssertEqual(model.turn, .needsAttention)
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
         await renderFrames()
         let status = try screenshot(window, name: "attention-over-uncertain-stop")
@@ -795,7 +854,7 @@ import XCTest
     }
 
     func testSessionsComposerRetainsFocusAndAttachmentsAtAccessibilitySize() async throws {
-        let focus = SessionFixtureFocus()
+        let focus = ComposerFixtureFocus()
         let window = try show(SessionChatPresentationFixture(focus: focus)
             .environment(\.dynamicTypeSize, .accessibility1))
         defer { close(window) }
@@ -818,7 +877,7 @@ import XCTest
     /// finished one comes or goes. A get/set draft binding (the old wiring)
     /// re-runs the owner on every keystroke and fails the pass count.
     func testSessionsComposerScansFileReferencesWithoutReRunningItsOwnerPerKeystroke() async throws {
-        let focus = SessionFixtureFocus()
+        let focus = ComposerFixtureFocus()
         let probe = SessionFixtureProbe()
         let window = try show(SessionChatPresentationFixture(focus: focus, probe: probe))
         defer { close(window) }
@@ -1193,9 +1252,20 @@ private struct AttachmentOverlayHarnessView: View {
     }
 }
 
-/// Holds the Sessions composer's external focus binding for hosted integration tests.
-@MainActor @Observable private final class SessionFixtureFocus {
+/// Holds a composer's screen-owned focus binding for hosted integration tests.
+@MainActor @Observable private final class ComposerFixtureFocus {
     var isFocused = false
+}
+
+/// The Bot composer wired like `BotChatView`: focus lives in the parent, and
+/// the editor writes it back.
+private struct BotComposerFixture: View {
+    let model: BotConversation
+    @Bindable var focus = ComposerFixtureFocus()
+
+    var body: some View {
+        BotChatComposerView(model: model, isFocused: $focus.isFocused, onStop: {}, onReconnect: {}, onShowRequest: {})
+    }
 }
 
 /// Counts the Sessions fixture's own body passes, and records the drafts its
@@ -1208,7 +1278,7 @@ private struct AttachmentOverlayHarnessView: View {
 }
 
 private struct SessionChatPresentationFixture: View {
-    @Bindable var focus: SessionFixtureFocus
+    @Bindable var focus: ComposerFixtureFocus
     var probe = SessionFixtureProbe()
     @State private var draft = ""
     @State private var quotes: [ComposerQuote] = []
