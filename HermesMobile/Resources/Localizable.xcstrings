@@ -22796,6 +22796,112 @@
         }
       }
     },
+    "Copy includes every line." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يشمل النسخ كل الأسطر."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopieren übernimmt alle Zeilen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar incluye todas las líneas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La copie inclut toutes les lignes."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ההעתקה כוללת את כל השורות."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La copia include tutte le righe."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "コピーにはすべての行が含まれます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "복사하면 모든 줄이 포함됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopiëren neemt alle regels mee."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopiowanie obejmuje wszystkie wiersze."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar inclui todas as linhas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Копирование включает все строки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopyalama tüm satırları içerir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "کاپی میں تمام سطریں شامل ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製包含所有行。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "复制包含所有行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製包含所有行。"
+          }
+        }
+      }
+    },
     "Copy prompt" : {
       "localizations" : {
         "ar" : {
@@ -73594,6 +73700,364 @@
         }
       }
     },
+    "Show all %lld lines" : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض كل الأسطر (%lld)"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض كل الأسطر (%lld)"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض كل الأسطر (%lld)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض كل الأسطر (%lld)"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض كل الأسطر (%lld)"
+                }
+              },
+              "zero" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض كل الأسطر (%lld)"
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Zeile anzeigen"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Alle %lld Zeilen anzeigen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Show %lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Show all %lld lines"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar %lld línea"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar las %lld líneas"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Afficher %lld ligne"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Afficher les %lld lignes"
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת כל השורות (%lld)"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת כל השורות (%lld)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת כל השורות (%lld)"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת כל השורות (%lld)"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostra %lld riga"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostra tutte le %lld righe"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "全%lld行を表示"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld줄 모두 보기"
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld regel tonen"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Alle %lld regels tonen"
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż wszystkie %lld wiersze"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż wszystkie %lld wierszy"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż %lld wiersz"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż wszystkie %lld wiersza"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar %lld linha"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar todas as %lld linhas"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать все %lld строки"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать все %lld строк"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать %lld строку"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать все %lld строки"
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld satırın tümünü göster"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld satırın tümünü göster"
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld سطر دکھائیں"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "تمام %lld سطریں دکھائیں"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "顯示全部 %lld 行"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "显示全部 %lld 行"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "顯示全部 %lld 行"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Show all models" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "إظهار جميع النماذج" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Alle Modelle anzeigen" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Mostrar todos los modelos" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Afficher tous les modèles" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הצגת כל הדגמים" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Mostra tutti i modelli" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "すべてのモデルを表示" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "모든 모델 보기" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Alle modellen tonen" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Pokaż wszystkie modele" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Mostrar todos os modelos" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Показать все модели" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Tüm modelleri göster" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "تمام ماڈلز دکھائیں" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "顯示所有模型" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "显示所有模型" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "顯示所有模型" } } } },
     "Show fewer models" : { "localizations" : { "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "إظهار نماذج أقل" } }, "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Weniger Modelle anzeigen" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Mostrar menos modelos" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Afficher moins de modèles" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הצגת פחות דגמים" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Mostra meno modelli" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "表示するモデルを減らす" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "더 적은 모델 보기" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Minder modellen tonen" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Pokaż mniej modeli" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Mostrar menos modelos" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Показать меньше моделей" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Daha az model göster" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "کم ماڈلز دکھائیں" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "顯示較少模型" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "显示较少模型" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "顯示較少模型" } } } },
     "Show all projects" : {
@@ -73804,6 +74268,364 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "顯示可用的斜線指令"
+          }
+        }
+      }
+    },
+    "Show first %lld lines" : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض الأسطر الأولى (%lld)"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض الأسطر الأولى (%lld)"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض الأسطر الأولى (%lld)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض الأسطر الأولى (%lld)"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض الأسطر الأولى (%lld)"
+                }
+              },
+              "zero" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "عرض الأسطر الأولى (%lld)"
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Nur %lld Zeile anzeigen"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Nur die ersten %lld Zeilen anzeigen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Show first %lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Show first %lld lines"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar solo %lld línea"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar las primeras %lld líneas"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Afficher %lld ligne"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Afficher les %lld premières lignes"
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת השורות הראשונות (%lld)"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת השורות הראשונות (%lld)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת השורות הראשונות (%lld)"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "הצגת השורות הראשונות (%lld)"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostra %lld riga"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostra le prime %lld righe"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "最初の%lld行を表示"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "처음 %lld줄만 보기"
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld regel tonen"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Eerste %lld regels tonen"
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż pierwsze %lld wiersze"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż pierwszych %lld wierszy"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż %lld wiersz"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Pokaż pierwsze %lld wiersza"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar %lld linha"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Mostrar as primeiras %lld linhas"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать первые %lld строки"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать первые %lld строк"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать первую %lld строку"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Показать первые %lld строки"
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "İlk %lld satırı göster"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "İlk %lld satırı göster"
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "پہلی %lld سطر دکھائیں"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "پہلی %lld سطریں دکھائیں"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "僅顯示前 %lld 行"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "仅显示前 %lld 行"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "僅顯示前 %lld 行"
+                }
+              }
+            }
           }
         }
       }

@@ -64,7 +64,9 @@ text snapshot through the streaming Markdown renderer with its reveal fade off
 (`allowsStreamedTextAnimation`). The live reply bypasses the shared layout
 cache; past the renderer's 6,000-character stable-chunk threshold, sealed
 chunks skip re-layout and their code highlights once, and code in the growing
-part stays plain until the reply settles. A whole snapshot fading in would leave the trailing viewport blank; an
+part stays plain until the reply settles. Diff and patch fences follow the same
+split: `MarkdownDiffFormatter` tints their added and removed lines once sealed
+or settled, never through Highlightr. A whole snapshot fading in would leave the trailing viewport blank; an
 XCTest renders evolving snapshots and checks the actual visible output.
 
 Settled messages reuse the Sessions transcript's long-press seam.
