@@ -387,9 +387,10 @@ Profile name) so nothing repaints between blinks; only the open bot's face in th
 chat title takes Desktop's 15 fps working pose, and only while its turn is live.
 It sways for a 30 s beat (`BotWorkingSchedule`) from when the turn starts or
 resumes working after an approval, or when the app returns to the foreground
-mid-turn, then holds a still lean that only blinks. An arriving approval, or
-opening the chat onto one, never starts the beat, and the face is still while
-the app is inactive.
+mid-turn, then holds a still lean that only blinks (`BotWorkingBeat` owns the
+rule). An arriving approval, opening the chat onto one, stopping, and the
+`.unknown` reconciliations of stream events and same-turn reconnects never
+start a beat, and the face is still while the app is inactive.
 Reduce Motion, the shape and expression picker tiles, photos and the extensions
 render one still frame; inbox rows and pinned tiles blink.
 The drawn face's rest `expression` (sixteen Bloub-derived eye geometries in

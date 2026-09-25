@@ -107,13 +107,37 @@ final class BotFaceMotionTests: XCTestCase {
 
     func testUnstartedBeatHoldsTheSettledLean() {
         let blink = BotBlinkSchedule(seed: "inbox-triage")
-        let schedule = BotWorkingSchedule(start: BotWorkingSchedule.notStarted, blink: blink)
+        let schedule = BotWorkingSchedule(start: BotWorkingBeat().start, blink: blink)
         let now = Date(timeIntervalSinceReferenceDate: 1000)
 
         XCTAssertEqual(Array(schedule.entries(from: now, mode: .normal).prefix(6)),
                        Array(blink.entries(from: now, mode: .normal).prefix(6)),
                        "a chat opened onto a pending approval never runs the 15 fps beat")
         XCTAssertEqual(schedule.pose(at: now).gazeX, BotFacePose.settledWorking.gazeX)
+    }
+
+    func testWorkingBeatStartsOnlyWhenWorkStartsOrTheChatReturns() {
+        var beat = BotWorkingBeat()
+        let t = { Date(timeIntervalSinceReferenceDate: $0) }
+
+        // Opened onto a pending approval: nothing sways until the answer resumes work.
+        beat.observe(.unknown, at: t(1)); beat.observe(.needsAttention, at: t(2))
+        XCTAssertEqual(beat.start, .distantPast)
+        beat.observe(.unknown, at: t(3)); beat.observe(.running, at: t(4))
+        XCTAssertEqual(beat.start, t(4), "an answered approval resumes work")
+
+        // Stream reconciliation, a same-turn reconnect, stopping and a new approval don't restart it.
+        beat.observe(.unknown, at: t(10)); beat.observe(.running, at: t(11))
+        beat.observe(.uncertain, at: t(12)); beat.observe(.running, at: t(13))
+        beat.observe(.stopping, at: t(14))
+        beat.observe(.needsAttention, at: t(15))
+        XCTAssertEqual(beat.start, t(4))
+
+        // A new prompt from idle starts one; so does returning to the foreground mid-turn.
+        beat.observe(.idle, at: t(20)); beat.observe(.unknown, at: t(21)); beat.observe(.running, at: t(22))
+        XCTAssertEqual(beat.start, t(22))
+        beat.observe(.unknown, at: t(30)); beat.rearm(); beat.observe(.running, at: t(31))
+        XCTAssertEqual(beat.start, t(31))
     }
 
     func testWorkingScheduleSettlesIntoALeanThatOnlyBlinks() {

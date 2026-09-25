@@ -26,9 +26,8 @@ import SwiftUI
     @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var window = BotTranscriptWindow()
-    /// When the title face's current 15 fps beat began; see `titleFaceMotion`. Only the
-    /// turn entering work starts one, so a chat opened onto a pending approval holds still.
-    @State private var workingBeatStart = BotWorkingSchedule.notStarted
+    /// When the title face's current 15 fps beat began; see `titleFaceMotion`.
+    @State private var workingBeat = BotWorkingBeat()
 
     init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile],
          avatars: [String: UIImage], conversation: String? = nil,
@@ -221,16 +220,10 @@ import SwiftUI
             if scenePhase == .active { await model.recover() }
         }
         .onChange(of: scenePhase) {
-            if scenePhase == .active { recoveryID = UUID() }
+            if scenePhase == .active { recoveryID = UUID(); workingBeat.rearm() }
             else { stopAction = nil; model.suspend() }
         }
-        .onChange(of: model.turn) {
-            // Starting or resuming work (an answered approval) restarts the beat. Opening the
-            // chat and returning to the foreground land here too: the model starts at, and
-            // `suspend()` resets to, `.unknown`, so recovery re-enters `.running`. An arriving
-            // approval or stream events never restart it, so the face settles.
-            if isWorking { workingBeatStart = Date() }
-        }
+        .onChange(of: model.turn) { workingBeat.observe(model.turn, at: Date()) }
         .onDisappear { stopAction = nil; model.suspend() }
         .pushPresence(model.pushPresence)
         .onChange(of: model.linkedRootIsStale) {
@@ -332,13 +325,12 @@ import SwiftUI
     }
 
     private var isStreaming: Bool { [.running, .needsAttention, .stopping].contains(model.turn) }
-    private var isWorking: Bool { [.running, .stopping].contains(model.turn) }
 
     /// The title face sways for one beat after work starts or the app returns mid-turn,
     /// then holds a still lean; it never moves while the app is inactive.
     private var titleFaceMotion: BotFaceMotion {
         guard scenePhase == .active else { return .still }
-        return isStreaming ? .working(since: workingBeatStart) : .idle
+        return isStreaming ? .working(since: workingBeat.start) : .idle
     }
 
     private var showsScrollToBottomButton: Bool {

@@ -93,9 +93,6 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
 struct BotWorkingSchedule: TimelineSchedule, Equatable {
     static let beat = 30.0
     static let frameInterval = 1.0 / 15
-    /// The start of a beat that has not begun: the face holds the settled lean. Bot Chat
-    /// opens with it, so a chat opened onto a pending approval never sways.
-    static let notStarted = Date.distantPast
     let start: Date
     let blink: BotBlinkSchedule
 
@@ -123,6 +120,29 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
                 frame += 1
                 return next
             }
+        }
+    }
+}
+
+/// When Bot Chat's title face starts a working beat. A beat starts only when the turn
+/// enters work after being seen not working (a new prompt, an answered approval) or
+/// after the chat opened or came back to the foreground. The host reconciles through
+/// `.unknown` on many stream events and on a same-turn reconnect; those, an arriving
+/// approval and `.running` to `.stopping` never start one, so a long turn settles.
+struct BotWorkingBeat: Equatable {
+    /// `.distantPast` until the first beat, so a chat opened onto a pending approval holds the lean.
+    private(set) var start = Date.distantPast
+    private var armed = true
+
+    /// Called when the chat returns to the foreground; the next entry into work starts a beat.
+    mutating func rearm() { armed = true }
+
+    mutating func observe(_ turn: BotConversation.TurnState, at date: Date) {
+        switch turn {
+        case .running, .stopping:
+            if armed { start = date; armed = false }
+        case .unknown, .uncertain: break
+        case .idle, .submitting, .needsAttention, .interrupted: armed = true
         }
     }
 }
