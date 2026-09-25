@@ -104,8 +104,9 @@ struct BotProfile: Identifiable, Hashable {
     /// name cannot be headed, so the inbox treats it as unfiled.
     let sectionID: String?
     let sectionName: String?
-    /// Desktop's `ui_meta["hermes-bots"]` object as received. A pin or hide write
-    /// sends it back whole with one field changed, so Desktop-only fields survive.
+    /// Desktop's `ui_meta["hermes-bots"]` object as received. A pin, hide or section
+    /// write sends it back whole with the changed fields applied, so Desktop-only
+    /// fields survive.
     let look: [String: BotJSON]
     /// True when the host has an avatar asset, so the inbox fetches only rows that have one.
     let hasAvatar: Bool
