@@ -1,8 +1,8 @@
 # Contributor CI: build and run the full XCTest suite on every pull request
 # that touches app code, then check the build's extracted UI strings against
-# the String Catalog (ci/check_string_catalog.py). Every push to master runs
-# the full suite too: PRs need not be up to date to merge, so two green PRs
-# can still break master together. PRs limited to docs
+# the String Catalog (ci/check_string_catalog.py). Pushes to master run the
+# full suite too: PRs need not be up to date to merge, so two green PRs can
+# still break master together. PRs limited to docs
 # (markdown, docs/, community files) and local tooling (scripts/) skip the
 # macOS runner entirely and pass via the cheap gate job.
 #
@@ -27,8 +27,10 @@ permissions:
   contents: read
   pull-requests: read
 
-# A newer push to a PR cancels its older run. Master runs finish, so every
-# merge burst ends with a result for the latest master.
+# A newer push to a PR cancels its older run. A master run always finishes;
+# pushes that land meanwhile wait, and only the newest waiting one runs. Its
+# result covers every commit before it, so a burst of merges ends with one
+# result for the latest master rather than a queue of macOS runs.
 concurrency:
   group: pr-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
