@@ -73,6 +73,12 @@ import XCTest
         XCTAssertNotNil(bot.preview)
         XCTAssertNotNil(bot.lastActive)
         XCTAssertNotNil(bot.lookRevision)
+        // The inbox names and hides a bot from `display_name` and Desktop's look.
+        XCTAssertNotNil(bot.displayName)
+        XCTAssertNotNil(bot.title)
+        let row = try XCTUnwrap(rows.first { $0["name"].text == "inbox-triage" })
+        let hidden = try XCTUnwrap(row["ui_meta"]["hermes-bots"]["hidden"].flag, "The captured look carries `hidden`")
+        XCTAssertEqual(bot.hidden, hidden)
     }
 
     /// The captured resume and turn, served through the scripted wire, settle Bot Chat

@@ -29,8 +29,7 @@ struct HermesFixtureCapture {
             } else {
                 (raw, secrets.ticket) = try await Capture(secrets: secrets, pin: pin).run()
                 if let keep = options.keepRaw {
-                    try encode(raw).write(to: keep, options: .atomic)
-                    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keep.path)
+                    try writePrivately(encode(raw), to: keep)
                     print("Kept the unsanitized capture at \(keep.path); move it to the Trash when done.")
                 }
             }
@@ -44,6 +43,17 @@ struct HermesFixtureCapture {
             FileHandle.standardError.write(Data("capture-hermes-fixtures: \(error)\n".utf8))
             exit(1)
         }
+    }
+
+    /// Writes the unsanitized capture readable only by its owner, from the first byte.
+    static func writePrivately(_ data: Data, to file: URL) throws {
+        let descriptor = open(file.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
+        guard descriptor >= 0 else { throw Failure("cannot create \(file.path)") }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        // An existing file keeps its old mode through O_CREAT, so restrict it before writing.
+        guard fchmod(descriptor, 0o600) == 0 else { throw Failure("cannot restrict \(file.path)") }
+        try handle.write(contentsOf: data)
+        try handle.close()
     }
 
     static func encode(_ value: JSON) throws -> Data {
@@ -81,7 +91,8 @@ struct Options {
 }
 
 /// `HERMES_AGENT_TESTED_SHA`: line 1 the commit, line 2 the release. The capture
-/// refuses a host on another release, so the manifest always names the pin.
+/// refuses a host on another release, so the manifest always names the pin. The host
+/// reports only its release, so line 1 is the commit the maintainer read on the host.
 struct Pin {
     let sha: String
     let release: String
@@ -188,10 +199,10 @@ final class Capture {
                 "profile": .string(HermesFixtureCapture.profile), "title": .string(HermesFixtureCapture.title),
                 "hidden": .bool(true), "follow_profile_config": .bool(true), "close_on_disconnect": .bool(true)
             ])
-            guard let runtime = create["session_id"].text, let storedID = create["stored_session_id"].text else {
-                throw Failure("session.create returned no ids")
-            }
-            runtimes.append(runtime); stored = storedID
+            // Keep whichever id arrived, so cleanup can still reach a half-described session.
+            if let runtime = create["session_id"].text { runtimes.append(runtime) }
+            stored = create["stored_session_id"].text
+            guard let runtime = runtimes.first, let storedID = stored else { throw Failure("session.create returned no ids") }
             print("Disposable session: stored id \(storedID).")
             let firstFrame = frames.count
             _ = try await call("prompt.submit", ["session_id": .string(runtime), "text": .string(HermesFixtureCapture.prompt), "queued": .bool(true)])
@@ -200,7 +211,11 @@ final class Capture {
             // lookup ignores `hidden`, so compare the plain listings instead.
             let visible = try await listed(storedID, includeHidden: false)
             let listedWithHidden = try await listed(storedID, includeHidden: true)
-            print("Hidden check: \(visible ? "LISTED" : "absent") without include_hidden, \(listedWithHidden ? "listed" : "ABSENT") with it.")
+            // The delete confirmation relies on `include_hidden` listing the session.
+            guard !visible, listedWithHidden else {
+                throw Failure("hidden check failed: \(visible ? "listed" : "absent") without include_hidden, \(listedWithHidden ? "listed" : "absent") with it")
+            }
+            print("Hidden check passed: absent without include_hidden, listed with it.")
             let resume = try await call("session.resume", [
                 "profile": .string(HermesFixtureCapture.profile), "session_id": .string(storedID), "close_on_disconnect": .bool(false)
             ])
