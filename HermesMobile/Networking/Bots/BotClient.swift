@@ -11,9 +11,11 @@ import Foundation
     private let connection: BotConnection
     private let session: URLSession
     private let rpcDeadline: Duration
+    private let heartbeatInterval: Duration
     private var socket: (any BotSocket)?
     private let socketFactory: ((URL, [String]) -> any BotSocket)?
     private var reader: Task<Void, Never>?
+    private var heartbeat: Task<Void, Never>?
     private var generation = 0
     private var imageUploads: [UUID: Task<String, Error>] = [:]
     private var artifactTasks: [UUID: Task<Data, Error>] = [:]
@@ -28,12 +30,14 @@ import Foundation
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 
+    /// `heartbeatInterval` is the `gateway.ping` cadence; tests shorten it.
     init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral,
-         rpcDeadline: Duration = .seconds(30),
+         rpcDeadline: Duration = .seconds(30), heartbeatInterval: Duration = .seconds(15),
          socketFactory: ((URL, [String]) -> any BotSocket)? = nil) {
         self.socketFactory = socketFactory
         self.connection = connection
         self.rpcDeadline = rpcDeadline
+        self.heartbeatInterval = heartbeatInterval
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 30
         session = URLSession(configuration: configuration)
@@ -52,6 +56,9 @@ import Foundation
         return try JSONDecoder().decode(BotJSON.self, from: data)
     }
 
+    /// Signs in, opens the socket and completes the handshake: `gateway.ready`,
+    /// then `client.capabilities` as the first outbound frame, then the keepalive.
+    /// Callers send nothing until this returns, so no RPC can precede the handshake.
     func connect() async throws {
         close()
         let owner = generation
@@ -108,9 +115,43 @@ import Foundation
                     self.onDisconnect?(error)
                 }
             }
+            // Without this the host treats the socket as a build that predates
+            // server→client requests: approvals are withdrawn unsent, clarify is
+            // answered empty, and sudo/secret are skipped. A host older than the
+            // capability answers -32601 and connects as before; the shared web
+            // client ignores any rejection here too, so only a lost socket fails.
+            do { _ = try await call("client.capabilities", ["server_requests": .bool(true)]) }
+            catch BotFailure.rejected {}
+            try check()
+            startHeartbeat(socket, owner: owner)
         } catch {
             if owner == generation { close() }
             throw error
+        }
+    }
+
+    /// Sends `gateway.ping` on a fixed cadence, because the host sends no JSON
+    /// heartbeat of its own and an idle socket would otherwise hit the 45 s
+    /// silence deadline in `receive`. The pong is just more inbound traffic: its
+    /// string id matches no pending call, so `consume` drops it. A failed send is
+    /// a lost socket.
+    private func startHeartbeat(_ socket: any BotSocket, owner: Int) {
+        let interval = heartbeatInterval
+        heartbeat = Task { [weak self] in
+            var beat = 0
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: interval) } catch { return }
+                guard let self, self.generation == owner else { return }
+                beat += 1
+                let frame = #"{"jsonrpc":"2.0","id":"heartbeat-\#(beat)","method":"gateway.ping","params":{}}"#
+                do { try await socket.send(.string(frame)) }
+                catch {
+                    guard self.generation == owner else { return }
+                    self.close()
+                    self.onDisconnect?(error)
+                    return
+                }
+            }
         }
     }
 
@@ -143,8 +184,8 @@ import Foundation
         guard ["profiles.list", "profiles.get_asset", "profiles.describe", "profiles.configure", "profiles.set_asset",
                "profiles.create", "session.create", "session.title",
                "session.list", "session.resume", "session.events.since",
-               "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond", "clarify.respond",
-               "sudo.respond", "secret.respond", "mcp.setup.respond", "request.answer", "clarify.lock",
+               "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond",
+               "request.answer", "clarify.lock", "client.capabilities",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control",
                "commands.catalog", "command.dispatch", "complete.path",
                "subagent.list", "subagent.tail", "subagent.interrupt"].contains(method) || BotRoomRPC.methods.contains(method)
@@ -155,6 +196,9 @@ import Foundation
         try Self.validateSlashCall(method, params)
         try Self.validateCompletionCall(method, params)
         try Self.validateSubagentCall(method, params)
+        if method == "client.capabilities" {
+            guard params == ["server_requests": .bool(true)] else { throw BotFailure.unsupported }
+        }
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
@@ -315,7 +359,8 @@ import Foundation
     }
 
     /// The composer's slash panel is the third typed exception. `commands.catalog`
-    /// takes no parameters, and `command.dispatch` carries exactly one bare name —
+    /// takes only the live session it discovers skills for, and `command.dispatch`
+    /// carries exactly one bare name —
     /// no leading slash, no whitespace, no extra key — so this can never widen into
     /// the general slash runner Bot Mode deliberately does not expose. *Which* names
     /// are legal is the caller's job: `BotConversation` only dispatches a name the
@@ -323,7 +368,8 @@ import Foundation
     private static func validateSlashCall(_ method: String, _ params: [String: BotJSON]) throws {
         switch method {
         case "commands.catalog":
-            guard params.isEmpty else { throw BotFailure.unsupported }
+            guard Set(params.keys) == ["session_id"], params["session_id"]?.text?.isEmpty == false
+            else { throw BotFailure.unsupported }
         case "command.dispatch":
             guard Set(params.keys) == ["name", "arg", "session_id"],
                   let name = params["name"]?.text, !name.isEmpty, !name.hasPrefix("/"),
@@ -435,6 +481,7 @@ import Foundation
         for task in artifactTasks.values { task.cancel() }
         artifactTasks.removeAll()
         reader?.cancel(); reader = nil
+        heartbeat?.cancel(); heartbeat = nil
         socket?.cancel(); socket = nil
         for deadline in deadlines.values { deadline.cancel() }
         deadlines.removeAll()

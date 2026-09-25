@@ -120,7 +120,8 @@ import XCTest
         await model.loadSlashCatalog()
         XCTAssertEqual(model.slashSkills.map(\.name), ["work", "write-tests"])
         XCTAssertEqual(wire.calls.filter { $0.0 == "commands.catalog" }.count, 1)
-        XCTAssertEqual(wire.calls.first { $0.0 == "commands.catalog" }?.1.isEmpty, true)
+        // Skill discovery is bound to the live session's Profile and workspace.
+        XCTAssertEqual(wire.calls.first { $0.0 == "commands.catalog" }?.1, ["session_id": .string("runtime")])
         model.suspend()
     }
 

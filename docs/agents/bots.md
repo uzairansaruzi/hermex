@@ -13,9 +13,23 @@ and mints a fresh single-use ticket for each socket. JSON-RPC uses text frames
 with the `hermes-gateway-v1` and ticket subprotocols. There is no bootstrap-token,
 OAuth, webui fallback, server provisioning or competing-backend path.
 
+Every socket, reconnects included, runs the same handshake before any other RPC:
+wait for `gateway.ready` (recording `replay_epoch`), then send
+`client.capabilities {server_requests: true}`. From 0.21.4 the host refuses
+every server request (approval withdrawn, clarify answered empty, sudo and
+secret skipped) for a session whose only attached WebSocket clients never sent
+it (`tui_gateway/server_requests.py`, `session_transports.py`). A host older
+than the capability answers -32601; `connect()` ignores any JSON-RPC rejection
+here, as the shared web client does, and connects as before. The host sends no
+JSON heartbeat of its own (`heartbeat: true` in `gateway.ready` only means the
+socket answers pings), so `BotClient` sends `gateway.ping` every 15 seconds
+with string ids that never settle an RPC. Any inbound frame resets the 45-second
+silence deadline; a socket quiet for longer is dropped and reconnects.
+
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. `BotClient.connect()` captures `version`
+counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.4 (`d337b736`); sections
+below that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
 and the connection screen stores it on the `BotConnection` record. Successful
 sign-in saves and dismisses regardless of version; no version warning is shown.
 Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md
@@ -105,11 +119,14 @@ Activity comes from two sources that never overlap. The full snapshot's
 them into `BotSettledActivity` anchored to the message each block precedes,
 keeping the `<root>/<row index>` identity. The live turn reduces gateway events
 in `BotTurnActivity`: `tool.start`/`tool.complete` keyed by `tool_id`,
-`thinking.delta`/`reasoning.delta`/`reasoning.available`, keyed
-`notification.show`/`clear`, and `review.summary` memory notes, bounded to 64
-rows, 32 KB of reasoning and 8 notices. `todo.updated` and the snapshot's
-`todo_state` feed a revision-monotonic `BotPlan`; `status.update` feeds
-`workStatus`. Activity events during known work update local state without a
+`reasoning.delta`, keyed `notification.show`/`clear`, and `review.summary`
+memory notes, bounded to 64 rows, 32 KB of reasoning and 8 notices.
+`todo.updated` and the snapshot's `todo_state` feed a revision-monotonic
+`BotPlan`. `status.update` and `thinking.delta` feed `workStatus`, a transient
+status line each frame replaces (`thinking.delta` is spinner text, not
+reasoning; an empty one clears it). `reasoning.available` carried the final
+answer text live, so it is consumed and never shown as reasoning; the settled
+snapshot carries the real reasoning. Activity events during known work update local state without a
 snapshot read. Replay rebuilds the current turn's rows when the sequence is
 continuous, or from the last `message.start` the ring still holds; otherwise the
 live rows are dropped and the next full snapshot shows the settled ones, so
@@ -163,24 +180,28 @@ validation. The completion display kind and metadata were verified at the same
 pin in `gateway/wake.py`, `hermes_state_messages.py` and
 `tui_gateway/session_history.py`.
 
-A blocking request is whatever has parked the bot. On 0.21.2, the gateway sends
-JSON-RPC server requests with string ids and methods such as `clarify`, `sudo`,
-`secret` and `mcp.setup`. `BotClient` forwards those envelopes separately from
-sequenced events and integer-id RPC replies. Both `session.resume` (including
-`omit_messages`) and `session.events.since` restore `open_requests: [{id, method,
-params}]`. Requests belong to the current runtime. Replay always includes the
-array; resume omits it when empty. Once replay or a live request establishes the
-modern contract, an empty or omitted resume array clears the requests.
-A newer live request or cancellation cannot be overwritten by an older in-flight
-snapshot. Unknown request methods remain needs-attention without an answerable
-card. Request payloads and credential values are never cached.
+A blocking request is whatever has parked the bot. The gateway sends JSON-RPC
+server requests with string ids; at the pin the methods are `clarify`,
+`approval`, `sudo`, `secret`, `vault.unlock_prompt`, `vault.save_login`,
+`vault.code`, `terminal.read`, `window.read`, `preview.read`, `preview.act` and
+`tour` (`tui_gateway/contracts/server_requests.py`). `BotClient` forwards those
+envelopes separately from sequenced events and integer-id RPC replies. Both
+`session.resume` (including `omit_messages`) and `session.events.since` restore
+`open_requests: [{id, method, params}]`. Requests belong to the current runtime.
+Replay always includes the array; resume omits it when empty, so an empty or
+omitted array clears the requests. A newer live request or cancellation cannot be
+overwritten by an older in-flight snapshot. Unknown request methods remain
+needs-attention without an answerable card. The phone never replies to a
+request frame, not even with -32601 for a kind it cannot handle: the host treats
+that reply as the answer and would withdraw the request before Desktop could
+answer it. Request payloads and credential values are never cached.
 
 `request.cancel {id, method, reason}` withdraws only the matching envelope.
-A disconnect drops modern requests and reconnect restores the host's current
-list, independently of replay-ring truncation. The phone never retries an answer.
-Legacy 0.21.1 hosts retain `pending_approval` / `pending_clarify` and the
-`<prefix>.request` / `<prefix>.expire` stream paths. Protocol selection follows
-the received request shape, not a version-string comparison.
+A disconnect drops the requests and reconnect restores the host's current list,
+independently of replay-ring truncation. The phone never retries an answer.
+A connector operation is not a server request: `connection.request` opens
+Desktop's card and the snapshot carries it as `pending_connection`. The phone
+shows it as needs-attention without a card.
 
 `BotApprovalRequest` keeps the host's own `choices`
 (`once`/`session`/`always`/`deny`) and only rebuilds them when an older host omits
@@ -189,7 +210,8 @@ use `approval.respond` with the underlying queue `request_id`, which differs
 from the server-request envelope id. `resolved: 0` means already resolved.
 `approval.received` is deliberately never called.
 
-`BotQuestionRequest` reads single and batch clarification, including locked
+`BotQuestionRequest` reads single and batch clarification from `clarify`
+server requests (there is no `pending_clarify` snapshot field), including locked
 `answers` restored on reconnect. A question outranks an approval or credential
 prompt. Single questions use `request.answer({id, result: {answer}})`. Batch
 answers use one `clarify.lock({request_id, question_id, answer})` per outstanding
@@ -202,13 +224,16 @@ The phone uses the acknowledged `request.answer` proxy for both live and restore
 requests: unlike a bare response frame, it distinguishes `ok` from `expired`.
 `sudo` and `secret` send `result: {value}`; an empty value skips. Credential input
 uses a `SecureField` and passes directly to dispatch without storing the value.
-Legacy requests continue using `clarify.respond`, `sudo.respond` (`password`),
-`secret.respond` (`value`) and `mcp.setup.respond` (`result`).
+The old per-kind answer methods (`clarify.respond`, `sudo.respond`,
+`secret.respond`, `mcp.setup.respond`) no longer exist at the pin and are off
+the allowlist.
 
 `terminal.read`, `window.read`, `preview.read`, `preview.act` and `tour` require
 Desktop renderer data the phone cannot supply. Their cards report the wait and
-retain Stop. `mcp.setup` alone can be declined: `request.answer` carries
-`result: {value: "{\"status\":\"declined\"}"}`, which the host reads as a final no.
+retain Stop. The `vault.*` prompts (unlock a password manager, save a login, a
+sign-in code) wait for someone at the Mac; the phone cannot answer them but
+offers Skip, which sends `request.answer` with `result: {value: ""}`, the host's
+decline.
 
 Nothing is sent without a tap. Generation, runtime and request id are captured
 on tap and revalidated at socket dispatch. `ok` means accepted; `expired` means
@@ -747,7 +772,7 @@ untouched: `BotRoomComposerView` keeps its members-only mention panel and never
 gets the Files group.
 
 Contract verified read-only against the live host on 2026-09-18 (the host
-reported 0.21.3; `HERMES_AGENT_TESTED_SHA` is 0.21.2) with authenticated
+reported 0.21.3; `HERMES_AGENT_TESTED_SHA` was 0.21.2) with authenticated
 `complete.path` calls: `word: ""` answers `{items: []}`, `word: "."` lists the
 root, directories carry a trailing `/` and `meta: "dir"`, and the listing caps
 at 30. The shape matches the pin's
@@ -763,8 +788,8 @@ only through `slash.exec` and `command.dispatch`'s quick/plugin/registry stages,
 which Bot Mode does not expose, so a command row would insert text nothing runs.
 Model, effort and workspace already have native controls (Chat controls above).
 
-`commands.catalog` (no parameters) is read once per conversation, after connecting,
-driven by the composer. `BotSlashCatalog` reads the `skills` keys for which entries
+`commands.catalog {session_id}` (the live runtime id) is read once per
+conversation, after connecting, driven by the composer. `BotSlashCatalog` reads the `skills` keys for which entries
 are skills and the `pairs` rows for their descriptions, and **drops any skill key
 that also appears in `canon` or `commands`**: those are registry, quick or plugin
 commands, `command.dispatch` resolves them ahead of skills, and a `quick_commands`
@@ -799,7 +824,7 @@ failure cannot strand a submission. The transcript still shows the typed line,
 because the host projects the invocation back over the stored message
 (`display_kind: "skill_invocation"`).
 
-`BotClient` allowlists `commands.catalog` (no parameters) and `command.dispatch`
+`BotClient` allowlists `commands.catalog` (exactly `session_id`) and `command.dispatch`
 (exactly `name`, `arg`, `session_id`; a bare name with no slash or whitespace) as
 its third typed exception. `slash.exec` stays unsupported.
 
@@ -810,9 +835,10 @@ Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
 `tui_gateway/methods_tools.py` (`commands.catalog`, `command.dispatch`,
 `_dispatch_quick`/`_dispatch_skill`), `tui_gateway/methods_complete.py`
 (`complete.slash`, a per-keystroke read the catalog replaces) and
-`tui_gateway/session_history.py` (`_skill_scaffold_projection`). Neither read is
-Profile-scoped upstream while dispatch is, so the list belongs to the connection,
-not the Profile. No live mutation was used for validation.
+`tui_gateway/session_history.py` (`_skill_scaffold_projection`). At 0.21.4
+(`d337b736`) `commands.catalog` binds skill discovery to the session it is given
+(`_session_home_scope`), so the phone passes the runtime id and the list follows
+that session's Profile and workspace. No live mutation was used for validation.
 
 ## Chat controls
 

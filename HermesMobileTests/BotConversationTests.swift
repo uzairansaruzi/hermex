@@ -773,7 +773,7 @@ import Vision
         let model = make(wire); await model.recover()
         wire.inflight = .object(["user": .string("Clear the inbox"), "assistant": .string("Archiving")])
         wire.onEvent?(typed(1, "message.start"))
-        wire.onEvent?(typed(2, "thinking.delta", .object(["text": .string("Archive first")])))
+        wire.onEvent?(typed(2, "reasoning.delta", .object(["text": .string("Archive first")])))
         wire.onEvent?(typed(3, "tool.start", .object(["tool_id": .string("t1"), "name": .string("terminal"), "args": .object(["command": .string("himalaya move")])])))
         let streamed = expectation(description: "inflight snapshot published")
         withObservationTracking { _ = model.liveMessages } onChange: { streamed.fulfill() }
@@ -824,6 +824,26 @@ import Vision
         XCTAssertNil(model.workStatus)
         wire.onEvent?(typed(12, "message.start"))
         XCTAssertTrue(model.liveActivity.memoryNotes.isEmpty)
+        model.suspend()
+    }
+
+    /// `thinking.delta` is spinner text: each frame replaces the status line and
+    /// none reaches reasoning. `reasoning.available` carried the final answer
+    /// live, so it is not reasoning either. Neither costs a snapshot read.
+    func testThinkingIsAStatusLineAndReasoningAvailableIsNeverShownAsReasoning() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        XCTAssertEqual(model.turn, .running)
+        let resumes = wire.calls.filter { $0.0 == "session.resume" }.count
+        wire.onEvent?(typed(1, "thinking.delta", .object(["text": .string("(◕‿◕) pondering…")])))
+        XCTAssertEqual(model.workStatus, "(◕‿◕) pondering…")
+        wire.onEvent?(typed(2, "thinking.delta", .object(["text": .string("(◕‿◕) contemplating…")])))
+        XCTAssertEqual(model.workStatus, "(◕‿◕) contemplating…")
+        wire.onEvent?(typed(3, "reasoning.available", .object(["text": .string("The final answer")])))
+        XCTAssertEqual(model.liveActivity.reasoning, "")
+        wire.onEvent?(typed(4, "thinking.delta", .object(["text": .string("")])))
+        XCTAssertNil(model.workStatus)
+        XCTAssertEqual(wire.calls.filter { $0.0 == "session.resume" }.count, resumes)
         model.suspend()
     }
 
@@ -1036,14 +1056,15 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     /// `pendingApproval` directly to control the payload.
     var attention = false
     var pendingApproval: BotJSON?
-    var pendingClarify = BotJSON.null
+    /// A `clarify` server request in `open_requests`, in the `clarify()` shape:
+    /// its `request_id` becomes the envelope id. Cleared once answered.
+    var openClarify = BotJSON.null
     var openRequests = BotJSON.null
     var answerRequest: ((String, [String: BotJSON]) throws -> BotJSON)?
-    /// What `approval.respond` reports unblocking, and what `clarify.respond` reports.
+    /// What `approval.respond` reports unblocking.
     var approvalResolved = 1
-    var clarifyStatus = "ok"
-    /// What `sudo.respond` / `secret.respond` report; "ok" or "expired".
-    var credentialStatus = "ok"
+    /// What `request.answer` / `clarify.lock` report by default; "ok" or "expired".
+    var answerStatus = "ok"
     var respondFailure: BotFailure?
     var todoState = BotJSON.null
     var history: [BotJSON] = [.object(["role": .string("assistant"), "text": .string("saved")])]
@@ -1100,7 +1121,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
                 "messages": .array(history), "inflight": inflight, "queued": queued,
                 "turn_started_at": turnStartedAt.map(BotJSON.number) ?? .null,
                 "pending_approval": pendingApproval ?? (attention ? BotFixtureWire.approval() : .null),
-                "pending_clarify": pendingClarify, "open_requests": openRequests,
+                "open_requests": openRequestsWithClarify,
                 "todo_state": todoState,
                 "info": .object(["profile_name": .string("inbox-triage")])
             ])
@@ -1108,19 +1129,12 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         case "request.answer", "clarify.lock":
             if let respondFailure { throw respondFailure }
             if let answerRequest { return try answerRequest(method, params) }
-            openRequests = .array([])
-            return .object(["status": .string("ok"), "remaining": .array([])])
+            if answerStatus == "ok" { openRequests = .array([]); openClarify = .null }
+            return .object(["status": .string(answerStatus), "remaining": .array([])])
         case "approval.respond":
             if let respondFailure { throw respondFailure }
             if approvalResolved > 0 { attention = false; pendingApproval = nil }
             return .object(["resolved": .number(Double(approvalResolved))])
-        case "clarify.respond":
-            if let respondFailure { throw respondFailure }
-            if clarifyStatus == "ok" { pendingClarify = .null }
-            return .object(["status": .string(clarifyStatus)])
-        case "sudo.respond", "secret.respond", "mcp.setup.respond":
-            if let respondFailure { throw respondFailure }
-            return .object(["status": .string(credentialStatus)])
         case "session.events.since": return replay
         case "subagent.list": return .object(["subagents": .array([]), "delegations": .array([])])
         case "commands.catalog":
@@ -1145,8 +1159,17 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             throw BotFailure.unsupported
         }
     }
+    /// `openRequests` plus `openClarify` as its server-request envelope.
+    private var openRequestsWithClarify: BotJSON {
+        guard var params = openClarify.fields else { return openRequests }
+        let id = params.removeValue(forKey: "request_id") ?? .string("clr")
+        params["session_id"] = .string(runtimeID)
+        let frame = BotJSON.object(["id": id, "method": .string("clarify"), "params": .object(params)])
+        return .array((openRequests.list ?? []) + [frame])
+    }
+
     /// The gateway's `_approval_request_payload` shape, as it reaches both the
-    /// `approval.request` event and the resume snapshot.
+    /// `approval` server request and the resume snapshot.
     static func approval(id: String = "req-1", command: String = "rm -rf build",
                          choices: [String] = ["once", "session", "always", "deny"]) -> BotJSON {
         .object([
@@ -1156,7 +1179,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         ])
     }
 
-    /// The single-question `clarify.request` / `pending_clarify` shape.
+    /// The single-question `clarify` shape, plus the id its envelope carries.
     static func clarify(id: String = "clr-1", question: String = "Which mailbox first?",
                         choices: [String] = ["Primary (Recommended)", "Follow-ups"],
                         multiSelect: Bool = false) -> BotJSON {

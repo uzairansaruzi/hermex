@@ -55,6 +55,99 @@ import XCTest
         XCTAssertEqual(sockets.map { $0.sentTextFrames }, [1, 1])
     }
 
+    /// Without `client.capabilities` the host withdraws every approval, answers
+    /// every clarify empty and skips sudo/secret, so it goes first on every
+    /// socket — reconnects included — with exactly the contract's one key.
+    func testClientCapabilitiesIsTheFirstFrameAfterReadyOnEverySocket() async throws {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        var sockets: [BotScriptedSocket] = []
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in
+            let socket = BotScriptedSocket()
+            sockets.append(socket)
+            return socket
+        }
+        for _ in 0..<2 {
+            try await client.connect()
+            _ = try await client.call("profiles.list", [:])
+            client.close()
+        }
+        XCTAssertEqual(sockets.count, 2)
+        for socket in sockets {
+            XCTAssertEqual(socket.outbound.map { $0["method"].text }, ["client.capabilities", "profiles.list"])
+            XCTAssertEqual(socket.outbound.first?["params"], .object(["server_requests": .bool(true)]))
+            XCTAssertNotNil(socket.outbound.first?["id"].integer)
+        }
+        // The handshake is the client's own; no caller can widen it.
+        try await client.connect()
+        defer { client.close() }
+        for params: [String: BotJSON] in [[:], ["server_requests": .bool(false)],
+                                          ["server_requests": .bool(true), "events": .bool(true)]] {
+            do { _ = try await client.call("client.capabilities", params); XCTFail("Invalid capabilities dispatched") }
+            catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
+        }
+        // The pre-0.21.2 answer methods are gone at the pin (-32601); answers use `request.answer`.
+        for method in ["clarify.respond", "sudo.respond", "secret.respond", "mcp.setup.respond"] {
+            do { _ = try await client.call(method, ["request_id": .string("r"), "value": .string("")]); XCTFail("\(method) dispatched") }
+            catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
+        }
+    }
+
+    /// A host older than the capability answers -32601. It has nothing to
+    /// withhold, so the socket connects and works as before.
+    func testAHostWithoutClientCapabilitiesStillConnects() async throws {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        socket.capabilitiesReply = { request in
+            .object(["id": request["id"], "error": .object(["code": .number(-32601), "message": .string("unknown method")])])
+        }
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+        _ = try await client.call("profiles.list", [:])
+        XCTAssertEqual(socket.outbound.map { $0["method"].text }, ["client.capabilities", "profiles.list"])
+    }
+
+    /// The host sends no JSON heartbeat, so an idle socket would hit the 45 s
+    /// silence deadline. The client pings on its own cadence, only after the
+    /// handshake, and the pong's string id never settles an RPC.
+    func testGatewayPingKeepsAnIdleSocketAliveOnTheInjectedCadence() async throws {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let pinged = expectation(description: "two keepalive pings")
+        pinged.expectedFulfillmentCount = 2
+        pinged.assertForOverFulfill = false
+        socket.onPing = { pinged.fulfill() }
+        let client = BotClient(connection: connection(), configuration: configuration,
+                               heartbeatInterval: .milliseconds(10)) { _, _ in socket }
+        var disconnects = 0
+        client.onDisconnect = { _ in disconnects += 1 }
+        try await client.connect()
+        defer { client.close() }
+        await fulfillment(of: [pinged], timeout: 2)
+        let pings = socket.outbound.filter { $0["method"].text == "gateway.ping" }
+        XCTAssertEqual(socket.outbound.first?["method"].text, "client.capabilities")
+        XCTAssertEqual(Array(pings.prefix(2).map { $0["id"] }), [.string("heartbeat-1"), .string("heartbeat-2")])
+        XCTAssertTrue(pings.allSatisfy { $0["params"] == .object([:]) })
+        _ = try await client.call("profiles.list", [:])
+        XCTAssertEqual(disconnects, 0)
+    }
+
+    private static let signIn: (URLRequest) -> (Int, BotJSON) = { request in
+        switch request.url!.path {
+        case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+        case "/auth/password-login": return (200, .object([:]))
+        case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+        case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+        default: return (404, .null)
+        }
+    }
+
     func testCancelFileUploadKeepsSocketAvailableWithoutResendingIt() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
@@ -372,7 +465,7 @@ import XCTest
         try await client.connect()
         defer { client.close() }
 
-        _ = try await client.call("commands.catalog", [:])
+        _ = try await client.call("commands.catalog", ["session_id": .string("runtime")])
         _ = try await client.call("command.dispatch", [
             "name": .string("work"), "arg": .string("fix the leak"), "session_id": .string("runtime")
         ])
@@ -380,7 +473,9 @@ import XCTest
 
         let rejected: [(String, [String: BotJSON])] = [
             ("slash.exec", ["command": .string("/deploy"), "session_id": .string("runtime")]),
-            ("commands.catalog", ["session_id": .string("runtime")]),
+            ("commands.catalog", [:]),
+            ("commands.catalog", ["session_id": .string("")]),
+            ("commands.catalog", ["session_id": .string("runtime"), "profile": .string("default")]),
             ("command.dispatch", ["name": .string("/work"), "arg": .string(""), "session_id": .string("runtime")]),
             ("command.dispatch", ["name": .string("work fix"), "arg": .string(""), "session_id": .string("runtime")]),
             ("command.dispatch", ["name": .string(""), "arg": .string(""), "session_id": .string("runtime")]),
@@ -749,8 +844,15 @@ private final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private var closed = false
     var reply: ((BotJSON) -> BotJSON)?
     var withholdReply: ((BotJSON) -> Bool)?
+    /// Answers `client.capabilities`; nil answers as a current host does.
+    var capabilitiesReply: ((BotJSON) -> BotJSON)?
+    var onPing: (() -> Void)?
+    /// Replies to caller RPCs; the handshake and keepalive are not counted.
     private(set) var sentTextFrames = 0
+    /// Caller RPCs only, so allowlist assertions ignore the handshake.
     private(set) var sentRequests: [BotJSON] = []
+    /// Every frame the client sent, handshake and keepalive included, in order.
+    private(set) var outbound: [BotJSON] = []
     func receive() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
             lock.lock()
@@ -762,18 +864,35 @@ private final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     func send(_ message: URLSessionWebSocketTask.Message) async throws {
         guard case .string(let text) = message else { XCTFail("JSON-RPC must use text frames"); throw BotFailure.unsupported }
         let request = try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
+        logOutbound(request)
+        switch request["method"].text {
+        case "client.capabilities":
+            let response = capabilitiesReply?(request)
+                ?? .object(["id": request["id"], "result": .object(["server_requests": .array([.string("clarify")])])])
+            enqueue(.string(String(decoding: try JSONEncoder().encode(response), as: UTF8.self)), counted: false)
+            return
+        case "gateway.ping":
+            onPing?()
+            let pong = BotJSON.object(["jsonrpc": .string("2.0"), "id": request["id"], "result": .object(["ok": .bool(true)])])
+            enqueue(.string(String(decoding: try JSONEncoder().encode(pong), as: UTF8.self)), counted: false)
+            return
+        default: break
+        }
         record(request)
         if withholdReply?(request) == true { return }
         let response = reply?(request) ?? BotJSON.object(["id": request["id"], "result": .object(["profiles": .array([])])])
         let frame = URLSessionWebSocketTask.Message.string(String(decoding: try JSONEncoder().encode(response), as: UTF8.self))
         enqueue(frame)
     }
+    private func logOutbound(_ request: BotJSON) {
+        lock.lock(); outbound.append(request); lock.unlock()
+    }
     private func record(_ request: BotJSON) {
         lock.lock(); sentRequests.append(request); lock.unlock()
     }
 
-    func enqueue(_ frame: URLSessionWebSocketTask.Message) {
-        lock.lock(); sentTextFrames += 1
+    func enqueue(_ frame: URLSessionWebSocketTask.Message, counted: Bool = true) {
+        lock.lock(); if counted { sentTextFrames += 1 }
         let waiting = waiter; waiter = nil
         if waiting == nil { frames.append(frame) }
         lock.unlock()

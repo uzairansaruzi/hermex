@@ -2,12 +2,12 @@ import Foundation
 
 /// A request that parks a bot's work until someone answers it.
 ///
-/// Modern requests arrive as server-request envelopes and `open_requests`
-/// snapshots. Legacy hosts provide approval/question snapshot fields and
-/// credential/Desktop-task events instead.
+/// Requests arrive as server-request envelopes, live or restored from
+/// `open_requests`; an approval can also come from the snapshot's
+/// `pending_approval`.
 ///
 /// Only `desktopTask` is unanswerable, and not for want of a credential path: the
-/// answer is data Hermes Desktop's own window holds, so no client without that
+/// answer is data or input only Hermes Desktop holds, so no client without that
 /// window can produce one.
 enum BotPendingRequest: Equatable {
     case approval(BotApprovalRequest)
@@ -15,9 +15,8 @@ enum BotPendingRequest: Equatable {
     case credential(BotCredentialRequest)
     case desktopTask(BotDesktopTaskRequest)
 
-    /// The host's id for this request. Nil only for a Desktop-task event that
-    /// omitted one, which nobody answers from here anyway.
-    var requestID: String? {
+    /// The host's id for this request: the envelope id, or approval's queue id.
+    var requestID: String {
         switch self {
         case .approval(let request): return request.requestID
         case .question(let request): return request.requestID
@@ -33,8 +32,11 @@ enum BotPendingRequest: Equatable {
     }
 }
 
-/// A 0.21.2 server request, received live or restored from `open_requests`.
+/// A server request, received live or restored from `open_requests`.
 /// Keep the envelope id separate from approval's underlying queue request id.
+/// An unknown method keeps `pending` nil: the bot is still blocked, and the phone
+/// never answers it, not even with -32601, because a reply from here would
+/// pre-empt the Hermes Desktop window that can.
 struct BotServerRequest: Equatable {
     let id: String
     let method: String
@@ -51,14 +53,24 @@ struct BotServerRequest: Equatable {
         self.sessionID = sessionID
         if method == "approval" {
             pending = BotApprovalRequest(.object(params)).map(BotPendingRequest.approval)
-        } else {
+        } else if method == "clarify" {
             params["request_id"] = .string(id)
-            if method == "clarify" {
-                pending = BotQuestionRequest(.object(params)).map(BotPendingRequest.question)
-            } else {
-                pending = BotStreamRequest.requested(eventType: method + ".request", payload: .object(params))?.pending
-            }
+            pending = BotQuestionRequest(.object(params)).map(BotPendingRequest.question)
+        } else if let kind = BotCredentialRequest.Kind(rawValue: method) {
+            pending = .credential(BotCredentialRequest(
+                kind: kind, requestID: id,
+                envVar: Self.trimmed(params["env_var"]), prompt: Self.trimmed(params["prompt"])
+            ))
+        } else if let kind = BotDesktopTaskRequest.Kind(rawValue: method) {
+            pending = .desktopTask(BotDesktopTaskRequest(kind: kind, requestID: id))
+        } else {
+            pending = nil
         }
+    }
+
+    private static func trimmed(_ json: BotJSON?) -> String? {
+        let value = json?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
     }
 }
 
@@ -203,78 +215,15 @@ struct BotQuestionRequest: Equatable {
     }
 }
 
-/// Credential and Desktop-task presentation shared by both protocol generations.
-/// The legacy event parser also adapts modern envelope params after id validation.
-enum BotStreamRequest: Equatable {
-    case credential(BotCredentialRequest)
-    case desktopTask(BotDesktopTaskRequest)
-
-    var pending: BotPendingRequest {
-        switch self {
-        case .credential(let request): return .credential(request)
-        case .desktopTask(let request): return .desktopTask(request)
-        }
-    }
-
-    /// The gateway event prefix this was announced under, so the matching
-    /// `<prefix>.expire` tears down this card and not a different one.
-    var eventPrefix: String {
-        switch self {
-        case .credential(let request): return request.kind.rawValue
-        case .desktopTask(let request): return request.kind.rawValue
-        }
-    }
-
-    /// The request a `<prefix>.request` event announces, or nil for any other event.
-    static func requested(eventType: String, payload: BotJSON) -> BotStreamRequest? {
-        guard let prefix = prefix(eventType: eventType, suffix: "request") else { return nil }
-        if let kind = BotCredentialRequest.Kind(rawValue: prefix) {
-            // Without a request id there is nothing to address `*.respond` to, and
-            // guessing one would answer somebody else's prompt.
-            guard let id = payload["request_id"].text, !id.isEmpty else { return nil }
-            return .credential(BotCredentialRequest(
-                kind: kind, requestID: id,
-                envVar: trimmed(payload["env_var"]), prompt: trimmed(payload["prompt"])
-            ))
-        }
-        guard let kind = BotDesktopTaskRequest.Kind(rawValue: prefix) else { return nil }
-        return .desktopTask(BotDesktopTaskRequest(kind: kind, requestID: payload["request_id"].text))
-    }
-
-    /// The event prefix a `<prefix>.expire` event tears down, or nil for any other event.
-    static func expiredPrefix(eventType: String) -> String? { prefix(eventType: eventType, suffix: "expire") }
-
-    private static func prefix(eventType: String, suffix: String) -> String? {
-        guard eventType.hasSuffix("." + suffix) else { return nil }
-        return String(eventType.dropLast(suffix.count + 1))
-    }
-
-    private static func trimmed(_ json: BotJSON) -> String? {
-        let value = json.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? nil : value
-    }
-}
-
 /// A value only the person can supply: the Mac's administrator password, or a
 /// secret the bot asked for by name.
 ///
-/// Modern answers carry `{value}` through `request.answer`; legacy hosts use
-/// kind-specific response methods. Empty values skip without retaining a secret.
+/// Answers carry `{value}` through `request.answer`. An empty value skips
+/// without retaining a secret.
 struct BotCredentialRequest: Equatable {
-    /// The request method and legacy event/response prefix.
+    /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
         case sudo, secret
-
-        var respondMethod: String { "\(rawValue).respond" }
-
-        /// The param `*.respond` carries the typed value in. The host reads one
-        /// name per kind; a mismatched key answers with an empty string.
-        var valueKey: String {
-            switch self {
-            case .sudo: return "password"
-            case .secret: return "value"
-            }
-        }
 
         var title: String {
             switch self {
@@ -325,23 +274,26 @@ struct BotCredentialRequest: Equatable {
     }
 }
 
-/// Work Hermes Desktop's own window performs and answers by itself: serializing
-/// its terminal scrollback, the OS window beneath it, its preview pane.
+/// A request only Hermes Desktop can answer. Most are work its own window
+/// performs and answers by itself: serializing its terminal scrollback, the OS
+/// window beneath it, its preview pane. Nobody types an answer to those, on the
+/// phone or at the Mac; the host's deadline passes and the bot carries on, so the
+/// phone reports the wait rather than sending anyone to a desk.
 ///
-/// Nobody types an answer to these, on the phone or at the Mac. Each carries a
-/// host-side deadline — 30s for the reads, 45s for the preview and tour, ten
-/// minutes for an MCP setup — after which the tool takes an empty answer and the
-/// bot carries on. So the phone reports the wait rather than sending anyone to a
-/// desk they are not sitting at.
+/// The password-manager prompts (`vault.*`) wait for a person at the Mac. The
+/// phone cannot answer them, but it can skip one: an empty `value` is the host's
+/// own "declined", so the bot moves on now instead of waiting for the Mac.
 struct BotDesktopTaskRequest: Equatable {
-    /// The gateway event prefix, so `<raw>.request` and `<raw>.expire` both map here.
+    /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
         case tour
         case terminalRead = "terminal.read"
         case windowRead = "window.read"
-        case mcpSetup = "mcp.setup"
         case previewRead = "preview.read"
         case previewAct = "preview.act"
+        case vaultUnlock = "vault.unlock_prompt"
+        case vaultSaveLogin = "vault.save_login"
+        case vaultCode = "vault.code"
 
         /// What is happening, in the user's words rather than the wire name.
         var title: String {
@@ -351,37 +303,28 @@ struct BotDesktopTaskRequest: Equatable {
             case .previewRead: return String(localized: "This bot is reading the preview pane on the Mac.")
             case .previewAct: return String(localized: "This bot is using the preview pane on the Mac.")
             case .tour: return String(localized: "This bot is running a tour in Hermes Desktop.")
-            case .mcpSetup: return String(localized: "This bot is waiting for an MCP server to be set up in Hermes Desktop.")
+            case .vaultUnlock: return String(localized: "This bot needs a password manager unlocked in Hermes Desktop.")
+            case .vaultSaveLogin: return String(localized: "This bot wants to save a login in Hermes Desktop.")
+            case .vaultCode: return String(localized: "This bot needs a sign-in code entered in Hermes Desktop.")
             }
         }
 
-        /// True for the one kind a person actually walks through at the Mac.
-        var needsSomeoneAtTheMac: Bool { self == .mcpSetup }
-
-        /// True for the kind the phone can call off outright. Declining is not
-        /// answering: the setup card's work still only happens in Desktop, but
-        /// saying no to it is a decision, and the host takes that from here.
-        /// The rest have nothing to decline — the renderer answers or the
-        /// deadline passes, and either way nobody is kept waiting.
-        var isDeclinable: Bool { self == .mcpSetup }
-
-        var respondMethod: String { "\(rawValue).respond" }
+        /// True for the kinds a person answers at the Mac, which are also the
+        /// kinds the phone can skip. Skipping is not answering: the password or
+        /// code still only goes in at the Mac, but saying no is a decision the
+        /// host takes from here. The rest have nothing to skip — the renderer
+        /// answers or the deadline passes, and either way nobody is kept waiting.
+        var needsSomeoneAtTheMac: Bool { [.vaultUnlock, .vaultSaveLogin, .vaultCode].contains(self) }
 
         var detail: String {
             needsSomeoneAtTheMac
-                ? String(localized: "Hermes Desktop walks someone through this on the Mac. Skip it here and the bot carries on without the server.")
+                ? String(localized: "Answer this in Hermes Desktop on the Mac. Skip it here and the bot carries on without it.")
                 : String(localized: "Hermes Desktop answers this by itself, and the bot carries on without it if it cannot. There is nothing to do here or at the Mac.")
         }
     }
 
-    /// The `result` an explicit decline carries. The host passes the object
-    /// straight through to the tool, which reads `declined` as a final no and
-    /// is told never to re-ask — unlike an unanswered card, which only means
-    /// the ten-minute deadline passed.
-    static let declinedResult = #"{"status":"declined"}"#
-
     let kind: Kind
-    let requestID: String?
+    let requestID: String
 }
 
 /// One question's answer on its way to the host. `questionID` is the

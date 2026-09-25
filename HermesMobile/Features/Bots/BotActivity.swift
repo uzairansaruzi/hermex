@@ -59,7 +59,7 @@ struct BotTurnActivity: Equatable {
 
     /// Event types this reducer consumes; they never change the inflight text.
     static func handles(_ type: String) -> Bool {
-        ["tool.start", "tool.complete", "thinking.delta", "reasoning.delta", "reasoning.available",
+        ["tool.start", "tool.complete", "reasoning.delta",
          "notification.show", "notification.clear", "review.summary"].contains(type)
     }
 
@@ -91,10 +91,8 @@ struct BotTurnActivity: Equatable {
                 toolCalls.append(call)
                 if toolCalls.count > Self.toolLimit { toolCalls.removeFirst(toolCalls.count - Self.toolLimit) }
             }
-        case "thinking.delta", "reasoning.delta", "reasoning.available":
+        case "reasoning.delta":
             guard let text = payload["text"].text, !text.isEmpty else { return true }
-            // `reasoning.available` is a whole block; keep it off the previous line.
-            if type == "reasoning.available", !reasoning.isEmpty, !reasoning.hasSuffix("\n") { reasoning.append("\n") }
             reasoning.append(text)
             if reasoning.count > Self.reasoningLimit { reasoning = String(reasoning.suffix(Self.reasoningLimit)) }
         case "notification.show":

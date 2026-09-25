@@ -712,7 +712,7 @@ import XCTest
     /// block, the host's choices, and a free-text response field.
     func testQuestionCardShowsChoicesWithoutTheHostsPresentationLabel() async throws {
         let wire = BotFixtureWire(); wire.running = true
-        wire.pendingClarify = BotFixtureWire.clarify()
+        wire.openClarify = BotFixtureWire.clarify()
         let model = make(wire)
         let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
         defer { model.suspend(); close(window) }
@@ -732,18 +732,14 @@ import XCTest
     /// and the handling line stated before anything is typed.
     func testSudoCardOffersAMaskedFieldAndSaysWhereTheValueGoes() async throws {
         let wire = BotFixtureWire(); wire.running = true
+        wire.openRequests = .array([.object([
+            "jsonrpc": .string("2.0"), "id": .string("sudo-1"), "method": .string("sudo"),
+            "params": .object(["session_id": .string("runtime")])
+        ])])
         let model = make(wire)
-        // Inactive so the view's own recovery task cannot race the injected event:
-        // a credential prompt lives only in the stream, so a reconnect drops it.
-        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .inactive))
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
         defer { model.suspend(); close(window) }
         await model.recover()
-        wire.onEvent?(.object([
-            "session_id": .string("runtime"), "seq": .number(1), "type": .string("sudo.request"),
-            "payload": .object(["request_id": .string("sudo-1")])
-        ]))
-        // The event only puts the turn in doubt; the coalesced snapshot settles it.
-        await awaitSnapshot(model)
         await renderFrames()
         let shown = try screenshot(window, name: "bot-sudo-card")
         XCTAssertTrue(shown.contains("Administrator password needed"), shown)
@@ -1067,14 +1063,6 @@ import XCTest
         scroll.delegate?.scrollViewWillBeginDragging?(scroll)
         scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
         scroll.delegate?.scrollViewDidEndDragging?(scroll, willDecelerate: false)
-    }
-
-    /// Waits for the conversation's coalesced snapshot read to land. Every
-    /// `applySnapshot` republishes the turn state, so it is the arrival signal.
-    private func awaitSnapshot(_ model: BotConversation) async {
-        let applied = expectation(description: "Snapshot applied")
-        withObservationTracking { _ = String(describing: model.turn) } onChange: { applied.fulfill() }
-        await fulfillment(of: [applied], timeout: 5)
     }
 
     private func renderFrames(_ target: Int = 3) async {

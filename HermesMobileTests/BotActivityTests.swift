@@ -44,7 +44,7 @@ final class BotActivityTests: XCTestCase {
         activity.apply(type: "tool.start", payload: .null)
         activity.apply(type: "tool.start", payload: payload(["name": .number(3), "args": .string("not an object")]))
         activity.apply(type: "tool.complete", payload: payload(["tool_id": .string("never-started"), "result": .null]))
-        activity.apply(type: "thinking.delta", payload: payload(["text": .bool(true)]))
+        activity.apply(type: "reasoning.delta", payload: payload(["text": .bool(true)]))
         activity.apply(type: "notification.show", payload: payload(["level": .string("info")]))
         activity.apply(type: "notification.clear", payload: .array([]))
         activity.apply(type: "review.summary", payload: payload(["text": .string("   ")]))
@@ -70,8 +70,10 @@ final class BotActivityTests: XCTestCase {
         activity.apply(type: "reasoning.delta", payload: payload(["text": .string("END")]))
         XCTAssertEqual(activity.reasoning.count, BotTurnActivity.reasoningLimit)
         XCTAssertTrue(activity.reasoning.hasSuffix("END"))
-        activity.apply(type: "reasoning.available", payload: payload(["text": .string("block")]))
-        XCTAssertTrue(activity.reasoning.hasSuffix("END\nblock"))
+        // Neither is reasoning: spinner text, and a block that carried the answer.
+        XCTAssertFalse(activity.apply(type: "thinking.delta", payload: payload(["text": .string("pondering")])))
+        XCTAssertFalse(activity.apply(type: "reasoning.available", payload: payload(["text": .string("block")])))
+        XCTAssertTrue(activity.reasoning.hasSuffix("END"))
         activity.clearTurnWork()
         XCTAssertFalse(activity.hasTurnWork)
     }

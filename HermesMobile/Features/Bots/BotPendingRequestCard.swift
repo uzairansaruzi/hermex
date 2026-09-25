@@ -9,9 +9,9 @@ import UIKit
 /// vocabulary. `isEnabled` false is a resolved, expired or in-flight request:
 /// the card stays readable and stops acting.
 ///
-/// Only the Desktop-task body has no input, because its answer is data the
-/// Desktop renderer holds. Everything else — approvals, questions, sudo and
-/// secret prompts — is answered from here.
+/// Only the Desktop-task body has no input, because its answer is data or a
+/// password only Hermes Desktop holds. Everything else — approvals, questions,
+/// sudo and secret prompts — is answered from here.
 struct BotPendingRequestCard: View {
     static let cornerRadius: CGFloat = 14
 
@@ -30,7 +30,7 @@ struct BotPendingRequestCard: View {
     let onSkip: () -> Void
     /// Sends a typed sudo password or secret. Empty is the host's skip.
     let onCredential: (String) -> Void
-    /// Calls off a Desktop task that can be declined. Only `mcp.setup` can.
+    /// Skips a Desktop task that waits for a person at the Mac (`vault.*`).
     let canDecline: Bool
     let onDecline: () -> Void
     let onStop: () -> Void
@@ -414,10 +414,11 @@ private struct BotCredentialRequestBody: View {
     }
 }
 
-/// Work the Desktop renderer does and answers itself. There is no input because
-/// there is no answer a person gives — not here, and not at the Mac either. The
-/// host releases the bot on its own deadline, so the card reports the wait and
-/// keeps Stop for the user who does not want to wait it out.
+/// A request only Hermes Desktop answers. Most are work its renderer does by
+/// itself, with no answer a person gives; the host releases the bot on its own
+/// deadline, so the card reports the wait and keeps Stop for the user who does
+/// not want to wait it out. A password-manager prompt waits for someone at the
+/// Mac, so its card also offers Skip.
 private struct BotDesktopTaskRequestBody: View {
     let task: BotDesktopTaskRequest
     let identity: String
@@ -442,11 +443,11 @@ private struct BotDesktopTaskRequestBody: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-        // Declining beats stopping where it is offered: it calls off this one
+        // Skipping beats stopping where it is offered: it calls off this one
         // request and lets the bot finish its work, where Stop ends the work.
-        if task.kind.isDeclinable {
+        if task.kind.needsSomeoneAtTheMac {
             Button(action: onDecline) {
-                Text("Skip this setup").frame(maxWidth: .infinity)
+                Text("Skip").frame(maxWidth: .infinity)
             }
             .buttonStyle(.chatDecision(.secondary))
             .disabled(!canDecline)
