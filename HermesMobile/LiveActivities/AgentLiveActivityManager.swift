@@ -608,7 +608,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 observePush(existing)
                 let latestState = Self.keepingRelayCounts(currentState ?? state, on: existing)
                 await existing.update(
-                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
+                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState)),
+                    alertConfiguration: firstWriteAlert(shown: existing.content.state.status,
+                                                        latest: latestState, on: existing)
                 )
                 lastSentUpdateAt = Date()
                 return
@@ -638,7 +640,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             observePush(requestedActivity)
             if let latestState = currentState, latestState != state {
                 await requestedActivity.update(
-                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
+                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState)),
+                    alertConfiguration: firstWriteAlert(shown: state.status, latest: latestState,
+                                                        on: requestedActivity)
                 )
             }
             lastSentUpdateAt = Date()
@@ -667,6 +671,21 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         )
         // An owed alert skips the throttle so the user hears about the ask at once.
         scheduleUpdate(updatedState, immediate: immediate || pendingAlertStatus != nil)
+    }
+
+    /// The alert for the first write onto a just-acquired activity: an ask that arrived
+    /// while ActivityKit was still creating or reusing it had no activity to record against.
+    private func firstWriteAlert(
+        shown: AgentRunActivityStatus,
+        latest: AgentRunActivityAttributes.ContentState,
+        on activity: Activity<AgentRunActivityAttributes>
+    ) -> AlertConfiguration? {
+        guard AgentLiveActivityAlertPolicy.alerts(
+            previous: shown, next: latest.status,
+            canReceivePush: canReceivePush(activity.attributes),
+            appIsActive: UIApplication.shared.applicationState == .active
+        ) else { return nil }
+        return Self.alert(for: latest.status, title: latest.sessionTitle)
     }
 
     /// The system alert for a run that stopped on `status`, titled with the session (#740).

@@ -638,7 +638,8 @@ those values into manager calls.
   sends the banner, and otherwise the app's write carries an `AlertConfiguration` when
   it is not in the foreground (`AgentLiveActivityAlertPolicy`, #740). The alert stays
   owed until a write actually lands, so the feed's same-tick chips write cannot drop
-  it. A repeated waiting event stays silent.
+  it, and an ask that arrives while ActivityKit is still creating the activity alerts
+  on its first write. A repeated waiting event stays silent.
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
