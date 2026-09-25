@@ -85,6 +85,17 @@ import UserNotifications
 
     func isRunning(_ step: Step) -> Bool { phase == .enabling(step) }
 
+    /// Whether the step list belongs on screen: while a host step runs, after a failure, and
+    /// after a run that changed the host before stopping (permission revoked mid-run), so
+    /// those changes stay visible. Hidden while iOS asks for permission: nothing ran yet.
+    var showsSteps: Bool {
+        switch phase {
+        case .enabling, .failed: return true
+        case .checkingPermission: return false
+        case .idle, .disabling, .savingPreferences, .refreshing: return !completed.isEmpty
+        }
+    }
+
     /// Re-reads local state when Settings returns from editing the connection.
     func reload() async {
         guard !isWorking else { return }
@@ -236,7 +247,7 @@ import UserNotifications
         case .notDetermined: return await notifications.requestAuthorization()
         case .denied: return false
         case .authorized, .provisional, .ephemeral: return true
-        @unknown default: return true
+        @unknown default: return false
         }
     }
 

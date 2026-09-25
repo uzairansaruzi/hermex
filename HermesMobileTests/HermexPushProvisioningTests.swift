@@ -220,6 +220,8 @@ import XCTest
         XCTAssertTrue(provisioner.notificationsOff)
         XCTAssertNil(provisioner.failure, "Denied permission is not a host failure")
         XCTAssertFalse(provisioner.isWorking)
+        XCTAssertTrue(provisioner.showsSteps, "The host was already changed, so its finished steps stay visible")
+        XCTAssertEqual(provisioner.completed, [.relayURL, .install, .restart, .pair])
         XCTAssertNil(provisioner.pairing)
         XCTAssertNil(registrar.pairing(for: serverA))
     }
@@ -251,7 +253,9 @@ import XCTest
     }
 
     func testDeniedPermissionStopsSetupBeforeAnyHostCall() async throws {
-        for (status, grants) in [(UNAuthorizationStatus.denied, true), (.notDetermined, false)] {
+        // A status a future iOS adds counts as not allowed, like a denial.
+        let unknown = try XCTUnwrap(UNAuthorizationStatus(rawValue: 99))
+        for (status, grants) in [(UNAuthorizationStatus.denied, true), (.notDetermined, false), (unknown, true)] {
             PushHTTPFixture.reset()
             PushHTTPFixture.handler = { _ in nil }
             let registrar = FakePushRegistrar()
@@ -263,6 +267,7 @@ import XCTest
             XCTAssertTrue(provisioner.notificationsOff, "\(status.rawValue)")
             XCTAssertEqual(provisioner.phase, .idle)
             XCTAssertNil(provisioner.failure)
+            XCTAssertFalse(provisioner.showsSteps, "Nothing ran, so there are no steps to show")
             XCTAssertEqual(PushHTTPFixture.calls, [], "The host is never touched for a phone that cannot show a push")
             XCTAssertEqual(registrar.actions, [])
             XCTAssertEqual(permission.requests, status == .notDetermined ? 1 : 0,
@@ -276,12 +281,17 @@ import XCTest
         let permission = FakeNotificationPermission(status: .notDetermined, grants: true)
         let provisioner = makeProvisioner(server: serverA, registrar: registrar, notifications: permission)
         var phaseDuringPrompt: HermexPushProvisioner.Phase?
-        permission.onRequest = { phaseDuringPrompt = provisioner.phase }
+        var stepsDuringPrompt: Bool?
+        permission.onRequest = {
+            phaseDuringPrompt = provisioner.phase
+            stepsDuringPrompt = provisioner.showsSteps
+        }
 
         await provisioner.enable()
 
         XCTAssertEqual(permission.hostCallsBeforeRequest, [0])
         XCTAssertEqual(phaseDuringPrompt, .checkingPermission, "The prompt claims no host step")
+        XCTAssertEqual(stepsDuringPrompt, false)
         XCTAssertFalse(provisioner.notificationsOff)
         XCTAssertNil(provisioner.failure)
         XCTAssertNotNil(registrar.pairing(for: serverA))
