@@ -392,9 +392,9 @@ struct BotChatTitlePillFallback: ViewModifier {
 /// Where the Bot transcript shows times, worked out once per body over the
 /// window with comparisons only. Gap separators ignore Message Timestamps
 /// (D22); the per-message footer follows it. User messages and turn-ending
-/// replies carry a time, as in Sessions: a reply ends its turn when the next
-/// settled row is a user message, or when it is the last settled row and no
-/// turn is still running past it. Steer rows, delegation cards and the live
+/// replies carry a time, as in Sessions: a reply with visible text ends its
+/// turn when the next drawn settled row is a user message or a delegation
+/// delivery, or when it is the last and no turn is still running past it. Steer rows, delegation cards and the live
 /// turn get none. The live prompt is dated only by the host's turn start,
 /// never the phone clock.
 struct BotTranscriptTimes {
@@ -422,17 +422,30 @@ struct BotTranscriptTimes {
             let message = messages[index]
             guard let timestamp = message.timestamp, timestamp.isFinite, timestamp > 0,
                   !message.isSteerMessage else { continue }
-            let next = index + 1
             let showsTime = switch message.role {
             case "user": true
-            case "assistant": next < messages.endIndex
-                ? TranscriptTurnClassifier.isUserTurnBoundary(messages[next])
-                : lastTurnIsSettled
+            case "assistant": Self.hasVisibleText(message)
+                && Self.endsTurn(after: index, in: messages, lastTurnIsSettled: lastTurnIsSettled)
             default: false
             }
             if showsTime { times[message.id] = timestamp }
         }
         footerTimes = times
+    }
+
+    /// Whether the reply at `index` is its turn's last visible one. Text-less
+    /// assistant rows (reasoning kept after an interrupted tool step) draw
+    /// nothing, so they are skipped. An async delegation delivery is a host
+    /// injected user turn, so the reply before it closed its own turn.
+    private static func endsTurn(after index: Int, in messages: [ChatMessage], lastTurnIsSettled: Bool) -> Bool {
+        guard let next = messages[(index + 1)...].first(where: { $0.role != "assistant" || hasVisibleText($0) }) else {
+            return lastTurnIsSettled
+        }
+        return TranscriptTurnClassifier.isUserTurnBoundary(next) || next.role == "delegation_completion"
+    }
+
+    private static func hasVisibleText(_ message: ChatMessage) -> Bool {
+        !(message.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

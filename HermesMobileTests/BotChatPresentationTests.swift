@@ -522,8 +522,18 @@ import XCTest
             botRow("a5", "assistant", at: 1_090)
         ]
         let idle = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
-        XCTAssertEqual(idle.footerTimes, ["u1": 1_000, "a3": 1_050, "u2": 1_060, "u3": 1_080, "a5": 1_090],
-                       "interim replies, steers, delegation cards and unstamped rows get no time")
+        XCTAssertEqual(idle.footerTimes, ["u1": 1_000, "a2": 1_030, "a3": 1_050, "u2": 1_060, "u3": 1_080, "a5": 1_090],
+                       "interim replies, steers, delegation cards and unstamped rows get no time; a delivery ends the turn before it")
+
+        let interrupted = [
+            botRow("u1", "user", at: 1_000),
+            botRow("a1", "assistant", at: 1_010),
+            ChatMessage(role: "assistant", content: "", timestamp: 1_020, messageId: "a2"),
+            botRow("u2", "user", at: 1_030)
+        ]
+        let stopped = BotTranscriptTimes(messages: interrupted, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        XCTAssertEqual(stopped.footerTimes, ["u1": 1_000, "a1": 1_010, "u2": 1_030],
+                       "a text-less reasoning row gets no time and the visible reply before it ends the turn")
 
         let running = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: 1_085, isMidTurn: true)
         XCTAssertNil(running.footerTimes["a5"], "the last reply of a turn still running is interim")
