@@ -66,9 +66,68 @@ final class BotFaceMotionTests: XCTestCase {
     }
 
     func testReduceMotionStillsEveryMode() {
+        let working = BotFaceMotion.working(since: Date(timeIntervalSinceReferenceDate: 1000))
         XCTAssertEqual(BotFaceMotion.idle.honoring(reduceMotion: true), .still)
-        XCTAssertEqual(BotFaceMotion.working.honoring(reduceMotion: true), .still)
-        XCTAssertEqual(BotFaceMotion.working.honoring(reduceMotion: false), .working)
+        XCTAssertEqual(working.honoring(reduceMotion: true), .still)
+        XCTAssertEqual(working.honoring(reduceMotion: false), working)
+    }
+
+    func testWorkingScheduleRunsAtFifteenFramesPerSecondOnlyForTheBeat() {
+        let start = Date(timeIntervalSinceReferenceDate: 1000)
+        let blink = BotBlinkSchedule(seed: "inbox-triage")
+        let schedule = BotWorkingSchedule(start: start, blink: blink)
+        let end = start.addingTimeInterval(BotWorkingSchedule.beat)
+        let entries = Array(schedule.entries(from: start, mode: .normal).prefix(600))
+        let frames = entries.prefix { $0 < end }
+
+        XCTAssertEqual(BotWorkingSchedule.beat, 30)
+        XCTAssertEqual(frames.first, start)
+        XCTAssertEqual(frames.count, 450, "30 s at 15 fps")
+        for (earlier, later) in zip(frames, frames.dropFirst()) {
+            XCTAssertEqual(later.timeIntervalSince(earlier), 1.0 / 15, accuracy: 0.0001)
+        }
+        let settled = Array(entries.dropFirst(frames.count).prefix(5))
+        XCTAssertEqual(settled, Array(blink.entries(from: end, mode: .normal).prefix(5)),
+                       "after the beat only the blink schedule's edges fire")
+        XCTAssertEqual(settled.first, end, "the first settled entry paints the lean")
+    }
+
+    func testWorkingSchedulePastTheBeatGivesOnlyBlinkEdges() {
+        let start = Date(timeIntervalSinceReferenceDate: 1000)
+        let blink = BotBlinkSchedule(seed: "inbox-triage")
+        let later = start.addingTimeInterval(3600)
+        let entries = Array(BotWorkingSchedule(start: start, blink: blink).entries(from: later, mode: .normal).prefix(6))
+
+        XCTAssertEqual(entries, Array(blink.entries(from: later, mode: .normal).prefix(6)))
+        for (earlier, next) in zip(entries.dropFirst(), entries.dropFirst(2)) {
+            XCTAssertGreaterThanOrEqual(next.timeIntervalSince(earlier), BotBlinkSchedule.shutDuration - 0.0001,
+                                        "no 15 fps entries once the beat is over")
+        }
+    }
+
+    func testWorkingScheduleSettlesIntoALeanThatOnlyBlinks() {
+        let start = Date(timeIntervalSinceReferenceDate: 1000)
+        let blink = BotBlinkSchedule(seed: "inbox-triage")
+        let schedule = BotWorkingSchedule(start: start, blink: blink)
+        let inside = start.addingTimeInterval(10)
+
+        XCTAssertEqual(schedule.pose(at: inside), .working(at: inside.timeIntervalSinceReferenceDate))
+        let settled = BotFacePose.settledWorking
+        XCTAssertNotEqual(settled, .rest)
+        XCTAssertEqual(settled.gazeX, -0.0275, accuracy: 0.0001)
+        XCTAssertEqual(settled.gazeY, 0)
+        XCTAssertEqual(settled.roll, 0)
+
+        let after = start.addingTimeInterval(31)
+        let shut = blink.entries(from: after, mode: .normal).dropFirst().first { blink.isShut(at: $0) }!
+        let open = shut.addingTimeInterval(BotBlinkSchedule.shutDuration + 0.5)
+        var shutPose = settled
+        shutPose.lid = BotFacePose.blink.lid
+        XCTAssertEqual(schedule.pose(at: shut), shutPose)
+        XCTAssertEqual(schedule.pose(at: open), settled)
+        for date in [after, shut, open] {
+            XCTAssertEqual(schedule.pose(at: date).lid, blink.isShut(at: date) ? BotFacePose.blink.lid : 1)
+        }
     }
 
     func testWorkingPoseLeansAndBlinksAndRestIsNeutral() {

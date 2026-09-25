@@ -1,10 +1,13 @@
 import SwiftUI
 
 /// How a drawn bot face moves. `.still` is one frozen frame, used by the picker
-/// tiles, Reduce Motion and the extensions. `.idle` blinks on a sparse schedule. `.working`
-/// is Desktop's lean-and-sway pose, only for the open bot while its turn is live.
+/// tiles, Reduce Motion and the extensions. `.idle` blinks on a sparse schedule.
+/// `.working` is Desktop's lean-and-sway pose for the open bot while its turn is live:
+/// it sways for one `BotWorkingSchedule.beat` from `since`, then holds a still lean
+/// that only blinks, so a long turn never keeps a 15 fps loop running.
 enum BotFaceMotion: Equatable, Sendable {
-    case still, idle, working
+    case still, idle
+    case working(since: Date)
 
     /// Reduce Motion collapses every mode to a still face.
     func honoring(reduceMotion: Bool) -> BotFaceMotion { reduceMotion ? .still : self }
@@ -34,6 +37,10 @@ struct BotFacePose: Equatable, Sendable {
         let blink = t.truncatingRemainder(dividingBy: 1.45) > 1.26
         return BotFacePose(gazeX: turn * 0.0025, gazeY: -tilt * 0.0025, roll: roll, lid: blink ? 0.06 : 1)
     }
+
+    /// The working lean with the sway taken out: gaze held aside at the pose's
+    /// centre turn, no tilt or roll. Still reads "busy, looking at its work".
+    static let settledWorking = BotFacePose(gazeX: -11 * 0.0025)
 }
 
 /// A `TimelineView` schedule that fires only at blink edges: shut, then open 180 ms
@@ -74,6 +81,44 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
                 let step = index - edges.count
                 let blink = firstShut + Double(step / 2) * period
                 return Date(timeIntervalSinceReferenceDate: step.isMultiple(of: 2) ? blink : blink + shut)
+            }
+        }
+    }
+}
+
+/// The working face's `TimelineView` schedule: 15 fps for `beat` seconds from `start`,
+/// then only the bot's blink edges. `start` is when the current beat began (the turn
+/// started working, or the app came back to the foreground mid-turn), so a two-hour
+/// run or an unattended approval stops repainting after the beat.
+struct BotWorkingSchedule: TimelineSchedule, Equatable {
+    static let beat = 30.0
+    static let frameInterval = 1.0 / 15
+    let start: Date
+    let blink: BotBlinkSchedule
+
+    private var end: Date { start.addingTimeInterval(Self.beat) }
+
+    /// The swaying pose inside the beat, then the settled lean with the blink's lid.
+    func pose(at date: Date) -> BotFacePose {
+        if date < end { return .working(at: date.timeIntervalSinceReferenceDate) }
+        var pose = BotFacePose.settledWorking
+        if blink.isShut(at: date) { pose.lid = BotFacePose.blink.lid }
+        return pose
+    }
+
+    func entries(from date: Date, mode: Mode) -> AnySequence<Date> {
+        let end = end
+        guard date < end else { return blink.entries(from: date, mode: mode) }
+        let first = max(date, start), blink = blink
+        return AnySequence { () -> AnyIterator<Date> in
+            var frame = 0
+            // The blink schedule's first entry is `end` itself, which paints the settled pose.
+            let settled = blink.entries(from: end, mode: mode).makeIterator()
+            return AnyIterator {
+                let next = first.addingTimeInterval(Double(frame) * Self.frameInterval)
+                guard next < end else { return settled.next() }
+                frame += 1
+                return next
             }
         }
     }
@@ -177,10 +222,11 @@ struct BotAnimatedFaceView: View {
                 BotAvatarMarkView(name: name, appearance: appearance, size: size,
                                   pose: looking(schedule.isShut(at: context.date) ? .blink : .rest))
             }
-        case .working:
-            TimelineView(.animation(minimumInterval: 1 / 15)) { context in
+        case .working(let since):
+            let schedule = BotWorkingSchedule(start: since, blink: BotBlinkSchedule(seed: name))
+            TimelineView(schedule) { context in
                 BotAvatarMarkView(name: name, appearance: appearance, size: size,
-                                  pose: looking(.working(at: context.date.timeIntervalSinceReferenceDate)))
+                                  pose: looking(schedule.pose(at: context.date)))
             }
         }
     }
