@@ -808,6 +808,20 @@ import XCTest
         XCTAssertEqual(wire.listCalls, 1, "status re-reads never re-read the roster")
     }
 
+    func testAFailedReReadWhileABotIsBusyTriesAgainUntilOneAnswers() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.active = [live("triage-tip", "working")]
+        let inbox = try makeInbox(wires: [wire], statusPollInterval: .zero)
+        await inbox.open()
+        defer { inbox.close() }
+
+        wire.failsActive = 2
+        await settle(inbox) { $0.liveStatuses.isEmpty }
+        await settle(inbox) { $0.liveStatuses == ["triage": .working] }
+        XCTAssertEqual(inbox.link, .live, "a failed status read never drops the socket")
+        XCTAssertEqual(wire.listCalls, 1, "the retry is a status read, not a roster read")
+    }
+
     func testStatusReReadsStopWhenTheInboxCloses() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.active = [live("triage-tip", "working")]
@@ -994,6 +1008,8 @@ import XCTest
     var active: [BotJSON]?
     /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
     var holdsActive = false
+    /// The next this many `session.active_list` calls fail as a transport error.
+    var failsActive = 0
     /// While true, `connect()` waits for `release()`; `connectError` makes it throw instead.
     var holdsConnect = false
     var connectError: Error?
@@ -1041,6 +1057,7 @@ import XCTest
             return configure(params)
         case "session.active_list":
             if holdsActive { await withCheckedContinuation { held.append($0) } }
+            if failsActive > 0 { failsActive -= 1; throw BotFailure.transport }
             guard let active else { throw BotFailure.rejected(-32601) }
             return .object(["sessions": .array(active)])
         default:

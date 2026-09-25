@@ -704,13 +704,13 @@ read shows none rather than old ones, and never drops the socket (the read is
 cancellation-safe and a stall fails only it). The read runs beside the room
 read: the inbox goes live without waiting for it. A dropped socket, a changed
 connection, or a failed connection read clears them; leaving the screen keeps
-them. Because `sessions.changed` can miss a turn's end (post-turn work
-writes nothing), the inbox re-reads `session.active_list` alone every five
-seconds while it is open, connected, and some bot is busy, and stops once all
-are idle. Caveats: `waiting` relies on the `client.capabilities` handshake
-above; messaging-gateway and cron turns run in other processes and never appear;
-a tip the live agent rotated after the roster read matches no bot until the next
-roster read.
+them. Because `sessions.changed` can miss a turn's end (post-turn work writes
+nothing), the inbox re-reads `session.active_list` alone every five seconds
+while it is open, connected, and some bot is busy (or a read failed while one
+was), and stops once all are idle. Caveats: `waiting` relies on the
+`client.capabilities` handshake above; messaging-gateway and cron turns run in
+other processes and never appear; a tip the live agent rotated after the roster
+read matches no bot until the next roster read.
 
 Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
 by default and owned by the Settings "Bot Mode (beta)" row (#496), which sits

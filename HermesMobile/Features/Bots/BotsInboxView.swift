@@ -608,7 +608,11 @@ private struct BotHeroTile: View {
                     Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
                     if unread { BotUnreadDot() }
                 }
-                if let status { BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold)) }
+                if let status {
+                    // Two lines, so a long translation at a large size still reads whole.
+                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold))
+                        .lineLimit(2).multilineTextAlignment(.center)
+                }
             }
         }
         .frame(maxWidth: 132)
@@ -708,8 +712,8 @@ private struct BotLiveStatusLabel: View {
     let font: Font
     var body: some View {
         switch status {
-        case .working: Text("Working").font(font).foregroundStyle(Color("AttentionWorking")).lineLimit(1)
-        case .waiting: Text("Waiting for you").font(font).foregroundStyle(Color("AttentionApproval")).lineLimit(1)
+        case .working: Text("Working").font(font).foregroundStyle(Color("AttentionWorking"))
+        case .waiting: Text("Waiting for you").font(font).foregroundStyle(Color("AttentionApproval"))
         }
     }
 }

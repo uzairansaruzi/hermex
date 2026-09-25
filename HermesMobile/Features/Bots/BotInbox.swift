@@ -195,6 +195,9 @@ import UIKit
     /// statuses stay hidden until the next socket.
     private var readsLiveStatus = true
     private var statusSerial = 0
+    /// True after a status read failed while a bot was busy, so re-reads go on until
+    /// one succeeds instead of leaving that turn unmarked until the next event.
+    private var retriesStatusRead = false
     private var statusPollTask: Task<Void, Never>?
     private var returnedFrom: String?
     private let store: BotConnectionStore
@@ -288,7 +291,7 @@ import UIKit
             if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
             let opened = makeWire(saved)
             client = opened
-            wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true
+            wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true; retriesStatusRead = false
             opened.onEvent = { [weak self] event in
                 guard let self, self.wire === opened, event["type"].text == "sessions.changed" else { return }
                 self.noteChange()
@@ -535,8 +538,8 @@ import UIKit
     /// applies only while `client` owns the inbox, the read was not cancelled, and no
     /// newer status or roster read has started. A failed read shows no statuses
     /// rather than old ones, and never drops the socket: the roster owns the link.
-    /// While a bot is busy the next read is scheduled `statusPollInterval` later;
-    /// once every bot is idle it stops.
+    /// While a bot is busy, or a read failed while one was, the next read is
+    /// scheduled `statusPollInterval` later; once every bot is idle it stops.
     private func readLiveStatuses(_ client: any BotTransport) async {
         statusSerial += 1
         let serial = statusSerial, roster = reloadSerial
@@ -547,12 +550,15 @@ import UIKit
             let reply = try await client.call("session.active_list", [:])
             guard current() else { return }
             setLiveStatuses(BotLiveStatus.statuses(reply["sessions"].list ?? [], profiles: profiles))
+            retriesStatusRead = false
         } catch {
             guard current() else { return }
             if error as? BotFailure == .rejected(-32601) { readsLiveStatus = false }
+            retriesStatusRead = retriesStatusRead || !liveStatuses.isEmpty
             setLiveStatuses([:])
         }
-        if liveStatuses.isEmpty { statusPollTask = nil } else { startLiveStatusRead(client, after: statusPollInterval) }
+        if liveStatuses.isEmpty && !retriesStatusRead { statusPollTask = nil }
+        else { startLiveStatusRead(client, after: statusPollInterval) }
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the list.
