@@ -722,6 +722,8 @@ enum RoomFixture {
         try validateDispatch?()
         switch method {
         case "profiles.list": return .object(["profiles": .array([])])
+        // The inbox reads live statuses after every roster read; no bot is busy here.
+        case "session.active_list": return .object(["sessions": .array([])])
         case "groups.capabilities": return capabilities
         case "groups.list":
             listCalls += 1

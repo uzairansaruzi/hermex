@@ -468,7 +468,8 @@ in `gateway.ready` and broadcasts `sessions.changed` whenever any served
 Profile's `state.db` moves (floored at two seconds, `change_watcher.py`). Each
 event coalesces into one `profiles.list` reload with at most one more queued,
 spaced by one second, applied only when the reply is the newest request and the
-wire still owns the inbox. Event reloads skip the avatar pass: a look change
+wire still owns the inbox. Every roster read is followed by a live-status read
+(below). Event reloads skip the avatar pass: a look change
 never moves `state.db`, so nothing new would be there. Leaving the screen,
 backgrounding, pull-to-refresh and Reconnect all go through `close()` then
 `open()`; a dropped socket keeps the roster on screen, says live updates
@@ -678,13 +679,35 @@ values are timestamps and never leave the phone. The first roster load seeds a
 missing mark so a fresh install starts quiet; opening a chat marks it seen, and
 returning marks the next roster read seen once so activity that was on screen
 during the visit does not come back as unread. Removing the connection deletes
-its marks with its drafts. Working and needs-attention states are not shown in
-the inbox yet (#741). The roster row carries no turn state for the canonical
-chat, and its `worker_session` heartbeats describe kanban and tool workers
-rather than the conversation. The live signal is `session.active_list`: each
-live session's `session_key` and a `status` of `idle`, `starting`, `waiting`,
-`working`, `streaming` or `resuming`, scoped to the sessions held by that
-gateway process (Desktop polls it per socket).
+its marks with its drafts.
+
+Live status comes from `session.active_list` with `{}` params (verified at the
+`d337b736` pin: handler `tui_gateway/methods_session.py`, item `server.py`
+`_session_live_item`, enum `contracts/sessions.py` `LiveSessionStatus`). The
+roster row carries no turn state for the canonical chat, and its
+`worker_session` heartbeats describe kanban and tool workers rather than the
+conversation. `session.active_list` lists every non-finalized runtime in the
+host process, across Profiles, as `{id, session_key, status, ...}`, and is
+read-only. The inbox reads it after every `profiles.list` and matches an item to
+a bot when its `session_key` equals the canonical chat's root
+(`canonical_session.id`) or the tip the roster read (`resolved_id`). A key two
+bots share marks neither, since stored ids can repeat across Profiles; several
+items on one bot keep the most urgent. `waiting` (an open approval, question, or
+other server request) shows "Waiting for you"; `working`, `starting` and
+`streaming` show "Working"; idle, `resuming` (deferred hydration, not a turn), a
+reaped runtime and unknown values show nothing. The word replaces the row's date
+and sits under a pinned tile's name, tinted like the Sessions list's attention
+states, and never animates. Inside every group (each tile group and each
+section) chats sort waiting, then working, then unread, then newest; rooms rank
+with idle bots. `-32601` hides statuses until the next socket; any other failed
+read shows none rather than old ones. A dropped socket or a changed connection
+clears them. Because `sessions.changed` can miss a turn's end (post-turn work
+writes nothing), the inbox re-reads `session.active_list` alone every five
+seconds while it is open, connected, and some bot is busy, and stops once all
+are idle. Caveats: `waiting` relies on the `client.capabilities` handshake
+above; messaging-gateway and cron turns run in other processes and never appear;
+a tip the live agent rotated after the roster read matches no bot until the next
+roster read.
 
 Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
 by default and owned by the Settings "Bot Mode (beta)" row (#496), which sits
@@ -1065,9 +1088,10 @@ it never orchestrates member turns, retries work, or opens the hidden
 On inbox open and pull to refresh, `groups.capabilities` gates room rows: `driver`
 must be true and `methods` must include `groups.list`,
 `groups.state`, and `groups.log`. Missing capabilities hide rooms, including name
-search. Group rooms sit in the unfiled block with unfiled bots; every block is
-newest first, using room updated time and bot last activity. Undated chats sort
-last; ties use stable chat identity. Revealed hidden bots join that order, with
+search. Group rooms sit in the unfiled block with unfiled bots; every block puts
+waiting and working bots first, then unread ones, then the rest newest first,
+using room updated time and bot last activity. Undated chats sort last; ties use
+stable chat identity. Revealed hidden bots join that order, with
 the reveal control at the bottom. Pinned bot tiles remain above the list.
 The top-right + menu offers New Bot and New Group Chat; group creation is disabled
 when the host lacks its capability. `groups.list` pages all active

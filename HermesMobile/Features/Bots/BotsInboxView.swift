@@ -88,7 +88,9 @@ import SwiftUI
                     // Pinned chats sit above the list as large tiles: as many columns as
                     // there are pinned chats, up to three, so one or two sit centered and
                     // four or more wrap instead of being clipped away.
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(pinned.count, 3)), spacing: 24) {
+                    // Top-aligned, so a tile with a status line under its name keeps its avatar
+                    // level with its neighbours'.
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: min(pinned.count, 3)), spacing: 24) {
                         ForEach(pinned) { chat in
                             // The grid is one list row, and a row merges every
                             // `.contextMenu` inside it into one, so holding any tile
@@ -98,7 +100,8 @@ import SwiftUI
                             switch chat {
                             case .bot(let profile):
                                 Menu { organizeMenu(profile) } label: {
-                                    BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
+                                    BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
+                                                status: inbox.liveStatuses[profile.id])
                                 } primaryAction: { selection.profile = profile }
                                 .buttonStyle(.plain)
                             case .room(let room):
@@ -235,7 +238,8 @@ import SwiftUI
 
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
         Button { selection.profile = profile } label: {
-            BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile))
+            BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
+                        status: inbox.liveStatuses[profile.id])
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
@@ -589,17 +593,22 @@ private struct BotProfileEditSelection: Identifiable, Hashable {
     var id: String { connectionID.uuidString + "|" + profileID }
 }
 
-/// A pinned bot: the avatar large and centered with the name beneath it.
+/// A pinned bot: the avatar large and centered with the name beneath it, and the
+/// live status word under the name while it has one.
 private struct BotHeroTile: View {
     let profile: BotProfile
     let avatar: UIImage?
     let unread: Bool
+    let status: BotLiveStatus?
     var body: some View {
         VStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
-            HStack(spacing: 6) {
-                Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
-                if unread { BotUnreadDot() }
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                    if unread { BotUnreadDot() }
+                }
+                if let status { BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold)) }
             }
         }
         .frame(maxWidth: 132)
@@ -624,12 +633,15 @@ private struct BotRoomHeroTile: View {
 }
 
 /// One roster row: avatar, name with an optional short Desktop description chip,
-/// the last activity, then the canonical preview with a trailing unread mark.
-/// The avatar is decorative; VoiceOver reads the text as one element.
+/// the live status or else the last activity, then the canonical preview with a
+/// trailing unread mark. The avatar is decorative; VoiceOver reads the text as one
+/// element, status included.
 private struct BotInboxRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let profile: BotProfile
     let avatar: UIImage?
     let unread: Bool
+    let status: BotLiveStatus?
     /// A description short enough to read as a role sits beside the name; a
     /// longer one only stands in for the preview when the chat has none.
     private var chip: String? {
@@ -645,17 +657,15 @@ private struct BotInboxRow: View {
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 44)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(profile.name).font(.headline).lineLimit(1)
-                    if let chip {
-                        Text(chip).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
-                            .layoutPriority(-1)
-                    }
-                    Spacer(minLength: 8)
-                    if let date = profile.lastActive {
-                        Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
+                // At accessibility sizes the slot moves under the name, as in Sessions.
+                if dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) { nameAndChip }
+                    trailingSlot
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        nameAndChip
+                        Spacer(minLength: 8)
+                        trailingSlot
                     }
                 }
                 HStack(spacing: 8) {
@@ -666,6 +676,41 @@ private struct BotInboxRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var nameAndChip: some View {
+        Text(profile.name).font(.headline).lineLimit(1)
+        if let chip {
+            Text(chip).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
+                .layoutPriority(-1)
+        }
+    }
+
+    /// One line, one meaning, as in Sessions: the live status while the bot has one,
+    /// otherwise the last activity.
+    @ViewBuilder private var trailingSlot: some View {
+        if let status {
+            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold))
+                .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
+        } else if let date = profile.lastActive {
+            Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A bot's live status as a still, tinted word: the Live Activity's translated
+/// "Working" and "Waiting for you" in the Sessions list's attention tints. It never
+/// animates; the word carries the meaning without the color.
+private struct BotLiveStatusLabel: View {
+    let status: BotLiveStatus
+    let font: Font
+    var body: some View {
+        switch status {
+        case .working: Text("Working").font(font).foregroundStyle(Color("AttentionWorking")).lineLimit(1)
+        case .waiting: Text("Waiting for you").font(font).foregroundStyle(Color("AttentionApproval")).lineLimit(1)
+        }
     }
 }
 

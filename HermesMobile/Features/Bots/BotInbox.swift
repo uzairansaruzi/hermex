@@ -2,10 +2,10 @@ import Observation
 import UIKit
 
 /// The Bots inbox for one configured server: the roster, Desktop's pin, hidden and
-/// section organization, device-local unread marks and section order, and one
-/// live subscription that lasts while the inbox is visible. `open()` owns the
-/// transport and `close()` ends it; every late reply is dropped by the wire
-/// identity check, so a replaced or closed connection never writes into the screen.
+/// section organization, each bot's live turn state, device-local unread marks and
+/// section order, and one live subscription that lasts while the inbox is visible.
+/// `open()` owns the transport and `close()` ends it; every late reply is dropped by
+/// the wire identity check, so a replaced or closed connection never writes into the screen.
 @MainActor @Observable final class BotInbox {
     enum Link: Equatable { case idle, connecting, live, disconnected }
 
@@ -52,7 +52,7 @@ import UIKit
     }
 
     /// Everything except the pinned tiles, as sections in `sectionNames` order with
-    /// the unfiled block last. Each block is newest first; an empty one is left out.
+    /// the unfiled block last. Each block is in `byAttention` order; an empty one is left out.
     /// With no named sections this is one unfiled block, the flat list as before.
     var sections: [ChatSection] {
         let rows = rows(matching: "")
@@ -67,9 +67,9 @@ import UIKit
         // is also pinned, exactly as a hidden bot does, so it can always be unhidden.
         unfiled += visibleRooms.filter { isRoomHidden($0) ? showsHidden : !isRoomPinned($0) }.map(ChatRow.room)
         var blocks = sectionNames.compactMap { section in
-            filed[section.id].map { ChatSection(id: "section:" + section.id, name: section.name, chats: Self.byActivity($0)) }
+            filed[section.id].map { ChatSection(id: "section:" + section.id, name: section.name, chats: byAttention($0)) }
         }
-        if !unfiled.isEmpty { blocks.append(ChatSection(id: "unfiled", name: nil, chats: Self.byActivity(unfiled))) }
+        if !unfiled.isEmpty { blocks.append(ChatSection(id: "unfiled", name: nil, chats: byAttention(unfiled))) }
         return blocks
     }
 
@@ -121,23 +121,36 @@ import UIKit
     }
 
     /// The tiles above the timeline: Desktop's pinned bots, then rooms pinned on
-    /// this phone, each group by activity.
+    /// this phone, each group in `byAttention` order.
     var pinned: [ChatRow] {
-        Self.byActivity(rows(matching: "").pinned.map(ChatRow.bot))
-            + Self.byActivity(visibleRooms.filter { isRoomPinned($0) && !isRoomHidden($0) }.map(ChatRow.room))
+        byAttention(rows(matching: "").pinned.map(ChatRow.bot))
+            + byAttention(visibleRooms.filter { isRoomPinned($0) && !isRoomHidden($0) }.map(ChatRow.room))
     }
 
     private var visibleRooms: [BotGroupRoom] { roomCapabilities.enabled ? rooms : [] }
 
-    private static func byActivity(_ rows: [ChatRow]) -> [ChatRow] {
-        rows.sorted {
-            switch ($0.activity, $1.activity) {
+    /// The one order inside every group (each tile group and each section): waiting,
+    /// then working, then unread, then newest, undated last and ties by id. Rooms
+    /// have no live status or unread mark, so they rank with idle bots. Only rows
+    /// inside a group move; `ChatRow.id` stays stable so a move never rebuilds a row.
+    private func byAttention(_ rows: [ChatRow]) -> [ChatRow] {
+        func rank(_ row: ChatRow) -> Int {
+            guard case .bot(let profile) = row else { return 3 }
+            switch liveStatuses[profile.id] {
+            case .waiting: return 0
+            case .working: return 1
+            case nil: return isUnread(profile) ? 2 : 3
+            }
+        }
+        return rows.map { (row: $0, rank: rank($0)) }.sorted {
+            if $0.rank != $1.rank { return $0.rank < $1.rank }
+            switch ($0.row.activity, $1.row.activity) {
             case let (lhs?, rhs?) where lhs != rhs: return lhs > rhs
             case (_?, nil): return true
             case (nil, _?): return false
-            default: return $0.id < $1.id
+            default: return $0.row.id < $1.row.id
             }
-        }
+        }.map(\.row)
     }
 
     let server: URL
@@ -167,6 +180,10 @@ import UIKit
     /// Device-local watermarks for the current connection: the canonical
     /// `last_active` the user last saw for each Profile. Never leaves the phone.
     private(set) var seen: [String: Double] = [:]
+    /// Live turn state per Profile from the newest `session.active_list` read on this
+    /// connection. Emptied when the socket drops or the connection changes, so a row
+    /// never claims work nobody can vouch for.
+    private(set) var liveStatuses: [String: BotLiveStatus] = [:]
 
     private var wire: (any BotTransport)?
     private var reconnectTask: Task<Void, Never>?
@@ -174,6 +191,11 @@ import UIKit
     private var reloadTask: Task<Void, Never>?
     private var reloadWanted = false
     private var reloadSerial = 0
+    /// False once the host answered `session.active_list` with "method not found";
+    /// statuses stay hidden until the next socket.
+    private var readsLiveStatus = true
+    private var statusSerial = 0
+    private var statusPollTask: Task<Void, Never>?
     private var returnedFrom: String?
     private let store: BotConnectionStore
     private let unread: BotUnreadStore
@@ -189,18 +211,24 @@ import UIKit
     private let reloadSpacing: Duration
     /// Waits before each silent reconnect after a lost socket; the last one repeats.
     private let reconnectDelays: [Duration]
+    /// Gap between status-only re-reads while some bot is busy. `sessions.changed`
+    /// can miss a turn's end (post-turn work writes nothing), so the inbox re-reads
+    /// on its own while it is open, connected, and a row shows Working or Waiting.
+    private let statusPollInterval: Duration
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
+         statusPollInterval: Duration = .seconds(5),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
         self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         self.reconnectDelays = reconnectDelays; self.historyCache = historyCache
+        self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
             try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
@@ -251,7 +279,7 @@ import UIKit
             let saved = try store.load(server: server)
             if connection?.id != saved?.id {
                 profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
-                roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []
+                roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []; setLiveStatuses([:])
             }
             connection = saved
             guard let saved else { link = .idle; return }
@@ -260,7 +288,7 @@ import UIKit
             if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
             let opened = makeWire(saved)
             client = opened
-            wire = opened; link = .connecting; errorMessage = nil; notice = nil
+            wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true
             opened.onEvent = { [weak self] event in
                 guard let self, self.wire === opened, event["type"].text == "sessions.changed" else { return }
                 self.noteChange()
@@ -295,6 +323,7 @@ import UIKit
     func close() {
         reconnectTask?.cancel(); reconnectTask = nil
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
+        statusPollTask?.cancel(); statusPollTask = nil
         wire?.close(); wire = nil
         link = .idle
     }
@@ -440,8 +469,9 @@ import UIKit
         }
     }
 
-    /// One `profiles.list` on the live socket. Only the newest request's reply is
-    /// applied, and only while `client` still owns the inbox.
+    /// One `profiles.list` on the live socket, then the live statuses against it.
+    /// Only the newest request's reply is applied, and only while `client` still
+    /// owns the inbox.
     private func reload(_ client: any BotTransport) async -> Bool {
         reloadSerial += 1
         let serial = reloadSerial
@@ -473,12 +503,47 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
+            await readLiveStatuses(client)
             return true
         } catch {
             guard wire === client, serial == reloadSerial else { return false }
             drop(client, error: error)
             return false
         }
+    }
+
+    /// One read-only `session.active_list`, mapped onto the current roster. A reply
+    /// applies only while `client` owns the inbox and no newer status or roster read
+    /// has started. A failed read shows no statuses rather than old ones, and never
+    /// drops the socket: the roster owns the link. While a bot is busy the next read
+    /// is scheduled `statusPollInterval` later; once every bot is idle it stops.
+    private func readLiveStatuses(_ client: any BotTransport) async {
+        guard readsLiveStatus else { return }
+        statusSerial += 1
+        let serial = statusSerial, roster = reloadSerial
+        func current() -> Bool { wire === client && serial == statusSerial && roster == reloadSerial }
+        do {
+            let reply = try await client.call("session.active_list", [:])
+            guard current() else { return }
+            setLiveStatuses(BotLiveStatus.statuses(reply["sessions"].list ?? [], profiles: profiles))
+        } catch {
+            guard current() else { return }
+            if error as? BotFailure == .rejected(-32601) { readsLiveStatus = false }
+            setLiveStatuses([:])
+        }
+        statusPollTask?.cancel(); statusPollTask = nil
+        guard !liveStatuses.isEmpty else { return }
+        statusPollTask = Task { [weak self, interval = statusPollInterval] in
+            guard (try? await Task.sleep(for: interval)) != nil, let self, self.wire === client else { return }
+            // Cleared before the read, so the read's own reschedule never cancels it.
+            self.statusPollTask = nil
+            await self.readLiveStatuses(client)
+        }
+    }
+
+    /// Writes only a real change, so an unchanged re-read never invalidates the list.
+    private func setLiveStatuses(_ statuses: [String: BotLiveStatus]) {
+        if statuses != liveStatuses { liveStatuses = statuses }
     }
 
     func roomKey(_ room: BotGroupRoom) -> BotRoomKey? {
@@ -671,6 +736,7 @@ import UIKit
 
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
+        statusPollTask?.cancel(); statusPollTask = nil; setLiveStatuses([:])
         client.close(); wire = nil
         link = .disconnected
         guard Self.isRetryable(error) else {

@@ -98,6 +98,11 @@ struct BotProfile: Identifiable, Hashable {
     let description: String?
     let preview: String?
     let lastActive: Date?
+    /// The canonical chat's root (`canonical_session.id`) and the compression tip
+    /// the roster read resolved (`resolved_id`). `BotLiveStatus` matches runtimes
+    /// against both; nil when the bot has no canonical chat.
+    let canonicalID: String?
+    let canonicalTipID: String?
     let pinned: Bool
     let hidden: Bool
     /// Desktop's user section, trimmed; nil when unfiled. A bot with an id but no
@@ -125,6 +130,8 @@ struct BotProfile: Identifiable, Hashable {
         description = Self.firstText(look["description"], row["description"])
         preview = row["canonical_session"]["preview"].text
         lastActive = row["canonical_session"]["last_active"].number.map(Date.init(timeIntervalSince1970:))
+        canonicalID = Self.firstText(row["canonical_session"]["id"])
+        canonicalTipID = Self.firstText(row["canonical_session"]["resolved_id"])
         pinned = look["pinned"].flag == true
         hidden = look["hidden"].flag == true
         sectionID = Self.firstText(look["sectionId"])
@@ -140,5 +147,46 @@ struct BotProfile: Identifiable, Hashable {
             if !trimmed.isEmpty { return trimmed }
         }
         return nil
+    }
+}
+
+/// A bot's live turn state from `session.active_list`, the host's list of live
+/// runtimes in its own process. Only what the inbox shows: idle, a reaped
+/// runtime, and any status this build does not know read as no status at all.
+enum BotLiveStatus: Int, Comparable {
+    /// A turn is running (`working`, `starting`, `streaming`).
+    case working
+    /// The runtime has an open approval, question or other request for the user.
+    case waiting
+
+    init?(wire: String?) {
+        switch wire {
+        case "waiting": self = .waiting
+        case "working", "starting", "streaming": self = .working
+        default: return nil
+        }
+    }
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    /// Maps `session.active_list` items onto bots by `session_key`, which is the live
+    /// compression tip or, before the agent exists, the stored key; so it is matched
+    /// against both the canonical root and the tip the roster read. Items carry no
+    /// Profile, and stored ids can repeat across Profiles, so a key that names more
+    /// than one bot marks none of them. Several items on one bot: the most urgent wins.
+    static func statuses(_ items: [BotJSON], profiles: [BotProfile]) -> [String: BotLiveStatus] {
+        var owners: [String: Set<String>] = [:]
+        for profile in profiles {
+            for key in Set([profile.canonicalID, profile.canonicalTipID].compactMap { $0 }) {
+                owners[key, default: []].insert(profile.id)
+            }
+        }
+        var result: [String: BotLiveStatus] = [:]
+        for item in items {
+            guard let status = BotLiveStatus(wire: item["status"].text), let key = item["session_key"].text,
+                  let matched = owners[key], matched.count == 1, let profile = matched.first else { continue }
+            result[profile] = max(result[profile] ?? status, status)
+        }
+        return result
     }
 }

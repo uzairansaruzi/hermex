@@ -183,7 +183,7 @@ import Foundation
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
         guard ["profiles.list", "profiles.get_asset", "profiles.describe", "profiles.configure", "profiles.set_asset",
                "profiles.create", "session.create", "session.title",
-               "session.list", "session.resume", "session.events.since",
+               "session.list", "session.resume", "session.events.since", "session.active_list",
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond",
                "request.answer", "clarify.lock", "connection.respond", "client.capabilities",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control",
@@ -200,6 +200,9 @@ import Foundation
         if method == "client.capabilities" {
             guard params == ["server_requests": .bool(true)] else { throw BotFailure.unsupported }
         }
+        // The inbox's live-status read sends no parameters; `current_session_id`
+        // only marks a TUI's focused row, which Hermex never has.
+        if method == "session.active_list", !params.isEmpty { throw BotFailure.unsupported }
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
