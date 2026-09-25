@@ -613,6 +613,29 @@ import XCTest
         XCTAssertFalse(folded.contains("Thinking"), "the reasoning row folds too: \(folded)")
     }
 
+    /// A long pause before an interim reply keeps its time separator when the
+    /// reply folds away, so the reader still sees where the turn stalled.
+    func testFoldedInterimReplyKeepsItsGapSeparator() async throws {
+        let restoreFolds = overrideDefault(ChatTranscriptDisplaySettings.foldsSettledTurnsKey, true)
+        defer { restoreFolds() }
+        let start: Double = 1_700_000_000 // 2023: separators name the year.
+        let wire = BotFixtureWire()
+        wire.history = [
+            .object(["role": .string("user"), "text": .string("Clean the inbox"), "timestamp": .number(start)]),
+            .object(["role": .string("assistant"), "text": .string("Looking now"), "timestamp": .number(start + 10)]),
+            .object(["role": .string("assistant"), "text": .string("Halfway there"), "timestamp": .number(start + 7_200)]),
+            .object(["role": .string("assistant"), "text": .string("Archived fourteen"), "timestamp": .number(start + 7_210)])
+        ]
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        let folded = try await screenshot(window, name: "747-bot-fold-gap", awaiting: ["Archived fourteen"])
+        XCTAssertFalse(folded.contains("Halfway there"), folded)
+        XCTAssertEqual(folded.components(separatedBy: "2023").count - 1, 2,
+                       "the prompt's separator and the folded reply's gap separator: \(folded)")
+    }
+
     func testTransientDisconnectRemainsQuietAboveComposer() async throws {
         let wire = BotFixtureWire()
         let model = make(wire)

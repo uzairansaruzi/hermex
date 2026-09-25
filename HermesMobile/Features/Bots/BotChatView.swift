@@ -85,10 +85,11 @@ import SwiftUI
                             if fold?.hidesActivity != true {
                                 settledActivity(anchoredTo: message.id).transition(transition)
                             }
+                            // A pause stays dated even when the reply after it folds.
+                            if times.gapStarts.contains(message.id), let timestamp = message.timestamp {
+                                TranscriptTimeSeparator(timestamp: timestamp)
+                            }
                             if fold?.hidesBubble != true {
-                                if times.gapStarts.contains(message.id), let timestamp = message.timestamp {
-                                    TranscriptTimeSeparator(timestamp: timestamp)
-                                }
                                 BotArtifactMessageView(message: message, model: model,
                                                        footerTime: times.footerTimes[message.id])
                                     .id(message.id)
