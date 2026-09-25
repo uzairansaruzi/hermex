@@ -507,6 +507,22 @@ import Vision
         model.suspend()
     }
 
+    func testAReconnectKeepsTheArmOnlyWhenTheRuntimeSurvives() async {
+        for (newRuntime, expected) in [("runtime", BotFeedback.Event.turnCompleted), ("runtime-2", nil)] {
+            let wire = BotFixtureWire(); wire.running = true
+            let model = make(wire, reconnectDelay: { _ in }); await model.recover()
+            // The socket drops mid-turn; the host settles idle before it returns.
+            wire.running = false; wire.runtimeID = newRuntime
+            let connected = expectation(description: "reconnected to \(newRuntime)")
+            wire.onDisconnect?(BotFailure.transport)
+            withObservationTracking { _ = model.isReconnecting } onChange: { connected.fulfill() }
+            await fulfillment(of: [connected], timeout: 3)
+            XCTAssertEqual(model.connectionState, .connected)
+            XCTAssertEqual(model.feedback?.event, expected, newRuntime)
+            model.suspend()
+        }
+    }
+
     /// Fires one live event and waits for the snapshot it schedules. Only a
     /// snapshot writes `liveMessages`, and each one here carries a fresh reply,
     /// so the wait never depends on an unchanged value republishing.

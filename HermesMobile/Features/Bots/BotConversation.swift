@@ -140,8 +140,9 @@ import Observation
     /// The last action the host confirmed, for the chat view's haptic.
     private(set) var feedback: BotFeedback?
     /// On once a snapshot shows the turn busy, so the snapshot that settles it
-    /// idle plays one completion. A Stop, an interruption, and `suspend()` turn it
-    /// off: a stopped turn or one that ended while the app was away plays none.
+    /// idle plays one completion. A Stop, an interruption, a new runtime and
+    /// `suspend()` turn it off: a stopped turn, one that ended while the app was
+    /// away, or one lost with its runtime plays none.
     @ObservationIgnored private var completionArmed = false
     private var tip: String?
     private var generation = 0
@@ -522,6 +523,8 @@ import Observation
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
+            // A new runtime did not inherit the old turn, so its idle is no completion.
+            if runtime != foundRuntime { completionArmed = false }
             if replayWasReset { sequence = 0 }
             runtime = foundRuntime; epoch = foundEpoch
             let replayRequestsRevision = requestRevision
