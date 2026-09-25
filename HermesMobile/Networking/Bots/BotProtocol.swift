@@ -49,7 +49,8 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .wrongIdentity: return String(localized: "The conversation identity changed. Check this bot in Desktop.")
         case .differentHost: return String(localized: "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
         case .rejected(401): return String(localized: "Sign in again. Check your Bot connection username and password.")
-        // Hermes never answers 403, 502-504 or 520-530 itself; a proxy or Cloudflare does.
+        // Hermes never answers 403 or 520-530 itself. 502-504 usually come from a proxy; Hermes's
+        // own 503 (its auth provider is unreachable) shares the approved proxy copy.
         case .rejected(403): return String(localized: "Something in front of Hermes, such as Cloudflare Access, blocked the request.")
         case .rejected(502...504): return String(localized: "Your proxy answered, but Hermes didn't. Check that the dashboard is running on the host.")
         case .rejected(520...530): return String(localized: "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.")

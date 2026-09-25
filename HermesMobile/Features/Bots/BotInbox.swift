@@ -258,6 +258,10 @@ import UIKit
             if connection?.id != saved?.id {
                 profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
                 roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []
+            }
+            // The form can keep the UUID under a new address; advice for the old host
+            // and its failure streak do not carry over to the new one.
+            if connection?.id != saved?.id || connection?.address != saved?.address {
                 routeFailures = 0; routeAdvice = nil
             }
             connection = saved
@@ -278,12 +282,15 @@ import UIKit
             }
             try await opened.connect()
             guard wire === opened, !Task.isCancelled else { return }
+            // The host answered, so the route advice no longer holds, even though the
+            // roster and rooms have yet to load.
+            routeFailures = 0; routeAdvice = nil
             recordInstallID(opened.serverInstallID, for: saved)
             guard await reload(opened) else { return }
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
-            reconnectAttempts = 0; routeFailures = 0; routeAdvice = nil
+            reconnectAttempts = 0
             await refreshAvatars(opened)
         } catch {
             guard !Task.isCancelled else { return }

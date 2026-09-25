@@ -635,6 +635,8 @@ import XCTest
         let back = BotInboxFixtureWire(roster: [row("triage")])
         back.holdsConnect = true
         let inbox = try makeInbox(wires: failing + [back])
+        var adviceBeside: [String: String?] = [:]
+        back.onCall = { [weak inbox] method in adviceBeside[method] = inbox?.routeAdvice }
         await inbox.open()
         XCTAssertNil(inbox.routeAdvice, "a single route failure stays quiet")
         XCTAssertTrue(inbox.isLoadingRoster)
@@ -651,6 +653,39 @@ import XCTest
         await settle(inbox) { $0.link == .live }
         XCTAssertNil(inbox.routeAdvice)
         XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
+        XCTAssertEqual(adviceBeside["groups.capabilities"], .some(nil),
+                       "a reached host drops the advice before the roster shows, not once rooms load")
+    }
+
+    func testANewAddressOnTheSameConnectionStartsTheRouteAdviceOver() async throws {
+        let store = try connectedStore()
+        let failing = (0..<3).map { _ in
+            let wire = BotInboxFixtureWire(roster: [row("triage")])
+            wire.connectError = URLError(.cannotConnectToHost)
+            return wire
+        }
+        let stale = BotInboxFixtureWire(roster: [row("triage")])
+        stale.holdsConnect = true
+        let newHostOnce = BotInboxFixtureWire(roster: [row("triage")])
+        newHostOnce.connectError = URLError(.cannotConnectToHost)
+        let newHost = BotInboxFixtureWire(roster: [row("triage")])
+        newHost.holdsConnect = true
+        let inbox = try makeInbox(wires: failing + [stale, newHostOnce, newHost], store: store)
+        await inbox.open()
+        await settle(inbox) { $0.routeAdvice != nil && $0.link == .connecting }
+
+        // The form kept the UUID and saved the tunnel address, as it does for the same install_id.
+        let old = try XCTUnwrap(store.load(server: server))
+        try store.save(BotConnection(id: old.id, name: old.name, address: URL(string: "https://tunnel.example")!,
+                                     username: old.username, password: old.password, hermesVersion: nil), server: server)
+        await inbox.open()
+        XCTAssertNil(inbox.routeAdvice, "advice about the old host is gone, and one failure on the new one stays quiet")
+
+        await settle(inbox) { $0.link == .connecting }
+        XCTAssertNil(inbox.routeAdvice)
+        newHost.release(); stale.release()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertEqual(inbox.connection?.address.host(), "tunnel.example")
     }
 
     func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
