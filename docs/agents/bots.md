@@ -1261,8 +1261,19 @@ The relay address is not a field on the phone. A host that already names its own
 keeps it — that is what the probe protects — and a host that has never been set up gets
 `HermexPushPlugin.defaultRelayURL`. Self-hosting stays a server-side setting.
 
-A failed step says what the host answered (the status code, a timeout, a rejected
-sign-in) in provisioning's own words; `BotFailure`'s chat copy never reaches this screen.
+Notification permission is checked before any host call: a phone that cannot show a
+push is never the reason a plugin gets installed or a gateway restarted. `enable()` asks
+iOS only when it has never been asked; a denial, then or earlier, makes no host call and
+shows "Notifications are off for Hermex" with a link to Hermex's page in iOS Settings, not
+a red step failure. A paired server shows the same notice when permission is later
+denied. The section re-reads the permission on appear and on every return to the app,
+which clears the notice without re-running setup.
+
+A failed step says what answered it in provisioning's own words: the host (the status
+code, a timeout, a rejected sign-in), the relay (its status code, or unreachable), or iOS
+(no device token). Only a connection failure at sign-in, before anything on the host has
+changed, says the host could not be reached. `BotFailure`'s chat copy never reaches this
+screen.
 `BotDashboardClient` waits 120 seconds per request, because installing clones a
 repository on the host and a restart takes the gateway down and back up.
 
