@@ -520,6 +520,18 @@ import UIKit
         sectionOrderStore.save(ids, server: server, connectionID: connection.id)
     }
 
+    /// Saves a drag in "Reorder Sections…", given the sheet's ids in their new order.
+    /// A placed section the sheet leaves out (pinned-only for now) keeps its slot,
+    /// so its placement survives until the list can head it again.
+    func placeReorderableSections(_ ids: [String]) {
+        let listed = Set(ids)
+        var next = ids[...]
+        setSectionOrder(sectionNames.compactMap { section in
+            if listed.contains(section.id) { return next.popFirst() }
+            return sectionOrder.contains(section.id) ? section.id : nil
+        })
+    }
+
     /// Back to A–Z: forgets every placement for this connection.
     func resetSectionOrder() { setSectionOrder([]) }
 

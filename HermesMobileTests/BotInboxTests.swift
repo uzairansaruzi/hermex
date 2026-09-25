@@ -314,6 +314,25 @@ import XCTest
                        "a pinned-only section lives in the tiles; hidden ones can be revealed")
     }
 
+    func testDraggingKeepsThePlacedSlotOfASectionTheSheetLeavesOut() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("a", look: section("sec-a", "Alpha")),
+            row("b", look: section("sec-b", "Bravo")),
+            row("c", look: section("sec-c", "Charlie", ["pinned": .bool(true)])),
+            row("d", look: section("sec-d", "Delta")),
+            row("e", look: section("sec-e", "Echo", ["pinned": .bool(true)]))
+        ])
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        inbox.setSectionOrder(["sec-c", "sec-b"])
+        XCTAssertEqual(inbox.reorderableSectionNames.map(\.id), ["sec-b", "sec-a", "sec-d"])
+
+        inbox.placeReorderableSections(["sec-d", "sec-b", "sec-a"])
+        XCTAssertEqual(inbox.sectionOrder, ["sec-c", "sec-d", "sec-b", "sec-a"],
+                       "the pinned-only Charlie keeps its placed slot; the never-placed Echo stays A–Z")
+        XCTAssertEqual(inbox.sectionNames.map(\.name), ["Charlie", "Delta", "Bravo", "Alpha", "Echo"])
+    }
+
     func testPlacedSectionsKeepTheirOrderPerConnectionAndResetReturnsToAToZ() async throws {
         let roster = [
             row("a", look: section("sec-a", "Alpha")),

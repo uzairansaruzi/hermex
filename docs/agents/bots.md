@@ -445,7 +445,8 @@ refresh, or a `sessions.changed` reload), as pin and hide changes do. The phone
 never files bots.
 
 "Reorder Sections…" in the + menu (shown with two or more named sections the
-list can head; a section of only pinned bots lives in the tiles and is left out)
+list can head; a section of only pinned bots lives in the tiles and is left out,
+keeping any placed slot through a drag)
 places sections for this phone only: `BotSectionOrderStore` keeps the placed ids in
 `UserDefaults`, keyed by configured server and connection UUID, never sent to
 Desktop. Placed sections keep their position, the rest follow A–Z after them,

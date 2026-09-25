@@ -520,7 +520,7 @@ private struct BotSectionOrderView: View {
                     .onMove { from, to in
                         var ids = sections.map(\.id)
                         ids.move(fromOffsets: from, toOffset: to)
-                        inbox.setSectionOrder(ids)
+                        inbox.placeReorderableSections(ids)
                     }
                 }
                 Section {
