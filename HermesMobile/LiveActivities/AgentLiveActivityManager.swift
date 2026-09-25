@@ -64,6 +64,19 @@ enum AgentLiveActivityAlertPolicy {
         next != previous && (next == .waitingForApproval || next == .waitingForClarification)
             && !canReceivePush && !appIsActive
     }
+
+    /// The ask still owed an alert after a write: a newly entered ask, or one an earlier
+    /// write raised that no send has delivered yet. A newer write can supersede the send
+    /// that carried the alert (a Bot feed writes its chips in the same tick), so the alert
+    /// waits for whichever send lands; leaving that ask drops it.
+    static func pending(_ pending: AgentRunActivityStatus?, previous: AgentRunActivityStatus,
+                        next: AgentRunActivityStatus, canReceivePush: Bool,
+                        appIsActive: Bool) -> AgentRunActivityStatus? {
+        if alerts(previous: previous, next: next, canReceivePush: canReceivePush, appIsActive: appIsActive) {
+            return next
+        }
+        return next == pending && !canReceivePush && !appIsActive ? pending : nil
+    }
 }
 
 extension AgentRunActivityAttributes.ContentState {
@@ -142,6 +155,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var lastSentUpdateAt: Date?
     private var pendingUpdateTask: Task<Void, Never>?
     private var updateGeneration = 0
+    /// The ask the next delivered write alerts for (#740); see `AgentLiveActivityAlertPolicy.pending`.
+    private var pendingAlertStatus: AgentRunActivityStatus?
     private var lifecycleGeneration = 0
     private var pushTokenTask: Task<Void, Never>?
     private var pushStateTask: Task<Void, Never>?
@@ -214,6 +229,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         pushOwner = nil
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
+        pendingAlertStatus = nil
         rawResponseText = ""
         currentSessionID = normalizedSessionID
         currentStreamID = normalizedStreamID
@@ -406,6 +422,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         cancelPushHandoff()
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
+        pendingAlertStatus = nil
 
         var finalState = AgentRunActivityStateReducer.final(
             status: status,
@@ -643,30 +660,25 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         if immediate { immediateWriteCountForTesting += 1 }
 
         guard let activity else { return }
-        let alert = alert(from: currentState, to: updatedState, on: activity)
-        scheduleUpdate(updatedState, immediate: immediate || alert != nil, alert: alert)
-    }
-
-    /// The system alert for a write that newly needs the user, or nil (#740).
-    private func alert(
-        from previous: AgentRunActivityAttributes.ContentState,
-        to next: AgentRunActivityAttributes.ContentState,
-        on activity: Activity<AgentRunActivityAttributes>
-    ) -> AlertConfiguration? {
-        guard AgentLiveActivityAlertPolicy.alerts(
-            previous: previous.status, next: next.status,
+        pendingAlertStatus = AgentLiveActivityAlertPolicy.pending(
+            pendingAlertStatus, previous: currentState.status, next: updatedState.status,
             canReceivePush: canReceivePush(activity.attributes),
             appIsActive: UIApplication.shared.applicationState == .active
-        ) else { return nil }
-        let body: LocalizedStringResource = next.status == .waitingForApproval
+        )
+        // An owed alert skips the throttle so the user hears about the ask at once.
+        scheduleUpdate(updatedState, immediate: immediate || pendingAlertStatus != nil)
+    }
+
+    /// The system alert for a run that stopped on `status`, titled with the session (#740).
+    private static func alert(for status: AgentRunActivityStatus, title: String) -> AlertConfiguration {
+        let body: LocalizedStringResource = status == .waitingForApproval
             ? "Waiting for approval" : "Needs clarification"
-        return AlertConfiguration(title: "\(next.sessionTitle)", body: body, sound: .default)
+        return AlertConfiguration(title: "\(title)", body: body, sound: .default)
     }
 
     private func scheduleUpdate(
         _ state: AgentRunActivityAttributes.ContentState,
-        immediate: Bool,
-        alert: AlertConfiguration? = nil
+        immediate: Bool
     ) {
         let now = Date()
         if immediate || lastSentUpdateAt == nil || now.timeIntervalSince(lastSentUpdateAt!) >= minimumUpdateInterval {
@@ -674,7 +686,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             pendingUpdateTask = nil
             let generation = nextUpdateGeneration()
             Task { [weak self, generation] in
-                await self?.sendUpdate(state, staleDate: self?.staleDate(for: state), generation: generation, alert: alert)
+                await self?.sendUpdate(state, staleDate: self?.staleDate(for: state), generation: generation)
             }
             return
         }
@@ -702,13 +714,15 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private func sendUpdate(
         _ state: AgentRunActivityAttributes.ContentState,
         staleDate: Date?,
-        generation: Int,
-        alert: AlertConfiguration? = nil
+        generation: Int
     ) async {
         guard generation == updateGeneration else { return }
         guard let activity else { return }
 
         let state = Self.keepingRelayCounts(state, on: activity)
+        // The first write that actually lands delivers the owed alert, once.
+        let alert = pendingAlertStatus.map { Self.alert(for: $0, title: state.sessionTitle) }
+        pendingAlertStatus = nil
         await activity.update(ActivityContent(state: state, staleDate: staleDate), alertConfiguration: alert)
         lastSentUpdateAt = Date()
     }
@@ -839,6 +853,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         lastSentUpdateAt = nil
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
+        pendingAlertStatus = nil
         _ = nextLifecycleGeneration()
         _ = nextUpdateGeneration()
     }

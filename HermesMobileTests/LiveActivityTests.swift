@@ -122,6 +122,27 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertFalse(alerts(stale.status, AgentRunActivityStateReducer.waitingForApproval(state: stale).status))
     }
 
+    /// #740 review: a Bot feed writes its chips in the same tick as the approval, and that
+    /// write supersedes the send that carried the alert. The ask stays owed until a send lands.
+    func testPendingAlertSurvivesASameStatusWriteAndDropsWhenTheAskEnds() {
+        func pending(_ owed: AgentRunActivityStatus?, _ previous: AgentRunActivityStatus,
+                     _ next: AgentRunActivityStatus, paired: Bool = false,
+                     active: Bool = false) -> AgentRunActivityStatus? {
+            AgentLiveActivityAlertPolicy.pending(owed, previous: previous, next: next,
+                                                 canReceivePush: paired, appIsActive: active)
+        }
+
+        let owed = pending(nil, .runningCommand, .waitingForApproval)
+        XCTAssertEqual(owed, .waitingForApproval)
+        XCTAssertEqual(pending(owed, .waitingForApproval, .waitingForApproval), .waitingForApproval,
+                       "a chips write keeps the ask owed")
+        XCTAssertNil(pending(nil, .waitingForApproval, .waitingForApproval), "a delivered ask never re-alerts")
+        XCTAssertEqual(pending(owed, .waitingForApproval, .waitingForClarification), .waitingForClarification)
+        XCTAssertNil(pending(owed, .waitingForApproval, .runningCommand), "answering the ask drops it")
+        XCTAssertNil(pending(owed, .waitingForApproval, .waitingForApproval, active: true),
+                     "opening the app drops it")
+    }
+
     func testActiveLiveActivityStatesCarryRenderableText() {
         let startedAt = Date(timeIntervalSince1970: 100)
         let later = Date(timeIntervalSince1970: 106)
