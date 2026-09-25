@@ -68,7 +68,7 @@ enum MarkdownDiffFormatter {
 
     /// The styled document for a code fence, or nil when the fence renders as plain code:
     /// it is still streaming, is not diff or patch, is empty, or is past the highlighter's
-    /// size guards (characters, lines, line length). Settled results are cached by source,
+    /// size guards (characters, lines, line length). Styled documents are cached by source,
     /// so a body pass from the wrap toggle, Show all, or appearance never re-parses.
     static func document(for code: String, language: String?, isStreaming: Bool) -> MarkdownDiffDocument? {
         guard !isStreaming,
@@ -81,7 +81,8 @@ enum MarkdownDiffFormatter {
         // Diff reaches `.highRiskLanguage` only after the empty and size guards pass.
         let document = MarkdownHighlightPolicy.decision(for: code, language: normalized, isStreaming: false)
             == .plain(reason: .highRiskLanguage, normalizedLanguage: normalized) ? parse(code) : nil
-        cache.setObject(CacheBox(document), forKey: key)
+        // Only styled documents are kept, so an oversized plain fence never pins its source here.
+        if let document { cache.setObject(CacheBox(document), forKey: key) }
         return document
     }
 
@@ -94,8 +95,8 @@ enum MarkdownDiffFormatter {
     }()
 
     private final class CacheBox {
-        let document: MarkdownDiffDocument?
-        init(_ document: MarkdownDiffDocument?) { self.document = document }
+        let document: MarkdownDiffDocument
+        init(_ document: MarkdownDiffDocument) { self.document = document }
     }
 
     /// Classifies every line. An `@@ -a,b +c,d @@` header opens a hunk whose counts
