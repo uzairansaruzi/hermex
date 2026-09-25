@@ -53,6 +53,9 @@ struct BotPendingRequestCard: View {
                     credential: credential, identity: identity, isEnabled: isEnabled,
                     isAnswering: isAnswering, onCredential: onCredential
                 )
+                // A new request gets a fresh, empty field: a password typed for a
+                // timed-out sudo prompt must never ride along into a secret.
+                .id(credential.requestID)
             case .desktopTask(let task):
                 BotDesktopTaskRequestBody(
                     task: task, identity: identity, canStop: canStop,
@@ -347,8 +350,10 @@ private struct BotQuestionRequestBody: View {
 
 /// A sudo password or a secret the bot asked for. Masked, sent straight to the
 /// host and never held on the model, in a draft or anywhere else on the phone.
-/// Skip is a first-class answer: it releases the bot immediately instead of
-/// leaving it parked until the host's deadline.
+/// The field offers Password AutoFill, so a saved key can fill it, and its
+/// value belongs to one request: the card keys this body by request id, so a
+/// replacement request starts empty. Skip is a first-class answer: it releases
+/// the bot immediately instead of leaving it parked until the host's deadline.
 private struct BotCredentialRequestBody: View {
     let credential: BotCredentialRequest
     let identity: String
@@ -380,7 +385,7 @@ private struct BotCredentialRequestBody: View {
         }
         HStack(alignment: .bottom, spacing: 10) {
             SecureField(credential.kind == .sudo ? "Administrator password" : "Secret value", text: $value)
-                .textContentType(credential.kind == .sudo ? .password : nil)
+                .textContentType(.password)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.send)

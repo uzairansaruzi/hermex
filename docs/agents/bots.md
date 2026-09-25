@@ -224,6 +224,9 @@ The phone uses the acknowledged `request.answer` proxy for both live and restore
 requests: unlike a bare response frame, it distinguishes `ok` from `expired`.
 `sudo` and `secret` send `result: {value}`; an empty value skips. Credential input
 uses a `SecureField` and passes directly to dispatch without storing the value.
+The field offers Password AutoFill (`.password`) for both kinds and is keyed by
+request id, so a replacement request never inherits a half-typed value. With no
+associated domain, iOS offers no "Save Password?" afterward.
 The old per-kind answer methods (`clarify.respond`, `sudo.respond`,
 `secret.respond`, `mcp.setup.respond`) no longer exist at the pin and are off
 the allowlist.
