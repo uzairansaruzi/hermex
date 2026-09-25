@@ -272,9 +272,9 @@ import Observation
 
     var mayEditDraft: Bool { hydrated && !localOperation }
 
-    /// The one request blocking this conversation. A clarify or approval wins over
-    /// a stream request: it is the outer blocker, and the host resolves the inner
-    /// one on its own deadline either way.
+    /// The one request blocking this conversation, in order: a question, the
+    /// snapshot's approval, a server-request approval, then any other server
+    /// request (a credential prompt or a Desktop task such as `vault.*`).
     var pendingRequest: BotPendingRequest? {
         let current = serverRequests.compactMap(\.pending)
         return current.first { if case .question = $0 { return true }; return false }
