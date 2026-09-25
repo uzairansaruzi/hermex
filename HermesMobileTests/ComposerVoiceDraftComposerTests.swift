@@ -215,7 +215,8 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
 
         XCTAssertEqual(
             candidates.map(\.normalizedSpeechIdentifier),
-            ["en-pk", "ur-pk", "fr-fr", "en-us"]
+            ["en-pk", "ur-pk", "fr-fr", "de-de", "en-us"],
+            "en-PK repeats the current locale, so it does not take a preferred-language slot."
         )
     }
 
@@ -283,6 +284,24 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         )
 
         XCTAssertEqual(selected, "zh-CN")
+    }
+
+    func testSpeechLocaleSelectionPrefersAnExactMatchOverAVariant() {
+        let supported: Set<Locale> = [
+            Locale(identifier: "hi-IN-translit"),
+            Locale(identifier: "hi-IN"),
+            Locale(identifier: "en-US"),
+        ]
+        func select(current: String) -> String? {
+            ComposerSpeechLocalePolicy.firstAvailable(
+                in: ComposerSpeechLocalePolicy.candidates(current: Locale(identifier: current), preferredLanguages: []),
+                supportedLocales: supported,
+                recognizer: { $0.identifier }
+            )
+        }
+
+        XCTAssertEqual(select(current: "hi_IN"), "hi-IN")
+        XCTAssertEqual(select(current: "hi-IN-translit"), "hi-IN-translit")
     }
 
     func testSpeechLocaleSelectionReturnsNilWhenNoCandidateHasAModel() {
