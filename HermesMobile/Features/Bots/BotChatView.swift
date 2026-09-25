@@ -114,10 +114,6 @@ import SwiftUI
                 .onChange(of: model.messages.count, initial: true) { _, count in window.seed(count: count) }
                 .defaultScrollAnchor(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: followsLatest), for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
-                // Simultaneous so links, rows and selection keep their taps. Only the
-                // composer loses focus: the request card has fields of its own.
-                .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture().onEnded { if composerFocused { composerFocused = false } })
                 .onChange(of: model.messages.count) { followLatest(proxy) }
                 .onChange(of: model.liveMessages.last?.content) { followLatest(proxy) }
                 .onChange(of: model.liveActivity.toolCalls.count) { followLatest(proxy) }
@@ -160,6 +156,12 @@ import SwiftUI
                         }
                     }
                 }
+                // Simultaneous so links, rows, selection and Latest keep their taps.
+                // Below the overlays so Latest and the empty state count; above the
+                // inset so the composer doesn't. Only the composer loses focus: the
+                // request card has fields of its own.
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { if composerFocused { composerFocused = false } })
                 .adaptiveSoftScrollEdges(.top)
                 .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             }
