@@ -760,24 +760,25 @@ import XCTest
     /// leave the Mac password in the field of the secret that replaces it.
     func testCredentialFieldOffersAutoFillAndResetsForTheNextRequest() async throws {
         let harness = CredentialCardHarnessModel(request: .credential(BotCredentialRequest(
-            kind: .secret, requestID: "secret-1", envVar: "OPENAI_API_KEY", prompt: nil
+            kind: .sudo, requestID: "sudo-1", envVar: nil, prompt: nil
         )))
         let window = try show(CredentialCardHarnessView(model: harness))
         defer { close(window) }
         await renderFrames()
 
-        let field = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
-        XCTAssertEqual(field.textContentType, .password, "The Passwords key needs a password content type")
-        XCTAssertTrue(field.becomeFirstResponder())
-        field.insertText("hunter2")
+        let sudoField = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
+        XCTAssertTrue(sudoField.becomeFirstResponder())
+        sudoField.insertText("hunter2")
         await renderFrames()
-        XCTAssertEqual(field.text, "hunter2")
+        XCTAssertEqual(sudoField.text, "hunter2")
 
-        harness.request = .credential(BotCredentialRequest(kind: .sudo, requestID: "sudo-2", envVar: nil, prompt: nil))
+        harness.request = .credential(BotCredentialRequest(
+            kind: .secret, requestID: "secret-2", envVar: "OPENAI_API_KEY", prompt: nil
+        ))
         await renderFrames()
-        let replacement = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
-        XCTAssertEqual(replacement.text ?? "", "", "A new request starts with an empty field")
-        XCTAssertEqual(replacement.textContentType, .password)
+        let secretField = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
+        XCTAssertEqual(secretField.text ?? "", "", "The Mac password never rides into the secret that replaces it")
+        XCTAssertEqual(secretField.textContentType, .password, "The Passwords key needs a password content type")
     }
 
     func testTextOnlyEditorRejectsAttachmentProviders() {
