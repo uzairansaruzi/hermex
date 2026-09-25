@@ -1,0 +1,97 @@
+{
+  "info" : {
+    "approval_mode" : "fixture-redacted",
+    "branch" : "fixture-redacted",
+    "cwd" : "/fixture/cwd",
+    "desktop_contract" : 8,
+    "fast" : false,
+    "mcp_servers" : [],
+    "model" : "fixture-redacted",
+    "personality" : "fixture-redacted",
+    "profile_name" : "inbox-triage",
+    "project" : null,
+    "provider" : "fixture-redacted",
+    "reasoning_effort" : "fixture-redacted",
+    "reasoning_effort_wire" : "fixture-redacted",
+    "release_date" : "fixture-redacted",
+    "running" : false,
+    "service_tier" : "fixture-redacted",
+    "skills" : {},
+    "stored_session_id" : "20260925_023517_59d8c3",
+    "system_prompt" : "fixture-redacted",
+    "terminal_backend" : "fixture-redacted",
+    "title" : "fixture-redacted",
+    "tools" : {},
+    "turn_started_at" : null,
+    "update_behind" : 0,
+    "update_command" : "fixture-redacted",
+    "usage" : {
+      "active_subagents" : 0,
+      "avg_latency_s" : 4.8,
+      "avg_tps" : 4.8,
+      "calls" : 1,
+      "completion" : 23,
+      "compressions" : 0,
+      "context_estimated" : false,
+      "context_max" : 1048576,
+      "context_percent" : 1,
+      "context_source" : "fixture-redacted",
+      "context_used" : 14215,
+      "input" : 14215,
+      "model" : "fixture-redacted",
+      "output" : 23,
+      "prompt" : 14215,
+      "reasoning" : 12,
+      "total" : 14238
+    },
+    "version" : "0.21.5",
+    "yolo" : true
+  },
+  "message_count" : 2,
+  "messages" : [
+    {
+      "role" : "user",
+      "row_id" : 78,
+      "text" : "Reply with exactly: ok. Do not use tools.",
+      "timestamp" : 1790318117.41698
+    },
+    {
+      "codex_message_items" : [
+        {
+          "content" : [
+            {
+              "text" : "ok",
+              "type" : "output_text"
+            }
+          ],
+          "id" : "msg_01a0d7469545700e952126b1ee4056c5",
+          "role" : "assistant",
+          "status" : "completed",
+          "type" : "message"
+        }
+      ],
+      "codex_reasoning_items" : [
+        {
+          "_issuer_kind" : "fixture-redacted",
+          "_issuer_model" : "fixture-redacted",
+          "encrypted_content" : "fixture-redacted",
+          "id" : "rs_6ab6162abba3edd0418541b2:rs_01a0d74694e872fdb07ca467772ccf4a",
+          "summary" : [],
+          "type" : "reasoning"
+        }
+      ],
+      "role" : "assistant",
+      "row_id" : 79,
+      "text" : "ok",
+      "timestamp" : 1790318122.93445
+    }
+  ],
+  "messages_omitted" : false,
+  "resumed" : "fixture-redacted",
+  "running" : false,
+  "session_id" : "e7d1ef0d",
+  "session_key" : "20260925_023517_59d8c3",
+  "started_at" : 1790318117.288243,
+  "status" : "idle",
+  "turn_started_at" : null
+}

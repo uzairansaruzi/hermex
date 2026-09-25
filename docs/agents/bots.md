@@ -28,12 +28,22 @@ silence deadline; a socket quiet for longer is dropped and reconnects.
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.4 (`d337b736`); sections
+counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.5 (`ca678285`); sections
 below that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
 and the connection screen stores it on the `BotConnection` record. Successful
 sign-in saves and dismisses regardless of version; no version warning is shown.
 Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md
-(Working with the server); update the file and the constant together.
+(Working with the server); update the file and the constant together, then run
+`scripts/capture-hermes-fixtures`. It records what the host really sends for
+`/api/status`, `profiles.list`, `session.resume` and one plain turn's event
+frames into `HermesMobileTests/Fixtures/HermesAgent/`, and
+`HermesAgentFixtureTests` feeds them through the real parsers, so a renamed or
+dropped field fails a test instead of blanking a screen. The capture keeps only
+the `inbox-triage` Profile, replaces every string outside an allow-list of ids,
+event and status vocabulary, the release and the canned turn's text, and writes
+nothing if the output still holds the host, the account, the socket ticket, a
+home path, the install id or another Profile's name. `--keep-raw` and
+`--from-raw` re-sanitize one capture without another live session.
 
 The disconnected inbox offers one Connect action with the editor's drawn,
 neutral-default playful faces. Motion pauses while covered or inactive and is
