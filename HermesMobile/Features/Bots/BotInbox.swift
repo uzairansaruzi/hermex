@@ -216,8 +216,14 @@ import UIKit
     /// every later connect can refuse an address that starts reaching another host. The
     /// record is re-read rather than taken from `opened`, because the connection form may
     /// have saved a new password or name under the same UUID while this inbox connected.
+    /// The in-memory `connection` gains the id too, because the chats, rooms, creator and
+    /// editor opened from this inbox build their clients from it.
     private func recordInstallID(_ live: String?, for opened: BotConnection) {
-        guard let live, var fresh = try? store.load(server: server), fresh.id == opened.id,
+        guard let live else { return }
+        if connection?.id == opened.id, connection?.address == opened.address, connection?.installID == nil {
+            connection?.installID = live
+        }
+        guard var fresh = try? store.load(server: server), fresh.id == opened.id,
               fresh.address == opened.address, fresh.installID == nil else { return }
         fresh.installID = live
         try? store.save(fresh, server: server)

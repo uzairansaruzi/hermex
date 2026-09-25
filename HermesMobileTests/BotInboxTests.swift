@@ -453,6 +453,7 @@ import XCTest
         var stored = try XCTUnwrap(store.load(server: server))
         XCTAssertEqual(stored.password, "newer", "The backfill re-reads the record instead of writing its snapshot")
         XCTAssertEqual(stored.installID, first)
+        XCTAssertEqual(inbox.connection?.installID, first, "Chats and rooms opened from this inbox are pinned too")
 
         await inbox.open()
         stored = try XCTUnwrap(store.load(server: server))
