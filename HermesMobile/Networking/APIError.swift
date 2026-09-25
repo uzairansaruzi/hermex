@@ -162,7 +162,7 @@ private extension APIError {
              .serverCertificateNotYetValid:
             return String(localized: "The HTTPS connection failed. Check the server URL and certificate.")
         case .appTransportSecurityRequiresSecureConnection:
-            return String(localized: "iOS blocked this insecure HTTP connection. Use HTTPS, or use a Tailscale IP in the 100.64.0.0/10 range.")
+            return String(localized: "iOS blocked this insecure HTTP connection. Use HTTPS, a local network address, or a Tailscale name or IP.")
         case .cancelled:
             return String(localized: "The request was cancelled.")
         default:

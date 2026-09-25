@@ -317,7 +317,7 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
 
         XCTAssertEqual(
             error.localizedDescription,
-            "iOS blocked this insecure HTTP connection. Use HTTPS, or use a Tailscale IP in the 100.64.0.0/10 range."
+            "iOS blocked this insecure HTTP connection. Use HTTPS, a local network address, or a Tailscale name or IP."
         )
     }
 }

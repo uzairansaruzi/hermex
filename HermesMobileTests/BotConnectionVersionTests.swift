@@ -35,12 +35,17 @@ final class BotConnectionVersionTests: XCTestCase {
     func testLocalAddressDefaultsHaveNarrowTransportExceptions() throws {
         let ats = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") as? [String: Any])
         let domains = try XCTUnwrap(ats["NSExceptionDomains"] as? [String: [String: Any]])
-        XCTAssertNotEqual(ats["NSAllowsArbitraryLoads"] as? Bool, true)
+        XCTAssertNil(ats["NSAllowsArbitraryLoads"])
+        // .local and single-label names, which scheme inference sends over HTTP.
+        XCTAssertEqual(ats["NSAllowsLocalNetworking"] as? Bool, true)
         XCTAssertEqual(Set(domains.keys), Set(["10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-                                               "169.254.0.0/16", "100.64.0.0/10", "::1", "fc00::/7", "fe80::/10"]))
+                                               "169.254.0.0/16", "100.64.0.0/10", "::1", "fc00::/7", "fe80::/10",
+                                               "ts.net"]))
         for (range, policy) in domains {
             XCTAssertEqual(policy["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true, range)
         }
+        // Tailscale MagicDNS names sit below the tailnet: host.tailnet.ts.net.
+        XCTAssertEqual(domains["ts.net"]?["NSIncludesSubdomains"] as? Bool, true)
     }
 
     func testDismissalDuringCommittedCleanupKeepsSuccessfulResult() async throws {
