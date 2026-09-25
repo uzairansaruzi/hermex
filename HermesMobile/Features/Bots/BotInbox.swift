@@ -77,6 +77,7 @@ import UIKit
     /// this phone's order: the ids the user placed first, the rest A–Z. A section
     /// takes the name most of its members carry, ties going to the first member in
     /// roster order, so a rename still being stamped across members reads calmly.
+    /// Also the "Move to Section" destinations, so a pinned-only section is offered.
     var sectionNames: [SectionName] {
         var tallies: [String: [(name: String, count: Int)]] = [:]
         var ids: [String] = []
@@ -154,9 +155,9 @@ import UIKit
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
-    /// Outcome of the last pin or hide write when it did not apply.
+    /// Outcome of the last pin, hide or section write when it did not apply.
     private(set) var notice: String?
-    /// Profiles with a pin or hide write in flight; their actions stay inert.
+    /// Profiles with a look write in flight; their actions stay inert.
     private(set) var editing: Set<String> = []
     /// Deletes whose reply was lost. The next roster read settles them: a bot that
     /// is gone gets its local state purged then, one that is still there is kept.
@@ -357,20 +358,50 @@ import UIKit
         await purgeLocalState(connection.id, profile)
     }
 
-    func setPinned(_ pinned: Bool, _ profile: BotProfile) async { await configure(profile, "pinned", .bool(pinned)) }
-    func setHidden(_ hidden: Bool, _ profile: BotProfile) async { await configure(profile, "hidden", .bool(hidden)) }
+    func setPinned(_ pinned: Bool, _ profile: BotProfile) async { await configure(profile, ["pinned": .bool(pinned)]) }
+    func setHidden(_ hidden: Bool, _ profile: BotProfile) async { await configure(profile, ["hidden": .bool(hidden)]) }
 
-    /// Writes one Desktop look field through `profiles.configure`, sending the whole
-    /// `hermes-bots` object back so unrelated Desktop fields survive, under the look
-    /// revision the row was read at. Nothing is shown as done until the host says
-    /// it applied and the roster is re-read; a conflict means Desktop wrote in
-    /// between, so the fresh roster is shown and the user decides whether to retry.
-    private func configure(_ profile: BotProfile, _ field: String, _ value: BotJSON) async {
+    /// Files the bot under a section already on the roster, stamping its id and the
+    /// name the inbox heads it with, as Desktop's "Move to section" does.
+    func moveToSection(_ profile: BotProfile, _ section: SectionName) async {
+        guard profile.sectionID != section.id || profile.sectionName != section.name else { return }
+        await configure(profile, ["sectionId": .string(section.id), "sectionName": .string(section.name)])
+    }
+
+    /// Files the bot under a new section named `name`, trimmed. A blank name writes
+    /// nothing; a name that exactly matches a section on the roster joins that one
+    /// instead of making a twin. Desktop adopts the new id at the end of its own list.
+    func moveToNewSection(_ profile: BotProfile, name: String) async {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        if let existing = sectionNames.first(where: { $0.name == name }) { return await moveToSection(profile, existing) }
+        await configure(profile, ["sectionId": .string(Self.newSectionID()), "sectionName": .string(name)])
+    }
+
+    /// Back to unfiled. Explicit nulls, not missing keys: Desktop merges the host's
+    /// meta over its local copy, so a dropped key would keep its stale section alive.
+    func removeFromSection(_ profile: BotProfile) async {
+        await configure(profile, ["sectionId": .null, "sectionName": .null])
+    }
+
+    /// Desktop's section id format: `sec-<epoch ms, base 36>-<5 base-36 chars>`.
+    static func newSectionID(now: Date = .now) -> String {
+        let alphabet = Array("0123456789abcdefghijklmnopqrstuvwxyz")
+        let millis = String(Int64(now.timeIntervalSince1970 * 1000), radix: 36)
+        return "sec-\(millis)-" + String((0..<5).map { _ in alphabet.randomElement()! })
+    }
+
+    /// Writes Desktop look fields through `profiles.configure`, sending the whole
+    /// `hermes-bots` object back with `changes` applied so unrelated Desktop fields
+    /// survive, under the look revision the row was read at. Nothing is shown as done
+    /// until the host says it applied and the roster is re-read; a conflict means
+    /// Desktop wrote in between, so the fresh roster is shown and the user decides
+    /// whether to retry.
+    private func configure(_ profile: BotProfile, _ changes: [String: BotJSON]) async {
         guard mayEdit(profile), let client = wire else { return }
         editing.insert(profile.id); notice = nil
         defer { editing.remove(profile.id) }
-        var look = profile.look
-        look[field] = value
+        let look = profile.look.merging(changes) { $1 }
         do {
             let reply = try await client.call("profiles.configure", [
                 "name": .string(profile.id),

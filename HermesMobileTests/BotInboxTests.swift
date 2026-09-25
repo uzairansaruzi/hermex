@@ -188,6 +188,91 @@ import XCTest
         XCTAssertTrue(inbox.mayEdit(inbox.profiles[0]))
     }
 
+    func testNewSectionWritesADesktopIDAndTheTrimmedNameUnderTheRowRevision() async throws {
+        let look: [String: BotJSON] = ["title": .string("Triage"), "color": .string("teal"), "groups": .array([.string("ops")])]
+        let wire = BotInboxFixtureWire(roster: [row("triage", look: look, revision: 3)])
+        var written: [String: BotJSON]?
+        wire.configure = { params in
+            XCTAssertEqual(params["ui_meta_expected_revisions"], .object(["hermes-bots": .number(3)]))
+            written = params["ui_meta"]?["hermes-bots"].fields
+            wire.roster = [self.row("triage", look: written, revision: 4)]
+            return .object(["ok": .bool(true), "applied": .object(["ui_meta": .bool(true)])])
+        }
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.sections.map(\.name), [nil])
+
+        await inbox.moveToNewSection(inbox.profiles[0], name: "  Clients \n")
+        let id = try XCTUnwrap(written?["sectionId"]?.text)
+        XCTAssertNotNil(id.wholeMatch(of: #/sec-[0-9a-z]+-[0-9a-z]{5}/#), id)
+        XCTAssertEqual(written, look.merging(["sectionId": .string(id), "sectionName": .string("Clients")]) { $1 },
+                       "other Desktop fields come back unchanged")
+        XCTAssertEqual(inbox.sections.map(\.name), ["Clients"], "the row moves once the host applied and the roster was re-read")
+        XCTAssertNil(inbox.notice)
+        XCTAssertTrue(BotInbox.newSectionID(now: Date(timeIntervalSince1970: 1_700_000_000.123)).hasPrefix("sec-loyw3v5n-"),
+                      "the time part is epoch milliseconds in base 36, as Desktop's Date.now().toString(36)")
+    }
+
+    func testFilingOffersEverySectionAndJoinsAnExistingOneByIDOrTypedName() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("writer", revision: 2),
+            row("chief", look: section("sec-leads", "Leads", ["pinned": .bool(true)])),
+            row("legacy", look: section("sec-archive", "Archive", ["hidden": .bool(true)])),
+            row("acme", look: section("sec-clients", "Clients"))
+        ])
+        var written: [[String: BotJSON]] = []
+        wire.configure = { params in
+            written.append(params["ui_meta"]?["hermes-bots"].fields ?? [:])
+            XCTAssertEqual(params["ui_meta_expected_revisions"], .object(["hermes-bots": .number(2)]))
+            return .object(["ok": .bool(true), "applied": .object(["ui_meta": .bool(true)])])
+        }
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.sectionNames.map(\.name), ["Archive", "Clients", "Leads"],
+                       "a pinned-only or unrevealed hidden-only section is still a destination")
+        let writer = inbox.profiles[0]
+
+        await inbox.moveToSection(writer, try XCTUnwrap(inbox.sectionNames.first { $0.id == "sec-leads" }))
+        await inbox.moveToNewSection(writer, name: " Archive ")
+        await inbox.moveToNewSection(writer, name: "archive")
+        XCTAssertEqual(written.count, 3)
+        XCTAssertEqual(written[0], section("sec-leads", "Leads"))
+        XCTAssertEqual(written[1], section("sec-archive", "Archive"), "an exactly matching name joins that section")
+        XCTAssertEqual(written[2]["sectionName"], .string("archive"))
+        XCTAssertNotEqual(written[2]["sectionId"], .string("sec-archive"), "only an exact match joins")
+
+        let acme = inbox.profiles[3]
+        await inbox.moveToSection(acme, try XCTUnwrap(inbox.sectionNames.first { $0.id == "sec-clients" }))
+        await inbox.moveToNewSection(acme, name: "   ")
+        await inbox.moveToNewSection(acme, name: "Clients")
+        XCTAssertEqual(written.count, 3, "its own section and a blank name make no call")
+        XCTAssertEqual(wire.calls.filter { $0.0 == "profiles.configure" }.count, 3)
+    }
+
+    func testRemoveFromSectionWritesExplicitNullsAndAConflictClaimsNoSuccess() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("acme", look: section("sec-clients", "Clients", ["color": .string("teal")]), revision: 6)])
+        var configured: [String: BotJSON]?
+        wire.configure = { params in
+            configured = params
+            wire.roster = [self.row("acme", look: self.section("sec-clients", "Clients", ["color": .string("red")]), revision: 7)]
+            return .object(["ok": .bool(false), "applied": .object([
+                "ui_meta": .bool(false),
+                "ui_meta_conflicts": .object(["hermes-bots": .object(["expected": .number(6), "actual": .number(7)])])])])
+        }
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        await inbox.removeFromSection(inbox.profiles[0])
+        XCTAssertEqual(configured?["ui_meta"], .object(["hermes-bots": .object([
+            "color": .string("teal"), "sectionId": .null, "sectionName": .null])]))
+        let encoded = String(decoding: try JSONEncoder().encode(try XCTUnwrap(configured?["ui_meta"])), as: UTF8.self)
+        XCTAssertTrue(encoded.contains("\"sectionId\":null") && encoded.contains("\"sectionName\":null"), encoded)
+        XCTAssertEqual(configured?["ui_meta_expected_revisions"], .object(["hermes-bots": .number(6)]))
+        XCTAssertEqual(inbox.notice, "This bot changed in Hermes Desktop. The list was refreshed; try again.")
+        XCTAssertEqual(inbox.sections.map(\.name), ["Clients"], "a conflict leaves the bot filed")
+        XCTAssertEqual(inbox.profiles[0].lookRevision, 7)
+    }
+
     func testHiddenBotsStayOutUntilRevealedOrSearched() async throws {
         let wire = BotInboxFixtureWire(roster: [
             row("alpha", look: ["pinned": .bool(true)], revision: 1),

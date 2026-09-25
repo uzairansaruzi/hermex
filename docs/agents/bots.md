@@ -429,7 +429,8 @@ Roster organization is Desktop's. `pinned`, `hidden`, `sectionId` and
 list as large avatar tiles with the name beneath and nowhere else, the rest are
 grouped under Desktop's named sections, newest first within each, and hidden
 bots stay out unless revealed for the session (dimmed, in their own section) or
-named by a search. Pin, Unpin, Hide and Unhide are the row's long-press menu.
+named by a search. Pin, Unpin, Hide, Unhide and "Move to Section" are the row's
+long-press menu and the pinned tile's menu.
 
 Desktop stamps the section's name beside its id on every filed bot and backfills
 it for older members (0.21.4 and later); section order and empty sections stay
@@ -442,8 +443,20 @@ follow as one final block, headed "Other chats" only when a named section is on
 screen. With no named sections the list has no headers.
 Rooms are never sectioned: Desktop keeps a room's section on the machine that
 filed it. Section changes arrive with the next roster read (open, pull to
-refresh, or a `sessions.changed` reload), as pin and hide changes do. The phone
-never files bots.
+refresh, or a `sessions.changed` reload), as pin and hide changes do.
+
+"Move to Section" files one bot per action, like Desktop's row menu. It offers
+every named section on the roster, pinned and hidden members included (the
+bot's own section inert), "New Section…" and, while the bot is filed, "Remove
+from Section". Filing writes `sectionId` and `sectionName` together. A new
+section gets Desktop's id format (`sec-<epoch ms base 36>-<5 base-36 chars>`)
+and a trimmed, non-blank name; a name that exactly matches a roster section
+joins it instead. Desktop adopts an unknown id at the end of its own list, and
+the phone places it in the A–Z tail of its order. Remove writes explicit
+`null` for both fields, never drops them: Desktop merges host meta over its
+local copy, so a missing key would keep the stale section alive there. An
+empty section disappears from the phone but stays in Desktop's list until
+deleted there.
 
 "Reorder Sections…" in the + menu (shown with two or more named sections the
 list can head; a section of only pinned bots lives in the tiles and is left out,
@@ -456,9 +469,9 @@ placement; removing the connection deletes it.
 `groups` are executable group rooms, not Desktop organization sections. Their read-only viewer is described below. A
 description of 24 characters or fewer reads as a role chip beside the name when
 the chat has a preview; the activity label is the time today, the weekday within
-the past week, otherwise month and day (`BotInboxDateLabel`). A pin or
-hide write is `profiles.configure` with the whole `hermes-bots` object as
-received plus one changed field, under `ui_meta_expected_revisions` set to the
+the past week, otherwise month and day (`BotInboxDateLabel`). A pin, hide or
+section write is `profiles.configure` with the whole `hermes-bots` object as
+received plus the changed fields, under `ui_meta_expected_revisions` set to the
 row's `ui_meta_revisions["hermes-bots"]` (0 when absent), which is how the
 gateway's key-wise merge keeps Desktop-only fields intact. Nothing moves until
 `applied.ui_meta` is true and the roster is re-read; a conflict re-reads the

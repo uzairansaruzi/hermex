@@ -19,6 +19,9 @@ import SwiftUI
     @State private var renamingRoom: BotGroupRoom?
     @State private var roomName = ""
     @State private var disbanding: BotGroupRoom?
+    /// The bot the "New Section" alert files, and the name being typed for it.
+    @State private var filing: BotProfile?
+    @State private var newSectionName = ""
     @State private var showingSectionOrder = false
     @State private var selection = BotInboxSelection()
     @State private var searchedRoom: BotRoomKey?
@@ -356,8 +359,8 @@ import SwiftUI
         .disabled(!inbox.mayDisbandRoom(room))
     }
 
-    /// Pin and hide write Desktop's own roster fields; both stay inert until the
-    /// inbox is live and no write for this bot is in flight.
+    /// Pin, hide and the section write Desktop's own roster fields; all stay inert
+    /// until the inbox is live and no write for this bot is in flight.
     private func organizeMenu(_ profile: BotProfile) -> some View {
         Group {
             Button {
@@ -376,6 +379,7 @@ import SwiftUI
             } label: {
                 Label(profile.hidden ? "Unhide" : "Hide bot", systemImage: profile.hidden ? "eye" : "eye.slash")
             }
+            sectionMenu(profile)
             Button { creation = .duplicate(profile) } label: {
                 Label("Duplicate", systemImage: "plus.square.on.square")
             }
@@ -386,6 +390,27 @@ import SwiftUI
             }
         }
         .disabled(!inbox.mayEdit(profile))
+    }
+
+    /// Desktop's "Move to section": every named section on the roster (the bot's own
+    /// one inert), a new one through an alert, and Remove only while the bot is filed.
+    private func sectionMenu(_ profile: BotProfile) -> some View {
+        Menu {
+            ForEach(inbox.sectionNames) { section in
+                // A Desktop name is the user's own text, never a catalog key.
+                Button { Task { await inbox.moveToSection(profile, section) } } label: { Text(verbatim: section.name) }
+                    .disabled(section.id == profile.sectionID && profile.sectionName != nil)
+            }
+            Divider()
+            Button("New Section…", systemImage: "folder.badge.plus") { newSectionName = ""; filing = profile }
+            if profile.sectionID != nil {
+                Button("Remove from Section", systemImage: "folder.badge.minus") {
+                    Task { await inbox.removeFromSection(profile) }
+                }
+            }
+        } label: {
+            Label("Move to Section", systemImage: "folder")
+        }
     }
 }
 
@@ -435,6 +460,19 @@ extension BotsInboxView {
             } message: { _ in
                 Text("Enter a name of up to 200 characters.")
             }
+            .alert("New Section", isPresented: Binding(
+                get: { filing != nil }, set: { if !$0 { filing = nil } }
+            ), presenting: filing) { profile in
+                TextField("Section name", text: $newSectionName)
+                Button("Move") {
+                    let name = newSectionName
+                    Task { await inbox.moveToNewSection(profile, name: name) }
+                }
+                .disabled(newSectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel", role: .cancel) {}
+            } message: { profile in
+                Text("Move “\(profile.name)” into a new section.")
+            }
             .confirmationDialog("Disband this group?", isPresented: Binding(
                 get: { disbanding != nil }, set: { if !$0 { disbanding = nil } }
             ), titleVisibility: .visible, presenting: disbanding) { room in
@@ -460,7 +498,7 @@ extension BotsInboxView {
                 creation = nil
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
                 deleting = nil
-                renamingRoom = nil; disbanding = nil
+                renamingRoom = nil; disbanding = nil; filing = nil
                 showingSectionOrder = false
             }
             .sheet(isPresented: $showingSectionOrder) {
