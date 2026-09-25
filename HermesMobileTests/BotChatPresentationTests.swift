@@ -290,7 +290,8 @@ import XCTest
         XCTAssertTrue(text.contains("Apartments"), text)
         XCTAssertTrue(text.contains("Inbox"), text)
         XCTAssertNotNil(descendants(window).compactMap { $0 as? UITextField }.first { $0.isFirstResponder })
-        XCTAssertEqual(wire.calls.map { $0.0 }, ["profiles.list", "session.active_list", "groups.capabilities"])
+        // The status read runs beside the room read, so only the set of calls is fixed.
+        XCTAssertEqual(wire.calls.map { $0.0 }.sorted(), ["groups.capabilities", "profiles.list", "session.active_list"])
     }
 
     func testMessageQueryDoesNotShowNoBotsFoundInAllScope() async throws {

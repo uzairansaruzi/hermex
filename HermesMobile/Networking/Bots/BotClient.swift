@@ -4,9 +4,9 @@ import Foundation
 /// RPC replies and events, so a quiet tool never blocks a Stop request.
 @MainActor final class BotClient: BotTransport {
     private static let cancellationSafeMethods: Set<String> = [
-        "file.attach", "complete.path", "subagent.list", "subagent.tail"
+        "file.attach", "complete.path", "subagent.list", "subagent.tail", "session.active_list"
     ]
-    private static let nonDisconnectingTimeoutMethods: Set<String> = ["subagent.list", "subagent.tail"]
+    private static let nonDisconnectingTimeoutMethods: Set<String> = ["subagent.list", "subagent.tail", "session.active_list"]
 
     private let connection: BotConnection
     private let session: URLSession

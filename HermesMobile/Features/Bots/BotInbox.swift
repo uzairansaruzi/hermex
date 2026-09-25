@@ -300,11 +300,15 @@ import UIKit
             try await opened.connect()
             guard wire === opened, !Task.isCancelled else { return }
             guard await reload(opened) else { return }
+            // The status read runs beside rooms and avatars; nothing above waits for it.
+            let statuses = statusPollTask
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
             reconnectAttempts = 0
             await refreshAvatars(opened)
+            // A pull-to-refresh ends once the fresh statuses are in, too.
+            await statuses?.value
         } catch {
             guard !Task.isCancelled else { return }
             if let client {
@@ -316,6 +320,7 @@ import UIKit
                 // A saved-connection read can fail before any client exists; that is
                 // still a visible failure with the Reconnect path, not a stale roster.
                 link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+                setLiveStatuses([:])
             }
         }
     }
@@ -469,9 +474,9 @@ import UIKit
         }
     }
 
-    /// One `profiles.list` on the live socket, then the live statuses against it.
-    /// Only the newest request's reply is applied, and only while `client` still
-    /// owns the inbox.
+    /// One `profiles.list` on the live socket, then starts a live-status read against
+    /// it without waiting for one. Only the newest request's reply is applied, and
+    /// only while `client` still owns the inbox.
     private func reload(_ client: any BotTransport) async -> Bool {
         reloadSerial += 1
         let serial = reloadSerial
@@ -503,7 +508,7 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
-            await readLiveStatuses(client)
+            startLiveStatusRead(client)
             return true
         } catch {
             guard wire === client, serial == reloadSerial else { return false }
@@ -512,16 +517,32 @@ import UIKit
         }
     }
 
-    /// One read-only `session.active_list`, mapped onto the current roster. A reply
-    /// applies only while `client` owns the inbox and no newer status or roster read
-    /// has started. A failed read shows no statuses rather than old ones, and never
-    /// drops the socket: the roster owns the link. While a bot is busy the next read
-    /// is scheduled `statusPollInterval` later; once every bot is idle it stops.
-    private func readLiveStatuses(_ client: any BotTransport) async {
+    /// Replaces any status read or re-read in flight with one read, now or after
+    /// `delay`. `statusPollTask` always holds the newest one, so `close()`, a drop or
+    /// a newer read cancels it.
+    private func startLiveStatusRead(_ client: any BotTransport, after delay: Duration? = nil) {
+        statusPollTask?.cancel(); statusPollTask = nil
         guard readsLiveStatus else { return }
+        statusPollTask = Task { [weak self] in
+            if let delay, (try? await Task.sleep(for: delay)) == nil { return }
+            // A sleep that ended before its cancel still wakes; a cancelled read was replaced.
+            guard !Task.isCancelled, let self, self.wire === client else { return }
+            await self.readLiveStatuses(client)
+        }
+    }
+
+    /// One read-only `session.active_list`, mapped onto the current roster. A reply
+    /// applies only while `client` owns the inbox, the read was not cancelled, and no
+    /// newer status or roster read has started. A failed read shows no statuses
+    /// rather than old ones, and never drops the socket: the roster owns the link.
+    /// While a bot is busy the next read is scheduled `statusPollInterval` later;
+    /// once every bot is idle it stops.
+    private func readLiveStatuses(_ client: any BotTransport) async {
         statusSerial += 1
         let serial = statusSerial, roster = reloadSerial
-        func current() -> Bool { wire === client && serial == statusSerial && roster == reloadSerial }
+        func current() -> Bool {
+            !Task.isCancelled && wire === client && serial == statusSerial && roster == reloadSerial
+        }
         do {
             let reply = try await client.call("session.active_list", [:])
             guard current() else { return }
@@ -531,14 +552,7 @@ import UIKit
             if error as? BotFailure == .rejected(-32601) { readsLiveStatus = false }
             setLiveStatuses([:])
         }
-        statusPollTask?.cancel(); statusPollTask = nil
-        guard !liveStatuses.isEmpty else { return }
-        statusPollTask = Task { [weak self, interval = statusPollInterval] in
-            guard (try? await Task.sleep(for: interval)) != nil, let self, self.wire === client else { return }
-            // Cleared before the read, so the read's own reschedule never cancels it.
-            self.statusPollTask = nil
-            await self.readLiveStatuses(client)
-        }
+        if liveStatuses.isEmpty { statusPollTask = nil } else { startLiveStatusRead(client, after: statusPollInterval) }
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the list.

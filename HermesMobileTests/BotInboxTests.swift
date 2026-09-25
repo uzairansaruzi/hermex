@@ -717,7 +717,7 @@ import XCTest
         wire.holdsActive = false
         wire.active = []
         await inbox.setPinned(true, inbox.profiles[0])
-        XCTAssertEqual(inbox.liveStatuses, [:])
+        await settle(inbox) { $0.liveStatuses.isEmpty }
 
         // The parked read now answers with what was true before; it must not land.
         wire.active = [live("triage-tip", "working")]
@@ -830,6 +830,60 @@ import XCTest
         XCTAssertEqual(inbox.liveStatuses, ["triage": .working], "a closed inbox's late reply is dropped")
     }
 
+    func testTheInboxGoesLiveWithRoomsWhileTheStatusReadIsStillOut() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.rooms = [.object(["room_id": .string("standup"), "updated_at": .number(600)])]
+        wire.active = [live("triage-tip", "working")]
+        wire.holdsActive = true
+        let inbox = try makeInbox(wires: [wire])
+        let opened = Task { await inbox.open() }
+        defer { inbox.close() }
+
+        await settle(inbox) { $0.link == .live }
+        XCTAssertEqual(inbox.rooms.map(\.id), ["standup"])
+        XCTAssertEqual(inbox.liveStatuses, [:])
+
+        wire.release()
+        await opened.value
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .working], "open ends once the statuses are in")
+    }
+
+    func testAReplacedStatusReReadNeverSendsItsRead() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.active = [live("triage-tip", "working")]
+        let inbox = try makeInbox(wires: [wire], statusPollInterval: .zero)
+        await inbox.open()
+        defer { inbox.close() }
+
+        // Event reloads keep replacing the zero-interval re-read, often just as its
+        // sleep ends. A replaced re-read must neither send its read nor clear the rows.
+        for _ in 0..<200 {
+            wire.emit("sessions.changed")
+            await Task.yield()
+        }
+        XCTAssertEqual(wire.cancelledCalls, 0)
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .working])
+    }
+
+    func testAFailedConnectionReadClearsTheStatusesAClosedInboxKept() async throws {
+        let keychain = InMemoryKeychainStore()
+        let store = BotConnectionStore(keychain: keychain)
+        try store.save(BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!,
+                                     username: "u", password: "p", hermesVersion: nil), server: server)
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.active = [live("triage-tip", "waiting")]
+        let inbox = try makeInbox(wires: [wire], store: store)
+        await inbox.open()
+        inbox.close()
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .waiting], "leaving the screen keeps them")
+
+        try keychain.save("{", forKey: .botConnection, scope: server.absoluteString)
+        await inbox.open()
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertNotNil(inbox.errorMessage)
+        XCTAssertEqual(inbox.liveStatuses, [:], "no socket can vouch for them")
+    }
+
     func testActivityLabelUsesTimeTodayWeekdayThisWeekThenMonthAndDay() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -931,6 +985,8 @@ import XCTest
     var delete: ((String) throws -> Void)?
     var deleted: [String] = []
     var calls: [(String, [String: BotJSON])] = []
+    /// Calls made from an already cancelled task, which the real client refuses as stale.
+    private(set) var cancelledCalls = 0
     var onCall: ((String) -> Void)?
     /// While true, `profiles.list` waits for `release()`.
     var holdsList = false
@@ -963,6 +1019,7 @@ import XCTest
 
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         try validateDispatch?()
+        if Task.isCancelled { cancelledCalls += 1 }
         calls.append((method, params))
         onCall?(method)
         switch method {

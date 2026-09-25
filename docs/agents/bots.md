@@ -468,8 +468,8 @@ in `gateway.ready` and broadcasts `sessions.changed` whenever any served
 Profile's `state.db` moves (floored at two seconds, `change_watcher.py`). Each
 event coalesces into one `profiles.list` reload with at most one more queued,
 spaced by one second, applied only when the reply is the newest request and the
-wire still owns the inbox. Every roster read is followed by a live-status read
-(below). Event reloads skip the avatar pass: a look change
+wire still owns the inbox. Every roster read starts a live-status read
+(below) without waiting for it. Event reloads skip the avatar pass: a look change
 never moves `state.db`, so nothing new would be there. Leaving the screen,
 backgrounding, pull-to-refresh and Reconnect all go through `close()` then
 `open()`; a dropped socket keeps the roster on screen, says live updates
@@ -700,8 +700,11 @@ and sits under a pinned tile's name, tinted like the Sessions list's attention
 states, and never animates. Inside every group (each tile group and each
 section) chats sort waiting, then working, then unread, then newest; rooms rank
 with idle bots. `-32601` hides statuses until the next socket; any other failed
-read shows none rather than old ones. A dropped socket or a changed connection
-clears them. Because `sessions.changed` can miss a turn's end (post-turn work
+read shows none rather than old ones, and never drops the socket (the read is
+cancellation-safe and a stall fails only it). The read runs beside the room
+read: the inbox goes live without waiting for it. A dropped socket, a changed
+connection, or a failed connection read clears them; leaving the screen keeps
+them. Because `sessions.changed` can miss a turn's end (post-turn work
 writes nothing), the inbox re-reads `session.active_list` alone every five
 seconds while it is open, connected, and some bot is busy, and stops once all
 are idle. Caveats: `waiting` relies on the `client.capabilities` handshake
