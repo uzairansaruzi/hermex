@@ -324,12 +324,16 @@ extension BotHostStatus {
                 return false
             }
             saved = candidate
+            // The old host's status and any check still in flight describe a host
+            // this screen no longer shows.
+            if old?.address != candidate.address { statusCheck = nil; hostStatus = nil }
             // Persistence is the commit point, with no suspension after the last
             // cancellation check. Old-account cleanup must finish even if the
             // sheet disappears afterwards; a committed replacement is success.
             if let old, old.id != candidate.id {
                 let discard = discard
                 await Task { await discard(old) }.value
+                notificationRelay = relay(server)
             }
             return true
         } catch {

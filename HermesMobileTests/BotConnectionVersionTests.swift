@@ -331,6 +331,30 @@ final class BotConnectionVersionTests: XCTestCase {
         await older.value
         XCTAssertEqual(model.hostStatus, .unreachable(.answered(502)), "Only the newest check writes")
     }
+
+    func testReplacingTheHostDropsTheOldHostsStatusAndRelay() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!,
+                                     username: "me", password: "pw"), server: server)
+        var pending: CheckedContinuation<Result<BotHostStatus, BotHostProbeFailure>, Never>?
+        var paired = true
+        let parked = expectation(description: "Old host probe in flight")
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() },
+                                       discard: { _ in paired = false },
+                                       probe: { _ in await withCheckedContinuation { pending = $0; parked.fulfill() } },
+                                       relay: { _ in paired ? URL(string: "https://push.example")! : nil })
+        model.load()
+        let check = Task { await model.checkStatus() }
+        await fulfillment(of: [parked], timeout: 3)
+        model.address = "other.example"; model.username = "someone-else"; model.password = "pw"
+        let succeeded = await model.connect()
+        XCTAssertTrue(succeeded)
+        XCTAssertNil(model.hostStatus, "The old host's check no longer holds Check again disabled")
+        XCTAssertNil(model.notificationRelay, "The old pairing was forgotten with the old connection")
+        pending?.resume(returning: .success(BotHostStatus(.object(["version": .string("0.21.5")]))))
+        await check.value
+        XCTAssertNil(model.hostStatus, "The old host's late reply never writes")
+    }
 }
 
 @MainActor private final class ConnectionSetupWire: BotTransport {
