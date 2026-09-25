@@ -1348,6 +1348,38 @@ import Vision
         model.suspend()
     }
 
+    func testASnapshotReadBeforeTheReactReplyKeepsTheReaction() async throws {
+        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
+        let model = make(wire); await model.recover()
+        wire.react = { _ in .object(["row_id": .number(7), "reactions": Self.reactions([("👍", "user")])]) }
+        // The full resume a completed turn asks for is still reading older history
+        // when the react lands; its reply lists the row without your 👍.
+        wire.history = [Self.reactedRow, .object(["role": .string("assistant"), "text": .string("Next"), "row_id": .number(8)])]
+        let applied = expectation(description: "stale full snapshot applied")
+        wire.beforeResume = {
+            wire.beforeResume = nil
+            await model.react(to: model.messages[0], emoji: "👍")
+            withObservationTracking { _ = model.messages } onChange: { applied.fulfill() }
+        }
+        wire.onEvent?(typed(1, "message.complete"))
+        await fulfillment(of: [applied], timeout: 3)
+
+        XCTAssertEqual(model.messages.map(\.content), ["Done", "Next"])
+        XCTAssertEqual(model.messages[0].botReactions, [.init(emoji: "👍", author: .user)])
+        // So a second 👍 sends the removal the user means, never the emoji the host would toggle.
+        await model.react(to: model.messages[0], emoji: "👍")
+        XCTAssertEqual(reactCalls(wire).map { $0["emoji"] }, [.string("👍"), .null])
+
+        // A snapshot requested after the replies is the host's word again.
+        wire.history = [Self.reactedRow]
+        let settled = expectation(description: "fresh full snapshot applied")
+        withObservationTracking { _ = model.messages } onChange: { settled.fulfill() }
+        wire.onEvent?(typed(2, "message.complete"))
+        await fulfillment(of: [settled], timeout: 3)
+        XCTAssertEqual(model.messages.map(\.botReactions), [[]])
+        model.suspend()
+    }
+
     func testAReplyForAReplacedConnectionIsDropped() async throws {
         let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
         let model = make(wire); await model.recover()

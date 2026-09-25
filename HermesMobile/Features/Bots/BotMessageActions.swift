@@ -15,8 +15,6 @@ enum BotMessageActions {
     struct Reacting {
         /// Your current emoji on the row, if any.
         let current: String?
-        /// False while a `message.react` for the row is in flight or the chat is offline.
-        let isEnabled: Bool
         /// Called with the emoji picked, or nil to remove yours.
         let react: (String?) -> Void
     }
@@ -35,7 +33,7 @@ enum BotMessageActions {
                     kind: .react(emoji),
                     title: String(localized: "React with \(emoji)"),
                     systemImage: "",
-                    isEnabled: reacting.isEnabled,
+                    isEnabled: true,
                     perform: { reacting.react(emoji) },
                     isSelected: reacting.current == emoji
                 )
@@ -58,7 +56,7 @@ enum BotMessageActions {
                 kind: .removeReaction,
                 title: String(localized: "Remove Reaction"),
                 systemImage: "minus.circle",
-                isEnabled: reacting.isEnabled,
+                isEnabled: true,
                 perform: { reacting.react(nil) }
             ))
         }

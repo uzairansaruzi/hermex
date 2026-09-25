@@ -139,9 +139,16 @@ import Observation
     private(set) var requestResolution: BotRequestResolution?
     /// The last action the host confirmed, for the chat view's haptic.
     private(set) var feedback: BotFeedback?
-    /// Rows with a `message.react` in flight. Their Tapbacks and chips stay
-    /// inert until the reply, so a late reply never overwrites a newer choice.
+    /// Rows with a `message.react` in flight. Their footer controls stay inert
+    /// and `react` drops any other Tapback for them until the reply, so a late
+    /// reply never overwrites a newer choice.
     private(set) var reactingRowIDs: Set<Int> = []
+    /// Reaction lists the host sent (a `message.react` reply or a live
+    /// `message.reaction`), by row, stamped with `reactionRevision`. A full
+    /// snapshot requested before a list arrived may have read the older one,
+    /// so it keeps these rows' newer lists; a later snapshot drops them.
+    @ObservationIgnored private var reactionPatches: [Int: (revision: Int, reactions: JSONValue)] = [:]
+    @ObservationIgnored private var reactionRevision = 0
     /// On once a snapshot shows the turn busy, so the snapshot that settles it
     /// idle plays one completion. A Stop, an interruption, a new runtime and
     /// `suspend()` turn it off: a stopped turn, one that ended while the app was
@@ -496,6 +503,8 @@ import Observation
     private func applyReactions(rowID: Int?, _ reactions: BotJSON) {
         guard let rowID, reactions.list != nil,
               let index = messages.firstIndex(where: { $0.rowID == rowID }) else { return }
+        reactionRevision += 1
+        reactionPatches[rowID] = (reactionRevision, reactions.jsonValue)
         messages[index] = messages[index].replacingBotReactions(reactions.jsonValue)
     }
 
@@ -590,8 +599,10 @@ import Observation
             try reconcileReplay(replay, requestsRevision: replayRequestsRevision)
             let requestsRevision = requestRevision
             let clockRevision = clockRevision
+            let reactionRevision = reactionRevision
             let current = try await request("session.resume", resumeParams(), owner: owner)
-            try applySnapshot(current, full: true, requestsRevision: requestsRevision, clockRevision: clockRevision)
+            try applySnapshot(current, full: true, requestsRevision: requestsRevision, clockRevision: clockRevision,
+                              reactionRevision: reactionRevision)
             try check(owner)
             let controlsContext = BotChatControls.Context(connectionID: connection.id, profile: profile.id,
                                                           runtime: foundRuntime, generation: owner)
@@ -710,7 +721,7 @@ import Observation
     }
 
     private func applySnapshot(_ snapshot: BotJSON, full: Bool, settingsRevision: Int? = nil, requestsRevision: Int? = nil,
-                               clockRevision: Int) throws {
+                               clockRevision: Int, reactionRevision: Int) throws {
         defer { syncLiveActivity() }
         guard snapshot["session_id"].text == runtime, snapshot["session_key"].text == tip,
               let running = snapshot["running"].flag, snapshot["hydrating"].flag != true else { throw BotFailure.unsupported }
@@ -718,7 +729,11 @@ import Observation
         if full {
             guard let history = snapshot["messages"].list, snapshot["messages_omitted"].flag != true else { throw BotFailure.unsupported }
             let projected = BotTranscriptProjection.project(history: history, root: root ?? "")
-            messages = projected.messages
+            reactionPatches = reactionPatches.filter { $0.value.revision > reactionRevision }
+            messages = reactionPatches.isEmpty ? projected.messages : projected.messages.map { message in
+                guard let rowID = message.rowID, let patch = reactionPatches[rowID] else { return message }
+                return message.replacingBotReactions(patch.reactions)
+            }
             settledActivity = projected.activity
             if let historyCache, let root, let tip {
                 historyCacheTask?.cancel()
@@ -1456,9 +1471,11 @@ import Observation
                     let settingsRevision = self.chatControls.snapshotRevision
                     let requestsRevision = self.requestRevision
                     let clockRevision = self.clockRevision
+                    let reactionRevision = self.reactionRevision
                     let reply = try await self.request("session.resume", self.resumeParams(full: full), owner: owner)
                     try self.applySnapshot(reply, full: full, settingsRevision: settingsRevision,
-                                           requestsRevision: requestsRevision, clockRevision: clockRevision)
+                                           requestsRevision: requestsRevision, clockRevision: clockRevision,
+                                           reactionRevision: reactionRevision)
                     if self.snapshotDirty { try await Task.sleep(for: .milliseconds(250)) }
                 }
                 self.refreshTask = nil
@@ -1536,7 +1553,7 @@ import Observation
         wire.close()
         localOperation = false; submittingPrompt = nil
         serverRequests = []; connectionOperation = nil; answeringRequestID = nil
-        reactingRowIDs = []
+        reactingRowIDs = []; reactionPatches = [:]
         connectionState = .disconnected; turn = .unknown
         syncLiveActivity()
     }

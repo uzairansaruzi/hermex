@@ -144,7 +144,9 @@ sends null. Writes are not optimistic and serialize per row
 (`BotConversation.reactingRowIDs`): the reply's full list patches the row, a
 rejection leaves it and says so, and a lost reply is never resent; the next full
 snapshot decides. The agent's live `message.reaction` event patches its row
-the same way. Live rows, rooms and the offline cache have no reactions.
+the same way. A full snapshot requested before a patch keeps the patched row's
+list (`reactionPatches`): `session.resume` runs on the host's worker pool and
+can read history before a `message.react` commits. Live rows, rooms and the offline cache have no reactions.
 Reactions are display-only sync with Desktop unless the host enables
 `display.message_reactions` (a Desktop Appearance toggle Hermex never writes);
 then the next user turn tells the model once, and Desktop sessions give the

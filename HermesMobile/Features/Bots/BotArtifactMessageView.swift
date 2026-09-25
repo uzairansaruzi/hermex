@@ -101,11 +101,12 @@ struct BotArtifactMessageView: View {
     }
 
     /// A prompt's long-press menu: the Tapback row, Copy, then Remove Reaction.
+    /// It reads no connection state, so a tap elsewhere never rebuilds this
+    /// row; a Tapback picked while the chat can't react is dropped by the model.
     private var userActions: [ChatMessageActionItem] {
         guard message.rowID != nil else { return actions }
         let reacting = BotMessageActions.Reacting(
             current: message.botReactions.first { $0.author == .user }?.emoji,
-            isEnabled: model.mayReact(to: message),
             react: react
         )
         return BotMessageActions.items(copyText: message.content, isHapticsEnabled: isHapticsEnabled, reacting: reacting)
@@ -125,7 +126,7 @@ struct BotArtifactMessageView: View {
         }
         return BotReplyReactions(
             reactions: message.botReactions, offersPicker: isReply,
-            isEnabled: model.mayReact(to: message),
+            isEnabled: { [model, message] in model.mayReact(to: message) },
             profile: model.profile, connectionID: model.connection.id, react: react
         )
     }
@@ -166,7 +167,9 @@ struct BotReplyReactions {
     /// Replies offer React in the footer's "…" menu; prompts use long-press.
     let offersPicker: Bool
     /// False while offline or while this row's `message.react` is in flight.
-    let isEnabled: Bool
+    /// A closure read only by the footer's controls, so a change to the
+    /// connection or an in-flight write redraws footers, not whole rows.
+    let isEnabled: () -> Bool
     let profile: BotProfile
     let connectionID: UUID
     /// Called with the emoji picked, or nil to remove yours.
@@ -182,6 +185,7 @@ private struct BotReactionControls: View {
     let content: BotReplyReactions
 
     var body: some View {
+        let isEnabled = content.isEnabled()
         if content.offersPicker {
             Menu {
                 Section(String(localized: "React")) {
@@ -204,11 +208,11 @@ private struct BotReactionControls: View {
                     .chatMinimumHitTarget(in: Rectangle())
             }
             .foregroundStyle(.secondary)
-            .disabled(!content.isEnabled)
+            .disabled(!isEnabled)
             .accessibilityLabel("More")
         }
         ForEach(content.reactions, id: \.self) { reaction in
-            BotReactionChip(reaction: reaction, content: content)
+            BotReactionChip(reaction: reaction, content: content, isEnabled: isEnabled)
         }
     }
 }
@@ -216,6 +220,7 @@ private struct BotReactionControls: View {
 private struct BotReactionChip: View {
     let reaction: BotReaction
     let content: BotReplyReactions
+    let isEnabled: Bool
     @ScaledMetric(relativeTo: .caption) private var faceSize: CGFloat = 13
 
     var body: some View {
@@ -224,7 +229,7 @@ private struct BotReactionChip: View {
                 chip.chatMinimumHitTarget(horizontalPadding: 4, verticalPadding: 11, in: Capsule())
             }
             .buttonStyle(.plain)
-            .disabled(!content.isEnabled)
+            .disabled(!isEnabled)
             .accessibilityLabel(Text("\(reaction.emoji), reacted by you"))
             .accessibilityHint(Text("Removes your reaction."))
         } else {
