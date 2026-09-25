@@ -18,6 +18,11 @@ import SwiftUI
     @State private var isNearBottom = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
+    @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
+    /// Folded turns the reader opened. View-local: keys are absolute row
+    /// positions, so they survive Load earlier and die with the chat.
+    @State private var expandedTurnKeys: Set<String> = []
     /// Bumped by the status line's Review action; the transcript scrolls on change.
     @State private var showRequestID = UUID()
     @State private var showingProfileEditor = false
@@ -59,18 +64,40 @@ import SwiftUI
                         messages: model.messages, start: window.start(count: model.messages.count),
                         livePrompt: livePrompt, turnStartedAt: model.turnStartedAt, isMidTurn: isStreaming
                     )
+                    let folds = BotTranscriptProjection.turnFolds(
+                        messages: model.messages, windowStart: times.start,
+                        activityByAnchor: model.settledActivityByAnchor, showsCards: showsThinkingAndToolCards,
+                        foldsTurns: foldsSettledTurns, isStreaming: isStreaming, hasLivePrompt: livePrompt != nil
+                    )
                     VStack(alignment: .leading, spacing: 8) {
                         if window.hasEarlier(count: model.messages.count) {
                             // The window widens in place, so there is no loading state.
                             LoadOlderMessagesButton(isLoading: false) { loadEarlier(proxy: proxy) }
                         }
                         ForEach(model.messages[times.start...]) { message in
-                            settledActivity(anchoredTo: message.id)
-                            if times.gapStarts.contains(message.id), let timestamp = message.timestamp {
-                                TranscriptTimeSeparator(timestamp: timestamp)
+                            let fold = folds.rowState(for: message.id, expandedTurnKeys: expandedTurnKeys)
+                            // Only folded rows animate in and out, so settling stays instant.
+                            let transition = fold == nil ? AnyTransition.identity
+                                : ChatMotion.disclosureTransition(reduceMotion: reduceMotion)
+                            if let host = fold?.fold {
+                                TranscriptTurnFoldRowView(fold: host, isExpanded: fold?.isExpanded == true) {
+                                    toggleTurnFold(host.turnKey)
+                                }
                             }
-                            BotArtifactMessageView(message: message, model: model,
-                                                   footerTime: times.footerTimes[message.id]).id(message.id)
+                            // Folded-away work is never built, so a hidden reply holds
+                            // no selection document.
+                            if fold?.hidesActivity != true {
+                                settledActivity(anchoredTo: message.id).transition(transition)
+                            }
+                            if fold?.hidesBubble != true {
+                                if times.gapStarts.contains(message.id), let timestamp = message.timestamp {
+                                    TranscriptTimeSeparator(timestamp: timestamp)
+                                }
+                                BotArtifactMessageView(message: message, model: model,
+                                                       footerTime: times.footerTimes[message.id])
+                                    .id(message.id)
+                                    .transition(transition)
+                            }
                         }
                         settledActivity(anchoredTo: nil)
                         // The live turn reads like a settled one: prompt, work, then reply.
@@ -132,7 +159,7 @@ import SwiftUI
                 .onChange(of: model.messages.count) { followLatest(proxy) }
                 .onChange(of: model.liveMessages.last?.content) { followLatest(proxy) }
                 .onChange(of: model.liveActivity.toolCalls.count) { followLatest(proxy) }
-                .onChange(of: model.liveActivity.reasoning.count) { followLatest(proxy) }
+                .onChange(of: model.liveActivity.reasoning.utf8.count) { followLatest(proxy) }
                 .onChange(of: model.connectionState) { followLatest(proxy) }
                 // A request that needs the user wins over where they had scrolled.
                 .onChange(of: model.pendingRequest?.requestID) { _, id in
@@ -311,10 +338,19 @@ import SwiftUI
         Task { await model.respondToConnection(action, answer) }
     }
 
-    @ViewBuilder
     private func settledActivity(anchoredTo anchorID: String?) -> some View {
-        ForEach(model.settledActivity.filter { $0.anchorMessageID == anchorID }) { activity in
+        ForEach(model.settledActivityByAnchor[anchorID] ?? []) { activity in
             BotActivityBlocksView(id: activity.id, reasoning: activity.reasoning, toolCalls: activity.toolCalls)
+        }
+    }
+
+    /// Opens or closes one folded turn in place: following stops so the row
+    /// stays under the finger, and Reduce Motion snaps.
+    private func toggleTurnFold(_ turnKey: String) {
+        ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
+        handleFollowEvent(.userScrollBegin)
+        withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+            if !expandedTurnKeys.insert(turnKey).inserted { expandedTurnKeys.remove(turnKey) }
         }
     }
 

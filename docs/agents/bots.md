@@ -173,7 +173,13 @@ continuous, or from the last `message.start` the ring still holds; otherwise the
 live rows are dropped and the next full snapshot shows the settled ones, so
 overlap never duplicates a card. Presentation reuses the Sessions log rows
 (`ReasoningBlockView`, `ToolActivityGroupView`, `TranscriptLogRowView`) and the
-global Chat display toggles; the plan row stays visible with cards off. Tool
+global Chat display toggles; the plan row stays visible with cards off.
+Settled Bot turns honour Fold Finished Turns through the Sessions engine
+(`TranscriptTurnFolds`, via `BotTranscriptProjection.turnFolds` over the
+window): the first and last reply stay visible and the rest folds behind
+"Worked for", timed from the prompt to the turn's last timestamp. The running
+turn stays open, both while its prompt is only live and once the host has
+persisted it mid-turn (`activePromptMessageID`). Rooms never fold. Tool
 output is text only. `message.react` and `learning.frames` are deliberately
 not wired. The host stores reactions in each message's
 `display_metadata.reactions`, which the snapshot passes through, and emits the

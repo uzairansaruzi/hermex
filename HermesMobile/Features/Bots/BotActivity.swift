@@ -94,7 +94,9 @@ struct BotTurnActivity: Equatable {
         case "reasoning.delta":
             guard let text = payload["text"].text, !text.isEmpty else { return true }
             reasoning.append(text)
-            if reasoning.count > Self.reasoningLimit { reasoning = String(reasoning.suffix(Self.reasoningLimit)) }
+            // UTF-8 length bounds the character count and is O(1), so the
+            // O(n) count only runs once the text could be over the limit.
+            if reasoning.utf8.count > Self.reasoningLimit, reasoning.count > Self.reasoningLimit { reasoning = String(reasoning.suffix(Self.reasoningLimit)) }
         case "notification.show":
             guard let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return true }
             let key = payload["key"].text ?? payload["id"].text ?? "notice-\(notices.count)"
@@ -209,6 +211,50 @@ enum BotTranscriptProjection {
         }
         flush(anchor: nil)
         return (messages, activity)
+    }
+
+    /// Fold Finished Turns for the Bot transcript, through the Sessions engine
+    /// over the window only (`windowStart...`), so the work stays bounded and
+    /// turn keys stay absolute across Load earlier. Only assistant rows fold:
+    /// activity anchored to a user row or trailing the last message, live rows
+    /// and delegation cards never do. The host sends no turn duration, so the
+    /// label reads the gap from the prompt to the turn's last timestamp.
+    /// - Parameters:
+    ///   - activityByAnchor: `BotConversation.settledActivityByAnchor`.
+    ///   - showsCards: the Thinking and Tool Cards setting; with cards off, a
+    ///     turn whose only hidden work is activity gets no row.
+    ///   - isStreaming: the bot is working on a turn.
+    ///   - hasLivePrompt: the running turn's prompt is only live (not yet in
+    ///     `messages`), so every settled turn has finished. Otherwise the latest
+    ///     settled turn is the running one, whether its prompt has settled
+    ///     (`BotConversation.activePromptMessageID`) or it has none (a Desktop
+    ///     or delegation turn), and it stays open.
+    static func turnFolds(
+        messages: [ChatMessage],
+        windowStart: Int,
+        activityByAnchor: [String?: [BotSettledActivity]],
+        showsCards: Bool,
+        foldsTurns: Bool,
+        isStreaming: Bool,
+        hasLivePrompt: Bool
+    ) -> TranscriptTurnFolds {
+        guard foldsTurns, messages.indices.contains(windowStart) else { return .none }
+        let window = Array(messages[windowStart...])
+        let activityAnchorIDs: Set<String> = showsCards
+            ? Set(window.lazy.map(\.id).filter { activityByAnchor[$0] != nil })
+            : []
+        return TranscriptTurnFolds.derive(
+            transcriptMessages: window.enumerated().map { index, message in
+                TranscriptMessage(loadedIndex: index, renderID: message.id, anchorID: message.id, message: message)
+            },
+            messages: window,
+            messageOffset: windowStart,
+            activityAnchorIDs: activityAnchorIDs,
+            rendersBubble: { !($0.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
+            isStreamActive: isStreaming && !hasLivePrompt,
+            streamingAssistantMessageID: nil,
+            latestRunOutcome: nil
+        )
     }
 }
 

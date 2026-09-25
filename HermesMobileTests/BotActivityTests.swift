@@ -183,4 +183,120 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(completion.durationSeconds, 8.48)
         XCTAssertEqual(completion.report, report)
     }
+
+    // MARK: - Fold Finished Turns
+
+    private func row(_ role: String, _ text: String? = nil, reasoning: String? = nil, at timestamp: Double? = nil) -> BotJSON {
+        var fields: [String: BotJSON] = ["role": .string(role)]
+        if let text { fields["text"] = .string(text) }
+        if let reasoning { fields["reasoning"] = .string(reasoning) }
+        if let timestamp { fields["timestamp"] = .number(timestamp) }
+        return .object(fields)
+    }
+
+    /// user → interim reply with reasoning → tool → interim reply → tool → final reply.
+    private func workedTurn(from start: Double? = 100) -> [BotJSON] {
+        [row("user", "Clean the inbox", at: start),
+         row("assistant", "Looking now", reasoning: "Plan the sweep", at: start.map { $0 + 10 }),
+         row("tool"),
+         row("assistant", "Halfway there", at: start.map { $0 + 20 }),
+         row("tool"),
+         row("assistant", "Archived 14.", at: start.map { $0 + 42 })]
+    }
+
+    private func folds(_ history: [BotJSON], windowStart: Int = 0, showsCards: Bool = true, foldsTurns: Bool = true,
+                       isStreaming: Bool = false, hasLivePrompt: Bool = false) -> (TranscriptTurnFolds, [ChatMessage]) {
+        let projected = BotTranscriptProjection.project(history: history, root: "r")
+        let byAnchor = Dictionary(grouping: projected.activity, by: \.anchorMessageID)
+        let folds = BotTranscriptProjection.turnFolds(
+            messages: projected.messages, windowStart: windowStart, activityByAnchor: byAnchor,
+            showsCards: showsCards, foldsTurns: foldsTurns, isStreaming: isStreaming, hasLivePrompt: hasLivePrompt
+        )
+        return (folds, projected.messages)
+    }
+
+    func testSettledTurnFoldsItsWorkAndInterimReplyBehindTheElapsedRow() throws {
+        let (folds, _) = folds(workedTurn())
+        let fold = try XCTUnwrap(folds.folds.first)
+        XCTAssertEqual(folds.folds.count, 1)
+        XCTAssertEqual(fold.hostRenderID, "r/1", "the row draws above the first reply's reasoning")
+        XCTAssertEqual(fold.label, .worked(elapsed: ChatWorkingElapsedFormatter.label(seconds: 42)))
+
+        let first = folds.rowState(for: "r/1", expandedTurnKeys: [])
+        XCTAssertEqual(first?.fold, fold)
+        XCTAssertEqual(first?.hidesActivity, true)
+        XCTAssertEqual(first?.hidesBubble, false, "the first reply stays visible")
+        XCTAssertEqual(folds.rowState(for: "r/3", expandedTurnKeys: [])?.hidesBubble, true, "the interim reply folds")
+        let last = folds.rowState(for: "r/5", expandedTurnKeys: [])
+        XCTAssertEqual(last?.hidesBubble, false, "the final reply stays visible")
+        XCTAssertEqual(last?.hidesActivity, true, "the tools before it fold")
+        XCTAssertNil(folds.rowState(for: "r/0", expandedTurnKeys: []), "the prompt is never folded")
+
+        let open = folds.rowState(for: "r/3", expandedTurnKeys: [fold.turnKey])
+        XCTAssertEqual(open?.isExpanded, true)
+        XCTAssertEqual(open?.hidesBubble, false)
+    }
+
+    func testTurnWithoutTimestampsReadsWorked() {
+        let (folds, _) = folds(workedTurn(from: nil))
+        XCTAssertEqual(folds.folds.map(\.label), [.worked(elapsed: nil)])
+    }
+
+    func testPreviousTurnStaysFoldedWhileThePromptIsOnlyLiveAndTheSettledRunningTurnStaysOpen() {
+        let (whileLive, _) = folds(workedTurn(), isStreaming: true, hasLivePrompt: true)
+        XCTAssertEqual(whileLive.folds.map(\.turnKey), ["turn:user:0"], "the finished turn folds while the next prompt is only live")
+
+        let running = workedTurn() + [row("user", "Now the drafts", at: 200)] + workedTurn(from: 210).dropFirst()
+        let (settled, _) = folds(running, isStreaming: true)
+        XCTAssertEqual(settled.folds.map(\.turnKey), ["turn:user:0"], "the running turn in messages stays open")
+        let (finished, _) = folds(running)
+        XCTAssertEqual(finished.folds.map(\.turnKey), ["turn:user:0", "turn:user:4"], "keys count messages, not tool rows")
+    }
+
+    func testMixedSnapshotWhileRunningKeepsTheCurrentTurnOpen() {
+        // The host persisted the prompt, a reasoning-only step and an interim reply mid-turn.
+        let history = workedTurn() + [row("user", "Now the drafts", at: 200),
+                                      row("assistant", "", reasoning: "Find drafts", at: 205),
+                                      row("tool"),
+                                      row("assistant", "Checking drafts", reasoning: "Two left", at: 210)]
+        let (folds, _) = folds(history, isStreaming: true)
+        XCTAssertEqual(folds.folds.map(\.turnKey), ["turn:user:0"])
+        XCTAssertNil(folds.rowState(for: "r/7", expandedTurnKeys: []))
+        XCTAssertNil(folds.rowState(for: "r/9", expandedTurnKeys: []))
+    }
+
+    func testActivityAnchoredToAUserRowOrAfterTheLastMessageNeverFolds() {
+        // A turn that ended in tools anchors them to the next prompt, or after the last message.
+        let history = [row("user", "Run it", at: 100), row("tool"),
+                       row("user", "And again", at: 200), row("tool")]
+        let (folds, messages) = folds(history)
+        XCTAssertTrue(folds.folds.isEmpty)
+        for message in messages { XCTAssertNil(folds.rowState(for: message.id, expandedTurnKeys: [])) }
+    }
+
+    func testCardsOffFoldsOnlyInterimRepliesAndLeavesActivityOnlyTurnsAlone() {
+        let (cardsOff, _) = folds(workedTurn(), showsCards: false)
+        XCTAssertEqual(cardsOff.folds.count, 1)
+        XCTAssertEqual(cardsOff.folds.first?.hostRenderID, "r/3", "only the interim reply has something to hide")
+        XCTAssertEqual(cardsOff.rowState(for: "r/1", expandedTurnKeys: [])?.hidesActivity, false)
+
+        let activityOnly = [row("user", "Clean the inbox", at: 100),
+                            row("assistant", "Looking now", reasoning: "Plan", at: 110),
+                            row("tool"), row("assistant", "Archived 14.", at: 142)]
+        XCTAssertEqual(folds(activityOnly).0.folds.count, 1)
+        XCTAssertTrue(folds(activityOnly, showsCards: false).0.folds.isEmpty)
+    }
+
+    func testFoldFinishedTurnsOffFoldsNothing() {
+        XCTAssertTrue(folds(workedTurn(), foldsTurns: false).0.folds.isEmpty)
+    }
+
+    func testWindowOffsetKeepsTurnKeysAbsolute() {
+        let history = workedTurn() + workedTurn(from: 200) + workedTurn(from: 300)
+        let whole = folds(history).0.folds
+        // Four messages per turn: tool rows are activity, not messages.
+        let windowed = folds(history, windowStart: 4).0.folds
+        XCTAssertEqual(windowed.map(\.turnKey), ["turn:user:4", "turn:user:8"])
+        XCTAssertEqual(Array(whole.suffix(2)), windowed, "Load earlier keeps expanded turns expanded")
+    }
 }

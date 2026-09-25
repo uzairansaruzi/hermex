@@ -68,6 +68,10 @@ import Observation
     @ObservationIgnored private var recentRoot: String?
     @ObservationIgnored private var recentOwner: UUID?
     private(set) var liveMessages: [ChatMessage] = []
+    /// The settled row of the prompt the running turn answers, once the host
+    /// has persisted it into `messages`; nil while the prompt is only live or
+    /// no prompt is in flight. The live prompt row draws only when this is nil.
+    private(set) var activePromptMessageID: String?
     private(set) var errorMessage: String?
     let chatControls = BotChatControls()
     let attachments: BotAttachmentDraft
@@ -101,7 +105,13 @@ import Observation
     private(set) var sequence = 0
     private(set) var epoch: String?
     private(set) var replayWasReset = false
-    private(set) var settledActivity: [BotSettledActivity] = []
+    private(set) var settledActivity: [BotSettledActivity] = [] {
+        didSet { settledActivityByAnchor = Dictionary(grouping: settledActivity, by: \.anchorMessageID) }
+    }
+    /// `settledActivity` grouped by the message each block precedes (nil: after
+    /// the last), rebuilt on every assignment so the transcript body looks a
+    /// row's activity up instead of scanning the whole history per message.
+    private(set) var settledActivityByAnchor: [String?: [BotSettledActivity]] = [:]
     private(set) var liveActivity = BotTurnActivity()
     private(set) var plan: BotPlan?
     /// The transient status line while the bot works: `status.update` text
@@ -201,7 +211,7 @@ import Observation
     private func discardRecentTranscript(keepingVisibleHistory: Bool = false) {
         historyCache?.recent.remove { $0 == recentKey }
         recentOwner = nil; recentRoot = nil; hasRecentTranscript = false
-        if !keepingVisibleHistory { messages = []; settledActivity = []; liveMessages = [] }
+        if !keepingVisibleHistory { messages = []; settledActivity = []; liveMessages = []; activePromptMessageID = nil }
     }
 
     /// Only a current server snapshot can start the transcript clock. Live Activity's
@@ -664,20 +674,24 @@ import Observation
         } else { confirmedWorkingStart = nil }
         if startedAt != turnStartedAt { turnRevision += 1; turnStartedAt = startedAt; turnObservedAt = Date() }
         liveMessages = []
-        // The host can list the prompt in `messages` while it is still the
-        // in-flight `user`, so the same bubble would draw twice until the turn
-        // settles. The settled row wins when it is this turn's prompt; a same-text
-        // prompt from an earlier turn (dated before this turn began) does not
-        // count, so a repeated message still shows while history lags.
+        var activePrompt: String?
+        // The host persists each step mid-turn, so `messages` can list the
+        // prompt, and replies or reasoning after it, while it is still the
+        // in-flight `user`. The settled row wins when the last user turn (steers
+        // ride inside it) is this prompt; a same-text prompt from an earlier turn
+        // (dated before this turn began) does not count, so a repeated message
+        // still shows while history lags.
         if let text = inflight["user"].text, !text.isEmpty {
             let display = BotMentions.displayText(text)
-            let settled = messages.last
-            let sameText = settled?.role == "user" && settled?.content == display
+            let settled = messages.last(where: TranscriptTurnClassifier.isUserTurnBoundary)
             let fromEarlierTurn = startedAt.map { start in (settled?.timestamp ?? start) < start } ?? false
-            if !(sameText && !fromEarlierTurn) {
+            if let settled, settled.content == display, !fromEarlierTurn {
+                activePrompt = settled.id
+            } else {
                 liveMessages.append(ChatMessage(role: "user", content: display, timestamp: nil, messageId: "live-user"))
             }
         }
+        activePromptMessageID = activePrompt
         if let text = inflight["assistant"].text, !text.isEmpty {
             liveMessages.append(ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "live-assistant"))
         }
