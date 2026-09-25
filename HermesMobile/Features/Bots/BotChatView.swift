@@ -26,8 +26,9 @@ import SwiftUI
     @State private var composerHeight: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var window = BotTranscriptWindow()
-    /// When the title face's current 15 fps beat began; see `titleFaceMotion`.
-    @State private var workingBeatStart = Date()
+    /// When the title face's current 15 fps beat began; see `titleFaceMotion`. Only the
+    /// turn entering work starts one, so a chat opened onto a pending approval holds still.
+    @State private var workingBeatStart = BotWorkingSchedule.notStarted
 
     init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile],
          avatars: [String: UIImage], conversation: String? = nil,
@@ -220,14 +221,14 @@ import SwiftUI
             if scenePhase == .active { await model.recover() }
         }
         .onChange(of: scenePhase) {
-            if scenePhase == .active {
-                recoveryID = UUID()
-                if isWorking { workingBeatStart = Date() }
-            } else { stopAction = nil; model.suspend() }
+            if scenePhase == .active { recoveryID = UUID() }
+            else { stopAction = nil; model.suspend() }
         }
         .onChange(of: model.turn) {
-            // Starting or resuming work (an answered approval) restarts the beat;
-            // an arriving approval or stream events never do, so the face settles.
+            // Starting or resuming work (an answered approval) restarts the beat. Opening the
+            // chat and returning to the foreground land here too: the model starts at, and
+            // `suspend()` resets to, `.unknown`, so recovery re-enters `.running`. An arriving
+            // approval or stream events never restart it, so the face settles.
             if isWorking { workingBeatStart = Date() }
         }
         .onDisappear { stopAction = nil; model.suspend() }

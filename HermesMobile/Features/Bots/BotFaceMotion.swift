@@ -93,6 +93,9 @@ struct BotBlinkSchedule: TimelineSchedule, Equatable {
 struct BotWorkingSchedule: TimelineSchedule, Equatable {
     static let beat = 30.0
     static let frameInterval = 1.0 / 15
+    /// The start of a beat that has not begun: the face holds the settled lean. Bot Chat
+    /// opens with it, so a chat opened onto a pending approval never sways.
+    static let notStarted = Date.distantPast
     let start: Date
     let blink: BotBlinkSchedule
 

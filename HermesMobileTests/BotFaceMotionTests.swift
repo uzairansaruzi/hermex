@@ -105,6 +105,17 @@ final class BotFaceMotionTests: XCTestCase {
         }
     }
 
+    func testUnstartedBeatHoldsTheSettledLean() {
+        let blink = BotBlinkSchedule(seed: "inbox-triage")
+        let schedule = BotWorkingSchedule(start: BotWorkingSchedule.notStarted, blink: blink)
+        let now = Date(timeIntervalSinceReferenceDate: 1000)
+
+        XCTAssertEqual(Array(schedule.entries(from: now, mode: .normal).prefix(6)),
+                       Array(blink.entries(from: now, mode: .normal).prefix(6)),
+                       "a chat opened onto a pending approval never runs the 15 fps beat")
+        XCTAssertEqual(schedule.pose(at: now).gazeX, BotFacePose.settledWorking.gazeX)
+    }
+
     func testWorkingScheduleSettlesIntoALeanThatOnlyBlinks() {
         let start = Date(timeIntervalSinceReferenceDate: 1000)
         let blink = BotBlinkSchedule(seed: "inbox-triage")
