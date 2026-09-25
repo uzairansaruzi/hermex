@@ -199,9 +199,30 @@ answer it. Request payloads and credential values are never cached.
 `request.cancel {id, method, reason}` withdraws only the matching envelope.
 A disconnect drops the requests and reconnect restores the host's current list,
 independently of replay-ring truncation. The phone never retries an answer.
-A connector operation is not a server request: `connection.request` opens
-Desktop's card and the snapshot carries it as `pending_connection`. The phone
-shows it as needs-attention without a card.
+
+Connection operations (`manage_connections`) are an event plus an RPC, not a
+server request: nothing reaches `open_requests` and `request.answer` does not
+apply. `connection.request` opens an operation, every `connection.update`
+carries the full snapshot again (keep the highest `seq` per `op_id`; the
+`settled: true` frame closes it), and the snapshot's `pending_connection`
+restores it, so an omitted field clears the card. `BotConnectionOperation`
+reads all three tolerantly: an unknown `kind`, `action` or `state` keeps its row
+but offers nothing, and an operation with no readable row is needs-attention
+without a card. The card answers with `connection.respond {session_id, op_id,
+result}`, where `result` is one row's `approved` (with `env` for an MCP
+install's `required_env`) or `skipped`, or `{settled_by: "continue"}` alone;
+`BotClient` refuses every other shape. A managed connector's `connect_url`
+opens in the browser and the host notices the new account by itself. An MCP
+sign-in (`authorize`, or an install that turns into OAuth) redirects to the
+host's own loopback, so the phone shows "Finish on the Mac" and only Skip.
+Skip leaves the bot waiting until every row is connected or skipped; Continue
+releases it at once, and Guide or Queue sends Continue first so the message
+does not wait behind the blocked tool. `4004` means the operation had already
+settled. Setup values stay in the row's view state and are cleared on send.
+Try again on a failed managed row (`connectors.connect {reconnect}`) and
+`connectors.operation.wake` are not used. The shapes are verified against
+`tui_gateway/contracts/connectors_operation.py`, `tui_gateway/methods_connectors.py`
+and `tools/connectors/mcp.py` at `HERMES_AGENT_TESTED_SHA` (0.21.4).
 
 `BotApprovalRequest` keeps the host's own `choices`
 (`once`/`session`/`always`/`deny`) and only rebuilds them when an older host omits

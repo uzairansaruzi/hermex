@@ -4,7 +4,8 @@ import Foundation
 ///
 /// Requests arrive as server-request envelopes, live or restored from
 /// `open_requests`; an approval can also come from the snapshot's
-/// `pending_approval`.
+/// `pending_approval`. A connection operation is the one kind that is not a
+/// server request: see `BotConnectionOperation`.
 ///
 /// Only `desktopTask` is unanswerable, and not for want of a credential path: the
 /// answer is data or input only Hermes Desktop holds, so no client without that
@@ -14,14 +15,17 @@ enum BotPendingRequest: Equatable {
     case question(BotQuestionRequest)
     case credential(BotCredentialRequest)
     case desktopTask(BotDesktopTaskRequest)
+    case connection(BotConnectionOperation)
 
-    /// The host's id for this request: the envelope id, or approval's queue id.
+    /// The host's id for this request: the envelope id, approval's queue id, or
+    /// a connection operation's `op_id`.
     var requestID: String {
         switch self {
         case .approval(let request): return request.requestID
         case .question(let request): return request.requestID
         case .credential(let request): return request.requestID
         case .desktopTask(let request): return request.requestID
+        case .connection(let operation): return operation.opID
         }
     }
 
@@ -325,6 +329,187 @@ struct BotDesktopTaskRequest: Equatable {
 
     let kind: Kind
     let requestID: String
+}
+
+/// A `manage_connections` operation: the bot asked to connect one or more apps,
+/// and the host holds the tool until every row is connected or skipped, Continue
+/// settles it, Stop interrupts it, or its deadline passes.
+///
+/// It is an event plus an RPC, not a server request: `connection.request` opens
+/// it, each `connection.update` carries the full snapshot again, the snapshot's
+/// `pending_connection` restores it, and `connection.respond` answers it by
+/// `op_id`. Nothing about it is cached.
+struct BotConnectionOperation: Equatable {
+    /// One value an MCP install still needs; the card draws a field for each.
+    struct EnvField: Equatable, Identifiable {
+        let name: String
+        let isRequired: Bool
+        let isSecret: Bool
+        /// The catalog's value for a non-secret field, which applies when it is left empty.
+        let defaultValue: String?
+        let prompt: String?
+
+        var id: String { name }
+
+        init?(_ json: BotJSON) {
+            guard let name = json["name"].text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
+            self.name = name
+            // Absent means the host's own defaults: required, and masked to be safe.
+            isRequired = json["required"].flag ?? true
+            isSecret = json["secret"].flag ?? true
+            defaultValue = isSecret ? nil : BotConnectionOperation.trimmed(json["default"])
+            prompt = BotConnectionOperation.trimmed(json["prompt"])
+        }
+    }
+
+    /// One app the bot asked for. A value this build does not recognize keeps its
+    /// row readable but offers nothing, since the phone cannot tell what it permits.
+    struct Target: Equatable, Identifiable {
+        enum Kind: String { case connector, mcp }
+        enum Action: String { case authorize, connect, enable, install, reconnect }
+        enum State: String {
+            case pending, initiated, connected, skipped, failed, expired, unavailable
+            case notConnected = "not_connected"
+        }
+
+        let name: String
+        let kind: Kind?
+        let action: Action?
+        let state: State?
+        let detail: String?
+        let instructions: String?
+        let discoveryError: String?
+        let connectURL: URL?
+        let requiredEnv: [EnvField]
+
+        var id: String { name }
+
+        init?(_ json: BotJSON) {
+            guard let name = BotConnectionOperation.trimmed(json["name"]) else { return nil }
+            self.name = name
+            kind = json["kind"].text.flatMap(Kind.init(rawValue:))
+            action = json["action"].text.flatMap(Action.init(rawValue:))
+            state = json["state"].text.flatMap(State.init(rawValue:))
+            detail = BotConnectionOperation.trimmed(json["detail"])
+            instructions = BotConnectionOperation.trimmed(json["instructions"])
+            discoveryError = BotConnectionOperation.trimmed(json["discovery_error"])
+            connectURL = json["connect_url"].text.flatMap(URL.init(string:))
+            requiredEnv = (json["required_env"].list ?? []).compactMap(EnvField.init)
+        }
+
+        /// The host lets the user skip any row still open: pending, started,
+        /// failed or expired. Connected and skipped rows are already resolved.
+        var canSkip: Bool {
+            guard kind != nil, let state else { return false }
+            return [.pending, .initiated, .failed, .expired].contains(state)
+        }
+
+        /// A managed connector's vendor sign-in. It finishes in the browser and the
+        /// host notices the new account by itself, so the phone sends nothing back.
+        /// Only an https link opens: a failed or expired row's link is dead.
+        var linkToOpen: URL? {
+            guard kind == .connector, state == .pending || state == .initiated,
+                  let connectURL, connectURL.scheme?.lowercased() == "https" else { return nil }
+            return connectURL
+        }
+
+        /// An MCP sign-in, which redirects to a listener on the host's own
+        /// loopback. A phone browser dead-ends there, so it never gets the link.
+        var finishesOnTheMac: Bool {
+            guard kind == .mcp, action == .authorize || connectURL != nil, let state else { return false }
+            return [.pending, .initiated, .failed].contains(state)
+        }
+
+        /// An MCP enable or install the phone approves, sending a value for each
+        /// `requiredEnv` field. A failed one runs again with the new values.
+        var canConnect: Bool {
+            kind == .mcp && (action == .enable || action == .install) && connectURL == nil
+                && (state == .pending || state == .failed)
+        }
+
+        /// True when this row connects with `env`: every required field filled,
+        /// no field it did not declare, and no empty value.
+        func accepts(_ env: [String: String]) -> Bool {
+            guard canConnect else { return false }
+            let declared = Set(requiredEnv.map(\.name))
+            return Set(env.keys).isSubset(of: declared) && !env.values.contains(where: \.isEmpty)
+                && requiredEnv.allSatisfy { !$0.isRequired || env[$0.name] != nil }
+        }
+    }
+
+    /// One row's answer, or Continue, on its way to `connection.respond`.
+    enum Answer: Equatable {
+        case connect(target: String, env: [String: String])
+        case skip(target: String)
+        /// Settles the whole operation now; unresolved rows become `not_connected`.
+        case continueWithout
+
+        /// True when the row on screen offers this answer, with every required value filled.
+        func isOffered(by operation: BotConnectionOperation) -> Bool {
+            switch self {
+            case .continueWithout: return true
+            case .skip(let name): return operation.targets.first { $0.name == name }?.canSkip == true
+            case .connect(let name, let env):
+                return operation.targets.first { $0.name == name }?.accepts(env) == true
+            }
+        }
+
+        /// The `result` object: one row per answer, or only `settled_by`.
+        var result: BotJSON {
+            switch self {
+            case .connect(let name, let env):
+                var row: [String: BotJSON] = ["name": .string(name), "status": .string("approved")]
+                if !env.isEmpty { row["env"] = .object(env.mapValues(BotJSON.string)) }
+                return .object(["targets": .array([.object(row)])])
+            case .skip(let name):
+                return .object(["targets": .array([.object(["name": .string(name), "status": .string("skipped")])])])
+            case .continueWithout:
+                return .object(["settled_by": .string("continue")])
+            }
+        }
+    }
+
+    let opID: String
+    /// The host's write counter for this operation. A frame that is not newer is older.
+    let seq: Int
+    let deadline: Date
+    let isSettled: Bool
+    /// Server order, one row per name.
+    let targets: [Target]
+
+    /// Reads `connection.request`, a `connection.update` or `pending_connection`.
+    /// Nil without an id, a counter, a deadline or any readable row: there is
+    /// nothing a card could address, and the bot shows as blocked without one.
+    init?(_ json: BotJSON) {
+        guard let opID = json["op_id"].text, !opID.isEmpty, let seq = json["seq"].integer,
+              let deadline = json["deadline_at"].number, deadline.isFinite, deadline > 0 else { return nil }
+        var seen = Set<String>()
+        let targets = (json["targets"].list ?? []).compactMap(Target.init).filter { seen.insert($0.name).inserted }
+        guard !targets.isEmpty else { return nil }
+        self.opID = opID
+        self.seq = seq
+        self.deadline = Date(timeIntervalSince1970: deadline)
+        isSettled = json["settled"].flag == true
+        self.targets = targets
+    }
+
+    /// This operation after `frame`: every frame is the full snapshot, so a newer
+    /// one replaces it whole. An older or equal counter, or another operation's
+    /// frame, changes nothing.
+    func applying(_ frame: BotConnectionOperation) -> BotConnectionOperation {
+        frame.opID == opID && frame.seq > seq ? frame : self
+    }
+
+    /// Whole minutes left before the host's deadline, never below one: the card
+    /// stays until the settled frame, which the deadline itself produces.
+    static func minutesLeft(until deadline: Date, now: Date) -> Int {
+        max(1, Int((deadline.timeIntervalSince(now) / 60).rounded(.up)))
+    }
+
+    fileprivate static func trimmed(_ json: BotJSON) -> String? {
+        let value = json.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
+    }
 }
 
 /// One question's answer on its way to the host. `questionID` is the

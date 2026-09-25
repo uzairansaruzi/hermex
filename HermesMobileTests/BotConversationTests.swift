@@ -1060,6 +1060,10 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     /// its `request_id` becomes the envelope id. Cleared once answered.
     var openClarify = BotJSON.null
     var openRequests = BotJSON.null
+    /// The snapshot's `pending_connection`: an open `manage_connections` operation.
+    var pendingConnection = BotJSON.null
+    /// What `connection.respond` answers; by default `ok`, not settled.
+    var connectionRespond: (([String: BotJSON]) throws -> BotJSON)?
     var answerRequest: ((String, [String: BotJSON]) throws -> BotJSON)?
     /// What `approval.respond` reports unblocking.
     var approvalResolved = 1
@@ -1122,6 +1126,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
                 "turn_started_at": turnStartedAt.map(BotJSON.number) ?? .null,
                 "pending_approval": pendingApproval ?? (attention ? BotFixtureWire.approval() : .null),
                 "open_requests": openRequestsWithClarify,
+                "pending_connection": pendingConnection,
                 "todo_state": todoState,
                 "info": .object(["profile_name": .string("inbox-triage")])
             ])
@@ -1131,6 +1136,10 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             if let answerRequest { return try answerRequest(method, params) }
             if answerStatus == "ok" { openRequests = .array([]); openClarify = .null }
             return .object(["status": .string(answerStatus), "remaining": .array([])])
+        case "connection.respond":
+            if let respondFailure { throw respondFailure }
+            if let connectionRespond { return try connectionRespond(params) }
+            return .object(["status": .string("ok"), "settled": .bool(false)])
         case "approval.respond":
             if let respondFailure { throw respondFailure }
             if approvalResolved > 0 { attention = false; pendingApproval = nil }

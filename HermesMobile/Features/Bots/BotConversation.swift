@@ -84,6 +84,13 @@ import Observation
     private(set) var blockingRequest: BotPendingRequest?
     /// Server requests for this runtime, live or restored from `open_requests`.
     private var serverRequests: [BotServerRequest] = []
+    /// The open `manage_connections` operation, live or restored from
+    /// `pending_connection`. Cleared by its settled frame, a snapshot without
+    /// the field, or a disconnect; reconnecting restores it from the host.
+    private(set) var connectionOperation: BotConnectionOperation?
+    /// The last operation seen settling, so an older in-flight frame or snapshot
+    /// never brings its card back.
+    private var settledConnectionID: String?
     private var requestRevision = 0
     /// Set while an answer is in flight, to keep the card's controls inert.
     private(set) var answeringRequestID: String?
@@ -273,14 +280,16 @@ import Observation
     var mayEditDraft: Bool { hydrated && !localOperation }
 
     /// The one request blocking this conversation, in order: a question, the
-    /// snapshot's approval, a server-request approval, then any other server
-    /// request (a credential prompt or a Desktop task such as `vault.*`).
+    /// snapshot's approval, a server-request approval, any other server request
+    /// (a credential prompt or a Desktop task such as `vault.*`), then an open
+    /// connection operation.
     var pendingRequest: BotPendingRequest? {
         let current = serverRequests.compactMap(\.pending)
         return current.first { if case .question = $0 { return true }; return false }
             ?? blockingRequest
             ?? current.first { if case .approval = $0 { return true }; return false }
             ?? current.first
+            ?? connectionOperation.map(BotPendingRequest.connection)
     }
 
     /// True when the user may answer the request on screen.
@@ -527,9 +536,13 @@ import Observation
             }
             missed.removeFirst(start)
         }
-        // Requests were restored from open_requests above; replay only rebuilds activity.
+        // Requests were restored from open_requests above; replay rebuilds activity
+        // and the connection card, which the full snapshot below then confirms.
         for event in missed {
-            applyActivity(type: event["type"].text ?? "", payload: event["payload"])
+            let type = event["type"].text ?? ""
+            if !applyConnectionEvent(type: type, payload: event["payload"]) {
+                applyActivity(type: type, payload: event["payload"])
+            }
         }
     }
 
@@ -626,11 +639,11 @@ import Observation
         if requestsRevision == nil || requestsRevision == requestRevision {
             restoreServerRequests(snapshot)
             applyPendingRequest(snapshot)
+            restoreConnectionOperation(snapshot)
         }
         // A request the phone cannot address still blocks the bot. Claiming the
         // turn is running would be the lie; attention without a card is the truth.
-        // An open connection operation (`pending_connection`, Desktop's card for
-        // `connection.request`) is one of those.
+        // A `pending_connection` this build cannot read is one of those.
         let attention = pendingRequest != nil || !serverRequests.isEmpty
             || snapshot["pending_approval"] != .null || snapshot["pending_connection"] != .null
         let continuation = snapshot["auto_continue"] != .null && snapshot["auto_continue"].flag != false
@@ -666,6 +679,39 @@ import Observation
         // Resume omits an empty open_requests; replay always carries it.
         let rows = snapshot["open_requests"].list ?? []
         serverRequests = rows.compactMap(BotServerRequest.init).filter { $0.sessionID == runtime }
+    }
+
+    /// Resume omits `pending_connection` when no operation is open, so a missing
+    /// or unreadable field clears the card.
+    private func restoreConnectionOperation(_ snapshot: BotJSON) {
+        guard let frame = BotConnectionOperation(snapshot["pending_connection"]) else {
+            connectionOperation = nil; return
+        }
+        applyConnection(frame, opens: true)
+    }
+
+    /// Applies `connection.request` and `connection.update`. Returns false for
+    /// every other event type.
+    private func applyConnectionEvent(type: String, payload: BotJSON) -> Bool {
+        guard type == "connection.request" || type == "connection.update" else { return false }
+        if let frame = BotConnectionOperation(payload) { applyConnection(frame, opens: type == "connection.request") }
+        return true
+    }
+
+    /// A frame of the held operation replaces it when newer; a frame that opens
+    /// an operation replaces whatever was held. The settled frame closes it.
+    private func applyConnection(_ frame: BotConnectionOperation, opens: Bool) {
+        guard frame.opID != settledConnectionID else { return }
+        let next: BotConnectionOperation
+        if let held = connectionOperation, held.opID == frame.opID { next = held.applying(frame) }
+        else if opens { next = frame }
+        else { return }
+        if next.isSettled { closeConnectionOperation(next.opID) } else { connectionOperation = next }
+    }
+
+    private func closeConnectionOperation(_ opID: String) {
+        settledConnectionID = opID
+        if connectionOperation?.opID == opID { connectionOperation = nil }
     }
 
     /// The proxy gives a definitive ok/expired receipt for both live and restored
@@ -728,6 +774,9 @@ import Observation
                 text = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
             }
             try check(owner)
+            if action.mode == .steer || action.mode == .queue, let operation = connectionOperation {
+                try await continueConnection(operation.opID, runtime: action.runtime, owner: owner)
+            }
             // Only prompt admission can have an unknown outcome. Keep this
             // durable before dispatch, but never hold a draft during upload.
             drafts.setBotSubmissionUncertain(true, for: draftKey)
@@ -800,6 +849,25 @@ import Observation
                 refreshAfterPrompt()
             } else { disconnected(safe ? error : BotFailure.transport) }
         }
+    }
+
+    /// Releases an open connection operation before a Guide or Queue message, as
+    /// Desktop does, so the message does not wait behind the blocked tool until
+    /// the deadline. A host rejection (most often: it already settled) lets the
+    /// message go anyway. A lost reply fails the send before the prompt is
+    /// dispatched, and nothing is retried.
+    private func continueConnection(_ opID: String, runtime: String, owner: Int) async throws {
+        do {
+            let reply = try await request("connection.respond", [
+                "session_id": .string(runtime), "op_id": .string(opID),
+                "result": BotConnectionOperation.Answer.continueWithout.result
+            ], owner: owner) { [weak self] in
+                guard let self else { throw BotFailure.stale }
+                try self.check(owner)
+                guard self.connectionState == .connected, self.runtime == runtime else { throw BotFailure.stale }
+            }
+            if reply["settled"].flag == true { closeConnectionOperation(opID) }
+        } catch BotFailure.rejected {}
     }
 
     /// Every returned path is bound to this captured action; partial uploads never
@@ -1031,6 +1099,54 @@ import Observation
         }
     }
 
+    /// Answers one row of the connection card, or Continue. Captured like every
+    /// answer and never retried. The operation stays open until the host says it
+    /// settled: its update frames move the rows, and a Skip that leaves other rows
+    /// open leaves the bot waiting. `4004` means the operation had already settled.
+    func respondToConnection(_ action: AnswerAction, _ answer: BotConnectionOperation.Answer) async {
+        guard case .connection(let operation)? = pendingRequest, operation.opID == action.requestID,
+              answer.isOffered(by: operation), action == prepareAnswer() else { return }
+        localOperation = true
+        answeringRequestID = action.requestID
+        errorMessage = nil
+        do {
+            let reply = try await request("connection.respond", [
+                "session_id": .string(action.runtime), "op_id": .string(action.requestID), "result": answer.result
+            ], owner: action.generation, validateDispatch: answerGuard(action))
+            guard reply["status"].text == "ok", let settled = reply["settled"].flag else { throw BotFailure.unsupported }
+            guard action.generation == generation, !Task.isCancelled else { return }
+            localOperation = false; answeringRequestID = nil
+            requestRevision += 1
+            if settled {
+                closeConnectionOperation(action.requestID)
+                // The host owns what happens next; read it instead of assuming.
+                turnRevision += 1; turn = .unknown; fullSnapshotNeeded = true
+            }
+            snapshotDirty = true; scheduleRefresh()
+        } catch {
+            guard action.generation == generation, !Task.isCancelled else { return }
+            localOperation = false; answeringRequestID = nil
+            if error as? BotFailure == .stale { return }
+            if case BotFailure.rejected(let code) = error {
+                // The host replied over a live socket, so nothing it refused took effect.
+                if code == 4004 {
+                    requestResolution = BotRequestResolution(requestID: action.requestID, outcome: .alreadyResolved)
+                    fullSnapshotNeeded = true
+                } else {
+                    errorMessage = [401, 403, -32601].contains(code)
+                        ? BotFailure.rejected(code).localizedDescription
+                        : String(localized: "The bot could not accept that answer. Check this bot in Desktop.")
+                }
+                // A refused move usually means the row changed first; show where it is now.
+                requestRevision += 1
+                snapshotDirty = true; scheduleRefresh()
+                return
+            }
+            requestResolution = BotRequestResolution(requestID: action.requestID, outcome: .uncertain)
+            disconnected(error)
+        }
+    }
+
     /// Revalidates at the socket write, after any executor delay: the same
     /// connection, the same runtime, and still the same request on screen.
     private func answerGuard(_ action: AnswerAction) -> () throws -> Void {
@@ -1119,6 +1235,8 @@ import Observation
         }
         sequence = next
         let type = event["type"].text ?? ""
+        // A newer frame than any snapshot already in flight, like a live request.
+        if applyConnectionEvent(type: type, payload: event["payload"]) { requestRevision += 1 }
         if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
             "subagent.tool", "subagent.complete"].contains(type) {
             delegatedWork.noteSubagentEvent()
@@ -1193,8 +1311,9 @@ import Observation
         delegatedWork.disconnect()
         wire.close()
         refreshTask?.cancel(); refreshTask = nil
-        // Reconnecting restores the host's current requests from open_requests.
-        serverRequests = []; answeringRequestID = nil
+        // Reconnecting restores the host's current requests from open_requests
+        // and pending_connection.
+        serverRequests = []; connectionOperation = nil; answeringRequestID = nil
         connectionState = .disconnected
         turn = uncertainSend || uncertainStop ? .uncertain : .unknown
         turnRevision += 1
@@ -1250,7 +1369,7 @@ import Observation
         refreshTask?.cancel(); refreshTask = nil
         wire.close()
         localOperation = false; submittingPrompt = nil
-        serverRequests = []; answeringRequestID = nil
+        serverRequests = []; connectionOperation = nil; answeringRequestID = nil
         connectionState = .disconnected; turn = .unknown
         syncLiveActivity()
     }

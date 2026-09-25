@@ -781,6 +781,32 @@ import XCTest
         XCTAssertEqual(secretField.textContentType, .password, "The Passwords key needs a password content type")
     }
 
+    /// A connection row's secret field is masked and offers AutoFill, its plain
+    /// field is not, and Connect hands the values over and empties the fields.
+    func testConnectionCardMasksSecretsAndDropsThemOnConnect() async throws {
+        var sent: [BotConnectionOperation.Answer] = []
+        let operation = try XCTUnwrap(BotConnectionOperation(BotConnectionFixture.operation(targets: [BotConnectionFixture.github()])))
+        let harness = CredentialCardHarnessModel(request: .connection(operation))
+        let window = try show(CredentialCardHarnessView(model: harness) { sent.append($0) })
+        defer { close(window) }
+        await renderFrames()
+
+        let fields = descendants(window).compactMap { $0 as? UITextField }
+        XCTAssertEqual(fields.count, 2)
+        let secret = try XCTUnwrap(fields.first(where: \.isSecureTextEntry), "The token is never in the clear")
+        XCTAssertEqual(secret.textContentType, .password)
+        XCTAssertEqual(fields.filter(\.isSecureTextEntry).count, 1, "The host name is not a secret")
+
+        XCTAssertTrue(secret.becomeFirstResponder())
+        secret.insertText("ghp_1")
+        await renderFrames()
+        // Return on the keyboard, which the field submits as Connect.
+        secret.sendActions(for: .editingDidEndOnExit)
+        await renderFrames()
+        XCTAssertEqual(sent, [.connect(target: "github", env: ["GITHUB_TOKEN": "ghp_1"])])
+        XCTAssertEqual(secret.text ?? "", "", "The value leaves the field once it is handed over")
+    }
+
     func testTextOnlyEditorRejectsAttachmentProviders() {
         let editor = ComposerChipTextView()
         let image = NSItemProvider(item: NSData(), typeIdentifier: UTType.png.identifier)
@@ -1160,11 +1186,12 @@ import XCTest
 
 private struct CredentialCardHarnessView: View {
     let model: CredentialCardHarnessModel
+    var onConnection: (BotConnectionOperation.Answer) -> Void = { _ in }
     var body: some View {
         BotPendingRequestCard(
             request: model.request, identity: "Fixture Mac", isEnabled: true, canStop: true,
             isAnswering: false, resolution: nil, onApprove: { _ in }, onAnswer: { _ in }, onSkip: {},
-            onCredential: { _ in }, canDecline: false, onDecline: {}, onStop: {}
+            onCredential: { _ in }, canDecline: false, onDecline: {}, onStop: {}, onConnection: onConnection
         )
     }
 }

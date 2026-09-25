@@ -271,6 +271,73 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 3)
     }
 
+    /// The connection card answers one row or Continue, by `op_id`, and nothing
+    /// else: no claimed outcome, no other settle reason, no connector RPC.
+    func testConnectionAllowlistAdmitsOnlyOneRowOrContinue() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        func respond(_ result: BotJSON, op: BotJSON = .string("op-1")) -> [String: BotJSON] {
+            ["session_id": .string("runtime"), "op_id": op, "result": result]
+        }
+        func row(_ fields: [String: BotJSON]) -> BotJSON { .object(["targets": .array([.object(fields)])]) }
+
+        let admitted: [[String: BotJSON]] = [
+            respond(.object(["settled_by": .string("continue")])),
+            respond(row(["name": .string("gmail"), "status": .string("skipped")])),
+            respond(row(["name": .string("notion"), "status": .string("approved")])),
+            respond(row(["name": .string("github"), "status": .string("approved"),
+                         "env": .object(["GITHUB_TOKEN": .string("ghp_1")])]))
+        ]
+        for params in admitted { _ = try await client.call("connection.respond", params) }
+        XCTAssertEqual(socket.sentTextFrames, admitted.count)
+
+        let rejected: [(String, [String: BotJSON])] = [
+            ("connection.respond", respond(.object(["settled_by": .string("deadline")]))),
+            ("connection.respond", respond(.object([:]))),
+            ("connection.respond", respond(.object(["settled_by": .string("continue"),
+                                                    "targets": .array([.object(["name": .string("gmail"), "status": .string("skipped")])])]))),
+            ("connection.respond", respond(row(["name": .string("gmail"), "status": .string("connected")]))),
+            ("connection.respond", respond(row(["name": .string(""), "status": .string("skipped")]))),
+            ("connection.respond", respond(row(["name": .string("gmail"), "status": .string("skipped"),
+                                                "env": .object(["TOKEN": .string("x")])]))),
+            ("connection.respond", respond(row(["name": .string("github"), "status": .string("approved"),
+                                                "env": .object(["GITHUB_TOKEN": .string("")])]))),
+            ("connection.respond", respond(row(["name": .string("gmail"), "status": .string("skipped"), "detail": .string("x")]))),
+            ("connection.respond", respond(.object(["targets": .array([
+                .object(["name": .string("gmail"), "status": .string("skipped")]),
+                .object(["name": .string("slack"), "status": .string("skipped")])
+            ])]))),
+            ("connection.respond", respond(.object(["settled_by": .string("continue")]), op: .string(""))),
+            ("connection.respond", ["op_id": .string("op-1"), "result": .object(["settled_by": .string("continue")])]),
+            ("connection.respond", respond(.object(["settled_by": .string("continue")])).merging(["profile": .string("default")]) { $1 }),
+            ("connectors.operation.wake", ["session_id": .string("runtime"), "op_id": .string("op-1")]),
+            ("connectors.connect", ["session_id": .string("runtime"), "connectors": .array([.string("gmail")]), "reconnect": .bool(true)])
+        ]
+        for (method, params) in rejected {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Invalid \(method) call dispatched: \(params)")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, admitted.count)
+    }
+
     func testCancellingDelegatedReadsKeepsTheConversationSocketAvailable() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

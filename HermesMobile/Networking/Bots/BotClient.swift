@@ -185,7 +185,7 @@ import Foundation
                "profiles.create", "session.create", "session.title",
                "session.list", "session.resume", "session.events.since",
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond",
-               "request.answer", "clarify.lock", "client.capabilities",
+               "request.answer", "clarify.lock", "connection.respond", "client.capabilities",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control",
                "commands.catalog", "command.dispatch", "complete.path",
                "subagent.list", "subagent.tail", "subagent.interrupt"].contains(method) || BotRoomRPC.methods.contains(method)
@@ -196,6 +196,7 @@ import Foundation
         try Self.validateSlashCall(method, params)
         try Self.validateCompletionCall(method, params)
         try Self.validateSubagentCall(method, params)
+        try Self.validateConnectionCall(method, params)
         if method == "client.capabilities" {
             guard params == ["server_requests": .bool(true)] else { throw BotFailure.unsupported }
         }
@@ -409,6 +410,28 @@ import Foundation
                   params["subagent_id"]?.text?.isEmpty == false else { throw BotFailure.unsupported }
         default:
             return
+        }
+    }
+
+    /// The connection card is another typed exception. `connection.respond`
+    /// carries one live session, one `op_id`, and a `result` that is either one
+    /// row's `approved` (with its setup values) or `skipped`, or Continue alone.
+    /// No other outcome, settle reason or connector RPC reaches the host from here.
+    private static func validateConnectionCall(_ method: String, _ params: [String: BotJSON]) throws {
+        guard method == "connection.respond" else { return }
+        guard Set(params.keys) == ["session_id", "op_id", "result"],
+              params["session_id"]?.text?.isEmpty == false, params["op_id"]?.text?.isEmpty == false,
+              let result = params["result"]?.fields, result.count == 1 else { throw BotFailure.unsupported }
+        if let reason = result["settled_by"] {
+            guard reason == .string("continue") else { throw BotFailure.unsupported }
+            return
+        }
+        guard let rows = result["targets"]?.list, rows.count == 1, let row = rows[0].fields,
+              Set(row.keys).isSubset(of: ["name", "status", "env"]), row["name"]?.text?.isEmpty == false,
+              let status = row["status"]?.text, ["approved", "skipped"].contains(status) else { throw BotFailure.unsupported }
+        if let env = row["env"] {
+            guard status == "approved", let values = env.fields, !values.isEmpty,
+                  values.allSatisfy({ !$0.key.isEmpty && $0.value.text?.isEmpty == false }) else { throw BotFailure.unsupported }
         }
     }
 
