@@ -397,7 +397,6 @@ struct BotChatComposerView: View {
         let insertion = BotVoiceDraftInsertion(draft: model.draft, selection: insertionRange)
         voiceInput.apiClient = nil
         voiceInput.providerPreference = .onDeviceOnly
-        voiceInput.locale = .current
         Task {
             await voiceInput.toggle(currentDraft: "") { transcript in
                 guard let result = insertion.applying(transcript: transcript, to: model.draft) else {

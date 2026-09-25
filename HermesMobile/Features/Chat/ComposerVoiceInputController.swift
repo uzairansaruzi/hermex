@@ -20,7 +20,7 @@ final class ComposerVoiceInputController {
     private(set) var errorMessage: String?
     private(set) var liveTranscript = ""
 
-    private let speechRecognizerFactory: () -> SFSpeechRecognizer?
+    private let speechRecognizerFactory: (Locale) -> SFSpeechRecognizer?
     private let audioEngineFactory: () -> AVAudioEngine
     private var speechRecognizer: SFSpeechRecognizer?
     private var audioEngine: AVAudioEngine?
@@ -39,10 +39,9 @@ final class ComposerVoiceInputController {
 
     @ObservationIgnored var apiClient: APIClient?
     @ObservationIgnored var providerPreference = ComposerSTTProviderPreference.defaultValue
-    @ObservationIgnored var locale = Locale.current
 
     init(
-        speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
+        speechRecognizerFactory: @escaping (Locale) -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: $0) },
         audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() }
     ) {
         self.speechRecognizerFactory = speechRecognizerFactory
@@ -728,31 +727,28 @@ final class ComposerVoiceInputController {
         }
     }
 
+    /// The on-device recognizer for the first dictation locale candidate that
+    /// has a model, cached for the controller's lifetime. Live dictation and
+    /// the server-failure file fallback both record through this pick.
     private func onDeviceSpeechRecognizerForRecording() -> SFSpeechRecognizer? {
         if let speechRecognizer {
             return speechRecognizer.supportsOnDeviceRecognition ? speechRecognizer : nil
         }
 
-        guard Self.isLocaleSupportedBySpeechRecognizer(locale) else {
-            return nil
-        }
-        let speechRecognizer = speechRecognizerFactory()
-        guard speechRecognizer?.supportsOnDeviceRecognition == true else {
-            return nil
+        let speechRecognizer = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: .current,
+                preferredLanguages: Locale.preferredLanguages
+            ),
+            supportedLocales: SFSpeechRecognizer.supportedLocales()
+        ) { locale -> SFSpeechRecognizer? in
+            guard let recognizer = self.speechRecognizerFactory(locale),
+                  recognizer.supportsOnDeviceRecognition
+            else { return nil }
+            return recognizer
         }
         self.speechRecognizer = speechRecognizer
         return speechRecognizer
-    }
-
-    private static func isLocaleSupportedBySpeechRecognizer(_ locale: Locale) -> Bool {
-        let target = normalizedLocaleIdentifier(locale.identifier)
-        return SFSpeechRecognizer.supportedLocales().contains { supportedLocale in
-            normalizedLocaleIdentifier(supportedLocale.identifier) == target
-        }
-    }
-
-    private static func normalizedLocaleIdentifier(_ identifier: String) -> String {
-        identifier.replacingOccurrences(of: "_", with: "-").lowercased()
     }
 
     private func fail(_ message: String, logCategory: VoiceInputFailureLogCategory) {
@@ -878,6 +874,55 @@ enum VoiceInputFailureLogCategory: String {
     case invalidInputFormat
     case audioEngineAlreadyRunning
     case audioStartup
+}
+
+/// Chooses the dictation language. `Locale.current` (app language plus device
+/// region) stays first so users whose dictation already works keep the same
+/// recognizer; the user's preferred languages and `en-US` cover regions whose
+/// pairing has no on-device model, such as `en_PK`.
+enum ComposerSpeechLocalePolicy {
+    static let preferredLanguageLimit = 3
+    static let lastResortIdentifier = "en-US"
+
+    /// `current`, then the first few preferred languages, then `en-US`,
+    /// deduplicated by normalized identifier.
+    static func candidates(current: Locale, preferredLanguages: [String]) -> [Locale] {
+        let identifiers = [current.identifier]
+            + preferredLanguages.prefix(preferredLanguageLimit)
+            + [lastResortIdentifier]
+        var seen = Set<String>()
+        return identifiers.compactMap { identifier in
+            seen.insert(normalizedIdentifier(identifier)).inserted ? Locale(identifier: identifier) : nil
+        }
+    }
+
+    /// Walks `candidates` in order and returns the first `recognizer` result.
+    /// `recognizer` is called only for candidates listed in `supportedLocales`,
+    /// with the supported locale itself, and returns nil when that locale has
+    /// no on-device model.
+    static func firstAvailable<Recognizer>(
+        in candidates: [Locale],
+        supportedLocales: Set<Locale>,
+        recognizer: (Locale) -> Recognizer?
+    ) -> Recognizer? {
+        let supportedByIdentifier = Dictionary(
+            supportedLocales.map { (normalizedIdentifier($0.identifier), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for candidate in candidates {
+            if let supported = supportedByIdentifier[normalizedIdentifier(candidate.identifier)],
+               let match = recognizer(supported) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    /// `en_US`, `en-US`, and `en_US@rg=pkzzzz` all normalize to `en-us`.
+    static func normalizedIdentifier(_ identifier: String) -> String {
+        let base = identifier.split(separator: "@", maxSplits: 1).first.map(String.init) ?? identifier
+        return base.replacingOccurrences(of: "_", with: "-").lowercased()
+    }
 }
 
 enum ComposerVoiceInputStartPolicy {
