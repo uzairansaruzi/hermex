@@ -363,6 +363,13 @@ import Observation
         drafts.setDraft(text, for: draftKey)
     }
 
+    /// A tapped quick-reply chip. It fills an empty draft and never sends: Send
+    /// stays the user's second, deliberate tap. A draft already started is left alone.
+    func applyQuickReply(_ reply: BotQuickReply) {
+        guard draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        editDraft(reply.text)
+    }
+
     /// Reads this connection's skills once it is connected.
     ///
     /// The composer drives this, because its `/` panel is the only thing that

@@ -74,6 +74,7 @@ per-server:
 - Chat transcript display toggles (`ChatTranscriptDisplaySettings`: thinking/tool cards, attachment paths, timestamps, code-block wrap)
 - Streamed-text animation (`StreamedTextAnimationSettings`)
 - Streaming send behavior (`StreamingSendBehavior`)
+- Bot quick replies (`BotQuickReplyStore`): the user's own text, the same chips for every server, connection and Profile
 - Adaptive Glass preference (`adaptiveGlass.isEnabled`)
 - **Primary-action tint *toggle*** (`PrimaryActionTintSettings.isEnabledKey`) — the
   on/off behavior is global; only the *color* it applies (Header Logo Color) is

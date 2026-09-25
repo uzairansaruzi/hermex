@@ -888,6 +888,29 @@ Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
 (`_session_home_scope`), so the phone passes the runtime id and the list follows
 that session's Profile and workspace. No live mutation was used for validation.
 
+## Quick replies
+
+Quick replies are short texts the user writes in Settings → Interaction → Quick
+Replies (shown only with Bot Mode on). With at least one saved,
+`BotQuickReplyRow` shows them as one-line chips in the status pill's slot above
+the Bot Chat composer, so the pill and the chips never stack.
+`BotQuickReplyPolicy.showsRow` shows the row only when the draft, quotes and
+attachments are empty, `maySend` is true, no request is pending and no pill is
+showing. It hides while the bot works, needs attention or is disconnected.
+
+A tap calls `BotConversation.applyQuickReply`: it fills an empty draft and
+never sends, so a mistap cannot start agent work. Send stays the existing path,
+including skill expansion for a reply that opens with `/skill`. The composer
+does not take focus, so no keyboard comes up.
+
+The list is client-only: the host has no saved-prompt store (webui's
+`/api/prompts` library is webui-only). `BotQuickReplyStore` keeps it as one JSON
+string in `UserDefaults`, empty by default, and it is one global list for every
+server, connection and Profile. Decoding is tolerant: an unreadable value is an
+empty list and blank or repeated entries are dropped. Suggestions in the editor
+are localized starters; adding one saves its text as a plain reply the user
+owns. Group rooms do not get the row.
+
 ## Chat controls
 
 The Bot composer reuses Sessions' model/effort menu, model sheet, workspace picker

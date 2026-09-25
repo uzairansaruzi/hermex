@@ -16,6 +16,9 @@ struct BotChatComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(BotQuickReplyStore.storageKey) private var storedQuickReplies = ""
+    /// Decoded once per storage change, not on every keystroke's body pass.
+    @State private var quickReplies: [BotQuickReply] = []
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var plusIconSize: CGFloat = 20
     @State private var shouldRestoreFocusAfterPicker = false
@@ -56,19 +59,29 @@ struct BotChatComposerView: View {
     }
 
     var body: some View {
+        let pill = self.pill
+        let showsQuickReplies = showsQuickReplyRow(pill: pill)
         VStack(spacing: 10) {
             // One floating pill instead of a strip of status lines: only what the
             // user can act on or must know, highest priority first, and never a
-            // receipt for work the transcript already shows.
+            // receipt for work the transcript already shows. With nothing to act
+            // on, the user's quick replies take the same slot, so the two never stack.
             if let pill {
                 BotComposerPillView(pill: pill, onReconnect: onReconnect, onShowRequest: onShowRequest,
                                     onCancelUpload: { model.cancelAttachmentUpload() },
                                     onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } })
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            } else if showsQuickReplies {
+                BotQuickReplyRow(replies: quickReplies) { model.applyQuickReply($0) }
+                    .transition(.opacity)
             }
             composerContainer
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pill)
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsQuickReplies)
+        .onChange(of: storedQuickReplies, initial: true) { _, raw in
+            quickReplies = BotQuickReplyStore.decode(raw)
+        }
         // An error the user did not tap away leaves on its own, like the inbox toast.
         .task(id: pill?.errorText) {
             guard let text = pill?.errorText else { return }
@@ -81,6 +94,14 @@ struct BotChatComposerView: View {
         // A dismissal covers one occurrence. Once the error's source clears, the
         // same text failing again is news and shows again.
         .onChange(of: errorTexts) { _, current in dismissedErrors.formIntersection(current) }
+    }
+
+    private func showsQuickReplyRow(pill: BotComposerPill?) -> Bool {
+        BotQuickReplyPolicy.showsRow(
+            replies: quickReplies, draft: model.draft, hasQuotes: !model.quotes.isEmpty,
+            hasAttachments: !model.attachments.items.isEmpty || model.attachments.isImporting,
+            maySend: model.maySend, hasPendingRequest: model.pendingRequest != nil, hasPill: pill != nil
+        )
     }
 
     /// Every error a pill could carry, in priority order.

@@ -506,12 +506,15 @@
 		127110E3C3924333B7967315 /* BotAttachmentSendingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */; };
 		A48400000000000000000101 /* BotMentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000102 /* BotMentions.swift */; };
 		A48400000000000000000901 /* BotSlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000902 /* BotSlashCommands.swift */; };
+		B76400000000000000000001 /* BotQuickReplies.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76400000000000000000002 /* BotQuickReplies.swift */; };
+		B76400000000000000000003 /* BotQuickRepliesEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76400000000000000000004 /* BotQuickRepliesEditorView.swift */; };
 		A48400000000000000000903 /* BotSlashAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000904 /* BotSlashAutocompleteView.swift */; };
 		A48400000000000000000201 /* BotMentionAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000202 /* BotMentionAutocompleteView.swift */; };
 		A48400000000000000000A01 /* BotFilePathSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000A02 /* BotFilePathSearch.swift */; };
 		A48400000000000000000B01 /* BotAtAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000B02 /* BotAtAutocompleteView.swift */; };
 		A48400000000000000000C01 /* BotFilePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000C02 /* BotFilePathTests.swift */; };
 		A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000906 /* BotSlashCommandTests.swift */; };
+		B76400000000000000000005 /* BotQuickReplyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76400000000000000000006 /* BotQuickReplyTests.swift */; };
 		A48400000000000000000301 /* BotMentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000302 /* BotMentionTests.swift */; };
 		1887ACCCA7594CEA88195FCD /* BotGroupRoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */; };
 		3C0CCE7773554B87B7E32D74 /* BotDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75316C058B034AC291F92E76 /* BotDeepLink.swift */; };
@@ -1080,12 +1083,15 @@
 		7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotAttachmentSendingTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000102 /* BotMentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotMentions.swift"; sourceTree = "<group>"; };
 		A48400000000000000000902 /* BotSlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotSlashCommands.swift"; sourceTree = "<group>"; };
+		B76400000000000000000002 /* BotQuickReplies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotQuickReplies.swift"; sourceTree = "<group>"; };
+		B76400000000000000000004 /* BotQuickRepliesEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotQuickRepliesEditorView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000904 /* BotSlashAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotSlashAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000202 /* BotMentionAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotMentionAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000A02 /* BotFilePathSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotFilePathSearch.swift"; sourceTree = "<group>"; };
 		A48400000000000000000B02 /* BotAtAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAtAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000C02 /* BotFilePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotFilePathTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000906 /* BotSlashCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotSlashCommandTests.swift"; sourceTree = "<group>"; };
+		B76400000000000000000006 /* BotQuickReplyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotQuickReplyTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000302 /* BotMentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotMentionTests.swift"; sourceTree = "<group>"; };
 		3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotGroupRoom.swift"; sourceTree = "<group>"; };
 		75316C058B034AC291F92E76 /* BotDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotDeepLink.swift"; sourceTree = "<group>"; };
@@ -1240,6 +1246,7 @@
 				A4750000000000000000B006 /* BotActivityTests.swift */,
 				A4770000000000000000D006 /* BotDelegatedWorkTests.swift */,
 				A48400000000000000000906 /* BotSlashCommandTests.swift */,
+				B76400000000000000000006 /* BotQuickReplyTests.swift */,
 				A48400000000000000000302 /* BotMentionTests.swift */,
 				A48400000000000000000C02 /* BotFilePathTests.swift */,
 				6984D85D628F4E18ABAA2BA9 /* BotChatControlsTests.swift */,
@@ -1522,6 +1529,8 @@
 				A4770000000000000000D004 /* BotDelegatedWorkView.swift */,
 				A48400000000000000000902 /* BotSlashCommands.swift */,
 				A48400000000000000000904 /* BotSlashAutocompleteView.swift */,
+				B76400000000000000000002 /* BotQuickReplies.swift */,
+				B76400000000000000000004 /* BotQuickRepliesEditorView.swift */,
 				A48400000000000000000202 /* BotMentionAutocompleteView.swift */,
 				A48400000000000000000A02 /* BotFilePathSearch.swift */,
 				A48400000000000000000B02 /* BotAtAutocompleteView.swift */,
@@ -2224,6 +2233,8 @@
 				D04C75E073B6B4661647A495 /* HermexPushPairing.swift in Sources */,
 				A4770000000000000000D003 /* BotDelegatedWorkView.swift in Sources */,
 				A48400000000000000000901 /* BotSlashCommands.swift in Sources */,
+				B76400000000000000000001 /* BotQuickReplies.swift in Sources */,
+				B76400000000000000000003 /* BotQuickRepliesEditorView.swift in Sources */,
 				A48400000000000000000903 /* BotSlashAutocompleteView.swift in Sources */,
 				A48400000000000000000201 /* BotMentionAutocompleteView.swift in Sources */,
 				A48400000000000000000A01 /* BotFilePathSearch.swift in Sources */,
@@ -2536,6 +2547,7 @@
 				A4750000000000000000B005 /* BotActivityTests.swift in Sources */,
 				A4770000000000000000D005 /* BotDelegatedWorkTests.swift in Sources */,
 				A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */,
+				B76400000000000000000005 /* BotQuickReplyTests.swift in Sources */,
 				A48400000000000000000301 /* BotMentionTests.swift in Sources */,
 				A48400000000000000000C01 /* BotFilePathTests.swift in Sources */,
 				D1F04357497D4FD381D726C8 /* BotChatControlsTests.swift in Sources */,

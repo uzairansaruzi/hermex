@@ -151,6 +151,18 @@ import Vision
                         drafts: drafts ?? ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)), reconnectDelay: reconnectDelay)
     }
 
+    func testQuickReplyFillsOnlyAnEmptyDraftAndNeverSends() async {
+        let wire = BotFixtureWire()
+        let model = make(wire); await model.recover()
+        XCTAssertTrue(model.maySend)
+        model.applyQuickReply(BotQuickReply(text: "Run the tests"))
+        XCTAssertEqual(model.draft, "Run the tests")
+        model.applyQuickReply(BotQuickReply(text: "Continue"))
+        XCTAssertEqual(model.draft, "Run the tests", "A draft the user already has is left alone")
+        XCTAssertFalse(wire.calls.contains { ["prompt.submit", "session.steer", "session.redirect", "command.dispatch"].contains($0.0) })
+        model.suspend()
+    }
+
     func testTransientDisconnectAutomaticallyRecoversWithoutResending() async {
         for failure in [BotFailure.transport, .rejected(503), .rejected(429)] {
             let wire = BotFixtureWire()
