@@ -2,6 +2,7 @@ import SwiftUI
 
 @MainActor struct BotRoomView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var reader: BotRoomReader
     @State private var revision = UUID()
     @State private var showingProfile = false
@@ -143,6 +144,9 @@ import SwiftUI
             else if visible { reader.leave(owner: owner) }
         }
         .onDisappear { visible = false; reader.leave(owner: owner) }
+        .onChange(of: reader.feedback) { _, feedback in
+            if let feedback { ChatHaptics.botFeedback(feedback.event, isEnabled: isHapticsEnabled) }
+        }
     }
 
     func dismissKeyboard() {

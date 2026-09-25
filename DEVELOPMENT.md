@@ -294,7 +294,7 @@ Capture bugs, polish notes, and follow-up ideas in [GitHub Issues](https://githu
 - Paste image/file.
 - Failed upload preserves draft.
 - Voice input allowed, denied, stopped, and sent.
-- Haptics on send/response completion on device.
+- Haptics on send/response completion on device, in Sessions chat and Bot Chat. Bot Chat also plays them on Stop and answers; rooms on send, Stop and approve, never on completion. A Bot turn that finished in the background plays none.
 
 ### Slash Commands
 - `/help`

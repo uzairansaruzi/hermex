@@ -483,6 +483,46 @@ import XCTest
         reader.close()
     }
 
+    func testAcceptedSendStopAndApprovalPublishFeedbackAndRejectionsDoNot() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(running: 1, actions: [RoomFixture.approval])
+        let reader = makeReader(wire); await reader.open()
+        let action = try XCTUnwrap(reader.status.actions.first)
+        reader.draft = "hello"
+        await reader.send()
+        XCTAssertEqual(reader.feedback, BotFeedback(.sent, after: nil))
+        await reader.act(action, choice: .once)
+        XCTAssertEqual(reader.feedback?.event, .approved(.once))
+        await reader.stop()
+        XCTAssertEqual(reader.feedback?.event, .stopped)
+        XCTAssertEqual(reader.feedback?.id, 3)
+        reader.close()
+
+        let rejected = RoomWire(); rejected.writeFailure = BotRoomFailure(code: 5119, reason: nil)
+        rejected.driverStatus = RoomFixture.status(running: 1, actions: [RoomFixture.approval])
+        let refused = makeReader(rejected); await refused.open()
+        refused.draft = "hello"
+        await refused.send()
+        await refused.act(try XCTUnwrap(refused.status.actions.first), choice: .deny)
+        await refused.stop()
+        XCTAssertEqual(rejected.writes.count, 3)
+        XCTAssertNil(refused.feedback)
+        refused.close()
+    }
+
+    func testRetryAndAStaleSendPublishNoFeedback() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [.object(["kind": .string("retry"), "task_id": .string("task:1")])])
+        let reader = makeReader(wire); await reader.open()
+        await reader.act(try XCTUnwrap(reader.status.actions.first))
+        XCTAssertEqual(wire.writes.first?.0, "groups.retry")
+        reader.draft = "hello"
+        wire.beforeWrite = { reader.close() }
+        await reader.send()
+        XCTAssertEqual(wire.writes.count, 1)
+        XCTAssertNil(reader.feedback)
+    }
+
     func testRetryRejectionRefreshesAndUnknownActionsStayReadOnly() async throws {
         let wire = RoomWire()
         wire.driverStatus = RoomFixture.status(actions: [.object(["kind": .string("retry"), "task_id": .string("task:1")]),

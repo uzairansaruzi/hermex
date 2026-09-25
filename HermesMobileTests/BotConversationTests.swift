@@ -436,6 +436,89 @@ import Vision
         model.suspend()
     }
 
+    // MARK: feedback (haptics)
+
+    func testOnlyAnAdmittedPromptPublishesSent() async throws {
+        let cases: [(BotPromptMode, BotJSON?, Bool, BotFeedback.Event?)] = [
+            (.send, nil, false, .sent),
+            (.steer, nil, true, .sent),
+            (.steer, .object(["status": .string("rejected")]), true, nil),
+            (.send, .object(["status": .string("future")]), false, nil),
+            (.send, .object(["voice_stopped": .bool(true)]), false, nil)
+        ]
+        for (mode, reply, running, expected) in cases {
+            let wire = BotFixtureWire(); wire.running = running; wire.promptReply = reply
+            let model = make(wire); await model.recover(); model.editDraft("hello")
+            await model.submit(try XCTUnwrap(model.preparePrompt(mode)))
+            XCTAssertEqual(model.feedback?.event, expected, "\(mode) \(String(describing: reply))")
+            model.suspend()
+        }
+    }
+
+    func testAcknowledgedStopPublishesStoppedAndItsTurnNeverCompletes() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        await model.stop(try XCTUnwrap(model.prepareStop()))
+        XCTAssertEqual(model.feedback, BotFeedback(.stopped, after: nil))
+        // The host winds down, then settles idle: neither snapshot completes the turn.
+        await applyLiveSnapshot(model, wire, seq: 1)
+        wire.running = false
+        await applyLiveSnapshot(model, wire, seq: 2)
+        XCTAssertEqual(model.turn, .idle)
+        XCTAssertEqual(model.feedback, BotFeedback(.stopped, after: nil))
+        model.suspend()
+    }
+
+    func testApprovalPublishesItsChoiceOnlyWhenTheHostResolvedIt() async throws {
+        for resolved in [1, 0] {
+            let wire = BotFixtureWire(); wire.attention = true; wire.approvalResolved = resolved
+            let model = make(wire); await model.recover()
+            await model.respond(try XCTUnwrap(model.prepareAnswer()), choice: .deny)
+            XCTAssertEqual(model.feedback?.event, resolved > 0 ? .approved(.deny) : nil)
+            model.suspend()
+        }
+    }
+
+    func testABusyTurnSettlingIdleCompletesOnceAndReplayAddsNothing() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        XCTAssertNil(model.feedback, "opening on a running turn is not a completion")
+        wire.running = false
+        await applyLiveSnapshot(model, wire, seq: 1)
+        XCTAssertEqual(model.feedback, BotFeedback(.turnCompleted, after: nil))
+        // Another idle read and a sequence gap both reread an idle host.
+        await applyLiveSnapshot(model, wire, seq: 2)
+        await applyLiveSnapshot(model, wire, seq: 9)
+        XCTAssertTrue(model.replayWasReset)
+        XCTAssertEqual(model.feedback?.id, 1)
+        model.suspend()
+    }
+
+    func testATurnThatEndedWhileSuspendedOrWasIdleOnOpenPlaysNothing() async {
+        let wire = BotFixtureWire(); wire.running = true
+        let model = make(wire); await model.recover()
+        model.suspend()
+        wire.running = false
+        await model.recover()
+        XCTAssertEqual(model.turn, .idle)
+        XCTAssertNil(model.feedback)
+        await applyLiveSnapshot(model, wire, seq: 1)
+        XCTAssertNil(model.feedback)
+        model.suspend()
+    }
+
+    /// Fires one live event and waits for the snapshot it schedules. Only a
+    /// snapshot writes `liveMessages`, and each one here carries a fresh reply,
+    /// so the wait never depends on an unchanged value republishing.
+    private func applyLiveSnapshot(_ model: BotConversation, _ wire: BotFixtureWire, seq: Int) async {
+        wire.inflight = .object(["assistant": .string("snapshot \(seq)")])
+        let applied = expectation(description: "snapshot \(seq) applied")
+        withObservationTracking { _ = model.liveMessages } onChange: { applied.fulfill() }
+        wire.onEvent?(typed(seq, "message.complete"))
+        await fulfillment(of: [applied], timeout: 5)
+        XCTAssertEqual(model.liveMessages.last?.content, "snapshot \(seq)")
+    }
+
     func testEditingDraftOrChangingConnectionInvalidatesRedirectConfirmation() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover(); model.editDraft("first")

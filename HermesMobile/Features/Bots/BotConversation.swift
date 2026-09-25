@@ -137,6 +137,12 @@ import Observation
     private(set) var answeringRequestID: String?
     /// The verdict on the request currently on screen, if it has one.
     private(set) var requestResolution: BotRequestResolution?
+    /// The last action the host confirmed, for the chat view's haptic.
+    private(set) var feedback: BotFeedback?
+    /// On once a snapshot shows the turn busy, so the snapshot that settles it
+    /// idle plays one completion. A Stop, an interruption, and `suspend()` turn it
+    /// off: a stopped turn or one that ended while the app was away plays none.
+    @ObservationIgnored private var completionArmed = false
     private var tip: String?
     private var generation = 0
     private var turnRevision = 0
@@ -702,6 +708,9 @@ import Observation
         if let text = inflight["assistant"].text, !text.isEmpty {
             liveMessages.append(ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "live-assistant"))
         }
+        // Read before the idle branch below clears it: a turn with a Stop in
+        // flight is never the one that completes.
+        let stopping = uncertainStop || stopAcknowledged
         if !running {
             uncertainStop = false; stopAcknowledged = false; workStatus = nil
             // Only a full snapshot carries the settled rows, so live rows wait for it
@@ -722,6 +731,7 @@ import Observation
         let queued = snapshot["queued"] != .null
         let busy = running || continuation || queued || attention
         if snapshotIsBusy != busy { turnRevision += 1; snapshotIsBusy = busy }
+        if stopping { completionArmed = false } else if busy { completionArmed = true }
         if attention { turn = .needsAttention }
         else if uncertainStop && stopAcknowledged { turn = .stopping }
         else if uncertainSend || uncertainStop { turn = .uncertain }
@@ -729,8 +739,14 @@ import Observation
         else if running || continuation || queued { turn = .running }
         else if inflight["error"] != .null || snapshot["status"].text == "interrupted" {
             turn = .interrupted; turnFailed = inflight["error"] != .null
+            completionArmed = false
         }
-        else { turn = .idle }
+        else {
+            turn = .idle
+            // Only this snapshot edge completes a turn; events and replay never do,
+            // so a duplicate or replayed frame cannot play it twice.
+            if completionArmed { completionArmed = false; emit(.turnCompleted) }
+        }
         if settingsRevision == nil || settingsRevision == chatControls.snapshotRevision {
             chatControls.snapshot(snapshot["info"], idle: !busy)
         }
@@ -871,6 +887,8 @@ import Observation
                 return
             }
             guard outcome != .unknown else { throw BotFailure.unsupported }
+            // A voice-stop phrase is taken but starts no turn, so it is not a send.
+            if outcome != .voiceStopped { emit(.sent) }
             drafts.setDraft("", for: draftKey)
             drafts.setQuotes([], for: draftKey)
             drafts.setAttachments([], for: draftKey)
@@ -1043,6 +1061,7 @@ import Observation
         guard mayStop, action == prepareStop() else { return }
         let owner = generation
         localOperation = true; uncertainStop = true; turn = .stopping; turnRevision += 1
+        completionArmed = false
         let revision = turnRevision
         do {
             _ = try await request("session.interrupt", ["session_id": .string(action.runtime)], owner: owner) { [weak self] in
@@ -1052,6 +1071,7 @@ import Observation
             }
             localOperation = false
             stopAcknowledged = true
+            emit(.stopped)
             // Acknowledgement alone is not completion. Snapshot must establish idle.
             snapshotDirty = true; fullSnapshotNeeded = true; scheduleRefresh()
         } catch {
@@ -1073,7 +1093,7 @@ import Observation
     func respond(_ action: AnswerAction, choice: BotApprovalRequest.Choice) async {
         guard case .approval(let request)? = pendingRequest, request.requestID == action.requestID,
               request.choices.contains(choice), action == prepareAnswer() else { return }
-        await deliver(action) {
+        await deliver(action, confirming: .approved(choice)) {
             let reply = try await self.request("approval.respond", [
                 "session_id": .string(action.runtime), "request_id": .string(action.requestID),
                 "choice": .string(choice.rawValue)
@@ -1117,7 +1137,7 @@ import Observation
     func answerCredential(_ action: AnswerAction, value: String) async {
         guard case .credential(let request)? = pendingRequest, request.requestID == action.requestID,
               action == prepareAnswer() else { return }
-        await deliver(action) {
+        await deliver(action, confirming: .answered) {
             let reply = try await self.answerServerRequest(action, result: ["value": .string(value)])
             // The host tolerates a late answer to a prompt it already dropped and
             // says so rather than erroring; nothing was applied.
@@ -1138,14 +1158,14 @@ import Observation
     func declineDesktopTask(_ action: AnswerAction) async {
         guard case .desktopTask(let task)? = pendingRequest, task.requestID == action.requestID,
               task.kind.needsSomeoneAtTheMac, action == prepareAnswer() else { return }
-        await deliver(action) {
+        await deliver(action, confirming: .declined) {
             let reply = try await self.answerServerRequest(action, result: ["value": .string("")])
             return reply["status"].text == "expired" ? .alreadyResolved : .answered
         }
     }
 
     private func dispatchAnswers(_ answers: [BotQuestionAnswer], for action: AnswerAction) async {
-        await deliver(action) {
+        await deliver(action, confirming: .answered) {
             for answer in answers {
                 let reply: BotJSON
                 if let id = answer.questionID {
@@ -1233,7 +1253,8 @@ import Observation
     /// Runs one answer dispatch under the rules every request kind shares.
     /// The closure returns the host's verdict, or nil for an incomplete batch
     /// that needs reconciliation. A lost reply leaves the outcome unknown.
-    private func deliver(_ action: AnswerAction,
+    /// `event` is published only when the host says it took the answer.
+    private func deliver(_ action: AnswerAction, confirming event: BotFeedback.Event,
                          _ dispatch: () async throws -> BotRequestResolution.Outcome?) async {
         localOperation = true
         answeringRequestID = action.requestID
@@ -1243,6 +1264,7 @@ import Observation
             guard action.generation == generation, !Task.isCancelled else { return }
             localOperation = false; answeringRequestID = nil
             requestResolution = outcome.map { BotRequestResolution(requestID: action.requestID, outcome: $0) }
+            if outcome == .answered { emit(event) }
             // Retire accepted requests immediately, then reconcile with the host.
             // A partially locked batch remains visible until the fresh snapshot.
             if outcome != nil { serverRequests.removeAll { $0.pending?.requestID == action.requestID } }
@@ -1268,6 +1290,10 @@ import Observation
             requestResolution = BotRequestResolution(requestID: action.requestID, outcome: .uncertain)
             disconnected(error)
         }
+    }
+
+    private func emit(_ event: BotFeedback.Event) {
+        feedback = BotFeedback(event, after: feedback)
     }
 
     private func observe(_ event: BotJSON) {
@@ -1423,6 +1449,7 @@ import Observation
     }
 
     func suspend() {
+        completionArmed = false
         saveRecentTranscript()
         historyCacheTask?.cancel(); historyCacheTask = nil
         isActive = false; shouldRetryConnection = false; isReconnecting = false
