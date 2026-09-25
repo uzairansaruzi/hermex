@@ -281,6 +281,9 @@ import XCTest
         let inbox = BotInbox(server: server, store: store, makeWire: { _ in wire })
         await inbox.open()
         let cache = BotHistoryCache()
+        // The view focuses its field from `.task`, some run-loop turns after it
+        // appears, so wait for the field to begin editing, not a pass count.
+        let focused = expectation(forNotification: UITextField.textDidBeginEditingNotification, object: nil)
         let window = try show(BotSearchView(inbox: inbox, cache: cache) { _ in XCTFail("Browsing cannot select a bot") }
             .environment(\.scenePhase, .active))
         window.overrideUserInterfaceStyle = .dark
@@ -289,6 +292,7 @@ import XCTest
         let text = try screenshot(window, name: "481-bot-search")
         XCTAssertTrue(text.contains("Apartments"), text)
         XCTAssertTrue(text.contains("Inbox"), text)
+        await fulfillment(of: [focused], timeout: 5)
         XCTAssertNotNil(descendants(window).compactMap { $0 as? UITextField }.first { $0.isFirstResponder })
         // The status read runs beside the room read, so only the set of calls is fixed.
         XCTAssertEqual(wire.calls.map { $0.0 }.sorted(), ["groups.capabilities", "profiles.list", "session.active_list"])
