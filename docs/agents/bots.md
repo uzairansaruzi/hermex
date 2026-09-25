@@ -444,8 +444,9 @@ filed it. Section changes arrive with the next roster read (open, pull to
 refresh, or a `sessions.changed` reload), as pin and hide changes do. The phone
 never files bots.
 
-"Reorder Sections…" in the + menu (shown with two or more named sections) places
-sections for this phone only: `BotSectionOrderStore` keeps the placed ids in
+"Reorder Sections…" in the + menu (shown with two or more named sections the
+list can head; a section of only pinned bots lives in the tiles and is left out)
+places sections for this phone only: `BotSectionOrderStore` keeps the placed ids in
 `UserDefaults`, keyed by configured server and connection UUID, never sent to
 Desktop. Placed sections keep their position, the rest follow A–Z after them,
 and ids the roster no longer has are ignored. "Reset to A–Z" forgets the

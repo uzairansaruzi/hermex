@@ -300,6 +300,20 @@ import XCTest
         XCTAssertEqual(inbox.sections.map { $0.chats.map(\.id) }, [["bot:legacy"], ["bot:old", "bot:acme"], ["bot:writer"]])
     }
 
+    func testReorderOffersOnlySectionsTheListCanHead() async throws {
+        let wire = BotInboxFixtureWire(roster: [
+            row("acme", look: section("sec-clients", "Clients")),
+            row("chief", look: section("sec-leads", "Leads", ["pinned": .bool(true)])),
+            row("legacy", look: section("sec-archive", "Archive", ["hidden": .bool(true)])),
+            row("vault", look: section("sec-vault", "Vault", ["pinned": .bool(true), "hidden": .bool(true)]))
+        ])
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+        XCTAssertEqual(inbox.sectionNames.map(\.name), ["Archive", "Clients", "Leads", "Vault"])
+        XCTAssertEqual(inbox.reorderableSectionNames.map(\.name), ["Archive", "Clients", "Vault"],
+                       "a pinned-only section lives in the tiles; hidden ones can be revealed")
+    }
+
     func testPlacedSectionsKeepTheirOrderPerConnectionAndResetReturnsToAToZ() async throws {
         let roster = [
             row("a", look: section("sec-a", "Alpha")),

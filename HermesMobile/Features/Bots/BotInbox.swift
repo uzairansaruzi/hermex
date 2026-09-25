@@ -95,6 +95,14 @@ import UIKit
         return Self.ordered(named, placed: sectionOrder)
     }
 
+    /// The sections "Reorder Sections…" offers, in `sectionNames` order: only those
+    /// the list can head. A section of only pinned bots lives in the tiles, so it
+    /// has no header to move; a hidden-only one stays, since Show hidden draws it.
+    var reorderableSectionNames: [SectionName] {
+        let listed = Set(profiles.compactMap { $0.sectionName != nil && (!$0.pinned || $0.hidden) ? $0.sectionID : nil })
+        return sectionNames.filter { listed.contains($0.id) }
+    }
+
     /// Placed ids keep their position; unplaced sections follow A–Z by name (ties
     /// by id). Placed ids the roster no longer has are ignored.
     static func ordered(_ sections: [SectionName], placed: [String]) -> [SectionName] {

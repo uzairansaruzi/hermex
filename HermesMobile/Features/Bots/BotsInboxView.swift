@@ -154,7 +154,7 @@ import SwiftUI
                             onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
                     }
                     .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
-                    if inbox.sectionNames.count >= 2 {
+                    if inbox.reorderableSectionNames.count >= 2 {
                         Divider()
                         Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
                     }
@@ -504,13 +504,13 @@ extension BotsInboxView {
 
 /// Places Desktop's named sections for this phone's inbox. Every drag saves the
 /// whole list at once; Reset to A–Z forgets the placement. The unfiled block is
-/// not listed because it always stays last.
+/// not listed because it always stays last, nor is a section the list never heads.
 private struct BotSectionOrderView: View {
     @Environment(\.dismiss) private var dismiss
     let inbox: BotInbox
 
     var body: some View {
-        let sections = inbox.sectionNames
+        let sections = inbox.reorderableSectionNames
         NavigationStack {
             List {
                 Section {
