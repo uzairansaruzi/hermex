@@ -39,14 +39,21 @@ import SwiftUI
                     if reader.foreignAuthority {
                         Text("Managed by another Hermes").font(.caption).foregroundStyle(.secondary)
                     }
+                    let gapStarts = BotRoomEvent.gapStarts(in: reader.events[start...])
                     ForEach(reader.events[start...]) { event in
-                        BotRoomEventView(
-                            event: event,
-                            room: reader.room,
-                            roster: roster,
-                            avatars: avatars,
-                            transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
-                        )
+                        // One view per event, so a search hit's scroll lands on the event.
+                        VStack(spacing: 16) {
+                            if gapStarts.contains(event.seq), let timestamp = event.timestamp {
+                                TranscriptTimeSeparator(timestamp: timestamp)
+                            }
+                            BotRoomEventView(
+                                event: event,
+                                room: reader.room,
+                                roster: roster,
+                                avatars: avatars,
+                                transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
+                            )
+                        }
                     }
                     if reader.events.isEmpty && reader.link == .live {
                         Text("No messages yet.").foregroundStyle(.secondary)
@@ -252,31 +259,39 @@ private struct BotRoomEventView: View {
 
     var body: some View {
         if event.kind == "message.user" {
-            MessageBubbleView(
-                message: ChatMessage(role: "user", content: event.payload["text"].text,
-                    timestamp: event.timestamp, messageId: String(event.seq)),
-                transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
-                contextMenuActions: actions,
-                textOnly: true
-            )
-        } else if event.kind == "message.member" {
-            HStack(alignment: .bottom, spacing: 8) {
-                BotRoomMemberAvatar(member: event.member(in: room), roster: roster, avatars: avatars, size: 26)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(event.sender(in: room)).font(.caption).foregroundStyle(.secondary)
-                    ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
-                        MarkdownRenderer(content: messageText)
-                    }
-                    .onGeometryChange(for: Bool.self) { geometry in
-                        guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
-                        return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
-                    } action: { responseIsVisible = $0 }
-                        .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
-                        .chatMessageContextMenu(actions, longPress: false)
-                }
-                Spacer(minLength: 20)
+            VStack(alignment: .trailing, spacing: 4) {
+                MessageBubbleView(
+                    message: ChatMessage(role: "user", content: event.payload["text"].text,
+                        timestamp: event.timestamp, messageId: String(event.seq)),
+                    transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
+                    contextMenuActions: actions,
+                    textOnly: true
+                )
+                footer
             }
-            .accessibilityElement(children: .combine)
+        } else if event.kind == "message.member" {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    BotRoomMemberAvatar(member: event.member(in: room), roster: roster, avatars: avatars, size: 26)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(event.sender(in: room)).font(.caption).foregroundStyle(.secondary)
+                        ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
+                            MarkdownRenderer(content: messageText)
+                        }
+                        .onGeometryChange(for: Bool.self) { geometry in
+                            guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+                            return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+                        } action: { responseIsVisible = $0 }
+                            .padding(12).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20))
+                            .chatMessageContextMenu(actions, longPress: false)
+                    }
+                    Spacer(minLength: 20)
+                }
+                .accessibilityElement(children: .combine)
+                // Every member message is a finished reply, so each one is timed.
+                // Under the bubble, past the avatar, which stays level with the bubble.
+                footer.padding(.leading, 34)
+            }
         } else {
             Text(event.systemText).font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
@@ -284,6 +299,14 @@ private struct BotRoomEventView: View {
     }
 
     private var messageText: String { event.payload["text"].text ?? "" }
+
+    /// Rooms take the shared reply footer with the time only.
+    @ViewBuilder
+    private var footer: some View {
+        if let timestamp = event.timestamp, timestamp.isFinite, timestamp > 0 {
+            BotReplyFooter(isUserMessage: event.kind == "message.user", timestamp: timestamp)
+        }
+    }
 
     private var actions: [ChatMessageActionItem] {
         BotMessageActions.items(copyText: messageText, isHapticsEnabled: isHapticsEnabled)

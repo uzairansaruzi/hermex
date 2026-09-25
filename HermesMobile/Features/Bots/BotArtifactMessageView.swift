@@ -11,12 +11,26 @@ struct BotArtifactMessageView: View {
     /// The live turn's reply. Selection stays off it: the document would be
     /// rebuilt on every snapshot, and there is nothing settled to select yet.
     var isLive = false
+    /// The time for the reply footer, set only on settled user messages and
+    /// turn-ending replies (`BotTranscriptTimes`). Nil draws no footer.
+    var footerTime: Double? = nil
     @State private var responseIsVisible = false
     @State private var preview: TranscriptMediaPreviewItem?
     @State private var previewContext: BotArtifactContext?
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     var body: some View {
+        VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 4) {
+            content
+            // Outside ResponseTextSelection, so the footer never joins a selection.
+            if let footerTime {
+                BotReplyFooter(isUserMessage: message.role == "user", timestamp: footerTime)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         Group {
             if let completion = BotDelegationCompletion(message) {
                 BotDelegationCompletionCard(completion: completion)
@@ -83,6 +97,25 @@ struct BotArtifactMessageView: View {
 
     private var actions: [ChatMessageActionItem] {
         BotMessageActions.items(copyText: message.content, isHapticsEnabled: isHapticsEnabled)
+    }
+}
+
+/// The one row under a settled Bot message, built on the Sessions meta row.
+/// It carries the message's time today; reactions (#761) join it later rather
+/// than adding a second row. Takes the raw timestamp so a streaming snapshot
+/// never re-formats a settled row, and follows Settings → Chat → Message
+/// Timestamps like Sessions.
+struct BotReplyFooter: View {
+    let isUserMessage: Bool
+    let timestamp: Double
+
+    @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey)
+    private var showsTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
+
+    var body: some View {
+        if showsTimestamps, let time = ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: timestamp) {
+            ChatMessageMetaRow(isUserMessage: isUserMessage, timeText: time, onCopy: nil)
+        }
     }
 }
 

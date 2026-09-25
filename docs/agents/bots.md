@@ -75,7 +75,13 @@ Copy alone over the Markdown source, by the canonical-chat policy of #481. The
 host does support rewind (`prompt.submit` with `confirm_truncate` and a
 `truncate_before_row_id` taken from the snapshot's durable `row_id`) and
 `session.branch`; Bot Chat does not offer edit, regenerate or branch yet
-(#745). Group rooms use the same seam.
+(#745). Group rooms use the same seam. Under a settled message, one reply
+footer (`BotReplyFooter`, on `ChatMessageMetaRow`) shows the host `timestamp`
+(room `created_at`) on user messages and turn-ending replies, following
+Settings → Chat → Message Timestamps; a dated separator (`TranscriptTimeline`)
+opens the window and any row 30+ minutes after the previous stamped one, and
+shows even with that setting off. Later footer parts join this row rather than
+adding one.
 
 Settled bot replies and room member messages sit in a `ResponseTextSelection`
 document, so text selects in place as it does in Sessions. The scroll-view

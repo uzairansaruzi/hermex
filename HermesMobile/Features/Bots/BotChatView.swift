@@ -53,18 +53,30 @@ import SwiftUI
                     // settled reply is a hosted selection document, and a lazy stack
                     // places rows it has not built from an estimate, which strands
                     // the scroll under load (issue #553).
+                    let livePrompt = model.liveMessages.first(where: { $0.role == "user" })
+                    let times = BotTranscriptTimes(
+                        messages: model.messages, start: window.start(count: model.messages.count),
+                        livePrompt: livePrompt, turnStartedAt: model.turnStartedAt, isMidTurn: isStreaming
+                    )
                     VStack(alignment: .leading, spacing: 8) {
                         if window.hasEarlier(count: model.messages.count) {
                             // The window widens in place, so there is no loading state.
                             LoadOlderMessagesButton(isLoading: false) { loadEarlier(proxy: proxy) }
                         }
-                        ForEach(model.messages[window.start(count: model.messages.count)...]) { message in
+                        ForEach(model.messages[times.start...]) { message in
                             settledActivity(anchoredTo: message.id)
-                            BotArtifactMessageView(message: message, model: model).id(message.id)
+                            if times.gapStarts.contains(message.id), let timestamp = message.timestamp {
+                                TranscriptTimeSeparator(timestamp: timestamp)
+                            }
+                            BotArtifactMessageView(message: message, model: model,
+                                                   footerTime: times.footerTimes[message.id]).id(message.id)
                         }
                         settledActivity(anchoredTo: nil)
                         // The live turn reads like a settled one: prompt, work, then reply.
-                        if let prompt = model.liveMessages.first(where: { $0.role == "user" }) {
+                        if let prompt = livePrompt {
+                            if let startedAt = times.livePromptSeparator {
+                                TranscriptTimeSeparator(timestamp: startedAt)
+                            }
                             BotArtifactMessageView(message: prompt, model: model)
                         }
                         if model.liveActivity.hasTurnWork {
@@ -374,6 +386,53 @@ struct BotChatTitlePillFallback: ViewModifier {
             content.padding(.leading, 4).padding(.trailing, 12).padding(.vertical, 4)
                 .background(.regularMaterial, in: Capsule())
         }
+    }
+}
+
+/// Where the Bot transcript shows times, worked out once per body over the
+/// window with comparisons only. Gap separators ignore Message Timestamps
+/// (D22); the per-message footer follows it. User messages and turn-ending
+/// replies carry a time, as in Sessions: a reply ends its turn when the next
+/// settled row is a user message, or when it is the last settled row and no
+/// turn is still running past it. Steer rows, delegation cards and the live
+/// turn get none. The live prompt is dated only by the host's turn start,
+/// never the phone clock.
+struct BotTranscriptTimes {
+    let start: Int
+    let gapStarts: Set<String>
+    /// Footer times by message ID, for the window's settled rows.
+    let footerTimes: [String: Double]
+    let livePromptSeparator: Double?
+
+    private static let livePromptID = "live-user"
+
+    init(messages: [ChatMessage], start: Int, livePrompt: ChatMessage?, turnStartedAt: Double?, isMidTurn: Bool) {
+        self.start = start
+        let window = messages[start...]
+        var rows = window.map { (id: $0.id, timestamp: $0.timestamp) }
+        if livePrompt != nil { rows.append((id: Self.livePromptID, timestamp: turnStartedAt)) }
+        let starts = TranscriptTimeline.gapStarts(rows)
+        gapStarts = starts
+        livePromptSeparator = starts.contains(Self.livePromptID) ? turnStartedAt : nil
+
+        // A live prompt means the settled rows all belong to earlier turns.
+        let lastTurnIsSettled = !isMidTurn || livePrompt != nil
+        var times: [String: Double] = [:]
+        for index in window.indices {
+            let message = messages[index]
+            guard let timestamp = message.timestamp, timestamp.isFinite, timestamp > 0,
+                  !message.isSteerMessage else { continue }
+            let next = index + 1
+            let showsTime = switch message.role {
+            case "user": true
+            case "assistant": next < messages.endIndex
+                ? TranscriptTurnClassifier.isUserTurnBoundary(messages[next])
+                : lastTurnIsSettled
+            default: false
+            }
+            if showsTime { times[message.id] = timestamp }
+        }
+        footerTimes = times
     }
 }
 

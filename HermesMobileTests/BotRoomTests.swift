@@ -191,6 +191,25 @@ import XCTest
         XCTAssertEqual(log.events.map(\.seq), [3, 204])
     }
 
+    func testOnlyRoomMessagesDateAGapFromCreatedAt() {
+        func event(_ seq: Int, _ kind: String, at createdAt: Double?) -> BotRoomEvent? {
+            var object: [String: BotJSON] = ["seq": .number(Double(seq)), "kind": .string(kind)]
+            if let createdAt { object["created_at"] = .number(createdAt) }
+            return BotRoomEvent(.object(object))
+        }
+        let events = [
+            event(1, "message.user", at: 1_000),
+            event(2, "message.member", at: 1_060),
+            event(3, "turn.failed", at: 5_000),
+            event(4, "message.member", at: 1_060 + 1_799),
+            event(5, "message.user", at: nil),
+            event(6, "message.user", at: 1_060 + 1_799 + 1_800)
+        ].compactMap { $0 }
+        XCTAssertEqual(events.map(\.timestamp), [1_000, 1_060, 5_000, 2_859, nil, 4_659])
+        XCTAssertEqual(BotRoomEvent.gapStarts(in: events), [1, 6], "a system row's created_at neither dates nor resets a gap")
+        XCTAssertEqual(BotRoomEvent.gapStarts(in: events[1...]), [2, 6], "the window's first message is dated")
+    }
+
     func testMemberFallbackAndForeignAuthorityAndScopedIdentity() throws {
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
         let event = try XCTUnwrap(BotRoomEvent(RoomFixture.event(1, kind: "message.member")))

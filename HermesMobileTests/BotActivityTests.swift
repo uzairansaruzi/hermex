@@ -138,6 +138,15 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: projected.activity[0].toolCalls[1], isLive: false)?.detail, "draft.md")
     }
 
+    func testSnapshotProjectionKeepsTimestampsInSecondsAndDropsNonNumbers() {
+        let projected = BotTranscriptProjection.project(history: [
+            .object(["role": .string("user"), "text": .string("Ping"), "timestamp": .number(1_790_251_200.5)]),
+            .object(["role": .string("assistant"), "text": .string("Pong"), "timestamp": .string("1790251260")]),
+            .object(["role": .string("assistant"), "text": .string("Later")])
+        ], root: "root")
+        XCTAssertEqual(projected.messages.map(\.timestamp), [1_790_251_200.5, nil, nil])
+    }
+
     func testSnapshotProjectionUsesTypedDelegationDeliveryInsteadOfUserAuthorship() throws {
         let report = "[ASYNC DELEGATION BATCH COMPLETE — deleg_123]\nFull worker report"
         let projected = BotTranscriptProjection.project(history: [

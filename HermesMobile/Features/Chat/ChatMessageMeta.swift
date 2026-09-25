@@ -173,4 +173,147 @@ enum ChatMessageTimestampFormatter {
         guard let timestamp, timestamp.isFinite else { return nil }
         return formatter.string(from: Date(timeIntervalSince1970: timestamp))
     }
+
+    private static let sharedSeparatorFormatters = SeparatorFormatters(
+        locale: .autoupdatingCurrent,
+        timeZone: .autoupdatingCurrent,
+        calendar: .autoupdatingCurrent
+    )
+
+    /// The date and time a gap separator shows: "Today at 2:14 PM",
+    /// "Yesterday at …", a weekday within the last week, then a date (with
+    /// the year only when it differs). Every piece comes from the system's
+    /// date formats, so no String Catalog entry is involved.
+    static func separator(forUnixTimestamp timestamp: Double?) -> String? {
+        separator(forUnixTimestamp: timestamp, now: Date(), formatters: sharedSeparatorFormatters)
+    }
+
+    /// Test seam: explicit locale, time zone and "now". Today and Yesterday
+    /// come from the system's relative formatting, which reads the real clock,
+    /// so a test of those two passes the real current date as `now`.
+    static func separator(
+        forUnixTimestamp timestamp: Double?,
+        now: Date,
+        locale: Locale,
+        timeZone: TimeZone
+    ) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        calendar.timeZone = timeZone
+        return separator(
+            forUnixTimestamp: timestamp,
+            now: now,
+            formatters: SeparatorFormatters(locale: locale, timeZone: timeZone, calendar: calendar)
+        )
+    }
+
+    private static func separator(
+        forUnixTimestamp timestamp: Double?,
+        now: Date,
+        formatters: SeparatorFormatters
+    ) -> String? {
+        guard let timestamp, timestamp.isFinite else { return nil }
+        let date = Date(timeIntervalSince1970: timestamp)
+        let calendar = formatters.calendar
+        let daysAgo = calendar.dateComponents(
+            [.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)
+        ).day ?? 0
+        let formatter: DateFormatter
+        switch daysAgo {
+        case 0...1: formatter = formatters.relative
+        case 2...6: formatter = formatters.weekday
+        default:
+            let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+            formatter = sameYear ? formatters.sameYear : formatters.otherYear
+        }
+        return formatter.string(from: date)
+    }
+
+    /// The four cached formatters a separator picks from.
+    private struct SeparatorFormatters {
+        let calendar: Calendar
+        let relative: DateFormatter
+        let weekday: DateFormatter
+        let sameYear: DateFormatter
+        let otherYear: DateFormatter
+
+        init(locale: Locale, timeZone: TimeZone, calendar: Calendar) {
+            func make(_ configure: (DateFormatter) -> Void) -> DateFormatter {
+                let formatter = DateFormatter()
+                formatter.locale = locale
+                formatter.timeZone = timeZone
+                formatter.calendar = calendar
+                configure(formatter)
+                return formatter
+            }
+            self.calendar = calendar
+            relative = make {
+                $0.dateStyle = .medium
+                $0.timeStyle = .short
+                $0.doesRelativeDateFormatting = true
+            }
+            weekday = make { $0.setLocalizedDateFormatFromTemplate("EEEEjmm") }
+            sameYear = make { $0.setLocalizedDateFormatFromTemplate("MMMdjmm") }
+            otherYear = make { $0.setLocalizedDateFormatFromTemplate("yMMMdjmm") }
+        }
+    }
+}
+
+// MARK: - Gap separators
+
+/// Where a transcript dates itself. A row opens a new stretch when its
+/// timestamp is at least `gapThreshold` after the previous stamped row; the
+/// first stamped row always does, so the top of a window is dated. Rows
+/// without a usable timestamp never open one and are skipped as "previous".
+/// Pure comparisons, so a view can run it on every body without formatting.
+enum TranscriptTimeline {
+    static let gapThreshold: TimeInterval = 30 * 60
+
+    static func gapStarts<ID: Hashable>(
+        _ rows: some Sequence<(id: ID, timestamp: Double?)>,
+        threshold: TimeInterval = gapThreshold
+    ) -> Set<ID> {
+        var starts = Set<ID>()
+        var previous: Double?
+        for row in rows {
+            guard let timestamp = row.timestamp, timestamp.isFinite, timestamp > 0 else { continue }
+            if previous.map({ timestamp - $0 >= threshold }) ?? true { starts.insert(row.id) }
+            previous = timestamp
+        }
+        return starts
+    }
+}
+
+/// A centered date and time between hairlines, drawn before a row that opens
+/// a new stretch of the transcript. Takes the raw timestamp so SwiftUI skips
+/// the formatting when a streaming snapshot rebuilds the transcript.
+struct TranscriptTimeSeparator: View {
+    let timestamp: Double
+
+    var body: some View {
+        if let text = ChatMessageTimestampFormatter.separator(forUnixTimestamp: timestamp) {
+            HStack(spacing: 8) {
+                hairline
+                Text(text)
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .layoutPriority(1)
+                hairline
+            }
+            .padding(.top, 6)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(text)
+            .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(Color(.separator))
+            .frame(height: 0.5)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+    }
 }

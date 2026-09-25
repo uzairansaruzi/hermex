@@ -122,7 +122,9 @@ import Observation
     private var tip: String?
     private var generation = 0
     private var turnRevision = 0
-    private var turnStartedAt: Double?
+    /// The host's start time for the current turn, in Unix seconds; the only
+    /// date the live prompt has until the turn settles.
+    private(set) var turnStartedAt: Double?
     private var confirmedWorkingStart: Date?
     private var clockRevision = 0
     /// When this phone first saw the current turn, for a host that sends no start time.

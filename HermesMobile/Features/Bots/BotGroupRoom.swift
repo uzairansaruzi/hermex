@@ -87,6 +87,13 @@ struct BotRoomEvent: Identifiable, Equatable {
         self.seq = seq; kind = value["kind"].text ?? ""
         actor = value["actor"]; payload = value["payload"]; timestamp = value["created_at"].number
     }
+    /// The events that open a dated stretch of a room. Only user and member
+    /// messages carry a time; system rows neither show one nor date a gap.
+    static func gapStarts(in events: some Sequence<BotRoomEvent>) -> Set<Int> {
+        TranscriptTimeline.gapStarts(events.map {
+            (id: $0.seq, timestamp: ["message.user", "message.member"].contains($0.kind) ? $0.timestamp : nil)
+        })
+    }
     var visible: Bool {
         ["message.user", "message.member", "turn.failed", "turn.cancelled", "room.stop_requested", "room.renamed"].contains(kind)
     }
