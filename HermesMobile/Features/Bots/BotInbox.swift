@@ -190,6 +190,7 @@ import UIKit
             }
             try await opened.connect()
             guard wire === opened, !Task.isCancelled else { return }
+            recordInstallID(opened.serverInstallID, for: saved)
             guard await reload(opened) else { return }
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
@@ -211,6 +212,17 @@ import UIKit
         }
     }
 
+    /// Trust on first use: stores the host's `install_id` on a record that has none, so
+    /// every later connect can refuse an address that starts reaching another host. The
+    /// record is re-read rather than taken from `opened`, because the connection form may
+    /// have saved a new password or name under the same UUID while this inbox connected.
+    private func recordInstallID(_ live: String?, for opened: BotConnection) {
+        guard let live, var fresh = try? store.load(server: server), fresh.id == opened.id,
+              fresh.address == opened.address, fresh.installID == nil else { return }
+        fresh.installID = live
+        try? store.save(fresh, server: server)
+    }
+
     func close() {
         reconnectTask?.cancel(); reconnectTask = nil
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
@@ -221,12 +233,13 @@ import UIKit
     /// A lost socket or a failed read is retried quietly, with growing delays, for
     /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
     /// a refusal the user has to act on shows a message and the Reconnect button:
-    /// sign-in, an unsupported host or address, and any other permanent HTTP
+    /// sign-in, an unsupported host or address, an address that now reaches a
+    /// different host, and any other permanent HTTP
     /// client error (a 404 is not a Hermes host). Server errors, rate limits and
     /// JSON-RPC faults other than "method missing" are the retry loop's problem.
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
-        case .unsupported, .wrongIdentity, .invalidAddress: return false
+        case .unsupported, .wrongIdentity, .differentHost, .invalidAddress: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)

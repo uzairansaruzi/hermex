@@ -419,6 +419,49 @@ import XCTest
         XCTAssertEqual(spare, 1, "no automatic retry after a refusal")
     }
 
+    func testAnotherHostShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.differentHost
+        var spare = 0
+        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertEqual(inbox.errorMessage, BotFailure.differentHost.localizedDescription)
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(spare, 1, "no automatic retry against another host")
+    }
+
+    func testTheFirstReportedInstallIDIsRecordedOnceWithoutRevertingANewerSave() async throws {
+        let store = try connectedStore()
+        let first = String(repeating: "a", count: 32)
+        let connecting = BotInboxFixtureWire(roster: [row("triage")])
+        connecting.serverInstallID = first; connecting.holdsConnect = true
+        let omitting = BotInboxFixtureWire(roster: [row("triage")])
+        let differing = BotInboxFixtureWire(roster: [row("triage")])
+        differing.serverInstallID = String(repeating: "b", count: 32)
+        let inbox = try makeInbox(wires: [connecting, omitting, differing], store: store)
+        let opening = Task { await inbox.open() }
+        await settle(inbox) { $0.link == .connecting }
+        // The connection form saves a new password under the same UUID mid-connect.
+        var edited = try XCTUnwrap(store.load(server: server)); edited.password = "newer"
+        try store.save(edited, server: server)
+        connecting.release()
+        await opening.value
+        var stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.password, "newer", "The backfill re-reads the record instead of writing its snapshot")
+        XCTAssertEqual(stored.installID, first)
+
+        await inbox.open()
+        stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.installID, first, "A reply that omits the id never clears it")
+        await inbox.open()
+        stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.installID, first, "The backfill writes only a record that has none")
+    }
+
     func testUnreadableSavedConnectionShowsTheFailureInsteadOfAStaleRoster() async throws {
         let keychain = InMemoryKeychainStore()
         try keychain.save("not json", forKey: .botConnection, scope: server.absoluteString)
@@ -496,6 +539,7 @@ import XCTest
 /// lets a test park a list reply or push gateway events.
 @MainActor final class BotInboxFixtureWire: BotTransport {
     var replayEpoch: String? = "epoch"
+    var serverInstallID: String?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]

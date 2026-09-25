@@ -25,6 +25,8 @@ import Foundation
     func signIn() async throws {
         guard !isSignedIn else { return }
         let status = try await send(request(BotEndpoint.status.url(base: connection.address)))
+        // Provisioning mutates the host, so a swapped host is refused before the password goes out.
+        try connection.requireSameInstall(BotConnection.installID(in: status))
         guard status["auth_required"].flag == true,
               status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
         _ = try await send(request(BotEndpoint.login.url(base: connection.address), method: "POST", body: .object([

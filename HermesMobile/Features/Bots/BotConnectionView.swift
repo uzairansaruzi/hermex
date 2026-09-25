@@ -38,6 +38,17 @@ import Observation
                 .frame(maxWidth: .infinity)
                 .disabled(!setup.canConnect)
                 .accessibilityIdentifier("hermes-connection-connect")
+                if setup.offersHostReplacement {
+                    Button("Connect to this host instead", role: .destructive) {
+                        operation = Task { if await setup.connect(replacingHost: true), !Task.isCancelled { dismiss() } }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("hermes-connection-replace-host")
+                }
+            } footer: {
+                if setup.offersHostReplacement {
+                    Text("Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this iPhone.")
+                }
             }
             Section("Need your connection details?") {
                 Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
@@ -91,6 +102,8 @@ import Observation
     private(set) var saved: BotConnection?
     private(set) var errorMessage: String?
     private(set) var isConnecting = false
+    /// The address whose host reported a different `install_id` on the last attempt.
+    private(set) var differentHostAddress: URL?
     @ObservationIgnored private let store: BotConnectionStore
     @ObservationIgnored private let makeWire: (BotConnection) -> any BotTransport
     @ObservationIgnored private let discard: (BotConnection) async -> Void
@@ -117,6 +130,12 @@ import Observation
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
+    /// The replace action is offered only for the address that was refused, so editing
+    /// the address to the right one never leaves a data-clearing button behind.
+    var offersHostReplacement: Bool {
+        !isConnecting && differentHostAddress != nil && differentHostAddress == (try? BotConnection.address(address))
+    }
+
     func load() {
         do {
             saved = try store.load(server: server)
@@ -129,22 +148,34 @@ import Observation
         attempt = nil; client?.close(); client = nil; isConnecting = false
     }
 
-    func connect() async -> Bool {
+    /// Signs in and saves the connection. The UUID, and with it drafts, cache and push
+    /// pairing, is kept when the host reports the saved `install_id` or when address and
+    /// username are unchanged; otherwise the old connection's data is discarded. An
+    /// unchanged address must still reach the saved install before the password is sent.
+    /// `replacingHost` is the user's answer to `.differentHost`: it drops that expectation
+    /// and always starts a new connection.
+    func connect(replacingHost: Bool = false) async -> Bool {
         guard !isConnecting, !Task.isCancelled else { return false }
-        let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil
+        let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; client = nil; attempt = nil } }
+        var attempted: URL?
         do {
-            let url = try BotConnection.address(address)
+            let url = try BotConnection.address(address); attempted = url
             let account = username.trimmingCharacters(in: .whitespacesAndNewlines)
-            let sameAccount = saved?.address == url && saved?.username == account
-            var candidate = BotConnection(id: sameAccount ? saved!.id : UUID(),
-                name: name.isEmpty ? (url.host ?? "Hermes") : name,
-                address: url, username: account, password: password)
-            let wire = makeWire(candidate); client = wire
+            let label = name.isEmpty ? (url.host ?? "Hermes") : name
+            let expected = replacingHost || saved?.address != url ? nil : saved?.installID
+            let wire = makeWire(BotConnection(id: UUID(), name: label, address: url, username: account,
+                                              password: password, installID: expected))
+            client = wire
             defer { wire.close() }
             try await wire.connect()
             guard attempt == id, !Task.isCancelled else { return false }
-            candidate.hermesVersion = wire.serverVersion
+            let live = wire.serverInstallID
+            let sameInstall = live != nil && live == saved?.installID
+            let sameAccount = saved?.address == url && saved?.username == account
+            let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
+            let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
+                password: password, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID)
             let result = try await wire.call("profiles.list", ["include_sessions": .bool(true)])
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
@@ -161,6 +192,7 @@ import Observation
             return true
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
+            if error as? BotFailure == .differentHost { differentHostAddress = attempted }
             errorMessage = (error as? BotFailure)?.localizedDescription
                 ?? String(localized: "Could not save sign-in details or connect to Hermes.")
             return false

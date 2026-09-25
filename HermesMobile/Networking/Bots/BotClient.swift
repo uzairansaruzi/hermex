@@ -25,6 +25,8 @@ import Foundation
     private(set) var replayEpoch: String?
     /// `version` from `/api/status`, captured before the auth gate; nil when omitted.
     private(set) var serverVersion: String?
+    /// `install_id` from the same `/api/status` read; nil when omitted.
+    private(set) var serverInstallID: String?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 
@@ -62,6 +64,8 @@ import Foundation
             let status = try await http(.status)
             try check()
             serverVersion = status["version"].text
+            serverInstallID = BotConnection.installID(in: status)
+            try connection.requireSameInstall(serverInstallID)
             guard status["auth_required"].flag == true,
                   status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
             _ = try await http(.login, body: .object([

@@ -261,6 +261,8 @@ import Foundation
             return failure.errorDescription ?? String(localized: "This step did not finish. Try again.")
         case BotFailure.rejected(401), BotFailure.rejected(403):
             return String(localized: "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again.")
+        case BotFailure.differentHost:
+            return BotFailure.differentHost.localizedDescription
         case BotFailure.rejected(let status):
             return String(localized: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again.")
         case BotFailure.transport, is URLError:

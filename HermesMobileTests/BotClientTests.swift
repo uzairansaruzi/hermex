@@ -562,6 +562,53 @@ import XCTest
         client.close()
     }
 
+    func testAHostReportingAnotherInstallIDIsRefusedBeforeThePasswordIsSent() async {
+        let saved = String(repeating: "a", count: 32), other = String(repeating: "b", count: 32)
+        var paths: [String] = []
+        BotHTTPFixture.handler = { request in
+            paths.append(request.url!.path)
+            return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                  "install_id": .string(other)]))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        var record = connection(); record.installID = saved
+        let client = BotClient(connection: record, configuration: configuration) { _, _ in
+            XCTFail("Must not open a socket")
+            return BotScriptedSocket()
+        }
+        do { try await client.connect(); XCTFail("Expected a different host") }
+        catch { XCTAssertEqual(error as? BotFailure, .differentHost) }
+        XCTAssertEqual(paths, ["/api/status"], "No login request reaches the other host")
+        client.close()
+    }
+
+    func testAMatchingOrMissingInstallIDConnectsAndReportsTheLiveOne() async throws {
+        let known = String(repeating: "a", count: 32), fresh = String(repeating: "c", count: 32)
+        // (stored, live): the same host, a host omitting it after a read error, and a legacy record.
+        for (stored, live) in [(known, known), (known, nil), (nil, fresh)] as [(String?, String?)] {
+            BotHTTPFixture.handler = { request in
+                switch request.url!.path {
+                case "/api/status":
+                    var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+                    if let live { status["install_id"] = .string(live) }
+                    return (200, .object(status))
+                case "/auth/password-login": return (200, .object([:]))
+                case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+                case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+                default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+                }
+            }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [BotHTTPFixture.self]
+            var record = connection(); record.installID = stored
+            let client = BotClient(connection: record, configuration: configuration) { _, _ in BotScriptedSocket() }
+            try await client.connect()
+            XCTAssertEqual(client.serverInstallID, live)
+            client.close()
+        }
+    }
+
     func testExpiredIdentityStopsBeforeTicket() async {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

@@ -221,6 +221,32 @@ import XCTest
         XCTAssertNil(registrar.pairing(for: serverA))
     }
 
+    func testAHostReportingAnotherInstallIDIsNeverSignedInOrChanged() async throws {
+        let saved = String(repeating: "a", count: 32)
+        for (live, refused) in [(String(repeating: "b", count: 32), true), (saved, false)] {
+            PushHTTPFixture.reset()
+            PushHTTPFixture.handler = { request in
+                guard request.url?.path == "/api/status" else { return nil }
+                return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                      "install_id": .string(live)]))
+            }
+            let registrar = FakePushRegistrar()
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar, installID: saved)
+
+            await provisioner.enable()
+
+            if refused {
+                XCTAssertEqual(provisioner.failure?.message, BotFailure.differentHost.localizedDescription)
+                XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"],
+                               "No password or change reaches the other host")
+                XCTAssertEqual(registrar.actions, [])
+            } else {
+                XCTAssertNil(provisioner.failure)
+                XCTAssertNotNil(registrar.pairing(for: serverA))
+            }
+        }
+    }
+
     func testDisableStopsTheHostSendingBeforeDroppingThisPhone() async throws {
         let registrar = FakePushRegistrar()
         PushHTTPFixture.handler = { _ in nil }
@@ -365,10 +391,10 @@ import XCTest
         XCTAssertEqual(provisioner.pairing?.effectivePreferences, PushPreferences())
     }
 
-    private func makeProvisioner(server: URL, registrar: FakePushRegistrar,
+    private func makeProvisioner(server: URL, registrar: FakePushRegistrar, installID: String? = nil,
                                  stillConnected: @escaping @MainActor () -> Bool = { true }) -> HermexPushProvisioner {
         let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
-                                       username: "user", password: "secret")
+                                       username: "user", password: "secret", installID: installID)
         return HermexPushProvisioner(
             server: server, connection: connection,
             registrar: registrar,

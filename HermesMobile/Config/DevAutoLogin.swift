@@ -66,6 +66,7 @@ enum DevAutoLogin {
             defer { wire.close() }
             try await wire.connect()
             connection.hermesVersion = wire.serverVersion
+            connection.installID = wire.serverInstallID
             try store.save(connection, server: server)
             UserDefaults.standard.set(true, forKey: BotModeGate.isEnabledKey)
         } catch {

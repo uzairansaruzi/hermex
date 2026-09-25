@@ -25,6 +25,7 @@ final class BotConnectionVersionTests: XCTestCase {
         let stored = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"Host","address":"http://hermes.local","username":"user","password":"secret"}"#
         let connection = try JSONDecoder().decode(BotConnection.self, from: Data(stored.utf8))
         XCTAssertNil(connection.hermesVersion)
+        XCTAssertNil(connection.installID)
     }
 }
 
@@ -165,6 +166,78 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertNil(failing.saved)
     }
 
+    func testANewAddressAndUsernameOnTheSameInstallKeepTheConnection() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let install = String(repeating: "a", count: 32)
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "http://192.168.1.4:9119")!,
+                                username: "me", password: "old", installID: install)
+        try store.save(old, server: server)
+        let wire = ConnectionSetupWire(); wire.serverInstallID = install
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { wire.connection = $0; return wire },
+                                       discard: { _ in XCTFail("The same install keeps drafts, cache and pairing") })
+        model.load(); model.address = "hermes.example.com"; model.username = "renamed"
+        let succeeded = await model.connect()
+        XCTAssertTrue(succeeded)
+        XCTAssertNil(wire.connection?.installID, "A new address carries no expectation into the probe")
+        let stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.id, old.id)
+        XCTAssertEqual(stored.address.absoluteString, "https://hermes.example.com")
+        XCTAssertEqual(stored.username, "renamed")
+        XCTAssertEqual(stored.installID, install)
+    }
+
+    func testAHostOmittingItsInstallIDKeepsTheStoredOne() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let install = String(repeating: "a", count: 32)
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!,
+                                username: "me", password: "old", installID: install)
+        try store.save(old, server: server)
+        let wire = ConnectionSetupWire(); wire.serverInstallID = nil
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { wire.connection = $0; return wire },
+                                       discard: { _ in XCTFail("An omitted id is not another host") })
+        model.load(); model.password = "new"
+        let succeeded = await model.connect()
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(wire.connection?.installID, install, "The saved address must prove the saved install")
+        let stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.id, old.id)
+        XCTAssertEqual(stored.password, "new")
+        XCTAssertEqual(stored.installID, install)
+    }
+
+    func testASavedAddressReachingAnotherInstallIsRefusedUntilTheUserReplacesIt() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!,
+                                username: "me", password: "old", installID: String(repeating: "a", count: 32))
+        try store.save(old, server: server)
+        let other = String(repeating: "b", count: 32)
+        let wire = ConnectionSetupWire(); wire.serverInstallID = other
+        var discarded: [UUID] = []
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { wire.connection = $0; return wire },
+                                       discard: { discarded.append($0.id) })
+        model.load()
+        let refused = await model.connect()
+        XCTAssertFalse(refused)
+        XCTAssertEqual(model.errorMessage, BotFailure.differentHost.localizedDescription)
+        XCTAssertTrue(model.offersHostReplacement)
+        XCTAssertEqual(wire.calls, 0)
+        XCTAssertEqual(try store.load(server: server), old, "Nothing is written under the old connection")
+        XCTAssertEqual(discarded, [])
+
+        model.address = "elsewhere.example"
+        XCTAssertFalse(model.offersHostReplacement, "Editing the address withdraws the data-clearing action")
+        model.address = "hermes.example"
+
+        let replaced = await model.connect(replacingHost: true)
+        XCTAssertTrue(replaced)
+        XCTAssertNil(wire.connection?.installID, "Replacing drops the expectation")
+        let stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertNotEqual(stored.id, old.id)
+        XCTAssertEqual(stored.installID, other)
+        XCTAssertEqual(discarded, [old.id])
+        XCTAssertFalse(model.offersHostReplacement)
+    }
+
     func testDismissalDropsALateSuccessfulLogin() async throws {
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())
         let wire = ConnectionSetupWire()
@@ -188,6 +261,9 @@ final class BotConnectionVersionTests: XCTestCase {
 @MainActor private final class ConnectionSetupWire: BotTransport {
     var replayEpoch: String? = "fixture"
     var serverVersion: String? = "999.0"
+    var serverInstallID: String?
+    /// The record the setup probed with; `connect()` applies its `install_id` check.
+    var connection: BotConnection?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var failure: Error?
@@ -198,6 +274,7 @@ final class BotConnectionVersionTests: XCTestCase {
     func connect() async throws {
         if let park { await withCheckedContinuation { continuation = $0; park() } }
         if let failure { throw failure }
+        try connection?.requireSameInstall(serverInstallID)
     }
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         try validateDispatch?(); calls += 1

@@ -3,9 +3,21 @@
 Bots use the selected configured Hermex server's optional direct-Hermes connection.
 The connection is a separate Hermes Desktop HTTP/WebSocket backend, not webui.
 The connection record, credentials and stable UUID live in server-scoped Keychain
-storage. A different endpoint or username gets a new UUID. Password/name edits
-retain the identity. Removing the connection deletes its drafts; removing the
-configured server deletes both its connection and all its drafts.
+storage. The host's identity is the `install_id` public `/api/status` reports (one
+per Hermes root, so every Profile and every address that reaches it agree); the
+record stores it the first time the host reports one (trust on first use; the inbox
+backfills older records). A reconnect whose live id differs from the stored one
+fails with `.differentHost` before the login POST, in `BotClient.connect()` and
+`BotDashboardClient.signIn()`, so every Bot surface and push provisioning refuses
+without sending the password. A missing stored or live id skips the check, and an
+omitted id never clears a stored one. In the connection form, a new address or
+username keeps the UUID when the host reports the stored `install_id`; otherwise a
+different endpoint or username gets a new UUID. Password/name edits retain the
+identity. After `.differentHost`, "Connect to this host instead" saves a new UUID
+and discards the old connection's local data. The id is public: it catches an
+address that now reaches another host, not an impostor. Removing the connection
+deletes its drafts; removing the configured server deletes both its connection and
+all its drafts.
 
 `BotClient` owns an ephemeral cookie session and one WebSocket. HTTP paths live in
 `BotEndpoint`. Password login requires the basic auth gate, verifies identity,

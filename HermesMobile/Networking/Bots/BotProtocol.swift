@@ -37,13 +37,14 @@ indirect enum BotJSON: Codable, Hashable, Sendable {
 }
 
 enum BotFailure: Error, Equatable, LocalizedError {
-    case stale, unsupported, missingChat, wrongIdentity, rejected(Int), transport, invalidAddress
+    case stale, unsupported, missingChat, wrongIdentity, differentHost, rejected(Int), transport, invalidAddress
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
         case .unsupported: return String(localized: "This Hermes connection does not support Bot chat here.")
         case .missingChat: return String(localized: "Open this bot’s chat in Hermes Desktop, then refresh.")
         case .wrongIdentity: return String(localized: "The conversation identity changed. Check this bot in Desktop.")
+        case .differentHost: return String(localized: "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
         case .rejected(401), .rejected(403): return String(localized: "Sign in again. Check your Bot connection username and password.")
         case .rejected(-32601): return String(localized: "This Hermes connection does not support Bot chat here.")
         case .rejected(4090): return String(localized: "Another Hermes process owns this conversation. Resolve it on the host, then refresh.")
@@ -82,6 +83,8 @@ enum BotEndpoint: String {
 @MainActor protocol BotTransport: AnyObject {
     var replayEpoch: String? { get }
     var serverVersion: String? { get }
+    /// `install_id` from `/api/status` at the last connect; nil when the host omits it.
+    var serverInstallID: String? { get }
     /// Sequenced event params or a complete string-id server-request envelope.
     var onEvent: ((BotJSON) -> Void)? { get set }
     var onDisconnect: ((Error) -> Void)? { get set }
@@ -97,6 +100,7 @@ enum BotEndpoint: String {
 
 extension BotTransport {
     var serverVersion: String? { nil }
+    var serverInstallID: String? { nil }
 
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         throw BotFailure.unsupported

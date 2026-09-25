@@ -10,10 +10,30 @@ struct BotConnection: Codable, Equatable, Identifiable {
     /// Release string `/api/status` reported at the last successful connect. Nil for
     /// records saved before the pin existed or when the host omits `version`.
     var hermesVersion: String?
+    /// The host's `install_id` from `/api/status`: one per Hermes root, shared by every
+    /// Profile and every address that reaches it. Nil for records saved before it existed
+    /// or while the host has never reported one. Only a connect that saves a new UUID
+    /// replaces it; a response that omits it never clears it.
+    var installID: String?
 
     /// The hermes-agent release Hermex was validated against. Mirrors line 2 of
     /// `HERMES_AGENT_TESTED_SHA`; `BotConnectionVersionTests` fails when they drift.
     static let testedHermesVersion = "0.21.4"
+
+    /// The `install_id` a `/api/status` reply reports, or nil when it is omitted. The host
+    /// omits it, rather than sending null, whenever it cannot read or persist the id.
+    static func installID(in status: BotJSON) -> String? {
+        guard let value = status["install_id"].text, !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// Called with the live `install_id` before any password is sent. Throws
+    /// `.differentHost` only when both ids are known and differ; a record without one,
+    /// or a host that omits it this time, connects as before (trust on first use). The
+    /// id is public, so this catches an address that now reaches another host, not an impostor.
+    func requireSameInstall(_ live: String?) throws {
+        if let installID, let live, installID != live { throw BotFailure.differentHost }
+    }
 
     static func address(_ text: String) throws -> URL {
         var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -67,7 +87,8 @@ struct BotConnection: Codable, Equatable, Identifiable {
 }
 
 /// One credential record per configured webui server. Replacing an endpoint or
-/// account mints a new identity even when Profile names happen to match.
+/// account mints a new identity even when Profile names happen to match, unless the
+/// host reports the record's stored `install_id` (`BotConnectionSetup.connect`).
 @MainActor struct BotConnectionStore {
     var keychain: any KeychainStoring = KeychainStore()
     func load(server: URL) throws -> BotConnection? {
