@@ -412,6 +412,56 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateSessionAfterProfileSwitchPinsProfileWithoutCookieOrWorkspaceLookup() async throws {
+        var createdProfiles: [String] = []
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"default","profiles":[{"name":"default"},{"name":"work"}]}"#, for: request)
+            case "/api/profile/switch":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["name"] as? String, "work")
+                // No Set-Cookie: creation must carry the confirmed selection itself.
+                return apiTestJSONResponse(#"{"active":"work"}"#, for: request)
+            case "/api/session/new":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                let profile = try XCTUnwrap(body["profile"] as? String)
+                createdProfiles.append(profile)
+                XCTAssertNil(body["workspace"])
+                XCTAssertNil(body["model"])
+                XCTAssertNil(body["model_provider"])
+                return apiTestJSONResponse("""
+                {"session":{"session_id":"new-\(profile)","profile":"\(profile)","workspace":"/\(profile)","model":"\(profile)-model"}}
+                """, for: request)
+            default:
+                XCTFail("Profile-pinned creation must not fetch a cookie-scoped workspace: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadActiveProfile()
+        let work = try XCTUnwrap(viewModel.profileOptions.first { $0.name == "work" })
+        let didSwitch = await viewModel.switchActiveProfile(work)
+        XCTAssertTrue(didSwitch)
+
+        let created = await viewModel.createSession()
+        XCTAssertEqual(created?.profile, "work")
+        XCTAssertEqual(created?.workspace, "/work")
+        XCTAssertEqual(created?.model, "work-model")
+
+        let override = await viewModel.createSession(profile: " default ")
+        XCTAssertEqual(override?.profile, "default")
+        XCTAssertEqual(override?.workspace, "/default")
+        XCTAssertEqual(override?.model, "default-model")
+        XCTAssertEqual(viewModel.activeProfileName, "work")
+
+        let blankOverride = await viewModel.createSession(profile: "  ")
+        XCTAssertEqual(blankOverride?.profile, "work")
+        XCTAssertEqual(createdProfiles, ["work", "default", "work"])
+        XCTAssertNil(viewModel.lastError)
+    }
+
+    @MainActor
     func testCreateSessionKeepsWorktreeBackedUntitledSessionWithoutCounts() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))

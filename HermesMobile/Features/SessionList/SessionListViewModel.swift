@@ -1299,9 +1299,8 @@ final class SessionListViewModel {
         }
     }
 
-    /// Creates a new session. `profile` pins it to a specific server profile (the "New Chat
-    /// in <Profile>" App Intent, #339); nil keeps the legacy behavior of letting the server
-    /// use its active profile (the "+" button / plain New Chat).
+    /// Creates a session in the explicit App Intent profile or the sidebar's selected
+    /// profile. Let that profile supply its defaults rather than relying on shared cookies.
     func createSession(modelContext: ModelContext? = nil, profile: String? = nil) async -> SessionSummary? {
         isCreatingSession = true
         actionErrorMessage = nil
@@ -1309,13 +1308,17 @@ final class SessionListViewModel {
         defer { isCreatingSession = false }
 
         do {
-            let workspaces = try await client.workspaces()
-            let workspace = workspaces.last ?? workspaces.workspaces?.compactMap(\.path).first
+            let requestedProfile = Self.nonEmpty(profile) ?? Self.nonEmpty(activeProfileName)
+            var workspace: String?
+            if requestedProfile == nil {
+                let workspaces = try await client.workspaces()
+                workspace = workspaces.last ?? workspaces.workspaces?.compactMap(\.path).first
+            }
             let response = try await client.createSession(
                 workspace: workspace,
                 model: nil,
                 modelProvider: nil,
-                profile: Self.nonEmpty(profile)
+                profile: requestedProfile
             )
 
             guard let sessionDetail = response.session else {
