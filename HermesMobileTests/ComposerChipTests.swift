@@ -817,55 +817,131 @@ final class ComposerDropRouteTests: XCTestCase {
 
 @MainActor
 final class ComposerFocusTransitionTests: XCTestCase {
-    /// #810: UIKit re-promotes the composer while a navigation pop is still
-    /// animating. Focus must wait for the transition so the keyboard safe area
-    /// can follow; otherwise the composer ends up behind the keyboard.
-    func testFocusDuringAPopWaitsUntilTheTransitionFinishes() {
-        let root = UIViewController()
+    private final class AppearingController: UIViewController {
+        var onAppearance: (() -> Void)?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            onAppearance?()
+            onAppearance = nil
+        }
+    }
+
+    func testFocusDuringAPopWaitsUntilTheTransitionFinishes() throws {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        try withPopTransition(content: textView) { _ in
+            XCTAssertFalse(textView.becomeFirstResponder())
+            XCTAssertFalse(textView.isFirstResponder)
+        } after: {
+            XCTAssertTrue(textView.isFirstResponder)
+        }
+    }
+
+    func testResigningDuringAPopCancelsDeferredFocus() throws {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        try withPopTransition(content: textView) { _ in
+            XCTAssertFalse(textView.becomeFirstResponder())
+            _ = textView.resignFirstResponder()
+        } after: {
+            XCTAssertFalse(textView.isFirstResponder)
+        }
+    }
+
+    func testRemovingAndReattachingEditorCancelsDeferredFocus() throws {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        try withPopTransition(content: textView) { root in
+            XCTAssertFalse(textView.becomeFirstResponder())
+            textView.removeFromSuperview()
+            root.view.addSubview(textView)
+        } after: {
+            XCTAssertFalse(textView.isFirstResponder)
+        }
+    }
+
+    func testBoundBlurDuringAPopCancelsDeferredFocus() throws {
+        let state = ComposerPresentationHarnessState()
+        state.isFocused = false
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        var editor: ComposerChipTextView?
+        try withPopTransition(content: host.view, child: host) { root in
+            func findEditor(in view: UIView) -> ComposerChipTextView? {
+                (view as? ComposerChipTextView) ?? view.subviews.lazy.compactMap { findEditor(in: $0) }.first
+            }
+            editor = findEditor(in: host.view)
+            XCTAssertNotNil(editor)
+            XCTAssertEqual(editor?.becomeFirstResponder(), false)
+            // A bound blur must cancel focus even though the editor has not
+            // become first responder yet. Exercise the representable update.
+            host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
+            root.view.layoutIfNeeded()
+        } after: {
+            XCTAssertEqual(editor?.isFirstResponder, false)
+            XCTAssertFalse(state.isFocused)
+        }
+    }
+
+    func testFocusOutsideATransitionIsImmediate() throws {
+        let root = AppearingController()
         let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
         root.view.addSubview(textView)
+        let window = try show(root)
+        defer { cleanUp(window) }
+
+        XCTAssertTrue(textView.becomeFirstResponder())
+        XCTAssertTrue(textView.isFirstResponder)
+    }
+
+    /// A real UIKit pop exercises first-responder restoration and coordinator
+    /// completion ordering. Readiness comes from appearance, not a timed delay.
+    private func withPopTransition(
+        content: UIView,
+        child: UIViewController? = nil,
+        during: @escaping (UIViewController) -> Void,
+        after: () -> Void
+    ) throws {
+        let root = AppearingController()
+        if let child { root.addChild(child) }
+        root.view.addSubview(content)
+        content.frame = CGRect(x: 0, y: 0, width: 350, height: 200)
+        child?.didMove(toParent: root)
         let navigation = UINavigationController(rootViewController: root)
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: UIScreen.main.bounds)
-        window.frame = UIScreen.main.bounds
-        window.rootViewController = navigation
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true }
-        navigation.pushViewController(UIViewController(), animated: false)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let appeared = expectation(description: "root appeared")
+        root.onAppearance = { appeared.fulfill() }
+        let window = try show(navigation)
+        defer { cleanUp(window) }
+        wait(for: [appeared], timeout: 3)
 
+        let destination = AppearingController()
+        let pushed = expectation(description: "destination appeared")
+        destination.onAppearance = { pushed.fulfill() }
+        navigation.pushViewController(destination, animated: false)
+        wait(for: [pushed], timeout: 3)
         navigation.popViewController(animated: true)
-        guard let coordinator = root.transitionCoordinator else {
-            return XCTFail("the pop should be animated")
-        }
-
-        // UIKit re-promotes the editor while the pop animation is being set up.
-        var acceptedMidTransition: Bool?
-        let settled = expectation(description: "the pop finished")
+        let coordinator = try XCTUnwrap(root.transitionCoordinator)
+        let settled = expectation(description: "pop finished")
         coordinator.animate(alongsideTransition: { _ in
-            acceptedMidTransition = textView.becomeFirstResponder()
+            XCTAssertNotNil(content.window)
+            during(root)
         }, completion: { _ in
             DispatchQueue.main.async { settled.fulfill() }
         })
         wait(for: [settled], timeout: 3)
-
-        XCTAssertEqual(acceptedMidTransition, false)
-        XCTAssertTrue(textView.isFirstResponder)
+        after()
     }
 
-    func testFocusOutsideATransitionIsImmediate() {
-        let root = UIViewController()
-        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
-        root.view.addSubview(textView)
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: UIScreen.main.bounds)
+    private func show(_ root: UIViewController) throws -> UIWindow {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
         window.frame = UIScreen.main.bounds
         window.rootViewController = root
         window.makeKeyAndVisible()
-        defer { window.isHidden = true }
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        root.view.layoutIfNeeded()
+        return window
+    }
 
-        XCTAssertTrue(textView.becomeFirstResponder())
-        XCTAssertTrue(textView.isFirstResponder)
+    private func cleanUp(_ window: UIWindow) {
+        window.endEditing(true)
+        window.isHidden = true
+        window.rootViewController = nil
     }
 }

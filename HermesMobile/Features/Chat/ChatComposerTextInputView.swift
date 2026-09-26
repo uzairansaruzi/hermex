@@ -465,7 +465,7 @@ private struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        func syncFocus(for textView: UITextView, shouldFocus: Bool, isDisabled: Bool) {
+        func syncFocus(for textView: ComposerChipTextView, shouldFocus: Bool, isDisabled: Bool) {
             if isDisabled, isFocused {
                 Task { @MainActor [weak self] in
                     self?.isFocused = false
@@ -473,6 +473,7 @@ private struct ComposerTextView: UIViewRepresentable {
             }
 
             let target = shouldFocus && !isDisabled
+            if !target { textView.cancelDeferredFocus() }
             guard textView.isFirstResponder != target else {
                 pendingFocusTarget = nil
                 return

@@ -4,25 +4,42 @@ import UniformTypeIdentifiers
 /// The composer's editor: a text view that draws known skill references as
 /// atomic chips while every value that leaves it stays the draft's own text.
 final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
-    private var isWaitingForTransitionToFocus = false
+    private var pendingTransitionFocus: UUID?
 
     /// UIKit re-promotes the last editor while a navigation pop is still animating,
     /// before SwiftUI's keyboard safe area can follow, which leaves the composer
     /// behind the keyboard (#810). Defer focus until the transition finishes.
     override func becomeFirstResponder() -> Bool {
         guard let coordinator = owningViewController?.transitionCoordinator else {
+            cancelDeferredFocus()
             return super.becomeFirstResponder()
         }
-        if !isWaitingForTransitionToFocus {
-            isWaitingForTransitionToFocus = true
+        if pendingTransitionFocus == nil {
+            let request = UUID()
+            pendingTransitionFocus = request
             coordinator.animate(alongsideTransition: nil) { [weak self] context in
-                guard let self else { return }
-                isWaitingForTransitionToFocus = false
+                guard let self, pendingTransitionFocus == request else { return }
+                pendingTransitionFocus = nil
                 guard !context.isCancelled, window != nil else { return }
                 _ = becomeFirstResponder()
             }
         }
         return false
+    }
+
+    /// Blur can arrive before UIKit has made this editor first responder.
+    func cancelDeferredFocus() {
+        pendingTransitionFocus = nil
+    }
+
+    override func resignFirstResponder() -> Bool {
+        cancelDeferredFocus()
+        return super.resignFirstResponder()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { cancelDeferredFocus() }
     }
 
     private var owningViewController: UIViewController? {
