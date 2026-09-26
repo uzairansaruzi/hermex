@@ -48,16 +48,14 @@ final class MemoryViewModel {
         actionErrorMessage = nil
     }
 
-    /// The read-only project-context section only appears when the server sent a
-    /// non-empty document. Servers without the field (or with an empty/blank one,
-    /// which is what upstream returns when no readable context file exists) render
-    /// the screen exactly as before.
+    /// Shown only when the server sent a non-empty document (upstream returns a
+    /// blank value when no readable context file exists).
     var showsProjectContext: Bool {
         guard let text = projectContextText else { return false }
-        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !text.isBlank
     }
 
-    /// Non-localized "name — workspace" detail line for the project-context section.
+    /// Non-localized detail line for the project-context section.
     var projectContextDetail: String? {
         let parts = [projectContextName, projectContextWorkspace]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -124,5 +122,11 @@ final class MemoryViewModel {
         isProjectContextShadowed = response.projectContextShadowed ?? false
         isExternalNotesEnabled = response.externalNotesEnabled
         hasLoaded = true
+    }
+}
+
+extension String {
+    var isBlank: Bool {
+        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
