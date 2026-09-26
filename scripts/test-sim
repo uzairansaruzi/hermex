@@ -124,10 +124,18 @@ def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
 
 def reboot(device, run_dir, locks_dir, owner, lock_fds, timeout):
     """Restart only this runner's assigned simulator before retrying a hung
-    runner, so the retry does not inherit whatever wedged the handshake."""
-    run(["xcrun", "simctl", "shutdown", device["udid"]],
-        run_dir / "shutdown.log", timeout, lock_fds)
-    boot(device, run_dir, locks_dir, owner, lock_fds, timeout)
+    runner, so the retry does not inherit whatever wedged the handshake.
+    Shutdown and boot share one hold of the boot lock: no other runner can
+    take the slot this device frees in between."""
+    with lock(locks_dir / "boot.lock", owner, timeout) as boot_fd:
+        run(["xcrun", "simctl", "shutdown", device["udid"]],
+            run_dir / "shutdown.log", timeout, (*lock_fds, boot_fd))
+        if run(["xcrun", "simctl", "boot", device["udid"]],
+               run_dir / "reboot.log", timeout, (*lock_fds, boot_fd)):
+            raise RunnerError("Simulator reboot failed; see reboot.log.")
+    if run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"],
+           run_dir / "bootstatus-retry.log", timeout, lock_fds):
+        raise RunnerError("Simulator did not become ready after reboot; see bootstatus-retry.log.")
 
 
 def terminate_app(device, run_dir, lock_fds, timeout):
@@ -236,7 +244,10 @@ def main():
                     break
                 print("RETRY: the test runner hung before connecting; rebooting the simulator "
                       "and rerunning once.", flush=True)
-                reboot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
+                # The reboot spends the same test deadline as the retry.
+                remaining = max(1, deadline - time.monotonic())
+                reboot(device, run_dir, locks_dir, owner, lock_fds,
+                       min(args.boot_timeout, remaining))
             if code:
                 print("FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)
                 failure_excerpt(log)

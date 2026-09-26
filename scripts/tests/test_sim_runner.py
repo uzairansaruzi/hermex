@@ -137,8 +137,15 @@ class SimulatorRunnerTests(unittest.TestCase):
         runs = [i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"]
         between = self.commands[runs[0] + 1:runs[1]]
         shutdown = between.index(["xcrun", "simctl", "shutdown", "SIM-A"])
-        self.assertLess(shutdown, between.index(["xcrun", "simctl", "boot", "SIM-A"]))
+        # Boot follows shutdown directly, under one boot-lock hold.
+        self.assertEqual(between[shutdown + 1], ["xcrun", "simctl", "boot", "SIM-A"])
         self.assertIn(["xcrun", "simctl", "bootstatus", "SIM-A", "-b"], between)
+
+    def test_reboot_before_the_retry_stays_inside_the_test_deadline(self):
+        self.hung_runs = 1
+        self.assertEqual(self.invoke(extra=("--test-timeout", "10")), 0)
+        shutdown = self.commands.index(["xcrun", "simctl", "shutdown", "SIM-A"])
+        self.assertLessEqual(self.timeouts[shutdown], 10)
 
     def test_repeat_runs_iterations_in_one_launch_until_failure(self):
         self.assertEqual(self.invoke(extra=("--only", "HermesMobileTests/X", "--repeat", "20")), 0)

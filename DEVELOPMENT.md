@@ -62,8 +62,8 @@ launchctl kickstart -k gui/$(id -u)/com.hermes.webui
 ## Local XCTest
 
 Use the repository runner for local tests, including when XcodeBuildMCP is
-available. It builds a signed Debug app and runs XCTest once, serially on the
-assigned simulator. Separate worktrees can test concurrently on separate devices.
+available. It builds a signed Debug app once and runs XCTest serially on the
+assigned simulator (once, or up to N times with `--repeat N`). Separate worktrees can test concurrently on separate devices.
 
 Choose the session's simulator once (`hermex-flow` owns its device pool). The
 main checkout normally uses **iPhone 17**. Resolve its UDID with
