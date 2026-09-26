@@ -39,15 +39,7 @@ final class ResponseSelectionTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
-        let rendered = expectation(description: "SwiftUI boundary rendered")
-        DispatchQueue.main.async {
-            controller.view.layoutIfNeeded()
-            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            }
-            rendered.fulfill()
-        }
-        await fulfillment(of: [rendered], timeout: 5)
+        await render(window)
         func selectionInput(in view: UIView) -> ResponseSelectionInput? {
             if let input = view as? ResponseSelectionInput { return input }
             return view.subviews.lazy.compactMap { selectionInput(in: $0) }.first
@@ -89,15 +81,7 @@ final class ResponseSelectionTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
-        let rendered = expectation(description: "Markdown laid out and drawn")
-        DispatchQueue.main.async {
-            controller.view.layoutIfNeeded()
-            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            }
-            rendered.fulfill()
-        }
-        await fulfillment(of: [rendered], timeout: 5)
+        await render(window)
         controller.input.selectAll(nil)
         let text = try XCTUnwrap(controller.input.text(in: XCTUnwrap(controller.input.selectedTextRange)))
         for expected in ["Heading", "First paragraph with a link.", "List entry", "Another entry", "let value = 1", "Column", "Value", "Row", "Cell"] {
@@ -124,15 +108,7 @@ final class ResponseSelectionTests: XCTestCase {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
 
-        let rendered = expectation(description: "Hosted response laid out and drawn")
-        DispatchQueue.main.async {
-            controller.view.layoutIfNeeded()
-            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            }
-            rendered.fulfill()
-        }
-        await fulfillment(of: [rendered], timeout: 5)
+        await render(window)
 
         let input = controller.input
         input.selectAll(nil)
@@ -156,15 +132,7 @@ final class ResponseSelectionTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
-        let rendered = expectation(description: "Unicode text rendered")
-        DispatchQueue.main.async {
-            controller.view.layoutIfNeeded()
-            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            }
-            rendered.fulfill()
-        }
-        await fulfillment(of: [rendered], timeout: 5)
+        await render(window)
         let leaf = try XCTUnwrap(controller.input.leaves.allObjects.first)
         let glyphs = try XCTUnwrap(leaf.geometry).glyphs
         XCTAssertFalse(glyphs.isEmpty)
@@ -193,7 +161,7 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
-        await renderFrames()
+        await renderVisibleRows(window)
         let scroll = try XCTUnwrap(descendants(host.view, of: UIScrollView.self).first)
         let originalHeight = scroll.contentSize.height
         let leaves = descendants(host.view, of: ResponseSelectionLeafView.self)
@@ -203,12 +171,12 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         try assertSelectable(message: messages[0], in: host.view)
 
         scroll.setContentOffset(CGPoint(x: 0, y: originalHeight - scroll.bounds.height + scroll.adjustedContentInset.bottom), animated: false)
-        await renderFrames()
+        await renderVisibleRows(window)
         try assertSelectable(message: messages[39], in: host.view)
         XCTAssertEqual(scroll.contentSize.height, originalHeight, accuracy: 1, "Enabling selection must not change text layout")
 
         scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
-        await renderFrames()
+        await renderVisibleRows(window)
         try assertSelectable(message: messages[0], in: host.view)
         XCTAssertEqual(scroll.contentSize.height, originalHeight, accuracy: 1)
     }
@@ -239,8 +207,8 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
-        await renderFrames()
-        await renderFrames()
+        await renderVisibleRows(window)
+        await renderVisibleRows(window)
 
         let last = try XCTUnwrap(descendants(host.view, of: ResponseSelectionLeafView.self).first { $0.text == rows[rows.count - 1] })
         let frame = last.convert(last.bounds, to: window)
@@ -267,28 +235,25 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
     }
 
-    private func renderFrames() async {
-        let rendered = expectation(description: "Visibility and text rendering committed")
-        let driver = ResponseSelectionFrameDriver { rendered.fulfill() }
-        driver.start()
-        await fulfillment(of: [rendered], timeout: 10)
-        driver.stop()
+    /// The first pass reports which rows are visible; the second redraws those
+    /// rows with glyph collection on.
+    private func renderVisibleRows(_ window: UIWindow) async {
+        await render(window)
+        await render(window)
     }
 }
 
+/// Lays out and draws `window` once, after one main-queue turn so SwiftUI can
+/// commit pending state. There is no deadline: both calls are synchronous, and
+/// the assertions that follow decide whether the pass rendered what they read.
+/// Every pass draws because selection leaves collect glyphs only when text draws.
 @MainActor
-private final class ResponseSelectionFrameDriver: NSObject {
-    private let completion: () -> Void
-    private var link: CADisplayLink?
-    private var frames = 0
-    init(completion: @escaping () -> Void) { self.completion = completion }
-    func start() {
-        link = CADisplayLink(target: self, selector: #selector(tick))
-        link?.add(to: .main, forMode: .common)
+private func render(_ window: UIWindow) async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
     }
-    func stop() { link?.invalidate(); link = nil }
-    @objc private func tick() {
-        frames += 1
-        if frames == 3 { stop(); completion() }
+    window.layoutIfNeeded()
+    _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
     }
 }
