@@ -814,3 +814,177 @@ final class ComposerDropRouteTests: XCTestCase {
         return NSItemProvider(contentsOf: url) ?? NSItemProvider()
     }
 }
+
+@MainActor
+final class ComposerFocusTransitionTests: XCTestCase {
+    private final class AppearingController: UIViewController {
+        var onAppearance: (() -> Void)?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            let appeared = onAppearance
+            onAppearance = nil
+            // Let UIKit finish the current transition before the test starts
+            // the next one; viewDidAppear itself runs inside its completion.
+            DispatchQueue.main.async { appeared?() }
+        }
+    }
+
+    func testFocusDuringAPopWaitsUntilTheTransitionFinishes() throws {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        try withPopTransition(content: textView) { _ in
+            XCTAssertFalse(textView.becomeFirstResponder())
+            XCTAssertFalse(textView.isFirstResponder)
+        } after: {
+            XCTAssertTrue(textView.isFirstResponder)
+        }
+    }
+
+    func testResigningDuringAPopCancelsDeferredFocus() throws {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        try withPopTransition(content: textView) { _ in
+            XCTAssertFalse(textView.becomeFirstResponder())
+            _ = textView.resignFirstResponder()
+        } after: {
+            XCTAssertFalse(textView.isFirstResponder)
+        }
+    }
+
+    func testRemovingAndReattachingEditorCancelsDeferredFocus() throws {
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        try withPopTransition(content: textView) { root in
+            XCTAssertFalse(textView.becomeFirstResponder())
+            textView.removeFromSuperview()
+            root.view.addSubview(textView)
+        } after: {
+            XCTAssertFalse(textView.isFirstResponder)
+        }
+    }
+
+    func testBoundBlurDuringAPopCancelsDeferredFocus() throws {
+        let state = ComposerPresentationHarnessState()
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        var editor: ComposerChipTextView?
+        try withPopTransition(content: host.view, child: host, beforePush: {
+            editor = self.findEditor(in: host.view)
+            XCTAssertEqual(editor?.becomeFirstResponder(), true)
+        }) { root in
+            XCTAssertEqual(editor?.becomeFirstResponder(), false)
+            state.isFocused = false
+            // A bound blur must cancel focus even though the editor has not
+            // become first responder yet. Exercise the representable update.
+            host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
+            root.view.layoutIfNeeded()
+        } after: {
+            XCTAssertEqual(editor?.isFirstResponder, false)
+            XCTAssertFalse(state.isFocused)
+        }
+    }
+
+    func testFocusedComposerRestoresFocusAfterNavigationRoundTrip() throws {
+        let state = ComposerPresentationHarnessState()
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        var editor: ComposerChipTextView?
+        try withPopTransition(content: host.view, child: host, beforePush: {
+            editor = self.findEditor(in: host.view)
+            XCTAssertEqual(editor?.becomeFirstResponder(), true)
+            XCTAssertTrue(state.isFocused)
+        }) { root in
+            // SwiftUI refreshes the composer while returning from Files. Its
+            // focus binding must survive UIKit resigning focus on the push.
+            host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
+            root.view.layoutIfNeeded()
+        } after: {
+            XCTAssertEqual(editor?.isFirstResponder, true)
+            XCTAssertTrue(state.isFocused)
+        }
+    }
+
+    func testUnfocusedComposerStaysUnfocusedAfterNavigationRoundTrip() throws {
+        let state = ComposerPresentationHarnessState()
+        state.isFocused = false
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        var editor: ComposerChipTextView?
+        try withPopTransition(content: host.view, child: host, beforePush: {
+            editor = self.findEditor(in: host.view)
+            XCTAssertEqual(editor?.isFirstResponder, false)
+        }) { root in
+            host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
+            root.view.layoutIfNeeded()
+        } after: {
+            XCTAssertEqual(editor?.isFirstResponder, false)
+            XCTAssertFalse(state.isFocused)
+        }
+    }
+
+    private func findEditor(in view: UIView) -> ComposerChipTextView? {
+        (view as? ComposerChipTextView) ?? view.subviews.lazy.compactMap { self.findEditor(in: $0) }.first
+    }
+
+    func testFocusOutsideATransitionIsImmediate() throws {
+        let root = AppearingController()
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        root.view.addSubview(textView)
+        let window = try show(root)
+        defer { cleanUp(window) }
+
+        XCTAssertTrue(textView.becomeFirstResponder())
+        XCTAssertTrue(textView.isFirstResponder)
+    }
+
+    /// A real UIKit pop exercises first-responder restoration and coordinator
+    /// completion ordering. Readiness comes from appearance, not a timed delay.
+    private func withPopTransition(
+        content: UIView,
+        child: UIViewController? = nil,
+        beforePush: () -> Void = {},
+        during: @escaping (UIViewController) -> Void,
+        after: () -> Void
+    ) throws {
+        let root = AppearingController()
+        if let child { root.addChild(child) }
+        root.view.addSubview(content)
+        content.frame = CGRect(x: 0, y: 0, width: 350, height: 200)
+        child?.didMove(toParent: root)
+        let navigation = UINavigationController(rootViewController: root)
+        let appeared = expectation(description: "root appeared")
+        root.onAppearance = { appeared.fulfill() }
+        let window = try show(navigation)
+        defer { cleanUp(window) }
+        wait(for: [appeared], timeout: 3)
+
+        beforePush()
+        let destination = AppearingController()
+        let pushed = expectation(description: "destination appeared")
+        destination.onAppearance = { pushed.fulfill() }
+        navigation.pushViewController(destination, animated: true)
+        wait(for: [pushed], timeout: 3)
+        navigation.popViewController(animated: true)
+        let coordinator = try XCTUnwrap(root.transitionCoordinator)
+        let settled = expectation(description: "pop finished")
+        coordinator.animate(alongsideTransition: { _ in
+            XCTAssertNotNil(content.window)
+            during(root)
+        }, completion: { _ in
+            DispatchQueue.main.async { settled.fulfill() }
+        })
+        wait(for: [settled], timeout: 3)
+        after()
+    }
+
+    private func show(_ root: UIViewController) throws -> UIWindow {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = UIScreen.main.bounds
+        window.rootViewController = root
+        window.makeKeyAndVisible()
+        root.view.layoutIfNeeded()
+        return window
+    }
+
+    private func cleanUp(_ window: UIWindow) {
+        window.endEditing(true)
+        window.isHidden = true
+        window.rootViewController = nil
+    }
+}

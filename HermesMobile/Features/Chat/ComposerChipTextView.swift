@@ -4,6 +4,59 @@ import UniformTypeIdentifiers
 /// The composer's editor: a text view that draws known skill references as
 /// atomic chips while every value that leaves it stays the draft's own text.
 final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
+    private var pendingTransitionFocus: UUID?
+
+    /// UIKit re-promotes the last editor while a navigation pop is still animating,
+    /// before SwiftUI's keyboard safe area can follow, which leaves the composer
+    /// behind the keyboard (#810). Defer focus until the transition finishes.
+    override func becomeFirstResponder() -> Bool {
+        guard let coordinator = owningViewController?.transitionCoordinator else {
+            cancelDeferredFocus()
+            return super.becomeFirstResponder()
+        }
+        if pendingTransitionFocus == nil {
+            let request = UUID()
+            pendingTransitionFocus = request
+            coordinator.animate(alongsideTransition: nil) { [weak self] context in
+                guard let self, pendingTransitionFocus == request else { return }
+                pendingTransitionFocus = nil
+                guard !context.isCancelled, window != nil else { return }
+                _ = becomeFirstResponder()
+            }
+        }
+        return false
+    }
+
+    /// Blur can arrive before UIKit has made this editor first responder.
+    func cancelDeferredFocus() {
+        pendingTransitionFocus = nil
+    }
+
+    override func resignFirstResponder() -> Bool {
+        cancelDeferredFocus()
+        return super.resignFirstResponder()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { cancelDeferredFocus() }
+    }
+
+    /// Navigation temporarily resigns the editor without changing the user's
+    /// focus intent. Preserve that intent so the return can restore it.
+    var isInNavigationTransition: Bool {
+        owningViewController?.navigationController?.transitionCoordinator != nil
+    }
+
+    private var owningViewController: UIViewController? {
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
+    }
+
     var acceptsAttachments = true
     var isKeyboardSendEnabled = false
     var onKeyboardSend: () -> Void = {}
