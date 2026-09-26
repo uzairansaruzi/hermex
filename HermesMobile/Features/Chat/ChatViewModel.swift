@@ -431,6 +431,16 @@ final class ChatViewModel {
     }
     private(set) var isLoadingComposerConfiguration = false
     private(set) var isUpdatingComposerConfiguration = false
+    // Empty replacements stay fenced permanently; retained navigation parents
+    // resume only after restoring their original profile cookie on return.
+    private var isProfileSessionHandoff = false
+    private var profileToRestoreAfterNavigation: String?
+    // Non-nil only for failure recovery; a deliberate populated-chat Back
+    // navigation claims fresh ownership instead of reviving a failed operation.
+    private var profileRecoveryOwnership: UUID?
+    var canRetryProfileOwnership: Bool {
+        profileToRestoreAfterNavigation != nil && composerConfigurationErrorMessage != nil
+    }
     private(set) var composerConfigurationErrorMessage: String?
     var pendingAttachments: [PendingAttachment] { attachmentCoordinator.pendingAttachments }
     var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment }
@@ -562,6 +572,14 @@ final class ChatViewModel {
     private var latestServerLoadHadAssistantResponseAfterLatestUser = false
     private var needsComposerConfigurationReload = false
     private var pendingExplicitModelPick = false
+    /// The model/provider the session arrived with, kept so later sends can
+    /// tell a deliberate restored route from a profile-default seed.
+    private var restoredSessionModel: String?
+    private var restoredSessionModelProvider: String?
+    /// The exact effective-route notice this view model pinned, so a later
+    /// start reply or selection change replaces/clears ONLY its own notice and
+    /// never an unrelated pinned one.
+    private var pinnedEffectiveRouteNotice: String?
     private(set) var composerConfigurationInteractionGeneration = 0
 
     init(
@@ -593,6 +611,8 @@ final class ChatViewModel {
         currentModel = session.model
         currentModelProvider = session.modelProvider
         currentProfile = session.profile
+        restoredSessionModel = Self.nonEmpty(session.model)
+        restoredSessionModelProvider = Self.nonEmpty(session.modelProvider)
         isCLISession = session.isCliSession == true
         self.server = server
         let resolvedClient = client ?? APIClient(baseURL: server)
@@ -828,16 +848,247 @@ final class ChatViewModel {
     }
 
     private func explicitModelPickForChatStart() -> Bool {
-        pendingExplicitModelPick && Self.nonEmpty(currentModel) != nil
+        guard Self.nonEmpty(currentModel) != nil else { return false }
+
+        // A picker write made in this chat is always deliberate. Do not let an
+        // older response landing late (or anything else) consume it (the
+        // generation check orders picker writes against concurrent sends).
+        if pendingExplicitModelPick {
+            return true
+        }
+
+        // A session restored with its own saved route is deliberate for the
+        // life of that session. It stops being the session's own choice only
+        // when the current route matches the owning profile's default seed
+        // (profile metadata loaded) or when the session carries no saved
+        // route of its own. A picker write also refreshes the snapshot, so
+        // the comparison stays against what the user actually chose.
+        guard restoredSessionModel != nil, let currentModel else {
+            return false
+        }
+
+        if let seed = profileDefaultSeedRoute() {
+            // Owning-profile metadata is loaded: the route is deliberate
+            // exactly when it differs from that default — in model OR in
+            // provider. The provider is part of the route: the same model
+            // text served by another provider is an override, not the
+            // default.
+            return !Self.sameModelRoute(
+                currentModel, provider: Self.nonEmpty(currentModelProvider),
+                seed.model, provider: seed.provider
+            )
+        }
+
+        // Owning-profile metadata is not resolved yet, so there is no
+        // authoritative default to compare the saved route against. The saved
+        // route stays the session's own choice in that window — for EVERY
+        // spelling, including a bare model with an unprefixed provider — since
+        // demoting it to an implicit seed is what lets a cold backend
+        // re-resolve it to another provider. A brand-new chat has no saved
+        // route at all, so new-chat implicit profile-default seeding is
+        // unaffected.
+        if let restoredProvider = restoredSessionModelProvider,
+           let currentProvider = Self.nonEmpty(currentModelProvider),
+           currentProvider != restoredProvider {
+            // The provider no longer matches the one the session was restored
+            // with: a validated configuration seed replaced that route, so this
+            // is not the restored route any more.
+            return false
+        }
+
+        return true
     }
 
-    private func completeExplicitModelPickForChatStart(_ explicitModelPick: Bool) {
-        if explicitModelPick {
-            pendingExplicitModelPick = false
+    /// Adopts the route a server response reported for THIS session — but only
+    /// when the composer has no route yet.
+    ///
+    /// `currentModel`/`currentModelProvider` are the app's single authoritative
+    /// route intent: the session's restored route, a picker choice, a typed
+    /// `/model`, a validated configuration seed, or a profile switch. Response
+    /// metadata describes what the server happened to run or hold — a fallback,
+    /// a cold catalog, a compressed or paginated session record — so it may
+    /// FILL a route the app does not know yet and must never REPLACE one it
+    /// does. Replacing it here is what let a completed turn adopt another
+    /// provider's model and send it on the next message.
+    private func adoptServerRouteMetadataIfUnset(model: String?, provider: String?) {
+        guard Self.nonEmpty(currentModel) == nil,
+              let model = Self.nonEmpty(model)
+        else { return }
+
+        currentModel = model
+        currentModelProvider = Self.nonEmpty(provider)
+        // A route learned from the owning server is this session's saved route,
+        // so the deliberate-route comparison has something to compare against.
+        restoredSessionModel = model
+        restoredSessionModelProvider = Self.nonEmpty(provider)
+    }
+
+    /// The owning profile's default route (model + provider) when its
+    /// metadata is loaded (`profileOptions` from the composer configuration),
+    /// else nil.
+    private func profileDefaultSeedRoute() -> (model: String, provider: String?)? {
+        let profileName = Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile)
+        guard let profileName,
+              let option = profileOptions.first(where: { $0.normalizedName == profileName }),
+              let model = Self.nonEmpty(option.model)
+        else { return nil }
+        return (model, Self.nonEmpty(option.provider))
+    }
+
+    /// Canonical route identity: bare model ids must match and any provider
+    /// named on either side (argument or `@provider:` spelling) must agree.
+    /// A side that names no provider cannot disprove a match.
+    private static func sameModelRoute(
+        _ lhsModel: String, provider lhsProvider: String?,
+        _ rhsModel: String, provider rhsProvider: String?
+    ) -> Bool {
+        let lhsNamedProvider = nonEmpty(lhsProvider) ?? lhsModel.modelIDProviderPrefix
+        let rhsNamedProvider = nonEmpty(rhsProvider) ?? rhsModel.modelIDProviderPrefix
+        if let lhsNamedProvider, let rhsNamedProvider, lhsNamedProvider != rhsNamedProvider {
+            return false
+        }
+        return lhsModel.bareModelID == rhsModel.bareModelID
+    }
+
+    /// Three-state route comparison for disclosure. `sameModelRoute` answers
+    /// "is this the same route?" for intent bookkeeping, where a side that names
+    /// no provider cannot disprove a match; confirming a REQUESTED provider is
+    /// stricter. A reply that omits the effective provider, and whose model
+    /// carries no `@provider:` qualifier either, has not confirmed anything —
+    /// that is `.unknown`, not `.match`.
+    private enum ModelRouteComparison {
+        case match
+        case mismatch
+        case unknown
+    }
+
+    private static func compareModelRoute(
+        _ lhsModel: String, provider lhsProvider: String?,
+        _ rhsModel: String, provider rhsProvider: String?
+    ) -> ModelRouteComparison {
+        guard lhsModel.bareModelID == rhsModel.bareModelID else { return .mismatch }
+
+        let lhsNamedProvider = nonEmpty(lhsProvider) ?? lhsModel.modelIDProviderPrefix
+        let rhsNamedProvider = nonEmpty(rhsProvider) ?? rhsModel.modelIDProviderPrefix
+        switch (lhsNamedProvider, rhsNamedProvider) {
+        case let (lhs?, rhs?):
+            return lhs == rhs ? .match : .mismatch
+        default:
+            // One side names no provider: not confirmed, nothing contradicted.
+            return .unknown
         }
     }
 
-    func loadComposerConfiguration() async {
+    /// The provider identity of a route: the reported provider when the model
+    /// carries no `@provider:` qualifier, the qualifier when the report is
+    /// absent or contradicts it, and nothing when both are absent.
+    ///
+    /// A model's qualifier IS provider identity, so a contradicting field is
+    /// normalized to it rather than sent as an incoherent pair. With neither,
+    /// the provider is cleared rather than inherited from the model being
+    /// replaced.
+    private static func resolvedRouteProvider(reportedProvider: String?, model: String) -> String? {
+        let reported = nonEmpty(reportedProvider)
+        guard let qualifier = model.modelIDProviderPrefix else { return reported }
+        guard let reported else { return qualifier }
+        return reported == qualifier ? reported : qualifier
+    }
+
+    /// Surfaces the server-resolved START route when a successful chat/start
+    /// reply says it differs from the route the send requested. The reply's
+    /// effective route is the route the start was resolved with — not a
+    /// confirmed inference route — so the notice says exactly that, and the
+    /// requested selection stays authoritative for the next send.
+    ///
+    /// Stale replies are dropped: a picker/profile write or a session change
+    /// after the send was dispatched means the reply no longer describes the
+    /// current selection, so it must not pin a notice or clear newer intent.
+    private func applyEffectiveRouteNotice(
+        from response: ChatStartResponse,
+        requestedModel: String?,
+        requestedProvider: String?,
+        sessionID expectedSessionID: String,
+        selectionGeneration: Int
+    ) {
+        guard sessionID == expectedSessionID,
+              composerConfigurationInteractionGeneration == selectionGeneration
+        else { return }
+
+        // Older servers omit the fields and malformed values decode to nil:
+        // nothing to disclose, and an existing notice is left alone rather
+        // than replaced by an invented route.
+        guard let effectiveModel = Self.nonEmpty(response.effectiveModel),
+              let requestedModel = Self.nonEmpty(requestedModel)
+        else { return }
+
+        let effectiveProvider = Self.nonEmpty(response.effectiveModelProvider)
+        switch Self.compareModelRoute(
+            requestedModel, provider: requestedProvider,
+            effectiveModel, provider: effectiveProvider
+        ) {
+        case .match:
+            // The server confirms the requested route — the names have to
+            // agree, either as a reported provider or as the requested
+            // provider against the effective model's own qualifier. Only a
+            // known confirmation retires an earlier mismatch notice.
+            clearEffectiveRouteNotice()
+            return
+        case .unknown:
+            // A model but no provider anywhere: the requested provider is not
+            // confirmed. Omission is not confirmation, so an existing
+            // disclosure stays exactly as it was, and no new one is invented.
+            return
+        case .mismatch:
+            break
+        }
+
+        let requestedRoute = requestedModel + (requestedProvider.map { " (\($0))" } ?? "")
+        let effectiveRoute = effectiveModel + (effectiveProvider.map { " (\($0))" } ?? "")
+        let notice = String(localized: "Requested \(requestedRoute) but the server started this response with \(effectiveRoute). Your model selection is unchanged and will be used for the next send.")
+        guard pinnedEffectiveRouteNotice != notice else { return }
+        clearEffectiveRouteNotice()
+        pinLocalNoticeMessage(notice)
+        pinnedEffectiveRouteNotice = notice
+    }
+
+    /// Removes ONLY this feature's own pinned notice; unrelated pinned
+    /// notices are never touched.
+    private func clearEffectiveRouteNotice() {
+        guard let notice = pinnedEffectiveRouteNotice else { return }
+        pinnedEffectiveRouteNotice = nil
+        pinnedLocalNotices.removeAll { $0 == notice }
+    }
+
+    /// Drops the pinned notices a transcript load replaces, then reconciles this
+    /// feature's own dedupe pointer with what is still visible.
+    ///
+    /// Invariant: ownership follows visible state. A load owns only the notices
+    /// that existed when it began, so a notice pinned by a start reply landing
+    /// WHILE the load is in flight is newer than the state being replaced and
+    /// survives it. Conversely a notice with no copy left anywhere — not still
+    /// in `pinnedLocalNotices`, and not still in the replaced transcript, which
+    /// keeps no promoted `local_notice` — must release the pointer: otherwise
+    /// every later identical mismatch is deduplicated against a disclosure the
+    /// user can no longer see and never gets shown again.
+    private func discardPinnedLocalNotices(ownedAtLoadStart noticesAtLoadStart: [String]) {
+        if !noticesAtLoadStart.isEmpty {
+            // Only the notices this load started with belong to it.
+            pinnedLocalNotices.removeAll { noticesAtLoadStart.contains($0) }
+        }
+
+        // The pointer is reconciled on EVERY load, including one that began
+        // before anything was pinned: that case has nothing to remove, yet the
+        // load may just have replaced a promoted copy out of the transcript.
+        guard let pinnedNotice = pinnedEffectiveRouteNotice,
+              !pinnedLocalNotices.contains(pinnedNotice),
+              !messages.contains(where: { $0.role == "local_notice" && $0.content == pinnedNotice })
+        else { return }
+
+        pinnedEffectiveRouteNotice = nil
+    }
+
+    func loadComposerConfiguration(profileSeed: ChatComposerProfileSeed? = nil) async {
+        guard !isProfileSessionHandoff else { return }
         if isLoadingComposerConfiguration {
             needsComposerConfigurationReload = true
             return
@@ -848,19 +1099,36 @@ final class ChatViewModel {
         lastError = nil
         defer { isLoadingComposerConfiguration = false }
 
+        // Prefer an explicit seed; otherwise consume a just-completed switch
+        // handoff so empty-chat replacement VMs skip another profiles RTT.
+        var pendingProfileSeed = profileSeed ?? RecentProfileSwitchSeed.take(for: server, sessionID: sessionID)
         repeat {
             needsComposerConfigurationReload = false
 
             let initialState = composerConfigurationState
+            // A profile-switch seed is one-shot: only the first pass may skip
+            // `/api/profiles`. A concurrent mutation that forces a reload must
+            // re-resolve against the live server.
+            let seedForPass = pendingProfileSeed
+            pendingProfileSeed = nil
             let result = await ChatComposerConfigLoader(client: client)
-                .loadConfiguration(from: initialState)
+                .loadConfiguration(from: initialState, profileSeed: seedForPass)
 
             guard composerConfigurationState == initialState else {
                 needsComposerConfigurationReload = true
                 continue
             }
 
+            let hadExplicitPick = pendingExplicitModelPick
             applyComposerConfigurationState(result.state)
+            if !hadExplicitPick {
+                // A configuration seed that produced a profile-default route
+                // (fresh profile switch, brand-new chat with no saved session
+                // override) is context, not a deliberate pick, so re-derive.
+                // A restored session override survives: it is compared against
+                // the freshly loaded profile default below.
+                pendingExplicitModelPick = explicitModelPickForChatStart()
+            }
 
             if let error = result.configurationError {
                 lastError = error
@@ -923,6 +1191,7 @@ final class ChatViewModel {
     }
 
     func refreshApprovalBypassState() async {
+        guard !isProfileSessionHandoff else { return }
         await pendingActionCoordinator.refreshApprovalBypassState()
     }
 
@@ -934,6 +1203,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        guard !isProfileSessionHandoff else { return false }
         guard !option.matchesSelection(modelID: currentModel, providerID: currentModelProvider) else {
             return false
         }
@@ -970,6 +1240,12 @@ final class ChatViewModel {
             currentModelProvider = response.session?.modelProvider ?? option.providerID
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            // The picker write is the session's route intent from now on; the
+            // restored-era snapshot no longer decides.
+            restoredSessionModel = currentModel
+            restoredSessionModelProvider = Self.nonEmpty(currentModelProvider)
+            // A start reply describing the previous route is outdated now.
+            clearEffectiveRouteNotice()
             // Still inside the isUpdatingComposerConfiguration window, so the
             // effort menu stays disabled until the new model's gating lands —
             // no interactable flash of the previous model's options (issue #18).
@@ -990,6 +1266,7 @@ final class ChatViewModel {
     /// model rejects. If the selected effort is no longer supported, snaps to the
     /// server's coerced `reasoning_effort`.
     func refreshReasoningEffortGating() async {
+        guard !isProfileSessionHandoff else { return }
         guard !isViewingCachedData else { return }
 
         reasoningGatingFetchToken += 1
@@ -1127,6 +1404,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        guard !isProfileSessionHandoff else { return false }
         let workspace = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !workspace.isEmpty else { return false }
 
@@ -1165,8 +1443,10 @@ final class ChatViewModel {
             )
 
             currentWorkspace = response.session?.workspace ?? workspace
-            currentModel = response.session?.model ?? currentModel
-            currentModelProvider = response.session?.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: response.session?.model,
+                provider: response.session?.modelProvider
+            )
             return true
         } catch {
             currentWorkspace = previousWorkspace
@@ -1179,8 +1459,12 @@ final class ChatViewModel {
     func switchProfile(
         _ profile: ProfileSummary,
         startNewSession: Bool,
-        recordsInteraction: Bool = true
+        recordsInteraction: Bool = true,
+        canComplete: () -> Bool = { true }
     ) async -> ProfileSwitchOutcome? {
+        guard !isUpdatingComposerConfiguration, !isProfileSessionHandoff,
+              !isLoadingComposerConfiguration, !isUploadingAttachment,
+              !isStartingChat, !isSendingVoiceNote else { return nil }
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
@@ -1203,13 +1487,24 @@ final class ChatViewModel {
             return nil
         }
 
+        let previousState = composerConfigurationState
+        let previousExplicitPick = pendingExplicitModelPick
+        let previousRestoredModel = restoredSessionModel
+        let previousRestoredProvider = restoredSessionModelProvider
+        let previousProfile = requestProfileName ?? "default"
+        let ownership = UUID()
+        isProfileSessionHandoff = startNewSession
+        if startNewSession { cleanupPollingTasks() }
+        reasoningGatingFetchToken &+= 1
         isUpdatingComposerConfiguration = true
         composerConfigurationErrorMessage = nil
         lastError = nil
         defer { isUpdatingComposerConfiguration = false }
 
+        var publishedSeedSessionID: String?
         do {
-            let response = try await client.switchProfile(name: profileName)
+            let response = try await client.switchProfile(name: profileName, ownership: ownership)
+            guard !Task.isCancelled, canComplete() else { throw CancellationError() }
             profileOptions = response.profiles ?? profileOptions
             selectedProfileName = response.active ?? profileName
             currentProfile = selectedProfileName
@@ -1218,18 +1513,47 @@ final class ChatViewModel {
                 currentWorkspace = defaultWorkspace
             }
 
-            if let defaultModel = response.defaultModel, !defaultModel.isEmpty {
+            // Prefer the fresh switch payload over the picker row: the row can go
+            // stale while the menu is open and would pin the wrong provider onto
+            // the new default model for reasoning/chat requests.
+            let returnedSelection = response.profiles?
+                .first { $0.normalizedName == selectedProfileName }
+            if let defaultModel = Self.nonEmpty(response.defaultModel) {
                 currentModel = defaultModel
-                currentModelProvider = Self.nonEmpty(profile.provider)
+                currentModelProvider = Self.nonEmpty(returnedSelection?.provider)
+                    ?? Self.nonEmpty(profile.provider)
+            } else {
+                // The switch reply omitted the new default. Never carry the
+                // previous profile's route across the switch: resolve the pair
+                // from the returned selected profile when the reply included
+                // it, otherwise clear BOTH so the new profile seeds from its
+                // own configuration below.
+                currentModel = Self.nonEmpty(returnedSelection?.model)
+                currentModelProvider = Self.nonEmpty(returnedSelection?.provider)
             }
+            // Switching profiles drops the old session's route intent: the new
+            // default is a seed, not a pick, until the user chooses again.
             pendingExplicitModelPick = false
+            restoredSessionModel = nil
+            restoredSessionModelProvider = nil
 
-            await loadComposerConfiguration()
+            // Reuse the switch payload so the follow-up config load skips
+            // another `/api/profiles` (+ possible re-switch) RTT.
+            let seed = ChatComposerProfileSeed(
+                switchResponse: response,
+                isSingleProfileMode: isSingleProfileMode,
+                fallbackProfiles: profileOptions
+            )
 
             guard startNewSession else {
+                await loadComposerConfiguration(profileSeed: seed)
+                clearEffectiveRouteNotice()
                 return ProfileSwitchOutcome(session: nil)
             }
 
+            // Create first, then stash the seed. Storing before create lets an
+            // unrelated chat on the same server consume a destination seed while
+            // creation is still pending (and can fail).
             let newSessionResponse = try await client.createSession(
                 workspace: currentWorkspace,
                 model: currentModel,
@@ -1237,15 +1561,64 @@ final class ChatViewModel {
                 profile: requestProfileName
             )
 
-            guard let session = newSessionResponse.session else {
-                composerConfigurationErrorMessage = String(localized: "The server did not return the new profile session.")
-                return nil
+            guard !Task.isCancelled, canComplete() else { throw CancellationError() }
+            guard let session = newSessionResponse.session,
+                  let createdSessionID = Self.nonEmpty(session.sessionId) else {
+                throw APIError.decoding(underlying: URLError(.cannotParseResponse))
             }
 
+            // Empty/new-session switches rebuild ChatView; stash the seed so
+            // the replacement VM's first composer load skips profiles. Bind it
+            // to this session so a sibling chat on the same server cannot take it.
+            RecentProfileSwitchSeed.store(seed, for: server, sessionID: createdSessionID)
+            publishedSeedSessionID = createdSessionID
+
+            if !messages.isEmpty {
+                // This VM stays on the back stack. Its session and route still
+                // belong to the original profile, not the new destination.
+                applyComposerConfigurationState(previousState)
+                pendingExplicitModelPick = previousExplicitPick
+                restoredSessionModel = previousRestoredModel
+                restoredSessionModelProvider = previousRestoredProvider
+                profileToRestoreAfterNavigation = previousProfile
+            } else {
+                clearEffectiveRouteNotice()
+            }
             return ProfileSwitchOutcome(session: SessionSummary(from: session))
         } catch {
-            lastError = error
-            composerConfigurationErrorMessage = error.localizedDescription
+            let switchFailure = error
+            RecentProfileSwitchSeed.discard(for: server, sessionID: publishedSeedSessionID)
+            // The cookie and composer must roll back together. If rollback
+            // fails, keep the old session fenced rather than issue writes in
+            // an unknown profile context.
+            profileToRestoreAfterNavigation = previousProfile
+            profileRecoveryOwnership = ownership
+            isProfileSessionHandoff = true
+            var reportedError: Error = switchFailure
+            do {
+                if let response = try await client.restoreProfile(name: previousProfile, ownership: ownership) {
+                    if let active = Self.nonEmpty(response.active), active != previousProfile {
+                        throw APIError.decoding(underlying: URLError(.cannotParseResponse))
+                    }
+                    isProfileSessionHandoff = false
+                }
+                // nil means another screen owns the cookie now. Retire recovery
+                // without unlocking this old session or offering a stale retry.
+                profileToRestoreAfterNavigation = nil
+                profileRecoveryOwnership = nil
+            } catch {
+                isProfileSessionHandoff = true
+                // A 401 on rollback must reach AuthManager even when create failed first.
+                if case .unauthorized = error as? APIError {
+                    reportedError = error
+                }
+            }
+            applyComposerConfigurationState(previousState)
+            pendingExplicitModelPick = previousExplicitPick
+            restoredSessionModel = previousRestoredModel
+            restoredSessionModelProvider = previousRestoredProvider
+            lastError = reportedError
+            composerConfigurationErrorMessage = reportedError.localizedDescription
             return nil
         }
     }
@@ -1258,6 +1631,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        guard !isProfileSessionHandoff else { return false }
         let selectedEffort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !selectedEffort.isEmpty else { return false }
 
@@ -1370,7 +1744,8 @@ final class ChatViewModel {
     /// nil unless both the durable draft copy and server upload succeed.
     @discardableResult
     func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async -> PendingAttachment? {
-        await attachmentCoordinator.uploadAttachment(
+        guard !isProfileSessionHandoff else { return nil }
+        return await attachmentCoordinator.uploadAttachment(
             data: data,
             filename: filename,
             previewData: previewData
@@ -1382,7 +1757,8 @@ final class ChatViewModel {
     /// the caller reports in aggregate and keeps the record for a later retry.
     @discardableResult
     func reuploadDraftAttachment(_ draftAttachment: ChatDraftAttachment, data: Data) async -> PendingAttachment? {
-        await attachmentCoordinator.reuploadDraftAttachment(data: data, draftAttachment: draftAttachment)
+        guard !isProfileSessionHandoff else { return nil }
+        return await attachmentCoordinator.reuploadDraftAttachment(data: data, draftAttachment: draftAttachment)
     }
 
     func clearPendingAttachments() {
@@ -1417,6 +1793,7 @@ final class ChatViewModel {
     /// is for the chat's first load only: it takes over the request
     /// `prepareInitialMessageLoad` already sent instead of sending another.
     func loadMessages(modelContext: ModelContext? = nil, usesInitialPrefetch: Bool = false) async {
+        guard !isProfileSessionHandoff else { return }
         guard let sessionID else {
             errorMessage = String(localized: "The server did not provide a session ID.")
             return
@@ -1453,6 +1830,9 @@ final class ChatViewModel {
             cacheFirstPlaceholder = []
         }
         let renderedCacheFirst = !cacheFirstPlaceholder.isEmpty
+        // Notices this load owns: anything pinned after this point — by a start
+        // reply landing mid-load — is newer than the state being replaced.
+        let pinnedNoticesAtLoadStart = pinnedLocalNotices
 
         do {
             let response: SessionResponse
@@ -1539,7 +1919,7 @@ final class ChatViewModel {
             completedReasoningGroups = []
             liveToolCalls = []
             liveReasoningText = ""
-            pinnedLocalNotices = []
+            discardPinnedLocalNotices(ownedAtLoadStart: pinnedNoticesAtLoadStart)
             toolCallAnchorMessageID = nil
             reasoningAnchorMessageID = nil
             attachmentCoordinator.removeAllLocalPreviews()
@@ -1580,7 +1960,7 @@ final class ChatViewModel {
                         completedReasoningGroups = []
                         liveToolCalls = []
                         liveReasoningText = ""
-                        pinnedLocalNotices = []
+                        discardPinnedLocalNotices(ownedAtLoadStart: pinnedNoticesAtLoadStart)
                         toolCallAnchorMessageID = nil
                         reasoningAnchorMessageID = nil
                         streamingAssistantMessageID = nil
@@ -1809,8 +2189,10 @@ final class ChatViewModel {
                 displayTitle = Self.displayTitle(from: title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
-            currentModel = session.model ?? currentModel
-            currentModelProvider = session.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: session.model,
+                provider: session.modelProvider
+            )
             currentProfile = session.profile ?? currentProfile
             setCompletedToolCallGroups(ToolCallGroup.groups(
                 persistedToolCalls: session.toolCalls ?? [],
@@ -2407,6 +2789,7 @@ final class ChatViewModel {
     }
 
     func sendMessage(_ draft: String, modelContext: ModelContext? = nil) async -> Bool {
+        guard !isProfileSessionHandoff else { return false }
         guard !isViewingCachedData else {
             sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
             return false
@@ -2460,6 +2843,7 @@ final class ChatViewModel {
     /// returns nothing. Returns true only if the chat send started.
     @discardableResult
     func sendVoiceNote(audioData: Data, filename: String, modelContext: ModelContext? = nil) async -> Bool {
+        guard !isProfileSessionHandoff else { return false }
         // Reentrancy guard: bail if a voice note OR a regular chat send is already
         // in flight. `performChatSend` has no internal guard, so two overlapping
         // sends would both flip `isStartingChat`/`isSendingVoiceNote` and race their
@@ -2587,6 +2971,9 @@ final class ChatViewModel {
 
         do {
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let response = try await client.startChat(
                 sessionID: sessionID,
@@ -2607,7 +2994,13 @@ final class ChatViewModel {
                 return false
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: response,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             streamCoordinator.start(
                 streamID: streamID,
                 runStartedAt: response.runStartedAt(sentAt: sentAt)
@@ -2774,6 +3167,10 @@ final class ChatViewModel {
         completedReasoningGroups = []
         liveToolCalls = []
         liveReasoningText = ""
+        // A full transcript reset drops the whole visible list, so this
+        // feature's dedupe pointer goes with it: otherwise an identical future
+        // mismatch would stay suppressed by a notice the user can no longer see.
+        clearEffectiveRouteNotice()
         pinnedLocalNotices = []
         dismissSteeringConfirmation()
         streamingAssistantMessageID = nil
@@ -3092,10 +3489,27 @@ final class ChatViewModel {
                 modelProvider: match?.providerID
             )
 
-            currentModel = response.session?.model ?? match?.id ?? requestedModel
-            currentModelProvider = response.session?.modelProvider ?? match?.providerID ?? currentModelProvider
+            let resolvedModel = Self.nonEmpty(response.session?.model)
+                ?? Self.nonEmpty(match?.id)
+                ?? requestedModel
+            currentModel = resolvedModel
+            // The provider has to belong to the NEW model: inheriting the
+            // replaced model's provider is what produced a contradictory pair
+            // (a custom-prefixed model sent with the previous model's provider)
+            // whenever the catalog was cold and the update reply omitted
+            // `model_provider`.
+            currentModelProvider = Self.resolvedRouteProvider(
+                reportedProvider: response.session?.modelProvider ?? match?.providerID,
+                model: resolvedModel
+            )
             currentWorkspace = response.session?.workspace ?? currentWorkspace
             pendingExplicitModelPick = true
+            restoredSessionModel = currentModel
+            restoredSessionModelProvider = Self.nonEmpty(currentModelProvider)
+            // Same ordering guarantee as the picker: a /model write invalidates
+            // any start reply still in flight for the previous route.
+            composerConfigurationInteractionGeneration &+= 1
+            clearEffectiveRouteNotice()
             await refreshReasoningEffortGating()
             return .executed(message: nil)
         } catch {
@@ -3136,8 +3550,10 @@ final class ChatViewModel {
             )
 
             currentWorkspace = response.session?.workspace ?? workspace
-            currentModel = response.session?.model ?? currentModel
-            currentModelProvider = response.session?.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: response.session?.model,
+                provider: response.session?.modelProvider
+            )
             workspaceSuggestions = workspaceRoots.compactMap(\.path)
             return .executed(message: nil)
         } catch {
@@ -3614,6 +4030,11 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: String(localized: "The server did not return the new session."))
             }
 
+            // The old view model keeps its route intent: creating the new
+            // session succeeded, but if the navigation to it fails or is not
+            // adopted, this view model is still the live one and its pick
+            // must survive. The new session's own view model derives intent
+            // from its restored session summary instead.
             return .openedSession(SessionSummary(from: session))
         } catch {
             lastError = error
@@ -3674,8 +4095,10 @@ final class ChatViewModel {
                 displayTitle = Self.displayTitle(from: title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
-            currentModel = session.model ?? currentModel
-            currentModelProvider = session.modelProvider ?? currentModelProvider
+            adoptServerRouteMetadataIfUnset(
+                model: session.model,
+                provider: session.modelProvider
+            )
             currentProfile = session.profile ?? currentProfile
             setCompletedToolCallGroups(ToolCallGroup.groups(
                 persistedToolCalls: session.toolCalls ?? [],
@@ -3691,6 +4114,9 @@ final class ChatViewModel {
             streamCoordinator.prepareForNewResponse()
             responseCompletionNeedsTranscriptRefresh = false
             attachmentCoordinator.removeAllLocalPreviews()
+            // A wholesale replacement keeps no promoted notice copy; reconcile the
+            // pointer so a hidden disclosure can re-show on the next identical mismatch.
+            discardPinnedLocalNotices(ownedAtLoadStart: [])
 
             let headline = response.summary?.headline?.trimmingCharacters(in: .whitespacesAndNewlines)
             let tokenLine = response.summary?.tokenLine?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3884,6 +4310,9 @@ final class ChatViewModel {
                     messageOffset: messagesOffset
                 ))
                 completedReasoningGroups = []
+                // A wholesale replacement keeps no promoted notice copy; reconcile the
+                // pointer so a hidden disclosure can re-show on the next identical mismatch.
+                discardPinnedLocalNotices(ownedAtLoadStart: [])
             } else {
                 await loadMessages()
                 if let lastError {
@@ -3898,6 +4327,9 @@ final class ChatViewModel {
             attachmentCoordinator.removeAllLocalPreviews()
 
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let chatResponse = try await client.startChat(
                 sessionID: sessionID,
@@ -3913,7 +4345,13 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: chatResponse.error ?? String(localized: "The server did not return a stream ID after retrying."))
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: chatResponse,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             messages.append(
                 ChatMessage(
                     role: "user",
@@ -3935,6 +4373,13 @@ final class ChatViewModel {
     }
 
     private func canRunConfigurationSlashCommand(_ actionDescription: String) -> Bool {
+        if isProfileSessionHandoff {
+            composerConfigurationErrorMessage = String(
+                localized: "Restore the original profile before you \(actionDescription)."
+            )
+            return false
+        }
+
         if isViewingCachedData {
             composerConfigurationErrorMessage = String(localized: "Reconnect to the server to \(actionDescription).")
             return false
@@ -4181,10 +4626,16 @@ final class ChatViewModel {
                         cacheErrorMessage = error.localizedDescription
                     }
                 }
+                // A wholesale replacement keeps no promoted notice copy; reconcile the
+                // pointer so a hidden disclosure can re-show on the next identical mismatch.
+                discardPinnedLocalNotices(ownedAtLoadStart: [])
             }
 
             // Now send the edited text through the normal chat flow
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let chatResponse = try await client.startChat(
                 sessionID: sessionID,
@@ -4201,7 +4652,13 @@ final class ChatViewModel {
                 return false
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: chatResponse,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             // Append the optimistic user message
             messages.append(
                 ChatMessage(
@@ -4288,9 +4745,15 @@ final class ChatViewModel {
                         cacheErrorMessage = error.localizedDescription
                     }
                 }
+                // A wholesale replacement keeps no promoted notice copy; reconcile the
+                // pointer so a hidden disclosure can re-show on the next identical mismatch.
+                discardPinnedLocalNotices(ownedAtLoadStart: [])
             }
 
             let explicitModelPick = explicitModelPickForChatStart()
+            let selectionGeneration = composerConfigurationInteractionGeneration
+            let requestedModel = currentModel
+            let requestedProvider = requestModelProvider
             let sentAt = Date()
             let chatResponse = try await client.startChat(
                 sessionID: sessionID,
@@ -4307,7 +4770,13 @@ final class ChatViewModel {
                 return false
             }
 
-            completeExplicitModelPickForChatStart(explicitModelPick)
+            applyEffectiveRouteNotice(
+                from: chatResponse,
+                requestedModel: requestedModel,
+                requestedProvider: requestedProvider,
+                sessionID: sessionID,
+                selectionGeneration: selectionGeneration
+            )
             streamCoordinator.prepareForNewResponse()
             responseCompletionNeedsTranscriptRefresh = false
             streamCoordinator.start(
@@ -4497,7 +4966,44 @@ final class ChatViewModel {
         streamCoordinator.suspendActiveStreamConnection()
     }
 
+    /// Called only by the retained chat's navigation appearance, never by its
+    /// background reconnect/polling tasks while another profile is on screen.
+    func restoreProfileOwnershipAfterNavigation() async {
+        guard let profile = profileToRestoreAfterNavigation,
+              !isUpdatingComposerConfiguration else { return }
+        isUpdatingComposerConfiguration = true
+        defer { isUpdatingComposerConfiguration = false }
+        do {
+            let response: ProfileSwitchResponse
+            if let ownership = profileRecoveryOwnership {
+                guard let restored = try await client.restoreProfile(name: profile, ownership: ownership) else {
+                    profileToRestoreAfterNavigation = nil
+                    profileRecoveryOwnership = nil
+                    return // Retired recovery stays fenced; never reclaim another screen's cookie.
+                }
+                response = restored
+            } else {
+                let ownership = UUID()
+                profileRecoveryOwnership = ownership
+                response = try await client.switchProfile(name: profile, ownership: ownership)
+            }
+            if let active = Self.nonEmpty(response.active), active != profile {
+                throw APIError.decoding(underlying: URLError(.cannotParseResponse))
+            }
+            profileToRestoreAfterNavigation = nil
+            profileRecoveryOwnership = nil
+            isProfileSessionHandoff = false
+            composerConfigurationErrorMessage = nil
+            lastError = nil
+        } catch {
+            // Keep both the fence and retry context if ownership is uncertain.
+            lastError = error
+            composerConfigurationErrorMessage = error.localizedDescription
+        }
+    }
+
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
+        guard !isProfileSessionHandoff else { return }
         await streamCoordinator.reconnectIfNeeded(modelContext: modelContext)
     }
 
@@ -4824,6 +5330,9 @@ final class ChatViewModel {
                 previousMessagesOffset: previousMessagesOffset
             )
             didApplyCompletedTranscript = true
+            // A wholesale replacement keeps no promoted notice copy; reconcile the
+            // pointer so a hidden disclosure can re-show on the next identical mismatch.
+            discardPinnedLocalNotices(ownedAtLoadStart: [])
         }
 
         if let title = completedSession.title {
@@ -4831,8 +5340,15 @@ final class ChatViewModel {
         }
 
         currentWorkspace = completedSession.workspace ?? currentWorkspace
-        currentModel = completedSession.model ?? currentModel
-        currentModelProvider = completedSession.modelProvider ?? currentModelProvider
+        // The completed session's metadata reports what the server ran or
+        // holds, not what was asked for: it may fill a route the composer does
+        // not know yet, and must never replace the one the user (or the
+        // restored session) owns. Transcript, title and tool-call updates
+        // below are unaffected.
+        adoptServerRouteMetadataIfUnset(
+            model: completedSession.model,
+            provider: completedSession.modelProvider
+        )
         currentProfile = completedSession.profile ?? currentProfile
 
         contextWindowSnapshot = ContextWindowSnapshot(

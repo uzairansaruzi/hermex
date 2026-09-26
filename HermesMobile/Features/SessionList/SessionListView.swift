@@ -1220,10 +1220,39 @@ struct SessionListView: View {
             profilesAreExpanded = false
         }
 
-        await loadSessions()
+        // Sessions and projects are independent after the cookie flips — fetch
+        // them together so the post-switch spinner lasts one RTT, not two.
+        await loadSessions(parallelProjects: true)
     }
 
-    private func loadSessions() async {
+    private func loadSessions(parallelProjects: Bool = false) async {
+        if parallelProjects {
+            async let sessionsLoaded = viewModel.load(modelContext: modelContext)
+            async let projectsError = viewModel.loadProjects()
+            let didLoadSessions = await sessionsLoaded
+            let projectLoadError = await projectsError
+            guard !Task.isCancelled else { return }
+
+            // Auth must see every failure: a 401 on sessions must not be lost
+            // when projects later writes a different lastError, and vice versa.
+            if let sessionError = viewModel.sessionLoadError {
+                authManager.handleAPIError(sessionError)
+            }
+            if let projectLoadError {
+                authManager.handleAPIError(projectLoadError)
+            }
+
+            // Match the serial path for UI: cache fallback stays usable and
+            // must not inherit a racing /api/projects error as a session-open
+            // failure. Online session failures still surface via lastError.
+            if viewModel.isViewingCachedData {
+                viewModel.clearActionErrorMessage()
+            } else if !didLoadSessions || projectLoadError != nil {
+                handleLastError()
+            }
+            return
+        }
+
         await loadSessionRows()
         guard !Task.isCancelled else { return }
         await loadProjectsIfLive()
@@ -1769,6 +1798,10 @@ private struct PendingNewChatView: View {
     let draftStore: ChatDraftStore
 
     @State private var createdSession: SessionSummary?
+    // Keep the initial ChatView identity stable while its nested replacement
+    // reports the session that now owns the unsent draft.
+    @State private var draftRecoverySession: SessionSummary?
+    @State private var profileSwitchOwnership = ChatProfileSwitchOwnership()
     @State private var draftMessage = ""
     @State private var draftQuotes: [ComposerQuote] = []
     @State private var didStartCreation = false
@@ -1813,7 +1846,11 @@ private struct PendingNewChatView: View {
                     autoStartsVoiceInput: autoStartsVoiceInput,
                     draftStore: draftStore,
                     restoresDraftSettings: true,
-                    onConversationStarted: markConversationStarted
+                    profileSwitchOwnership: profileSwitchOwnership,
+                    onConversationStarted: markConversationStarted,
+                    onSessionReplaced: { replacement in
+                        draftRecoverySession = replacement
+                    }
                 )
             } else {
                 pendingContent
@@ -1833,6 +1870,7 @@ private struct PendingNewChatView: View {
             }
         }
         .onDisappear {
+            profileSwitchOwnership.abandon()
             restoreAbandonedDraftIfNeeded()
             flushDraftsBestEffort()
         }
@@ -2005,9 +2043,9 @@ private struct PendingNewChatView: View {
     }
 
     private func restoreAbandonedDraftIfNeeded() {
-        guard let createdSession else { return }
+        guard let session = draftRecoverySession ?? createdSession else { return }
         draftMessage = draftStore.restoreAbandonedNewChatDraft(
-            from: draftKey(for: createdSession),
+            from: draftKey(for: session),
             to: draftKey,
             didStartConversation: didStartConversation
         )?.text ?? draftMessage

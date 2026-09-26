@@ -6309,12 +6309,12 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        // Config after the profile switch loads concurrently; the send follows it.
         let paths = requestPaths.values
+        // Profile resolution stays serial; the four follow-ups share one wave.
         XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
         XCTAssertEqual(
             Set(paths.dropFirst(2).dropLast()),
-            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
+            Set(["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"])
         )
         XCTAssertEqual(paths.last, "/api/chat/start")
         XCTAssertEqual(paths.count, 7)
@@ -6373,7 +6373,12 @@ final class ChatViewModelSendTests: XCTestCase {
                 XCTAssertEqual(body["model"] as? String, sessionModel)
                 XCTAssertEqual(body["model_provider"] as? String, "openai")
                 XCTAssertEqual(body["profile"] as? String, "work")
-                XCTAssertNil(body["explicit_model_pick"])
+                // The session's saved route differs from the owning profile's
+                // default (both are loaded here), so this restored override is
+                // a deliberate selection and must be sent as an explicit pick —
+                // updated from the former nil expectation when session route
+                // intent became persistent (#model-selection-audit).
+                XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
                 return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-override"}"#, for: request)
             case "/api/default-model":
                 XCTFail("Session-scoped chat model overrides must not save profile defaults.")
@@ -6538,6 +6543,7 @@ final class ChatViewModelSendTests: XCTestCase {
             sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
         ) { request in
             let path = request.url?.path ?? ""
+            // Composer config now fans out concurrent GETs; lock the recorder.
             requestPaths.append(path)
             switch path {
             case "/api/profiles":
@@ -6598,11 +6604,12 @@ final class ChatViewModelSendTests: XCTestCase {
             expectedInteractionGeneration: expectedGeneration
         )
 
+        let paths = requestPaths.values
         XCTAssertEqual(viewModel.selectedProfileName, "work")
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
         XCTAssertEqual(viewModel.selectedWorkspacePath, "/tmp/workspace")
-        XCTAssertEqual(requestPaths.values.last, "/api/profile/switch")
-        XCTAssertFalse(requestPaths.values.contains("/api/session/update"))
+        XCTAssertEqual(paths.last, "/api/profile/switch")
+        XCTAssertFalse(paths.contains("/api/session/update"))
     }
 
     @MainActor
@@ -9321,6 +9328,2905 @@ final class ChatViewModelSendTests: XCTestCase {
         let deletedNames = await attachmentStore.deletedNames()
 
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
+    }
+
+    // MARK: - Model-selection route intent (model-selection-audit, native hardening)
+
+    /// Mock endpoints used by the route-intent tests below. Paths are the ones
+    /// `Endpoint` already emits; no new wire shapes are invented here.
+    private func makeModelRouteRecorder() -> NSLockBox {
+        NSLockBox()
+    }
+
+    private func modelRouteTestResponse(
+        chatStartBodies: NSLockBox,
+        streamIDPrefix: String,
+        sessionLoadRecorder sessionLoads: NSLockBox? = nil
+    ) -> (URLRequest) throws -> (HTTPURLResponse, Data) {
+        // The `/api/session` recorder may be supplied by the caller when a test
+        // has to fence on the completed-response title refresh actually
+        // landing: a real non-nil `Done.session` carries its own title, so
+        // "the title changed" is no longer proof the follow-up GET was sent
+        // and consumed.
+        let sessionRequests = sessionLoads ?? NSLockBox()
+        return { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                let count = chatStartBodies.all.count
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session_id": "session-abc",
+                      "stream_id": "\(streamIDPrefix)-\(count)"
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/profiles":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "active": "poolops",
+                      "profiles": [
+                        {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true}
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: "@custom:opencode-go:deepseek-v4.1-flash",
+                        provider: "custom:opencode-go"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+    }
+
+    /// Completes the in-flight turn the way the real stream lifecycle does:
+    /// token → done → stream_end through the spy, then fences on the per-turn
+    /// follow-up work the finish triggers. Finishing a normally completed
+    /// stream makes the view model fire a completed-response title refresh
+    /// (`GET /api/session`) on an unstructured task — actor yields and even
+    /// `activeStreamID == nil` cannot order against it, and that request is
+    /// what used to leak into the NEXT test's MockURLProtocol handler. The
+    /// route fixtures therefore serve a rotating title, and this helper waits
+    /// for it to land in `displayTitle`: proof the refresh request was made
+    /// AND its response fully consumed. Only then is the view model
+    /// network-idle and a follow-up send a genuinely second send.
+    @MainActor
+    private func completeStreamingTurn(
+        _ streamClient: SpySSEStreamingClient,
+        thenDrain viewModel: ChatViewModel
+    ) async throws {
+        let titleBefore = viewModel.displayTitle
+        streamClient.emit(.token("Partial answer."))
+        streamClient.emit(.done(DoneStreamEvent(session: nil)))
+        streamClient.emit(.streamEnd)
+        try await waitUntil { viewModel.displayTitle != titleBefore }
+        XCTAssertNotEqual(
+            viewModel.displayTitle,
+            titleBefore,
+            "The completed-response title refresh did not settle; per-turn follow-up work is still in flight."
+        )
+        XCTAssertNil(viewModel.activeStreamID)
+    }
+
+    /// Real `/api/session` reload payload for the route-intent fixtures. The
+    /// title rotates per request so `completeStreamingTurn`'s settle fence
+    /// observes a `displayTitle` change for every completed turn, even
+    /// back-to-back within one test. The recorder keeps the count by live
+    /// reference (MockURLProtocol handlers cannot capture a mutating var).
+    private func modelRouteSessionReloadJSON(
+        sessionRequests: NSLockBox,
+        model: String,
+        provider: String?
+    ) -> String {
+        sessionRequests.append([:])
+        let providerJSON = provider.map { ", \"model_provider\": \"\($0)\"" } ?? ""
+        return """
+        {"session": {"session_id": "session-abc", "title": "Completed Turn \(sessionRequests.all.count)", "workspace": "/tmp/workspace", "model": "\(model)"\(providerJSON), "messages": []}}
+        """
+    }
+
+    /// Completes the in-flight turn with a REAL non-nil `Done.session` — the
+    /// payload a server sends on a `done` frame when it has the completed
+    /// session — then fences on the completed-response title refresh
+    /// (`GET /api/session`) actually landing.
+    ///
+    /// `completeStreamingTurn`'s fence ("the title changed") is deliberately
+    /// not reused here. A non-nil `Done.session` carries its own title, so the
+    /// view model changes `displayTitle` as soon as that payload applies —
+    /// before the follow-up GET is even sent — and the "changed" fence could
+    /// return while per-turn work is still in flight. Waiting for the
+    /// fixture's rotating `Completed Turn N` title proves the refresh request
+    /// was made AND its response fully consumed, so the next send is genuinely
+    /// a second send.
+    @MainActor
+    private func completeStreamingTurnReportingCompletedSession(
+        _ streamClient: SpySSEStreamingClient,
+        completedSessionJSON: String,
+        sessionLoads: NSLockBox,
+        thenDrain viewModel: ChatViewModel
+    ) async throws {
+        // Decode the completion through the same call `SSEClient` makes for a
+        // live `done` frame, so the test exercises the shipped SSE shape
+        // instead of a hand-built event.
+        let doneEvent = SSEEventDecoder.decode(
+            eventType: "done",
+            data: "{\"session\": \(completedSessionJSON)}"
+        )
+        guard case .done(let donePayload) = doneEvent,
+              let completedSession = donePayload.session
+        else {
+            XCTFail("The completed-session fixture did not decode through the real SSE done path.")
+            return
+        }
+
+        // Fixture sanity: the completed session really does report the
+        // owning profile's own route, not the requested one.
+        XCTAssertEqual(completedSession.model, "gpt-6-astra")
+        XCTAssertEqual(completedSession.modelProvider, "openai-codex")
+
+        streamClient.emit(.token("Partial answer."))
+        streamClient.emit(doneEvent)
+        streamClient.emit(.streamEnd)
+
+        let loadsBeforeRefresh = sessionLoads.all.count
+        try await waitUntil {
+            let served = sessionLoads.all.count
+            guard served > loadsBeforeRefresh else { return false }
+            return viewModel.displayTitle == "Completed Turn \(served)"
+        }
+        XCTAssertGreaterThan(
+            sessionLoads.all.count,
+            loadsBeforeRefresh,
+            "A completed turn must fire its title-refresh GET."
+        )
+        XCTAssertEqual(
+            viewModel.displayTitle,
+            "Completed Turn \(sessionLoads.all.count)",
+            "The completed-response title refresh did not settle; per-turn follow-up work is still in flight."
+        )
+        XCTAssertNil(viewModel.activeStreamID)
+    }
+
+    /// A real `/api/session`-shaped payload for a completed turn that reports
+    /// the owning profile's OWN route (Astra on openai-codex) rather than the
+    /// route the request carried — what a server-side fallback or a cold
+    /// provider catalog resolves to.
+    private func completedSessionReportingProfileRoute(
+        turn: Int,
+        userText: String
+    ) -> String {
+        """
+        {
+          "session_id": "session-abc",
+          "title": "Resolved on the profile route \(turn)",
+          "workspace": "/tmp/workspace",
+          "model": "gpt-6-astra",
+          "model_provider": "openai-codex",
+          "messages": [
+            {"role": "user", "content": "\(userText)", "message_id": "user-\(turn)"},
+            {"role": "assistant", "content": "Answered on the profile route.", "message_id": "assistant-\(turn)"}
+          ]
+        }
+        """
+    }
+
+    @MainActor
+    func testRestoredSessionWithNonDefaultRouteKeepsExplicitPickOnSecondMessage() async throws {
+        // Session restored from disk with a named custom-provider route. The
+        // backend resolver honors explicit picks but re-resolves bare requests
+        // against whichever provider catalog it happens to have loaded, so the
+        // second (and every later) send must keep telling the server the
+        // route was a deliberate pick — not just the first send.
+        let chatStartBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "@custom:opencode-go:deepseek-v4.1-flash",
+                modelProvider: "custom:opencode-go"
+            ),
+            handler: modelRouteTestResponse(chatStartBodies: chatStartBodies, streamIDPrefix: "stream-restored")
+        )
+
+        let didStartFirst = await viewModel.sendMessage("Continue with the restored route")
+        XCTAssertTrue(didStartFirst)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let didStartSecond = await viewModel.sendMessage("Keep going")
+        XCTAssertTrue(didStartSecond)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 2)
+        for (index, body) in bodies.enumerated() {
+            XCTAssertEqual(
+                body["explicit_model_pick"] as? Bool,
+                true,
+                "Restored non-default route must stay explicit on send #\(index + 1)."
+            )
+            XCTAssertEqual(body["model"] as? String, "@custom:opencode-go:deepseek-v4.1-flash")
+            XCTAssertEqual(body["model_provider"] as? String, "custom:opencode-go")
+        }
+    }
+
+    @MainActor
+    func testCompletedSessionReportingProfileDefaultKeepsRequestedRouteOnNextSend() async throws {
+        // Finding #2 (native-review-1840, P1): `applyCompletedStreamSession`
+        // assigns `currentModel`/`currentModelProvider` from the completed
+        // session's metadata with no guard, and the deliberate-route check
+        // then compares that overwritten pair against the owning profile's
+        // default. A turn that completes while reporting the profile's OWN
+        // route — server-side fallback, or a cold provider catalog — therefore
+        // replaces the user's DeepSeek/OpenCode Go route, and the NEXT request
+        // goes out as the profile default with no explicit-pick intent: the
+        // original bug, one message later.
+        //
+        // The completion is injected as a REAL non-nil `Done.session` decoded
+        // through the shipped SSE decoder (see
+        // `completeStreamingTurnReportingCompletedSession`), not the
+        // `Done(session: nil)` shape the rest of this suite uses.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let requestedProvider = "custom:opencode-go"
+        let chatStartBodies = makeModelRouteRecorder()
+        let sessionLoads = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: requestedProvider,
+                profile: "poolops"
+            ),
+            handler: modelRouteTestResponse(
+                chatStartBodies: chatStartBodies,
+                streamIDPrefix: "stream-completed-route",
+                sessionLoadRecorder: sessionLoads
+            )
+        )
+
+        // The session was restored with its own non-default route, so the
+        // first send is deliberate and says so.
+        let didStartFirst = await viewModel.sendMessage("Use DeepSeek on OpenCode Go")
+        XCTAssertTrue(didStartFirst)
+        try await completeStreamingTurnReportingCompletedSession(
+            streamClient,
+            completedSessionJSON: completedSessionReportingProfileRoute(
+                turn: 1,
+                userText: "Use DeepSeek on OpenCode Go"
+            ),
+            sessionLoads: sessionLoads,
+            thenDrain: viewModel
+        )
+
+        let didStartSecond = await viewModel.sendMessage("Keep going")
+        XCTAssertTrue(didStartSecond)
+        try await completeStreamingTurnReportingCompletedSession(
+            streamClient,
+            completedSessionJSON: completedSessionReportingProfileRoute(
+                turn: 2,
+                userText: "Keep going"
+            ),
+            sessionLoads: sessionLoads,
+            thenDrain: viewModel
+        )
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 2)
+        let firstBody = try XCTUnwrap(bodies.first)
+        XCTAssertEqual(firstBody["model"] as? String, requestedModel)
+        XCTAssertEqual(firstBody["model_provider"] as? String, requestedProvider)
+        XCTAssertEqual(
+            firstBody["explicit_model_pick"] as? Bool,
+            true,
+            "The restored non-default route is a deliberate pick on the first send."
+        )
+
+        let secondBody = try XCTUnwrap(bodies.last)
+        XCTAssertEqual(
+            secondBody["model"] as? String,
+            requestedModel,
+            "A completed turn's session metadata must not replace the requested model."
+        )
+        XCTAssertEqual(
+            secondBody["model_provider"] as? String,
+            requestedProvider,
+            "A completed turn's session metadata must not replace the requested provider."
+        )
+        XCTAssertEqual(
+            secondBody["explicit_model_pick"] as? Bool,
+            true,
+            "The next request must still claim the deliberate route, not the profile default it was reported with."
+        )
+    }
+
+    // MARK: - Unknown owning-profile metadata (finding #1)
+
+    @MainActor
+    func testRestoredUnprefixedRouteStaysExplicitWhileProfileMetadataIsDelayed() async throws {
+        // Finding #1: the deliberate-route fallback only trusted `@`-prefixed
+        // routes or colon-qualified providers, so a saved BARE model with an
+        // unprefixed provider was sent as an implicit seed while the owning
+        // profile's default was still unknown — and a cold backend is free to
+        // re-resolve an implicit seed into another provider. `/api/profiles` is
+        // gated open across the send, so the metadata is genuinely unknown when
+        // the request is built. The pair here (gpt-5.4 on openai) is a real
+        // model/provider pairing, not an assumed one.
+        let chatStartBodies = makeModelRouteRecorder()
+        let profilesStarted = expectation(description: "profiles request started")
+        let releaseProfiles = DispatchSemaphore(value: 0)
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "gpt-5.4",
+                modelProvider: "openai",
+                profile: "poolops"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                profilesStarted.fulfill()
+                XCTAssertEqual(releaseProfiles.wait(timeout: .now() + .seconds(5)), .success)
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "active": "poolops",
+                      "profiles": [
+                        {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true, "is_active": true}
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/models":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "default_model": "gpt-6-astra",
+                      "active_provider": "openai-codex",
+                      "groups": [
+                        {
+                          "name": "Codex",
+                          "provider_id": "openai-codex",
+                          "models": [
+                            {"id": "gpt-6-astra", "name": "Astra"}
+                          ]
+                        }
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            default:
+                return try self.modelRouteTestResponse(
+                    chatStartBodies: chatStartBodies,
+                    streamIDPrefix: "stream-delayed-metadata"
+                )(request)
+            }
+        }
+
+        let loadTask = Task { @MainActor in await viewModel.loadComposerConfiguration() }
+        await fulfillment(of: [profilesStarted], timeout: 2)
+
+        let didStart = await viewModel.sendMessage("Use the restored route")
+        XCTAssertTrue(didStart)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertEqual(bodies.first?["model"] as? String, "gpt-5.4")
+        XCTAssertEqual(bodies.first?["model_provider"] as? String, "openai")
+        XCTAssertEqual(
+            bodies.first?["explicit_model_pick"] as? Bool,
+            true,
+            "A saved route is the session's own choice while the owning profile's default is still unknown."
+        )
+
+        releaseProfiles.signal()
+        await loadTask.value
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testRestoredUnprefixedRouteStaysExplicitWhenProfileMetadataFails() async throws {
+        // The other half of finding #1: configuration loading that FAILS
+        // outright (not just slow) must not demote the saved route either.
+        let chatStartBodies = makeModelRouteRecorder()
+        let profileRequests = LockedCounter()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "gpt-5.4",
+                modelProvider: "openai",
+                profile: "poolops"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                _ = profileRequests.increment()
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 500,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+                return (try XCTUnwrap(response), Data(#"{"error":"profiles unavailable"}"#.utf8))
+            default:
+                return try self.modelRouteTestResponse(
+                    chatStartBodies: chatStartBodies,
+                    streamIDPrefix: "stream-failed-metadata"
+                )(request)
+            }
+        }
+
+        await viewModel.loadComposerConfiguration()
+        XCTAssertEqual(profileRequests.count, 1, "The owning profile's metadata really did fail to load.")
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
+
+        let didStart = await viewModel.sendMessage("Use the restored route")
+        XCTAssertTrue(didStart)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertEqual(bodies.first?["model"] as? String, "gpt-5.4")
+        XCTAssertEqual(bodies.first?["model_provider"] as? String, "openai")
+        XCTAssertEqual(
+            bodies.first?["explicit_model_pick"] as? Bool,
+            true,
+            "A failed configuration load leaves the owning default unknown; the saved route stays deliberate."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testPopulatedProfileNavigationReturnRestoresOwnershipBeforeWrites() async throws {
+        let requests = makeModelRouteRecorder()
+        let stream = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: stream, sessionSummary: try makeSession(profile: "work")) { request in
+            let body: [String: Any] = request.httpMethod == "POST" ? try apiTestJSONBody(from: request) : [:]
+            requests.append(["path": request.url?.path ?? "", "body": body])
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","profile":"work","model":"gpt-5.4","messages":[{"role":"user","content":"Existing conversation"}]}}"#, for: request)
+            case "/api/profile/switch":
+                let name = body["name"] as? String ?? ""
+                let workRestores = requests.all.filter {
+                    ($0["body"] as? [String: Any])?["name"] as? String == "work"
+                }.count
+                if name == "work", workRestores == 1 {
+                    throw URLError(.notConnectedToInternet)
+                }
+                return apiTestJSONResponse("{\"active\":\"\(name)\",\"default_model\":\"new-model\"}", for: request)
+            case "/api/session/new":
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","profile":"research","model":"new-model"}}"#, for: request)
+            case "/api/session/update":
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","profile":"work","workspace":"/returned"}}"#, for: request)
+            case "/api/chat/start":
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                XCTAssertEqual(body["profile"] as? String, "work")
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"returned-stream"}"#, for: request)
+            default:
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        await viewModel.loadMessages()
+        XCTAssertFalse(viewModel.messages.isEmpty)
+        let originalSelectedProfile = viewModel.selectedProfileName
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(research, startNewSession: true)
+        XCTAssertEqual(outcome?.session?.sessionId, "research-new")
+        let hiddenSend = await viewModel.sendMessage("Hidden parent must not send")
+        XCTAssertFalse(hiddenSend)
+        // Background reconnect must not steal ownership from the destination.
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertEqual(requests.all.filter { $0["path"] as? String == "/api/profile/switch" }.count, 1)
+        // Same boundary invoked by ChatView.onAppear when Back reveals this VM.
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertNotNil(viewModel.composerConfigurationErrorMessage)
+        let unsafeUpdate = await viewModel.selectWorkspacePath("/must-stay-fenced")
+        XCTAssertFalse(unsafeUpdate, "A failed cookie restore must not unlock the original session.")
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertNil(viewModel.composerConfigurationErrorMessage)
+        await viewModel.reconnectStreamIfNeeded()
+        XCTAssertEqual(viewModel.selectedProfileName, originalSelectedProfile)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        let didUpdate = await viewModel.selectWorkspacePath("/returned")
+        XCTAssertTrue(didUpdate)
+        let didPickModel = await viewModel.selectComposerModel(ModelCatalogOption(
+            id: "returned-model", displayName: "Returned Model", providerID: "openai"
+        ))
+        XCTAssertTrue(didPickModel)
+        let didSend = await viewModel.sendMessage("Continue original conversation")
+        XCTAssertTrue(didSend)
+        let switches = requests.all.filter { $0["path"] as? String == "/api/profile/switch" }
+        XCTAssertEqual((switches.last?["body"] as? [String: Any])?["name"] as? String, "work")
+        viewModel.suspendStreamForNavigation()
+        viewModel.cleanupPollingTasks()
+    }
+
+    @MainActor
+    func testLeavingDuringSuspendedProfileCreationCannotRecreateRecoveredDraft() async throws {
+        let creationStarted = expectation(description: "Session creation suspended")
+        let releaseCreation = DispatchSemaphore(value: 0)
+        let requests = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                requests.append(body)
+                return apiTestJSONResponse("{\"active\":\"\(body["name"] as? String ?? "")\"}", for: request)
+            case "/api/session/new":
+                creationStarted.fulfill()
+                guard releaseCreation.wait(timeout: .now() + 10) == .success else {
+                    throw URLError(.timedOut)
+                }
+                return apiTestJSONResponse(#"{"session":{"session_id":"replacement-b","profile":"research"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request")
+                throw URLError(.badURL)
+            }
+        }
+        let owner = ChatProfileSwitchOwnership()
+        let token = try XCTUnwrap(owner.begin())
+        let server = URL(string: "https://example.com")!
+        actor DraftPersistence: ChatDraftPersisting {
+            func load() async -> [ChatDraftKey: ChatDraft] { [:] }
+            func write(_ drafts: [ChatDraftKey: ChatDraft]) async throws {}
+        }
+        let store = ChatDraftStore(persistence: DraftPersistence(), debounceDuration: .seconds(10))
+        let original = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        let replacement = ChatDraftKey.session(server: server, sessionID: "replacement-b")
+        let newChat = ChatDraftKey.newChat(server: server)
+        let content = ComposerDraftContent(text: "Do not duplicate", quotes: [ComposerQuote(text: "Quote")])
+        store.setContent(content, for: original)
+        let profile = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                     gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        var didNavigate = false
+        let switching = Task {
+            let outcome = await viewModel.switchProfile(profile, startNewSession: true, canComplete: { owner.owns(token) })
+            if outcome?.session != nil {
+                store.setContent(content, for: original)
+                store.moveDraft(from: original, to: replacement)
+                didNavigate = true
+            }
+            owner.finish(token)
+            return outcome
+        }
+        await fulfillment(of: [creationStarted], timeout: 3)
+        // The container invalidates completion ownership before recovering A.
+        owner.abandon()
+        _ = store.restoreAbandonedNewChatDraft(from: original, to: newChat, didStartConversation: false)
+        // Even a reappearance cannot give the old suspended operation ownership.
+        owner.appear()
+        releaseCreation.signal()
+        let outcome = await switching.value
+        XCTAssertNil(outcome)
+        XCTAssertFalse(didNavigate)
+        let recovered = await store.draft(for: newChat)
+        let stranded = await store.draft(for: replacement)
+        let old = await store.draft(for: original)
+        XCTAssertEqual(recovered?.text, content.text)
+        XCTAssertEqual(recovered?.quotes, content.quotes)
+        XCTAssertNil(stranded)
+        XCTAssertNil(old)
+        XCTAssertEqual(requests.all.last?["name"] as? String, "work")
+        XCTAssertNotNil(owner.begin(), "A fresh appearance can start a new operation.")
+    }
+
+    @MainActor
+    func testAbandonedCreationCannotRollBackNewerSessionListProfileOwner() async throws {
+        let creationStarted = expectation(description: "A creation suspended")
+        let releaseCreation = DispatchSemaphore(value: 0)
+        defer { releaseCreation.signal() }
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                switches.append(body)
+                return apiTestJSONResponse("{\"active\":\"\(body["name"] as? String ?? "")\"}", for: request)
+            case "/api/session/new":
+                creationStarted.fulfill()
+                guard releaseCreation.wait(timeout: .now() + 10) == .success else {
+                    throw URLError(.timedOut)
+                }
+                return apiTestJSONResponse(#"{"session":{"session_id":"replacement-b","profile":"research"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request")
+                throw URLError(.badURL)
+            }
+        }
+        let owner = ChatProfileSwitchOwnership()
+        let token = try XCTUnwrap(owner.begin())
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let switching = Task {
+            await viewModel.switchProfile(research, startNewSession: true, canComplete: { owner.owns(token) })
+        }
+        await fulfillment(of: [creationStarted], timeout: 3)
+        owner.abandon()
+
+        // A different screen owns a different APIClient, but the same server cookie.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let server = URL(string: "https://example.test")!
+        let list = SessionListViewModel(server: server, client: APIClient(baseURL: server, session: session))
+        let third = ProfileSummary(name: "third", path: nil, isDefault: nil, isActive: nil,
+                                   gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let didSwitch = await list.switchActiveProfile(third)
+        XCTAssertTrue(didSwitch)
+        XCTAssertEqual(list.activeProfileName, "third")
+        releaseCreation.signal()
+        let outcome = await switching.value
+        XCTAssertNil(outcome)
+        XCTAssertEqual(switches.all.compactMap { $0["name"] as? String }, ["research", "third"],
+                       "Retired A must not send a cookie-changing rollback after C owns the server.")
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertEqual(switches.all.last?["name"] as? String, "third", "Recovery must not revive retired ownership.")
+        let unsafeWrite = await viewModel.selectWorkspacePath("/retired")
+        XCTAssertFalse(unsafeWrite)
+    }
+
+    @MainActor
+    func testFailedRollbackRetryCannotReclaimNewerClientOwnership() async throws {
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                switches.append(body)
+                let name = body["name"] as? String ?? ""
+                if name == "work" { throw URLError(.notConnectedToInternet) }
+                return apiTestJSONResponse("{\"active\":\"\(name)\"}", for: request)
+            case "/api/session/new":
+                throw URLError(.notConnectedToInternet)
+            default:
+                XCTFail("Retired recovery must not write")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(research, startNewSession: true)
+        XCTAssertNil(outcome)
+        XCTAssertTrue(viewModel.canRetryProfileOwnership)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let other = APIClient(baseURL: URL(string: "https://example.test")!, session: session)
+        _ = try await other.switchProfile(name: "third")
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertEqual(switches.all.compactMap { $0["name"] as? String }, ["research", "work", "third"])
+        XCTAssertFalse(viewModel.canRetryProfileOwnership)
+        let unsafeWrite = await viewModel.selectWorkspacePath("/retired")
+        XCTAssertFalse(unsafeWrite)
+    }
+
+    @MainActor
+    func testFailedCreationAndRollbackRetainsRetryableOriginalOwnership() async throws {
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try apiTestJSONBody(from: request)
+                switches.append(body)
+                let name = body["name"] as? String ?? ""
+                if name == "work", switches.all.count <= 3 {
+                    throw URLError(.notConnectedToInternet)
+                }
+                return apiTestJSONResponse("{\"active\":\"\(name)\"}", for: request)
+            case "/api/session/new":
+                throw URLError(.notConnectedToInternet)
+            case "/api/session/update":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["session_id"] as? String, "session-abc")
+                return apiTestJSONResponse(#"{"session":{"session_id":"session-abc","profile":"work","workspace":"/recovered"}}"#, for: request)
+            default:
+                XCTFail("Unexpected request: \(request.url?.path ?? "")")
+                throw URLError(.badURL)
+            }
+        }
+        let profile = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                     gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(profile, startNewSession: true)
+        XCTAssertNil(outcome)
+        XCTAssertTrue(viewModel.canRetryProfileOwnership)
+        let blocked = await viewModel.selectWorkspacePath("/unsafe")
+        XCTAssertFalse(blocked)
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        let stillBlocked = await viewModel.selectWorkspacePath("/unsafe")
+        XCTAssertFalse(stillBlocked)
+        await viewModel.restoreProfileOwnershipAfterNavigation()
+        XCTAssertEqual(switches.all.compactMap { $0["name"] as? String }, ["research", "work", "work", "work"])
+        XCTAssertFalse(viewModel.canRetryProfileOwnership)
+        XCTAssertNil(viewModel.composerConfigurationErrorMessage)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        let recovered = await viewModel.selectWorkspacePath("/recovered")
+        XCTAssertTrue(recovered)
+    }
+
+    @MainActor
+    func testNewProfileSessionFailureRestoresOriginalComposerAndCookie() async throws {
+        let switches = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                switches.append(body)
+                let name = body["name"] as? String ?? "research"
+                return apiTestJSONResponse("{\"active\": \"\(name)\", \"default_model\": \"new-model\"}", for: request)
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"research","profiles":[{"name":"research"}]}"#, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"new-model","groups":[]}"#, for: request)
+            case "/api/reasoning", "/api/workspaces", "/api/commands":
+                return apiTestJSONResponse("{}", for: request)
+            case "/api/session/new":
+                throw URLError(.notConnectedToInternet)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await viewModel.switchProfile(research, startNewSession: true)
+        XCTAssertNil(outcome)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+        XCTAssertEqual(switches.all.last?["name"] as? String, "work")
+        XCTAssertFalse(viewModel.isUpdatingComposerConfiguration)
+        XCTAssertNotNil(viewModel.composerConfigurationErrorMessage)
+    }
+
+    @MainActor
+    func testNewProfileSessionRejectsRapidSwitchAndOldSessionPolling() async throws {
+        let switchStarted = expectation(description: "Profile switch started")
+        let releaseSwitch = DispatchSemaphore(value: 0)
+        let requests = makeModelRouteRecorder()
+        let viewModel = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            requests.append(["path": request.url?.path ?? ""])
+            switch request.url?.path {
+            case "/api/profile/switch":
+                if requests.all.filter({ $0["path"] as? String == "/api/profile/switch" }).count == 1 {
+                    switchStarted.fulfill()
+                    _ = releaseSwitch.wait(timeout: .now() + 5)
+                }
+                return apiTestJSONResponse(#"{"active":"research","default_model":"new-model"}"#, for: request)
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active":"research","profiles":[{"name":"research"}]}"#, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"new-model","groups":[]}"#, for: request)
+            case "/api/reasoning", "/api/workspaces", "/api/commands", "/api/session/yolo":
+                return apiTestJSONResponse("{}", for: request)
+            case "/api/session/new":
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","profile":"research"}}"#, for: request)
+            default:
+                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let first = Task { await viewModel.switchProfile(research, startNewSession: true) }
+        await fulfillment(of: [switchStarted], timeout: 2)
+        // Release before awaiting other requests: the fixture's URL loading queue
+        // may be serial, so holding it would test a semaphore, not ownership.
+        releaseSwitch.signal()
+        let second = await viewModel.switchProfile(research, startNewSession: true)
+        await viewModel.refreshApprovalBypassState()
+        let outcome = await first.value
+        XCTAssertNil(second)
+        XCTAssertEqual(outcome?.session?.sessionId, "research-new")
+        XCTAssertEqual(requests.all.filter { $0["path"] as? String == "/api/profile/switch" }.count, 1)
+        XCTAssertFalse(requests.all.contains { $0["path"] as? String == "/api/session/yolo" })
+    }
+
+    @MainActor
+    func testProfileReplacementUsesNewSessionForComposerWritesAndAttachmentRestore() async throws {
+        let old = try makeViewModel(sessionSummary: try makeSession(profile: "work")) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                return apiTestJSONResponse(#"{"active":"research","default_model":"new-model"}"#, for: request)
+            case "/api/session/new":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["profile"] as? String, "research")
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","profile":"research","model":"new-model"}}"#, for: request)
+            default:
+                XCTFail("Old session must not load configuration during handoff")
+                throw URLError(.badURL)
+            }
+        }
+        let research = ProfileSummary(name: "research", path: nil, isDefault: nil, isActive: nil,
+                                      gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil)
+        let outcome = await old.switchProfile(research, startNewSession: true)
+        let session = try XCTUnwrap(outcome?.session)
+        await old.restoreProfileOwnershipAfterNavigation()
+        let oldSend = await old.sendMessage("Do not send to the old session")
+        XCTAssertFalse(oldSend)
+        await old.loadComposerConfiguration()
+        await old.refreshApprovalBypassState()
+
+        let replacement = try makeViewModel(sessionSummary: session) { request in
+            switch request.url?.path {
+            case "/api/session/update":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["session_id"] as? String, "research-new")
+                return apiTestJSONResponse(#"{"session":{"session_id":"research-new","workspace":"/new-workspace"}}"#, for: request)
+            case "/api/upload":
+                let body = apiTestBodyData(from: request) ?? Data()
+                XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("research-new"))
+                return apiTestJSONResponse(#"{"filename":"notes.txt","path":"/research-new/notes.txt","size":5,"mime":"text/plain","is_image":false}"#, for: request)
+            default:
+                XCTFail("Unexpected replacement request: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let updated = await replacement.selectWorkspacePath("/new-workspace")
+        XCTAssertTrue(updated)
+        let record = ChatDraftAttachment(id: UUID(), name: "notes.txt", mime: "text/plain",
+                                         size: 5, isImage: false, file: "durable-notes.txt")
+        let attachment = await replacement.reuploadDraftAttachment(record, data: Data("notes".utf8))
+        XCTAssertEqual(attachment?.id, record.id)
+        XCTAssertEqual(attachment?.draftFileName, record.file)
+        XCTAssertEqual(attachment?.path, "/research-new/notes.txt")
+    }
+
+    // MARK: - Profile switch with omitted defaults (finding #3)
+
+    @MainActor
+    func testProfileSwitchOmittingDefaultModelUsesTheReturnedProfileRoute() async throws {
+        // Finding #3: a switch reply that omits `default_model` used to leave
+        // BOTH the model and the provider untouched, so the previous profile's
+        // route leaked into the new profile as an implicit seed.
+        let chatStartBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "gpt-5.4",
+                modelProvider: "openai",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "active": "research",
+                      "profiles": [
+                        {"name": "work", "model": "gpt-5.4", "provider": "openai"},
+                        {"name": "research", "model": "gpt-4o-mini", "provider": "openai-codex", "is_active": true}
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/profiles":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "active": "research",
+                      "profiles": [
+                        {"name": "work", "model": "gpt-5.4", "provider": "openai"},
+                        {"name": "research", "model": "gpt-4o-mini", "provider": "openai-codex", "is_active": true}
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/models":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "default_model": "gpt-4o-mini",
+                      "active_provider": "openai-codex",
+                      "groups": [
+                        {
+                          "name": "Codex",
+                          "provider_id": "openai-codex",
+                          "models": [
+                            {"id": "gpt-4o-mini", "name": "Mini"}
+                          ]
+                        }
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            default:
+                return try self.modelRouteTestResponse(
+                    chatStartBodies: chatStartBodies,
+                    streamIDPrefix: "stream-switch-omitted"
+                )(request)
+            }
+        }
+
+        let research = ProfileSummary(
+            name: "research", path: nil, isDefault: nil, isActive: nil,
+            gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil
+        )
+        let outcome = await viewModel.switchProfile(research, startNewSession: false)
+        XCTAssertNotNil(outcome)
+
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-4o-mini")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai-codex")
+
+        let didStart = await viewModel.sendMessage("On the new profile")
+        XCTAssertTrue(didStart)
+
+        let body = try XCTUnwrap(chatStartBodies.all.first)
+        XCTAssertEqual(body["model"] as? String, "gpt-4o-mini")
+        XCTAssertEqual(
+            body["model_provider"] as? String,
+            "openai-codex",
+            "The previous profile's route must never carry across a switch."
+        )
+        XCTAssertNil(
+            body["explicit_model_pick"],
+            "The new profile's own default is a seed, not a deliberate pick."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testProfileSwitchWithOnlyPartialMetadataNeverKeepsThePreviousRoute() async throws {
+        // Same rule with no usable metadata in the switch reply at all: the old
+        // pair is cleared, and the new profile seeds from its own configuration
+        // (which is exactly what the configuration load right after the switch
+        // reads) instead of inheriting the previous route.
+        let chatStartBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "@custom:opencode-go:deepseek-v4.1-flash",
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/profile/switch":
+                return apiTestJSONResponse(
+                    #"{"active": "research", "profiles": [{"name": "research", "is_active": true}]}"#,
+                    for: request
+                )
+            case "/api/profiles":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "active": "research",
+                      "profiles": [
+                        {"name": "work", "model": "gpt-5.4", "provider": "openai"},
+                        {"name": "research", "model": "gpt-4o-mini", "provider": "openai-codex", "is_active": true}
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/models":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "default_model": "gpt-4o-mini",
+                      "active_provider": "openai-codex",
+                      "groups": [
+                        {
+                          "name": "Codex",
+                          "provider_id": "openai-codex",
+                          "models": [
+                            {"id": "gpt-4o-mini", "name": "Mini"}
+                          ]
+                        }
+                      ]
+                    }
+                    """,
+                    for: request
+                )
+            default:
+                return try self.modelRouteTestResponse(
+                    chatStartBodies: chatStartBodies,
+                    streamIDPrefix: "stream-switch-partial"
+                )(request)
+            }
+        }
+
+        let research = ProfileSummary(
+            name: "research", path: nil, isDefault: nil, isActive: nil,
+            gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil
+        )
+        let outcome = await viewModel.switchProfile(research, startNewSession: false)
+        XCTAssertNotNil(outcome)
+
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-4o-mini")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai-codex")
+
+        let didStart = await viewModel.sendMessage("On the new profile")
+        XCTAssertTrue(didStart)
+
+        let body = try XCTUnwrap(chatStartBodies.all.first)
+        XCTAssertNotEqual(body["model"] as? String, "@custom:opencode-go:deepseek-v4.1-flash")
+        XCTAssertNotEqual(body["model_provider"] as? String, "custom:opencode-go")
+        XCTAssertEqual(body["model"] as? String, "gpt-4o-mini")
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    // MARK: - Typed /model with a cold catalog (finding #4)
+
+    @MainActor
+    func testTypedModelCommandWithColdCatalogNeverInheritsTheReplacedProvider() async throws {
+        // Finding #4: with no catalog match and a reply that omits
+        // `model_provider`, the provider fell back to the model being REPLACED,
+        // producing an incoherent pair (a custom-prefixed model sent with
+        // `openai`). The qualifier in the typed model is the provider identity.
+        let typedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartBodies = makeModelRouteRecorder()
+        let sessionUpdateBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "gpt-5.4",
+                modelProvider: "openai",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session/update":
+                sessionUpdateBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                // Cold catalog: the update reply echoes the model and omits the
+                // provider entirely.
+                return apiTestJSONResponse(
+                    """
+                    {"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "\(typedModel)"}}
+                    """,
+                    for: request
+                )
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+            default:
+                return try self.modelRouteTestResponse(
+                    chatStartBodies: chatStartBodies,
+                    streamIDPrefix: "stream-typed-model"
+                )(request)
+            }
+        }
+
+        XCTAssertTrue(viewModel.modelCatalogGroups.isEmpty, "Precondition: the shared catalog is cold.")
+
+        let command = try XCTUnwrap(SlashCommandCatalog.command(named: "model"))
+        let result = await viewModel.executeSlashCommand(command, args: typedModel)
+        guard case .executed = result else {
+            XCTFail("The typed /model command did not execute: \(result)")
+            return
+        }
+
+        XCTAssertEqual(sessionUpdateBodies.all.first?["model"] as? String, typedModel)
+        XCTAssertNil(
+            sessionUpdateBodies.all.first?["model_provider"],
+            "A cold catalog has no provider to send with the update."
+        )
+        XCTAssertEqual(viewModel.selectedModelID, typedModel)
+        XCTAssertEqual(
+            viewModel.selectedModelProviderID,
+            "custom:opencode-go",
+            "The provider must be derived from the qualified model, never inherited from the replaced one."
+        )
+
+        let didStart = await viewModel.sendMessage("Use the typed model")
+        XCTAssertTrue(didStart)
+
+        let body = try XCTUnwrap(chatStartBodies.all.first)
+        XCTAssertEqual(body["model"] as? String, typedModel)
+        XCTAssertEqual(body["model_provider"] as? String, "custom:opencode-go")
+        XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    // MARK: - Effective-route disclosure states (finding #5)
+
+    @MainActor
+    func testEffectiveRouteReplyOmittingProviderLeavesPriorMismatchNoticeIntact() async throws {
+        // Finding #5: the whole comparison collapsed to a Bool, so a reply that
+        // named the model but NO provider anywhere read as confirmation and
+        // retired a real mismatch notice. Omission is not confirmation.
+        //
+        // Lifecycle note: a completed turn promotes every pinned notice into the
+        // transcript as a `local_notice` message and empties `pinnedLocalNotices`
+        // (`ChatStreamCoordinator.finishStream` → `flushPinnedLocalNoticesToTranscript`).
+        // After the first drain the standing disclosure therefore lives in
+        // `messages`, and the pin list is expected to stay empty — that is what
+        // "not disclosed again" looks like from the outside.
+        let requestedModel = "gpt-5.4"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "openai",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                if count == 2 {
+                    // Same model, provider omitted everywhere: unknown.
+                    return apiTestJSONResponse(
+                        #"{"session_id": "session-abc", "stream_id": "stream-unknown-2", "effective_model": "gpt-5.4"}"#,
+                        for: request
+                    )
+                }
+                // A genuine mismatch, and byte-for-byte the same one on every
+                // other send.
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-mismatch-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "openai"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStartFirst)
+        let notice = try XCTUnwrap(
+            viewModel.pinnedLocalNotices.first { $0.contains("gpt-6-astra (openai-codex)") },
+            "A genuine mismatch must be disclosed."
+        )
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let didStartSecond = await viewModel.sendMessage("Second")
+        XCTAssertTrue(didStartSecond)
+
+        // The disclosure now lives in the transcript (a promoted `local_notice`).
+        // An unknown reply must leave it exactly as it was: no new pin invented,
+        // and nothing retired.
+        XCTAssertTrue(
+            viewModel.messages.contains {
+                $0.role == "local_notice" && $0.content?.contains("gpt-6-astra (openai-codex)") == true
+            },
+            "An unconfirmed provider must leave the standing disclosure visible."
+        )
+        XCTAssertTrue(
+            viewModel.pinnedLocalNotices.isEmpty,
+            "An unconfirmed provider must not invent a new pinned notice."
+        )
+        XCTAssertEqual(viewModel.selectedModelID, requestedModel)
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        // The SAME mismatch again. Because the unknown reply in between was not
+        // treated as confirmation, the standing disclosure was never released, so
+        // this identical mismatch must not be disclosed a second time.
+        let didStartThird = await viewModel.sendMessage("Third")
+        XCTAssertTrue(didStartThird)
+        XCTAssertTrue(
+            viewModel.pinnedLocalNotices.isEmpty,
+            "An already-disclosed mismatch must not be pinned again."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        XCTAssertEqual(
+            viewModel.messages.filter { $0.role == "local_notice" && $0.content == notice }.count,
+            1,
+            "An unconfirmed provider leaves the standing disclosure in force: neither dropped nor duplicated."
+        )
+        XCTAssertEqual(viewModel.selectedModelID, requestedModel)
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
+    }
+
+    @MainActor
+    func testEffectiveRouteReplyMatchingTheQualifiedSpellingIsConfirmationAndClearsTheNotice() async throws {
+        // A requested provider CAN be confirmed without the provider field: the
+        // effective model's own `@provider:` qualifier supplies the identity.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                if count == 1 {
+                    return apiTestJSONResponse(
+                        #"{"session_id": "session-abc", "stream_id": "stream-qualified-1", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}"#,
+                        for: request
+                    )
+                }
+                // Matching qualified spelling, provider field omitted.
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-qualified-2", "effective_model": "\(requestedModel)"}
+                    """,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStartFirst)
+        XCTAssertTrue(viewModel.pinnedLocalNotices.contains { $0.contains("gpt-6-astra") })
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let didStartSecond = await viewModel.sendMessage("Second")
+        XCTAssertTrue(didStartSecond)
+
+        XCTAssertTrue(
+            viewModel.pinnedLocalNotices.isEmpty,
+            "The effective model's qualifier confirms the requested provider, so the outdated mismatch notice must go."
+        )
+        XCTAssertEqual(viewModel.selectedModelID, requestedModel)
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testEffectiveRouteReplyWithSameModelOnAnotherProviderStaysAMismatch() async throws {
+        // Same model text behind a different provider is still a mismatch: the
+        // provider is part of the route.
+        let requestedModel = "gpt-5.4"
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "openai",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id": "session-abc", "stream_id": "stream-same-model", "effective_model": "gpt-5.4", "effective_model_provider": "openai-codex"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "openai"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Use the same model elsewhere")
+        XCTAssertTrue(didStart)
+
+        let notice = try XCTUnwrap(viewModel.pinnedLocalNotices.first)
+        XCTAssertTrue(notice.contains("Requested gpt-5.4 (openai)"))
+        XCTAssertTrue(notice.contains("with gpt-5.4 (openai-codex)"))
+        XCTAssertEqual(viewModel.pinnedLocalNotices.count, 1)
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    // MARK: - Transcript-load race against the pinned notice (finding #6)
+
+    @MainActor
+    func testIdenticalMismatchNoticeCanBePinnedAgainAfterATranscriptLoadReplacesIt() async throws {
+        // Finding #6, ownership half: a load that replaces the visible notice
+        // list left the private "already shown" pointer behind, so every later
+        // identical mismatch was deduplicated against a notice the user could no
+        // longer see. Visible state and ownership must move together.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-reload-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStartFirst)
+        let notice = try XCTUnwrap(viewModel.pinnedLocalNotices.first)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        // Completion promoted the notice into the transcript. A transcript load
+        // then replaces that transcript, and a promoted `local_notice` is not
+        // kept by the merge (`mergingLoadedMessages` preserves only local
+        // optimistic USER messages) — so after the load no visible copy of the
+        // notice remains anywhere.
+        XCTAssertTrue(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "Precondition: the completed turn promotes the pinned notice into the transcript."
+        )
+        await viewModel.loadMessages()
+        XCTAssertFalse(
+            viewModel.pinnedLocalNotices.contains(notice),
+            "The transcript load replaces the visible notice list."
+        )
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The load replaces the transcript, so no visible copy of the notice remains."
+        )
+
+        let didStartSecond = await viewModel.sendMessage("Second")
+        XCTAssertTrue(didStartSecond)
+
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "The same mismatch must be able to pin again once the earlier copy is no longer visible."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testTranscriptLoadInFlightDoesNotDropANoticePinnedByANewerStartReply() async throws {
+        // Finding #6, race half: the load's clear was unfenced, so an older load
+        // completing after a newer `chat/start` reply dropped that fresh notice —
+        // and the surviving pointer then suppressed every identical one after it.
+        // The gate holds the load open until after the reply has landed.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionLoadStarted = expectation(description: "session load started")
+        let releaseSessionLoad = DispatchSemaphore(value: 0)
+        let sessionLoadCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "@custom:opencode-go:deepseek-v4.1-flash",
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-race-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            case "/api/session":
+                // Only the explicit load is gated; the completion title
+                // refreshes must stay responsive.
+                if sessionLoadCount.increment() == 1 {
+                    sessionLoadStarted.fulfill()
+                    XCTAssertEqual(releaseSessionLoad.wait(timeout: .now() + .seconds(5)), .success)
+                }
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let loadTask = Task { @MainActor in await viewModel.loadMessages() }
+        await fulfillment(of: [sessionLoadStarted], timeout: 2)
+
+        let didStartFirst = await viewModel.sendMessage("Race the load")
+        XCTAssertTrue(didStartFirst)
+        let notice = try XCTUnwrap(viewModel.pinnedLocalNotices.first)
+        XCTAssertEqual(viewModel.pinnedLocalNotices.filter { $0 == notice }.count, 1)
+
+        // The load lands while the notice is still PINNED — the review's repro
+        // ordering. The load began before the notice existed, so it does not own
+        // it and must not remove it. (On the unfixed code its unfenced clear
+        // wiped the list right here.)
+        releaseSessionLoad.signal()
+        await loadTask.value
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "A load that began before this notice must not remove it when it finally lands."
+        )
+
+        // Completing the turn promotes the surviving notice into the transcript.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        XCTAssertTrue(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "Completing the turn promotes the surviving notice into the transcript."
+        )
+
+        // A subsequent identical mismatch: already disclosed by the promoted
+        // copy, so it must not be pinned again, and that copy must stay the only
+        // one.
+        let didStartSecond = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStartSecond)
+        XCTAssertTrue(
+            viewModel.pinnedLocalNotices.isEmpty,
+            "An already-disclosed mismatch must not be pinned again."
+        )
+        XCTAssertEqual(
+            viewModel.messages.filter { $0.role == "local_notice" && $0.content == notice }.count,
+            1,
+            "A subsequent identical mismatch stays visible: neither dropped nor duplicated."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    // MARK: - Wholesale transcript replacements (round 3)
+
+    /// `/api/session` payload for the wholesale-replacement probes: the real
+    /// reload shape (`modelRouteSessionReloadJSON`'s rotating completion title
+    /// plus the session's own route) with a transcript attached, which the
+    /// edit / regenerate / retry paths need in order to have a target row.
+    private func routeFixtureSessionWithTranscript(
+        sessionRequests: NSLockBox,
+        model: String,
+        provider: String?,
+        messagesJSON: String
+    ) -> String {
+        sessionRequests.append([:])
+        let providerJSON = provider.map { ", \"model_provider\": \"\($0)\"" } ?? ""
+        return """
+        {"session": {"session_id": "session-abc", "title": "Completed Turn \(sessionRequests.all.count)", "workspace": "/tmp/workspace", "model": "\(model)"\(providerJSON), "_messages_offset": 0, "messages": [\(messagesJSON)]}}
+        """
+    }
+
+    /// The transcript the replacement probes start from. Indices matter: 2 is a
+    /// user row (editable) and 3 an assistant row (regenerable).
+    private var replacementProbeTranscriptJSON: String {
+        """
+        {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-1"},
+        {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-2"},
+        {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-3"},
+        {"role": "assistant", "content": "Original answer", "timestamp": 4, "message_id": "a-4"}
+        """
+    }
+
+    /// Sends one turn, takes the standing mismatch disclosure through its
+    /// promotion into the transcript, and returns that notice's text. Used by
+    /// every round-3 probe so they all start from the same real state: a
+    /// disclosure that is visible only as a promoted `local_notice` row, with the
+    /// dedupe pointer set.
+    @MainActor
+    private func pinAndPromoteMismatchNotice(
+        _ streamClient: SpySSEStreamingClient,
+        in viewModel: ChatViewModel
+    ) async throws -> String {
+        let didStart = await viewModel.sendMessage("First")
+        XCTAssertTrue(didStart)
+        let notice = try XCTUnwrap(
+            viewModel.pinnedLocalNotices.first,
+            "A mismatch reply must pin the disclosure."
+        )
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+        XCTAssertTrue(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "Precondition: the completed turn promotes the pinned notice into the transcript."
+        )
+        return notice
+    }
+
+    @MainActor
+    func testCompressReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: `/compress` adopts the server's compressed transcript
+        // wholesale, which keeps no promoted `local_notice` copy. Without the
+        // pointer reconcile the standing disclosure disappears for good and the
+        // next identical mismatch is deduped against a notice nobody can see.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/compress":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 0,
+                        "messages": [
+                          {"role": "user", "content": "Compressed question", "timestamp": 1, "message_id": "c-1"},
+                          {"role": "assistant", "content": "Compressed answer", "timestamp": 2, "message_id": "c-2"}
+                        ]
+                      }
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-compress-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "compress"))
+        )
+        XCTAssertEqual(result, .executed(message: "Context compressed."))
+        XCTAssertEqual(chatStartCount.count, 1, "The compress path does not send.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The compressed transcript keeps no promoted notice copy."
+        )
+
+        let didStartAgain = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStartAgain)
+        XCTAssertEqual(chatStartCount.count, 2)
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testRetryReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: the `/retry` transcript reload replaces `messages` wholesale.
+        // Its own follow-up send is the subsequent identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/retry":
+                return apiTestJSONResponse(
+                    #"{"ok": true, "last_user_text": "Original question", "removed_count": 2}"#,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-retry-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "retry"))
+        )
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chatStartCount.count, 2, "The retry path sends the recovered user text itself.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The reloaded transcript keeps no promoted notice copy."
+        )
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testEditReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: the edit path's truncate response replaces `messages`
+        // wholesale. Its own follow-up send is the subsequent identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/truncate":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 0,
+                        "messages": [
+                          {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-1"},
+                          {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-2"}
+                        ]
+                      }
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-edit-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[2], visibleIndex: 2))
+        let didEdit = await viewModel.editMessage(context, newText: "Edited question")
+        XCTAssertTrue(didEdit)
+        XCTAssertEqual(chatStartCount.count, 2, "The edit path sends the edited text itself.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The truncated transcript keeps no promoted notice copy."
+        )
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testRegenerateReplacedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3: the regenerate path's truncate response replaces `messages`
+        // wholesale. Its own follow-up send is the subsequent identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/session/truncate":
+                return apiTestJSONResponse(
+                    """
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 0,
+                        "messages": [
+                          {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-1"},
+                          {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-2"},
+                          {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-3"}
+                        ]
+                      }
+                    }
+                    """,
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-regen-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[3], visibleIndex: 3))
+        let didRegenerate = await viewModel.regenerateAssistantResponse(context)
+        XCTAssertTrue(didRegenerate)
+        XCTAssertEqual(chatStartCount.count, 2, "The regenerate path sends the preceding user text itself.")
+
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The truncated transcript keeps no promoted notice copy."
+        )
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testDoneCarriedTranscriptLetsTheMismatchNoticeReShow() async throws {
+        // Round 3.5: a completed turn whose `done` frame CARRIES a transcript
+        // takes `applyCompletedStreamSession`'s non-empty-messages branch, which
+        // replaces `messages` via `mergingLoadedMessages` — that merge keeps only
+        // local `-user` rows, so a promoted `local_notice` copy is dropped. This
+        // is the fifth wholesale replacement, and without the pointer reconcile
+        // the standing disclosure vanishes for good while the pointer keeps
+        // suppressing every later identical mismatch.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let chatStartCount = LockedCounter()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: requestedModel,
+                modelProvider: "custom:opencode-go",
+                profile: "work"
+            )
+        ) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.routeFixtureSessionWithTranscript(
+                        sessionRequests: sessionRequests,
+                        model: requestedModel,
+                        provider: "custom:opencode-go",
+                        messagesJSON: self.replacementProbeTranscriptJSON
+                    ),
+                    for: request
+                )
+            case "/api/chat/start":
+                let count = chatStartCount.increment()
+                return apiTestJSONResponse(
+                    """
+                    {"session_id": "session-abc", "stream_id": "stream-done-\(count)", "effective_model": "gpt-6-astra", "effective_model_provider": "openai-codex"}
+                    """,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let notice = try await pinAndPromoteMismatchNotice(streamClient, in: viewModel)
+        XCTAssertEqual(chatStartCount.count, 1)
+
+        // Drive the fifth site: the in-flight turn completes with a `done` frame
+        // whose transcript cannot contain the promoted copy.
+        let didStart = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(chatStartCount.count, 2)
+
+        let revisionBeforeDone = viewModel.transcriptRevision
+        try await completeStreamingTurnReportingCompletedSession(
+            streamClient,
+            completedSessionJSON: completedSessionReportingProfileRoute(
+                turn: 1,
+                userText: "Same route again"
+            ),
+            sessionLoads: sessionRequests,
+            thenDrain: viewModel
+        )
+
+        // Positive control: the path really did adopt the done-carried transcript,
+        // so a silently non-firing branch fails the probe instead of passing it.
+        XCTAssertTrue(
+            viewModel.messages.contains { $0.messageId == "assistant-1" },
+            "Positive control: the done-carried transcript must replace the transcript."
+        )
+        XCTAssertGreaterThan(
+            viewModel.transcriptRevision,
+            revisionBeforeDone,
+            "Positive control: adopting the done-carried transcript bumps the revision."
+        )
+        XCTAssertFalse(
+            viewModel.messages.contains { $0.role == "local_notice" && $0.content == notice },
+            "The done-carried transcript keeps no promoted notice copy."
+        )
+
+        // The identical mismatch again must re-show the disclosure.
+        let didStartAgain = await viewModel.sendMessage("Same route again")
+        XCTAssertTrue(didStartAgain)
+        XCTAssertEqual(chatStartCount.count, 3)
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices.filter { $0 == notice }.count,
+            1,
+            "An identical mismatch after the done-carried replacement must re-show the disclosure."
+        )
+
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testFreshPickerChoiceStaysExplicitAcrossCompletedSends() async throws {
+        // A deliberate picker choice must carry explicit-pick intent into both
+        // the first and a later fully-completed send in the same chat.
+        let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: "gpt-5.4"),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/session/update":
+                    return apiTestJSONResponse(
+                        #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "profile": null}}"#,
+                        for: request
+                    )
+                case "/api/reasoning":
+                    return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+                case "/api/chat/start":
+                    chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                    let count = chatStartBodies.all.count
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "session_id": "session-abc",
+                          "stream_id": "stream-picked-\(count)"
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/session":
+                    return apiTestJSONResponse(
+                        self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "deepseek-v4.1-flash", provider: "custom:opencode-go"),
+                        for: request
+                    )
+                default:
+                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+        )
+
+        let didSelect = await viewModel.selectComposerModel(
+            ModelCatalogOption(
+                id: "deepseek-v4.1-flash",
+                displayName: "DeepSeek v4.1 Flash",
+                providerID: "custom:opencode-go"
+            )
+        )
+        XCTAssertTrue(didSelect)
+
+        let didStartFirst = await viewModel.sendMessage("Use the picked model")
+        XCTAssertTrue(didStartFirst)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let didStartSecond = await viewModel.sendMessage("Continue with it")
+        XCTAssertTrue(didStartSecond)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 2)
+        for (index, body) in bodies.enumerated() {
+            XCTAssertEqual(
+                body["explicit_model_pick"] as? Bool,
+                true,
+                "Picker-persisted route must stay explicit on send #\(index + 1)."
+            )
+            XCTAssertEqual(body["model_provider"] as? String, "custom:opencode-go")
+        }
+    }
+
+    @MainActor
+    func testNewChatComposerDefaultsDoNotClaimExplicitPickBeforePickerUse() async throws {
+        // A profile-default seed routed through the real loader is context,
+        // not a deliberate pick — the false-positive control for the two
+        // restored-route tests above.
+        let chatStartBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: nil, modelProvider: nil, profile: "poolops"),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/profile/switch":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "active": "poolops",
+                          "default_model": "gpt-6-astra",
+                          "profiles": [
+                            {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true, "is_active": true}
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/models":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "default_model": "gpt-6-astra",
+                          "active_provider": "openai-codex",
+                          "groups": [
+                            {
+                              "name": "Codex",
+                              "provider_id": "openai-codex",
+                              "models": [
+                                {"id": "gpt-6-astra", "name": "Astra"}
+                              ]
+                            }
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                default:
+                    return try self.modelRouteTestResponse(
+                        chatStartBodies: chatStartBodies,
+                        streamIDPrefix: "stream-default"
+                    )(request)
+                }
+            }
+        )
+
+        await viewModel.loadComposerConfiguration()
+
+        let didStart = await viewModel.sendMessage("Use the profile default")
+        XCTAssertTrue(didStart)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertNil(
+            bodies.first?["explicit_model_pick"],
+            "A profile-default seed is context, not a deliberate pick."
+        )
+        XCTAssertEqual(bodies.first?["model"] as? String, "gpt-6-astra")
+    }
+
+    @MainActor
+    func testPickerChoiceThroughLoadedProfileDefaultBecomesExplicitAgain() async throws {
+        // The restore-path parent test asked for: the same loaded-default
+        // session, but after a deliberate picker write, sends DO carry
+        // explicit intent — separate rule from the default-seed control.
+        let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
+        let pickedOption = ModelCatalogOption(
+            id: "deepseek-v4.1-flash",
+            displayName: "DeepSeek v4.1 Flash",
+            providerID: "custom:opencode-go"
+        )
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: "gpt-5.4"),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/session/update":
+                    return apiTestJSONResponse(
+                        #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "deepseek-v4.1-flash", "model_provider": "custom:opencode-go", "profile": null}}"#,
+                        for: request
+                    )
+                case "/api/reasoning":
+                    return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+                case "/api/chat/start":
+                    chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                    let count = chatStartBodies.all.count
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "session_id": "session-abc",
+                          "stream_id": "stream-picked-\(count)"
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/session":
+                    return apiTestJSONResponse(
+                        self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "deepseek-v4.1-flash", provider: "custom:opencode-go"),
+                        for: request
+                    )
+                default:
+                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+        )
+
+        let didSelect = await viewModel.selectComposerModel(pickedOption)
+        XCTAssertTrue(didSelect)
+
+        let didStartFirst = await viewModel.sendMessage("Use the picked model")
+        XCTAssertTrue(didStartFirst)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let didStartSecond = await viewModel.sendMessage("Keep going with it")
+        XCTAssertTrue(didStartSecond)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 2)
+        for (index, body) in bodies.enumerated() {
+            XCTAssertEqual(
+                body["explicit_model_pick"] as? Bool,
+                true,
+                "Picker-persisted route must stay explicit on send #\(index + 1)."
+            )
+            XCTAssertEqual(body["model_provider"] as? String, "custom:opencode-go")
+        }
+    }
+
+    @MainActor
+    func testDefaultSessionWithLoadedProfileDefaultStaysImplicitAfterSendCompletes() async throws {
+        // Same loaded-profile-default fixture as the pre-send control, but the
+        // assertion runs AFTER a fully-completed send: so the send itself did
+        // not make the default route explicit by accident.
+        let chatStartBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: nil, modelProvider: nil, profile: "poolops"),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/profile/switch":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "active": "poolops",
+                          "default_model": "gpt-6-astra",
+                          "profiles": [
+                            {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true, "is_active": true}
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/models":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "default_model": "gpt-6-astra",
+                          "active_provider": "openai-codex",
+                          "groups": [
+                            {
+                              "name": "Codex",
+                              "provider_id": "openai-codex",
+                              "models": [
+                                {"id": "gpt-6-astra", "name": "Astra"}
+                              ]
+                            }
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                default:
+                    return try self.modelRouteTestResponse(
+                        chatStartBodies: chatStartBodies,
+                        streamIDPrefix: "stream-default"
+                    )(request)
+                }
+            }
+        )
+
+        await viewModel.loadComposerConfiguration()
+        let didStart = await viewModel.sendMessage("Use the profile default")
+        XCTAssertTrue(didStart)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertNil(bodies.first?["explicit_model_pick"])
+    }
+
+    @MainActor
+    func testEffectiveRouteMismatchOnChatStartPinsNoticeWithoutChangingRequestedRoute() async throws {
+        // Honest effective-route reporting (vertical slice to be implemented —
+        // RED by design): when chat/start reports a server-resolved route that
+        // differs from the requested one, the composer must surface both in a
+        // pinned local notice, while requested selected model/provider stays
+        // authoritative for the next send. No invented seam: asserts
+        // `pinnedLocalNotices` and `selectedModelID` only.
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: requestedModel, modelProvider: "custom:opencode-go")
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"""
+                    {
+                      "session_id": "session-abc",
+                      "stream_id": "stream-effective",
+                      "effective_model": "gpt-6-astra",
+                      "effective_model_provider": "openai-codex"
+                    }
+                    """#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: "@custom:opencode-go:deepseek-v4.1-flash",
+                        provider: "custom:opencode-go"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Continue with the restored route")
+        XCTAssertTrue(didStart)
+
+        try await waitUntil {
+            !viewModel.pinnedLocalNotices.isEmpty
+                && viewModel.pinnedLocalNotices.contains { notice in
+                    notice.contains(requestedModel) && notice.contains("gpt-6-astra")
+                }
+        }
+        // Requested route stays authoritative.
+        XCTAssertEqual(viewModel.selectedModelID, requestedModel)
+        XCTAssertEqual(viewModel.selectedModelProviderID, "custom:opencode-go")
+
+        // End idle: finish the stream so no live work leaks into the next test.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testLegacyChatStartWithoutEffectiveFieldsPinsNoRouteNotice() async throws {
+        // Older servers omit both effective fields: no notice, nothing to
+        // disclose.
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: "gpt-5.4")
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id": "session-abc", "stream_id": "stream-legacy"}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-5.4", provider: nil),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Plain send")
+        XCTAssertTrue(didStart)
+
+        // The route-notice decision is made synchronously inside the send,
+        // so this assertion is deterministic without fixed yields.
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+
+        // End idle: finish the stream so no live work leaks into the next test.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testEffectiveRouteNoticeForStaleChatStartDoesNotOutliveNewerPickerChoice() async throws {
+        // A newer picker write after an in-flight send must govern: the stale
+        // mismatch notice is replaced/cleared so the composer never shows a
+        // mismatch against a route the user has since chosen deliberately.
+        let pickedOption = ModelCatalogOption(
+            id: "gpt-6-astra",
+            displayName: "Astra",
+            providerID: "openai-codex"
+        )
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let sessionRequests = makeModelRouteRecorder()
+        // Real gate: the synchronous MockURLProtocol handler blocks its
+        // loading-thread work on a semaphore (the established pattern in this
+        // suite), so the chat-start reply genuinely arrives AFTER the picker
+        // write below.
+        let chatStartStarted = expectation(description: "chat start request started")
+        let releaseChatStart = DispatchSemaphore(value: 0)
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: requestedModel, modelProvider: "custom:opencode-go")
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                chatStartStarted.fulfill()
+                XCTAssertEqual(releaseChatStart.wait(timeout: .now() + .seconds(5)), .success)
+                return apiTestJSONResponse(
+                    #"""
+                    {
+                      "session_id": "session-abc",
+                      "stream_id": "stream-stale",
+                      "effective_model": "gpt-6-astra",
+                      "effective_model_provider": "openai-codex"
+                    }
+                    """#,
+                    for: request
+                )
+            case "/api/session/update":
+                return apiTestJSONResponse(
+                    #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "gpt-6-astra", "model_provider": "openai-codex", "profile": null}}"#,
+                    for: request
+                )
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-6-astra", provider: "openai-codex"),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        defer { releaseChatStart.signal() }
+
+        let sendTask = Task { await viewModel.sendMessage("In-flight send") }
+        await fulfillment(of: [chatStartStarted], timeout: 2)
+
+        // The picker must stay usable while an older chat-start request is
+        // still pending; the pending reply is protected by the captured
+        // selection generation, not by forbidding the pick.
+        let didSelect = await viewModel.selectComposerModel(pickedOption)
+        XCTAssertTrue(didSelect)
+
+        releaseChatStart.signal()
+        let didStart = await sendTask.value
+        XCTAssertTrue(didStart)
+
+        // The stale-reply suppression runs synchronously as the send
+        // resolves, so these assertions are deterministic without fixed
+        // yields. The requested route is what the user picked last; the
+        // stale mismatch must not be presented as current.
+        XCTAssertEqual(viewModel.selectedModelID, pickedOption.id)
+        XCTAssertEqual(viewModel.selectedModelProviderID, pickedOption.providerID)
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+
+        // End idle: finish the stream so no live work leaks into the next test.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testRestoredSameModelDifferentProviderRouteStaysExplicitAfterConfigLoad() async throws {
+        // Defect: the restored-route check compared the current provider
+        // against the RESTORED provider instead of the owning profile's
+        // default provider, so a saved override whose model text matches the
+        // profile default but runs on another provider was wrongly treated as
+        // an implicit seed. The provider is part of the route.
+        let chatStartBodies = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "deepseek-v4.1-flash",
+                modelProvider: "custom:opencode-go",
+                profile: "poolops"
+            ),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/profiles":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "active": "poolops",
+                          "profiles": [
+                            {"name": "poolops", "model": "deepseek-v4.1-flash", "provider": "openai-codex", "is_default": true, "is_active": true}
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/models":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "default_model": "deepseek-v4.1-flash",
+                          "active_provider": "openai-codex",
+                          "groups": [
+                            {
+                              "name": "Codex",
+                              "provider_id": "openai-codex",
+                              "models": [
+                                {"id": "deepseek-v4.1-flash", "name": "DeepSeek v4.1 Flash"}
+                              ]
+                            }
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                default:
+                    return try self.modelRouteTestResponse(
+                        chatStartBodies: chatStartBodies,
+                        streamIDPrefix: "stream-same-model"
+                    )(request)
+                }
+            }
+        )
+
+        await viewModel.loadComposerConfiguration()
+        // The session's own route survives the catalog load untouched.
+        XCTAssertEqual(viewModel.selectedModelID, "deepseek-v4.1-flash")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "custom:opencode-go")
+
+        let didStart = await viewModel.sendMessage("Continue with the restored route")
+        XCTAssertTrue(didStart)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertEqual(
+            bodies.first?["explicit_model_pick"] as? Bool,
+            true,
+            "Same model text on a provider other than the profile default's is an override, not the default seed."
+        )
+        XCTAssertEqual(bodies.first?["model"] as? String, "deepseek-v4.1-flash")
+        XCTAssertEqual(bodies.first?["model_provider"] as? String, "custom:opencode-go")
+    }
+
+    @MainActor
+    func testNewSessionSlashCommandKeepsOldViewModelRouteIntent() async throws {
+        // The /new action creates a session for the parent to navigate to. If
+        // that navigation fails or is never adopted, THIS view model is still
+        // live — its picker-established intent must not have been cleared as
+        // a side effect of creating the other session.
+        let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: "gpt-5.4"),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/session/update":
+                    return apiTestJSONResponse(
+                        #"{"session": {"session_id": "session-abc", "workspace": "/tmp/workspace", "model": "gpt-5.5", "model_provider": "openai", "profile": null}}"#,
+                        for: request
+                    )
+                case "/api/reasoning":
+                    return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+                case "/api/session/new":
+                    return apiTestJSONResponse(
+                        #"{"session": {"session_id": "session-new", "workspace": "/tmp/workspace", "model": "gpt-5.5", "model_provider": "openai", "messages": []}}"#,
+                        for: request
+                    )
+                case "/api/chat/start":
+                    chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                    return apiTestJSONResponse(
+                        #"{"session_id": "session-abc", "stream_id": "stream-old-vm"}"#,
+                        for: request
+                    )
+                case "/api/session":
+                    return apiTestJSONResponse(
+                        self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-5.5", provider: "openai"),
+                        for: request
+                    )
+                default:
+                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+        )
+
+        let didSelect = await viewModel.selectComposerModel(
+            ModelCatalogOption(id: "gpt-5.5", displayName: "GPT 5.5", providerID: "openai")
+        )
+        XCTAssertTrue(didSelect)
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "new"))
+        )
+        guard case .openedSession = result else {
+            XCTFail("Expected the new session to be returned for navigation, got \(result).")
+            return
+        }
+
+        // Navigation not adopted: the old view model keeps sending, and its
+        // pick must still be explicit.
+        let didStart = await viewModel.sendMessage("Still on the old session")
+        XCTAssertTrue(didStart)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertEqual(
+            bodies.first?["explicit_model_pick"] as? Bool,
+            true,
+            "Creating a new session must not clear route intent on the old view model."
+        )
+        XCTAssertEqual(bodies.first?["model"] as? String, "gpt-5.5")
+        XCTAssertEqual(bodies.first?["model_provider"] as? String, "openai")
+    }
+
+    @MainActor
+    func testEffectiveRouteEqualCanonicalSpellingPinsNoNotice() async throws {
+        // The server resolving the SAME route under a different spelling
+        // (`@provider:` prefix carried in the model id instead of the
+        // provider field) is not a mismatch: no warning.
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: "deepseek-v4.1-flash", modelProvider: "custom:opencode-go")
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"""
+                    {
+                      "session_id": "session-abc",
+                      "stream_id": "stream-equal",
+                      "effective_model": "@custom:opencode-go:deepseek-v4.1-flash"
+                    }
+                    """#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "deepseek-v4.1-flash", provider: "custom:opencode-go"),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Plain send")
+        XCTAssertTrue(didStart)
+
+        // The route-notice decision is made synchronously inside the send.
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(viewModel.selectedModelID, "deepseek-v4.1-flash")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "custom:opencode-go")
+
+        // End idle: finish the stream so no live work leaks into the next test.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testEffectiveRouteNoticeClearsWhenLaterStartConfirmsRequestedRoute() async throws {
+        // Lifecycle: a mismatch notice from one start is cleared by a later
+        // non-stale start whose effective route matches the requested one —
+        // and only THIS feature's notice is removed; unrelated pinned notices
+        // survive.
+        let chatStartBodies = makeModelRouteRecorder()
+        let sessionRequests = makeModelRouteRecorder()
+        let requestedModel = "@custom:opencode-go:deepseek-v4.1-flash"
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: requestedModel, modelProvider: "custom:opencode-go")
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                let count = chatStartBodies.all.count
+                if count == 1 {
+                    return apiTestJSONResponse(
+                        #"""
+                        {
+                          "session_id": "session-abc",
+                          "stream_id": "stream-mismatch",
+                          "effective_model": "gpt-6-astra",
+                          "effective_model_provider": "openai-codex"
+                        }
+                        """#,
+                        for: request
+                    )
+                }
+                return apiTestJSONResponse(
+                    #"""
+                    {
+                      "session_id": "session-abc",
+                      "stream_id": "stream-confirmed",
+                      "effective_model": "@custom:opencode-go:deepseek-v4.1-flash",
+                      "effective_model_provider": "custom:opencode-go"
+                    }
+                    """#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(
+                        sessionRequests: sessionRequests,
+                        model: "@custom:opencode-go:deepseek-v4.1-flash",
+                        provider: "custom:opencode-go"
+                    ),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStartFirst = await viewModel.sendMessage("First send")
+        XCTAssertTrue(didStartFirst)
+        XCTAssertEqual(viewModel.pinnedLocalNotices.count, 1)
+        XCTAssertTrue(viewModel.pinnedLocalNotices.first?.contains("gpt-6-astra") == true)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        viewModel.pinLocalNoticeMessage("Unrelated note.")
+
+        let didStartSecond = await viewModel.sendMessage("Second send")
+        XCTAssertTrue(didStartSecond)
+
+        XCTAssertEqual(
+            viewModel.pinnedLocalNotices,
+            ["Unrelated note."],
+            "The confirmed start clears only this feature's own outdated notice."
+        )
+        XCTAssertEqual(viewModel.selectedModelID, requestedModel)
+        XCTAssertEqual(viewModel.selectedModelProviderID, "custom:opencode-go")
+
+        // End idle: finish the second stream so no live work (or queued
+        // transcript reload) leaks into the next test's handler.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testMalformedEffectiveFieldsPinNoNotice() async throws {
+        // A malformed effective_model (wrong JSON type) decodes lossily to
+        // nil: no crash, no notice, no invented route.
+        let sessionRequests = makeModelRouteRecorder()
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(model: "gpt-5.4")
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id": "session-abc", "stream_id": "stream-malformed", "effective_model": {"nested": true}, "effective_model_provider": 42}"#,
+                    for: request
+                )
+            case "/api/session":
+                return apiTestJSONResponse(
+                    self.modelRouteSessionReloadJSON(sessionRequests: sessionRequests, model: "gpt-5.4", provider: nil),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Plain send")
+        XCTAssertTrue(didStart)
+
+        // The lossy decode runs synchronously inside the send.
+        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+
+        // End idle: finish the stream so no live work leaks into the next test.
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+    }
+
+    @MainActor
+    func testProfileRoundTripDoesNotResurrectRestoredRouteIntent() async throws {
+        // Switching profiles drops the restored session's route intent (the
+        // new default is a seed). Switching BACK must not resurrect the old
+        // override: the round trip leaves the profile-default seed implicit.
+        let chatStartBodies = makeModelRouteRecorder()
+        let profileSwitches = makeModelRouteRecorder()
+        let profilesLoads = makeModelRouteRecorder()
+        // Keep title-generation state across both turns, not one factory per request.
+        let fallbackHandler = modelRouteTestResponse(
+            chatStartBodies: chatStartBodies,
+            streamIDPrefix: "stream-roundtrip"
+        )
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            sessionSummary: try makeSession(
+                model: "@custom:opencode-go:deepseek-v4.1-flash",
+                modelProvider: "custom:opencode-go",
+                profile: "poolops"
+            ),
+            handler: { request in
+                switch request.url?.path {
+                case "/api/profile/switch":
+                    profileSwitches.append([:])
+                    if profileSwitches.all.count == 1 {
+                        return apiTestJSONResponse(
+                            """
+                            {
+                              "active": "research",
+                              "default_model": "gpt-4o-mini",
+                              "profiles": [
+                                {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true},
+                                {"name": "research", "model": "gpt-4o-mini", "provider": "openai-codex", "is_active": true}
+                              ]
+                            }
+                            """,
+                            for: request
+                        )
+                    }
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "active": "poolops",
+                          "default_model": "gpt-6-astra",
+                          "profiles": [
+                            {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true, "is_active": true},
+                            {"name": "research", "model": "gpt-4o-mini", "provider": "openai-codex"}
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/profiles":
+                    profilesLoads.append([:])
+                    let active = profilesLoads.all.count == 1 ? "research" : "poolops"
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "active": "\(active)",
+                          "profiles": [
+                            {"name": "poolops", "model": "gpt-6-astra", "provider": "openai-codex", "is_default": true},
+                            {"name": "research", "model": "gpt-4o-mini", "provider": "openai-codex"}
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                case "/api/models":
+                    return apiTestJSONResponse(
+                        """
+                        {
+                          "default_model": "gpt-6-astra",
+                          "active_provider": "openai-codex",
+                          "groups": [
+                            {
+                              "name": "Codex",
+                              "provider_id": "openai-codex",
+                              "models": [
+                                {"id": "gpt-6-astra", "name": "Astra"},
+                                {"id": "gpt-4o-mini", "name": "Mini"}
+                              ]
+                            }
+                          ]
+                        }
+                        """,
+                        for: request
+                    )
+                default:
+                    return try fallbackHandler(request)
+                }
+            }
+        )
+
+        let researchProfile = ProfileSummary(
+            name: "research", path: nil, isDefault: nil, isActive: nil,
+            gatewayRunning: nil, model: "gpt-4o-mini", provider: "openai-codex",
+            hasEnv: nil, skillCount: nil
+        )
+        let poolopsProfile = ProfileSummary(
+            name: "poolops", path: nil, isDefault: true, isActive: nil,
+            gatewayRunning: nil, model: "gpt-6-astra", provider: "openai-codex",
+            hasEnv: nil, skillCount: nil
+        )
+
+        let firstOutcome = await viewModel.switchProfile(researchProfile, startNewSession: false)
+        XCTAssertNotNil(firstOutcome)
+        let didStartFirst = await viewModel.sendMessage("Send on the research default")
+        XCTAssertTrue(didStartFirst)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let secondOutcome = await viewModel.switchProfile(poolopsProfile, startNewSession: false)
+        XCTAssertNotNil(secondOutcome)
+        let didStartSecond = await viewModel.sendMessage("Send back on the poolops default")
+        XCTAssertTrue(didStartSecond)
+        try await completeStreamingTurn(streamClient, thenDrain: viewModel)
+
+        let bodies = chatStartBodies.all
+        XCTAssertEqual(bodies.count, 2)
+        XCTAssertEqual(bodies[0]["model"] as? String, "gpt-4o-mini")
+        XCTAssertNil(
+            bodies[0]["explicit_model_pick"],
+            "A profile default after a switch is a seed, not a pick."
+        )
+        XCTAssertEqual(bodies[1]["model"] as? String, "gpt-6-astra")
+        XCTAssertNil(
+            bodies[1]["explicit_model_pick"],
+            "The round trip must not resurrect the old restored override's intent."
+        )
+    }
+
+    /// Reference-type recorder for chat-start request bodies captured from
+    /// MockURLProtocol's loading thread. `requestHandler` closures cannot
+    /// capture a `var` array mutated after the closure was built (the value
+    /// would be copied), so body records funnel through this box instead.
+    private final class NSLockBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [[String: Any]] = []
+
+        func append(_ body: [String: Any]) {
+            lock.lock()
+            defer { lock.unlock() }
+            stored.append(body)
+        }
+
+        var all: [[String: Any]] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
     }
 
     /// Lets a `Task { @MainActor … }` enqueued by a delegate callback run to completion

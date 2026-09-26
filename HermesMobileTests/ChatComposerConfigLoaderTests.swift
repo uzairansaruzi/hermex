@@ -76,18 +76,14 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNil(result.state.supportsReasoningEffort)
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        // The profile-scoped requests wait for the switch; reasoning waits for models.
         let paths = requestPaths.values
+        // Profile resolution stays serial; the four follow-up fetches share one wave.
         XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
         XCTAssertEqual(
             Set(paths.dropFirst(2)),
-            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
+            Set(["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"])
         )
         XCTAssertEqual(paths.count, 6)
-        XCTAssertLessThan(
-            try XCTUnwrap(paths.firstIndex(of: "/api/models")),
-            try XCTUnwrap(paths.firstIndex(of: "/api/reasoning"))
-        )
     }
 
     func testLoadRequestsWorkspacesAndCommandsWhileModelsIsInFlight() async throws {
@@ -233,6 +229,8 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 return (try XCTUnwrap(response), Data(#"{"error":"models unavailable"}"#.utf8))
             case "/api/workspaces":
                 return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
             case "/api/commands":
                 return apiTestJSONResponse(#"{"commands": [{"name": "status"}]}"#, for: request)
             default:
@@ -249,14 +247,16 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.selectedProfileName, "default")
         XCTAssertEqual(result.state.profileOptions.map(\.name), ["default"])
         XCTAssertEqual(result.state.currentModel, "gpt-5.4")
-        XCTAssertNil(result.state.currentModelProvider)
+        // Provider comes from the profile row even when the catalog fails.
+        XCTAssertEqual(result.state.currentModelProvider, "openai")
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        // Workspaces loads alongside models, but a models failure still keeps
-        // its result out of the state, as the serial chain did.
-        XCTAssertTrue(result.state.workspaceRoots.isEmpty)
-        XCTAssertNil(result.state.currentWorkspace)
-        XCTAssertFalse(requestPaths.values.contains("/api/reasoning"))
-        XCTAssertEqual(requestPaths.values.first, "/api/profiles")
+        // Workspaces still apply from the parallel wave.
+        XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
+
+        let paths = requestPaths.values
+        XCTAssertTrue(paths.contains("/api/profiles"))
+        XCTAssertTrue(paths.contains("/api/models"))
+        XCTAssertTrue(paths.contains("/api/commands"))
     }
 
     func testLoadStoresSingleProfileModeFromProfilesResponse() async throws {
@@ -292,6 +292,243 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
 
         XCTAssertNil(result.configurationError)
         XCTAssertTrue(result.state.isSingleProfileMode)
+    }
+
+    func testProfileSeedSkipsProfilesFetchAndSwitch() async throws {
+        let lock = NSLock()
+        var requestPaths: [String] = []
+        let client = makeClient { request in
+            lock.withLock { requestPaths.append(request.url?.path ?? "") }
+            switch request.url?.path {
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "low"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/ws"}], "last": "/tmp/ws"}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
+            case "/api/profiles", "/api/profile/switch":
+                XCTFail("Seeded loads must not re-hit profile endpoints.")
+                throw URLError(.badURL)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let seed = ChatComposerProfileSeed(
+            profiles: [
+                ProfileSummary(
+                    name: "work",
+                    path: nil,
+                    isDefault: false,
+                    isActive: true,
+                    gatewayRunning: nil,
+                    model: "gpt-5.4",
+                    provider: "openai",
+                    hasEnv: nil,
+                    skillCount: nil
+                )
+            ],
+            active: "work",
+            defaultModel: "gpt-5.4",
+            defaultWorkspace: "/tmp/ws",
+            isSingleProfileMode: false
+        )
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: ChatComposerConfigState(currentProfile: "work"),
+            profileSeed: seed
+        )
+
+        XCTAssertNil(result.configurationError)
+        XCTAssertEqual(result.state.selectedProfileName, "work")
+        XCTAssertEqual(result.state.currentModel, "gpt-5.4")
+        XCTAssertEqual(result.state.currentWorkspace, "/tmp/ws")
+        XCTAssertEqual(result.state.selectedReasoningEffort, "low")
+
+        let paths = Set(lock.withLock { requestPaths })
+        XCTAssertEqual(paths, Set(["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]))
+    }
+
+    func testRecentProfileSwitchSeedHandoffIsConsumedOncePerServerURL() {
+        RecentProfileSwitchSeed.resetForTests()
+        defer { RecentProfileSwitchSeed.resetForTests() }
+
+        let serverA = URL(string: "https://example.test:443")!
+        let serverB = URL(string: "https://example.test:8443")!
+        let seedA = ChatComposerProfileSeed(
+            profiles: [
+                ProfileSummary(
+                    name: "work",
+                    path: nil,
+                    isDefault: false,
+                    isActive: true,
+                    gatewayRunning: nil,
+                    model: "gpt-5.4",
+                    provider: "openai",
+                    hasEnv: nil,
+                    skillCount: nil
+                )
+            ],
+            active: "work",
+            defaultModel: "gpt-5.4",
+            defaultWorkspace: "/tmp/ws"
+        )
+        let seedB = ChatComposerProfileSeed(
+            profiles: [
+                ProfileSummary(
+                    name: "lab",
+                    path: nil,
+                    isDefault: false,
+                    isActive: true,
+                    gatewayRunning: nil,
+                    model: "gpt-5.4",
+                    provider: "openai",
+                    hasEnv: nil,
+                    skillCount: nil
+                )
+            ],
+            active: "lab",
+            defaultModel: "gpt-5.4",
+            defaultWorkspace: "/tmp/lab"
+        )
+
+        RecentProfileSwitchSeed.store(seedA, for: serverA, sessionID: "chat-a")
+        RecentProfileSwitchSeed.store(seedB, for: serverB, sessionID: "chat-b")
+
+        // Same host, different port → independent seeds.
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverA, sessionID: "chat-a")?.active, "work")
+        XCTAssertNil(RecentProfileSwitchSeed.take(for: serverA, sessionID: "chat-a"), "Seed must be one-shot")
+        // Looking up A must not wipe B.
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverB, sessionID: "chat-b")?.active, "lab")
+        XCTAssertNil(
+            RecentProfileSwitchSeed.take(for: URL(string: "https://other.test")!, sessionID: "chat-a"),
+            "Foreign servers must not observe another server's seed"
+        )
+        // Same server, different session — sibling chat cannot steal the replacement seed.
+        RecentProfileSwitchSeed.store(seedA, for: serverA, sessionID: "replacement")
+        XCTAssertNil(
+            RecentProfileSwitchSeed.take(for: serverA, sessionID: "sibling"),
+            "A different session on the same server must not take the replacement seed"
+        )
+        XCTAssertNil(
+            RecentProfileSwitchSeed.take(for: serverA, sessionID: nil),
+            "A load without a session id must not take a replacement seed"
+        )
+        XCTAssertEqual(RecentProfileSwitchSeed.take(for: serverA, sessionID: "replacement")?.active, "work")
+    }
+
+    /// Artificial 80ms/endpoint latency: the pre-change serial schedule is five
+    /// post-profile RTTs (400ms). The parallel wave must finish in under half
+    /// that budget once profiles resolve, proving the ≥50% load-time cut.
+    func testParallelWaveCutsPostProfileLatencyInHalf() async throws {
+        let delayNanoseconds: UInt64 = 80_000_000
+        let client = makeClient { request in
+            // Concurrent handlers run on MockURLProtocol's queue, so sleeps
+            // actually overlap the way production URLSession would.
+            Thread.sleep(forTimeInterval: Double(delayNanoseconds) / 1_000_000_000)
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse("""
+                {
+                  "active": "work",
+                  "profiles": [
+                    {"name": "work", "model": "gpt-5.4", "provider": "openai", "is_active": true}
+                  ]
+                }
+                """, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [], "last": null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let started = ContinuousClock.now
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: ChatComposerConfigState(currentProfile: "work")
+        )
+        let elapsed = ContinuousClock.now - started
+
+        XCTAssertNil(result.configurationError)
+
+        // Serial baseline after profiles: models+reasoning+workspaces+commands
+        // = 4 × 80ms = 320ms. Parallel wave target: one 80ms slot (+jitter).
+        // End-to-end old path was 5×80ms = 400ms; require under half of that.
+        let serialBaseline = Duration.milliseconds(400)
+        let maximumAllowed = serialBaseline / 2 // 200ms
+        XCTAssertLessThan(
+            elapsed,
+            maximumAllowed + .milliseconds(40), // small scheduling slack
+            "Parallel composer load must be ≥50% faster than the serial baseline. elapsed=\(elapsed)"
+        )
+    }
+
+    /// Switch-seeded path drops the profiles RTT entirely; four parallel 80ms
+    /// fetches must beat half of the old switch→profiles→4-serial chain.
+    func testSeededProfileSwitchLoadBeatsHalfOfSerialSwitchChain() async throws {
+        let delayNanoseconds: UInt64 = 80_000_000
+        let client = makeClient { request in
+            Thread.sleep(forTimeInterval: Double(delayNanoseconds) / 1_000_000_000)
+            switch request.url?.path {
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [], "last": null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let seed = ChatComposerProfileSeed(
+            profiles: [
+                ProfileSummary(
+                    name: "work",
+                    path: nil,
+                    isDefault: false,
+                    isActive: true,
+                    gatewayRunning: nil,
+                    model: "gpt-5.4",
+                    provider: "openai",
+                    hasEnv: nil,
+                    skillCount: nil
+                )
+            ],
+            active: "work",
+            defaultModel: "gpt-5.4",
+            defaultWorkspace: "/tmp/ws"
+        )
+
+        // Old chain after an already-paid switch call: profiles + 4 serial = 400ms.
+        let serialAfterSwitchBaseline = Duration.milliseconds(400)
+
+        let started = ContinuousClock.now
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: ChatComposerConfigState(currentProfile: "work"),
+            profileSeed: seed
+        )
+        let elapsed = ContinuousClock.now - started
+
+        XCTAssertNil(result.configurationError)
+        XCTAssertLessThan(
+            elapsed,
+            serialAfterSwitchBaseline / 2 + .milliseconds(40),
+            "Seeded post-switch config load must cut ≥50% off the serial follow-up. elapsed=\(elapsed)"
+        )
     }
 }
 

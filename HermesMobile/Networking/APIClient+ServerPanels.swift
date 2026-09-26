@@ -72,12 +72,20 @@ extension APIClient {
         try await send(endpoint: .profiles, method: "GET")
     }
 
-    func switchProfile(name: String) async throws -> ProfileSwitchResponse {
-        try await send(
-            endpoint: .switchProfile,
-            method: "POST",
-            body: ProfileSwitchRequest(name: name)
-        )
+    func switchProfile(name: String, ownership: UUID = UUID()) async throws -> ProfileSwitchResponse {
+        let response = try await ProfileCookieOwnership.shared.mutate(server: baseURL, ownership: ownership, restoring: false) {
+            try await self.send(endpoint: .switchProfile, method: "POST", body: ProfileSwitchRequest(name: name))
+        }
+        return response! // An unconditional switch always runs or throws.
+    }
+
+    /// A failed/abandoned operation may recover only while it still owns the
+    /// cookie. The check AND the response's cookie write share the same permit
+    /// as switches from every other APIClient (list, settings, other chats).
+    func restoreProfile(name: String, ownership: UUID) async throws -> ProfileSwitchResponse? {
+        try await ProfileCookieOwnership.shared.mutate(server: baseURL, ownership: ownership, restoring: true) {
+            try await self.send(endpoint: .switchProfile, method: "POST", body: ProfileSwitchRequest(name: name))
+        }
     }
 
     /// Creates a new profile (`POST /api/profile/create`), mirroring the webui's
@@ -197,6 +205,49 @@ private struct ReasoningDisplayRequest: Encodable {
 private struct PersonalitySetRequest: Encodable {
     let sessionId: String
     let name: String
+}
+
+/// Process-wide because independent screens create independent APIClients.
+/// Keep the permit across the network await: actor isolation alone is reentrant
+/// and cannot protect URLSession's automatic Set-Cookie application.
+private actor ProfileCookieOwnership {
+    static let shared = ProfileCookieOwnership()
+    private var owners: [String: UUID] = [:]
+    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+
+    func mutate(
+        server: URL,
+        ownership: UUID,
+        restoring: Bool,
+        operation: @Sendable () async throws -> ProfileSwitchResponse
+    ) async throws -> ProfileSwitchResponse? {
+        // Cookies ignore ports. Conservatively share ownership for same-host
+        // servers too, matching the existing shared cookie jar's scope.
+        let key = server.host?.lowercased() ?? server.absoluteString
+        if waiters[key] != nil {
+            await withCheckedContinuation { waiters[key, default: []].append($0) }
+        } else {
+            waiters[key] = []
+        }
+        defer {
+            if var queue = waiters[key], !queue.isEmpty {
+                let next = queue.removeFirst()
+                waiters[key] = queue
+                next.resume()
+            } else {
+                waiters[key] = nil
+            }
+        }
+        if restoring {
+            guard owners[key] == ownership else { return nil }
+        } else {
+            try Task.checkCancellation()
+            // Even failure may have changed a cookie. Retain the token so its
+            // recovery can retry, unless a subsequent explicit switch takes it.
+            owners[key] = ownership
+        }
+        return try await operation()
+    }
 }
 
 private struct ProfileSwitchRequest: Encodable {

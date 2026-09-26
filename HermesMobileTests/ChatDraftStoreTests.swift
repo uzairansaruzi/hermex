@@ -270,6 +270,73 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(restoredCreatedChat?.quotes, quotes)
     }
 
+    func testReplacementAppearanceCannotBeAbandonedByRetiredChild() throws {
+        let owner = ChatProfileSwitchOwnership()
+        let first = UUID()
+        let second = UUID()
+        owner.appear(presentationID: first)
+        let a = try XCTUnwrap(owner.begin())
+        owner.finish(a)
+        owner.appear(presentationID: second)
+        let b = try XCTUnwrap(owner.begin())
+        // SwiftUI may deliver the retired child's disappearance after the
+        // replacement appears. It must not cancel B's new operation.
+        owner.abandon(presentationID: first)
+        XCTAssertTrue(owner.owns(b))
+        XCTAssertNil(owner.begin(presentationID: first), "A delayed task from the retired child cannot acquire ownership.")
+        owner.abandon()
+        XCTAssertFalse(owner.owns(b), "The owning container still invalidates B before recovery.")
+        XCTAssertNil(owner.begin())
+        owner.appear(presentationID: second)
+        XCTAssertNotNil(owner.begin())
+        XCTAssertFalse(owner.owns(a))
+        XCTAssertFalse(owner.owns(b))
+    }
+
+    func testEmptyProfileReplacementNotifiesNewChatDraftOwner() throws {
+        // Static wiring guard only: SwiftUI navigation timing still needs an
+        // integrated app pass. Pair with the draft-content round-trip below.
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let chat = try String(contentsOf: root.appendingPathComponent("HermesMobile/Features/Chat/ChatView.swift"), encoding: .utf8)
+        let container = try String(contentsOf: root.appendingPathComponent("HermesMobile/Features/SessionList/SessionListView.swift"), encoding: .utf8)
+        XCTAssertTrue(chat.contains("onSessionReplaced(session)"), "Moving the draft must notify its owning New Chat container.")
+        XCTAssertTrue(chat.contains("onSessionReplaced: onSessionReplaced"), "Repeated replacements must propagate through every replacement chat.")
+        XCTAssertTrue(container.contains("onSessionReplaced: { replacement in"))
+        XCTAssertTrue(container.contains("draftRecoverySession = replacement"))
+        XCTAssertTrue(container.contains("draftRecoverySession ?? createdSession"), "Abandonment must recover the latest replacement, not the initial placeholder.")
+    }
+
+    func testRepeatedProfileReplacementDraftReturnsTextQuotesAndAttachmentsToNewChat() async throws {
+        let persistence = RecordingChatDraftPersistence()
+        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
+        let server = URL(string: "https://example.com")!
+        let newChat = ChatDraftKey.newChat(server: server)
+        let first = ChatDraftKey.session(server: server, sessionID: "placeholder-a")
+        let second = ChatDraftKey.session(server: server, sessionID: "replacement-b")
+        let third = ChatDraftKey.session(server: server, sessionID: "replacement-c")
+        let quote = ComposerQuote(text: "Keep this quote")
+        let attachment = Self.sampleAttachment()
+        store.setContent(ComposerDraftContent(text: "Unsent draft", quotes: [quote]), for: first)
+        store.setAttachments([attachment], for: first)
+        store.setSettings(ChatDraftSettings(profileName: "old-profile"), for: first)
+        store.setSettings(ChatDraftSettings(), for: first)
+        _ = store.moveDraft(from: first, to: second)
+        _ = store.moveDraft(from: second, to: third)
+        let recovered = store.restoreAbandonedNewChatDraft(from: third, to: newChat, didStartConversation: false)
+        XCTAssertEqual(recovered?.text, "Unsent draft")
+        XCTAssertEqual(recovered?.quotes, [quote])
+        XCTAssertEqual(recovered?.attachments, [attachment])
+        XCTAssertTrue(recovered?.settings?.isEmpty ?? true)
+        try await store.flush()
+        let reopened = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
+        let draft = await reopened.draft(for: newChat)
+        XCTAssertEqual(draft, recovered)
+        for key in [first, second, third] {
+            let stranded = await reopened.draft(for: key)
+            XCTAssertNil(stranded)
+        }
+    }
+
     func testAbandonedCreatedChatDraftReturnsToNewChat() async {
         let persistence = RecordingChatDraftPersistence()
         let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))

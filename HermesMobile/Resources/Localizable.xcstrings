@@ -98329,6 +98329,112 @@
         }
       }
     },
+    "Requested %@ but the server started this response with %@. Your model selection is unchanged and will be used for the next send." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "طُلِبَ %1$@ لكن الخادم بدأ هذا الرد باستخدام %2$@. لم يتغير اختيارك للنموذج وسيُستخدم في الإرسال التالي."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Angefordert war %1$@, der Server hat diese Antwort aber mit %2$@ begonnen. Deine Modellauswahl bleibt unverändert und wird beim nächsten Senden verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se solicitó %1$@, pero el servidor inició esta respuesta con %2$@. Tu selección de modelo no ha cambiado y se usará en el próximo envío."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%1$@ avait été demandé, mais le serveur a commencé cette réponse avec %2$@. Votre sélection de modèle reste inchangée et sera utilisée au prochain envoi."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "התבקש %1$@ אך השרת התחיל את התגובה הזו עם %2$@. בחירת המודל שלך לא השתנתה ותשמש בשליחה הבאה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "È stato richiesto %1$@, ma il server ha iniziato questa risposta con %2$@. La selezione del modello non è cambiata e verrà usata per il prossimo invio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%1$@ を要求しましたが、サーバーはこの応答を %2$@ で開始しました。モデルの選択は変更されておらず、次回の送信で使用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%1$@을(를) 요청했지만 서버는 이 응답을 %2$@(으)로 시작했습니다. 모델 선택은 변경되지 않았으며 다음 전송에 사용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%1$@ was aangevraagd, maar de server begon dit antwoord met %2$@. Je modelkeuze blijft ongewijzigd en wordt gebruikt voor het volgende bericht."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zażądano %1$@, ale serwer rozpoczął tę odpowiedź z %2$@. Twój wybór modelu pozostaje bez zmian i zostanie użyty przy następnym wysłaniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Foi solicitado %1$@, mas o servidor iniciou esta resposta com %2$@. Sua seleção de modelo permanece inalterada e será usada no próximo envio."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Запрошена модель %1$@, но сервер начал этот ответ с %2$@. Ваш выбор модели не изменился и будет использован при следующей отправке."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%1$@ istendi, ancak sunucu bu yanıtı %2$@ ile başlattı. Model seçiminiz değişmedi ve bir sonraki gönderimde kullanılacak."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%1$@ کی درخواست کی گئی تھی لیکن سرور نے یہ جواب %2$@ کے ساتھ شروع کیا۔ آپ کا ماڈل انتخاب تبدیل نہیں ہوا اور اگلی ارسال میں استعمال ہوگا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已請求 %1$@，但伺服器以 %2$@ 開始了此次回應。你的模型選擇未變更，將於下次傳送時使用。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已请求 %1$@，但服务器使用 %2$@ 开始了此次响应。你的模型选择未改变，将在下次发送时使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已請求 %1$@，但伺服器以 %2$@ 開始了此次回應。你的模型選擇未變更，將於下次傳送時使用。"
+          }
+        }
+      }
+    },
     "Wait for the current response to finish before changing personality." : {
       "localizations" : {
         "ar" : {

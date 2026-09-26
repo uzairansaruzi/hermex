@@ -135,6 +135,7 @@
 		C13000000000000000000001 /* ChatVerticalScrollAxisGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */; };
 		C04100000000000000000001 /* ChatComposerConfigLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04100000000000000000002 /* ChatComposerConfigLoader.swift */; };
 		C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */; };
+		C0410000000000000000ASTB /* ProfileSwitchAstraRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0410000000000000000ASTRA /* ProfileSwitchAstraRegressionTests.swift */; };
 		C05000000000000000000001 /* ChatComposerAttachmentStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */; };
 		C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000002 /* ChatComposerSelectorControls.swift */; };
 		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
@@ -709,6 +710,7 @@
 		C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatVerticalScrollAxisGuardTests.swift; sourceTree = "<group>"; };
 		C04100000000000000000002 /* ChatComposerConfigLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerConfigLoader.swift; sourceTree = "<group>"; };
 		C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerConfigLoaderTests.swift; sourceTree = "<group>"; };
+		C0410000000000000000ASTRA /* ProfileSwitchAstraRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSwitchAstraRegressionTests.swift; sourceTree = "<group>"; };
 		C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerAttachmentStripView.swift; sourceTree = "<group>"; };
 		C042A000000000000000002 /* ChatComposerSelectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorControls.swift; sourceTree = "<group>"; };
 		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
@@ -1287,6 +1289,7 @@
 				C03250000000000000F106 /* ComposerVoiceNoteRecorderTests.swift */,
 				C03251000000000000F106 /* ComposerVoiceInputServerRecordingTests.swift */,
 					C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */,
+					C0410000000000000000ASTRA /* ProfileSwitchAstraRegressionTests.swift */,
 					C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
 				531000000000000000000202 /* TipJarPromptTests.swift */,
@@ -2590,6 +2593,7 @@
 				C03250000000000000B106 /* ComposerVoiceNoteRecorderTests.swift in Sources */,
 				C03251000000000000B106 /* ComposerVoiceInputServerRecordingTests.swift in Sources */,
 					C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */,
+					C0410000000000000000ASTB /* ProfileSwitchAstraRegressionTests.swift in Sources */,
 					C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,
 				531000000000000000000201 /* TipJarPromptTests.swift in Sources */,
