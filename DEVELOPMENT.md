@@ -75,6 +75,10 @@ creates one, and refuses to boot a fifth simulator.
 # Focused tests; repeat --only for multiple classes or individual test methods.
 scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests
 
+# Stress a flaky test: up to 20 iterations in one build and launch, stopping at
+# the first failure. Use this rather than calling the runner in a loop.
+scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests --repeat 20
+
 # Full suite (also builds): use the same assigned UDID throughout the session.
 scripts/test-sim <simulator-udid>
 ```
@@ -110,8 +114,8 @@ It retries in one case only. Xcode sometimes fails with `The test runner hung
 before establishing connection` before any test runs: the app launches, but
 XCTest inside it never hears that the simulator's `testmanagerd` is ready, and
 xcodebuild gives up after 300 seconds. On that failure, and only when no test
-passed, the runner stops the app and reruns once within the same test time
-limit, printing `RETRY:`. The retry
+passed, the runner reboots that simulator (its own UDID only), stops the app,
+and reruns once within the same test time limit, printing `RETRY:`. The retry
 writes `test-retry.log`, `summary-retry.json`, and `Tests-retry.xcresult` next
 to the first attempt's files. Every other failure is reported without a retry.
 
