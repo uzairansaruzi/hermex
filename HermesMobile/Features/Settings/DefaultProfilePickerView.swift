@@ -318,6 +318,7 @@ struct DefaultProfilePickerView: View {
 
         do {
             let response = try await APIClient(baseURL: server).switchProfile(name: name)
+            guard !Task.isCancelled else { return }
             if let error = response.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
                 saveError = error
                 selectedProfileName = nil

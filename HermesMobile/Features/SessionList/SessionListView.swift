@@ -534,7 +534,12 @@ struct SessionListView: View {
         Group {
             switch destination {
             case .settings(let scrollTo):
-                SettingsView(authManager: authManager, server: server, initialScrollTarget: scrollTo)
+                SettingsView(
+                    authManager: authManager,
+                    server: server,
+                    initialScrollTarget: scrollTo,
+                    onDefaultProfileSelected: viewModel.adoptDefaultProfileSelection
+                )
             case .bots:
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination)
             case .tasks:

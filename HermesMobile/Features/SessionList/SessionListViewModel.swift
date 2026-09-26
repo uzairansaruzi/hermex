@@ -109,6 +109,7 @@ final class SessionListViewModel {
     private(set) var remoteContentSearchExcerpts: [String: String] = [:]
     private var activeRemoteSearchQuery: String?
     private var sessionOpenGeneration = 0
+    private var activeProfileGeneration = 0
 
     private let client: APIClient
     private let sessionMutator: SessionMutator
@@ -359,16 +360,31 @@ final class SessionListViewModel {
 
         isLoadingActiveProfile = true
         activeProfileErrorMessage = nil
+        let generation = activeProfileGeneration
         defer { isLoadingActiveProfile = false }
 
         do {
             let response = try await client.profiles()
+            guard !Task.isCancelled, generation == activeProfileGeneration else { return }
             applyActiveProfile(response)
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard !Task.isCancelled, !isCancellationError(error),
+                  generation == activeProfileGeneration else { return }
 
             activeProfileErrorMessage = error.localizedDescription
         }
+    }
+
+    /// Adopts Settings' confirmed switch synchronously, before New Chat can run.
+    /// Earlier profile reads must not replace this newer server-confirmed selection.
+    func adoptDefaultProfileSelection(_ selection: DefaultProfileSelection) {
+        activeProfileGeneration += 1
+        let profile = profileOptions.first { $0.normalizedName == selection.name }
+        activeProfileName = selection.name
+        activeProfileDisplayName = selection.displayName
+        activeProfileModel = Self.nonEmpty(selection.defaultModel) ?? Self.nonEmpty(profile?.model)
+        activeProfileProvider = Self.nonEmpty(profile?.provider)
+        activeProfileErrorMessage = nil
     }
 
     func switchActiveProfile(_ profile: ProfileSummary) async -> Bool {
@@ -1300,7 +1316,8 @@ final class SessionListViewModel {
     }
 
     /// Creates a session in the explicit App Intent profile or the sidebar's selected
-    /// profile. Let that profile supply its defaults rather than relying on shared cookies.
+    /// profile. The server supplies that profile's model and last workspace. With
+    /// neither profile known, preserve the cookie-scoped workspace lookup.
     func createSession(modelContext: ModelContext? = nil, profile: String? = nil) async -> SessionSummary? {
         isCreatingSession = true
         actionErrorMessage = nil
@@ -1507,6 +1524,7 @@ final class SessionListViewModel {
         fallbackProfile: ProfileSummary? = nil,
         fallbackDefaultModel: String? = nil
     ) {
+        activeProfileGeneration += 1
         profileOptions = response.profiles ?? profileOptions
 
         // Tolerant: only a present field moves the flag, so an older server

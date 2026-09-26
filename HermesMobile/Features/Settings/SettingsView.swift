@@ -14,11 +14,18 @@ struct SettingsView: View {
     let server: URL
     /// When set, Settings scrolls to this section once on first appear (#283).
     let initialScrollTarget: SettingsScrollAnchor?
+    let onDefaultProfileSelected: (DefaultProfileSelection) -> Void
 
-    init(authManager: AuthManager, server: URL, initialScrollTarget: SettingsScrollAnchor? = nil) {
+    init(
+        authManager: AuthManager,
+        server: URL,
+        initialScrollTarget: SettingsScrollAnchor? = nil,
+        onDefaultProfileSelected: @escaping (DefaultProfileSelection) -> Void = { _ in }
+    ) {
         self.authManager = authManager
         self.server = server
         self.initialScrollTarget = initialScrollTarget
+        self.onDefaultProfileSelected = onDefaultProfileSelected
         // The CLI-sessions toggle is server-synced (#19): loads adopt the
         // server's `show_cli_sessions`, toggles POST it back, failures revert.
         // Stored per-server so one server's value never leaks into another.
@@ -777,6 +784,7 @@ struct SettingsView: View {
                 server: server,
                 currentDefaultProfileName: defaultProfileName,
                 onSave: { selection in
+                    onDefaultProfileSelected(selection)
                     defaultProfileName = selection.name
                     defaultProfileDisplayName = selection.displayName
                     if let defaultModel = selection.defaultModel, !defaultModel.isEmpty {
