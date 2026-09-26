@@ -26,6 +26,10 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     /// Server-measured wall-clock seconds for the whole turn, set on its final
     /// assistant message (`_turnDuration`). Absent on older transcripts.
     let turnDuration: Double?
+    /// The host's durable `messages.id` for a Bot Chat row (`session.resume`'s
+    /// `row_id`), which `message.react` addresses. Set only by
+    /// `BotTranscriptProjection`; nil everywhere else.
+    let rowID: Int?
 
     init(
         role: String?,
@@ -42,7 +46,8 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         displayKind: String? = nil,
         displayMetadata: [String: JSONValue]? = nil,
         turnTps: Double? = nil,
-        turnDuration: Double? = nil
+        turnDuration: Double? = nil,
+        rowID: Int? = nil
     ) {
         self.role = role
         self.content = content
@@ -59,6 +64,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         self.displayMetadata = displayMetadata
         self.turnTps = turnTps
         self.turnDuration = turnDuration
+        self.rowID = rowID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -103,6 +109,7 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         displayMetadata = try? container.decodeIfPresent([String: JSONValue].self, forKey: .displayMetadata)
         turnTps = container.decodeLossyDoubleIfPresent(forKey: .turnTps)
         turnDuration = container.decodeLossyDoubleIfPresent(forKey: .turnDuration)
+        rowID = nil
     }
 
     // MARK: - Steering hints

@@ -43,13 +43,25 @@
 	<string>$(KEYCHAIN_SERVICE)</string>
 	<key>HermesURLScheme</key>
 	<string>$(HERMES_URL_SCHEME)</string>
-	<!-- Permit the private/local IP ranges used by direct Hermes connections.
-	     iOS 17+ ATS requires explicit IP/CIDR exceptions, including Tailscale.
-	     Public hosts still require HTTPS; never use NSAllowsArbitraryLoads. -->
+	<!-- Plain HTTP reaches local and tailnet hosts only; public hosts still need HTTPS.
+	     NSAllowsLocalNetworking covers .local and single-label names. The CIDR entries
+	     cover private and Tailscale IPs, which iOS 17+ needs listed explicitly. ts.net
+	     covers Tailscale MagicDNS names (tailnet traffic is WireGuard-encrypted).
+	     Scheme inference in BotConnection.address(_:) relies on these entries.
+	     Never use NSAllowsArbitraryLoads. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
+			<key>ts.net</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
 			<key>10.0.0.0/8</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>

@@ -1,0 +1,232 @@
+[
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "approval_mode" : "fixture-redacted",
+        "branch" : "fixture-redacted",
+        "cwd" : "/fixture/cwd",
+        "desktop_contract" : 8,
+        "fast" : false,
+        "mcp_servers" : [],
+        "model" : "fixture-redacted",
+        "personality" : "fixture-redacted",
+        "profile_name" : "inbox-triage",
+        "project" : null,
+        "provider" : "fixture-redacted",
+        "reasoning_effort" : "fixture-redacted",
+        "reasoning_effort_wire" : "fixture-redacted",
+        "release_date" : "fixture-redacted",
+        "running" : true,
+        "service_tier" : "fixture-redacted",
+        "skills" : {},
+        "stored_session_id" : "20260925_023517_59d8c3",
+        "system_prompt" : "fixture-redacted",
+        "terminal_backend" : "fixture-redacted",
+        "title" : "fixture-redacted",
+        "tools" : {},
+        "turn_started_at" : 1790318117.362543,
+        "update_behind" : 0,
+        "update_command" : "fixture-redacted",
+        "usage" : {
+          "active_subagents" : 0,
+          "calls" : 0,
+          "completion" : 0,
+          "compressions" : 0,
+          "input" : 0,
+          "model" : "fixture-redacted",
+          "output" : 0,
+          "prompt" : 0,
+          "reasoning" : 0,
+          "total" : 0
+        },
+        "version" : "0.21.5",
+        "yolo" : false
+      },
+      "seq" : 1,
+      "session_id" : "e7d1ef0d",
+      "type" : "session.info"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "seq" : 2,
+      "session_id" : "e7d1ef0d",
+      "type" : "message.start"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "session_id" : "20260925_023517_59d8c3",
+        "title" : "fixture-redacted"
+      },
+      "seq" : 3,
+      "session_id" : "e7d1ef0d",
+      "type" : "session.title"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "text" : "( ͡° ͜ʖ ͡°) computing..."
+      },
+      "seq" : 4,
+      "session_id" : "e7d1ef0d",
+      "type" : "thinking.delta"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "text" : ""
+      },
+      "seq" : 5,
+      "session_id" : "e7d1ef0d",
+      "type" : "thinking.delta"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "text" : "ok"
+      },
+      "seq" : 6,
+      "session_id" : "e7d1ef0d",
+      "type" : "message.delta"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "text" : ""
+      },
+      "seq" : 7,
+      "session_id" : "e7d1ef0d",
+      "type" : "thinking.delta"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "text" : "ok"
+      },
+      "seq" : 8,
+      "session_id" : "e7d1ef0d",
+      "type" : "reasoning.available"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "persisted_turn" : {
+          "complete" : true,
+          "final_assistant_row_id" : 79,
+          "row_ids" : [
+            78,
+            79
+          ],
+          "user_row_id" : 78
+        },
+        "status" : "complete",
+        "text" : "ok",
+        "usage" : {
+          "active_subagents" : 0,
+          "avg_latency_s" : 4.8,
+          "avg_tps" : 4.8,
+          "calls" : 1,
+          "completion" : 23,
+          "compressions" : 0,
+          "context_estimated" : false,
+          "context_max" : 1048576,
+          "context_percent" : 1,
+          "context_source" : "fixture-redacted",
+          "context_used" : 14215,
+          "input" : 14215,
+          "model" : "fixture-redacted",
+          "output" : 23,
+          "prompt" : 14215,
+          "reasoning" : 12,
+          "total" : 14238
+        }
+      },
+      "seq" : 9,
+      "session_id" : "e7d1ef0d",
+      "type" : "message.complete"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "approval_mode" : "fixture-redacted",
+        "branch" : "fixture-redacted",
+        "cwd" : "/fixture/cwd",
+        "desktop_contract" : 8,
+        "fast" : false,
+        "mcp_servers" : [],
+        "model" : "fixture-redacted",
+        "personality" : "fixture-redacted",
+        "profile_name" : "inbox-triage",
+        "project" : null,
+        "provider" : "fixture-redacted",
+        "reasoning_effort" : "fixture-redacted",
+        "reasoning_effort_wire" : "fixture-redacted",
+        "release_date" : "fixture-redacted",
+        "running" : false,
+        "service_tier" : "fixture-redacted",
+        "skills" : {},
+        "stored_session_id" : "20260925_023517_59d8c3",
+        "system_prompt" : "fixture-redacted",
+        "terminal_backend" : "fixture-redacted",
+        "title" : "fixture-redacted",
+        "tools" : {},
+        "turn_started_at" : null,
+        "update_behind" : 0,
+        "update_command" : "fixture-redacted",
+        "usage" : {
+          "active_subagents" : 0,
+          "avg_latency_s" : 4.8,
+          "avg_tps" : 4.8,
+          "calls" : 1,
+          "completion" : 23,
+          "compressions" : 0,
+          "context_estimated" : false,
+          "context_max" : 1048576,
+          "context_percent" : 1,
+          "context_source" : "fixture-redacted",
+          "context_used" : 14215,
+          "input" : 14215,
+          "model" : "fixture-redacted",
+          "output" : 23,
+          "prompt" : 14215,
+          "reasoning" : 12,
+          "total" : 14238
+        },
+        "version" : "0.21.5",
+        "yolo" : true
+      },
+      "seq" : 10,
+      "session_id" : "e7d1ef0d",
+      "type" : "session.info"
+    }
+  }
+]

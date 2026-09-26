@@ -183,6 +183,7 @@
 		1A2B3C4D5E6F7000000000D8 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */; };
 		BEEF02400000000000000001 /* ChatAttachmentPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02400000000000000002 /* ChatAttachmentPreviewView.swift */; };
 		1A2B3C4D5E6F7000000000DA /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */; };
+		D1FF76200000000000000002 /* MarkdownDiffCodeBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */; };
 		C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14300000000000000000002 /* StreamingMarkdownSupport.swift */; };
 		C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000002 /* TranscriptMedia.swift */; };
 		C0DE34000000000000000006 /* TranscriptMediaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000005 /* TranscriptMediaView.swift */; };
@@ -219,6 +220,7 @@
 		031031031031031031031009 /* DisplayMathView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03103103103103103103100A /* DisplayMathView.swift */; };
 		03103103103103103103100B /* MarkdownMathFormatter+Environments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03103103103103103103100C /* MarkdownMathFormatter+Environments.swift */; };
 		031031031031031031031003 /* MarkdownMathRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031031031031031031031004 /* MarkdownMathRendererTests.swift */; };
+		D1FF76200000000000000004 /* MarkdownDiffFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FF76200000000000000003 /* MarkdownDiffFormatterTests.swift */; };
 		D0M1C0000000000000000009 /* MarkdownMathLayoutCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0M1C000000000000000000A /* MarkdownMathLayoutCacheTests.swift */; };
 		C0DE34000000000000000003 /* TranscriptMediaParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000004 /* TranscriptMediaParserTests.swift */; };
 		C0DE3400000000000000000B /* TranscriptMediaPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE3400000000000000000C /* TranscriptMediaPreviewViewModelTests.swift */; };
@@ -485,6 +487,7 @@
 		236D35656DC54FFC9A91767D /* BotInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DAB6E1003A74F1992A3C350 /* BotInboxTests.swift */; };
 		A496B07E0000000000000001 /* BotModeGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A496B07E0000000000000002 /* BotModeGateTests.swift */; };
 		A496B07E0000000000000003 /* BotConnectionVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A496B07E0000000000000004 /* BotConnectionVersionTests.swift */; };
+		A760F1A70000000000000001 /* HermesAgentFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A760F1A70000000000000002 /* HermesAgentFixtureTests.swift */; };
 		1331AA23B3B0713A5896D0A3 /* HermexPushProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F45F15CC7743DD0EF843B5E /* HermexPushProvisioningTests.swift */; };
 		A4730000000000000000A003 /* BotAvatarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4730000000000000000A004 /* BotAvatarTests.swift */; };
 		A4750000000000000000B005 /* BotActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B006 /* BotActivityTests.swift */; };
@@ -506,12 +509,15 @@
 		127110E3C3924333B7967315 /* BotAttachmentSendingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */; };
 		A48400000000000000000101 /* BotMentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000102 /* BotMentions.swift */; };
 		A48400000000000000000901 /* BotSlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000902 /* BotSlashCommands.swift */; };
+		B76400000000000000000001 /* BotQuickReplies.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76400000000000000000002 /* BotQuickReplies.swift */; };
+		B76400000000000000000003 /* BotQuickRepliesEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76400000000000000000004 /* BotQuickRepliesEditorView.swift */; };
 		A48400000000000000000903 /* BotSlashAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000904 /* BotSlashAutocompleteView.swift */; };
 		A48400000000000000000201 /* BotMentionAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000202 /* BotMentionAutocompleteView.swift */; };
 		A48400000000000000000A01 /* BotFilePathSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000A02 /* BotFilePathSearch.swift */; };
 		A48400000000000000000B01 /* BotAtAutocompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000B02 /* BotAtAutocompleteView.swift */; };
 		A48400000000000000000C01 /* BotFilePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000C02 /* BotFilePathTests.swift */; };
 		A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000906 /* BotSlashCommandTests.swift */; };
+		B76400000000000000000005 /* BotQuickReplyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76400000000000000000006 /* BotQuickReplyTests.swift */; };
 		A48400000000000000000301 /* BotMentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000302 /* BotMentionTests.swift */; };
 		1887ACCCA7594CEA88195FCD /* BotGroupRoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */; };
 		3C0CCE7773554B87B7E32D74 /* BotDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75316C058B034AC291F92E76 /* BotDeepLink.swift */; };
@@ -751,6 +757,7 @@
 		1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubbleView.swift; sourceTree = "<group>"; };
 		BEEF02400000000000000002 /* ChatAttachmentPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachmentPreviewView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDiffCodeBlock.swift; sourceTree = "<group>"; };
 		C14300000000000000000002 /* StreamingMarkdownSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingMarkdownSupport.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000002 /* TranscriptMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMedia.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000005 /* TranscriptMediaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaView.swift; sourceTree = "<group>"; };
@@ -787,6 +794,7 @@
 		03103103103103103103100A /* DisplayMathView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayMathView.swift; sourceTree = "<group>"; };
 		03103103103103103103100C /* MarkdownMathFormatter+Environments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MarkdownMathFormatter+Environments.swift"; sourceTree = "<group>"; };
 		031031031031031031031004 /* MarkdownMathRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathRendererTests.swift; sourceTree = "<group>"; };
+		D1FF76200000000000000003 /* MarkdownDiffFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDiffFormatterTests.swift; sourceTree = "<group>"; };
 		D0M1C000000000000000000A /* MarkdownMathLayoutCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathLayoutCacheTests.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000004 /* TranscriptMediaParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaParserTests.swift; sourceTree = "<group>"; };
 		C0DE3400000000000000000C /* TranscriptMediaPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaPreviewViewModelTests.swift; sourceTree = "<group>"; };
@@ -1059,6 +1067,7 @@
 		5DAB6E1003A74F1992A3C350 /* BotInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotInboxTests.swift"; sourceTree = "<group>"; };
 		A496B07E0000000000000002 /* BotModeGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotModeGateTests.swift; sourceTree = "<group>"; };
 		A496B07E0000000000000004 /* BotConnectionVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotConnectionVersionTests.swift; sourceTree = "<group>"; };
+		A760F1A70000000000000002 /* HermesAgentFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesAgentFixtureTests.swift; sourceTree = "<group>"; };
 		2F45F15CC7743DD0EF843B5E /* HermexPushProvisioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermexPushProvisioningTests.swift"; sourceTree = "<group>"; };
 		A4730000000000000000A004 /* BotAvatarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarTests.swift; sourceTree = "<group>"; };
 		A4750000000000000000B006 /* BotActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotActivityTests.swift; sourceTree = "<group>"; };
@@ -1080,12 +1089,15 @@
 		7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotAttachmentSendingTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000102 /* BotMentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotMentions.swift"; sourceTree = "<group>"; };
 		A48400000000000000000902 /* BotSlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotSlashCommands.swift"; sourceTree = "<group>"; };
+		B76400000000000000000002 /* BotQuickReplies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotQuickReplies.swift"; sourceTree = "<group>"; };
+		B76400000000000000000004 /* BotQuickRepliesEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotQuickRepliesEditorView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000904 /* BotSlashAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotSlashAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000202 /* BotMentionAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotMentionAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000A02 /* BotFilePathSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotFilePathSearch.swift"; sourceTree = "<group>"; };
 		A48400000000000000000B02 /* BotAtAutocompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAtAutocompleteView.swift"; sourceTree = "<group>"; };
 		A48400000000000000000C02 /* BotFilePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotFilePathTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000906 /* BotSlashCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotSlashCommandTests.swift"; sourceTree = "<group>"; };
+		B76400000000000000000006 /* BotQuickReplyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotQuickReplyTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000302 /* BotMentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotMentionTests.swift"; sourceTree = "<group>"; };
 		3AB0C985A0414254947A0C6C /* BotGroupRoom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotGroupRoom.swift"; sourceTree = "<group>"; };
 		75316C058B034AC291F92E76 /* BotDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotDeepLink.swift"; sourceTree = "<group>"; };
@@ -1235,11 +1247,13 @@
 				FE3A09625987439BABF6BC8C /* BotHistoryCacheTests.swift */,
 				A496B07E0000000000000002 /* BotModeGateTests.swift */,
 				A496B07E0000000000000004 /* BotConnectionVersionTests.swift */,
+				A760F1A70000000000000002 /* HermesAgentFixtureTests.swift */,
 				2F45F15CC7743DD0EF843B5E /* HermexPushProvisioningTests.swift */,
 				A4730000000000000000A004 /* BotAvatarTests.swift */,
 				A4750000000000000000B006 /* BotActivityTests.swift */,
 				A4770000000000000000D006 /* BotDelegatedWorkTests.swift */,
 				A48400000000000000000906 /* BotSlashCommandTests.swift */,
+				B76400000000000000000006 /* BotQuickReplyTests.swift */,
 				A48400000000000000000302 /* BotMentionTests.swift */,
 				A48400000000000000000C02 /* BotFilePathTests.swift */,
 				6984D85D628F4E18ABAA2BA9 /* BotChatControlsTests.swift */,
@@ -1375,6 +1389,7 @@
 				B5A100000000000000000019 /* ShareInputReaderTests.swift */,
 				B5A100000000000000000061 /* AuthManagerStateTests.swift */,
 				B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */,
+				D1FF76200000000000000003 /* MarkdownDiffFormatterTests.swift */,
 				031031031031031031031004 /* MarkdownMathRendererTests.swift */,
 				D0M1C000000000000000000A /* MarkdownMathLayoutCacheTests.swift */,
 				C0DE34000000000000000004 /* TranscriptMediaParserTests.swift */,
@@ -1522,6 +1537,8 @@
 				A4770000000000000000D004 /* BotDelegatedWorkView.swift */,
 				A48400000000000000000902 /* BotSlashCommands.swift */,
 				A48400000000000000000904 /* BotSlashAutocompleteView.swift */,
+				B76400000000000000000002 /* BotQuickReplies.swift */,
+				B76400000000000000000004 /* BotQuickRepliesEditorView.swift */,
 				A48400000000000000000202 /* BotMentionAutocompleteView.swift */,
 				A48400000000000000000A02 /* BotFilePathSearch.swift */,
 				A48400000000000000000B02 /* BotAtAutocompleteView.swift */,
@@ -1675,6 +1692,7 @@
 				C21300000000000000000004 /* StreamingTextFadeRenderer.swift */,
 				454454454454454454454401 /* ResponseTextSelection.swift */,
 				454454454454454454454411 /* ResponseSelectionInput.swift */,
+				D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */,
 				1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */,
 				C14300000000000000000002 /* StreamingMarkdownSupport.swift */,
 				C0DE34000000000000000002 /* TranscriptMedia.swift */,
@@ -2224,6 +2242,8 @@
 				D04C75E073B6B4661647A495 /* HermexPushPairing.swift in Sources */,
 				A4770000000000000000D003 /* BotDelegatedWorkView.swift in Sources */,
 				A48400000000000000000901 /* BotSlashCommands.swift in Sources */,
+				B76400000000000000000001 /* BotQuickReplies.swift in Sources */,
+				B76400000000000000000003 /* BotQuickRepliesEditorView.swift in Sources */,
 				A48400000000000000000903 /* BotSlashAutocompleteView.swift in Sources */,
 				A48400000000000000000201 /* BotMentionAutocompleteView.swift in Sources */,
 				A48400000000000000000A01 /* BotFilePathSearch.swift in Sources */,
@@ -2412,6 +2432,7 @@
 				454454454454454454454402 /* ResponseTextSelection.swift in Sources */,
 				454454454454454454454412 /* ResponseSelectionInput.swift in Sources */,
 				1A2B3C4D5E6F7000000000DA /* MarkdownRenderer.swift in Sources */,
+				D1FF76200000000000000002 /* MarkdownDiffCodeBlock.swift in Sources */,
 				C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */,
 				C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */,
 				C0DE34000000000000000006 /* TranscriptMediaView.swift in Sources */,
@@ -2531,11 +2552,13 @@
 				C72A6DDA681F4CDABE7445DD /* BotHistoryCacheTests.swift in Sources */,
 				A496B07E0000000000000001 /* BotModeGateTests.swift in Sources */,
 				A496B07E0000000000000003 /* BotConnectionVersionTests.swift in Sources */,
+				A760F1A70000000000000001 /* HermesAgentFixtureTests.swift in Sources */,
 				1331AA23B3B0713A5896D0A3 /* HermexPushProvisioningTests.swift in Sources */,
 				A4730000000000000000A003 /* BotAvatarTests.swift in Sources */,
 				A4750000000000000000B005 /* BotActivityTests.swift in Sources */,
 				A4770000000000000000D005 /* BotDelegatedWorkTests.swift in Sources */,
 				A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */,
+				B76400000000000000000005 /* BotQuickReplyTests.swift in Sources */,
 				A48400000000000000000301 /* BotMentionTests.swift in Sources */,
 				A48400000000000000000C01 /* BotFilePathTests.swift in Sources */,
 				D1F04357497D4FD381D726C8 /* BotChatControlsTests.swift in Sources */,
@@ -2672,6 +2695,7 @@
 				B5A100000000000000000060 /* AuthManagerStateTests.swift in Sources */,
 				B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */,
 				031031031031031031031003 /* MarkdownMathRendererTests.swift in Sources */,
+				D1FF76200000000000000004 /* MarkdownDiffFormatterTests.swift in Sources */,
 				D0M1C0000000000000000009 /* MarkdownMathLayoutCacheTests.swift in Sources */,
 				C0DE34000000000000000003 /* TranscriptMediaParserTests.swift in Sources */,
 				C0DE3400000000000000000B /* TranscriptMediaPreviewViewModelTests.swift in Sources */,

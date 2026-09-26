@@ -1,3 +1,4 @@
+import UserNotifications
 import XCTest
 @testable import HermesMobile
 
@@ -208,7 +209,7 @@ import XCTest
                           "Provisioning must not borrow the Bot chat's wording")
     }
 
-    func testARefusedRegistrationIsNamedAndLeavesNothingPaired() async throws {
+    func testPermissionRevokedDuringSetupSaysNotificationsAreOffAndLeavesNothingPaired() async throws {
         let registrar = FakePushRegistrar()
         registrar.enableError = PushRegistrarError.permissionDenied
         PushHTTPFixture.handler = { _ in nil }
@@ -216,9 +217,164 @@ import XCTest
 
         await provisioner.enable()
 
-        XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.device.title)
+        XCTAssertTrue(provisioner.notificationsOff)
+        XCTAssertNil(provisioner.failure, "Denied permission is not a host failure")
+        XCTAssertFalse(provisioner.isWorking)
+        XCTAssertTrue(provisioner.showsSteps, "The host was already changed, so its finished steps stay visible")
+        XCTAssertEqual(provisioner.completed, [.relayURL, .install, .restart, .pair])
         XCTAssertNil(provisioner.pairing)
         XCTAssertNil(registrar.pairing(for: serverA))
+    }
+
+    func testAHostReportingAnotherInstallIDIsNeverSignedInOrChanged() async throws {
+        let saved = String(repeating: "a", count: 32)
+        for (live, refused) in [(String(repeating: "b", count: 32), true), (saved, false)] {
+            PushHTTPFixture.reset()
+            PushHTTPFixture.handler = { request in
+                guard request.url?.path == "/api/status" else { return nil }
+                return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                      "install_id": .string(live)]))
+            }
+            let registrar = FakePushRegistrar()
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar, installID: saved)
+
+            await provisioner.enable()
+
+            if refused {
+                XCTAssertEqual(provisioner.failure?.message, BotFailure.differentHost.localizedDescription)
+                XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"],
+                               "No password or change reaches the other host")
+                XCTAssertEqual(registrar.actions, [])
+            } else {
+                XCTAssertNil(provisioner.failure)
+                XCTAssertNotNil(registrar.pairing(for: serverA))
+            }
+        }
+    }
+
+    func testDeniedPermissionStopsSetupBeforeAnyHostCall() async throws {
+        // A status a future iOS adds counts as not allowed, like a denial.
+        let unknown = try XCTUnwrap(UNAuthorizationStatus(rawValue: 99))
+        for (status, grants) in [(UNAuthorizationStatus.denied, true), (.notDetermined, false), (unknown, true)] {
+            PushHTTPFixture.reset()
+            PushHTTPFixture.handler = { _ in nil }
+            let registrar = FakePushRegistrar()
+            let permission = FakeNotificationPermission(status: status, grants: grants)
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar, notifications: permission)
+
+            await provisioner.enable()
+
+            XCTAssertTrue(provisioner.notificationsOff, "\(status.rawValue)")
+            XCTAssertEqual(provisioner.phase, .idle)
+            XCTAssertNil(provisioner.failure)
+            XCTAssertFalse(provisioner.showsSteps, "Nothing ran, so there are no steps to show")
+            XCTAssertEqual(PushHTTPFixture.calls, [], "The host is never touched for a phone that cannot show a push")
+            XCTAssertEqual(registrar.actions, [])
+            XCTAssertEqual(permission.requests, status == .notDetermined ? 1 : 0,
+                           "iOS is asked only when it has never been asked")
+        }
+    }
+
+    func testAFirstRunAsksForPermissionBeforeAnyHostStep() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { _ in nil }
+        let permission = FakeNotificationPermission(status: .notDetermined, grants: true)
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, notifications: permission)
+        var phaseDuringPrompt: HermexPushProvisioner.Phase?
+        var stepsDuringPrompt: Bool?
+        permission.onRequest = {
+            phaseDuringPrompt = provisioner.phase
+            stepsDuringPrompt = provisioner.showsSteps
+        }
+
+        await provisioner.enable()
+
+        XCTAssertEqual(permission.hostCallsBeforeRequest, [0])
+        XCTAssertEqual(phaseDuringPrompt, .checkingPermission, "The prompt claims no host step")
+        XCTAssertEqual(stepsDuringPrompt, false)
+        XCTAssertFalse(provisioner.notificationsOff)
+        XCTAssertNil(provisioner.failure)
+        XCTAssertNotNil(registrar.pairing(for: serverA))
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/gateway/restart"))
+    }
+
+    func testAllowingNotificationsInSettingsClearsTheNoticeWithoutRerunningSetup() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { _ in nil }
+        let permission = FakeNotificationPermission(status: .denied)
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, notifications: permission)
+        await provisioner.enable()
+        XCTAssertTrue(provisioner.notificationsOff)
+
+        permission.status = .authorized
+        await provisioner.recheckNotificationPermission()
+
+        XCTAssertFalse(provisioner.notificationsOff)
+        XCTAssertEqual(provisioner.phase, .idle)
+        XCTAssertEqual(PushHTTPFixture.calls, [])
+        XCTAssertEqual(registrar.actions, [], "Setup stays behind its confirmation")
+    }
+
+    func testAPairedServerSaysNotificationsAreOffWhenPermissionIsLaterDenied() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { _ in nil }
+        let permission = FakeNotificationPermission(status: .authorized)
+        let paired = makeProvisioner(server: serverA, registrar: registrar, notifications: permission)
+        await paired.enable()
+        let unpaired = makeProvisioner(server: serverB, registrar: registrar, notifications: permission)
+
+        permission.status = .denied
+        await paired.recheckNotificationPermission()
+        await unpaired.recheckNotificationPermission()
+
+        XCTAssertTrue(paired.notificationsOff)
+        XCTAssertFalse(unpaired.notificationsOff, "An unpaired server shows the notice only after a setup attempt")
+        permission.status = .authorized
+        await paired.recheckNotificationPermission()
+        XCTAssertFalse(paired.notificationsOff)
+    }
+
+    func testOnlyAnUnreachableHostAtSignInSaysItCouldNotBeReached() async throws {
+        PushHTTPFixture.isUnreachable = true
+        let unreachable = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
+        await unreachable.enable()
+        XCTAssertEqual(unreachable.failure, HermexPushProvisioner.Failure(
+            title: "Sign in to Hermes",
+            message: "Could not reach this Hermes host. Check the connection, then try again."))
+
+        PushHTTPFixture.reset()
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/status" ? (200, .object(["auth_required": .bool(false)])) : nil
+        }
+        let noPassword = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
+        await noPassword.enable()
+        XCTAssertEqual(noPassword.failure, HermexPushProvisioner.Failure(
+            title: "Sign in to Hermes",
+            message: "This Hermes host doesn’t offer the password sign-in push setup needs."))
+        XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
+    }
+
+    func testEachFailureNamesWhatAnsweredIt() {
+        let unusable = HermexPushFailure.unusablePairing.errorDescription
+        let cases: [(any Error, String?)] = [
+            (PushRegistrarError.permissionDenied, "Allow notifications for Hermex in iOS Settings, then turn this on again."),
+            (PushRegistrarError.unsupportedBuild, "This build of Hermex can’t receive push notifications."),
+            (PushRegistrarError.tokenUnavailable, "iOS gave no notification token. Check this iPhone’s internet connection, then try again."),
+            (PushRegistrarError.malformedPairing, unusable),
+            (PushRegistrarError.pairingChanged, "This step did not finish. Try again."),
+            (PushRegistrarError.preferencesUnconfirmed, "This step did not finish. Try again."),
+            (PushRelayError.malformedInstallKey, unusable),
+            (PushRelayError.http(statusCode: 409), "The relay refused this phone (409). Check the relay address, then try again."),
+            (PushRelayError.transport, "Could not reach the notification relay. Check this iPhone’s internet connection, then try again."),
+            (BotFailure.unsupported, "This Hermes host doesn’t offer the password sign-in push setup needs."),
+            (BotFailure.wrongIdentity, "This Hermes host doesn’t offer the password sign-in push setup needs."),
+            (BotFailure.rejected(401), "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again."),
+            (URLError(.timedOut), "The host did not answer in time. It may still be finishing this step — wait a moment, then try again."),
+            (CocoaError(.fileWriteUnknown), "This step did not finish. Try again.")
+        ]
+        for (error, expected) in cases {
+            XCTAssertEqual(HermexPushProvisioner.message(for: error), expected, "\(error)")
+        }
     }
 
     func testDisableStopsTheHostSendingBeforeDroppingThisPhone() async throws {
@@ -252,7 +408,7 @@ import XCTest
 
         await provisioner.disable()
 
-        XCTAssertNotNil(provisioner.failure)
+        XCTAssertEqual(provisioner.failure?.message, "The relay refused this phone (503). Check the relay address, then try again.")
         XCTAssertNotNil(provisioner.pairing)
         XCTAssertNotNil(registrar.pairing(for: serverA))
     }
@@ -365,13 +521,15 @@ import XCTest
         XCTAssertEqual(provisioner.pairing?.effectivePreferences, PushPreferences())
     }
 
-    private func makeProvisioner(server: URL, registrar: FakePushRegistrar,
+    private func makeProvisioner(server: URL, registrar: FakePushRegistrar, installID: String? = nil,
+                                 notifications: FakeNotificationPermission = FakeNotificationPermission(status: .authorized),
                                  stillConnected: @escaping @MainActor () -> Bool = { true }) -> HermexPushProvisioner {
         let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
-                                       username: "user", password: "secret")
+                                       username: "user", password: "secret", installID: installID)
         return HermexPushProvisioner(
             server: server, connection: connection,
             registrar: registrar,
+            notifications: notifications,
             dashboard: { BotDashboardClient(connection: $0, configuration: PushHTTPFixture.configuration()) },
             connectionID: { stillConnected() ? connection.id : nil },
             retryDelays: [.zero, .zero, .zero],
@@ -425,6 +583,33 @@ import XCTest
     func clearActions() { actions = [] }
 }
 
+/// iOS notification permission. A request answers `grants` and settles the status the way
+/// iOS does, and records how many host calls had already gone out when it was asked.
+private final class FakeNotificationPermission: ResponseCompletionNotificationScheduling, @unchecked Sendable {
+    var status: UNAuthorizationStatus
+    let grants: Bool
+    private(set) var hostCallsBeforeRequest: [Int] = []
+    var requests: Int { hostCallsBeforeRequest.count }
+    /// Runs while the prompt is up, so a test can read the provisioner's state behind it.
+    var onRequest: (@MainActor () -> Void)?
+
+    init(status: UNAuthorizationStatus, grants: Bool = true) {
+        self.status = status
+        self.grants = grants
+    }
+
+    func authorizationStatus() async -> UNAuthorizationStatus { status }
+
+    func requestAuthorization() async -> Bool {
+        hostCallsBeforeRequest.append(PushHTTPFixture.calls.count)
+        await onRequest?()
+        if status == .notDetermined { status = grants ? .authorized : .denied }
+        return status == .authorized
+    }
+
+    func schedule(_ request: ResponseCompletionNotificationRequest) async {}
+}
+
 /// Answers both the Hermes dashboard and the relay. `handler` returns nil to accept the
 /// default success for that route, so a test only writes the response it is about.
 private final class PushHTTPFixture: URLProtocol {
@@ -434,6 +619,8 @@ private final class PushHTTPFixture: URLProtocol {
     /// Whether the host already has the plugin loaded and a relay address set. A fresh
     /// host only answers the pairing route once a restart has loaded the plugin.
     nonisolated(unsafe) static var isSetUp = false
+    /// Every request fails the way an unreachable host does.
+    nonisolated(unsafe) static var isUnreachable = false
     private nonisolated(unsafe) static var recorded: [(call: String, body: BotJSON)] = []
     private static let lock = NSLock()
 
@@ -446,7 +633,7 @@ private final class PushHTTPFixture: URLProtocol {
     static var calls: [String] { lock.withLock { recorded.map(\.call) } }
     static func body(of call: String) -> BotJSON { lock.withLock { recorded.first { $0.call == call }?.body ?? .null } }
     static func clearCalls() { lock.withLock { recorded = [] } }
-    static func reset() { handler = nil; isSetUp = false; clearCalls() }
+    static func reset() { handler = nil; isSetUp = false; isUnreachable = false; clearCalls() }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -469,6 +656,10 @@ private final class PushHTTPFixture: URLProtocol {
         }
         let decoded = data.flatMap { try? JSONDecoder().decode(BotJSON.self, from: $0) } ?? .null
         Self.lock.withLock { Self.recorded.append((call, decoded)) }
+        if Self.isUnreachable {
+            client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+            return
+        }
         if url.path == "/api/gateway/restart" { Self.isSetUp = true }
         let (status, value) = Self.handler?(request) ?? Self.success(for: url)
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil,

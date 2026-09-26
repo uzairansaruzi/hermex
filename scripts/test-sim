@@ -20,6 +20,8 @@ import time
 # Same override as scripts/sim-login, for a Config/Local.xcconfig bundle ID.
 APP_BUNDLE_ID = os.environ.get("HERMEX_BUNDLE_ID", "com.uzairansar.hermesmobile")
 RUNNER_HANG = "The test runner hung before establishing connection"
+# A terminate that outlasts this means the simulator itself is stuck.
+TERMINATE_TIMEOUT = 25
 
 
 class RunnerError(Exception):
@@ -120,19 +122,36 @@ def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
         raise RunnerError("Simulator did not become ready; see bootstatus.log.")
 
 
+def reboot(device, run_dir, locks_dir, owner, lock_fds, timeout):
+    """Restart only this runner's assigned simulator before retrying a hung
+    runner, so the retry does not inherit whatever wedged the handshake.
+    Shutdown and boot share one hold of the boot lock: no other runner can
+    take the slot this device frees in between."""
+    with lock(locks_dir / "boot.lock", owner, timeout) as boot_fd:
+        run(["xcrun", "simctl", "shutdown", device["udid"]],
+            run_dir / "shutdown.log", timeout, (*lock_fds, boot_fd))
+        if run(["xcrun", "simctl", "boot", device["udid"]],
+               run_dir / "reboot.log", timeout, (*lock_fds, boot_fd)):
+            raise RunnerError("Simulator reboot failed; see reboot.log.")
+    if run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"],
+           run_dir / "bootstatus-retry.log", timeout, lock_fds):
+        raise RunnerError("Simulator did not become ready after reboot; see bootstatus-retry.log.")
+
+
 def terminate_app(device, run_dir, lock_fds, timeout):
     """An app left running by a build-and-run (with log capture attached) makes
     the test runner hang before connecting. Exit status is ignored: simctl
     fails when the app is not running or not installed, which is the goal."""
     run(["xcrun", "simctl", "terminate", device["udid"], APP_BUNDLE_ID],
-        run_dir / "terminate.log", timeout, lock_fds)
+        run_dir / "terminate.log", min(timeout, TERMINATE_TIMEOUT), lock_fds)
 
 
 def runner_hung(summary):
     """Xcode's launch handshake occasionally stalls before any test runs: the
     host app launches, but XCTest inside it never hears that testmanagerd is
     ready, and xcodebuild gives up after 300 seconds. No test ran, so the
-    runner reruns once; every other failure is reported as-is."""
+    runner reboots the simulator and reruns once; every other failure is
+    reported as-is."""
     return bool(summary) and not summary.get("passedTests") and any(
         RUNNER_HANG in str(failure.get("failureText", ""))
         for failure in summary.get("testFailures", []))
@@ -163,11 +182,11 @@ def failure_excerpt(log):
         print("".join(lines).strip(), flush=True)
 
 
-def positive_seconds(value):
-    seconds = int(value)
-    if seconds <= 0:
-        raise argparse.ArgumentTypeError("timeout must be positive")
-    return seconds
+def positive(value):
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive whole number")
+    return number
 
 
 def main():
@@ -175,9 +194,12 @@ def main():
     parser.add_argument("device", help="assigned simulator UDID or unique name")
     parser.add_argument("--only", action="append", default=[], metavar="TEST",
                         help="XCTest identifier, e.g. HermesMobileTests/BotLiveActivityTests; repeatable")
-    parser.add_argument("--boot-timeout", type=positive_seconds, default=120,
+    parser.add_argument("--repeat", type=positive, metavar="N",
+                        help="run the selected tests up to N times in one build and launch, "
+                             "stopping at the first failure")
+    parser.add_argument("--boot-timeout", type=positive, default=120,
                         help="seconds per simulator readiness operation (default: 120)")
-    parser.add_argument("--test-timeout", type=positive_seconds, default=1800,
+    parser.add_argument("--test-timeout", type=positive, default=1800,
                         help="seconds for build and tests together (default: 1800)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -213,12 +235,19 @@ def main():
                     "-maximum-concurrent-test-simulator-destinations", "1",
                     "-collect-test-diagnostics", "never",
                 ] + ["-only-testing:" + test for test in args.only]
+                if args.repeat:
+                    command += ["-test-iterations", str(args.repeat), "-run-tests-until-failure"]
                 (run_dir / ("command" + attempt + ".json")).write_text(json.dumps(command, indent=2) + "\n")
                 code = run(command, log, max(1, deadline - time.monotonic()), lock_fds)
                 summary = print_summary(result, run_dir / ("summary" + attempt + ".json"))
                 if not (code and not attempt and runner_hung(summary)):
                     break
-                print("RETRY: the test runner hung before connecting; rerunning once.", flush=True)
+                print("RETRY: the test runner hung before connecting; rebooting the simulator "
+                      "and rerunning once.", flush=True)
+                # The reboot spends the same test deadline as the retry.
+                remaining = max(1, deadline - time.monotonic())
+                reboot(device, run_dir, locks_dir, owner, lock_fds,
+                       min(args.boot_timeout, remaining))
             if code:
                 print("FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)
                 failure_excerpt(log)

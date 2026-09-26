@@ -2,10 +2,10 @@ import Observation
 import UIKit
 
 /// The Bots inbox for one configured server: the roster, Desktop's pin, hidden and
-/// section organization, device-local unread marks and section order, and one
-/// live subscription that lasts while the inbox is visible. `open()` owns the
-/// transport and `close()` ends it; every late reply is dropped by the wire
-/// identity check, so a replaced or closed connection never writes into the screen.
+/// section organization, each bot's live turn state, device-local unread marks and
+/// section order, and one live subscription that lasts while the inbox is visible.
+/// `open()` owns the transport and `close()` ends it; every late reply is dropped by
+/// the wire identity check, so a replaced or closed connection never writes into the screen.
 @MainActor @Observable final class BotInbox {
     enum Link: Equatable { case idle, connecting, live, disconnected }
 
@@ -52,7 +52,7 @@ import UIKit
     }
 
     /// Everything except the pinned tiles, as sections in `sectionNames` order with
-    /// the unfiled block last. Each block is newest first; an empty one is left out.
+    /// the unfiled block last. Each block is in `byAttention` order; an empty one is left out.
     /// With no named sections this is one unfiled block, the flat list as before.
     var sections: [ChatSection] {
         let rows = rows(matching: "")
@@ -67,9 +67,9 @@ import UIKit
         // is also pinned, exactly as a hidden bot does, so it can always be unhidden.
         unfiled += visibleRooms.filter { isRoomHidden($0) ? showsHidden : !isRoomPinned($0) }.map(ChatRow.room)
         var blocks = sectionNames.compactMap { section in
-            filed[section.id].map { ChatSection(id: "section:" + section.id, name: section.name, chats: Self.byActivity($0)) }
+            filed[section.id].map { ChatSection(id: "section:" + section.id, name: section.name, chats: byAttention($0)) }
         }
-        if !unfiled.isEmpty { blocks.append(ChatSection(id: "unfiled", name: nil, chats: Self.byActivity(unfiled))) }
+        if !unfiled.isEmpty { blocks.append(ChatSection(id: "unfiled", name: nil, chats: byAttention(unfiled))) }
         return blocks
     }
 
@@ -121,23 +121,36 @@ import UIKit
     }
 
     /// The tiles above the timeline: Desktop's pinned bots, then rooms pinned on
-    /// this phone, each group by activity.
+    /// this phone, each group in `byAttention` order.
     var pinned: [ChatRow] {
-        Self.byActivity(rows(matching: "").pinned.map(ChatRow.bot))
-            + Self.byActivity(visibleRooms.filter { isRoomPinned($0) && !isRoomHidden($0) }.map(ChatRow.room))
+        byAttention(rows(matching: "").pinned.map(ChatRow.bot))
+            + byAttention(visibleRooms.filter { isRoomPinned($0) && !isRoomHidden($0) }.map(ChatRow.room))
     }
 
     private var visibleRooms: [BotGroupRoom] { roomCapabilities.enabled ? rooms : [] }
 
-    private static func byActivity(_ rows: [ChatRow]) -> [ChatRow] {
-        rows.sorted {
-            switch ($0.activity, $1.activity) {
+    /// The one order inside every group (each tile group and each section): waiting,
+    /// then working, then unread, then newest, undated last and ties by id. Rooms
+    /// have no live status or unread mark, so they rank with idle bots. Only rows
+    /// inside a group move; `ChatRow.id` stays stable so a move never rebuilds a row.
+    private func byAttention(_ rows: [ChatRow]) -> [ChatRow] {
+        func rank(_ row: ChatRow) -> Int {
+            guard case .bot(let profile) = row else { return 3 }
+            switch liveStatuses[profile.id] {
+            case .waiting: return 0
+            case .working: return 1
+            case nil: return isUnread(profile) ? 2 : 3
+            }
+        }
+        return rows.map { (row: $0, rank: rank($0)) }.sorted {
+            if $0.rank != $1.rank { return $0.rank < $1.rank }
+            switch ($0.row.activity, $1.row.activity) {
             case let (lhs?, rhs?) where lhs != rhs: return lhs > rhs
             case (_?, nil): return true
             case (nil, _?): return false
-            default: return $0.id < $1.id
+            default: return $0.row.id < $1.row.id
             }
-        }
+        }.map(\.row)
     }
 
     let server: URL
@@ -155,6 +168,10 @@ import UIKit
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
+    /// What to check once an empty inbox has failed to reach the host
+    /// `routeFailuresBeforeAdvice` times in a row. The quiet retry goes on behind it,
+    /// and `open()` leaves it alone so it holds steady between attempts.
+    private(set) var routeAdvice: String?
     /// Outcome of the last pin, hide or section write when it did not apply.
     private(set) var notice: String?
     /// Profiles with a look write in flight; their actions stay inert.
@@ -167,13 +184,27 @@ import UIKit
     /// Device-local watermarks for the current connection: the canonical
     /// `last_active` the user last saw for each Profile. Never leaves the phone.
     private(set) var seen: [String: Double] = [:]
+    /// Live turn state per Profile from the newest `session.active_list` read on this
+    /// connection. Emptied when the socket drops or the connection changes, so a row
+    /// never claims work nobody can vouch for.
+    private(set) var liveStatuses: [String: BotLiveStatus] = [:]
 
     private var wire: (any BotTransport)?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempts = 0
+    private var routeFailures = 0
+    private static let routeFailuresBeforeAdvice = 3
     private var reloadTask: Task<Void, Never>?
     private var reloadWanted = false
     private var reloadSerial = 0
+    /// False once the host answered `session.active_list` with "method not found";
+    /// statuses stay hidden until the next socket.
+    private var readsLiveStatus = true
+    private var statusSerial = 0
+    /// True after a status read failed while a bot was busy, so re-reads go on until
+    /// one succeeds instead of leaving that turn unmarked until the next event.
+    private var retriesStatusRead = false
+    private var statusPollTask: Task<Void, Never>?
     private var returnedFrom: String?
     private let store: BotConnectionStore
     private let unread: BotUnreadStore
@@ -189,18 +220,24 @@ import UIKit
     private let reloadSpacing: Duration
     /// Waits before each silent reconnect after a lost socket; the last one repeats.
     private let reconnectDelays: [Duration]
+    /// Gap between status-only re-reads while some bot is busy. `sessions.changed`
+    /// can miss a turn's end (post-turn work writes nothing), so the inbox re-reads
+    /// on its own while it is open, connected, and a row shows Working or Waiting.
+    private let statusPollInterval: Duration
 
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
+         statusPollInterval: Duration = .seconds(5),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
         self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         self.reconnectDelays = reconnectDelays; self.historyCache = historyCache
+        self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
             try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
@@ -251,7 +288,12 @@ import UIKit
             let saved = try store.load(server: server)
             if connection?.id != saved?.id {
                 profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
-                roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []
+                roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []; setLiveStatuses([:])
+            }
+            // The form can keep the UUID under a new address; advice for the old host
+            // and its failure streak do not carry over to the new one.
+            if connection?.id != saved?.id || connection?.address != saved?.address {
+                routeFailures = 0; routeAdvice = nil
             }
             connection = saved
             guard let saved else { link = .idle; return }
@@ -260,7 +302,7 @@ import UIKit
             if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
             let opened = makeWire(saved)
             client = opened
-            wire = opened; link = .connecting; errorMessage = nil; notice = nil
+            wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true; retriesStatusRead = false
             opened.onEvent = { [weak self] event in
                 guard let self, self.wire === opened, event["type"].text == "sessions.changed" else { return }
                 self.noteChange()
@@ -271,12 +313,20 @@ import UIKit
             }
             try await opened.connect()
             guard wire === opened, !Task.isCancelled else { return }
+            // The host answered, so the route advice no longer holds, even though the
+            // roster and rooms have yet to load.
+            routeFailures = 0; routeAdvice = nil
+            recordInstallID(opened.serverInstallID, for: saved)
             guard await reload(opened) else { return }
+            // The status read runs beside rooms and avatars; nothing above waits for it.
+            let statuses = statusPollTask
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
             reconnectAttempts = 0
             await refreshAvatars(opened)
+            // A pull-to-refresh ends once the fresh statuses are in, too.
+            await statuses?.value
         } catch {
             guard !Task.isCancelled else { return }
             if let client {
@@ -288,13 +338,32 @@ import UIKit
                 // A saved-connection read can fail before any client exists; that is
                 // still a visible failure with the Reconnect path, not a stale roster.
                 link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+                setLiveStatuses([:])
             }
         }
+    }
+
+    /// Trust on first use: stores the host's `install_id` on a record that has none, so
+    /// every later connect can refuse an address that starts reaching another host. The
+    /// record is re-read rather than taken from `opened`, because the connection form may
+    /// have saved a new password or name under the same UUID while this inbox connected.
+    /// The in-memory `connection` gains the id too, because the chats, rooms, creator and
+    /// editor opened from this inbox build their clients from it.
+    private func recordInstallID(_ live: String?, for opened: BotConnection) {
+        guard let live else { return }
+        if connection?.id == opened.id, connection?.address == opened.address, connection?.installID == nil {
+            connection?.installID = live
+        }
+        guard var fresh = try? store.load(server: server), fresh.id == opened.id,
+              fresh.address == opened.address, fresh.installID == nil else { return }
+        fresh.installID = live
+        try? store.save(fresh, server: server)
     }
 
     func close() {
         reconnectTask?.cancel(); reconnectTask = nil
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
+        statusPollTask?.cancel(); statusPollTask = nil
         wire?.close(); wire = nil
         link = .idle
     }
@@ -302,12 +371,14 @@ import UIKit
     /// A lost socket or a failed read is retried quietly, with growing delays, for
     /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
     /// a refusal the user has to act on shows a message and the Reconnect button:
-    /// sign-in, an unsupported host or address, and any other permanent HTTP
+    /// sign-in, an unsupported host or address, an address that now reaches a
+    /// different host or is not a dashboard, and any other permanent HTTP
     /// client error (a 404 is not a Hermes host). Server errors, rate limits and
-    /// JSON-RPC faults other than "method missing" are the retry loop's problem.
+    /// JSON-RPC faults other than "method missing" are the retry loop's problem;
+    /// an empty inbox shows `routeAdvice` if the host stays unreachable.
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
-        case .unsupported, .wrongIdentity, .invalidAddress: return false
+        case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)
@@ -315,10 +386,18 @@ import UIKit
         }
     }
 
+    /// The host could not be reached at all: no answer, or a proxy or Cloudflare
+    /// answering for it. Repeated, these replace an empty inbox's skeleton with advice.
+    private static func isRouteFailure(_ error: Error) -> Bool {
+        if error is URLError { return true }
+        guard case .rejected(let code)? = error as? BotFailure else { return false }
+        return (502...504).contains(code) || (520...530).contains(code)
+    }
+
     /// True until the first roster lands: the inbox shows a skeleton instead of a
     /// connection message while it connects, or quietly retries, with nothing to show.
     var isLoadingRoster: Bool {
-        connection != nil && profiles.isEmpty && errorMessage == nil && link != .live
+        connection != nil && profiles.isEmpty && errorMessage == nil && routeAdvice == nil && link != .live
     }
 
     func mayEdit(_ profile: BotProfile) -> Bool { link == .live && !editing.contains(profile.id) }
@@ -440,8 +519,9 @@ import UIKit
         }
     }
 
-    /// One `profiles.list` on the live socket. Only the newest request's reply is
-    /// applied, and only while `client` still owns the inbox.
+    /// One `profiles.list` on the live socket, then starts a live-status read against
+    /// it without waiting for one. Only the newest request's reply is applied, and
+    /// only while `client` still owns the inbox.
     private func reload(_ client: any BotTransport) async -> Bool {
         reloadSerial += 1
         let serial = reloadSerial
@@ -473,12 +553,59 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
+            startLiveStatusRead(client)
             return true
         } catch {
             guard wire === client, serial == reloadSerial else { return false }
             drop(client, error: error)
             return false
         }
+    }
+
+    /// Replaces any status read or re-read in flight with one read, now or after
+    /// `delay`. `statusPollTask` always holds the newest one, so `close()`, a drop or
+    /// a newer read cancels it.
+    private func startLiveStatusRead(_ client: any BotTransport, after delay: Duration? = nil) {
+        statusPollTask?.cancel(); statusPollTask = nil
+        guard readsLiveStatus else { return }
+        statusPollTask = Task { [weak self] in
+            if let delay, (try? await Task.sleep(for: delay)) == nil { return }
+            // A sleep that ended before its cancel still wakes; a cancelled read was replaced.
+            guard !Task.isCancelled, let self, self.wire === client else { return }
+            await self.readLiveStatuses(client)
+        }
+    }
+
+    /// One read-only `session.active_list`, mapped onto the current roster. A reply
+    /// applies only while `client` owns the inbox, the read was not cancelled, and no
+    /// newer status or roster read has started. A failed read shows no statuses
+    /// rather than old ones, and never drops the socket: the roster owns the link.
+    /// While a bot is busy, or a read failed while one was, the next read is
+    /// scheduled `statusPollInterval` later; once every bot is idle it stops.
+    private func readLiveStatuses(_ client: any BotTransport) async {
+        statusSerial += 1
+        let serial = statusSerial, roster = reloadSerial
+        func current() -> Bool {
+            !Task.isCancelled && wire === client && serial == statusSerial && roster == reloadSerial
+        }
+        do {
+            let reply = try await client.call("session.active_list", [:])
+            guard current() else { return }
+            setLiveStatuses(BotLiveStatus.statuses(reply["sessions"].list ?? [], profiles: profiles))
+            retriesStatusRead = false
+        } catch {
+            guard current() else { return }
+            if error as? BotFailure == .rejected(-32601) { readsLiveStatus = false }
+            retriesStatusRead = retriesStatusRead || !liveStatuses.isEmpty
+            setLiveStatuses([:])
+        }
+        if liveStatuses.isEmpty && !retriesStatusRead { statusPollTask = nil }
+        else { startLiveStatusRead(client, after: statusPollInterval) }
+    }
+
+    /// Writes only a real change, so an unchanged re-read never invalidates the list.
+    private func setLiveStatuses(_ statuses: [String: BotLiveStatus]) {
+        if statuses != liveStatuses { liveStatuses = statuses }
     }
 
     func roomKey(_ room: BotGroupRoom) -> BotRoomKey? {
@@ -671,11 +798,19 @@ import UIKit
 
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
+        statusPollTask?.cancel(); statusPollTask = nil; setLiveStatuses([:])
         client.close(); wire = nil
         link = .disconnected
+        let address = connection?.address
         guard Self.isRetryable(error) else {
-            errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+            routeFailures = 0; routeAdvice = nil
+            errorMessage = address.map { BotConnectionAdvice.message(for: error, address: $0) }
+                ?? (error as? BotFailure ?? .transport).localizedDescription
             return
+        }
+        if Self.isRouteFailure(error) { routeFailures += 1 } else { routeFailures = 0; routeAdvice = nil }
+        if routeFailures >= Self.routeFailuresBeforeAdvice, profiles.isEmpty, let address {
+            routeAdvice = BotConnectionAdvice.message(for: error, address: address)
         }
         let delay = reconnectDelays[min(reconnectAttempts, reconnectDelays.count - 1)]
         reconnectAttempts += 1

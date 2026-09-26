@@ -4,9 +4,9 @@ import Foundation
 /// RPC replies and events, so a quiet tool never blocks a Stop request.
 @MainActor final class BotClient: BotTransport {
     private static let cancellationSafeMethods: Set<String> = [
-        "file.attach", "complete.path", "subagent.list", "subagent.tail"
+        "file.attach", "complete.path", "subagent.list", "subagent.tail", "session.active_list"
     ]
-    private static let nonDisconnectingTimeoutMethods: Set<String> = ["subagent.list", "subagent.tail"]
+    private static let nonDisconnectingTimeoutMethods: Set<String> = ["subagent.list", "subagent.tail", "session.active_list"]
 
     private let connection: BotConnection
     private let session: URLSession
@@ -27,6 +27,8 @@ import Foundation
     private(set) var replayEpoch: String?
     /// `version` from `/api/status`, captured before the auth gate; nil when omitted.
     private(set) var serverVersion: String?
+    /// `install_id` from the same `/api/status` read; nil when omitted.
+    private(set) var serverInstallID: String?
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 
@@ -66,9 +68,16 @@ import Foundation
             guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
         }
         do {
-            let status = try await http(.status)
+            let status: BotJSON
+            do { status = try await http(.status) }
+            // `/api/status` is public on every dashboard, so a 401, a 404 or a non-JSON
+            // body there means the address is something else, such as the webui.
+            catch BotFailure.rejected(let code) where code == 401 || code == 404 { throw BotFailure.notDashboard }
+            catch is DecodingError { throw BotFailure.notDashboard }
             try check()
             serverVersion = status["version"].text
+            serverInstallID = BotConnection.installID(in: status)
+            try connection.requireSameInstall(serverInstallID)
             guard status["auth_required"].flag == true,
                   status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
             _ = try await http(.login, body: .object([
@@ -183,12 +192,13 @@ import Foundation
     func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
         guard ["profiles.list", "profiles.get_asset", "profiles.describe", "profiles.configure", "profiles.set_asset",
                "profiles.create", "session.create", "session.title",
-               "session.list", "session.resume", "session.events.since",
+               "session.list", "session.resume", "session.events.since", "session.active_list",
                "file.attach", "prompt.submit", "session.steer", "session.redirect", "session.interrupt", "approval.respond",
                "request.answer", "clarify.lock", "connection.respond", "client.capabilities",
                "model.options", "config.set", "session.cwd.set", "session.control.read", "session.control",
                "commands.catalog", "command.dispatch", "complete.path",
-               "subagent.list", "subagent.tail", "subagent.interrupt"].contains(method) || BotRoomRPC.methods.contains(method)
+               "subagent.list", "subagent.tail", "subagent.interrupt",
+               "message.react"].contains(method) || BotRoomRPC.methods.contains(method)
         else { throw BotFailure.unsupported }
         try BotRoomRPC.validate(method, params)
         try Self.validateProfileEditorCall(method, params)
@@ -197,9 +207,13 @@ import Foundation
         try Self.validateCompletionCall(method, params)
         try Self.validateSubagentCall(method, params)
         try Self.validateConnectionCall(method, params)
+        try Self.validateReactCall(method, params)
         if method == "client.capabilities" {
             guard params == ["server_requests": .bool(true)] else { throw BotFailure.unsupported }
         }
+        // The inbox's live-status read sends no parameters; `current_session_id`
+        // only marks a TUI's focused row, which Hermex never has.
+        if method == "session.active_list", !params.isEmpty { throw BotFailure.unsupported }
         guard let socket, !Task.isCancelled else { throw BotFailure.stale }
         nextID += 1
         let id = nextID
@@ -432,6 +446,24 @@ import Foundation
         if let env = row["env"] {
             guard status == "approved", let values = env.fields, !values.isEmpty,
                   values.allSatisfy({ !$0.key.isEmpty && $0.value.text?.isEmpty == false }) else { throw BotFailure.unsupported }
+        }
+    }
+
+    /// Tapbacks are one more typed exception: your own reaction on one
+    /// persisted row of the live session. `emoji` is a non-empty string or
+    /// null (clear); `author` and `newest_role` are refused, so the phone can
+    /// never react as the agent or address a row it has not seen.
+    private static func validateReactCall(_ method: String, _ params: [String: BotJSON]) throws {
+        guard method == "message.react" else { return }
+        guard Set(params.keys) == ["session_id", "row_id", "emoji"],
+              params["session_id"]?.text?.isEmpty == false,
+              params["row_id"]?.integer != nil
+        else { throw BotFailure.unsupported }
+        switch params["emoji"] {
+        case .null?: return
+        case .string(let emoji)?:
+            guard !emoji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw BotFailure.unsupported }
+        default: throw BotFailure.unsupported
         }
     }
 

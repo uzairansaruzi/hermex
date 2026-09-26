@@ -1223,7 +1223,6 @@ struct MessageComposerView: View {
     private func toggleVoiceInput() {
         voiceInput.apiClient = apiClient
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
-        voiceInput.locale = .current
         Task {
             await voiceInput.toggle(currentDraft: draftMessage) { newDraft in
                 editDraft(newDraft)

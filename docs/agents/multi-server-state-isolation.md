@@ -75,6 +75,7 @@ per-server:
 - Chat transcript display toggles (`ChatTranscriptDisplaySettings`: thinking/tool cards, attachment paths, timestamps, code-block wrap)
 - Streamed-text animation (`StreamedTextAnimationSettings`)
 - Streaming send behavior (`StreamingSendBehavior`)
+- Bot quick replies (`BotQuickReplyStore`): the user's own text, the same chips for every server, connection and Profile
 - Adaptive Glass preference (`adaptiveGlass.isEnabled`)
 - **Primary-action tint *toggle*** (`PrimaryActionTintSettings.isEnabledKey`) — the
   on/off behavior is global; only the *color* it applies (Header Logo Color) is
@@ -128,6 +129,8 @@ server's content even if the purge fails.
 ## Bot connection and drafts
 
 Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.
+Its stored `install_id` is only compared with the same record's host, never matched
+across configured servers.
 Bot drafts use configured server + connection UUID + Profile, independently of
 webui session IDs. Recent Bot/room transcript value snapshots stay in a bounded memory cache keyed by
 configured server hash + connection UUID + bot/room. New screens can display them

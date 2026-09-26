@@ -3,9 +3,21 @@
 Bots use the selected configured Hermex server's optional direct-Hermes connection.
 The connection is a separate Hermes Desktop HTTP/WebSocket backend, not webui.
 The connection record, credentials and stable UUID live in server-scoped Keychain
-storage. A different endpoint or username gets a new UUID. Password/name edits
-retain the identity. Removing the connection deletes its drafts; removing the
-configured server deletes both its connection and all its drafts.
+storage. The host's identity is the `install_id` public `/api/status` reports (one
+per Hermes root, so every Profile and every address that reaches it agree); the
+record stores it the first time the host reports one (trust on first use; the inbox
+backfills older records). A reconnect whose live id differs from the stored one
+fails with `.differentHost` before the login POST, in `BotClient.connect()` and
+`BotDashboardClient.signIn()`, so every Bot surface and push provisioning refuses
+without sending the password. A missing stored or live id skips the check, and an
+omitted id never clears a stored one. In the connection form, a new address or
+username keeps the UUID when the host reports the stored `install_id`; otherwise a
+different endpoint or username gets a new UUID. Password/name edits retain the
+identity. After `.differentHost`, "Connect to this host instead" saves a new UUID
+and discards the old connection's local data. The id is public: it catches an
+address that now reaches another host, not an impostor. Removing the connection
+deletes its drafts; removing the configured server deletes both its connection and
+all its drafts.
 
 `BotClient` owns an ephemeral cookie session and one WebSocket. HTTP paths live in
 `BotEndpoint`. Password login requires the basic auth gate, verifies identity,
@@ -28,12 +40,26 @@ silence deadline; a socket quiet for longer is dropped and reconnects.
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.4 (`d337b736`); sections
+counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.5 (`ca678285`); sections
 below that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
 and the connection screen stores it on the `BotConnection` record. Successful
 sign-in saves and dismisses regardless of version; no version warning is shown.
+With a saved connection, the screen's Status section reads the public `/api/status`
+once per appearance or "Check again" (no credentials, no retries) and shows the live
+version (or the stored one), gateway state and platform counts; scheduled Tasks need
+the gateway, Bot chat notifications do not.
 Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md
-(Working with the server); update the file and the constant together.
+(Working with the server); update the file and the constant together, then run
+`scripts/capture-hermes-fixtures`. It records what the host really sends for
+`/api/status`, `profiles.list`, `session.resume` and one plain turn's event
+frames into `HermesMobileTests/Fixtures/HermesAgent/`, and
+`HermesAgentFixtureTests` feeds them through the real parsers, so a renamed or
+dropped field fails a test instead of blanking a screen. The capture keeps only
+the `inbox-triage` Profile, replaces every string outside an allow-list of ids,
+event and status vocabulary, the release and the canned turn's text, and writes
+nothing if the output still holds the host, the account, the socket ticket, a
+home path, the install id or another Profile's name. `--keep-raw` and
+`--from-raw` re-sanitize one capture without another live session.
 
 The disconnected inbox offers one Connect action with the editor's drawn,
 neutral-default playful faces. Motion pauses while covered or inactive and is
@@ -48,8 +74,13 @@ addresses display errors even before a transport exists. Cancellation invalidate
 the attempt before late replies can save credentials or dismiss the screen.
 The synchronous Keychain write is the commit point. Saved state changes with it;
 old-connection cleanup then finishes independently of sheet cancellation and the
-committed operation remains successful. Main-app ATS exceptions cover the same
-private/local IP ranges used by scheme inference; public hosts still require HTTPS.
+committed operation remains successful. Main-app ATS allows plain HTTP to `.local` and
+single-label names through `NSAllowsLocalNetworking`, private/local and Tailscale IPs
+through CIDR exceptions, and explicit `http://` Tailscale names through the `ts.net`
+subdomain exception. Public hosts still require HTTPS.
+A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable host,
+a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
+status. The inbox and chat use the same copy for the messages they show.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
@@ -78,18 +109,49 @@ text snapshot through the streaming Markdown renderer with its reveal fade off
 (`allowsStreamedTextAnimation`). The live reply bypasses the shared layout
 cache; past the renderer's 6,000-character stable-chunk threshold, sealed
 chunks skip re-layout and their code highlights once, and code in the growing
-part stays plain until the reply settles. A whole snapshot fading in would leave the trailing viewport blank; an
+part stays plain until the reply settles. Diff and patch fences follow the same
+split: `MarkdownDiffFormatter` tints their added and removed lines once sealed
+or settled, never through Highlightr. A whole snapshot fading in would leave the trailing viewport blank; an
 XCTest renders evolving snapshots and checks the actual visible output.
 
 Settled messages reuse the Sessions transcript's long-press seam.
 `chatMessageContextMenu` supplies the menu from a plain
 `[ChatMessageActionItem]`, so a transcript names its own actions without owning
 a chat view model; `BotMessageActions` builds that list, and for a Bot it is
-Copy alone over the Markdown source, by the canonical-chat policy of #481. The
-host does support rewind (`prompt.submit` with `confirm_truncate` and a
+Copy over the Markdown source, by the canonical-chat policy of #481. The host
+does support rewind (`prompt.submit` with `confirm_truncate` and a
 `truncate_before_row_id` taken from the snapshot's durable `row_id`) and
 `session.branch`; Bot Chat does not offer edit, regenerate or branch yet
-(#745). Group rooms use the same seam.
+(#745). Group rooms use the same seam. Under a settled message, one reply
+footer (`BotReplyFooter`, on `ChatMessageMetaRow`) shows the host `timestamp`
+(room `created_at`) on user messages and turn-ending replies, following
+Settings → Chat → Message Timestamps; a dated separator (`TranscriptTimeline`)
+opens the window and any row 30+ minutes after the previous stamped one, and
+shows even with that setting off. Later footer parts join this row rather than
+adding one.
+
+Bot Chat rows take Desktop's Tapbacks (#761). `session.resume` rows carry the
+durable `row_id` (projected as `ChatMessage.rowID`) and
+`display_metadata.reactions` (`[{emoji, author: user|agent, at?, seen?}]`, one
+per author, read tolerantly as `BotReaction`). A settled reply's footer has a
+"…" menu holding React, Desktop's six quick reactions as one inline row; a
+prompt's long-press menu puts the same row above Copy, plus Remove Reaction
+once you have one. Chips follow in the footer: yours removes it, the Bot's is
+static ("reacted by <Bot>"). `message.react({session_id, row_id, emoji})` is a
+typed `BotClient` exception (`emoji` a non-empty string or null; `author` and
+`newest_role` refused). The host toggles a repeated emoji, so picking yours
+sends null. Writes are not optimistic and serialize per row
+(`BotConversation.reactingRowIDs`): the reply's full list patches the row, a
+rejection leaves it and says so, and a lost reply is never resent; the next full
+snapshot decides. The agent's live `message.reaction` event patches only the
+agent's entry on its row: the tool writes on another host thread, so the event
+can land after a newer `message.react` reply and must not replace yours. A full snapshot requested before a patch keeps the patched row's
+list (`reactionPatches`): `session.resume` runs on the host's worker pool and
+can read history before a `message.react` commits. Live rows, rooms and the offline cache have no reactions.
+Reactions are display-only sync with Desktop unless the host enables
+`display.message_reactions` (a Desktop Appearance toggle Hermex never writes);
+then the next user turn tells the model once, and Desktop sessions give the
+agent `react_to_message`.
 
 Settled bot replies and room member messages sit in a `ResponseTextSelection`
 document, so text selects in place as it does in Sessions. The scroll-view
@@ -134,14 +196,18 @@ continuous, or from the last `message.start` the ring still holds; otherwise the
 live rows are dropped and the next full snapshot shows the settled ones, so
 overlap never duplicates a card. Presentation reuses the Sessions log rows
 (`ReasoningBlockView`, `ToolActivityGroupView`, `TranscriptLogRowView`) and the
-global Chat display toggles; the plan row stays visible with cards off. Tool
-output is text only. `message.react` and `learning.frames` are deliberately
-not wired. The host stores reactions in each message's
-`display_metadata.reactions`, which the snapshot passes through, and emits the
-agent's own as `message.reaction`; they are stored and synced whatever the host
-config (`display.message_reactions` only decides whether the model sees them
-and can react). Hermex neither shows nor sends them yet (#761). The frames are
-terminal-sized renders.
+global Chat display toggles; the plan row stays visible with cards off.
+Settled Bot turns honour Fold Finished Turns through the Sessions engine
+(`TranscriptTurnFolds`, via `BotTranscriptProjection.turnFolds` over the
+window): the first and last reply stay visible and the rest folds behind
+"Worked for", timed from the prompt to the turn's last timestamp. A
+delegation delivery opens its own turn. The running turn stays open, both
+while its prompt is only live and once the host has persisted it mid-turn
+(`activePromptMessageID`: the last prompt or delivery dated at or after the
+turn's start, since a slash skill's row shows the invocation, not the
+in-flight text). Rooms never fold. Tool
+output is text only. `learning.frames` is deliberately not wired: the frames
+are terminal-sized renders.
 
 Delegated work stays attached to its owning Bot conversation. A toolbar count
 appears only while `subagent.list({session_id})` reports live workers; it opens a
@@ -324,7 +390,8 @@ keeps the card expanded and returns focus to the editor on dismissal.
 The shared UIKit editor applies editability changes after `updateUIView` returns.
 Disabling a focused UITextView synchronously inside that callback re-enters the
 SwiftUI responder graph and can freeze the screen at Send. A hosted-composer test
-keeps an upload pending while checking display-link frames and editor state.
+keeps an upload pending, lays the window out through the focused Send transition,
+then checks editor state.
 
 Copies and records use the Bot draft key (server + connection UUID
 + Profile); navigation/relaunch never uploads them. Imports allow eight files,
@@ -468,7 +535,8 @@ in `gateway.ready` and broadcasts `sessions.changed` whenever any served
 Profile's `state.db` moves (floored at two seconds, `change_watcher.py`). Each
 event coalesces into one `profiles.list` reload with at most one more queued,
 spaced by one second, applied only when the reply is the newest request and the
-wire still owns the inbox. Event reloads skip the avatar pass: a look change
+wire still owns the inbox. Every roster read starts a live-status read
+(below) without waiting for it. Event reloads skip the avatar pass: a look change
 never moves `state.db`, so nothing new would be there. Leaving the screen,
 backgrounding, pull-to-refresh and Reconnect all go through `close()` then
 `open()`; a dropped socket keeps the roster on screen, says live updates
@@ -568,8 +636,10 @@ The inbox socket reconnects on its own. A lost socket or a failed roster read
 keeps the roster on screen and retries quietly with delays of 1, 2, 4, 8, 16
 and then 30 seconds for as long as the inbox is open; nothing is shown and no
 button is needed. Only a refusal the user must act on (sign-in, identity, an
-unsupported host, a 4xx) shows the message and the Reconnect button. Leaving
-the screen or backgrounding cancels the retry.
+unsupported host, a 4xx) shows the message and the Reconnect button. The one
+exception is an empty roster after three route failures in a row (`URLError`,
+502-504, 520-530): the skeleton gives way to what to check and Reconnect while
+the quiet retry continues. Leaving the screen or backgrounding cancels the retry.
 
 The hero face on the create and edit screens is `BotInteractiveFaceView`, after
 Bloub: it blinks on the shared schedule, its eyes follow a finger dragged over
@@ -678,13 +748,38 @@ values are timestamps and never leave the phone. The first roster load seeds a
 missing mark so a fresh install starts quiet; opening a chat marks it seen, and
 returning marks the next roster read seen once so activity that was on screen
 during the visit does not come back as unread. Removing the connection deletes
-its marks with its drafts. Working and needs-attention states are not shown in
-the inbox yet (#741). The roster row carries no turn state for the canonical
-chat, and its `worker_session` heartbeats describe kanban and tool workers
-rather than the conversation. The live signal is `session.active_list`: each
-live session's `session_key` and a `status` of `idle`, `starting`, `waiting`,
-`working`, `streaming` or `resuming`, scoped to the sessions held by that
-gateway process (Desktop polls it per socket).
+its marks with its drafts.
+
+Live status comes from `session.active_list` with `{}` params (verified at the
+`d337b736` pin: handler `tui_gateway/methods_session.py`, item `server.py`
+`_session_live_item`, enum `contracts/sessions.py` `LiveSessionStatus`). The
+roster row carries no turn state for the canonical chat, and its
+`worker_session` heartbeats describe kanban and tool workers rather than the
+conversation. `session.active_list` lists every non-finalized runtime in the
+host process, across Profiles, as `{id, session_key, status, ...}`, and is
+read-only. The inbox reads it after every `profiles.list` and matches an item to
+a bot when its `session_key` equals the canonical chat's root
+(`canonical_session.id`) or the tip the roster read (`resolved_id`). A key two
+bots share marks neither, since stored ids can repeat across Profiles; several
+items on one bot keep the most urgent. `waiting` (an open approval, question, or
+other server request) shows "Waiting for you"; `working`, `starting` and
+`streaming` show "Working"; idle, `resuming` (deferred hydration, not a turn), a
+reaped runtime and unknown values show nothing. The word replaces the row's date
+and sits under a pinned tile's name, tinted like the Sessions list's attention
+states, and never animates. Inside every group (each tile group and each
+section) chats sort waiting, then working, then unread, then newest; rooms rank
+with idle bots. `-32601` hides statuses until the next socket; any other failed
+read shows none rather than old ones, and never drops the socket (the read is
+cancellation-safe and a stall fails only it). The read runs beside the room
+read: the inbox goes live without waiting for it. A dropped socket, a changed
+connection, or a failed connection read clears them; leaving the screen keeps
+them. Because `sessions.changed` can miss a turn's end (post-turn work writes
+nothing), the inbox re-reads `session.active_list` alone every five seconds
+while it is open, connected, and some bot is busy (or a read failed while one
+was), and stops once all are idle. Caveats: `waiting` relies on the
+`client.capabilities` handshake above; messaging-gateway and cron turns run in
+other processes and never appear; a tip the live agent rotated after the roster
+read matches no bot until the next roster read.
 
 Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
 by default and owned by the Settings "Bot Mode (beta)" row (#496), which sits
@@ -740,6 +835,12 @@ those values into manager calls.
   Ending an orphaned webui activity, or finding one finished at cold launch,
   retires its registration so the relay stops holding that session's banners.
   There is no push-to-start.
+- **Attention.** Entering an approval or a question alerts: a paired server's relay
+  sends the banner, and otherwise the app's write carries an `AlertConfiguration` when
+  it is not in the foreground (`AgentLiveActivityAlertPolicy`, #740). The alert stays
+  owed until a write actually lands, so the feed's same-tick chips write cannot drop
+  it, and an ask that arrives while ActivityKit is still creating the activity alerts
+  on its first write. A repeated waiting event stays silent.
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
@@ -921,6 +1022,29 @@ Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
 (`_session_home_scope`), so the phone passes the runtime id and the list follows
 that session's Profile and workspace. No live mutation was used for validation.
 
+## Quick replies
+
+Quick replies are short texts the user writes in Settings → Interaction → Quick
+Replies (shown only with Bot Mode on). With at least one saved,
+`BotQuickReplyRow` shows them as one-line chips in the status pill's slot above
+the Bot Chat composer, so the pill and the chips never stack.
+`BotQuickReplyPolicy.showsRow` shows the row only when the draft, quotes and
+attachments are empty, `maySend` is true, no request is pending and no pill is
+showing. It hides while the bot works, needs attention or is disconnected.
+
+A tap calls `BotConversation.applyQuickReply`: it fills an empty draft and
+never sends, so a mistap cannot start agent work. Send stays the existing path,
+including skill expansion for a reply that opens with `/skill`. The composer
+does not take focus, so no keyboard comes up.
+
+The list is client-only: the host has no saved-prompt store (webui's
+`/api/prompts` library is webui-only). `BotQuickReplyStore` keeps it as one JSON
+string in `UserDefaults`, empty by default, and it is one global list for every
+server, connection and Profile. Decoding is tolerant: an unreadable value is an
+empty list and blank or repeated entries are dropped. Suggestions in the editor
+are localized starters; adding one saves its text as a plain reply the user
+owns. Group rooms do not get the row.
+
 ## Chat controls
 
 The Bot composer reuses Sessions' model/effort menu, model sheet, workspace picker
@@ -1065,9 +1189,10 @@ it never orchestrates member turns, retries work, or opens the hidden
 On inbox open and pull to refresh, `groups.capabilities` gates room rows: `driver`
 must be true and `methods` must include `groups.list`,
 `groups.state`, and `groups.log`. Missing capabilities hide rooms, including name
-search. Group rooms sit in the unfiled block with unfiled bots; every block is
-newest first, using room updated time and bot last activity. Undated chats sort
-last; ties use stable chat identity. Revealed hidden bots join that order, with
+search. Group rooms sit in the unfiled block with unfiled bots; every block puts
+waiting and working bots first, then unread ones, then the rest newest first,
+using room updated time and bot last activity. Undated chats sort last; ties use
+stable chat identity. Revealed hidden bots join that order, with
 the reveal control at the bottom. Pinned bot tiles remain above the list.
 The top-right + menu offers New Bot and New Group Chat; group creation is disabled
 when the host lacks its capability. `groups.list` pages all active
@@ -1249,8 +1374,20 @@ The relay address is not a field on the phone. A host that already names its own
 keeps it — that is what the probe protects — and a host that has never been set up gets
 `HermexPushPlugin.defaultRelayURL`. Self-hosting stays a server-side setting.
 
-A failed step says what the host answered (the status code, a timeout, a rejected
-sign-in) in provisioning's own words; `BotFailure`'s chat copy never reaches this screen.
+Notification permission is checked before any host call: a phone that cannot show a
+push is never the reason a plugin gets installed or a gateway restarted. `enable()` asks
+iOS only when it has never been asked; a denial, then or earlier, makes no host call and
+shows "Notifications are off for Hermex" with a link to Hermex's page in iOS Settings, not
+a red step failure. Permission revoked mid-run shows the same notice, with the host
+steps that already finished still checked. A paired server shows the same notice when
+permission is later denied. The section re-reads the permission on appear and on every return to the app,
+which clears the notice without re-running setup.
+
+A failed step says what answered it in provisioning's own words: the host (the status
+code, a timeout, a rejected sign-in), the relay (its status code, or unreachable), or iOS
+(no device token). Only a connection failure at sign-in, before anything on the host has
+changed, says the host could not be reached. `BotFailure`'s chat copy never reaches this
+screen.
 `BotDashboardClient` waits 120 seconds per request, because installing clones a
 repository on the host and a restart takes the gateway down and back up.
 
@@ -1309,8 +1446,9 @@ server or uses a stale cached session. A paired server suppresses local completi
 notifications from both chat and cold-launch Live Activity reconciliation; disabling
 push restores the existing global local-notification preference. Webui Live Activities
 on a paired server hand off to the relay like a bot's (see Bot Live Activity). Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
-banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
-not app code.
+reply or error banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
+not app code. Approvals and questions still banner during an activity, since its
+`waiting` update is silent (#740).
 
 While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
 otherwise show none, approvals included. `PushPresence` records the conversation on

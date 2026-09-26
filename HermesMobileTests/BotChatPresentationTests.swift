@@ -11,16 +11,16 @@ import XCTest
         let model = AttachmentSceneHarnessModel()
         let window = try show(AttachmentSceneHarnessView(model: model))
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
         model.isPresented = true
-        await renderFrames()
+        await settle(window)
         XCTAssertEqual(model.observedPhase, .active, "Camera startup must see the presenting scene's active phase")
 
         model.phase = .background
-        await renderFrames()
+        await settle(window)
         XCTAssertEqual(model.observedPhase, .background, "A backgrounded scene must stop camera access")
         model.phase = .active
-        await renderFrames()
+        await settle(window)
         XCTAssertEqual(model.observedPhase, .active, "Returning to the scene must restart the camera")
     }
 
@@ -68,7 +68,7 @@ import XCTest
             BotRoomProfileView(reader: reader, roster: roster, avatars: [:])
         }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
-        await renderFrames(4)
+        await settle(window)
         await reader.open()
         window.overrideUserInterfaceStyle = .dark
         let stopping = try await screenshot(window, name: "529-room-profile", awaiting: ["Comms", "Finishing stop"])
@@ -76,7 +76,7 @@ import XCTest
         XCTAssertFalse(reader.mayDisband)
         XCTAssertTrue(descendants(window).contains { $0 is UITextField }, "Local room name is editable")
         wire.authority = "foreign"
-        await reader.poll(); await renderFrames(8)
+        await reader.poll(); await settle(window)
         let foreign = try screenshot(window, name: "529-foreign-room-profile")
         XCTAssertTrue(foreign.contains("Managed by another Hermes"), foreign)
         XCTAssertFalse(descendants(window).contains { $0 is UITextField }, "Foreign rooms have no rename field")
@@ -113,7 +113,7 @@ import XCTest
         }.padding())
         window.overrideUserInterfaceStyle = .dark
         defer { close(window) }
-        await renderFrames(8)
+        await settle(window)
         let text = try screenshot(window, name: "527-room-mention-avatars") { image in
             XCTAssertEqual(Self.roomAvatarColorBands(image), [
                 ["orange", "green"], ["orange"], ["green"], ["orange", "green"], ["orange", "green"]
@@ -135,7 +135,7 @@ import XCTest
         let window = try show(NavigationStack { view }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
         await reader.open()
-        await renderFrames(8)
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         let scrollViews = descendants(window).compactMap { $0 as? UIScrollView }.filter { !($0 is UITextView) }
         let transcript = try XCTUnwrap(scrollViews.first {
@@ -143,18 +143,18 @@ import XCTest
         }, "Transcript scroll modes: \(scrollViews.map { $0.keyboardDismissMode.rawValue })")
         XCTAssertFalse(editor.isDescendant(of: transcript), "The dismissal gesture belongs to the transcript, not the composer")
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
         editor.insertText("Unsent room draft")
-        await renderFrames()
+        await settle(window)
 
         view.dismissKeyboard()
-        await renderFrames()
+        await settle(window)
         XCTAssertFalse(editor.isFirstResponder)
         XCTAssertEqual(reader.draft, "Unsent room draft")
         XCTAssertEqual(editor.sourceText, reader.draft)
         XCTAssertTrue(descendants(window).contains { $0 === editor })
         XCTAssertTrue(editor.becomeFirstResponder(), "The same editor can be focused again after dismissal")
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder)
         XCTAssertTrue(wire.writes.isEmpty, "Dismissing the keyboard must not send the draft")
     }
@@ -171,7 +171,7 @@ import XCTest
         }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
         await reader.open()
-        await renderFrames(8)
+        await settle(window)
         let text = try await screenshot(window, name: "527-room-participant", awaiting: ["Comms", "Message Comms"])
         XCTAssertTrue(text.contains("Comms"), text)
         XCTAssertTrue(text.contains("chief-of-staff"), text)
@@ -198,8 +198,8 @@ import XCTest
         let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
             .environment(\.scenePhase, .active))
         defer { close(window) }
-        await renderFrames(40)
-        let after = try screenshot(window, name: "528-after-opening-room")
+        // The view debounces its query before reading the cache, so wait on the hit itself.
+        let after = try await screenshot(window, name: "528-after-opening-room", awaiting: ["Comms", "chief-of-staff"])
         XCTAssertTrue(after.contains("Comms"), after)
         XCTAssertTrue(after.contains("chief-of-staff"), after)
         XCTAssertFalse(after.contains("No saved messages found"), after)
@@ -219,7 +219,7 @@ import XCTest
             BotRoomView(reader: reader, roster: [], avatars: [:])
         }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
-        await renderFrames(4)
+        await settle(window)
         let hosts = descendants(window).filter { $0.next is ResponseSelectionController }
         XCTAssertEqual(reader.events.count, 300)
         XCTAssertEqual(hosts.count, BotRoomTranscriptWindow.pageSize, "Each built reply hosts one selection controller")
@@ -251,19 +251,19 @@ import XCTest
             BotRoomView(reader: reader, roster: [], avatars: [:])
         }.environment(\.scenePhase, .inactive))
         defer { reader.close(); close(window) }
-        await renderFrames(4)
+        await settle(window)
         if warm {
             let beforeNetwork = try screenshot(window, name: "563-warm-room-search")
             XCTAssertTrue(beforeNetwork.contains("Message 20"), beforeNetwork)
             XCTAssertFalse(beforeNetwork.contains("Message 80"), beforeNetwork)
         }
         await reader.open()
-        await renderFrames(8)
+        await settle(window)
         let selected = try screenshot(window, name: "528-room-search-target")
         XCTAssertTrue(selected.contains("Message 20"), selected)
         XCTAssertFalse(selected.contains("Message 80"), selected)
         wire.latest = 81; await reader.poll()
-        await renderFrames(8)
+        await settle(window)
         let updated = try screenshot(window, name: "528-room-search-target-after-update")
         XCTAssertTrue(updated.contains("Message 20"), updated)
         XCTAssertFalse(updated.contains("Message 81"), updated)
@@ -281,16 +281,21 @@ import XCTest
         let inbox = BotInbox(server: server, store: store, makeWire: { _ in wire })
         await inbox.open()
         let cache = BotHistoryCache()
+        // The view focuses its field from `.task`, some run-loop turns after it
+        // appears, so wait for the field to begin editing, not a pass count.
+        let focused = expectation(forNotification: UITextField.textDidBeginEditingNotification, object: nil)
         let window = try show(BotSearchView(inbox: inbox, cache: cache) { _ in XCTFail("Browsing cannot select a bot") }
             .environment(\.scenePhase, .active))
         window.overrideUserInterfaceStyle = .dark
         defer { close(window); inbox.close() }
-        await renderFrames(8)
+        await settle(window)
         let text = try screenshot(window, name: "481-bot-search")
         XCTAssertTrue(text.contains("Apartments"), text)
         XCTAssertTrue(text.contains("Inbox"), text)
+        await fulfillment(of: [focused], timeout: 5)
         XCTAssertNotNil(descendants(window).compactMap { $0 as? UITextField }.first { $0.isFirstResponder })
-        XCTAssertEqual(wire.calls.map { $0.0 }, ["profiles.list", "groups.capabilities"])
+        // The status read runs beside the room read, so only the set of calls is fixed.
+        XCTAssertEqual(wire.calls.map { $0.0 }.sorted(), ["groups.capabilities", "profiles.list", "session.active_list"])
     }
 
     func testMessageQueryDoesNotShowNoBotsFoundInAllScope() async throws {
@@ -307,7 +312,7 @@ import XCTest
         let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Newport") { _ in }
             .environment(\.scenePhase, .active))
         defer { close(window); inbox.close() }
-        await renderFrames(8)
+        await settle(window)
         let text = try screenshot(window, name: "481-message-search-empty-state")
         XCTAssertTrue(text.contains("Newport"), text)
         XCTAssertFalse(text.localizedCaseInsensitiveContains("No bots found"), text)
@@ -329,7 +334,7 @@ import XCTest
         let window = try show(BotCachedHistoryView(hit: hit, profile: profile))
         window.overrideUserInterfaceStyle = .dark
         defer { close(window) }
-        await renderFrames(8)
+        await settle(window)
         let text = try screenshot(window, name: "481-cached-message-reader")
         XCTAssertTrue(text.contains("Newport viewing confirmed"), text)
     }
@@ -356,17 +361,20 @@ import XCTest
         await model.recover()
         model.chatControls.snapshot(.object(["cwd": .string("/workspace"), "reasoning_effort": .string("high"),
             "fast": .bool(false), "usage": .object(["context_used": .number(24000), "context_max": .number(100000)])]), idle: true)
+        // Focus morphs the pill into the card through the composer's own
+        // `.animation(_:value:)`, which the root transaction does not stop;
+        // Reduce Motion snaps it. The toolbar's scroller can still be empty
+        // on a cold first capture, so the row is awaited, not assumed.
         let window = try show(VStack {
             Spacer()
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
-        })
+            BotComposerFixture(model: model)
+        }.environment(\._accessibilityReduceMotion, true))
         window.overrideUserInterfaceStyle = .dark
         defer { close(window); model.suspend() }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames(30)
-        let text = try screenshot(window, name: "479-sessions-model-row")
+        let text = try await screenshot(window, name: "479-sessions-model-row", awaiting: ["Model Alpha"])
         XCTAssertTrue(text.contains("Model Alpha"), text)
         XCTAssertTrue(text.localizedCaseInsensitiveContains("high"), text)
     }
@@ -378,14 +386,14 @@ import XCTest
         await model.send(); await model.recover()
         XCTAssertFalse(model.uncertainSend)
         let window = try show(NavigationStack {
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
+            BotComposerFixture(model: model)
         })
         defer { model.suspend(); close(window) }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.isEditable)
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
         editor.insertText(" edited")
         XCTAssertTrue(model.draft.contains("edited"))
         XCTAssertTrue(editor.isKeyboardSendEnabled)
@@ -405,14 +413,14 @@ import XCTest
         let model = AttachmentOverlayHarnessModel()
         let window = try show(AttachmentOverlayHarnessView(model: model))
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
 
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
 
         model.isPresented = true
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder, "Opening attachment choices must retain keyboard focus.")
         let overlay = try XCTUnwrap(descendants(window).first {
             $0.accessibilityIdentifier == HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier
@@ -422,7 +430,7 @@ import XCTest
         XCTAssertFalse(overlay.isDescendant(of: rootView))
 
         model.isPresented = false
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder, "Closing attachment choices must retain keyboard focus.")
         XCTAssertFalse(descendants(window).contains {
             $0.accessibilityIdentifier == HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier
@@ -438,7 +446,7 @@ import XCTest
         }
         await model.attachments.stage(data: photo, filename: "photo.jpg")
         let window = try show(NavigationStack {
-            BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {})
+            BotComposerFixture(model: model)
         })
         var finishUpload: CheckedContinuation<String, Error>?
         let uploadStarted = expectation(description: "upload started")
@@ -452,21 +460,21 @@ import XCTest
             finishUpload?.resume(throwing: CancellationError())
             model.suspend(); close(window)
         }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
         let send = Task { await model.send() }
         await fulfillment(of: [uploadStarted], timeout: 3)
-        // A display-link callback cannot fire when setEditable re-enters SwiftUI
-        // during updateUIView. This reaches the focused, hosted Send transition.
-        await renderFrames()
+        // Laying out reaches the focused, hosted Send transition, where
+        // setEditable re-entering SwiftUI during updateUIView froze the screen.
+        await settle(window)
         XCTAssertTrue(model.isUploadingAttachments)
         XCTAssertFalse(editor.isEditable)
         XCTAssertFalse(editor.isFirstResponder)
         finishUpload?.resume(returning: "/images/photo.jpg"); finishUpload = nil
         await send.value
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(model.attachments.items.isEmpty)
     }
 
@@ -475,16 +483,16 @@ import XCTest
     func testSendOnAWorkingBotAsksSteerQueueOrInterruptBeforeWriting() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover(); model.editDraft("Focus on reconnect")
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.isKeyboardSendEnabled)
         XCTAssertFalse(accessibilityLabels(in: window).contains { $0.hasPrefix("Message action") },
                        "no mode control lives in the toolbar any more")
 
         // Keyboard send and the arrow button share one path. The card mounts on
-        // the next run loop and fades in, so wait on its rows, not a frame count.
+        // the next run loop and fades in, so wait on its rows, not a pass count.
         editor.onKeyboardSend()
         // The rendered rows are the check; the overlay host's accessibility tree
         // is not always materialized on the CI runner, so no label assertion here.
@@ -496,7 +504,7 @@ import XCTest
         // Idle again: the card is gone and Send is a plain send, still needing a tap.
         wire.running = false
         await model.recover()
-        await renderFrames(8)
+        await settle(window)
         let idle = try screenshot(window, name: "busy-send-choices-gone")
         XCTAssertFalse(idle.contains("Interrupt"), idle)
         XCTAssertTrue(editor.isKeyboardSendEnabled)
@@ -508,19 +516,146 @@ import XCTest
         XCTAssertEqual(BotPromptMode.busyChoices(hasAttachments: true), [.queue, .redirect])
     }
 
+    func testOnlyUserMessagesAndTurnEndingRepliesCarryAFooterTime() {
+        let messages = [
+            botRow("u1", "user", at: 1_000),
+            botRow("a1", "assistant", at: 1_010),
+            botRow("s1", "user", at: 1_020, displayKind: ChatMessage.steerDisplayKind),
+            botRow("a2", "assistant", at: 1_030),
+            botRow("d1", "delegation_completion", at: 1_040),
+            botRow("a3", "assistant", at: 1_050),
+            botRow("u2", "user", at: 1_060),
+            botRow("a4", "assistant", at: nil),
+            botRow("u3", "user", at: 1_080),
+            botRow("a5", "assistant", at: 1_090)
+        ]
+        let idle = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        XCTAssertEqual(idle.footerTimes, ["u1": 1_000, "a2": 1_030, "a3": 1_050, "u2": 1_060, "u3": 1_080, "a5": 1_090],
+                       "interim replies, steers, delegation cards and unstamped rows get no time; a delivery ends the turn before it")
+
+        let interrupted = [
+            botRow("u1", "user", at: 1_000),
+            botRow("a1", "assistant", at: 1_010),
+            ChatMessage(role: "assistant", content: "", timestamp: 1_020, messageId: "a2"),
+            botRow("u2", "user", at: 1_030)
+        ]
+        let stopped = BotTranscriptTimes(messages: interrupted, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        XCTAssertEqual(stopped.footerTimes, ["u1": 1_000, "a1": 1_010, "u2": 1_030],
+                       "a text-less reasoning row gets no time and the visible reply before it ends the turn")
+
+        let lateSteer = [
+            botRow("u1", "user", at: 1_000),
+            botRow("a1", "assistant", at: 1_010),
+            botRow("s1", "user", at: 1_020, displayKind: ChatMessage.steerDisplayKind),
+            botRow("u2", "user", at: 1_030)
+        ]
+        let steered = BotTranscriptTimes(messages: lateSteer, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        XCTAssertEqual(steered.footerTimes["a1"], 1_010, "a steer the turn never answered doesn't make its last reply interim")
+
+        let running = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: 1_085, isMidTurn: true)
+        XCTAssertNil(running.footerTimes["a5"], "the last reply of a turn still running is interim")
+        let answeringNext = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
+                                               turnStartedAt: 1_100, isMidTurn: true)
+        XCTAssertEqual(answeringNext.footerTimes["a5"], 1_090, "a live prompt means the settled turn ended")
+
+        let windowed = BotTranscriptTimes(messages: messages, start: 8, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        XCTAssertEqual(windowed.footerTimes, ["u3": 1_080, "a5": 1_090], "only the window's rows are worked out")
+        XCTAssertEqual(windowed.gapStarts, ["u3"], "the window's first stamped row is dated")
+    }
+
+    func testLivePromptIsDatedByTheHostTurnStartAfterAThirtyMinuteGap() {
+        let messages = [botRow("u1", "user", at: 1_000), botRow("a1", "assistant", at: 1_010)]
+        let soon = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
+                                      turnStartedAt: 1_010 + 1_799, isMidTurn: true)
+        XCTAssertNil(soon.livePromptSeparator)
+        let later = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
+                                       turnStartedAt: 1_010 + 1_800, isMidTurn: true)
+        XCTAssertEqual(later.livePromptSeparator, 1_010 + 1_800)
+        XCTAssertEqual(later.gapStarts, ["u1", "live-user"])
+        let undated = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
+                                         turnStartedAt: nil, isMidTurn: true)
+        XCTAssertNil(undated.livePromptSeparator, "no host start time means no separator, never the phone clock")
+    }
+
+    private var livePrompt: ChatMessage {
+        ChatMessage(role: "user", content: "Again", timestamp: nil, messageId: "live-user")
+    }
+
+    /// Sets a standard default for one test; call the result to put it back.
+    private func overrideDefault(_ key: String, _ value: Bool) -> () -> Void {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defaults.set(value, forKey: key)
+        return { if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) } }
+    }
+
+    private func botRow(_ id: String, _ role: String, at timestamp: Double?, displayKind: String? = nil) -> ChatMessage {
+        ChatMessage(role: role, content: "Text \(id)", timestamp: timestamp, messageId: id, displayKind: displayKind)
+    }
+
+    /// A settled turn folds its interim reply and work behind the Sessions row;
+    /// the first and last replies stay. Tapping the row is a manual check: the
+    /// hosted window exposes no accessibility tree to activate it through.
+    func testSettledTurnHidesItsInterimReplyBehindTheWorkedForRow() async throws {
+        let restoreFolds = overrideDefault(ChatTranscriptDisplaySettings.foldsSettledTurnsKey, true)
+        let restoreCards = overrideDefault(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey, true)
+        defer { restoreFolds(); restoreCards() }
+        let wire = BotFixtureWire()
+        wire.history = [
+            .object(["role": .string("user"), "text": .string("Clean the inbox"), "timestamp": .number(1_000)]),
+            .object(["role": .string("assistant"), "text": .string("Looking now"), "reasoning": .string("Plan the sweep"),
+                     "timestamp": .number(1_010)]),
+            .object(["role": .string("tool"), "name": .string("terminal"), "context": .string("himalaya list")]),
+            .object(["role": .string("assistant"), "text": .string("Halfway there"), "timestamp": .number(1_020)]),
+            .object(["role": .string("assistant"), "text": .string("Archived fourteen"), "timestamp": .number(1_042)])
+        ]
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        let folded = try await screenshot(window, name: "747-bot-turn-folded", awaiting: ["Archived fourteen"])
+        XCTAssertTrue(folded.contains("Looking now"), folded)
+        XCTAssertFalse(folded.contains("Halfway there"), folded)
+        XCTAssertTrue(folded.contains("Worked for 42s"), folded)
+        XCTAssertFalse(folded.contains("Thinking"), "the reasoning row folds too: \(folded)")
+    }
+
+    /// A long pause before an interim reply keeps its time separator when the
+    /// reply folds away, so the reader still sees where the turn stalled.
+    func testFoldedInterimReplyKeepsItsGapSeparator() async throws {
+        let restoreFolds = overrideDefault(ChatTranscriptDisplaySettings.foldsSettledTurnsKey, true)
+        defer { restoreFolds() }
+        let start: Double = 1_700_000_000 // 2023: separators name the year.
+        let wire = BotFixtureWire()
+        wire.history = [
+            .object(["role": .string("user"), "text": .string("Clean the inbox"), "timestamp": .number(start)]),
+            .object(["role": .string("assistant"), "text": .string("Looking now"), "timestamp": .number(start + 10)]),
+            .object(["role": .string("assistant"), "text": .string("Halfway there"), "timestamp": .number(start + 7_200)]),
+            .object(["role": .string("assistant"), "text": .string("Archived fourteen"), "timestamp": .number(start + 7_210)])
+        ]
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        let folded = try await screenshot(window, name: "747-bot-fold-gap", awaiting: ["Archived fourteen"])
+        XCTAssertFalse(folded.contains("Halfway there"), folded)
+        XCTAssertEqual(folded.components(separatedBy: "2023").count - 1, 2,
+                       "the prompt's separator and the folded reply's gap separator: \(folded)")
+    }
+
     func testTransientDisconnectRemainsQuietAboveComposer() async throws {
         let wire = BotFixtureWire()
         let model = make(wire)
         await model.recover()
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
-        await renderFrames()
+        await settle(window)
         let ready = try screenshot(window, name: "ready-no-status")
         XCTAssertFalse(ready.contains("Connected"))
         XCTAssertFalse(ready.contains("Ready"))
         XCTAssertTrue(ready.contains("Ask anything"))
         wire.onDisconnect?(BotFailure.transport)
-        await renderFrames()
+        await settle(window)
         let disconnected = try screenshot(window, name: "disconnected-status")
         XCTAssertFalse(disconnected.contains("Disconnected"), disconnected)
         XCTAssertFalse(disconnected.contains("Reconnect"), disconnected)
@@ -533,29 +668,88 @@ import XCTest
         XCTAssertFalse(model.mayEditDraft)
         await model.recover()
         model.editDraft("Persistent text")
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.acceptsAttachments)
         XCTAssertTrue(editor.isKeyboardSendEnabled)
         XCTAssertEqual(editor.accessibilityLabel, "Ask anything...")
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder)
         editor.insertText(" survives focus")
-        await renderFrames()
+        await settle(window)
         XCTAssertEqual(model.draft, "Persistent text survives focus")
         editor.resignFirstResponder()
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(descendants(window).contains { $0 === editor })
         XCTAssertEqual(editor.sourceText, model.draft)
         wire.running = true
         await model.recover()
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isKeyboardSendEnabled, "Command-Return opens the send-choice card while working")
         XCTAssertTrue(editor.isEditable, "Unsent drafts remain editable while the Bot works")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
+    }
+
+    /// A transcript tap clears the screen-owned focus; the editor resigns and
+    /// keeps the draft, and nothing is sent.
+    func testClearingComposerFocusHidesKeyboardWithoutLosingDraft() async throws {
+        let wire = BotFixtureWire()
+        let model = make(wire)
+        await model.recover()
+        let focus = ComposerFixtureFocus()
+        let window = try show(BotComposerFixture(model: model, focus: focus))
+        defer { model.suspend(); close(window) }
+        await settle(window)
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await settle(window)
+        XCTAssertTrue(focus.isFocused, "The editor reports its focus to the screen")
+        editor.insertText("Unsent bot draft")
+        await settle(window)
+
+        focus.isFocused = false
+        await settle(window)
+        XCTAssertFalse(editor.isFirstResponder)
+        XCTAssertEqual(model.draft, "Unsent bot draft")
+        XCTAssertEqual(editor.sourceText, model.draft)
+        XCTAssertTrue(descendants(window).contains { $0 === editor })
+
+        focus.isFocused = true
+        await settle(window)
+        XCTAssertTrue(editor.isFirstResponder, "The same editor can be focused again after dismissal")
+        XCTAssertFalse(wire.calls.contains { $0.0 == "prompt.submit" }, "Dismissing the keyboard must not send the draft")
+    }
+
+    /// The question card's field sits inside the transcript, which is why the
+    /// transcript tap clears only the composer's focus: moving into the card
+    /// field must keep it first responder, and drag-down dismissal stays.
+    func testQuestionFieldKeepsTheKeyboardWhenComposerFocusClears() async throws {
+        let wire = BotFixtureWire(); wire.running = true
+        wire.openClarify = BotFixtureWire.clarify()
+        let model = make(wire)
+        let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
+        defer { model.suspend(); close(window) }
+        await model.recover()
+        _ = try await screenshot(window, name: "739-question-card", awaiting: ["Type a response"])
+        let views = descendants(window)
+        let transcript = try XCTUnwrap(views.compactMap { $0 as? UIScrollView }.first {
+            !($0 is UITextView) && ($0.keyboardDismissMode == .interactive || $0.keyboardDismissMode == .interactiveWithAccessory)
+        }, "Drag-down dismissal stays on the Bot Chat transcript")
+        let editor = try XCTUnwrap(views.compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertFalse(editor.isDescendant(of: transcript))
+        let field = try XCTUnwrap(views.compactMap { $0 as? UITextView }.first {
+            !($0 is ComposerChipTextView) && $0.isEditable && $0.isDescendant(of: transcript)
+        }, "Expected the question card's response field inside the transcript")
+
+        XCTAssertTrue(editor.becomeFirstResponder())
+        await settle(window)
+        XCTAssertTrue(field.becomeFirstResponder())
+        await settle(window)
+        XCTAssertTrue(field.isFirstResponder, "Clearing composer focus must not take the card field's keyboard")
+        XCTAssertFalse(editor.isFirstResponder)
     }
 
     /// Typing `/` in a Bot chat opens the panel with this connection's skills.
@@ -583,12 +777,12 @@ import XCTest
         await model.recover()
         await model.loadSlashCatalog()
         XCTAssertEqual(model.slashSkills.map(\.name), ["triage-inbox", "write-tests"])
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
 
         editor.insertText("/")
         let browsing = try await screenshot(window, name: "551-bot-slash-panel", awaiting: ["triage-inbox", "write-tests"])
@@ -599,7 +793,7 @@ import XCTest
         // Past the name the user is writing the skill's argument, so the panel
         // closes and the accepted name becomes an atomic chip.
         editor.insertText("triage-inbox yesterday's mail")
-        await renderFrames(4)
+        await settle(window)
         XCTAssertEqual(model.draft, "/triage-inbox yesterday's mail")
         XCTAssertEqual(
             ComposerChipTokenizer.tokens(in: model.draft, catalog: ComposerChipCatalog(skills: model.slashSkills))
@@ -620,10 +814,10 @@ import XCTest
             Spacer()
         })
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
         let scroll = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first)
         drag(scroll, to: 300)
-        await renderFrames(8)
+        await settle(window)
 
         let card = scroll.convert(scroll.bounds, to: window)
         let image = capture(window, name: "551-scrolled-skills-clipped")
@@ -672,9 +866,9 @@ import XCTest
         await model.recover()
         XCTAssertTrue(model.uncertainStop)
         XCTAssertEqual(model.turn, .needsAttention)
-        let window = try show(BotChatComposerView(model: model, onStop: {}, onReconnect: {}, onShowRequest: {}))
+        let window = try show(BotComposerFixture(model: model))
         defer { model.suspend(); close(window) }
-        await renderFrames()
+        await settle(window)
         let status = try screenshot(window, name: "attention-over-uncertain-stop")
         XCTAssertTrue(status.contains("Waiting for your answer"))
         XCTAssertFalse(status.contains("Outcome unknown"))
@@ -689,7 +883,7 @@ import XCTest
         let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
         defer { model.suspend(); close(window) }
         await model.recover()
-        await renderFrames()
+        await settle(window)
         let shown = try screenshot(window, name: "bot-approval-card")
         XCTAssertTrue(shown.contains("Approval required"), shown)
         XCTAssertTrue(shown.contains("recursive delete"), shown)
@@ -702,7 +896,7 @@ import XCTest
 
         wire.approvalResolved = 0
         await model.respond(try XCTUnwrap(model.prepareAnswer()), choice: .once)
-        await renderFrames()
+        await settle(window)
         let answered = try screenshot(window, name: "bot-approval-card-already-answered")
         XCTAssertTrue(answered.contains("already answered"), answered)
         XCTAssertFalse(model.mayAnswer)
@@ -717,7 +911,7 @@ import XCTest
         let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
         defer { model.suspend(); close(window) }
         await model.recover()
-        await renderFrames()
+        await settle(window)
         let shown = try screenshot(window, name: "bot-question-card")
         XCTAssertTrue(shown.contains("Clarification Required"), shown)
         XCTAssertTrue(shown.contains("Which mailbox first?"), shown)
@@ -740,7 +934,7 @@ import XCTest
         let window = try show(NavigationStack { BotChatView(model: model) }.environment(\.scenePhase, .active))
         defer { model.suspend(); close(window) }
         await model.recover()
-        await renderFrames()
+        await settle(window)
         let shown = try screenshot(window, name: "bot-sudo-card")
         XCTAssertTrue(shown.contains("Administrator password needed"), shown)
         XCTAssertTrue(shown.contains("never saves it"), shown)
@@ -764,18 +958,18 @@ import XCTest
         )))
         let window = try show(CredentialCardHarnessView(model: harness))
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
 
         let sudoField = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
         XCTAssertTrue(sudoField.becomeFirstResponder())
         sudoField.insertText("hunter2")
-        await renderFrames()
+        await settle(window)
         XCTAssertEqual(sudoField.text, "hunter2")
 
         harness.request = .credential(BotCredentialRequest(
             kind: .secret, requestID: "secret-2", envVar: "OPENAI_API_KEY", prompt: nil
         ))
-        await renderFrames()
+        await settle(window)
         let secretField = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
         XCTAssertEqual(secretField.text ?? "", "", "The Mac password never rides into the secret that replaces it")
         XCTAssertEqual(secretField.textContentType, .password, "The Passwords key needs a password content type")
@@ -789,7 +983,7 @@ import XCTest
         let harness = CredentialCardHarnessModel(request: .connection(operation))
         let window = try show(CredentialCardHarnessView(model: harness) { sent.append($0) })
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
 
         let fields = descendants(window).compactMap { $0 as? UITextField }
         XCTAssertEqual(fields.count, 2)
@@ -801,10 +995,10 @@ import XCTest
 
         XCTAssertTrue(secret.becomeFirstResponder())
         secret.insertText("ghp_1")
-        await renderFrames()
+        await settle(window)
         // Return on the keyboard, which the field submits as Connect.
         secret.sendActions(for: .editingDidEndOnExit)
-        await renderFrames()
+        await settle(window)
         XCTAssertEqual(sent, [.connect(target: "github", env: ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": "github.com"])])
         XCTAssertEqual(secret.text ?? "", "", "The value leaves the field once it is handed over")
     }
@@ -833,31 +1027,31 @@ import XCTest
             .preferredColorScheme(.dark))
         defer { model.suspend(); close(window) }
         await model.recover()
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.becomeFirstResponder())
-        await renderFrames()
+        await settle(window)
         editor.insertText("Draft a short reply.")
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder)
         XCTAssertEqual(model.draft, "Draft a short reply.")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
     }
 
     func testSessionsComposerRetainsFocusAndAttachmentsAtAccessibilitySize() async throws {
-        let focus = SessionFixtureFocus()
+        let focus = ComposerFixtureFocus()
         let window = try show(SessionChatPresentationFixture(focus: focus)
             .environment(\.dynamicTypeSize, .accessibility1))
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         XCTAssertTrue(editor.acceptsAttachments)
         focus.isFocused = true
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder)
         XCTAssertGreaterThan(editor.bounds.height, 44)
         editor.insertText("Draft a short reply.")
-        await renderFrames()
+        await settle(window)
         XCTAssertTrue(editor.isFirstResponder)
         XCTAssertEqual(editor.sourceText, "Draft a short reply.")
     }
@@ -868,19 +1062,19 @@ import XCTest
     /// finished one comes or goes. A get/set draft binding (the old wiring)
     /// re-runs the owner on every keystroke and fails the pass count.
     func testSessionsComposerScansFileReferencesWithoutReRunningItsOwnerPerKeystroke() async throws {
-        let focus = SessionFixtureFocus()
+        let focus = ComposerFixtureFocus()
         let probe = SessionFixtureProbe()
         let window = try show(SessionChatPresentationFixture(focus: focus, probe: probe))
         defer { close(window) }
-        await renderFrames()
+        await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
         focus.isFocused = true
-        await renderFrames()
+        await settle(window)
         let ownerPasses = probe.ownerPasses
 
         for keystroke in ["read ", "@a.md", " ", "and more"] {
             editor.insertText(keystroke)
-            await renderFrames()
+            await settle(window)
         }
 
         XCTAssertEqual(editor.sourceText, "read @a.md and more")
@@ -899,6 +1093,9 @@ import XCTest
         let previous = defaults.object(forKey: key)
         defer { if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) } }
         defaults.set(true, forKey: key)
+        // The settled turn would fold its cards away; this test is about the cards.
+        let restoreFolds = overrideDefault(ChatTranscriptDisplaySettings.foldsSettledTurnsKey, false)
+        defer { restoreFolds() }
         let wire = BotFixtureWire(); wire.running = true
         wire.history = [
             .object(["role": .string("user"), "text": .string("Summarize yesterday's inbox.")]),
@@ -923,7 +1120,7 @@ import XCTest
         ]))
         // A live tool row lands without a following snapshot (activity events
         // during known work skip the refresh), so nothing signals when the
-        // LazyVStack has materialized it — any fixed frame count is a guess.
+        // LazyVStack has materialized it — any fixed pass count is a guess.
         let shown = try await screenshot(window, name: "bot-activity-cards-on",
                                          awaiting: ["Ran", "Thinking", "Updated", "Plan"])
         XCTAssertTrue(shown.contains("Ran"), shown)
@@ -932,7 +1129,7 @@ import XCTest
         XCTAssertTrue(shown.contains("Plan"), shown)
         XCTAssertTrue(shown.contains("1 of 2"), shown)
         defaults.set(false, forKey: key)
-        await renderFrames(12)
+        await settle(window)
         let hidden = try screenshot(window, name: "bot-activity-cards-off")
         XCTAssertFalse(hidden.contains("Thinking"), hidden)
         XCTAssertFalse(hidden.contains("Updated"), hidden)
@@ -976,7 +1173,7 @@ import XCTest
         let sheet = try show(BotDelegationResultsSheet(completion: completion))
         sheet.overrideUserInterfaceStyle = .dark
         defer { close(sheet) }
-        await renderFrames(8)
+        await settle(sheet)
         let expanded = try screenshot(sheet, name: "477-delegation-results-sheet")
         XCTAssertTrue(expanded.contains("Delegated work"), expanded)
         XCTAssertTrue(expanded.contains("Unique full worker result body"), expanded)
@@ -989,7 +1186,7 @@ import XCTest
         for _ in 0..<8 {
             labels = accessibilityLabels(in: sheet)
             if labels.contains("Copy") { break }
-            await renderFrames(4)
+            await settle(sheet)
         }
         // Some build SDKs never publish the accessibility tree in-process
         // (no labels anywhere, not even sheet content), so there is nothing
@@ -1119,23 +1316,15 @@ import XCTest
         scroll.delegate?.scrollViewDidEndDragging?(scroll, willDecelerate: false)
     }
 
-    private func renderFrames(_ target: Int = 3) async {
-        let rendered = expectation(description: "Layout committed")
-        let driver = BotRenderFrameDriver(target: target) { rendered.fulfill() }
-        driver.start()
-        await fulfillment(of: [rendered], timeout: 10)
-        driver.stop()
-    }
-
     /// Captures once layout has produced every `expected` string, or gives up
     /// and returns the last read so the assertion fails with what was on screen.
     /// Rows that arrive without a state change to wait on settle at their own
-    /// pace, so this waits on the content under test instead of a frame count.
+    /// pace, so this waits on the content under test instead of a pass count.
     private func screenshot(_ window: UIWindow, name: String,
                             awaiting expected: [String]) async throws -> String {
         var text = ""
         for _ in 0..<8 {
-            await renderFrames(4)
+            await settle(window)
             text = try screenshot(window, name: name)
             if expected.allSatisfy(text.contains) { break }
         }
@@ -1254,9 +1443,20 @@ private struct AttachmentOverlayHarnessView: View {
     }
 }
 
-/// Holds the Sessions composer's external focus binding for hosted integration tests.
-@MainActor @Observable private final class SessionFixtureFocus {
+/// Holds a composer's screen-owned focus binding for hosted integration tests.
+@MainActor @Observable private final class ComposerFixtureFocus {
     var isFocused = false
+}
+
+/// The Bot composer wired like `BotChatView`: focus lives in the parent, and
+/// the editor writes it back.
+private struct BotComposerFixture: View {
+    let model: BotConversation
+    @Bindable var focus = ComposerFixtureFocus()
+
+    var body: some View {
+        BotChatComposerView(model: model, isFocused: $focus.isFocused, onStop: {}, onReconnect: {}, onShowRequest: {})
+    }
 }
 
 /// Counts the Sessions fixture's own body passes, and records the drafts its
@@ -1269,7 +1469,7 @@ private struct AttachmentOverlayHarnessView: View {
 }
 
 private struct SessionChatPresentationFixture: View {
-    @Bindable var focus: SessionFixtureFocus
+    @Bindable var focus: ComposerFixtureFocus
     var probe = SessionFixtureProbe()
     @State private var draft = ""
     @State private var quotes: [ComposerQuote] = []

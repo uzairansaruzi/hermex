@@ -34,6 +34,42 @@ import XCTest
         XCTAssertTrue(BotMessageActions.items(copyText: "  \n ", isHapticsEnabled: false, copy: { _ in }).isEmpty)
     }
 
+    // MARK: - Tapbacks
+
+    func testPromptMenuOffersTheTapbackRowAboveCopyAndNoRemoveWithoutAReaction() throws {
+        var picked: [String?] = []
+        let reacting = BotMessageActions.Reacting(current: nil, react: { picked.append($0) })
+        let items = BotMessageActions.items(copyText: "Ping", isHapticsEnabled: false, reacting: reacting, copy: { _ in })
+
+        XCTAssertEqual(items.map(\.kind), BotReaction.quickReactions.map { .react($0) } + [.copy])
+        XCTAssertFalse(items.contains { $0.isSelected })
+        items[1].perform()
+        XCTAssertEqual(picked, ["👍"])
+
+        let menu = items.uiMenu()
+        let row = try XCTUnwrap(menu.children.first as? UIMenu)
+        XCTAssertTrue(row.options.contains(.displayInline))
+        XCTAssertEqual(row.preferredElementSize, .small)
+        XCTAssertEqual(row.children.count, 6)
+        XCTAssertEqual(menu.children.compactMap { ($0 as? UIAction)?.title }, ["Copy"])
+    }
+
+    func testPromptMenuHighlightsYourReactionAndOffersRemove() throws {
+        var picked: [String?] = ["unset"]
+        let reacting = BotMessageActions.Reacting(current: "❤️", react: { picked = [$0] })
+        let items = BotMessageActions.items(copyText: "Ping", isHapticsEnabled: false, reacting: reacting, copy: { _ in })
+
+        XCTAssertEqual(items.map(\.kind), BotReaction.quickReactions.map { .react($0) } + [.copy, .removeReaction])
+        XCTAssertEqual(items.filter(\.isSelected).map(\.kind), [.react("❤️")])
+        items.last?.perform()
+        XCTAssertEqual(picked, [nil])
+
+        let menu = items.uiMenu()
+        let row = try XCTUnwrap(menu.children.first as? UIMenu)
+        XCTAssertEqual(row.children.compactMap { ($0 as? UIAction)?.state }, [.on, .off, .off, .off, .off, .off])
+        XCTAssertEqual(menu.children.compactMap { ($0 as? UIAction)?.title }, ["Copy", "Remove Reaction"])
+    }
+
     // MARK: - Ask Hermex
 
     func testAskHermexQuotesIntoTheDraftAndSurvivesReopening() async throws {

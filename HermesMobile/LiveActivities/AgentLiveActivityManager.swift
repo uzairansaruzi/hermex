@@ -54,6 +54,31 @@ extension AgentRunActivityAttributes {
     }
 }
 
+/// Whether a local write should alert: only when the run first stops for an approval or
+/// an answer, the app is not in the foreground, and the relay does not drive the activity.
+/// A paired server's relay banners approvals and questions itself (#740), so alerting
+/// here too would buzz twice; a repeated waiting event keeps the status and stays silent.
+enum AgentLiveActivityAlertPolicy {
+    static func alerts(previous: AgentRunActivityStatus, next: AgentRunActivityStatus,
+                       canReceivePush: Bool, appIsActive: Bool) -> Bool {
+        next != previous && (next == .waitingForApproval || next == .waitingForClarification)
+            && !canReceivePush && !appIsActive
+    }
+
+    /// The ask still owed an alert after a write: a newly entered ask, or one an earlier
+    /// write raised that no send has delivered yet. A newer write can supersede the send
+    /// that carried the alert (a Bot feed writes its chips in the same tick), so the alert
+    /// waits for whichever send lands; leaving that ask drops it.
+    static func pending(_ pending: AgentRunActivityStatus?, previous: AgentRunActivityStatus,
+                        next: AgentRunActivityStatus, canReceivePush: Bool,
+                        appIsActive: Bool) -> AgentRunActivityStatus? {
+        if alerts(previous: previous, next: next, canReceivePush: canReceivePush, appIsActive: appIsActive) {
+            return next
+        }
+        return next == pending && !canReceivePush && !appIsActive ? pending : nil
+    }
+}
+
 extension AgentRunActivityAttributes.ContentState {
     /// This state with `shown`'s counts when it has none of its own: the app's local
     /// reducers never count a webui run's tools, the relay does (#644).
@@ -130,6 +155,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var lastSentUpdateAt: Date?
     private var pendingUpdateTask: Task<Void, Never>?
     private var updateGeneration = 0
+    /// The ask the next delivered write alerts for (#740); see `AgentLiveActivityAlertPolicy.pending`.
+    private var pendingAlertStatus: AgentRunActivityStatus?
     private var lifecycleGeneration = 0
     private var pushTokenTask: Task<Void, Never>?
     private var pushStateTask: Task<Void, Never>?
@@ -202,6 +229,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         pushOwner = nil
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
+        pendingAlertStatus = nil
         rawResponseText = ""
         currentSessionID = normalizedSessionID
         currentStreamID = normalizedStreamID
@@ -394,6 +422,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         cancelPushHandoff()
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
+        pendingAlertStatus = nil
 
         var finalState = AgentRunActivityStateReducer.final(
             status: status,
@@ -579,7 +608,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 observePush(existing)
                 let latestState = Self.keepingRelayCounts(currentState ?? state, on: existing)
                 await existing.update(
-                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
+                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState)),
+                    alertConfiguration: firstWriteAlert(shown: existing.content.state.status,
+                                                        latest: latestState, on: existing)
                 )
                 lastSentUpdateAt = Date()
                 return
@@ -609,7 +640,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             observePush(requestedActivity)
             if let latestState = currentState, latestState != state {
                 await requestedActivity.update(
-                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState))
+                    ActivityContent(state: latestState, staleDate: staleDate(for: latestState)),
+                    alertConfiguration: firstWriteAlert(shown: state.status, latest: latestState,
+                                                        on: requestedActivity)
                 )
             }
             lastSentUpdateAt = Date()
@@ -630,8 +663,36 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         self.currentState = updatedState
         if immediate { immediateWriteCountForTesting += 1 }
 
-        guard activity != nil else { return }
-        scheduleUpdate(updatedState, immediate: immediate)
+        guard let activity else { return }
+        pendingAlertStatus = AgentLiveActivityAlertPolicy.pending(
+            pendingAlertStatus, previous: currentState.status, next: updatedState.status,
+            canReceivePush: canReceivePush(activity.attributes),
+            appIsActive: UIApplication.shared.applicationState == .active
+        )
+        // An owed alert skips the throttle so the user hears about the ask at once.
+        scheduleUpdate(updatedState, immediate: immediate || pendingAlertStatus != nil)
+    }
+
+    /// The alert for the first write onto a just-acquired activity: an ask that arrived
+    /// while ActivityKit was still creating or reusing it had no activity to record against.
+    private func firstWriteAlert(
+        shown: AgentRunActivityStatus,
+        latest: AgentRunActivityAttributes.ContentState,
+        on activity: Activity<AgentRunActivityAttributes>
+    ) -> AlertConfiguration? {
+        guard AgentLiveActivityAlertPolicy.alerts(
+            previous: shown, next: latest.status,
+            canReceivePush: canReceivePush(activity.attributes),
+            appIsActive: UIApplication.shared.applicationState == .active
+        ) else { return nil }
+        return Self.alert(for: latest.status, title: latest.sessionTitle)
+    }
+
+    /// The system alert for a run that stopped on `status`, titled with the session (#740).
+    private static func alert(for status: AgentRunActivityStatus, title: String) -> AlertConfiguration {
+        let body: LocalizedStringResource = status == .waitingForApproval
+            ? "Waiting for approval" : "Needs clarification"
+        return AlertConfiguration(title: "\(title)", body: body, sound: .default)
     }
 
     private func scheduleUpdate(
@@ -678,7 +739,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         guard let activity else { return }
 
         let state = Self.keepingRelayCounts(state, on: activity)
-        await activity.update(ActivityContent(state: state, staleDate: staleDate))
+        // The first write that actually lands delivers the owed alert, once.
+        let alert = pendingAlertStatus.map { Self.alert(for: $0, title: state.sessionTitle) }
+        pendingAlertStatus = nil
+        await activity.update(ActivityContent(state: state, staleDate: staleDate), alertConfiguration: alert)
         lastSentUpdateAt = Date()
     }
 
@@ -808,6 +872,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         lastSentUpdateAt = nil
         pendingUpdateTask?.cancel()
         pendingUpdateTask = nil
+        pendingAlertStatus = nil
         _ = nextLifecycleGeneration()
         _ = nextUpdateGeneration()
     }

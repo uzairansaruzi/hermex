@@ -1,0 +1,40 @@
+#!/bin/zsh
+# Records real hermes-agent responses as the JSON fixtures in
+# HermesMobileTests/Fixtures/HermesAgent/, which HermesAgentFixtureTests reads.
+# Run it when advancing HERMES_AGENT_TESTED_SHA (AGENTS.md, Working with the server):
+# edit the pin to the host's commit and release first, because the capture refuses a
+# host on another release.
+#
+# It signs in to the hermex-bot Keychain host, reads /api/status and profiles.list,
+# runs one canned turn ("Reply with exactly: ok.") in a disposable hidden session on
+# the inbox-triage bot, resumes it, then closes and deletes that session. The turn
+# is one real model call, and a paired phone may get its reply push. Output is
+# sanitized with an allow-list and checked for the host, account, ticket, home paths
+# and other Profile names before anything is written. Credentials come from the
+# Keychain exactly as in scripts/sim-login and are never printed.
+#
+# Usage: scripts/capture-hermes-fixtures [--keep-raw <file>]
+#        scripts/capture-hermes-fixtures --from-raw <file>
+# --keep-raw also saves the unsanitized capture (mode 600) outside the repo;
+# --from-raw re-sanitizes such a file without calling the host.
+set -euo pipefail
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Prints one attribute ("acct" or "icmt") of a generic-password Keychain item,
+# or nothing when the item is missing.
+attribute() {
+  security find-generic-password -s "$1" 2>/dev/null | sed -n "s/^ *\"$2\"<blob>=\"\(.*\)\"$/\1/p" || true
+}
+
+export HERMEX_CAPTURE_USERNAME="$(attribute hermex-bot acct)"
+export HERMEX_CAPTURE_ADDRESS="$(attribute hermex-bot icmt)"
+[[ -n "$HERMEX_CAPTURE_USERNAME" && -n "$HERMEX_CAPTURE_ADDRESS" ]] || {
+  echo "No hermex-bot Keychain item; see the header of scripts/sim-login." >&2; exit 1
+}
+export HERMEX_CAPTURE_PASSWORD="$(security find-generic-password -s hermex-bot -w)"
+
+build_dir="$(mktemp -d "${TMPDIR:-/tmp}/hermex-fixture-capture.XXXXXX")"
+trap 'rm -f "$build_dir/capture"; rmdir "$build_dir"' EXIT
+xcrun swiftc -swift-version 5 -parse-as-library \
+  "$repo_root/scripts/fixtures/HermesFixtureCapture.swift" -o "$build_dir/capture"
+"$build_dir/capture" "$repo_root" "$@"

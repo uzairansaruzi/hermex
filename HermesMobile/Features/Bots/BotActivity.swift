@@ -94,7 +94,9 @@ struct BotTurnActivity: Equatable {
         case "reasoning.delta":
             guard let text = payload["text"].text, !text.isEmpty else { return true }
             reasoning.append(text)
-            if reasoning.count > Self.reasoningLimit { reasoning = String(reasoning.suffix(Self.reasoningLimit)) }
+            // UTF-8 length bounds the character count and is O(1), so the
+            // O(n) count only runs once the text could be over the limit.
+            if reasoning.utf8.count > Self.reasoningLimit, reasoning.count > Self.reasoningLimit { reasoning = String(reasoning.suffix(Self.reasoningLimit)) }
         case "notification.show":
             guard let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return true }
             let key = payload["key"].text ?? payload["id"].text ?? "notice-\(notices.count)"
@@ -153,6 +155,7 @@ struct BotSettledActivity: Identifiable, Equatable {
 /// Projects the snapshot's `messages` rows into text messages plus settled
 /// activity. Message identity stays `<root>/<row index>`, so ids are stable
 /// across refreshes and unaffected by how many tool rows sit between messages.
+/// The host's durable `row_id` rides along as `rowID` for `message.react`.
 enum BotTranscriptProjection {
     static func project(history: [BotJSON], root: String) -> (messages: [ChatMessage], activity: [BotSettledActivity]) {
         var messages: [ChatMessage] = []
@@ -201,7 +204,8 @@ enum BotTranscriptProjection {
                     timestamp: row["timestamp"].number,
                     messageId: id,
                     displayKind: steerText != nil ? ChatMessage.steerDisplayKind : displayKind,
-                    displayMetadata: row["display_metadata"].argumentDictionary
+                    displayMetadata: row["display_metadata"].argumentDictionary,
+                    rowID: row["row_id"].integer
                 ))
             default:
                 continue
@@ -209,6 +213,73 @@ enum BotTranscriptProjection {
         }
         flush(anchor: nil)
         return (messages, activity)
+    }
+
+    /// Whether a row opens a Bot turn: a prompt (steers ride inside a turn) or
+    /// a delegation delivery, which the host runs as a turn of its own.
+    static func isTurnBoundary(_ message: ChatMessage) -> Bool {
+        TranscriptTurnClassifier.isUserTurnBoundary(turnClassified(message))
+    }
+
+    /// Key of the turn a window row folds under, as `turnFolds` names it; nil
+    /// for rows outside the window or that are not replies.
+    static func turnKey(of messageID: String, messages: [ChatMessage], windowStart: Int) -> String? {
+        guard messages.indices.contains(windowStart) else { return nil }
+        return TranscriptTurnClassifier.assistantTurnKeysByAnchorID(
+            messages[windowStart...].map(turnClassified), messageOffset: windowStart
+        )[messageID]
+    }
+
+    /// The row as the Sessions classifier reads it: a delegation delivery
+    /// becomes a prompt so it opens a turn, and its time starts that turn.
+    private static func turnClassified(_ message: ChatMessage) -> ChatMessage {
+        guard message.role == "delegation_completion" else { return message }
+        return ChatMessage(role: "user", content: message.content, timestamp: message.timestamp, messageId: message.messageId)
+    }
+
+    /// Fold Finished Turns for the Bot transcript, through the Sessions engine
+    /// over the window only (`windowStart...`), so the work stays bounded and
+    /// turn keys stay absolute across Load earlier. Only assistant rows fold:
+    /// activity anchored to a user row or trailing the last message, live rows
+    /// and delegation cards never do; each delegation delivery opens its own
+    /// turn. The host sends no turn duration, so the label reads the gap from
+    /// the turn's opening row to its last timestamp.
+    /// - Parameters:
+    ///   - activityByAnchor: `BotConversation.settledActivityByAnchor`.
+    ///   - showsCards: the Thinking and Tool Cards setting; with cards off, a
+    ///     turn whose only hidden work is activity gets no row.
+    ///   - isStreaming: the bot is working on a turn.
+    ///   - hasLivePrompt: the running turn's prompt is only live (not yet in
+    ///     `messages`), so every settled turn has finished. Otherwise the latest
+    ///     settled turn is the running one, whether its opening row has settled
+    ///     (`BotConversation.activePromptMessageID`) or no prompt is in flight
+    ///     (a Desktop or continuation turn), and it stays open.
+    static func turnFolds(
+        messages: [ChatMessage],
+        windowStart: Int,
+        activityByAnchor: [String?: [BotSettledActivity]],
+        showsCards: Bool,
+        foldsTurns: Bool,
+        isStreaming: Bool,
+        hasLivePrompt: Bool
+    ) -> TranscriptTurnFolds {
+        guard foldsTurns, messages.indices.contains(windowStart) else { return .none }
+        let window = Array(messages[windowStart...])
+        let activityAnchorIDs: Set<String> = showsCards
+            ? Set(window.lazy.map(\.id).filter { activityByAnchor[$0] != nil })
+            : []
+        return TranscriptTurnFolds.derive(
+            transcriptMessages: window.enumerated().map { index, message in
+                TranscriptMessage(loadedIndex: index, renderID: message.id, anchorID: message.id, message: message)
+            },
+            messages: window.map(turnClassified),
+            messageOffset: windowStart,
+            activityAnchorIDs: activityAnchorIDs,
+            rendersBubble: { !($0.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
+            isStreamActive: isStreaming && !hasLivePrompt,
+            streamingAssistantMessageID: nil,
+            latestRunOutcome: nil
+        )
     }
 }
 

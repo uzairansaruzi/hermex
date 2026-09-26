@@ -357,7 +357,8 @@ import XCTest
 
         let calls: [(String, [String: BotJSON])] = [
             ("subagent.list", ["session_id": .string("runtime")]),
-            ("subagent.tail", ["session_id": .string("runtime"), "subagent_id": .string("worker")])
+            ("subagent.tail", ["session_id": .string("runtime"), "subagent_id": .string("worker")]),
+            ("session.active_list", [:])
         ]
         for (method, params) in calls {
             let started = expectation(description: "\(method) dispatched")
@@ -392,7 +393,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        socket.withholdReply = { $0["method"].text == "subagent.list" }
+        socket.withholdReply = { ["subagent.list", "session.active_list"].contains($0["method"].text) }
         let client = BotClient(connection: connection(), configuration: configuration,
                                rpcDeadline: .milliseconds(50)) { _, _ in socket }
         var disconnects = 0
@@ -400,11 +401,15 @@ import XCTest
         try await client.connect()
         defer { client.close() }
 
-        do {
-            _ = try await client.call("subagent.list", ["session_id": .string("runtime")])
-            XCTFail("Timed-out delegated read succeeded")
-        } catch {
-            XCTAssertEqual(error as? BotFailure, .transport)
+        // The inbox's live-status read is optional the same way: a stall fails only it.
+        let reads: [(String, [String: BotJSON])] = [("subagent.list", ["session_id": .string("runtime")]), ("session.active_list", [:])]
+        for (method, params) in reads {
+            do {
+                _ = try await client.call(method, params)
+                XCTFail("Timed-out \(method) succeeded")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .transport)
+            }
         }
 
         socket.withholdReply = nil
@@ -561,6 +566,45 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 2)
     }
 
+    /// The inbox's live-status read is `session.active_list` with no parameters,
+    /// exactly as Desktop's background sync sends it; anything else stays local.
+    func testActiveListAllowlistAdmitsOnlyTheEmptyRead() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        _ = try await client.call("session.active_list", [:])
+        XCTAssertEqual(socket.sentTextFrames, 1)
+        XCTAssertEqual(socket.sentRequests.last?["method"], .string("session.active_list"))
+        XCTAssertEqual(socket.sentRequests.last?["params"], .object([:]))
+
+        let rejected: [[String: BotJSON]] = [
+            ["current_session_id": .string("runtime")],
+            ["profile": .string("default")]
+        ]
+        for params in rejected {
+            do {
+                _ = try await client.call("session.active_list", params)
+                XCTFail("session.active_list dispatched with \(params)")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 1)
+    }
+
     func testCompletionAllowlistAdmitsOneWordAndRejectsEverythingElse() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
@@ -601,6 +645,49 @@ import XCTest
             }
         }
         XCTAssertEqual(socket.sentTextFrames, 1)
+    }
+
+    func testReactAllowlistAdmitsYourOwnReactionAndRejectsEverythingElse() async throws {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        try await client.connect()
+        defer { client.close() }
+
+        _ = try await client.call("message.react", ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍")])
+        _ = try await client.call("message.react", ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .null])
+        XCTAssertEqual(socket.sentTextFrames, 2)
+
+        let rejected: [[String: BotJSON]] = [
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍"), "author": .string("agent")],
+            ["session_id": .string("runtime"), "newest_role": .string("assistant"), "emoji": .string("👍")],
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍"), "newest_role": .string("user")],
+            ["session_id": .string("runtime"), "row_id": .number(4.5), "emoji": .string("👍")],
+            ["session_id": .string("runtime"), "row_id": .string("42"), "emoji": .string("👍")],
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("  ")],
+            ["session_id": .string("runtime"), "row_id": .number(42), "emoji": .bool(true)],
+            ["session_id": .string("runtime"), "row_id": .number(42)],
+            ["session_id": .string(""), "row_id": .number(42), "emoji": .string("👍")]
+        ]
+        for params in rejected {
+            do {
+                _ = try await client.call("message.react", params)
+                XCTFail("Invalid message.react call dispatched: \(params)")
+            } catch {
+                XCTAssertEqual(error as? BotFailure, .unsupported)
+            }
+        }
+        XCTAssertEqual(socket.sentTextFrames, 2)
     }
 
     func testCancelCompletionKeepsSocketAvailableWithoutResendingIt() async throws {
@@ -721,6 +808,86 @@ import XCTest
         }
         do { try await client.connect(); XCTFail("Expected unsupported gate") }
         catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
+        client.close()
+    }
+
+    func testAHostReportingAnotherInstallIDIsRefusedBeforeThePasswordIsSent() async {
+        let saved = String(repeating: "a", count: 32), other = String(repeating: "b", count: 32)
+        var paths: [String] = []
+        BotHTTPFixture.handler = { request in
+            paths.append(request.url!.path)
+            return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                  "install_id": .string(other)]))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        var record = connection(); record.installID = saved
+        let client = BotClient(connection: record, configuration: configuration) { _, _ in
+            XCTFail("Must not open a socket")
+            return BotScriptedSocket()
+        }
+        do { try await client.connect(); XCTFail("Expected a different host") }
+        catch { XCTAssertEqual(error as? BotFailure, .differentHost) }
+        XCTAssertEqual(paths, ["/api/status"], "No login request reaches the other host")
+        client.close()
+    }
+
+    func testAMatchingOrMissingInstallIDConnectsAndReportsTheLiveOne() async throws {
+        let known = String(repeating: "a", count: 32), fresh = String(repeating: "c", count: 32)
+        // (stored, live): the same host, a host omitting it after a read error, and a legacy record.
+        for (stored, live) in [(known, known), (known, nil), (nil, fresh)] as [(String?, String?)] {
+            BotHTTPFixture.handler = { request in
+                switch request.url!.path {
+                case "/api/status":
+                    var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+                    if let live { status["install_id"] = .string(live) }
+                    return (200, .object(status))
+                case "/auth/password-login": return (200, .object([:]))
+                case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+                case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+                default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+                }
+            }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [BotHTTPFixture.self]
+            var record = connection(); record.installID = stored
+            let client = BotClient(connection: record, configuration: configuration) { _, _ in BotScriptedSocket() }
+            try await client.connect()
+            XCTAssertEqual(client.serverInstallID, live)
+            client.close()
+        }
+    }
+
+    func testAnAddressWhoseStatusIsRefusedOrMissingIsNotADashboard() async {
+        for code in [401, 404] {
+            var paths: [String] = []
+            BotHTTPFixture.handler = { request in
+                paths.append(request.url!.path)
+                return (code, .object(["detail": .string("Not Found")]))
+            }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [BotHTTPFixture.self]
+            let client = BotClient(connection: connection(), configuration: configuration)
+            do { try await client.connect(); XCTFail("Expected not a dashboard") }
+            catch { XCTAssertEqual(error as? BotFailure, .notDashboard, "\(code)") }
+            XCTAssertEqual(paths, ["/api/status"], "No password reaches an address that is not a dashboard")
+            client.close()
+        }
+    }
+
+    func testARefusedPasswordStaysASignInFailure() async {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (401, .object(["detail": .string("Invalid credentials")]))
+            default: XCTFail("Must stop at the login"); return (500, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration)
+        do { try await client.connect(); XCTFail("Expected a refused login") }
+        catch { XCTAssertEqual(error as? BotFailure, .rejected(401)) }
         client.close()
     }
 

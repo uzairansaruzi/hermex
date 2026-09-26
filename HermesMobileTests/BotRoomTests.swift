@@ -191,6 +191,25 @@ import XCTest
         XCTAssertEqual(log.events.map(\.seq), [3, 204])
     }
 
+    func testOnlyRoomMessagesDateAGapFromCreatedAt() {
+        func event(_ seq: Int, _ kind: String, at createdAt: Double?) -> BotRoomEvent? {
+            var object: [String: BotJSON] = ["seq": .number(Double(seq)), "kind": .string(kind)]
+            if let createdAt { object["created_at"] = .number(createdAt) }
+            return BotRoomEvent(.object(object))
+        }
+        let events = [
+            event(1, "message.user", at: 1_000),
+            event(2, "message.member", at: 1_060),
+            event(3, "turn.failed", at: 5_000),
+            event(4, "message.member", at: 1_060 + 1_799),
+            event(5, "message.user", at: nil),
+            event(6, "message.user", at: 1_060 + 1_799 + 1_800)
+        ].compactMap { $0 }
+        XCTAssertEqual(events.map(\.timestamp), [1_000, 1_060, 5_000, 2_859, nil, 4_659])
+        XCTAssertEqual(BotRoomEvent.gapStarts(in: events), [1, 6], "a system row's created_at neither dates nor resets a gap")
+        XCTAssertEqual(BotRoomEvent.gapStarts(in: events[1...]), [2, 6], "the window's first message is dated")
+    }
+
     func testMemberFallbackAndForeignAuthorityAndScopedIdentity() throws {
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
         let event = try XCTUnwrap(BotRoomEvent(RoomFixture.event(1, kind: "message.member")))
@@ -464,6 +483,46 @@ import XCTest
         reader.close()
     }
 
+    func testAcceptedSendStopAndApprovalPublishFeedbackAndRejectionsDoNot() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(running: 1, actions: [RoomFixture.approval])
+        let reader = makeReader(wire); await reader.open()
+        let action = try XCTUnwrap(reader.status.actions.first)
+        reader.draft = "hello"
+        await reader.send()
+        XCTAssertEqual(reader.feedback, BotFeedback(.sent, after: nil))
+        await reader.act(action, choice: .once)
+        XCTAssertEqual(reader.feedback?.event, .approved(.once))
+        await reader.stop()
+        XCTAssertEqual(reader.feedback?.event, .stopped)
+        XCTAssertEqual(reader.feedback?.id, 3)
+        reader.close()
+
+        let rejected = RoomWire(); rejected.writeFailure = BotRoomFailure(code: 5119, reason: nil)
+        rejected.driverStatus = RoomFixture.status(running: 1, actions: [RoomFixture.approval])
+        let refused = makeReader(rejected); await refused.open()
+        refused.draft = "hello"
+        await refused.send()
+        await refused.act(try XCTUnwrap(refused.status.actions.first), choice: .deny)
+        await refused.stop()
+        XCTAssertEqual(rejected.writes.count, 3)
+        XCTAssertNil(refused.feedback)
+        refused.close()
+    }
+
+    func testRetryAndAStaleSendPublishNoFeedback() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [.object(["kind": .string("retry"), "task_id": .string("task:1")])])
+        let reader = makeReader(wire); await reader.open()
+        await reader.act(try XCTUnwrap(reader.status.actions.first))
+        XCTAssertEqual(wire.writes.first?.0, "groups.retry")
+        reader.draft = "hello"
+        wire.beforeWrite = { reader.close() }
+        await reader.send()
+        XCTAssertEqual(wire.writes.count, 1)
+        XCTAssertNil(reader.feedback)
+    }
+
     func testRetryRejectionRefreshesAndUnknownActionsStayReadOnly() async throws {
         let wire = RoomWire()
         wire.driverStatus = RoomFixture.status(actions: [.object(["kind": .string("retry"), "task_id": .string("task:1")]),
@@ -722,6 +781,8 @@ enum RoomFixture {
         try validateDispatch?()
         switch method {
         case "profiles.list": return .object(["profiles": .array([])])
+        // The inbox reads live statuses after every roster read; no bot is busy here.
+        case "session.active_list": return .object(["sessions": .array([])])
         case "groups.capabilities": return capabilities
         case "groups.list":
             listCalls += 1

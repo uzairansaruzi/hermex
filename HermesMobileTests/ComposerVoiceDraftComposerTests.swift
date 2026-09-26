@@ -188,7 +188,7 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
     func testVoiceInputControllerDoesNotCreateSpeechOrAudioObjectsBeforeRecording() {
         let counter = VoiceInputFactoryCounter()
         let controller = ComposerVoiceInputController(
-            speechRecognizerFactory: {
+            speechRecognizerFactory: { _ in
                 counter.speechRecognizerCalls += 1
                 return nil
             },
@@ -205,6 +205,116 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
 
         XCTAssertEqual(counter.speechRecognizerCalls, 0)
         XCTAssertEqual(counter.audioEngineCalls, 0)
+    }
+
+    func testSpeechLocaleCandidatesKeepCurrentFirstThenPreferredThenEnglishUS() {
+        let candidates = ComposerSpeechLocalePolicy.candidates(
+            current: Locale(identifier: "en_PK"),
+            preferredLanguages: ["en-PK", "ur-PK", "fr-FR", "de-DE", "es-ES"]
+        )
+
+        XCTAssertEqual(
+            candidates.map(\.normalizedSpeechIdentifier),
+            ["en-pk", "ur-pk", "fr-fr", "de-de", "en-us"],
+            "en-PK repeats the current locale, so it does not take a preferred-language slot."
+        )
+    }
+
+    func testSpeechLocaleCandidatesDedupeEnglishUSAcrossSeparators() {
+        let candidates = ComposerSpeechLocalePolicy.candidates(
+            current: Locale(identifier: "en_US"),
+            preferredLanguages: ["EN-us"]
+        )
+
+        XCTAssertEqual(candidates.map(\.normalizedSpeechIdentifier), ["en-us"])
+    }
+
+    func testSpeechLocaleSelectionKeepsASupportedCurrentLocale() {
+        let selected = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: Locale(identifier: "en_GB"),
+                preferredLanguages: ["fr-FR"]
+            ),
+            supportedLocales: [Locale(identifier: "en-GB"), Locale(identifier: "fr-FR"), Locale(identifier: "en-US")],
+            recognizer: { $0.normalizedSpeechIdentifier }
+        )
+
+        XCTAssertEqual(selected, "en-gb")
+    }
+
+    func testSpeechLocaleSelectionFallsBackPastUnsupportedAndModelLessLocales() {
+        var askedFor: [String] = []
+        let selected = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: Locale(identifier: "en_PK"),
+                preferredLanguages: ["ur-PK", "fr-FR"]
+            ),
+            supportedLocales: [Locale(identifier: "ur-PK"), Locale(identifier: "fr_FR"), Locale(identifier: "en-US")],
+            recognizer: { locale -> String? in
+                askedFor.append(locale.normalizedSpeechIdentifier)
+                return askedFor.last == "ur-pk" ? nil : askedFor.last
+            }
+        )
+
+        XCTAssertEqual(selected, "fr-fr")
+        XCTAssertEqual(askedFor, ["ur-pk", "fr-fr"], "Unsupported en_PK is never asked for a recognizer.")
+    }
+
+    func testSpeechLocaleSelectionIgnoresRegionOverrideKeywords() {
+        let selected = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: Locale(identifier: "de_DE@rg=atzzzz"),
+                preferredLanguages: []
+            ),
+            supportedLocales: [Locale(identifier: "de-DE"), Locale(identifier: "en-US")],
+            recognizer: { $0.normalizedSpeechIdentifier }
+        )
+
+        XCTAssertEqual(selected, "de-de")
+    }
+
+    func testSpeechLocaleSelectionMatchesScriptTaggedPreferredLanguages() {
+        let selected = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: Locale(identifier: "zh-Hans_US"),
+                preferredLanguages: ["zh-Hans-CN", "zh-Hant-TW"]
+            ),
+            supportedLocales: [Locale(identifier: "zh-CN"), Locale(identifier: "zh-TW"), Locale(identifier: "en-US")],
+            recognizer: { $0.identifier }
+        )
+
+        XCTAssertEqual(selected, "zh-CN")
+    }
+
+    func testSpeechLocaleSelectionPrefersAnExactMatchOverAVariant() {
+        let supported: Set<Locale> = [
+            Locale(identifier: "hi-IN-translit"),
+            Locale(identifier: "hi-IN"),
+            Locale(identifier: "en-US"),
+        ]
+        func select(current: String) -> String? {
+            ComposerSpeechLocalePolicy.firstAvailable(
+                in: ComposerSpeechLocalePolicy.candidates(current: Locale(identifier: current), preferredLanguages: []),
+                supportedLocales: supported,
+                recognizer: { $0.identifier }
+            )
+        }
+
+        XCTAssertEqual(select(current: "hi_IN"), "hi-IN")
+        XCTAssertEqual(select(current: "hi-IN-translit"), "hi-IN-translit")
+    }
+
+    func testSpeechLocaleSelectionReturnsNilWhenNoCandidateHasAModel() {
+        let selected = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: Locale(identifier: "en_PK"),
+                preferredLanguages: []
+            ),
+            supportedLocales: [Locale(identifier: "en-US")],
+            recognizer: { _ -> String? in nil }
+        )
+
+        XCTAssertNil(selected)
     }
 
     func testSTTProviderPreferenceDefaultsToServerFirst() {
@@ -285,6 +395,12 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
                 onDeviceSupported: true
             )
         )
+    }
+}
+
+private extension Locale {
+    var normalizedSpeechIdentifier: String {
+        ComposerSpeechLocalePolicy.normalizedIdentifier(identifier)
     }
 }
 

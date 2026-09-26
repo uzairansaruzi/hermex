@@ -132,10 +132,8 @@ import SwiftUI
         }
     }
 
-    @ViewBuilder private var searchBar: some View {
-        if #available(iOS 26, *) {
-            GlassEffectContainer(spacing: 8) { searchControls }
-        } else { searchControls }
+    private var searchBar: some View {
+        AdaptiveGlassContainer(spacing: 8) { searchControls }
     }
 
     private var searchControls: some View {
@@ -144,7 +142,7 @@ import SwiftUI
                 .labelStyle(.iconOnly)
                 .font(.title3)
                 .frame(width: 44, height: 44)
-                .modifier(BotSearchGlass(shape: .circle))
+                .adaptiveGlass(isInteractive: true, in: Circle())
                 .keyboardShortcut(.cancelAction)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -167,7 +165,7 @@ import SwiftUI
             }
             .padding(.horizontal, 14)
             .frame(minHeight: 44)
-            .modifier(BotSearchGlass(shape: .capsule))
+            .adaptiveGlass(in: Capsule())
             Menu {
                 Picker("Search filter", selection: $scope) {
                     ForEach(Scope.allCases, id: \.self) { item in
@@ -180,7 +178,7 @@ import SwiftUI
             }
             .accessibilityLabel("Search filter")
             .accessibilityValue(Text(scope.title))
-            .modifier(BotSearchGlass(shape: .circle))
+            .adaptiveGlass(isInteractive: true, in: Circle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
@@ -277,20 +275,5 @@ import SwiftUI
         .padding(.horizontal, 20).padding(.vertical, 16)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct BotSearchGlass: ViewModifier {
-    enum Shape { case circle, capsule }
-    let shape: Shape
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            if shape == .circle { content.glassEffect(.regular.interactive(), in: Circle()) }
-            else { content.glassEffect(.regular, in: Capsule()) }
-        } else {
-            if shape == .circle { content.background(.regularMaterial, in: Circle()) }
-            else { content.background(.regularMaterial, in: Capsule()) }
-        }
     }
 }

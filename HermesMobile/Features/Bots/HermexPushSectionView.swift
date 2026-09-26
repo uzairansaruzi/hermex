@@ -4,6 +4,7 @@ import SwiftUI
 /// to this server and device; the caller supplies the existing global alert controls.
 @MainActor struct HermexPushSectionView<SharedSettings: View>: View {
     let server: URL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var provisioner: HermexPushProvisioner
     @State private var isExpanded = false
     @State private var isConfirmingEnable = false
@@ -47,6 +48,11 @@ import SwiftUI
         }
         .transaction { $0.animation = nil }
         .task { await provisioner.reload() }
+        // Runs on appear and on every return to the app, so allowing notifications in
+        // iOS Settings clears the notice without re-running setup.
+        .task(id: scenePhase) {
+            if scenePhase == .active { await provisioner.recheckNotificationPermission() }
+        }
         .onDisappear {
             preferenceTask?.cancel()
             preferenceTask = nil
@@ -96,13 +102,20 @@ import SwiftUI
                    role: .destructive) { isConfirmingDisable = true }
                 .disabled(provisioner.isWorking)
                 .frame(minHeight: 44)
+            if provisioner.notificationsOff {
+                notificationsOffRow(title: nil, message: String(localized: "Notifications are off for Hermex, so this server’s notifications can’t show on this iPhone."))
+            }
         } else if provisioner.connection != nil {
             Button(provisioner.isWorking ? String(localized: "Setting up…") : String(localized: "Turn on notifications…")) {
                 isConfirmingEnable = true
             }
             .disabled(provisioner.isWorking)
             .frame(minHeight: 44)
-            if provisioner.isWorking || provisioner.failure != nil {
+            if provisioner.notificationsOff {
+                notificationsOffRow(title: String(localized: "Notifications are off for Hermex"),
+                                    message: String(localized: "Allow notifications for Hermex in iOS Settings, then turn this on again."))
+            }
+            if provisioner.showsSteps {
                 ForEach(HermexPushProvisioner.Step.allCases) { step in stepRow(step) }
             }
             Text("Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext.")
@@ -159,6 +172,28 @@ import SwiftUI
         .accessibilityLabel(Text(isDone ? String(localized: "\(step.title): done")
                                  : (isRunning ? String(localized: "\(step.title): working")
                                     : String(localized: "\(step.title): waiting"))))
+    }
+
+    /// Denied iOS permission, kept apart from the red step failure because no host step
+    /// ran. The whole row opens Hermex's notification page in iOS Settings.
+    @ViewBuilder private func notificationsOffRow(title: String?, message: String) -> some View {
+        if let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) {
+            Link(destination: settingsURL) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: "bell.slash").foregroundStyle(.secondary).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let title { Text(title).fontWeight(.semibold).foregroundStyle(Color.primary) }
+                        Text(message).foregroundStyle(.secondary)
+                        Text("Open Settings").foregroundStyle(.tint).padding(.top, 2)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .font(AppFont.footnote())
+                .padding(.vertical, 10).padding(.horizontal, 12)
+                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func failureRow(_ failure: HermexPushProvisioner.Failure) -> some View {

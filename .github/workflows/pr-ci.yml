@@ -1,6 +1,8 @@
 # Contributor CI: build and run the full XCTest suite on every pull request
 # that touches app code, then check the build's extracted UI strings against
-# the String Catalog (ci/check_string_catalog.py). PRs limited to docs
+# the String Catalog (ci/check_string_catalog.py). Pushes to master run the
+# full suite too: PRs need not be up to date to merge, so two green PRs can
+# still break master together. PRs limited to docs
 # (markdown, docs/, community files) and local tooling (scripts/) skip the
 # macOS runner entirely and pass via the cheap gate job.
 #
@@ -18,14 +20,20 @@ name: PR CI
 
 on:
   pull_request:
+  push:
+    branches: [master]
 
 permissions:
   contents: read
   pull-requests: read
 
+# A newer push to a PR cancels its older run. A master run always finishes;
+# pushes that land meanwhile wait, and only the newest waiting one runs. Its
+# result covers every commit before it, so a burst of merges ends with one
+# result for the latest master rather than a queue of macOS runs.
 concurrency:
-  group: pr-ci-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -41,6 +49,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "Push to master — running the full suite."
+            echo "run_ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
             --paginate --jq '.[].filename')
           echo "Changed files:"

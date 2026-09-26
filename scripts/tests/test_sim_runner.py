@@ -36,13 +36,19 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.boot_failed = False
         self.hung_runs = 0
         self.xcodebuild_runs = 0
+        self.timeouts = []
 
     def fake_run(self, command, output, timeout, lock_fds=()):
         self.commands.append(command)
+        self.timeouts.append(timeout)
         if command[:4] == ["xcrun", "simctl", "list", "devices"]:
             output.write_text(json.dumps({"devices": {self.device["runtime"]: [self.device]}}))
         elif command[:3] == ["xcrun", "simctl", "bootstatus"]:
             return int(self.boot_failed)
+        elif command[:3] == ["xcrun", "simctl", "shutdown"]:
+            self.device["state"] = "Shutdown"
+        elif command[:3] == ["xcrun", "simctl", "boot"]:
+            self.device["state"] = "Booted"
         elif command[:3] == ["xcrun", "simctl", "terminate"]:
             return 3  # simctl's status when the app is not running.
         elif command[0] == "xcodebuild":
@@ -124,6 +130,34 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertNotEqual(results[0], results[1])
         terminate = ["xcrun", "simctl", "terminate", "SIM-A", runner.APP_BUNDLE_ID]
         self.assertEqual(self.commands[runs[1] - 1], terminate)
+
+    def test_runner_hang_reboots_only_the_assigned_simulator_before_the_retry(self):
+        self.hung_runs = 1
+        self.assertEqual(self.invoke(), 0)
+        runs = [i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"]
+        between = self.commands[runs[0] + 1:runs[1]]
+        shutdown = between.index(["xcrun", "simctl", "shutdown", "SIM-A"])
+        # Boot follows shutdown directly, under one boot-lock hold.
+        self.assertEqual(between[shutdown + 1], ["xcrun", "simctl", "boot", "SIM-A"])
+        self.assertIn(["xcrun", "simctl", "bootstatus", "SIM-A", "-b"], between)
+
+    def test_reboot_before_the_retry_stays_inside_the_test_deadline(self):
+        self.hung_runs = 1
+        self.assertEqual(self.invoke(extra=("--test-timeout", "10")), 0)
+        shutdown = self.commands.index(["xcrun", "simctl", "shutdown", "SIM-A"])
+        self.assertLessEqual(self.timeouts[shutdown], 10)
+
+    def test_repeat_runs_iterations_in_one_launch_until_failure(self):
+        self.assertEqual(self.invoke(extra=("--only", "HermesMobileTests/X", "--repeat", "20")), 0)
+        runs = [c for c in self.commands if c[0] == "xcodebuild"]
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0][runs[0].index("-test-iterations") + 1], "20")
+        self.assertIn("-run-tests-until-failure", runs[0])
+
+    def test_terminate_gives_up_well_before_the_boot_timeout(self):
+        self.assertEqual(self.invoke(), 0)
+        terminate = next(i for i, c in enumerate(self.commands) if c[:3] == ["xcrun", "simctl", "terminate"])
+        self.assertEqual(self.timeouts[terminate], runner.TERMINATE_TIMEOUT)
 
     def test_repeated_runner_hang_stops_after_one_retry(self):
         self.hung_runs = 2

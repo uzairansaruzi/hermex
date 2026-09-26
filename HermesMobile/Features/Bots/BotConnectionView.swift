@@ -7,11 +7,14 @@ import Observation
     @State private var operation: Task<Void, Never>?
     @State private var confirmingRemoval = false
     @State private var copiedPrompt = false
+    @State private var copiedAddress = false
+    @State private var statusCheck: Task<Void, Never>?
 
     init(server: URL) { _setup = State(initialValue: BotConnectionSetup(server: server)) }
 
     var body: some View {
         Form {
+            if let saved = setup.saved { statusSection(saved) }
             Section {
                 Text("Connect to your dashboard").font(.title3.bold())
                 Text("Use your Hermes dashboard sign-in.").foregroundStyle(.secondary)
@@ -38,6 +41,17 @@ import Observation
                 .frame(maxWidth: .infinity)
                 .disabled(!setup.canConnect)
                 .accessibilityIdentifier("hermes-connection-connect")
+                if setup.offersHostReplacement {
+                    Button("Connect to this host instead", role: .destructive) {
+                        operation = Task { if await setup.connect(replacingHost: true), !Task.isCancelled { dismiss() } }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("hermes-connection-replace-host")
+                }
+            } footer: {
+                if setup.offersHostReplacement {
+                    Text("Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this iPhone.")
+                }
             }
             Section("Need your connection details?") {
                 Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
@@ -68,8 +82,8 @@ import Observation
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-        .task { setup.load() }
-        .onDisappear { operation?.cancel(); setup.cancel() }
+        .task { setup.load(); await setup.checkStatus() }
+        .onDisappear { operation?.cancel(); statusCheck?.cancel(); setup.cancel() }
         .confirmationDialog("Remove this connection from Hermex?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Remove Hermes connection", role: .destructive) {
                 operation = Task { if await setup.remove(), !Task.isCancelled { dismiss() } }
@@ -77,6 +91,110 @@ import Observation
         } message: {
             Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host.")
         }
+    }
+
+    /// Read-only rows from the host's public status. Gateway rows appear only after
+    /// the host answered; the version falls back to the one stored at sign-in.
+    @ViewBuilder private func statusSection(_ saved: BotConnection) -> some View {
+        let live: BotHostStatus? = if case .reachable(let status) = setup.hostStatus { status } else { nil }
+        Section {
+            statusRow("Reachability", value: setup.hostStatus?.title ?? String(localized: "Checking…"),
+                      note: setup.hostStatus?.note)
+            if let version = live?.version {
+                statusRow("Hermes", value: version)
+            } else if let version = saved.hermesVersion {
+                statusRow("Hermes", value: version, note: String(localized: "at last sign-in"))
+            }
+            if let live {
+                statusRow("Messaging gateway", value: live.gatewayTitle, note: live.gatewayNote)
+                if let configured = live.platformsConfigured, configured > 0, let connected = live.platformsConnected {
+                    statusRow("Platforms", value: String(localized: "\(connected) of \(configured) connected"))
+                }
+            }
+            statusRow("Notifications", value: setup.notificationRelay.map {
+                String(localized: "On · \($0.host ?? $0.absoluteString)")
+            } ?? String(localized: "Off"))
+            HStack {
+                Text(saved.address.absoluteString).textSelection(.enabled)
+                Spacer()
+                Button(copiedAddress ? String(localized: "Copied") : String(localized: "Copy"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = saved.address.absoluteString
+                    copiedAddress = true
+                }
+                .buttonStyle(.borderless)
+            }
+            Button("Check again") {
+                statusCheck?.cancel()
+                statusCheck = Task { await setup.checkStatus() }
+            }
+            .disabled(setup.hostStatus == .checking)
+        } header: {
+            Text("Status")
+        } footer: {
+            if live != nil {
+                Text("The messaging gateway runs scheduled Tasks and messaging platforms. Bot chat notifications still arrive while it is stopped.")
+            }
+        }
+    }
+
+    private func statusRow(_ label: LocalizedStringKey, value: String, note: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent(label, value: value)
+            if let note { Text(note).font(.footnote).foregroundStyle(.secondary) }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private extension BotConnectionSetup.HostStatus {
+    var title: String {
+        switch self {
+        case .checking: return String(localized: "Checking…")
+        case .reachable: return String(localized: "Reachable")
+        case .unreachable(.unreachable): return String(localized: "Can’t reach this address")
+        case .unreachable(.blocked): return String(localized: "An access check blocked this request")
+        case .unreachable(.answered(let code)): return String(localized: "The host answered \(code)")
+        case .unreachable(.notHermes): return String(localized: "This address isn’t a Hermes dashboard")
+        }
+    }
+
+    var note: String? {
+        if case .unreachable(.unreachable(let reason)) = self { return reason }
+        return nil
+    }
+}
+
+extension BotHostStatus {
+    /// Upstream reports a dead gateway process as `stopped`, `startup_failed` or a
+    /// watchdog `degraded`, so `gateway_running` decides whether scheduled Tasks run.
+    var gatewayStopped: Bool {
+        gatewayRunning == false || (gatewayRunning == nil && ["stopped", "startup_failed"].contains(gatewayState))
+    }
+
+    var gatewayTitle: String {
+        if heartbeatStale != nil && !gatewayStopped { return String(localized: "Not responding") }
+        switch gatewayState ?? gatewayRunning.map({ $0 ? "running" : "stopped" }) ?? "" {
+        case "starting": return String(localized: "Starting")
+        case "running": return String(localized: "Running")
+        case "draining": return String(localized: "Draining")
+        case "degraded": return String(localized: "Degraded")
+        case "startup_failed": return String(localized: "Startup failed")
+        case "stopped": return String(localized: "Stopped")
+        default: return String(localized: "Unknown")
+        }
+    }
+
+    /// Only scheduled Tasks depend on the gateway: Bot chat and WebUI reply
+    /// notifications come from the process running the turn, so the copy never
+    /// claims those stop.
+    var gatewayNote: String? {
+        if gatewayStopped {
+            let consequence = String(localized: "Scheduled Tasks won’t run until it starts.")
+            guard let reason = gatewayExitReason, !reason.isEmpty else { return consequence }
+            return reason + "\n" + consequence
+        }
+        if heartbeatStale != nil { return String(localized: "Scheduled Tasks may not run until it responds.") }
+        return nil
     }
 }
 
@@ -91,17 +209,34 @@ import Observation
     private(set) var saved: BotConnection?
     private(set) var errorMessage: String?
     private(set) var isConnecting = false
+    /// The address whose host reported a different `install_id` on the last attempt.
+    private(set) var differentHostAddress: URL?
+    /// The saved host's public status; nil while no connection is saved.
+    private(set) var hostStatus: HostStatus?
+    /// The relay this server's notifications are paired with; nil when they are off.
+    private(set) var notificationRelay: URL?
     @ObservationIgnored private let store: BotConnectionStore
     @ObservationIgnored private let makeWire: (BotConnection) -> any BotTransport
     @ObservationIgnored private let discard: (BotConnection) async -> Void
     @ObservationIgnored private var client: (any BotTransport)?
+    @ObservationIgnored private let probe: (URL) async -> Result<BotHostStatus, BotHostProbeFailure>
+    @ObservationIgnored private let relay: (URL) -> URL?
     @ObservationIgnored private var attempt: UUID?
+    @ObservationIgnored private var statusCheck: UUID?
+
+    enum HostStatus: Equatable {
+        case checking, reachable(BotHostStatus), unreachable(BotHostProbeFailure)
+    }
 
     init(server: URL, store: BotConnectionStore? = nil,
          makeWire: ((BotConnection) -> any BotTransport)? = nil,
-         discard: ((BotConnection) async -> Void)? = nil) {
+         discard: ((BotConnection) async -> Void)? = nil,
+         probe: ((URL) async -> Result<BotHostStatus, BotHostProbeFailure>)? = nil,
+         relay: ((URL) -> URL?)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore()
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
+        self.probe = probe ?? { await BotHostStatusProbe().check($0) }
+        self.relay = relay ?? { PushRegistrar.shared?.pairing(for: $0)?.relayURL }
         self.discard = discard ?? { old in
             await PushRegistrar.shared?.forget(for: server)
             try? await BotHistoryCache.shared.remove(server: server, connectionID: old.id)
@@ -118,52 +253,95 @@ import Observation
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
+    /// The replace action is offered only for the address that was refused, so editing
+    /// the address to the right one never leaves a data-clearing button behind.
+    var offersHostReplacement: Bool {
+        !isConnecting && differentHostAddress != nil && differentHostAddress == (try? BotConnection.address(address))
+    }
+
     func load() {
         do {
             saved = try store.load(server: server)
             name = saved?.name ?? ""; address = saved?.address.absoluteString ?? ""
             username = saved?.username ?? ""; password = saved?.password ?? ""
         } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
+        notificationRelay = relay(server)
     }
 
     func cancel() {
         attempt = nil; client?.close(); client = nil; isConnecting = false
+        statusCheck = nil
     }
 
-    func connect() async -> Bool {
+    /// Reads the saved host's public status once. Nothing retries; a newer check,
+    /// `cancel()` or a changed saved address drops a late reply.
+    func checkStatus() async {
+        guard let address = saved?.address else { hostStatus = nil; return }
+        let id = UUID(); statusCheck = id; hostStatus = .checking
+        let result = await probe(address)
+        guard statusCheck == id, !Task.isCancelled, saved?.address == address else { return }
+        statusCheck = nil
+        switch result {
+        case .success(let status): hostStatus = .reachable(status)
+        case .failure(let failure): hostStatus = .unreachable(failure)
+        }
+    }
+
+    /// Signs in and saves the connection. The UUID, and with it drafts, cache and push
+    /// pairing, is kept when the host reports the saved `install_id` or when address and
+    /// username are unchanged; otherwise the old connection's data is discarded. An
+    /// unchanged address must still reach the saved install before the password is sent.
+    /// `replacingHost` is the user's answer to `.differentHost`: it drops that expectation
+    /// and always starts a new connection.
+    func connect(replacingHost: Bool = false) async -> Bool {
         guard !isConnecting, !Task.isCancelled else { return false }
-        let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil
+        let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; client = nil; attempt = nil } }
+        var attempted: URL?
         do {
-            let url = try BotConnection.address(address)
+            let url = try BotConnection.address(address); attempted = url
             let account = username.trimmingCharacters(in: .whitespacesAndNewlines)
-            let sameAccount = saved?.address == url && saved?.username == account
-            var candidate = BotConnection(id: sameAccount ? saved!.id : UUID(),
-                name: name.isEmpty ? (url.host ?? "Hermes") : name,
-                address: url, username: account, password: password)
-            let wire = makeWire(candidate); client = wire
+            let label = name.isEmpty ? (url.host ?? "Hermes") : name
+            let expected = replacingHost || saved?.address != url ? nil : saved?.installID
+            let wire = makeWire(BotConnection(id: UUID(), name: label, address: url, username: account,
+                                              password: password, installID: expected))
+            client = wire
             defer { wire.close() }
             try await wire.connect()
             guard attempt == id, !Task.isCancelled else { return false }
-            candidate.hermesVersion = wire.serverVersion
+            let live = wire.serverInstallID
+            let sameInstall = live != nil && live == saved?.installID
+            let sameAccount = saved?.address == url && saved?.username == account
+            let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
+            let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
+                password: password, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID)
             let result = try await wire.call("profiles.list", ["include_sessions": .bool(true)])
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
             let old = saved
-            try store.save(candidate, server: server)
+            do { try store.save(candidate, server: server) } catch {
+                errorMessage = String(localized: "Could not save sign-in details on this iPhone.")
+                return false
+            }
             saved = candidate
+            // The old host's status and any check still in flight describe a host
+            // this screen no longer shows.
+            if old?.address != candidate.address { statusCheck = nil; hostStatus = nil }
             // Persistence is the commit point, with no suspension after the last
             // cancellation check. Old-account cleanup must finish even if the
             // sheet disappears afterwards; a committed replacement is success.
             if let old, old.id != candidate.id {
                 let discard = discard
                 await Task { await discard(old) }.value
+                notificationRelay = relay(server)
             }
             return true
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
-            errorMessage = (error as? BotFailure)?.localizedDescription
-                ?? String(localized: "Could not save sign-in details or connect to Hermes.")
+            if error as? BotFailure == .differentHost { differentHostAddress = attempted }
+            // Only the address parse throws before `attempted` is set.
+            errorMessage = attempted.map { BotConnectionAdvice.message(for: error, address: $0) }
+                ?? (error as? BotFailure ?? .invalidAddress).localizedDescription
             return false
         }
     }

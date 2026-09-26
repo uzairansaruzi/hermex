@@ -95,6 +95,54 @@ final class LiveActivityTests: XCTestCase {
         )
     }
 
+    /// #740: a local alert fires once on entering an approval or a question, and only when
+    /// the relay can't banner it and the user isn't already looking at the app.
+    func testAlertPolicyAlertsOnlyOnEnteringWaitingWhenTheRelayCannot() {
+        func alerts(_ previous: AgentRunActivityStatus, _ next: AgentRunActivityStatus,
+                    paired: Bool = false, active: Bool = false) -> Bool {
+            AgentLiveActivityAlertPolicy.alerts(previous: previous, next: next, canReceivePush: paired, appIsActive: active)
+        }
+
+        XCTAssertTrue(alerts(.runningCommand, .waitingForApproval))
+        XCTAssertTrue(alerts(.thinking, .waitingForClarification))
+        XCTAssertTrue(alerts(.waitingForApproval, .waitingForClarification), "a new kind of ask is a new alert")
+        XCTAssertFalse(alerts(.waitingForApproval, .waitingForApproval), "a repeated waiting event stays silent")
+        XCTAssertFalse(alerts(.waitingForClarification, .waitingForClarification))
+        XCTAssertFalse(alerts(.runningCommand, .waitingForApproval, paired: true), "the relay banners a paired server")
+        XCTAssertFalse(alerts(.runningCommand, .waitingForApproval, active: true), "no alert in the foreground")
+        XCTAssertFalse(alerts(.waitingForApproval, .runningCommand), "leaving waiting is silent")
+        XCTAssertFalse(alerts(.runningCommand, .waiting), "the relay's generic waiting is never a local write")
+        XCTAssertFalse(alerts(.responding, .complete))
+
+        // A stale write keeps the waiting status, so a replayed approval after a reconnect stays silent.
+        let waiting = AgentRunActivityStateReducer.waitingForApproval(
+            state: AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Build", startedAt: Date())
+        )
+        let stale = AgentRunActivityStateReducer.stale(state: waiting)
+        XCTAssertFalse(alerts(stale.status, AgentRunActivityStateReducer.waitingForApproval(state: stale).status))
+    }
+
+    /// #740 review: a Bot feed writes its chips in the same tick as the approval, and that
+    /// write supersedes the send that carried the alert. The ask stays owed until a send lands.
+    func testPendingAlertSurvivesASameStatusWriteAndDropsWhenTheAskEnds() {
+        func pending(_ owed: AgentRunActivityStatus?, _ previous: AgentRunActivityStatus,
+                     _ next: AgentRunActivityStatus, paired: Bool = false,
+                     active: Bool = false) -> AgentRunActivityStatus? {
+            AgentLiveActivityAlertPolicy.pending(owed, previous: previous, next: next,
+                                                 canReceivePush: paired, appIsActive: active)
+        }
+
+        let owed = pending(nil, .runningCommand, .waitingForApproval)
+        XCTAssertEqual(owed, .waitingForApproval)
+        XCTAssertEqual(pending(owed, .waitingForApproval, .waitingForApproval), .waitingForApproval,
+                       "a chips write keeps the ask owed")
+        XCTAssertNil(pending(nil, .waitingForApproval, .waitingForApproval), "a delivered ask never re-alerts")
+        XCTAssertEqual(pending(owed, .waitingForApproval, .waitingForClarification), .waitingForClarification)
+        XCTAssertNil(pending(owed, .waitingForApproval, .runningCommand), "answering the ask drops it")
+        XCTAssertNil(pending(owed, .waitingForApproval, .waitingForApproval, active: true),
+                     "opening the app drops it")
+    }
+
     func testActiveLiveActivityStatesCarryRenderableText() {
         let startedAt = Date(timeIntervalSince1970: 100)
         let later = Date(timeIntervalSince1970: 106)

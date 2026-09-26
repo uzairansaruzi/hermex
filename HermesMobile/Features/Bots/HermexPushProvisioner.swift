@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 /// Drives one server's push setup: point the Hermes host at a relay, install and enable
 /// the `hermex-push` plugin, restart the gateway, read the pairing keys and register this
@@ -25,13 +26,19 @@ import Foundation
     /// A step that did not finish, in the step's own words, so the user knows what to retry.
     struct Failure: Equatable { let title: String; let message: String }
 
-    enum Phase: Equatable { case idle, enabling(Step), disabling, savingPreferences, refreshing, failed(Failure) }
+    /// `checkingPermission` covers the iOS prompt at the start of setup: it blocks re-entry
+    /// but names no host step, since none has run yet.
+    enum Phase: Equatable { case idle, checkingPermission, enabling(Step), disabling, savingPreferences, refreshing, failed(Failure) }
 
     let server: URL
     private(set) var pairing: PushPairing?
     private(set) var phase: Phase = .idle
     /// Steps that finished in the current enable run, so the view can show what is done.
     private(set) var completed: Set<Step> = []
+    /// iOS notification permission for Hermex is denied, so nothing this server sends can
+    /// show. Raised when setup finds it (before any host call) and, on a paired server,
+    /// whenever the section checks; cleared once the user allows notifications again.
+    private(set) var notificationsOff = false
 
     /// The saved connection this host is reached with. The screen keeps it current so a
     /// password edit made just above this section is the one provisioning signs in with.
@@ -39,6 +46,7 @@ import Foundation
     /// Nil on a build with no Keychain access group to write to, which means push cannot
     /// work at all; the section then reports the step it could not take.
     private let registrar: (any PushPairingEnabling)?
+    private let notifications: any ResponseCompletionNotificationScheduling
     private let dashboard: @MainActor (BotConnection) -> BotDashboardClient
     /// The connection this server still has saved, read at the moment state is committed.
     private let connectionID: @MainActor () -> UUID?
@@ -50,6 +58,7 @@ import Foundation
     /// which Swift evaluates outside the actor.
     init(server: URL, connection: BotConnection?,
          registrar: (any PushPairingEnabling)? = nil,
+         notifications: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler(),
          dashboard: (@MainActor (BotConnection) -> BotDashboardClient)? = nil,
          connectionID: (@MainActor () -> UUID?)? = nil,
          retryDelays: [Duration] = [.seconds(2), .seconds(3), .seconds(5), .seconds(5), .seconds(5), .seconds(10)],
@@ -57,6 +66,7 @@ import Foundation
         self.server = server
         self.connection = connection
         self.registrar = registrar ?? PushRegistrar.shared
+        self.notifications = notifications
         self.dashboard = dashboard ?? { BotDashboardClient(connection: $0) }
         self.connectionID = connectionID ?? { (try? BotConnectionStore().load(server: server))?.id }
         self.retryDelays = retryDelays
@@ -66,7 +76,7 @@ import Foundation
 
     var isWorking: Bool {
         switch phase {
-        case .enabling, .disabling, .savingPreferences, .refreshing: return true
+        case .checkingPermission, .enabling, .disabling, .savingPreferences, .refreshing: return true
         case .idle, .failed: return false
         }
     }
@@ -74,6 +84,17 @@ import Foundation
     var failure: Failure? { if case .failed(let failure) = phase { return failure }; return nil }
 
     func isRunning(_ step: Step) -> Bool { phase == .enabling(step) }
+
+    /// Whether the step list belongs on screen: while a host step runs, after a failure, and
+    /// after a run that changed the host before stopping (permission revoked mid-run), so
+    /// those changes stay visible. Hidden while iOS asks for permission: nothing ran yet.
+    var showsSteps: Bool {
+        switch phase {
+        case .enabling, .failed: return true
+        case .checkingPermission: return false
+        case .idle, .disabling, .savingPreferences, .refreshing: return !completed.isEmpty
+        }
+    }
 
     /// Re-reads local state when Settings returns from editing the connection.
     func reload() async {
@@ -115,16 +136,23 @@ import Foundation
     /// and the plugin loaded, so it is paired as it stands: no install, and no restart
     /// interrupting work. Anything else gets the full sequence, in the order the host
     /// needs it — the relay address before the pairing route will answer, and the plugin
-    /// loaded by a restart before that route exists at all.
+    /// loaded by a restart before that route exists at all. Denied notification permission
+    /// stops the run before it signs in, so the host is never touched for a phone that
+    /// could not show what it sends.
     func enable() async {
         guard !isWorking else { return }
         guard let connection else { return fail(Step.relayURL.title, HermexPushFailure.noConnection) }
         completed = []
+        phase = .checkingPermission
+        // Permission comes first: a phone that cannot show a notification must not get as
+        // far as reinstalling the plugin and restarting the gateway.
+        notificationsOff = !(await notificationsAllowed())
+        guard !notificationsOff else { phase = .idle; return }
         var step = Step.relayURL
         phase = .enabling(step)
         let client = dashboard(connection)
+        do { try await client.signIn() } catch { return failSignIn(error) }
         do {
-            try await client.signIn()
             let state: HostState
             do { state = try await hostState(client) } catch { return fail(Step.pair.title, error) }
             var paired: PushPairing
@@ -158,7 +186,13 @@ import Foundation
             guard let registrar else { throw PushRegistrarError.unsupportedBuild }
             // Asks for notification permission, mints a device token and registers it at
             // this install's relay. It stores the keys only once the relay has accepted.
-            try await registrar.enable(paired, for: server)
+            do { try await registrar.enable(paired, for: server) } catch PushRegistrarError.permissionDenied {
+                // Permission was revoked while the host was being set up.
+                pairing = registrar.pairing(for: server)
+                notificationsOff = true
+                phase = .idle
+                return
+            }
             // A run outlives the screen, so the connection or its whole server can be
             // removed while it works. Teardown wins: what was just stored goes again and
             // this phone comes back off the relay.
@@ -185,7 +219,7 @@ import Foundation
         do {
             if let connection {
                 let client = dashboard(connection)
-                try await client.signIn()
+                do { try await client.signIn() } catch { return failSignIn(error) }
                 try await client.setPlugin(HermexPushPlugin.name, enabled: false)
             }
             step = String(localized: "Remove this iPhone from the relay")
@@ -193,6 +227,28 @@ import Foundation
             pairing = registrar?.pairing(for: server)
             phase = .idle
         } catch { fail(step, error) }
+    }
+
+    /// Clears the notifications-off state once the user has allowed notifications in iOS
+    /// Settings, and on a paired server also raises it, since a phone whose permission
+    /// was later denied silently stops showing this server's pushes. It never starts
+    /// setup itself: host changes stay behind the confirmation.
+    func recheckNotificationPermission() async {
+        guard pairing != nil || notificationsOff else { return }
+        let denied = await notifications.authorizationStatus() == .denied
+        guard !Task.isCancelled else { return }
+        notificationsOff = denied
+    }
+
+    /// Asks iOS only when the user has never been asked. A refusal, now or earlier, is final
+    /// here: iOS shows no second prompt, so only Settings can change it.
+    private func notificationsAllowed() async -> Bool {
+        switch await notifications.authorizationStatus() {
+        case .notDetermined: return await notifications.requestAuthorization()
+        case .denied: return false
+        case .authorized, .provisional, .ephemeral: return true
+        @unknown default: return false
+        }
     }
 
     /// What the pairing route says this host still needs. Only an absent route or an
@@ -253,20 +309,59 @@ import Foundation
         phase = .failed(Failure(title: step, message: Self.message(for: error)))
     }
 
+    /// Sign-in changes nothing on the host, so a connection that fails there really is
+    /// unreachable, unlike a later step that may still be finishing when it times out.
+    private func failSignIn(_ error: Error) {
+        let message = switch error {
+        case BotFailure.transport, is URLError:
+            String(localized: "Could not reach this Hermes host. Check the connection, then try again.")
+        default: Self.message(for: error)
+        }
+        phase = .failed(Failure(title: String(localized: "Sign in to Hermes"), message: message))
+    }
+
     /// Provisioning speaks for itself rather than borrowing the Bot chat's wording: a step
-    /// that failed says what the host answered, because that is what the user has to act on.
-    private static func message(for error: Error) -> String {
+    /// that failed says what answered — the host, the relay or iOS — because that is what
+    /// the user has to act on. The registrar's and relay's errors are switched exhaustively
+    /// so a new case cannot fall through to someone else's words.
+    static func message(for error: Error) -> String {
         switch error {
         case let failure as HermexPushFailure:
             return failure.errorDescription ?? String(localized: "This step did not finish. Try again.")
+        case let failure as PushRegistrarError:
+            switch failure {
+            case .permissionDenied:
+                return String(localized: "Allow notifications for Hermex in iOS Settings, then turn this on again.")
+            case .unsupportedBuild:
+                return String(localized: "This build of Hermex can’t receive push notifications.")
+            case .tokenUnavailable:
+                return String(localized: "iOS gave no notification token. Check this iPhone’s internet connection, then try again.")
+            case .malformedPairing:
+                return message(for: HermexPushFailure.unusablePairing)
+            case .pairingChanged, .preferencesUnconfirmed:
+                return String(localized: "This step did not finish. Try again.")
+            }
+        case let failure as PushRelayError:
+            switch failure {
+            case .http(let statusCode):
+                return String(localized: "The relay refused this phone (\(statusCode)). Check the relay address, then try again.")
+            case .malformedInstallKey:
+                return message(for: HermexPushFailure.unusablePairing)
+            case .transport:
+                return String(localized: "Could not reach the notification relay. Check this iPhone’s internet connection, then try again.")
+            }
         case BotFailure.rejected(401), BotFailure.rejected(403):
             return String(localized: "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again.")
+        case BotFailure.differentHost:
+            return BotFailure.differentHost.localizedDescription
         case BotFailure.rejected(let status):
             return String(localized: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again.")
+        case BotFailure.unsupported, BotFailure.wrongIdentity:
+            return String(localized: "This Hermes host doesn’t offer the password sign-in push setup needs.")
         case BotFailure.transport, is URLError:
             return String(localized: "The host did not answer in time. It may still be finishing this step — wait a moment, then try again.")
         default:
-            return String(localized: "Could not reach this Hermes host. Check the connection, then try again.")
+            return String(localized: "This step did not finish. Try again.")
         }
     }
 }

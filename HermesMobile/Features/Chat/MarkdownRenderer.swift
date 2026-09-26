@@ -461,15 +461,23 @@ private struct ChatCodeBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @State private var highlightedCode: NSAttributedString?
+    /// Whether a long settled diff shows every line instead of the first `collapsedLineLimit`.
+    @State private var showsAllDiffLines = false
 
     private let logger = Logger.hermesMarkdownRendering
 
     var body: some View {
+        let diff = MarkdownDiffFormatter.document(for: content, language: language, isStreaming: isStreaming)
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(displayLanguage)
                     .font(.subheadline.weight(.semibold))
+
+                if let diff {
+                    DiffCountsLabel(additions: diff.additions, deletions: diff.deletions)
+                }
 
                 Spacer()
 
@@ -502,7 +510,9 @@ private struct ChatCodeBlock: View {
             .padding(.top, 14)
             .padding(.bottom, 4)
 
-            if wrapsCodeBlockLines {
+            if let diff {
+                diffBody(diff)
+            } else if wrapsCodeBlockLines {
                 styledCodeText(fixedHorizontal: false)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -544,6 +554,52 @@ private struct ChatCodeBlock: View {
         }
     }
 
+    /// A settled diff: tinted rows, capped at `collapsedLineLimit` lines behind a
+    /// full-width Show all row. Copy still copies the whole source.
+    @ViewBuilder
+    private func diffBody(_ diff: MarkdownDiffDocument) -> some View {
+        let lines = diff.visibleLines(showingAll: showsAllDiffLines)
+
+        Group {
+            if wrapsCodeBlockLines {
+                DiffCodeBlockText(lines: lines, wraps: true)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                DiffCodeBlockScrollBody(lines: lines)
+            }
+        }
+        .padding(.top, 8)
+        .padding(.bottom, diff.isCollapsible ? 12 : 16)
+
+        if diff.isCollapsible {
+            Button {
+                // Pins the reader's offset while the block grows or shrinks by up to 1,920 rows.
+                chatDisclosureToggled()
+                showsAllDiffLines.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    if showsAllDiffLines {
+                        Text("Show first \(MarkdownDiffFormatter.collapsedLineLimit) lines")
+                    } else {
+                        Text("Show all \(diff.lines.count) lines")
+                    }
+                    Image(systemName: showsAllDiffLines ? "chevron.up" : "chevron.down")
+                        .accessibilityHidden(true)
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.top, 11)
+                .padding(.bottom, 13)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.chatTactile(.compactControl))
+            .foregroundStyle(.tint)
+            .overlay(alignment: .top) { Divider() }
+            .accessibilityHint("Copy includes every line.")
+        }
+    }
+
     /// The code body with its shared monospaced styling and padding. `fixedHorizontal`
     /// is `true` inside the horizontal `ScrollView` (each line keeps its natural width)
     /// and `false` when wrapping (lines reflow to the bubble width, growing vertically).
@@ -573,6 +629,8 @@ private struct ChatCodeBlock: View {
     /// highlighter works off main, and drops the result if the block moved on.
     @MainActor
     private func updateHighlightedCode(for request: MarkdownCodeHighlightRequest) async {
+        // Diff and patch never highlight: `MarkdownDiffFormatter` styles them natively.
+        guard !MarkdownDiffFormatter.isDiffLanguage(request.language) else { return }
         let highlighter = MarkdownCodeHighlighter.shared
         if let cached = highlighter.cachedHighlight(for: request) {
             highlightedCode = cached
@@ -735,19 +793,7 @@ enum MarkdownPlainCodeFormatter {
     static let maxSegmentLength = 500
 
     static func lines(in code: String) -> [MarkdownPlainCodeLine] {
-        let normalizedCode = code
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-            .replacingOccurrences(of: "\u{2028}", with: "\n")
-            .replacingOccurrences(of: "\u{2029}", with: "\n")
-
-        let rawLines = normalizedCode
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map(String.init)
-
-        let renderedLines = rawLines.isEmpty ? [""] : rawLines
-
-        return renderedLines.enumerated().map { lineIndex, line in
+        rawLines(in: code).enumerated().map { lineIndex, line in
             MarkdownPlainCodeLine(
                 id: lineIndex,
                 segments: segments(in: line)
@@ -755,7 +801,23 @@ enum MarkdownPlainCodeFormatter {
         }
     }
 
-    private static func segments(in line: String) -> [MarkdownPlainCodeSegment] {
+    /// The code's lines with CRLF, CR, and Unicode line and paragraph separators
+    /// treated as newlines; an empty string is one empty line.
+    static func rawLines(in code: String) -> [String] {
+        let normalizedCode = code
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\u{2028}", with: "\n")
+            .replacingOccurrences(of: "\u{2029}", with: "\n")
+
+        let lines = normalizedCode
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        return lines.isEmpty ? [""] : lines
+    }
+
+    /// Splits one line into `maxSegmentLength`-character segments; an empty line is one space.
+    static func segments(in line: String) -> [MarkdownPlainCodeSegment] {
         guard !line.isEmpty else {
             return [MarkdownPlainCodeSegment(id: 0, text: " ")]
         }

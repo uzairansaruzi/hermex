@@ -363,6 +363,17 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertEqual(decision, .plain(reason: .highRiskLanguage, normalizedLanguage: "log"))
     }
 
+    /// Diff and patch are styled natively by `MarkdownDiffFormatter`, never by Highlightr.
+    func testMarkdownHighlightPolicyKeepsDiffAndPatchOutOfHighlightr() {
+        for language in ["diff", "patch"] {
+            XCTAssertEqual(
+                MarkdownHighlightPolicy.decision(for: "@@ -1 +1 @@\n-a\n+b", language: language, isStreaming: false),
+                .plain(reason: .highRiskLanguage, normalizedLanguage: language)
+            )
+            XCTAssertFalse(MarkdownHighlightPolicy.canHighlight(language: language))
+        }
+    }
+
     func testMarkdownHighlightPolicySkipsExtremeCodeBlocks() {
         let decision = MarkdownHighlightPolicy.decision(
             for: String(repeating: "x", count: MarkdownHighlightPolicy.maxHighlightedCodeCharacterCount + 1),

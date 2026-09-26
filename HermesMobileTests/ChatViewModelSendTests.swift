@@ -9144,8 +9144,17 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
 
+        // The restarted timer resumes on `ManualAsyncDelay`, then hops back to the main
+        // actor to clear the notice. Draining main can finish before that hop lands, so
+        // wait for the notice to change instead.
+        let cleared = expectation(description: "Steering notice cleared")
+        withObservationTracking {
+            _ = viewModel.steeringConfirmationNotice
+        } onChange: {
+            cleared.fulfill()
+        }
         await dismissalDelay.resumeNext()
-        await drainMainActor()
+        await fulfillment(of: [cleared], timeout: 5)
 
         XCTAssertNil(viewModel.steeringConfirmationNotice)
         XCTAssertFalse(viewModel.messages.contains { $0.content == "Steering hint delivered." })
@@ -9323,9 +9332,11 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
     }
 
-    /// Lets a `Task { @MainActor … }` enqueued by a delegate callback run to completion
-    /// before assertions. Same-actor tasks run FIFO, so awaiting a task enqueued *after*
-    /// the callback's drains it; the leading yields add slack.
+    /// Lets a `Task { @MainActor … }` that a delegate callback already enqueued run to
+    /// completion before assertions. Same-actor tasks run FIFO, so awaiting a task enqueued
+    /// *after* the callback's drains it; the leading yields add slack. It does not wait for
+    /// work still running on another actor (such as a delay resumed on `ManualAsyncDelay`)
+    /// that will hop back to main later: observe the state change for that instead.
     @MainActor
     private func drainMainActor() async {
         for _ in 0..<3 { await Task.yield() }

@@ -26,6 +26,10 @@ import Observation
     private(set) var busy = false
     private(set) var awaitingStop = false
     private(set) var inactiveActions = Set<BotRoomAction.Identity>()
+    /// The last send, Stop or approval the room accepted, for the view's haptic.
+    /// Rooms play no turn completion: polled state cannot say which member's
+    /// work just finished, or when.
+    private(set) var feedback: BotFeedback?
     struct Send: Equatable {
         let text: String
         let eventID: String
@@ -265,6 +269,7 @@ import Observation
             self.uncertainSend = nil; self.sending = nil
             if self.draft == request.text { self.draft = "" }
             self.publishLog()
+            self.feedback = BotFeedback(.sent, after: self.feedback)
         })
     }
 
@@ -274,6 +279,7 @@ import Observation
                       validate: { guard self.status.stoppable > 0 else { throw BotFailure.stale } }, accept: { result in
             guard result["cancelled"].integer != nil else { throw BotFailure.unsupported }
             self.awaitingStop = true
+            self.feedback = BotFeedback(.stopped, after: self.feedback)
         })
     }
 
@@ -285,6 +291,7 @@ import Observation
             self.inactiveActions.insert(action.id)
         }, accept: { result in
             guard result[action.isRetry ? "retried" : "approved"].flag == true else { throw BotFailure.unsupported }
+            if !action.isRetry, let choice { self.feedback = BotFeedback(.approved(choice), after: self.feedback) }
         })
     }
 
