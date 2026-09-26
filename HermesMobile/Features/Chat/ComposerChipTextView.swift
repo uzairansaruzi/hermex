@@ -42,6 +42,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         if window == nil { cancelDeferredFocus() }
     }
 
+    /// Navigation temporarily resigns the editor without changing the user's
+    /// focus intent. Preserve that intent so the return can restore it.
+    var isInNavigationTransition: Bool {
+        owningViewController?.navigationController?.transitionCoordinator != nil
+    }
+
     private var owningViewController: UIViewController? {
         var responder: UIResponder? = next
         while let current = responder {

@@ -507,6 +507,9 @@ private struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            if let editor = textView as? ComposerChipTextView, editor.isInNavigationTransition {
+                return
+            }
             if isFocused {
                 isFocused = false
             }
