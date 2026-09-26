@@ -4,6 +4,36 @@ import UniformTypeIdentifiers
 /// The composer's editor: a text view that draws known skill references as
 /// atomic chips while every value that leaves it stays the draft's own text.
 final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
+    private var isWaitingForTransitionToFocus = false
+
+    /// UIKit re-promotes the last editor while a navigation pop is still animating,
+    /// before SwiftUI's keyboard safe area can follow, which leaves the composer
+    /// behind the keyboard (#810). Defer focus until the transition finishes.
+    override func becomeFirstResponder() -> Bool {
+        guard let coordinator = owningViewController?.transitionCoordinator else {
+            return super.becomeFirstResponder()
+        }
+        if !isWaitingForTransitionToFocus {
+            isWaitingForTransitionToFocus = true
+            coordinator.animate(alongsideTransition: nil) { [weak self] context in
+                guard let self else { return }
+                isWaitingForTransitionToFocus = false
+                guard !context.isCancelled, window != nil else { return }
+                _ = becomeFirstResponder()
+            }
+        }
+        return false
+    }
+
+    private var owningViewController: UIViewController? {
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
+    }
+
     var acceptsAttachments = true
     var isKeyboardSendEnabled = false
     var onKeyboardSend: () -> Void = {}

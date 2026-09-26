@@ -814,3 +814,58 @@ final class ComposerDropRouteTests: XCTestCase {
         return NSItemProvider(contentsOf: url) ?? NSItemProvider()
     }
 }
+
+@MainActor
+final class ComposerFocusTransitionTests: XCTestCase {
+    /// #810: UIKit re-promotes the composer while a navigation pop is still
+    /// animating. Focus must wait for the transition so the keyboard safe area
+    /// can follow; otherwise the composer ends up behind the keyboard.
+    func testFocusDuringAPopWaitsUntilTheTransitionFinishes() {
+        let root = UIViewController()
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        root.view.addSubview(textView)
+        let navigation = UINavigationController(rootViewController: root)
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: UIScreen.main.bounds)
+        window.frame = UIScreen.main.bounds
+        window.rootViewController = navigation
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        navigation.pushViewController(UIViewController(), animated: false)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+        navigation.popViewController(animated: true)
+        guard let coordinator = root.transitionCoordinator else {
+            return XCTFail("the pop should be animated")
+        }
+
+        // UIKit re-promotes the editor while the pop animation is being set up.
+        var acceptedMidTransition: Bool?
+        let settled = expectation(description: "the pop finished")
+        coordinator.animate(alongsideTransition: { _ in
+            acceptedMidTransition = textView.becomeFirstResponder()
+        }, completion: { _ in
+            DispatchQueue.main.async { settled.fulfill() }
+        })
+        wait(for: [settled], timeout: 3)
+
+        XCTAssertEqual(acceptedMidTransition, false)
+        XCTAssertTrue(textView.isFirstResponder)
+    }
+
+    func testFocusOutsideATransitionIsImmediate() {
+        let root = UIViewController()
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        root.view.addSubview(textView)
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: UIScreen.main.bounds)
+        window.frame = UIScreen.main.bounds
+        window.rootViewController = root
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertTrue(textView.becomeFirstResponder())
+        XCTAssertTrue(textView.isFirstResponder)
+    }
+}
