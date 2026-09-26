@@ -390,7 +390,8 @@ keeps the card expanded and returns focus to the editor on dismissal.
 The shared UIKit editor applies editability changes after `updateUIView` returns.
 Disabling a focused UITextView synchronously inside that callback re-enters the
 SwiftUI responder graph and can freeze the screen at Send. A hosted-composer test
-keeps an upload pending while checking display-link frames and editor state.
+keeps an upload pending, lays the window out through the focused Send transition,
+then checks editor state.
 
 Copies and records use the Bot draft key (server + connection UUID
 + Profile); navigation/relaunch never uploads them. Imports allow eight files,
