@@ -218,6 +218,38 @@ import XCTest
         XCTAssertEqual(socket.sentRequests.filter { $0["method"].text == "prompt.submit" }.count, 1, "Never resent")
     }
 
+    /// A required call left unanswered past its deadline ends only its consumer, which hears
+    /// it once as a lost connection. The heartbeat and the silence deadline decide whether
+    /// the socket itself is gone, so the other consumer stays and the reconnect joins it.
+    func testARequiredCallsDeadlineEndsOnlyItsConsumer() async throws {
+        let http = connection(rpcDeadline: .milliseconds(50))
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        try await chat.connect()
+        try await inbox.connect()
+        defer { chat.close(); inbox.close() }
+        var chatLost: [BotFailure?] = [], inboxLost = 0
+        let told = expectation(description: "the chat told")
+        chat.onDisconnect = { chatLost.append($0 as? BotFailure); told.fulfill() }
+        inbox.onDisconnect = { _ in inboxLost += 1 }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.withholdReply = { $0["method"].text == "session.resume" }
+
+        do {
+            _ = try await chat.call(.sessionResume(profile: "inbox-triage", sessionID: "tip", omitMessages: true))
+            XCTFail("An unanswered call cannot succeed")
+        } catch { XCTAssertEqual(error as? BotFailure, .transport) }
+        await fulfillment(of: [told], timeout: 2)
+        XCTAssertEqual(chatLost, [.transport])
+        XCTAssertEqual(inboxLost, 0, "Another consumer's deadline is not a lost socket")
+        XCTAssertFalse(socket.isClosed)
+        _ = try await inbox.call(.profilesList(includeSessions: false))
+
+        try await chat.connect()
+        _ = try await chat.call(.profilesList(includeSessions: false))
+        XCTAssertEqual(sockets.count, 1, "The reconnect joins the open socket")
+        XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 1)
+    }
+
     /// Screens leave on backgrounding; the socket closes with the last one, and the next
     /// screen opens a fresh one on the same sign-in.
     func testTheSocketLivesWhileAConsumerHoldsItAndReopensFresh() async throws {
@@ -279,9 +311,10 @@ import XCTest
     }
 
     /// A saved connection whose gateway opens scripted sockets, kept in `sockets`.
-    private func connection(_ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
+    private func connection(rpcDeadline: Duration = .seconds(30),
+                            _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
         HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
-                         gateway: .init { [weak self] _ in
+                         gateway: .init(rpcDeadline: rpcDeadline) { [weak self] _ in
                              let socket = BotScriptedSocket()
                              self?.sockets.append(socket)
                              return socket

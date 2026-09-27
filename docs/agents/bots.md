@@ -67,10 +67,11 @@ every attached screen, which admits only its own (a chat by its runtime ID, the 
 downloads and ends its callbacks; the last screen to leave closes the socket without
 a disconnect. Cancelling a read discards its reply; cancelling a call that may have
 reached the agent ends that screen's part as `close()` does and leaves the socket to
-the others. A lost socket (a read or send failure, 45 seconds of silence, a required
-call past its deadline) is connection-wide: each attached screen hears `onDisconnect`
-once and reconnects as before, and anything later from that socket is dropped by its
-generation. Retiring the connection does the same with `.stale` and refuses
+the others. A required call past its deadline ends only its screen, which hears
+`onDisconnect(.transport)` once and reconnects onto the socket the others kept. A lost
+socket (a read or send failure, 45 seconds of silence) is connection-wide: each
+attached screen hears `onDisconnect` once and reconnects as before, and anything later
+from that socket is dropped by its generation. Retiring the connection does the same with `.stale` and refuses
 reconnects. A chat's session stays attached to the shared socket after the chat
 leaves, until the socket closes; leaving a screen never closes a host session. The
 connection form and dev auto-login probe on their own connection, so their own socket.

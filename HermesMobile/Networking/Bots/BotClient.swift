@@ -124,8 +124,9 @@ import Foundation
         gateway.leave(self)
     }
 
-    /// The gateway's report that the socket this client was attached to is gone: lost, or
-    /// retired with its connection. The gateway has already failed its calls.
+    /// The gateway's report that this client's connection is gone: its socket was lost or
+    /// retired with its connection, or one of its required calls went unanswered past its
+    /// deadline. The gateway has already failed its calls.
     func socketEnded(_ error: Error) {
         endLocalWork()
         onDisconnect?(error)

@@ -17,10 +17,11 @@ import Foundation
 /// `sessions.changed`); the gateway never answers a server request itself.
 ///
 /// A screen's `close()` ends only its own calls, and their late replies reach no one. A
-/// lost socket (a read or send failure, 45 s of silence, a required call past its
-/// deadline) ends every attached screen's part, and each hears it once; anything later
-/// from that socket is dropped by its generation. `retire()` does the same with `.stale`
-/// when the connection's server or configuration is replaced, and refuses reconnects.
+/// screen's required call past its deadline ends only that screen, which hears it as a
+/// lost connection. A lost socket (a read or send failure, 45 s of silence) ends every
+/// attached screen's part, and each hears it once; anything later from that socket is
+/// dropped by its generation. `retire()` does the same with `.stale` when the
+/// connection's server or configuration is replaced, and refuses reconnects.
 @MainActor final class HermesGateway {
     /// Tests shorten the deadlines and script the socket; production takes the defaults.
     struct Options {
@@ -141,7 +142,7 @@ import Foundation
                     do { try await Task.sleep(for: rpcDeadline) } catch { return }
                     guard let self, self.generation == owner else { return }
                     if timesOutLocally { self.settle(id, throwing: BotFailure.transport) }
-                    else { self.fail(BotFailure.transport, generation: owner) }
+                    else { self.expire(id) }
                 }
                 pending[id] = Pending(continuation: continuation, consumer: consumer, deadline: deadline, rejection: rejection)
                 Task { [weak self] in
@@ -169,6 +170,24 @@ import Foundation
         if safely { settle(id, throwing: CancellationError()); return }
         guard let consumer = entry.consumer else { return }
         consumers.first { $0.id == consumer }?.client?.close()
+    }
+
+    /// A required call past its deadline. A screen's ends only that screen, which hears
+    /// `.transport` once, as it did when it had its own socket; the heartbeat and the 45 s
+    /// silence deadline decide whether the socket itself is gone. The handshake's own call
+    /// means the socket never became usable.
+    private func expire(_ id: Int) {
+        guard let entry = pending[id] else { return }
+        guard let consumer = entry.consumer else {
+            end(BotFailure.transport)
+            return
+        }
+        guard let client = consumers.first(where: { $0.id == consumer })?.client else {
+            settle(id, throwing: BotFailure.transport)
+            return
+        }
+        leave(client)
+        client.socketEnded(BotFailure.transport)
     }
 
     private func settle(_ id: Int, throwing error: Error) {
@@ -364,7 +383,7 @@ private extension HermesCall {
     }
 
     /// Optional reads whose timeout fails only that request. Any other call that
-    /// times out is a lost socket.
+    /// times out ends its screen's connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList: return true
