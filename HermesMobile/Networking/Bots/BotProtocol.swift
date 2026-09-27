@@ -105,13 +105,17 @@ enum BotConnectionAdvice {
     }
 }
 
+/// One screen's connection to the Bot gateway. `BotClient` is the real one: a handle on
+/// the socket every screen of the saved connection shares.
 @MainActor protocol BotTransport: AnyObject {
     var replayEpoch: String? { get }
     var serverVersion: String? { get }
     /// `install_id` from `/api/status` at the last connect; nil when the host omits it.
     var serverInstallID: String? { get }
-    /// Sequenced event params or a complete string-id server-request envelope.
+    /// Sequenced event params or a complete string-id server-request envelope. The socket
+    /// is shared, so this sees other screens' sessions too: admit only your own.
     var onEvent: ((BotJSON) -> Void)? { get set }
+    /// The socket was lost or its connection replaced; once each time, never for `close()`.
     var onDisconnect: ((Error) -> Void)? { get set }
     func connect() async throws
     /// Sends one typed request. `validateDispatch` runs immediately before the
@@ -122,6 +126,7 @@ enum BotConnectionAdvice {
     /// Removes a Profile on the host over the authenticated HTTP session. Only
     /// a 200 with `ok` counts as deleted; anything else leaves the bot in place.
     func deleteProfile(_ name: String) async throws
+    /// Ends this screen's calls, uploads and downloads; the shared socket stays for others.
     func close()
 }
 

@@ -132,11 +132,11 @@ Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.
 `HermesConnections` keeps one shared `HermesConnection` for the active server's saved
 connection, keyed by configured server and connection UUID and compared on address,
 account and password; another server or a changed configuration retires it, so its
-jar, sign-in and late replies never reach another server or account. Switching,
-signing out, removing the server and replacing or removing its Bot credentials retire
-it at once, even with a sign-in in flight (`AuthManagerStateTests`,
-`HermesConnectionTests`). It never reads the webui's custom headers
-(`HermesConnectionTests`).
+jar, sign-in, gateway socket and late replies never reach another server or account
+(`HermesConnectionTests`, `HermesGatewayTests`). Switching, signing out, removing the
+server and replacing or removing its Bot credentials retire it at once, even with a
+sign-in in flight (`AuthManagerStateTests`, `HermesConnectionTests`). It never reads
+the webui's custom headers (`HermesConnectionTests`).
 Its stored `install_id` is only compared with the same record's host, never matched
 across configured servers.
 Bot drafts use configured server + connection UUID + Profile, independently of

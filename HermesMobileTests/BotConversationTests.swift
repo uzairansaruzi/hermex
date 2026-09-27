@@ -49,6 +49,25 @@ import Vision
         model.suspend()
     }
 
+    /// The socket is shared with the inbox and other chats, so it carries other bots'
+    /// sessions and connection-wide events too. None of them changes this chat, not even
+    /// its replay cursor.
+    func testAnotherRuntimesFramesOnTheSharedSocketChangeNothing() async {
+        let wire = BotFixtureWire()
+        let model = make(wire); await model.recover()
+        XCTAssertEqual(model.turn, .idle)
+        wire.onEvent?(.object(["session_id": .string("other-runtime"), "seq": .number(5), "type": .string("message.start")]))
+        wire.onEvent?(.object(["session_id": .string("other-runtime"), "type": .string("session.info")]))
+        wire.onEvent?(.object(["jsonrpc": .string("2.0"), "id": .string("srq-other"), "method": .string("sudo"),
+                               "params": .object(["session_id": .string("other-runtime")])]))
+        wire.onEvent?(.object(["type": .string("sessions.changed")]))
+        XCTAssertEqual(model.turn, .idle)
+        XCTAssertNil(model.pendingRequest)
+        wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("message.delta")]))
+        XCTAssertEqual(model.turn, .running, "Its own next frame is still continuous")
+        model.suspend()
+    }
+
     func testEmptyRecentTranscriptDoesNotSuppressLoading() async {
         let cache = BotHistoryCache(), identity = connection, wire = BotFixtureWire()
         wire.history = []

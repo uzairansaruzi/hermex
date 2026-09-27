@@ -53,14 +53,35 @@ other host, and the policy refuses transport names (`Host`, `Cookie`,
 Cloudflare Access's JSON `Authorization` form. Production passes none, and the
 webui's custom headers are never a source.
 
-`BotClient` owns one WebSocket on its `HermesConnection`. Requests are typed
-in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
+Each `HermesConnection` also owns the one gateway WebSocket its Bot screens share,
+`HermesGateway`. Every screen holds its own `BotClient` handle on it: the inbox, each
+open chat (its controls and delegated work use the chat's), a room, the creator and
+the editor. The socket opens when the first screen connects and closes when the last
+one leaves, so it lives while any Bot screen is connected and backgrounding still
+closes it. Screens that connect while it opens wait for that one attempt, so screens
+reconnecting after the same drop make one socket, one ticket and one handshake. A
+reply settles only the call that sent it; every event and server request goes to
+every attached screen, which admits only its own (a chat by its runtime ID, the inbox
+`sessions.changed`), and the gateway never answers a server request itself. A screen's
+`close()` fails only its own calls with `.transport`, cancels its uploads and
+downloads and ends its callbacks; the last screen to leave closes the socket without
+a disconnect. Cancelling a read discards its reply; cancelling a call that may have
+reached the agent ends that screen's part as `close()` does and leaves the socket to
+the others. A lost socket (a read or send failure, 45 seconds of silence, a required
+call past its deadline) is connection-wide: each attached screen hears `onDisconnect`
+once and reconnects as before, and anything later from that socket is dropped by its
+generation. Retiring the connection does the same with `.stale` and refuses
+reconnects. A chat's session stays attached to the shared socket after the chat
+leaves, until the socket closes; leaving a screen never closes a host session. The
+connection form and dev auto-login probe on their own connection, so their own socket.
+
+Requests are typed in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
 `HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per
 operation the app uses and none for any other upstream method. A case carries only
 what callers vary; fixed contract values (the canonical title, `queued`, the avatar
 asset) are encoded there. `HermesCall.params()` is the only way to the wire and
 runs admission first, so the "typed exception" rules below hold for every caller;
-`BotClient` still runs `validateDispatch` at the socket write and maps errors,
+`HermesGateway` still runs `validateDispatch` at the socket write and maps errors,
 cancellation and timeouts. Password login requires the basic auth gate, verifies identity,
 and each socket gets a fresh single-use ticket. The upgrade is a `URLRequest`
 (`HermesREST.gatewayUpgrade`) offering the `hermes-gateway-v1` and ticket
@@ -78,7 +99,7 @@ it (`tui_gateway/server_requests.py`, `session_transports.py`). A host older
 than the capability answers -32601; `connect()` ignores any JSON-RPC rejection
 here, as the shared web client does, and connects as before. The host sends no
 JSON heartbeat of its own (`heartbeat: true` in `gateway.ready` only means the
-socket answers pings), so `BotClient` sends `gateway.ping` every 15 seconds
+socket answers pings), so `HermesGateway` sends `gateway.ping` every 15 seconds
 with string ids that never settle an RPC. Any inbound frame resets the 45-second
 silence deadline; a socket quiet for longer is dropped and reconnects.
 
@@ -574,7 +595,7 @@ Unknown values read as neutral.
 
 `BotInbox` owns the roster for one configured server and one live subscription
 that lasts while the inbox is on screen. `open()` connects, reads
-`profiles.list`, then keeps the socket; the gateway advertises `change_events`
+`profiles.list`, then keeps its client on the shared socket; the gateway advertises `change_events`
 in `gateway.ready` and broadcasts `sessions.changed` whenever any served
 Profile's `state.db` moves (floored at two seconds, `change_watcher.py`). Each
 event coalesces into one `profiles.list` reload with at most one more queued,
@@ -1245,7 +1266,7 @@ connection UUID + `room_id`; names and member Profiles are never room keys.
 Avatars resolve against that connection’s roster, with a placeholder for unknown
 members. Search matches room names and previously loaded room messages through the local cache above.
 
-`BotRoomReader` owns an independent socket and in-memory `BotRoomLog`. Opening
+`BotRoomReader` owns its own client on the shared socket and an in-memory `BotRoomLog`. Opening
 restores cached messages first, then reads state and drains pages from the saved
 cursor until `has_more` is false. Without cache it starts at
 `max(0, latest_seq - 200)` (or the selected search sequence). Each completed replay window
@@ -1258,7 +1279,7 @@ While visible and foregrounded, state reads run every two seconds when working
 or blocked and every ten seconds when idle. Log reads happen only after sequence
 advancement. Unchanged polls do not assign the transcript. Backgrounding, closing,
 and socket loss stop polling and invalidate late replies. Reconnect closes the
-old transport before opening and re-reading state/history. Closing drops the in-memory log; bounded cached messages remain for reopening.
+old client before opening and re-reading state/history. Closing drops the in-memory log; bounded cached messages remain for reopening.
 
 The transcript renders `message.user` and `message.member` with the existing
 Bot markdown renderer; member messages include their sender and roster avatar.
@@ -1341,7 +1362,7 @@ resends disband; a failed read keeps the outcome unknown until Reconnect.
 A tombstoned room ID is permanently reserved and must never be reused.
 Foreign-authority rooms hide rename/disband; absent capabilities disable writes.
 The room and profile share state but claim separate view ownership so navigation
-cannot let an old screen close the new screen's socket. Lifecycle helpers belong
+cannot let an old screen close the new screen's client. Lifecycle helpers belong
 only to the app target; the share extension and Live Activity do not manage rooms.
 
 ## Activity presentation

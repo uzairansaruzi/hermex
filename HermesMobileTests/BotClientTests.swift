@@ -1048,6 +1048,8 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     /// Answers `client.capabilities`; nil answers as a current host does.
     var capabilitiesReply: ((BotJSON) -> BotJSON)?
     var onPing: (() -> Void)?
+    /// Thrown by every send, handshake and keepalive included, as a dropped connection would.
+    var sendFailure: Error?
     /// Replies to caller RPCs; the handshake and keepalive are not counted.
     private(set) var sentTextFrames = 0
     /// Caller RPCs only, so allowlist assertions ignore the handshake.
@@ -1066,6 +1068,7 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         guard case .string(let text) = message else { XCTFail("JSON-RPC must use text frames"); throw BotFailure.unsupported }
         let request = try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
         logOutbound(request)
+        if let sendFailure { throw sendFailure }
         switch request["method"].text {
         case "client.capabilities":
             let response = capabilitiesReply?(request)
@@ -1099,6 +1102,8 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         lock.unlock()
         waiting?.resume(returning: frame)
     }
+    /// True once cancelled, by the client or by the test.
+    var isClosed: Bool { lock.lock(); defer { lock.unlock() }; return closed }
     func cancel() {
         lock.lock(); closed = true
         let waiting = waiter; waiter = nil

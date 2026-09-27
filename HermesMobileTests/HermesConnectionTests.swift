@@ -16,9 +16,10 @@ import XCTest
     }
 
     func testConsumersShareOneSignInAndOneCookieJar() async throws {
-        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil })
-        let chat = BotClient(http: http) { _ in BotScriptedSocket() }
-        let inbox = BotClient(http: http) { _ in BotScriptedSocket() }
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in BotScriptedSocket() })
+        let chat = BotClient(http: http)
+        let inbox = BotClient(http: http)
         let provisioning = BotDashboardClient(http: http)
         async let chatConnected: Void = chat.connect()
         async let inboxConnected: Void = inbox.connect()
@@ -28,7 +29,7 @@ import XCTest
         defer { chat.close(); inbox.close() }
 
         XCTAssertEqual(["/api/status", "/auth/password-login", "/api/auth/me"].map(HermesHostFixture.count), [1, 1, 1])
-        XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 2, "Each socket still mints its own ticket")
+        XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 1, "They share one socket and its ticket")
         XCTAssertEqual(HermesHostFixture.count("/api/dashboard/agent-plugins/hermex-push/disable"), 1)
         let jar = try XCTUnwrap(http.session.configuration.httpCookieStorage)
         XCTAssertTrue(http.provisioningSession.configuration.httpCookieStorage === jar)
@@ -40,7 +41,7 @@ import XCTest
         var parking: String?
         let configuration = HermesHostFixture.configuration { request in request.url?.path == parking ? .park : nil }
         let connect: (HermesConnection) async throws -> Void = { http in
-            let chat = BotClient(http: http) { _ in BotScriptedSocket() }
+            let chat = BotClient(http: http)
             try await chat.connect()
             chat.close()
         }
@@ -59,7 +60,7 @@ import XCTest
         XCTAssertGreaterThan(long.timeoutIntervalForResource, standard.timeoutIntervalForResource)
 
         for step in steps {
-            let http = HermesConnection(connection: record, configuration: configuration)
+            let http = HermesConnection(connection: record, configuration: configuration, gateway: .init { _ in BotScriptedSocket() })
             let parked = expectation(description: "\(step.path) in flight")
             HermesHostFixture.onPark = { parked.fulfill() }
             HermesHostFixture.script { parking = step.path }
@@ -81,9 +82,9 @@ import XCTest
             guard request.url?.path == "/auth/password-login" else { return nil }
             logins += 1
             return logins == 1 ? .park : nil
-        })
-        let leaving = BotClient(http: http) { _ in BotScriptedSocket() }
-        let staying = BotClient(http: http) { _ in BotScriptedSocket() }
+        }, gateway: .init { _ in BotScriptedSocket() })
+        let leaving = BotClient(http: http)
+        let staying = BotClient(http: http)
         let left = Task { try await leaving.connect() }
         await fulfillment(of: [parked], timeout: 2)
         let stays = Task { try await staying.connect() }
@@ -144,8 +145,8 @@ import XCTest
                 case request.path: return .json(401, .object(["error": .string("session_expired")]))
                 default: return nil
                 }
-            })
-            let screen = BotClient(http: http) { _ in BotScriptedSocket() }
+            }, gateway: .init { _ in BotScriptedSocket() })
+            let screen = BotClient(http: http)
             try await screen.connect()
             HermesHostFixture.script { expired = true }
             let sending = Task { try await request.send(screen) }
@@ -281,9 +282,10 @@ import XCTest
         defer { CustomHeaderStore.shared.replace(with: previous) }
         CustomHeaderStore.shared.replace(with: [CustomHeader(name: "X-Webui-Token", value: "webui")])
         let headers = try HermesHeaders([cloudflare, access, CustomHeader(name: "Content-Type", value: "text/plain")])
-        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil }, headers: headers)
         var upgrade: URLRequest?
-        let client = BotClient(http: http) { request in upgrade = request; return BotScriptedSocket() }
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil }, headers: headers,
+                                    gateway: .init { request in upgrade = request; return BotScriptedSocket() })
+        let client = BotClient(http: http)
         try await client.connect()
         defer { client.close() }
         let context = BotArtifactContext(connectionID: record.id, profile: "inbox-triage", sessionID: "tip", generation: 1)
@@ -333,7 +335,8 @@ import XCTest
 /// A scripted direct Hermes host. `script` may answer a request by path; nil gives the
 /// host's ordinary signed-in reply. A parked request waits for `releaseParked`. The script
 /// runs under the fixture's lock, and `script(_:)` changes its state under the same lock.
-private final class HermesHostFixture: URLProtocol {
+/// `HermesGatewayTests` scripts its host with it too.
+final class HermesHostFixture: URLProtocol {
     enum Reply { case json(Int, BotJSON), fail(URLError), redirect(URL), park }
 
     private static let lock = NSLock()

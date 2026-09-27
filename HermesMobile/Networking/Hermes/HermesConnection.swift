@@ -1,10 +1,11 @@
 import Foundation
 
-/// The HTTP side of one direct-Hermes connection: one ephemeral cookie jar, one password
-/// sign-in, and the path every Bot HTTP request and gateway upgrade is sent through.
-/// `HermesConnections` gives every consumer of a server's saved connection (the Bot
-/// screens' `BotClient`s and push provisioning's `BotDashboardClient`) the same instance,
-/// so they sign in once. Setup and dev auto-login probe unsaved credentials on their own.
+/// One direct-Hermes connection: one ephemeral cookie jar, one password sign-in, the path
+/// every Bot HTTP request and gateway upgrade is sent through, and the one gateway socket
+/// its Bot screens share (`gateway`). `HermesConnections` gives every consumer of a
+/// server's saved connection (the Bot screens' `BotClient`s and push provisioning's
+/// `BotDashboardClient`) the same instance, so they sign in once and share one socket.
+/// Setup and dev auto-login probe unsaved credentials on their own.
 ///
 /// Sign-in is single-flight: it reads the public `/api/status` and checks the install
 /// identity before the password goes out, then verifies the identity the host returns.
@@ -12,7 +13,8 @@ import Foundation
 /// with 401 signs in again once, sharing that sign-in with any other consumer's 401, and
 /// is resent: the auth gate refuses before any handler runs, so the resend cannot repeat
 /// a write. Nothing else is retried, and a transport failure or 5xx leaves the sign-in as
-/// it was. After `retire()`, every call and every late reply throws `.stale`.
+/// it was. After `retire()`, every call and every late reply throws `.stale`, and the
+/// gateway socket has ended.
 @MainActor final class HermesConnection {
     enum Deadline {
         /// 15 seconds per request and 30 overall, like the gateway's own calls.
@@ -34,16 +36,21 @@ import Foundation
     let provisioningSession: URLSession
     private let headers: HermesHeaders
     private let redirectGuard: CrossOriginHeaderStripper
+    private let gatewayOptions: HermesGateway.Options
+    private weak var liveGateway: HermesGateway?
     private var isSignedIn = false
     /// Counts sign-ins, so a 401 can tell whether another consumer has already recovered.
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
 
-    /// `headers` are sent to this connection's origin only. Production passes none.
-    init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral, headers: HermesHeaders = .none) {
+    /// `headers` are sent to this connection's origin only; production passes none.
+    /// `gateway` configures the shared socket; tests script it.
+    init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral, headers: HermesHeaders = .none,
+         gateway: HermesGateway.Options = HermesGateway.Options()) {
         self.connection = connection
         self.headers = headers
+        gatewayOptions = gateway
         let admitted = headers.values
         redirectGuard = CrossOriginHeaderStripper(baseURL: connection.address, customHeaderProvider: { admitted })
         let standard = configuration.copy() as? URLSessionConfiguration ?? .ephemeral
@@ -55,6 +62,15 @@ import Foundation
         provisioning.httpCookieStorage = standard.httpCookieStorage
         session = URLSession(configuration: standard)
         provisioningSession = URLSession(configuration: provisioning)
+    }
+
+    /// The gateway socket every Bot screen on this connection shares. It is made on first
+    /// use and kept while a screen's `BotClient` holds it.
+    var gateway: HermesGateway {
+        if let liveGateway { return liveGateway }
+        let fresh = HermesGateway(http: self, options: gatewayOptions)
+        liveGateway = fresh
+        return fresh
     }
 
     /// Signs in unless this connection already is. Concurrent callers share one attempt,
@@ -155,13 +171,14 @@ import Foundation
     }
 
     /// Ends this connection when its server or configuration is replaced: a sign-in in
-    /// flight stops and stores nothing, and every call, late reply and resend after this
-    /// throws `.stale`.
+    /// flight stops and stores nothing, every call, late reply and resend after this
+    /// throws `.stale`, and the gateway socket closes, telling each attached screen once.
     func retire() {
         isRetired = true
         isSignedIn = false
         signInTask?.cancel()
         signInTask = nil
+        liveGateway?.retire()
     }
 
     /// The status, login and identity reads, which run before there is a session.
@@ -201,11 +218,12 @@ import Foundation
 }
 
 /// Gives every consumer of the active server's saved Bot connection the same
-/// `HermesConnection`. It keeps one entry, keyed by configured server and connection UUID,
-/// and holds it weakly, so the connection lives only while a consumer does. A request for
-/// another server or UUID, or for the same UUID with a new address, account or password
-/// (the connection form can keep a UUID across those), retires the old connection first,
-/// so no cookie, sign-in or late reply crosses servers, accounts or credentials.
+/// `HermesConnection`, and with it the same gateway socket. It keeps one entry, keyed by
+/// configured server and connection UUID, and holds it weakly, so the connection lives
+/// only while a consumer does. A request for another server or UUID, or for the same UUID
+/// with a new address, account or password (the connection form can keep a UUID across
+/// those), retires the old connection first, so no cookie, sign-in, socket or late reply
+/// crosses servers, accounts or credentials.
 /// Credentials are compared on the live connection and never kept in a key.
 @MainActor final class HermesConnections {
     static let shared = HermesConnections()
