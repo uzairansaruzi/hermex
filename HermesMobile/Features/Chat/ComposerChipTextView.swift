@@ -6,6 +6,11 @@ import UniformTypeIdentifiers
 final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     private var pendingTransitionFocus: UUID?
 
+    /// The owner's current focus intent, read when a deferred focus is about to
+    /// land. UIKit's own restoration can re-request focus after a bound blur in
+    /// the same pop (#831), so a cancel alone cannot guarantee the blur wins.
+    var wantsDeferredFocus: () -> Bool = { true }
+
     /// UIKit re-promotes the last editor while a navigation pop is still animating,
     /// before SwiftUI's keyboard safe area can follow, which leaves the composer
     /// behind the keyboard (#810). Defer focus until the transition finishes.
@@ -20,7 +25,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             coordinator.animate(alongsideTransition: nil) { [weak self] context in
                 guard let self, pendingTransitionFocus == request else { return }
                 pendingTransitionFocus = nil
-                guard !context.isCancelled, window != nil else { return }
+                guard !context.isCancelled, window != nil, wantsDeferredFocus() else { return }
                 _ = becomeFirstResponder()
             }
         }

@@ -875,6 +875,9 @@ final class ComposerFocusTransitionTests: XCTestCase {
             // become first responder yet. Exercise the representable update.
             host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
             root.view.layoutIfNeeded()
+            // UIKit's own -[UITextView _restoreFirstResponder] can land after
+            // the blur while the pop is still running (#831); it must not win.
+            XCTAssertEqual(editor?.becomeFirstResponder(), false)
         } after: {
             XCTAssertEqual(editor?.isFirstResponder, false)
             XCTAssertFalse(state.isFocused)

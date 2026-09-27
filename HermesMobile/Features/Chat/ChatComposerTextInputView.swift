@@ -209,6 +209,7 @@ private struct ComposerTextView: UIViewRepresentable {
         let textView = ComposerChipTextView()
         textView.delegate = context.coordinator
         textView.textDropDelegate = context.coordinator
+        textView.wantsDeferredFocus = { [weak coordinator = context.coordinator] in coordinator?.isFocused == true }
         textView.backgroundColor = .clear
         textView.font = .preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
