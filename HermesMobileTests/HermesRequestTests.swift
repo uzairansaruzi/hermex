@@ -163,7 +163,10 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertEqual(artifact.cachePolicy, .reloadIgnoringLocalCacheData)
         XCTAssertThrowsError(try HermesREST.uploadImage(profile: "", filename: "a.png", dataURL: "data:,").request(base: base))
         XCTAssertThrowsError(try HermesREST.downloadArtifact(path: "a.pdf", profile: "triage", sessionID: "").request(base: base))
-        XCTAssertEqual(try HermesREST.gatewayURL(base: base).absoluteString, "wss://hermes.example:9120/api/ws")
-        XCTAssertEqual(try HermesREST.gatewayURL(base: URL(string: "http://192.168.1.2:9120")!).absoluteString, "ws://192.168.1.2:9120/api/ws")
+        let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
+        XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
+        XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])
+        XCTAssertEqual(try HermesREST.gatewayUpgrade(base: URL(string: "http://192.168.1.2:9120")!, ticket: "t1").url?.absoluteString,
+                       "ws://192.168.1.2:9120/api/ws")
     }
 }

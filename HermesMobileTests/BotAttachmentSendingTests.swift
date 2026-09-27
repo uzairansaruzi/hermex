@@ -239,10 +239,9 @@ extension BotAttachmentSendingTests {
             XCTAssertTrue(payload?["data_url"]?.hasPrefix("data:image/png;base64,") == true)
             return (200, [:], Data(#"{"ok":true,"path":"/profile/images/overlay.png"}"#.utf8))
         }
-        let path = try await BotAttachmentUpload.image(
-            session: session, base: URL(string: "https://bot.example")!,
-            data: transparentPhoto, filename: "overlay.png", profile: "inbox-triage"
-        )
+        let path = try await BotAttachmentUpload.send(try BotAttachmentUpload.request(
+            data: transparentPhoto, filename: "overlay.png", profile: "inbox-triage", base: URL(string: "https://bot.example")!
+        ), on: session)
         XCTAssertEqual(path, "/profile/images/overlay.png")
     }
 
@@ -258,14 +257,14 @@ extension BotAttachmentSendingTests {
                            [URLQueryItem(name: "profile", value: "inbox-triage")])
             return (200, [:], Data(#"{"ok":true,"path":"/profile/images/photo.jpg","future":42}"#.utf8))
         }
-        let path = try await BotAttachmentUpload.image(session: session, base: URL(string: "https://bot.example")!,
-                                                      data: photo, filename: "photo.jpg", profile: "inbox-triage")
+        let request = try BotAttachmentUpload.request(data: photo, filename: "photo.jpg", profile: "inbox-triage",
+                                                      base: URL(string: "https://bot.example")!)
+        let path = try await BotAttachmentUpload.send(request, on: session)
         XCTAssertEqual(path, "/profile/images/photo.jpg")
         for body in [#"{"path":"/images/photo.jpg"}"#, #"{"ok":true,"path":"https://other.example/photo.jpg"}"#] {
             BotArtifactHTTPFixture.handler = { _ in (200, [:], Data(body.utf8)) }
             do {
-                _ = try await BotAttachmentUpload.image(session: session, base: URL(string: "https://bot.example")!,
-                                                       data: photo, filename: "photo.jpg", profile: "inbox-triage")
+                _ = try await BotAttachmentUpload.send(request, on: session)
                 XCTFail("Missing or invalid acknowledgment accepted")
             } catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
         }

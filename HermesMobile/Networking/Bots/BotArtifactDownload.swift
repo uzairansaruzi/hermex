@@ -23,8 +23,8 @@ final class BotArtifactRedirectGuard: NSObject, URLSessionTaskDelegate, @uncheck
     }
 }
 
-/// Reads one artifact with the Bot client's authenticated session, from a
-/// `HermesREST.downloadArtifact` request. No webui endpoint or shared URLSession.
+/// Reads one artifact from a `HermesREST.downloadArtifact` request, on the session
+/// `HermesConnection.authorized` passes in. No webui endpoint or shared URLSession.
 enum BotArtifactDownload {
     static func data(session: URLSession, request: URLRequest) async throws -> Data {
         let (bytes, response) = try await session.bytes(for: request, delegate: BotArtifactRedirectGuard())

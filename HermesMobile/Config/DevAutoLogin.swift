@@ -62,6 +62,7 @@ enum DevAutoLogin {
             let address = try BotConnection.address(addressText)
             var connection = BotConnection(id: UUID(), name: address.host ?? "Hermes",
                                            address: address, username: username, password: password)
+            // Not saved yet, so it signs in on its own cookie jar, like the connection form.
             let wire = BotClient(connection: connection)
             defer { wire.close() }
             try await wire.connect()

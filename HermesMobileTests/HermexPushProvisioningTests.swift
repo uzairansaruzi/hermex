@@ -368,6 +368,8 @@ import XCTest
             (PushRelayError.transport, "Could not reach the notification relay. Check this iPhone’s internet connection, then try again."),
             (BotFailure.unsupported, "This Hermes host doesn’t offer the password sign-in push setup needs."),
             (BotFailure.wrongIdentity, "This Hermes host doesn’t offer the password sign-in push setup needs."),
+            // The shared sign-in reads a status 401, 404 or non-JSON body as another kind of server.
+            (BotFailure.notDashboard, "This Hermes host doesn’t offer the password sign-in push setup needs."),
             (BotFailure.rejected(401), "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again."),
             (URLError(.timedOut), "The host did not answer in time. It may still be finishing this step — wait a moment, then try again."),
             (CocoaError(.fileWriteUnknown), "This step did not finish. Try again.")
@@ -530,7 +532,7 @@ import XCTest
             server: server, connection: connection,
             registrar: registrar,
             notifications: notifications,
-            dashboard: { BotDashboardClient(connection: $0, configuration: PushHTTPFixture.configuration()) },
+            dashboard: { BotDashboardClient(http: HermesConnection(connection: $0, configuration: PushHTTPFixture.configuration())) },
             connectionID: { stillConnected() ? connection.id : nil },
             retryDelays: [.zero, .zero, .zero],
             sleep: { _ in }

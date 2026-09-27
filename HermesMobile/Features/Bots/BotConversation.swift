@@ -190,7 +190,7 @@ import Observation
          attachmentCopies: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
          liveActivityFeed: BotLiveActivityFeed? = nil,
          reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
-        let resolvedWire = wire ?? BotClient(connection: connection)
+        let resolvedWire = wire ?? BotClient(saved: connection, server: server)
         self.server = server; self.connection = connection; self.profile = profile
         self.linkedRoot = conversation; self.root = conversation
         self.mentions = BotMentions(roster: roster, excluding: profile.id)

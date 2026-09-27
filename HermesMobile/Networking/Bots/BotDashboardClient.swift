@@ -1,38 +1,25 @@
 import Foundation
 
 /// The Hermes host's dashboard REST surface, kept apart from `BotClient` because push
-/// provisioning needs no gateway socket: it signs in over HTTP with the saved Bot
-/// connection, mutates the host's plugins and environment, and reads the pairing keys.
-/// Every call here changes the user's server, so only the explicit Enable and Disable
-/// actions build one.
+/// provisioning needs no gateway socket: it mutates the host's plugins and environment
+/// and reads the pairing keys, over the sign-in and cookie jar the server's Bot screens
+/// share. Every call here changes the user's server, so only the explicit Enable and
+/// Disable actions build one.
 @MainActor final class BotDashboardClient {
-    private let connection: BotConnection
-    private let session: URLSession
-    private var isSignedIn = false
+    private let http: HermesConnection
 
-    init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral) {
-        self.connection = connection
-        // Provisioning waits on real work: installing clones a repository on the host,
-        // and a restart takes the gateway down and back up. The Bot socket's 15 seconds
-        // would read as a failure while the host was still succeeding.
-        configuration.timeoutIntervalForRequest = 120
-        configuration.timeoutIntervalForResource = 180
-        session = URLSession(configuration: configuration)
+    /// Provisioning for `server`'s saved connection, on the sign-in its Bot screens share.
+    convenience init(saved connection: BotConnection, server: URL) {
+        self.init(http: HermesConnections.shared.connection(for: connection, server: server))
     }
 
-    /// Signs this HTTP session in through the host's password gate. Later calls reuse the
-    /// cookie the first sign-in stored, so a sequence of steps logs in once.
+    init(http: HermesConnection) { self.http = http }
+
+    /// Signs in through the host's password gate unless the connection already is. The
+    /// install identity is checked before the password goes out, so a swapped host is
+    /// refused before anything on it changes.
     func signIn() async throws {
-        guard !isSignedIn else { return }
-        let status = try await send(.status)
-        // Provisioning mutates the host, so a swapped host is refused before the password goes out.
-        try connection.requireSameInstall(BotConnection.installID(in: status))
-        guard status["auth_required"].flag == true,
-              status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
-        _ = try await send(.login(username: connection.username, password: connection.password))
-        let identity = try await send(.identity)
-        guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
-        isSignedIn = true
+        try await http.signIn()
     }
 
     /// Writes one managed environment value at the host root. No `profile` is sent: a
@@ -70,11 +57,10 @@ import Foundation
     }
 
     /// Any non-2xx is the step's failure, carrying the status so the pairing route's 404
-    /// and 409 can be retried while the host comes back up.
+    /// and 409 can be retried while the host comes back up. Each step gets the
+    /// provisioning deadline.
     private func send(_ rest: HermesREST) async throws -> BotJSON {
-        let (data, response) = try await session.data(for: rest.request(base: connection.address))
-        guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
-        guard (200..<300).contains(response.statusCode) else { throw BotFailure.rejected(response.statusCode) }
+        let data = try await http.data(rest, deadline: .provisioning, accepting: 200..<300)
         return (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
     }
 }

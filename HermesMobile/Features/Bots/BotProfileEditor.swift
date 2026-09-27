@@ -118,7 +118,7 @@ struct BotProfileDetails: Equatable, Sendable {
          onSaved: @escaping () -> Void = {}) {
         self.server = server; self.connection = connection; self.profile = profile; self.avatar = avatar
         self.store = store ?? BotConnectionStore(); self.avatarStore = avatarStore ?? .shared
-        self.makeWire = makeWire ?? { BotClient(connection: $0) }; self.onSaved = onSaved
+        self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }; self.onSaved = onSaved
         let empty = Draft(appearance: BotProfileAppearance(profile: profile), description: "", instructions: "",
                           model: nil, skills: [], toolsets: [], mcpServers: [])
         draft = empty; baseline = empty; receivedLook = profile.look; lookRevision = profile.lookRevision

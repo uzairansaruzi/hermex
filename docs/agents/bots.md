@@ -6,9 +6,9 @@ The connection record, credentials and stable UUID live in server-scoped Keychai
 storage. The host's identity is the `install_id` public `/api/status` reports (one
 per Hermes root, so every Profile and every address that reaches it agree); the
 record stores it the first time the host reports one (trust on first use; the inbox
-backfills older records). A reconnect whose live id differs from the stored one
-fails with `.differentHost` before the login POST, in `BotClient.connect()` and
-`BotDashboardClient.signIn()`, so every Bot surface and push provisioning refuses
+backfills older records). A sign-in whose live id differs from the stored one
+fails with `.differentHost` before the login POST, in `HermesConnection.signIn()`,
+which every Bot surface and push provisioning goes through, so they all refuse
 without sending the password. A missing stored or live id skips the check, and an
 omitted id never clears a stored one. In the connection form, a new address or
 username keeps the UUID when the host reports the stored `install_id`; otherwise a
@@ -19,7 +19,35 @@ address that now reaches another host, not an impostor. Removing the connection
 deletes its drafts; removing the configured server deletes both its connection and
 all its drafts.
 
-`BotClient` owns an ephemeral cookie session and one WebSocket. Requests are typed
+The saved connection's HTTP side is one `HermesConnection` (`Networking/Hermes/`):
+an ephemeral cookie jar, a single-flight password sign-in, and the only path Bot HTTP
+requests and gateway upgrades are sent through. `HermesConnections` gives every
+consumer of the active server's saved connection (inbox, chats, rooms, creator,
+editor and push provisioning's `BotDashboardClient`) the same instance, so they sign
+in once; a reconnect only mints a new ticket. The registry holds its one entry weakly
+and keys it by configured server and connection UUID. A request for another server
+or UUID, or for the same UUID with a new address, account or password, retires the
+old connection first: its sign-in in flight stops and its late replies throw
+`.stale`. Nothing is pooled by hostname, so the same host and account under two
+configured servers get two jars. The connection form and dev auto-login probe
+unsaved credentials on their own `HermesConnection`, never the shared one.
+Cancelling one waiting consumer never cancels the shared sign-in. A signed-in
+request answered 401 signs in again once, sharing that sign-in with every other
+consumer's 401, and is resent: the auth gate refuses `/api/*` before any handler
+runs (`hermes_cli/dashboard_auth/middleware.py`), so the resend cannot repeat a
+write. A 401 from the login itself (bad credentials) ends the recovery and leaves
+the connection signed out; the next request signs in again. A transport failure,
+proxy status or 5xx fails only its request and leaves the sign-in as it was, and
+is never resent. Provisioning keeps its 120/180-second deadlines on a second
+session that shares the jar; everything else keeps 15/30. `HermesConnection`
+accepts origin-bound `HermesHeaders` for tests and a later editor: they reach only
+its own origin, a cross-origin redirect drops them before the push relay or any
+other host, and the policy refuses transport names (`Host`, `Cookie`,
+`Sec-WebSocket-*` and similar) and `Bearer` authorization while allowing
+Cloudflare Access's JSON `Authorization` form. Production passes none, and the
+webui's custom headers are never a source.
+
+`BotClient` owns one WebSocket on its `HermesConnection`. Requests are typed
 in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
 `HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per
 operation the app uses and none for any other upstream method. A case carries only
@@ -28,8 +56,11 @@ asset) are encoded there. `HermesCall.params()` is the only way to the wire and
 runs admission first, so the "typed exception" rules below hold for every caller;
 `BotClient` still runs `validateDispatch` at the socket write and maps errors,
 cancellation and timeouts. Password login requires the basic auth gate, verifies identity,
-and mints a fresh single-use ticket for each socket. JSON-RPC uses text frames
-with the `hermes-gateway-v1` and ticket subprotocols. There is no bootstrap-token,
+and each socket gets a fresh single-use ticket. The upgrade is a `URLRequest`
+(`HermesREST.gatewayUpgrade`) offering the `hermes-gateway-v1` and ticket
+subprotocols in its `Sec-WebSocket-Protocol` header, which is where
+`URLSessionWebSocketTask` takes them from a request; the host splits that header
+on commas (`hermes_cli/web_server_chat.py`). JSON-RPC uses text frames. There is no bootstrap-token,
 OAuth, webui fallback, server provisioning or competing-backend path.
 
 Every socket, reconnects included, runs the same handshake before any other RPC:
@@ -370,8 +401,8 @@ Ordinary external web links retain their normal behavior. Remote image URLs and
 unknown media forms do not gain authenticated access to other hosts.
 
 `BotArtifactContext` captures connection UUID, Profile, durable compression-tip
-session ID and conversation generation. `BotClient` downloads through its existing
-cookie session using `GET /api/fs/download?path=…&profile=…&session_id=…`.
+session ID and conversation generation. `BotClient` downloads through the shared
+signed-in connection using `GET /api/fs/download?path=…&profile=…&session_id=…`.
 Relative paths are resolved by the host's session cwd; no iOS filesystem base or
 webui transport is used. Known same-origin media/download links contribute only
 their path; embedded auth tokens and identity overrides are discarded. Redirects
@@ -1395,8 +1426,9 @@ code, a timeout, a rejected sign-in), the relay (its status code, or unreachable
 (no device token). Only a connection failure at sign-in, before anything on the host has
 changed, says the host could not be reached. `BotFailure`'s chat copy never reaches this
 screen.
-`BotDashboardClient` waits 120 seconds per request, because installing clones a
-repository on the host and a restart takes the gateway down and back up.
+`BotDashboardClient` signs in on the connection the Bot screens share, and each step
+waits up to 120 seconds, because installing clones a repository on the host and a
+restart takes the gateway down and back up.
 
 `HermexPushPlugin` owns only what the plugin itself defines: its name, its install
 identifier, the env var it reads, and a strict decode of the pairing route — a 64-hex

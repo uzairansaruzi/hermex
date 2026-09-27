@@ -92,7 +92,7 @@ enum BotProfileName {
          onCreated: @escaping (String) -> Void = { _ in }) {
         self.server = server; self.connection = connection; self.source = source
         self.store = store ?? BotConnectionStore()
-        self.makeWire = makeWire ?? { BotClient(connection: $0) }; self.onCreated = onCreated
+        self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }; self.onCreated = onCreated
         taken = Set(roster.map(\.id))
         var draft = Draft()
         if let source {

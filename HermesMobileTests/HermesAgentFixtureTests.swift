@@ -47,7 +47,7 @@ import XCTest
         configuration.protocolClasses = [FixtureStatusProtocol.self]
         let client = BotClient(connection: BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                                          username: "user", password: "fixture"),
-                               configuration: configuration) { _, _ in
+                               configuration: configuration) { _ in
             XCTFail("The fixture never reaches the socket")
             return FixtureUnreachableSocket()
         }

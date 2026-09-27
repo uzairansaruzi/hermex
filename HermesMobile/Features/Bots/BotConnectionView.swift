@@ -234,6 +234,8 @@ extension BotHostStatus {
          probe: ((URL) async -> Result<BotHostStatus, BotHostProbeFailure>)? = nil,
          relay: ((URL) -> URL?)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore()
+        // The candidate is not saved yet, so it signs in on its own cookie jar, never the
+        // server's shared one.
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
         self.probe = probe ?? { await BotHostStatusProbe().check($0) }
         self.relay = relay ?? { PushRegistrar.shared?.pairing(for: $0)?.relayURL }

@@ -67,7 +67,7 @@ import UserNotifications
         self.connection = connection
         self.registrar = registrar ?? PushRegistrar.shared
         self.notifications = notifications
-        self.dashboard = dashboard ?? { BotDashboardClient(connection: $0) }
+        self.dashboard = dashboard ?? { BotDashboardClient(saved: $0, server: server) }
         self.connectionID = connectionID ?? { (try? BotConnectionStore().load(server: server))?.id }
         self.retryDelays = retryDelays
         self.sleep = sleep
@@ -356,7 +356,7 @@ import UserNotifications
             return BotFailure.differentHost.localizedDescription
         case BotFailure.rejected(let status):
             return String(localized: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again.")
-        case BotFailure.unsupported, BotFailure.wrongIdentity:
+        case BotFailure.unsupported, BotFailure.wrongIdentity, BotFailure.notDashboard:
             return String(localized: "This Hermes host doesn’t offer the password sign-in push setup needs.")
         case BotFailure.transport, is URLError:
             return String(localized: "The host did not answer in time. It may still be finishing this step — wait a moment, then try again.")

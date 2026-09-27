@@ -3,11 +3,22 @@ import Foundation
 /// Uploading stores bytes only. The returned reference travels in one prompt;
 /// no RPC adds an image to the gateway's shared next-prompt queue.
 enum BotAttachmentUpload {
-    static func image(session: URLSession, base: URL, data: Data, filename: String, profile: String) async throws -> String {
+    /// Stores one image over `http`'s signed-in session. Being nonisolated and async, it
+    /// builds the base64 body off the main actor.
+    static func image(data: Data, filename: String, profile: String, via http: HermesConnection) async throws -> String {
+        let request = try Self.request(data: data, filename: filename, profile: profile, base: await http.connection.address)
+        return try await http.authorized(request) { request, session in try await Self.send(request, on: session) }
+    }
+
+    static func request(data: Data, filename: String, profile: String, base: URL) throws -> URLRequest {
         guard !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes else { throw BotAttachmentFailure.limit }
         let mime = URL(fileURLWithPath: filename).pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg"
-        let request = try HermesREST.uploadImage(profile: profile, filename: filename,
-                                                 dataURL: "data:\(mime);base64," + data.base64EncodedString()).request(base: base)
+        return try HermesREST.uploadImage(profile: profile, filename: filename,
+                                          dataURL: "data:\(mime);base64," + data.base64EncodedString()).request(base: base)
+    }
+
+    /// Sends one upload and returns the verified stored path. Redirects are refused.
+    static func send(_ request: URLRequest, on session: URLSession) async throws -> String {
         let (bytes, response) = try await session.bytes(for: request, delegate: BotArtifactRedirectGuard())
         defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }

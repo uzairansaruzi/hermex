@@ -26,7 +26,7 @@ import Observation
          onReconciled: @escaping ([BotGroupRoom]) -> Void = { _ in }) {
         self.server = server; self.connection = connection; self.roster = roster
         self.store = store ?? BotConnectionStore()
-        self.makeWire = makeWire ?? { BotClient(connection: $0) }
+        self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.onReconciled = onReconciled
     }
     var locked: Bool { attempt != nil }

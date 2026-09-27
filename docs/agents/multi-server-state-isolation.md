@@ -129,6 +129,11 @@ server's content even if the purge fails.
 ## Bot connection and drafts
 
 Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.
+`HermesConnections` keeps one shared `HermesConnection` for the active server's saved
+connection, keyed by configured server and connection UUID and compared on address,
+account and password; another server or a changed configuration retires it, so its
+jar, sign-in and late replies never reach another server or account. It never reads
+the webui's custom headers (`HermesConnectionTests`).
 Its stored `install_id` is only compared with the same record's host, never matched
 across configured servers.
 Bot drafts use configured server + connection UUID + Profile, independently of

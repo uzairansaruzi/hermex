@@ -27,13 +27,13 @@ import XCTest
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
-        var protocols: [[String]] = []
+        var protocols: [String] = []
         var sockets: [BotScriptedSocket] = []
-        let client = BotClient(connection: connection(), configuration: configuration) { url, names in
-            XCTAssertEqual(url.scheme, "wss")
-            XCTAssertEqual(url.path, "/api/ws")
-            XCTAssertNil(url.query)
-            protocols.append(names)
+        let client = BotClient(connection: connection(), configuration: configuration) { upgrade in
+            XCTAssertEqual(upgrade.url?.scheme, "wss")
+            XCTAssertEqual(upgrade.url?.path, "/api/ws")
+            XCTAssertNil(upgrade.url?.query)
+            protocols.append(upgrade.value(forHTTPHeaderField: "Sec-WebSocket-Protocol") ?? "")
             let socket = BotScriptedSocket()
             sockets.append(socket)
             return socket
@@ -50,9 +50,40 @@ import XCTest
             client.close()
         }
         XCTAssertEqual(tickets, 2)
-        XCTAssertEqual(protocols, [["hermes-gateway-v1", "hermes-gateway-ticket.ticket-1"], ["hermes-gateway-v1", "hermes-gateway-ticket.ticket-2"]])
-        XCTAssertEqual(paths.filter { $0 == "/api/auth/me" }.count, 2)
+        XCTAssertEqual(protocols, ["hermes-gateway-v1, hermes-gateway-ticket.ticket-1", "hermes-gateway-v1, hermes-gateway-ticket.ticket-2"])
+        XCTAssertEqual(paths.filter { $0 == "/api/auth/me" }.count, 1, "The second socket reuses the sign-in")
         XCTAssertEqual(sockets.map { $0.sentTextFrames }, [1, 1])
+    }
+
+    /// A reconnect mints a fresh ticket on the cookie the first sign-in stored. A ticket
+    /// the host refuses as unauthenticated signs in once more and is minted again.
+    func testReconnectsReuseTheSignInAndRecoverAnExpiredSessionOnce() async throws {
+        var logins = 0
+        var tickets = 0
+        var expireNextTicket = false
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/auth/password-login": logins += 1; return (200, .object([:]))
+            case "/api/auth/ws-ticket":
+                if expireNextTicket { expireNextTicket = false; return (401, .object(["error": .string("session_expired")])) }
+                tickets += 1
+                return (200, .object(["ticket": .string("ticket-\(tickets)")]))
+            default: return Self.signIn(request)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in BotScriptedSocket() }
+        for _ in 0..<2 {
+            try await client.connect()
+            client.close()
+        }
+        XCTAssertEqual(logins, 1, "A reconnect reuses the stored sign-in")
+        expireNextTicket = true
+        try await client.connect()
+        client.close()
+        XCTAssertEqual(logins, 2, "An expired session signs in once more")
+        XCTAssertEqual(tickets, 3)
     }
 
     /// Without `client.capabilities` the host withdraws every approval, answers
@@ -63,7 +94,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         var sockets: [BotScriptedSocket] = []
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in
             let socket = BotScriptedSocket()
             sockets.append(socket)
             return socket
@@ -94,7 +125,7 @@ import XCTest
         socket.capabilitiesReply = { request in
             .object(["id": request["id"], "error": .object(["code": .number(-32601), "message": .string("unknown method")])])
         }
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
         _ = try await client.call(.profilesList(includeSessions: false))
@@ -114,7 +145,7 @@ import XCTest
         pinged.assertForOverFulfill = false
         socket.onPing = { pinged.fulfill() }
         let client = BotClient(connection: connection(), configuration: configuration,
-                               heartbeatInterval: .milliseconds(10)) { _, _ in socket }
+                               heartbeatInterval: .milliseconds(10)) { _ in socket }
         var disconnects = 0
         client.onDisconnect = { _ in disconnects += 1 }
         try await client.connect()
@@ -156,7 +187,7 @@ import XCTest
             guard request["method"].text == "file.attach" else { return false }
             started.fulfill(); return true
         }
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
         let upload = Task { try await client.call(.fileAttach(sessionID: "runtime", name: "a.txt", dataURL: "data:text/plain;base64,aGVsbG8=")) }
@@ -182,7 +213,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
         _ = try await client.call(.profilesGetAsset(name: "inbox-triage"))
@@ -231,7 +262,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -273,7 +304,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -328,7 +359,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -371,7 +402,7 @@ import XCTest
         let socket = BotScriptedSocket()
         socket.withholdReply = { ["subagent.list", "session.active_list"].contains($0["method"].text) }
         let client = BotClient(connection: connection(), configuration: configuration,
-                               rpcDeadline: .milliseconds(50)) { _, _ in socket }
+                               rpcDeadline: .milliseconds(50)) { _ in socket }
         var disconnects = 0
         client.onDisconnect = { _ in disconnects += 1 }
         try await client.connect()
@@ -410,7 +441,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
         let model = HermesCall.Model(id: "gpt-6", provider: "openai")
@@ -468,7 +499,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         for mode in BotPromptMode.allCases {
             _ = try await client.call(mode.call(runtime: "runtime", text: "one operation"))
@@ -501,7 +532,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -544,7 +575,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -568,7 +599,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -606,7 +637,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -651,7 +682,7 @@ import XCTest
             guard request["method"].text == "complete.path" else { return false }
             started.fulfill(); return true
         }
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
 
@@ -684,7 +715,7 @@ import XCTest
         socket.reply = { request in
             .object(["id": request["id"], "error": .object(["code": .number(4002), "message": .string("Provider unavailable")])])
         }
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
         // A global scope, another key and a free-form fast value have no typed shape.
@@ -730,7 +761,7 @@ import XCTest
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in BotScriptedSocket() }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in BotScriptedSocket() }
         try await client.connect()
         XCTAssertNil(client.serverVersion)
         var record = connection()
@@ -746,7 +777,7 @@ import XCTest
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in
             XCTFail("Must not open a socket")
             return BotScriptedSocket()
         }
@@ -766,7 +797,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         var record = connection(); record.installID = saved
-        let client = BotClient(connection: record, configuration: configuration) { _, _ in
+        let client = BotClient(connection: record, configuration: configuration) { _ in
             XCTFail("Must not open a socket")
             return BotScriptedSocket()
         }
@@ -795,7 +826,7 @@ import XCTest
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [BotHTTPFixture.self]
             var record = connection(); record.installID = stored
-            let client = BotClient(connection: record, configuration: configuration) { _, _ in BotScriptedSocket() }
+            let client = BotClient(connection: record, configuration: configuration) { _ in BotScriptedSocket() }
             try await client.connect()
             XCTAssertEqual(client.serverInstallID, live)
             client.close()
@@ -865,7 +896,7 @@ import XCTest
             default: XCTFail("Unexpected endpoint during connect"); return (404, .null)
             }
         }
-        let client = BotClient(connection: record, configuration: configuration) { _, _ in BotScriptedSocket() }
+        let client = BotClient(connection: record, configuration: configuration) { _ in BotScriptedSocket() }
         try await client.connect()
         let context = BotArtifactContext(connectionID: record.id, profile: "same-profile", sessionID: "tip", generation: 1)
         let value = BotJSON.object(["artifact": .string("fixture")])
@@ -896,7 +927,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         let received = expectation(description: "String-id request forwarded")
         client.onEvent = { frame in
@@ -926,7 +957,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _, _ in socket }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
         let members = ["default", "dev"].map { HermesCall.RoomMember(memberID: $0, profile: $0, handle: $0) }
@@ -1005,7 +1036,7 @@ private final class BotHTTPFixture: URLProtocol {
 }
 
 /// Lock ownership protects the queued scripted frames and exactly one waiting reader.
-private final class BotScriptedSocket: BotSocket, @unchecked Sendable {
+final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var frames: [URLSessionWebSocketTask.Message] = [
         .string(#"{"method":"event","params":{"type":"gateway.ready","payload":{"replay_epoch":"epoch"}}}"#)

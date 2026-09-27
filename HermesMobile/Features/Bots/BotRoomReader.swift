@@ -63,7 +63,7 @@ import Observation
         self.key = key; self.connection = connection; self.room = room
         self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
-        self.makeWire = makeWire ?? { BotClient(connection: $0) }; self.onExpired = onExpired
+        self.makeWire = makeWire ?? { BotClient(saved: $0, server: key.server) }; self.onExpired = onExpired
         if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
             log = recent; events = recent.events; hasEarlier = recent.earlierBoundary > 0
             hasRecentLog = true

@@ -238,7 +238,7 @@ import UIKit
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         self.reconnectDelays = reconnectDelays; self.historyCache = historyCache
         self.statusPollInterval = statusPollInterval
-        self.makeWire = makeWire ?? { BotClient(connection: $0) }
+        self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
             try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: connectionID, profile: profile)

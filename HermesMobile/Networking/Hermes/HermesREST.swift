@@ -1,9 +1,9 @@
 import Foundation
 
 /// Every HTTP request Hermex sends to a direct Hermes host. A case builds its
-/// method, path, query and JSON body against the connection's address; the
-/// caller's session sends it and reads the reply, so status handling stays with
-/// each operation.
+/// method, path, query and JSON body against the connection's address.
+/// `HermesConnection` sends them with its headers and cookie jar; only the connection
+/// screen's status probe sends `.status` bare. Each operation reads its own reply status.
 ///
 /// The push provisioning routes (#557) were verified against a 0.21.3 host on
 /// 2026-09-19: install takes `{identifier, enable, force, ref}` and has no profile
@@ -76,13 +76,17 @@ enum HermesREST: Equatable, Sendable {
         }
     }
 
-    /// The gateway socket's `ws`/`wss` URL, matching the address's scheme.
-    static func gatewayURL(base: URL) throws -> URL {
+    /// The gateway socket's upgrade: the `ws`/`wss` URL matching the address's scheme,
+    /// offering `hermes-gateway-v1` and the single-use ticket as subprotocols. A request's
+    /// `Sec-WebSocket-Protocol` header is where `URLSessionWebSocketTask` takes them from.
+    static func gatewayUpgrade(base: URL, ticket: String) throws -> URLRequest {
         guard var parts = URLComponents(url: base.appendingPathComponent("api/ws"), resolvingAgainstBaseURL: false)
         else { throw BotFailure.unsupported }
         parts.scheme = base.scheme == "https" ? "wss" : "ws"
         guard let url = parts.url else { throw BotFailure.invalidAddress }
-        return url
+        var request = URLRequest(url: url)
+        request.setValue("hermes-gateway-v1, hermes-gateway-ticket." + ticket, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        return request
     }
 
     private static func get(_ url: URL) -> URLRequest {
