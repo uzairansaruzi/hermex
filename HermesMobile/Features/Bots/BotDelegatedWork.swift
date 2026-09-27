@@ -240,10 +240,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         tail = nil
         errorMessage = nil
         do {
-            let reply = try await wire.call("subagent.tail", [
-                "session_id": .string(owner.runtime),
-                "subagent_id": .string(worker.subagentID)
-            ]) { [weak self] in
+            let reply = try await wire.call(.subagentTail(sessionID: owner.runtime, subagentID: worker.subagentID)) { [weak self] in
                 guard let self, self.owns(owner), self.current(worker.identity) != nil else { throw BotFailure.stale }
             }
             guard owns(owner), tailRequestID == requestID, current(worker.identity) != nil else { return }
@@ -292,10 +289,8 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
                 errorMessage = String(localized: "This worker is no longer active.")
                 return
             }
-            let reply = try await wire.call("subagent.interrupt", [
-                "session_id": .string(action.context.runtime),
-                "subagent_id": .string(action.worker.subagentID)
-            ]) { [weak self] in
+            let reply = try await wire.call(.subagentInterrupt(sessionID: action.context.runtime,
+                                                               subagentID: action.worker.subagentID)) { [weak self] in
                 guard let self, self.owns(action.context),
                       self.interruptingWorker == action.worker,
                       self.current(action.worker) != nil else { throw BotFailure.stale }
@@ -320,7 +315,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
 
     private func fetchWorkers(_ owner: Context) async throws -> [BotDelegatedWorker] {
         guard owns(owner) else { throw BotFailure.stale }
-        let reply = try await wire.call("subagent.list", ["session_id": .string(owner.runtime)]) { [weak self] in
+        let reply = try await wire.call(.subagentList(sessionID: owner.runtime)) { [weak self] in
             guard let self, self.owns(owner) else { throw BotFailure.stale }
         }
         guard owns(owner), let rows = reply["subagents"].list else { throw BotFailure.unsupported }

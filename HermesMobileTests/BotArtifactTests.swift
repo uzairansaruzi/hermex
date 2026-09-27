@@ -24,7 +24,8 @@ import XCTest
 
     func testDownloadURLBindsProfileAndDurableSessionAndDoesNotResolveOnPhone() throws {
         let scope = context()
-        let url = try BotEndpoint.artifactURL(base: address, path: "../files/a & b.pdf", context: scope)
+        let url = try XCTUnwrap(HermesREST.downloadArtifact(path: "../files/a & b.pdf", profile: scope.profile,
+                                                            sessionID: scope.sessionID).request(base: address).url)
         let parts = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
         XCTAssertEqual(url.host, address.host)
         XCTAssertEqual(url.path, "/api/fs/download")
@@ -38,7 +39,9 @@ import XCTest
         for path in ["https://other.example/a.pdf", "//other.example/a.pdf", "data:text/plain;base64,YQ==", "file://other/server/a.pdf", ""] {
             XCTAssertThrowsError(try BotArtifactReference.path(path, address: address))
         }
-        let url = try BotEndpoint.artifactURL(base: address, path: "https://bot.example/api/fs/download?path=a.pdf&profile=other&session_id=other&token=secret", context: context())
+        let url = try XCTUnwrap(HermesREST.downloadArtifact(
+            path: "https://bot.example/api/fs/download?path=a.pdf&profile=other&session_id=other&token=secret",
+            profile: "inbox-triage", sessionID: "compression-tip").request(base: address).url)
         XCTAssertFalse(url.absoluteString.contains("secret"))
         XCTAssertFalse(url.absoluteString.contains("other"))
     }
@@ -57,21 +60,23 @@ import XCTest
         configuration.protocolClasses = [BotArtifactHTTPFixture.self]
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel(); BotArtifactHTTPFixture.handler = nil }
-        let url = try BotEndpoint.artifactURL(base: address, path: "report.pdf", context: context())
+        let request = try HermesREST.downloadArtifact(path: "report.pdf", profile: "inbox-triage", sessionID: "compression-tip")
+            .request(base: address)
+        let url = request.url
         let pdf = Data("%PDF-fixture".utf8)
         BotArtifactHTTPFixture.handler = { request in
             XCTAssertEqual(request.url, url)
             return (200, ["Content-Type": "application/pdf"], pdf)
         }
-        let bytes = try await BotEndpoint.downloadArtifact(session: session, url: url)
+        let bytes = try await BotArtifactDownload.data(session: session, request: request)
         XCTAssertEqual(bytes, pdf)
         for status in [401, 403, 404, 302] {
             BotArtifactHTTPFixture.handler = { _ in (status, [:], Data()) }
-            do { _ = try await BotEndpoint.downloadArtifact(session: session, url: url); XCTFail("Expected rejection") }
+            do { _ = try await BotArtifactDownload.data(session: session, request: request); XCTFail("Expected rejection") }
             catch { XCTAssertFalse(error is CancellationError) }
         }
         BotArtifactHTTPFixture.handler = { _ in (200, ["Content-Length": "\(BotArtifactBuffer.maximumBytes + 1)"], Data()) }
-        do { _ = try await BotEndpoint.downloadArtifact(session: session, url: url); XCTFail("Expected size rejection") }
+        do { _ = try await BotArtifactDownload.data(session: session, request: request); XCTFail("Expected size rejection") }
         catch { XCTAssertTrue(error is BotArtifactFailure) }
     }
 
@@ -92,7 +97,8 @@ import XCTest
             BotArtifactHTTPFixture.startHook = nil
             BotArtifactHTTPFixture.stopHook = nil
         }
-        let task = Task { try await BotEndpoint.downloadArtifact(session: session, url: address.appendingPathComponent("api/fs/download")) }
+        let request = URLRequest(url: address.appendingPathComponent("api/fs/download"))
+        let task = Task { try await BotArtifactDownload.data(session: session, request: request) }
         await fulfillment(of: [started], timeout: 2)
         task.cancel()
         do { _ = try await task.value; XCTFail("Cancelled download returned bytes") }

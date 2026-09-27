@@ -259,8 +259,8 @@ import XCTest
     func connect() async throws {}
     func close() {}
 
-    func call(_ method: String, _ params: [String: BotJSON],
-              validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        let method = call.method, params = try call.params()
         try validateDispatch?()
         calls.append(Call(method: method, params: params))
         guard let handler else { throw BotFailure.unsupported }

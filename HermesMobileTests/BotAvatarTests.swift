@@ -142,7 +142,8 @@ func botAvatarDataURL(side: Int) -> String {
     var calls: [(String, [String: BotJSON])] = []
     func connect() async throws {}
     func close() {}
-    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        let method = call.method, params = try call.params()
         try validateDispatch?()
         calls.append((method, params))
         guard method == "profiles.get_asset" else { throw BotFailure.unsupported }

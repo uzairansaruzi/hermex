@@ -375,9 +375,10 @@ final class BotConnectionVersionTests: XCTestCase {
         if let failure { throw failure }
         try connection?.requireSameInstall(serverInstallID)
     }
-    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        _ = try call.params()
         try validateDispatch?(); calls += 1
-        XCTAssertEqual(method, "profiles.list")
+        XCTAssertEqual(call.method, "profiles.list")
         return .object(["profiles": .array([])])
     }
     func close() { closeCount += 1 }

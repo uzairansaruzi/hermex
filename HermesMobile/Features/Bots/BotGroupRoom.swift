@@ -153,11 +153,9 @@ struct BotRoomLog {
     }
 }
 
-/// Typed room reads, participation and lifecycle commands; never peer administration.
+/// Room identifier, text and name rules shared by the room screens and
+/// `HermesCall`'s room admission.
 enum BotRoomRPC {
-    static let methods = ["groups.capabilities", "groups.list", "groups.state", "groups.log",
-                          "groups.send", "groups.stop", "groups.approve", "groups.retry",
-                          "groups.create", "groups.rename", "groups.disband"]
     static func validID(_ id: String) -> Bool {
         id.range(of: "\\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\\z", options: .regularExpression) != nil
     }
@@ -166,72 +164,6 @@ enum BotRoomRPC {
     }
     static func validName(_ name: String) -> Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.unicodeScalars.count <= 200
-    }
-    static func validate(_ method: String, _ params: [String: BotJSON]) throws {
-        guard method.hasPrefix("groups.") else { return }
-        let allowed: Set<String>
-        switch method {
-        case "groups.capabilities": allowed = []
-        case "groups.list": allowed = ["limit", "offset", "include_disbanded"]
-        case "groups.state": allowed = ["room_id", "include_disbanded"]
-        case "groups.log": allowed = ["room_id", "since_seq", "limit"]
-        case "groups.send": allowed = ["room_id", "event_id", "payload"]
-        case "groups.stop": allowed = ["room_id", "cancel_id"]
-        case "groups.approve": allowed = ["room_id", "member_id", "task_id", "execution_generation", "choice", "request_id"]
-        case "groups.retry": allowed = ["room_id", "task_id"]
-        case "groups.create": allowed = ["room_id", "name", "members"]
-        case "groups.rename": allowed = ["room_id", "event_id", "name"]
-        case "groups.disband": allowed = ["room_id"]
-        default: throw BotFailure.unsupported
-        }
-        guard Set(params.keys).isSubset(of: allowed) else { throw BotFailure.unsupported }
-        if method != "groups.capabilities" && method != "groups.list" {
-            guard let id = params["room_id"]?.text, validID(id) else { throw BotFailure.unsupported }
-        }
-        switch method {
-        case "groups.create":
-            guard let name = params["name"]?.text, validName(name),
-                  let members = params["members"]?.list, (2...6).contains(members.count) else { throw BotFailure.unsupported }
-            var ids = Set<String>(), profiles = Set<String>(), handles: Set<String> = ["all", "everyone"]
-            for member in members {
-                guard let fields = member.fields,
-                      Set(fields.keys).isSubset(of: ["member_id", "profile", "handle", "display_name"]),
-                      let id = member["member_id"].text, validID(id), ids.insert(id.lowercased()).inserted,
-                      let profile = member["profile"].text, validID(profile), profiles.insert(profile.lowercased()).inserted,
-                      let handle = member["handle"].text, validID(handle), handles.insert(handle.lowercased()).inserted,
-                      id == profile, handle == profile || (profile == "default" && handle == "hermes")
-                else { throw BotFailure.unsupported }
-                if let display = fields["display_name"] {
-                    guard let text = display.text, text.unicodeScalars.count <= 200 else { throw BotFailure.unsupported }
-                }
-            }
-        case "groups.rename":
-            guard let name = params["name"]?.text, validName(name),
-                  let id = params["event_id"]?.text, validID(id) else { throw BotFailure.unsupported }
-        case "groups.send":
-            guard let eventID = params["event_id"]?.text, validID(eventID),
-                  let payload = params["payload"]?.fields, Set(payload.keys) == ["text", "thread_id"],
-                  let text = payload["text"]?.text, validText(text),
-                  let thread = payload["thread_id"]?.text, validID(thread) else { throw BotFailure.unsupported }
-        case "groups.stop":
-            if let cancel = params["cancel_id"] {
-                guard let id = cancel.text, validID(id) else { throw BotFailure.unsupported }
-            }
-        case "groups.approve":
-            guard let choice = params["choice"]?.text, ["once", "deny"].contains(choice),
-                  let generation = params["execution_generation"]?.integer, generation > 0 else { throw BotFailure.unsupported }
-            for key in ["member_id", "task_id", "request_id"] {
-                guard let id = params[key]?.text, validID(id) else { throw BotFailure.unsupported }
-            }
-        case "groups.retry":
-            guard let id = params["task_id"]?.text, validID(id) else { throw BotFailure.unsupported }
-        default: break
-        }
-        for key in ["limit", "offset", "since_seq"] where params[key] != nil {
-            guard let n = params[key]?.integer, n >= (key == "limit" ? 1 : 0),
-                  key != "limit" || n <= 500 else { throw BotFailure.unsupported }
-        }
-        if let value = params["include_disbanded"], value.flag == nil { throw BotFailure.unsupported }
     }
 }
 

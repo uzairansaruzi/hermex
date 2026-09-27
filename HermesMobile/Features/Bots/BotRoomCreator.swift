@@ -13,7 +13,7 @@ import Observation
     private(set) var busy = false
     private(set) var message: String?
     private(set) var created: BotGroupRoom?
-    private(set) var attempt: [String: BotJSON]?
+    private(set) var attempt: HermesCall.RoomCreation?
     private var wire: (any BotTransport)?
     private var generation = UUID()
     private let store: BotConnectionStore
@@ -47,15 +47,13 @@ import Observation
         guard !locked else { return }
         selected.removeAll { $0.id == bot.id }
     }
-    static func member(_ bot: BotProfile) -> BotJSON {
+    static func member(_ bot: BotProfile) -> HermesCall.RoomMember {
         // profiles.list at the compatibility pin exposes no separate handle.
-        var fields: [String: BotJSON] = ["member_id": .string(bot.id), "profile": .string(bot.id), "handle": .string(bot.id)]
-        if let displayName = bot.displayName { fields["display_name"] = .string(displayName) }
-        return .object(fields)
+        HermesCall.RoomMember(memberID: bot.id, profile: bot.id, handle: bot.id, displayName: bot.displayName)
     }
     var preview: BotGroupRoom {
         BotGroupRoom(.object(["room_id": .string("preview"), "name": .string(name),
-                              "members": .array(selected.map(Self.member))]))!
+                              "members": .array(selected.map { Self.member($0).json })]))!
     }
 
     func create() async {
@@ -71,20 +69,19 @@ import Observation
         do {
             try check(owner, client)
             try await client.connect(); try check(owner, client)
-            let caps = BotRoomCapabilities(try await client.call("groups.capabilities", [:]))
+            let caps = BotRoomCapabilities(try await client.call(.groupsCapabilities))
             try check(owner, client)
             guard caps.enabled, caps.methods.contains("groups.create"), caps.authority != nil else { throw BotFailure.unsupported }
             authority = caps.authority
-            let params = attempt ?? ["room_id": .string(UUID().uuidString), "name": .string(name),
-                                     "members": .array(selected.map(Self.member))]
-            try BotRoomRPC.validate("groups.create", params)
-            let result = try await client.call("groups.create", params, validateDispatch: { [weak self] in
+            let creation = attempt ?? HermesCall.RoomCreation(roomID: UUID().uuidString, name: name,
+                                                              members: selected.map(Self.member))
+            let result = try await client.call(.groupsCreate(creation), validateDispatch: { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner, client)
-                self.attempt = params; dispatched = true
+                self.attempt = creation; dispatched = true
             })
             try check(owner, client)
-            guard let room = BotGroupRoom(result["room"]), room.id == params["room_id"]?.text,
+            guard let room = BotGroupRoom(result["room"]), room.id == creation.roomID,
                   !room.disbanded, room.authority == caps.authority else { throw BotFailure.unsupported }
             created = room
         } catch {
@@ -98,13 +95,13 @@ import Observation
                         // Another client can rename the room between a lost create
                         // reply and retry. Its permanent ID and frozen members still
                         // identify our successful creation; the name may differ.
-                        if let attempt, let members = attempt["members"]?.list,
-                           let room = rooms.first(where: { $0.id == attempt["room_id"]?.text }),
+                        if let attempt,
+                           let room = rooms.first(where: { $0.id == attempt.roomID }),
                            room.authority == authority, authority != nil,
-                           room.members.count == members.count,
-                           zip(room.members, members).allSatisfy({ actual, expected in
-                               actual.id == expected["member_id"].text && actual.profile == expected["profile"].text
-                                   && actual.handle == expected["handle"].text
+                           room.members.count == attempt.members.count,
+                           zip(room.members, attempt.members).allSatisfy({ actual, expected in
+                               actual.id == expected.memberID && actual.profile == expected.profile
+                                   && actual.handle == expected.handle
                            }) {
                             created = room; message = nil
                         }
@@ -132,7 +129,7 @@ enum BotRoomList {
     @MainActor static func read(_ client: any BotTransport, check: () throws -> Void) async throws -> [BotGroupRoom] {
         var rooms: [BotGroupRoom] = [], offset = 0
         while true {
-            let page = try await client.call("groups.list", ["limit": .number(500), "offset": .number(Double(offset))])
+            let page = try await client.call(.groupsList(offset: offset))
             try check()
             guard let rows = page["rooms"].list else { throw BotFailure.unsupported }
             for row in rows {

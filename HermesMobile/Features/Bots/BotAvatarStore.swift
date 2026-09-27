@@ -53,10 +53,7 @@ import UIKit
         for profile in profiles where wanted.contains(profile.id) {
             let key = Key(connectionID: connectionID, profile: profile.id)
             if let revision = entries[key]?.revision, revision == profile.lookRevision { continue }
-            guard let reply = try? await transport.call(
-                "profiles.get_asset", ["name": .string(profile.id), "asset": .string("avatar")],
-                validateDispatch: validateDispatch
-            ),
+            guard let reply = try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch),
                   !Task.isCancelled else { return }
             let image = await Task.detached(priority: .utility) { Self.decode(reply) }.value
             guard !Task.isCancelled else { return }

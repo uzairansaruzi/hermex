@@ -134,7 +134,7 @@ final class BotMentionTests: XCTestCase {
             model.editDraft(original)
             let sent = original + model.mentions.annotation(for: original)
             await model.submit(try XCTUnwrap(model.preparePrompt(mode)))
-            let calls = wire.calls.filter { $0.0 == mode.method }
+            let calls = wire.calls.filter { $0.0 == mode.call(runtime: "", text: "").method }
             XCTAssertEqual(calls.count, 1)
             XCTAssertEqual(calls.first?.1["text"], .string(sent))
             if mode == .send || mode == .queue { XCTAssertEqual(calls.first?.1["queued"], .bool(true)) }

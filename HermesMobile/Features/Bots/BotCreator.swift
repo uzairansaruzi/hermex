@@ -164,7 +164,7 @@ enum BotProfileName {
             try ensureCurrentConnection()
             try await client.connect()
             try ensureOwner(owner, client)
-            if let options = try? await client.call("model.options", ["include_unconfigured": .bool(false)], validateDispatch: validate(owner)) {
+            if let options = try? await client.call(.configuredModelOptions, validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
                 modelGroups = BotModelCatalog(options).groups
             }
@@ -224,29 +224,27 @@ enum BotProfileName {
     private func createProfile(_ client: any BotTransport, owner: Int) async throws {
         if outcomes[.profile] == .done { return }
         if outcomes[.profile] == .uncertain {
-            let roster = try await client.call("profiles.list", ["include_sessions": .bool(false)], validateDispatch: validate(owner))
+            let roster = try await client.call(.profilesList(includeSessions: false), validateDispatch: validate(owner))
             try ensureOwner(owner, client)
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             if rows.contains(where: { $0["name"].text == name }) { outcomes[.profile] = .done; return }
         }
-        var params: [String: BotJSON] = ["name": .string(name)]
+        var profile = HermesCall.NewProfile(name: name, sharesCredentials: draft.sharesCredentials)
         let role = draft.role.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !role.isEmpty { params["description"] = .string(role) }
+        if !role.isEmpty { profile.description = role }
         if let source {
-            params["clone_from"] = .string(source.id)
+            profile.cloneFrom = source.id
         } else {
             if !draft.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                params["soul"] = .string(draft.instructions)
+                profile.soul = draft.instructions
             }
-            if draft.skipsBundledSkills { params["no_skills"] = .bool(true) }
+            profile.skipsBundledSkills = draft.skipsBundledSkills
         }
         if let model = draft.model, let provider = model.providerID {
-            params["model"] = .string(model.id); params["provider"] = .string(provider)
+            profile.model = HermesCall.Model(id: model.id, provider: provider)
         }
-        if draft.sharesCredentials { params["share_auth"] = .bool(true) }
-        else { params["mirror_credentials"] = .bool(false) }
         do {
-            let reply = try await client.call("profiles.create", params, validateDispatch: validate(owner))
+            let reply = try await client.call(.profilesCreate(profile), validateDispatch: validate(owner))
             try ensureOwner(owner, client)
             guard reply["ok"].flag == true else { throw BotFailure.unsupported }
             outcomes[.profile] = .done
@@ -266,11 +264,8 @@ enum BotProfileName {
         var look = draft.appearance
         look.title = draft.title
         do {
-            let reply = try await client.call("profiles.configure", [
-                "name": .string(name),
-                "ui_meta": .object(["hermes-bots": .object(look.merging(into: [:]))]),
-                "ui_meta_expected_revisions": .object(["hermes-bots": .number(0)])
-            ], validateDispatch: validate(owner))
+            let reply = try await client.call(.profilesConfigure(.init(name: name, look: .init(fields: look.merging(into: [:]), revision: 0))),
+                                              validateDispatch: validate(owner))
             try ensureOwner(owner, client)
             outcomes[.look] = reply["applied"]["ui_meta"].flag == true
                 ? .done : .failed(String(localized: "The look was not saved. Edit the bot to set it."))
@@ -285,17 +280,13 @@ enum BotProfileName {
     private func ensureChat(_ client: any BotTransport, owner: Int) async throws {
         if outcomes[.chat] == .done { return }
         if try await findChat(client, owner: owner) { outcomes[.chat] = .done; return }
-        let created = try await client.call("session.create", [
-            "profile": .string(name), "title": .string(BotConversation.canonicalTitle),
-            "hidden": .bool(true), "follow_profile_config": .bool(true)
-        ], validateDispatch: validate(owner))
+        let created = try await client.call(.sessionCreate(profile: name), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard let runtime = created["session_id"].text, !runtime.isEmpty else { throw BotFailure.unsupported }
         do {
             // The created row is lazy; the title write persists it so the roster and
             // the phone's exact-title lookup find it before any prompt.
-            _ = try await client.call("session.title", ["session_id": .string(runtime), "title": .string(BotConversation.canonicalTitle)],
-                                      validateDispatch: validate(owner))
+            _ = try await client.call(.sessionTitle(sessionID: runtime), validateDispatch: validate(owner))
             try ensureOwner(owner, client)
         } catch BotFailure.rejected(4022) {
             // Another writer took the title in between; that chat is the bot's.
@@ -306,9 +297,7 @@ enum BotProfileName {
     }
 
     private func findChat(_ client: any BotTransport, owner: Int) async throws -> Bool {
-        let lookup = try await client.call("session.list", [
-            "profile": .string(name), "title": .string(BotConversation.canonicalTitle), "include_hidden": .bool(true)
-        ], validateDispatch: validate(owner))
+        let lookup = try await client.call(.sessionList(profile: name), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard let rows = lookup["sessions"].list else { throw BotFailure.unsupported }
         return !rows.isEmpty

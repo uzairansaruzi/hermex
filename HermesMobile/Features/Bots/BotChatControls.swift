@@ -121,12 +121,13 @@ import Observation
         let revision = readRevision
         isLoading = true
         defer { if context == owner && revision == readRevision { isLoading = false } }
-        let params = parameters(owner)
-        for method in ["model.options", "session.control.read"] where !unavailable.contains(method) {
+        let reads: [HermesCall] = [.modelOptions(sessionID: owner.runtime, profile: owner.profile),
+                                   .sessionControlRead(sessionID: owner.runtime, profile: owner.profile)]
+        for call in reads where !unavailable.contains(call.method) {
             do {
-                let result = try await wire.call(method, params)
+                let result = try await wire.call(call)
                 guard context == owner, revision == readRevision, !Task.isCancelled else { return }
-                if method == "model.options" {
+                if case .modelOptions = call {
                     guard result["providers"].list != nil else { throw BotFailure.unsupported }
                     catalog = BotModelCatalog(result)
                     if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
@@ -138,7 +139,7 @@ import Observation
                 }
             } catch {
                 guard context == owner, revision == readRevision, !Task.isCancelled else { return }
-                if isUnsupported(error) { unavailable.insert(method) }
+                if isUnsupported(error) { unavailable.insert(call.method) }
                 else { errorMessage = error.localizedDescription }
             }
         }
@@ -158,8 +159,8 @@ import Observation
 
     func apply(_ action: Action, confirmed: Bool = false) async {
         guard action.context == context, let wire, allowed(action.change), !consumed.contains(action.id) else { return }
-        var params = parameters(action.context)
-        let method: String
+        let (runtime, profile) = (action.context.runtime, action.context.profile)
+        let call: HermesCall
         switch action.change {
         case .model(let option):
             guard action.expectedModel == catalog.active else {
@@ -168,24 +169,17 @@ import Observation
             guard let value = BotModelCatalog.sessionModelValue(option) else {
                 errorMessage = String(localized: "This model identifier cannot be safely sent to this host."); return
             }
-            method = "config.set"
-            params["key"] = .string("model"); params["value"] = .string(value)
-            params["scope"] = .string("session")
-            params["confirm_expensive_model"] = .bool(confirmed)
+            call = .configSet(sessionID: runtime, profile: profile, setting: .model(value: value, confirmExpensive: confirmed))
         case .effort(let value):
-            method = "config.set"
-            params["key"] = .string("reasoning"); params["value"] = .string(value)
-            params["scope"] = .string("session")
+            call = .configSet(sessionID: runtime, profile: profile, setting: .reasoning(value))
         case .fast(let enabled):
-            method = "config.set"
-            params["key"] = .string("fast"); params["value"] = .string(enabled ? "fast" : "normal")
-            params["scope"] = .string("session")
+            call = .configSet(sessionID: runtime, profile: profile, setting: .fast(enabled))
         case .workspace(let path):
             guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            method = "session.cwd.set"; params["cwd"] = .string(path)
+            call = .sessionCwdSet(sessionID: runtime, profile: profile, cwd: path)
         case .control(let control):
             guard let name = control.action else { return }
-            method = "session.control"; params["action"] = .string(name)
+            call = .sessionControl(sessionID: runtime, profile: profile, action: name)
         }
         errorMessage = nil; confirmation = nil; isApplying = true; activeAction = action.id
         // A read started before this write must not overwrite its authoritative response.
@@ -193,12 +187,12 @@ import Observation
         var dispatched = false
         defer { if activeAction == action.id { isApplying = false; activeAction = nil } }
         do {
-            let result = try await wire.call(method, params, validateDispatch: { [weak self] in
+            let result = try await wire.call(call, validateDispatch: { [weak self] in
                 guard let self, self.context == action.context, self.activeAction == action.id,
                       !Task.isCancelled else { throw BotFailure.stale }
                 if case .workspace = action.change, !self.idle { throw BotFailure.stale }
                 if case .control(let control) = action.change, !self.controls.contains(control) { throw BotFailure.stale }
-                if method == "config.set", self.catalog.active != action.expectedModel { throw BotFailure.stale }
+                if case .configSet = call, self.catalog.active != action.expectedModel { throw BotFailure.stale }
                 dispatched = true
                 self.consumed.insert(action.id)
             })
@@ -230,7 +224,7 @@ import Observation
             }
         } catch {
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
-            if isUnsupported(error) { unavailable.insert(method) }
+            if isUnsupported(error) { unavailable.insert(call.method) }
             if case BotSettingFailure.rejected = error { errorMessage = error.localizedDescription }
             else if !dispatched || isUnsupported(error) { errorMessage = error.localizedDescription }
             else { errorMessage = BotSettingFailure.unknownOutcome.localizedDescription }
@@ -245,9 +239,6 @@ import Observation
         case .workspace: return mayChangeWorkspace
         case .control(let control): return mayControl && controls.contains(control) && control.action != nil
         }
-    }
-    private func parameters(_ owner: Context) -> [String: BotJSON] {
-        ["session_id": .string(owner.runtime), "profile": .string(owner.profile)]
     }
     private func isUnsupported(_ error: Error) -> Bool {
         if let failure = error as? BotFailure { return failure == .unsupported || failure == .rejected(-32601) }

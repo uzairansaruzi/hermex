@@ -293,13 +293,13 @@ import Vision
             XCTAssertEqual(model.draft, accepted ? "" : "guide once")
             XCTAssertFalse(model.uncertainSend)
             XCTAssertEqual(model.connectionState, .connected)
-            let calls = wire.calls.filter { $0.0 == mode.method }
+            let calls = wire.calls.filter { $0.0 == mode.call(runtime: "", text: "").method }
             XCTAssertEqual(calls.count, 1)
             XCTAssertEqual(calls.first?.1["session_id"], .string("runtime"))
             XCTAssertEqual(calls.first?.1["text"], .string("guide once"))
             XCTAssertEqual(calls.first?.1["queued"], mode == .queue ? .bool(true) : nil)
             await model.submit(action)
-            XCTAssertEqual(wire.calls.filter { $0.0 == mode.method }.count, 1)
+            XCTAssertEqual(wire.calls.filter { $0.0 == mode.call(runtime: "", text: "").method }.count, 1)
             model.suspend()
         }
     }
@@ -310,7 +310,7 @@ import Vision
             let model = make(wire); await model.recover(); model.editDraft("keep")
             let action = try XCTUnwrap(model.preparePrompt(mode))
             wire.beforeDispatch = { method in
-                guard method == mode.method else { return }
+                guard method == mode.call(runtime: "", text: "").method else { return }
                 wire.running = false
                 wire.onEvent?(self.typed(1, "message.complete"))
             }
@@ -1526,7 +1526,8 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var connectCount = 0
     func connect() async throws { connectCount += 1 }
     func close() {}
-    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        let method = call.method, params = try call.params()
         beforeDispatch?(method)
         try validateDispatch?()
         calls.append((method, params))

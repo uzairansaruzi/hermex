@@ -29,16 +29,13 @@ struct BotRoomAction: Equatable, Identifiable {
         } else { approval = nil }
     }
 
-    func parameters(roomID: String, choice: BotApprovalRequest.Choice?) -> [String: BotJSON]? {
+    /// A retry without a choice, or an approval answered with a choice the host offered.
+    func call(roomID: String, choice: BotApprovalRequest.Choice?) -> HermesCall? {
         guard let task = id.task else { return nil }
-        var params: [String: BotJSON] = ["room_id": .string(roomID), "task_id": .string(task)]
-        if isRetry, choice == nil { return params }
+        if isRetry, choice == nil { return .groupsRetry(roomID: roomID, taskID: task) }
         guard let approval, let choice, approval.choices.contains(choice),
               let member = id.member, let generation = id.generation, let request = id.request else { return nil }
-        params["member_id"] = .string(member)
-        params["execution_generation"] = .number(Double(generation))
-        params["request_id"] = .string(request)
-        params["choice"] = .string(choice.rawValue)
-        return params
+        return .groupsApprove(roomID: roomID, memberID: member, taskID: task, executionGeneration: generation,
+                              requestID: request, choice: choice)
     }
 }

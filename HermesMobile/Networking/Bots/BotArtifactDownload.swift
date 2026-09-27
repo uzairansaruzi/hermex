@@ -23,22 +23,10 @@ final class BotArtifactRedirectGuard: NSObject, URLSessionTaskDelegate, @uncheck
     }
 }
 
-extension BotEndpoint {
-    static func artifactURL(base: URL, path: String, context: BotArtifactContext) throws -> URL {
-        guard !context.profile.isEmpty, !context.sessionID.isEmpty else { throw BotArtifactFailure.invalidReference }
-        let path = try BotArtifactReference.path(path, address: base)
-        var parts = URLComponents(url: base.appendingPathComponent("api/fs/download"), resolvingAgainstBaseURL: false)
-        parts?.queryItems = [URLQueryItem(name: "path", value: path),
-                             URLQueryItem(name: "profile", value: context.profile),
-                             URLQueryItem(name: "session_id", value: context.sessionID)]
-        guard let url = parts?.url else { throw BotArtifactFailure.invalidReference }
-        return url
-    }
-
-    /// Uses the Bot client's authenticated session. No webui endpoint or shared URLSession.
-    static func downloadArtifact(session: URLSession, url: URL) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+/// Reads one artifact with the Bot client's authenticated session, from a
+/// `HermesREST.downloadArtifact` request. No webui endpoint or shared URLSession.
+enum BotArtifactDownload {
+    static func data(session: URLSession, request: URLRequest) async throws -> Data {
         let (bytes, response) = try await session.bytes(for: request, delegate: BotArtifactRedirectGuard())
         defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw BotArtifactFailure.unavailable }

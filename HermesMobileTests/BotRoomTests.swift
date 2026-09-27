@@ -168,9 +168,9 @@ import XCTest
 
     func testCapabilityGateRequiresDriverAndEveryReadMethod() {
         XCTAssertTrue(BotRoomCapabilities(RoomFixture.capabilities).enabled)
-        XCTAssertFalse(BotRoomCapabilities(.object(["driver": .bool(false), "methods": .array(BotRoomRPC.methods.map(BotJSON.string))])).enabled)
+        XCTAssertFalse(BotRoomCapabilities(.object(["driver": .bool(false), "methods": .array(RoomFixture.methods.map(BotJSON.string))])).enabled)
         for missing in ["groups.list", "groups.state", "groups.log"] {
-            XCTAssertFalse(BotRoomCapabilities(.object(["driver": .bool(true), "methods": .array(BotRoomRPC.methods.filter { $0 != missing }.map(BotJSON.string))])).enabled)
+            XCTAssertFalse(BotRoomCapabilities(.object(["driver": .bool(true), "methods": .array(RoomFixture.methods.filter { $0 != missing }.map(BotJSON.string))])).enabled)
         }
         XCTAssertFalse(BotRoomCapabilities(.null).enabled)
     }
@@ -680,7 +680,11 @@ enum RoomFixture {
                  "counts": .object(["running": .number(Double(running)), "stopping": .number(Double(stopping))]),
                  "pending_actions": .array(actions)])
     }
-    static let capabilities = BotJSON.object(["driver": .bool(true), "methods": .array(BotRoomRPC.methods.map(BotJSON.string)),
+    /// Every room method the host advertises that Hermex uses.
+    static let methods = ["groups.capabilities", "groups.list", "groups.state", "groups.log",
+                          "groups.send", "groups.stop", "groups.approve", "groups.retry",
+                          "groups.create", "groups.rename", "groups.disband"]
+    static let capabilities = BotJSON.object(["driver": .bool(true), "methods": .array(RoomFixture.methods.map(BotJSON.string)),
         "authority_gateway_id": .string("fixture-install"), "max_log_limit": .number(100)])
     static func room(latest: Int) -> BotJSON {
         .object(["room_id": .string("fixture-room"), "name": .string("Comms"), "latest_seq": .number(Double(latest)),
@@ -731,7 +735,8 @@ enum RoomFixture {
     private var held: CheckedContinuation<BotJSON, Never>?
     func connect() async throws { if let connectFailure { throw connectFailure } }
     func close() { closed += 1 }
-    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        let method = call.method, params = try call.params()
         if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.create", "groups.rename", "groups.disband"].contains(method) {
             await beforeWrite?()
             try validateDispatch?()

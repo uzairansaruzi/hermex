@@ -2,8 +2,6 @@ import Foundation
 import Observation
 
 @MainActor @Observable final class BotConversation {
-    /// The exact title of a bot's one canonical chat, as Desktop names it.
-    static let canonicalTitle = "Bot Chat"
     enum ConnectionState { case disconnected, recovering, connected }
     enum TurnState { case unknown, idle, submitting, running, needsAttention, stopping, uncertain, interrupted }
     /// What the Bot Chat title face shows for the current turn (#757). Waiting and failed
@@ -408,7 +406,7 @@ import Observation
     func loadSlashCatalog() async {
         guard connectionState == .connected, !slashCatalogLoaded, let runtime else { return }
         let owner = generation
-        guard let reply = try? await request("commands.catalog", ["session_id": .string(runtime)], owner: owner),
+        guard let reply = try? await request(.commandsCatalog(sessionID: runtime), owner: owner),
               generation == owner else { return }
         slashCatalogLoaded = true
         slashSkills = BotSlashCatalog.skills(from: reply)
@@ -443,11 +441,8 @@ import Observation
 
     private func completeFileMatches(for query: String) async throws -> [ComposerFilePathSearch.Match] {
         guard connectionState == .connected, let runtime else { throw BotFailure.stale }
-        let reply = try await request("complete.path", [
-            "word": .string(BotFilePathSearch.word(for: query)),
-            "session_id": .string(runtime),
-            "profile": .string(profile.id)
-        ], owner: generation)
+        let reply = try await request(.completePath(word: BotFilePathSearch.word(for: query), sessionID: runtime,
+                                                    profile: profile.id), owner: generation)
         return BotFilePathSearch.matches(from: reply)
     }
 
@@ -475,10 +470,7 @@ import Observation
         reactingRowIDs.insert(rowID)
         defer { if generation == owner { reactingRowIDs.remove(rowID) } }
         do {
-            let reply = try await request("message.react", [
-                "session_id": .string(runtime), "row_id": .number(Double(rowID)),
-                "emoji": intent.map(BotJSON.string) ?? .null
-            ], owner: owner) { [weak self] in
+            let reply = try await request(.messageReact(sessionID: runtime, rowID: rowID, emoji: intent), owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
                 guard self.runtime == runtime else { throw BotFailure.stale }
@@ -547,7 +539,7 @@ import Observation
     func refreshProfile() async {
         guard connectionState == .connected else { return }
         let owner = generation
-        guard let roster = try? await request("profiles.list", ["include_sessions": .bool(false)], owner: owner),
+        guard let roster = try? await request(.profilesList(includeSessions: false), owner: owner),
               let rows = roster["profiles"].list else { return }
         let profiles = rows.compactMap(BotProfile.init)
         mentions = BotMentions(roster: profiles, excluding: profile.id)
@@ -580,7 +572,7 @@ import Observation
             if uncertainSend { try await releasePromptMarker(owner: owner) }
             try await wire.connect()
             try check(owner)
-            let lookup = try await request("session.list", ["profile": .string(profile.id), "title": .string(Self.canonicalTitle), "include_hidden": .bool(true)], owner: owner)
+            let lookup = try await request(.sessionList(profile: profile.id), owner: owner)
             guard let rows = lookup["sessions"].list else { throw BotFailure.unsupported }
             guard rows.count == 1 else { throw BotFailure.missingChat }
             guard let foundRoot = rows[0]["id"].text, !foundRoot.isEmpty,
@@ -599,7 +591,7 @@ import Observation
                 discardRecentTranscript()
                 recentOwner = historyCache?.recent.begin(recentKey)
             }
-            let first = try await request("session.resume", resumeParams(), owner: owner)
+            let first = try await request(resume(), owner: owner)
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
@@ -608,12 +600,12 @@ import Observation
             if replayWasReset { sequence = 0 }
             runtime = foundRuntime; epoch = foundEpoch
             let replayRequestsRevision = requestRevision
-            let replay = try await request("session.events.since", ["session_id": .string(foundRuntime), "last_seen": .number(Double(sequence))], owner: owner)
+            let replay = try await request(.sessionEventsSince(sessionID: foundRuntime, lastSeen: sequence), owner: owner)
             try reconcileReplay(replay, requestsRevision: replayRequestsRevision)
             let requestsRevision = requestRevision
             let clockRevision = clockRevision
             let reactionRevision = reactionRevision
-            let current = try await request("session.resume", resumeParams(), owner: owner)
+            let current = try await request(resume(), owner: owner)
             try applySnapshot(current, full: true, requestsRevision: requestsRevision, clockRevision: clockRevision,
                               reactionRevision: reactionRevision)
             try check(owner)
@@ -642,19 +634,17 @@ import Observation
         }
     }
 
-    private func resumeParams(full: Bool = true) -> [String: BotJSON] {
-        var params: [String: BotJSON] = ["profile": .string(profile.id), "session_id": .string(tip ?? ""), "close_on_disconnect": .bool(false)]
-        if !full { params["omit_messages"] = .bool(true) }
-        return params
+    private func resume(full: Bool = true) -> HermesCall {
+        .sessionResume(profile: profile.id, sessionID: tip ?? "", omitMessages: !full)
     }
 
     private func check(_ owner: Int) throws {
         guard generation == owner, !Task.isCancelled else { throw BotFailure.stale }
     }
 
-    private func request(_ method: String, _ params: [String: BotJSON], owner: Int, validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
+    private func request(_ call: HermesCall, owner: Int, validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
         try check(owner)
-        let reply = try await wire.call(method, params, validateDispatch: validateDispatch)
+        let reply = try await wire.call(call, validateDispatch: validateDispatch)
         try check(owner)
         return reply
     }
@@ -893,8 +883,8 @@ import Observation
 
     /// The proxy gives a definitive ok/expired receipt for both live and restored
     /// requests, unlike a bare JSON-RPC response which has no acknowledgment.
-    private func answerServerRequest(_ action: AnswerAction, result: [String: BotJSON]) async throws -> BotJSON {
-        let reply = try await request("request.answer", ["id": .string(action.requestID), "result": .object(result)],
+    private func answerServerRequest(_ action: AnswerAction, result: HermesCall.RequestAnswer) async throws -> BotJSON {
+        let reply = try await request(.requestAnswer(id: action.requestID, result: result),
                                       owner: action.generation, validateDispatch: answerGuard(action))
         guard ["ok", "expired"].contains(reply["status"].text ?? "") else { throw BotFailure.unsupported }
         return reply
@@ -960,7 +950,7 @@ import Observation
             try await drafts.flush()
             try check(owner)
             uncertainSend = true
-            let reply = try await request(action.mode.method, action.mode.params(runtime: action.runtime, text: text + mentionNote), owner: owner) { [weak self] in
+            let reply = try await request(action.mode.call(runtime: action.runtime, text: text + mentionNote), owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
                 guard self.connectionState == .connected, self.runtime == action.runtime,
@@ -1037,10 +1027,8 @@ import Observation
     /// dispatched, and nothing is retried.
     private func continueConnection(_ opID: String, runtime: String, owner: Int) async throws {
         do {
-            let reply = try await request("connection.respond", [
-                "session_id": .string(runtime), "op_id": .string(opID),
-                "result": BotConnectionOperation.Answer.continueWithout.result
-            ], owner: owner) { [weak self] in
+            let reply = try await request(.connectionRespond(sessionID: runtime, opID: opID, answer: .continueWithout),
+                                          owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
                 guard self.connectionState == .connected, self.runtime == runtime else { throw BotFailure.stale }
@@ -1075,15 +1063,12 @@ import Observation
         // a fresh read instead — and the panel gets the newer skills for free. The
         // last microseconds of the race cannot be closed from here: the gateway has
         // no skill-only dispatch.
-        slashSkills = BotSlashCatalog.skills(from: try await request(
-            "commands.catalog", ["session_id": .string(action.runtime)], owner: owner))
+        slashSkills = BotSlashCatalog.skills(from: try await request(.commandsCatalog(sessionID: action.runtime), owner: owner))
         guard let skill = SlashSkillFormatter.skill(named: invocation.name, in: slashSkills) else {
             throw BotFailure.unsupported
         }
-        let reply = try await request("command.dispatch", [
-            "name": .string(skill.name), "arg": .string(invocation.argument),
-            "session_id": .string(action.runtime)
-        ], owner: owner)
+        let reply = try await request(.commandDispatch(name: skill.name, argument: invocation.argument,
+                                                       sessionID: action.runtime), owner: owner)
         // Asked for an expansion and did not get one: send nothing rather than
         // fall back to prose the agent would only read literally.
         guard reply["type"].text == "skill", let message = reply["message"].text,
@@ -1108,8 +1093,8 @@ import Observation
                 let path = try await wire.uploadImage(data: data, filename: item.name, context: context)
                 reference = BotAttachmentUpload.imageReference(path: try BotAttachmentUpload.verifiedPath(path))
             } else {
-                let params = await BotAttachmentUpload.fileParams(data: data, runtime: action.runtime, filename: item.name, mime: item.mime)
-                let reply = try await request("file.attach", params, owner: owner) { [weak self] in
+                let attach = await BotAttachmentUpload.fileAttach(data: data, runtime: action.runtime, filename: item.name, mime: item.mime)
+                let reply = try await request(attach, owner: owner) { [weak self] in
                     guard let self, self.runtime == action.runtime, self.turnRevision == action.revision else { throw BotFailure.stale }
                 }
                 guard reply["attached"].flag == true, let ref = reply["ref_text"].text, ref.hasPrefix("@file:"),
@@ -1153,7 +1138,7 @@ import Observation
         completionArmed = false
         let revision = turnRevision
         do {
-            _ = try await request("session.interrupt", ["session_id": .string(action.runtime)], owner: owner) { [weak self] in
+            _ = try await request(.sessionInterrupt(sessionID: action.runtime), owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
                 guard self.turnRevision == revision, self.runtime == action.runtime else { throw BotFailure.stale }
@@ -1183,10 +1168,8 @@ import Observation
         guard case .approval(let request)? = pendingRequest, request.requestID == action.requestID,
               request.choices.contains(choice), action == prepareAnswer() else { return }
         await deliver(action, confirming: .approved(choice)) {
-            let reply = try await self.request("approval.respond", [
-                "session_id": .string(action.runtime), "request_id": .string(action.requestID),
-                "choice": .string(choice.rawValue)
-            ], owner: action.generation, validateDispatch: self.answerGuard(action))
+            let reply = try await self.request(.approvalRespond(sessionID: action.runtime, requestID: action.requestID, choice: choice),
+                                               owner: action.generation, validateDispatch: self.answerGuard(action))
             // `resolved` counts what the host actually unblocked. Zero means the
             // queue no longer held this request: an action failure, not a delivery one.
             return (reply["resolved"].integer ?? 0) > 0 ? .answered : .alreadyResolved
@@ -1227,7 +1210,7 @@ import Observation
         guard case .credential(let request)? = pendingRequest, request.requestID == action.requestID,
               action == prepareAnswer() else { return }
         await deliver(action, confirming: .answered) {
-            let reply = try await self.answerServerRequest(action, result: ["value": .string(value)])
+            let reply = try await self.answerServerRequest(action, result: .value(value))
             // The host tolerates a late answer to a prompt it already dropped and
             // says so rather than erroring; nothing was applied.
             return reply["status"].text == "expired" ? .alreadyResolved : .answered
@@ -1248,7 +1231,7 @@ import Observation
         guard case .desktopTask(let task)? = pendingRequest, task.requestID == action.requestID,
               task.kind.needsSomeoneAtTheMac, action == prepareAnswer() else { return }
         await deliver(action, confirming: .declined) {
-            let reply = try await self.answerServerRequest(action, result: ["value": .string("")])
+            let reply = try await self.answerServerRequest(action, result: .value(""))
             return reply["status"].text == "expired" ? .alreadyResolved : .answered
         }
     }
@@ -1258,11 +1241,10 @@ import Observation
             for answer in answers {
                 let reply: BotJSON
                 if let id = answer.questionID {
-                    reply = try await self.request("clarify.lock", [
-                        "request_id": .string(action.requestID), "question_id": .string(id), "answer": .string(answer.text)
-                    ], owner: action.generation, validateDispatch: self.answerGuard(action))
+                    reply = try await self.request(.clarifyLock(requestID: action.requestID, questionID: id, answer: answer.text),
+                                                   owner: action.generation, validateDispatch: self.answerGuard(action))
                 } else {
-                    reply = try await self.answerServerRequest(action, result: ["answer": .string(answer.text)])
+                    reply = try await self.answerServerRequest(action, result: .answer(answer.text))
                 }
                 // A late answer to a prompt the host already dropped comes back as
                 // `expired`; nothing was locked, so the rest have nothing to lock either.
@@ -1291,9 +1273,8 @@ import Observation
         answeringRequestID = action.requestID
         errorMessage = nil
         do {
-            let reply = try await request("connection.respond", [
-                "session_id": .string(action.runtime), "op_id": .string(action.requestID), "result": answer.result
-            ], owner: action.generation, validateDispatch: answerGuard(action))
+            let reply = try await request(.connectionRespond(sessionID: action.runtime, opID: action.requestID, answer: answer),
+                                          owner: action.generation, validateDispatch: answerGuard(action))
             guard reply["status"].text == "ok", let settled = reply["settled"].flag else { throw BotFailure.unsupported }
             guard action.generation == generation, !Task.isCancelled else { return }
             localOperation = false; answeringRequestID = nil
@@ -1485,7 +1466,7 @@ import Observation
                     let requestsRevision = self.requestRevision
                     let clockRevision = self.clockRevision
                     let reactionRevision = self.reactionRevision
-                    let reply = try await self.request("session.resume", self.resumeParams(full: full), owner: owner)
+                    let reply = try await self.request(self.resume(full: full), owner: owner)
                     try self.applySnapshot(reply, full: full, settingsRevision: settingsRevision,
                                            requestsRevision: requestsRevision, clockRevision: clockRevision,
                                            reactionRevision: reactionRevision)

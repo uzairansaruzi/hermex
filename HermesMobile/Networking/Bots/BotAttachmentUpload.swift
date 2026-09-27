@@ -5,17 +5,9 @@ import Foundation
 enum BotAttachmentUpload {
     static func image(session: URLSession, base: URL, data: Data, filename: String, profile: String) async throws -> String {
         guard !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes else { throw BotAttachmentFailure.limit }
-        guard var parts = URLComponents(url: BotEndpoint.imageUpload.url(base: base), resolvingAgainstBaseURL: false),
-              !profile.isEmpty else { throw BotFailure.invalidAddress }
-        parts.queryItems = [URLQueryItem(name: "profile", value: profile)]
-        guard let url = parts.url else { throw BotFailure.invalidAddress }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let mime = URL(fileURLWithPath: filename).pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg"
-        request.httpBody = try JSONEncoder().encode(BotJSON.object([
-            "filename": .string(filename), "data_url": .string("data:\(mime);base64," + data.base64EncodedString())
-        ]))
+        let request = try HermesREST.uploadImage(profile: profile, filename: filename,
+                                                 dataURL: "data:\(mime);base64," + data.base64EncodedString()).request(base: base)
         let (bytes, response) = try await session.bytes(for: request, delegate: BotArtifactRedirectGuard())
         defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
@@ -30,9 +22,10 @@ enum BotAttachmentUpload {
         return try verifiedPath(reply["path"].text)
     }
 
-    static func fileParams(data: Data, runtime: String, filename: String, mime: String) async -> [String: BotJSON] {
-        ["session_id": .string(runtime), "name": .string(UUID().uuidString + "-" + filename),
-         "data_url": .string("data:" + mime + ";base64," + data.base64EncodedString())]
+    /// Builds `file.attach` off the main actor: base64 of a large file is slow.
+    static func fileAttach(data: Data, runtime: String, filename: String, mime: String) async -> HermesCall {
+        .fileAttach(sessionID: runtime, name: UUID().uuidString + "-" + filename,
+                    dataURL: "data:" + mime + ";base64," + data.base64EncodedString())
     }
 
     static func verifiedPath(_ value: String?) throws -> String {

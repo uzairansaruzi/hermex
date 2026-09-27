@@ -149,11 +149,11 @@ struct BotProfileDetails: Equatable, Sendable {
         do {
             try ensureCurrentConnection()
             try await client.connect()
-            let detailsPayload = try await client.call("profiles.describe", ["name": .string(profile.id)], validateDispatch: validate(owner))
+            let detailsPayload = try await client.call(.profilesDescribe(name: profile.id), validateDispatch: validate(owner))
             try ensureOwner(owner, client)
             let details = BotProfileDetails(detailsPayload, expectedName: profile.id)
             guard details.name == profile.id else { throw BotFailure.wrongIdentity }
-            if let options = try? await client.call("model.options", ["include_unconfigured": .bool(false)], validateDispatch: validate(owner)) {
+            if let options = try? await client.call(.configuredModelOptions, validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
                 modelGroups = BotModelCatalog(options).groups
             } else {
@@ -280,7 +280,7 @@ struct BotProfileDetails: Equatable, Sendable {
         guard let client = wire else { return }
         let owner = generation
         do {
-            let roster = try await client.call("profiles.list", ["include_sessions": .bool(false)], validateDispatch: validate(owner))
+            let roster = try await client.call(.profilesList(includeSessions: false), validateDispatch: validate(owner))
             try ensureOwner(owner, client)
             guard let row = roster["profiles"].list?.first(where: { $0["name"].text == profile.id }),
                   let fresh = BotProfile(row) else { throw BotFailure.wrongIdentity }
@@ -291,8 +291,7 @@ struct BotProfileDetails: Equatable, Sendable {
             // One bot's asset only: a roster-wide refresh would drop every other bot's image.
             var image: UIImage?
             if fresh.hasAvatar {
-                let reply = try await client.call("profiles.get_asset", ["name": .string(fresh.id), "asset": .string("avatar")],
-                                                  validateDispatch: validate(owner))
+                let reply = try await client.call(.profilesGetAsset(name: fresh.id), validateDispatch: validate(owner))
                 image = await Task.detached(priority: .utility) { BotAvatarStore.decode(reply) }.value
             }
             try ensureOwner(owner, client)
@@ -322,7 +321,7 @@ struct BotProfileDetails: Equatable, Sendable {
                 try ensureOwner(owner, client)
             }
             if !configured.isEmpty {
-                let reply = try await client.call("profiles.configure", configurePayload(for: configured, confirmedModel: confirmedModel),
+                let reply = try await client.call(.profilesConfigure(changes(for: configured, confirmedModel: confirmedModel)),
                                                   validateDispatch: validate(owner))
                 try ensureOwner(owner, client)
                 apply(reply, to: configured)
@@ -341,29 +340,24 @@ struct BotProfileDetails: Equatable, Sendable {
         }
     }
 
-    private func configurePayload(for fields: Set<Field>, confirmedModel: Bool) -> [String: BotJSON] {
-        var params: [String: BotJSON] = ["name": .string(profile.id)]
+    private func changes(for fields: Set<Field>, confirmedModel: Bool) -> HermesCall.ProfileChanges {
+        var changes = HermesCall.ProfileChanges(name: profile.id)
         if fields.contains(.appearance) {
-            params["ui_meta"] = .object(["hermes-bots": .object(draft.appearance.merging(into: receivedLook))])
-            params["ui_meta_expected_revisions"] = .object(["hermes-bots": .number(Double(lookRevision ?? 0))])
+            changes.look = .init(fields: draft.appearance.merging(into: receivedLook), revision: lookRevision ?? 0)
         }
-        if fields.contains(.description) { params["description"] = .string(draft.description) }
-        if fields.contains(.instructions) { params["soul"] = .string(draft.instructions) }
+        if fields.contains(.description) { changes.description = draft.description }
+        if fields.contains(.instructions) { changes.soul = draft.instructions }
         if fields.contains(.model), let model = draft.model, let provider = model.providerID {
-            params["model"] = .string(model.id); params["provider"] = .string(provider)
-            if confirmedModel { params["confirm_expensive_model"] = .bool(true) }
+            changes.model = HermesCall.Model(id: model.id, provider: provider)
+            changes.confirmExpensiveModel = confirmedModel
         }
-        if fields.contains(.skills) {
-            params["disabled_skills"] = .array(draft.skills.filter { !$0.enabled }.map { .string($0.id) })
-        }
+        if fields.contains(.skills) { changes.disabledSkills = draft.skills.filter { !$0.enabled }.map(\.id) }
         if fields.contains(.toolsets) {
             let enabled = draft.toolsets.filter(\.enabled)
-            params["enabled_toolsets"] = .array(enabled.count == draft.toolsets.count ? [] : enabled.map { .string($0.id) })
+            changes.enabledToolsets = enabled.count == draft.toolsets.count ? [] : enabled.map(\.id)
         }
-        if fields.contains(.mcpServers) {
-            params["enabled_mcp_servers"] = .array(draft.mcpServers.filter(\.enabled).map { .string($0.id) })
-        }
-        return params
+        if fields.contains(.mcpServers) { changes.enabledMCPServers = draft.mcpServers.filter(\.enabled).map(\.id) }
+        return changes
     }
 
     private func apply(_ reply: BotJSON, to fields: Set<Field>) {
@@ -412,13 +406,13 @@ struct BotProfileDetails: Equatable, Sendable {
     }
 
     private func saveAvatar(_ client: any BotTransport, owner: Int) async throws {
-        let params: [String: BotJSON]
+        let change: HermesCall.AvatarChange
         switch avatarChange {
         case .unchanged: return
-        case .replace(let data): params = ["name": .string(profile.id), "asset": .string("avatar"), "data": .string(data)]
-        case .remove: params = ["name": .string(profile.id), "asset": .string("avatar"), "clear": .bool(true)]
+        case .replace(let data): change = .replace(data)
+        case .remove: change = .clear
         }
-        let reply = try await client.call("profiles.set_asset", params, validateDispatch: validate(owner))
+        let reply = try await client.call(.profilesSetAsset(name: profile.id, avatar: change), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard reply["ok"].flag == true, reply["asset"].text == "avatar" else { throw BotFailure.unsupported }
         // The shared store holds thumbnails only; the full picture stays with this editor.

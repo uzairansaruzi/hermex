@@ -81,8 +81,8 @@ import XCTest
             await creator.create()
             let attempt = try XCTUnwrap(creator.attempt)
             var room = RoomFixture.room(latest: 0).fields!
-            room["room_id"] = mismatch == "id" ? .string("other-room") : attempt["room_id"]
-            room["members"] = mismatch == "members" ? .array([]) : attempt["members"]
+            room["room_id"] = .string(mismatch == "id" ? "other-room" : attempt.roomID)
+            room["members"] = .array(mismatch == "members" ? [] : attempt.members.map(\.json))
             room["name"] = .string("Renamed on Desktop")
             if mismatch == "authority" { room["authority_gateway_id"] = .string("foreign") }
             wire.listedRooms = [.object(room)]
@@ -179,23 +179,22 @@ import XCTest
         reader.leave(owner: second); XCTAssertEqual(reader.link, .idle)
     }
 
+    /// Peer administration and extra member keys have no `HermesCall` shape at all;
+    /// what remains is the value rules the host applies.
     func testRoomMutationValidationIsExactAndCountsUnicodeLikeServer() throws {
         let members = [profile("default"), profile("dev")].map(BotRoomCreator.member)
-        var params: [String: BotJSON] = ["room_id": .string("room"), "name": .string("Group"), "members": .array(members)]
-        XCTAssertNoThrow(try BotRoomRPC.validate("groups.create", params))
+        var room = HermesCall.RoomCreation(roomID: "room", name: "Group", members: members)
+        XCTAssertEqual(try HermesCall.groupsCreate(room).params()["members"]?.list?.count, 2)
         for count in [0, 1, 7] {
-            params["members"] = .array((0..<count).map { BotRoomCreator.member(profile("bot\($0)")) })
-            XCTAssertThrowsError(try BotRoomRPC.validate("groups.create", params))
+            room.members = (0..<count).map { BotRoomCreator.member(profile("bot\($0)")) }
+            XCTAssertThrowsError(try HermesCall.groupsCreate(room).params())
         }
-        var injected = members[0].fields!; injected["target"] = .object(["kind": .string("peer")])
-        params["members"] = .array([.object(injected), members[1]])
-        XCTAssertThrowsError(try BotRoomRPC.validate("groups.create", params))
+        room.members = [members[0], members[0]]
+        XCTAssertThrowsError(try HermesCall.groupsCreate(room).params(), "a Profile joins once")
+        room.members = [HermesCall.RoomMember(memberID: "dev", profile: "dev", handle: "all"), members[0]]
+        XCTAssertThrowsError(try HermesCall.groupsCreate(room).params(), "a handle cannot shadow @all")
         XCTAssertFalse(BotRoomRPC.validName(String(repeating: "👩‍💻", count: 100)))
-        XCTAssertThrowsError(try BotRoomRPC.validate("groups.rename", ["room_id": .string("room"), "name": .string("x")]))
-        XCTAssertThrowsError(try BotRoomRPC.validate("groups.disband", ["room_id": .string("room"), "target": .string("peer")]))
-        for method in ["groups.promote", "groups.demote", "groups.replicate", "groups.replica_state", "groups.peer.invite"] {
-            XCTAssertFalse(BotRoomRPC.methods.contains(method))
-            XCTAssertThrowsError(try BotRoomRPC.validate(method, [:]))
-        }
+        XCTAssertThrowsError(try HermesCall.groupsRename(roomID: "room", eventID: "", name: "x").params())
+        XCTAssertThrowsError(try HermesCall.groupsDisband(roomID: "../room").params())
     }
 }

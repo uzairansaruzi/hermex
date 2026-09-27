@@ -1155,7 +1155,8 @@ import XCTest
         deleted.append(name)
     }
 
-    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        let method = call.method, params = try call.params()
         try validateDispatch?()
         if Task.isCancelled { cancelledCalls += 1 }
         calls.append((method, params))

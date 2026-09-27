@@ -19,8 +19,15 @@ address that now reaches another host, not an impostor. Removing the connection
 deletes its drafts; removing the configured server deletes both its connection and
 all its drafts.
 
-`BotClient` owns an ephemeral cookie session and one WebSocket. HTTP paths live in
-`BotEndpoint`. Password login requires the basic auth gate, verifies identity,
+`BotClient` owns an ephemeral cookie session and one WebSocket. Requests are typed
+in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
+`HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per
+operation the app uses and none for any other upstream method. A case carries only
+what callers vary; fixed contract values (the canonical title, `queued`, the avatar
+asset) are encoded there. `HermesCall.params()` is the only way to the wire and
+runs admission first, so the "typed exception" rules below hold for every caller;
+`BotClient` still runs `validateDispatch` at the socket write and maps errors,
+cancellation and timeouts. Password login requires the basic auth gate, verifies identity,
 and mints a fresh single-use ticket for each socket. JSON-RPC uses text frames
 with the `hermes-gateway-v1` and ticket subprotocols. There is no bootstrap-token,
 OAuth, webui fallback, server provisioning or competing-backend path.

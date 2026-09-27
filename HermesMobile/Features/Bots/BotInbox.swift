@@ -482,11 +482,8 @@ import UIKit
         defer { editing.remove(profile.id) }
         let look = profile.look.merging(changes) { $1 }
         do {
-            let reply = try await client.call("profiles.configure", [
-                "name": .string(profile.id),
-                "ui_meta": .object(["hermes-bots": .object(look)]),
-                "ui_meta_expected_revisions": .object(["hermes-bots": .number(Double(profile.lookRevision ?? 0))])
-            ])
+            let reply = try await client.call(.profilesConfigure(.init(
+                name: profile.id, look: .init(fields: look, revision: profile.lookRevision ?? 0))))
             guard wire === client else { return }
             if reply["applied"]["ui_meta"].flag != true {
                 notice = reply["applied"]["ui_meta_conflicts"] != .null
@@ -526,7 +523,7 @@ import UIKit
         reloadSerial += 1
         let serial = reloadSerial
         do {
-            let roster = try await client.call("profiles.list", ["include_sessions": .bool(true)])
+            let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             var ids = Set<String>()
@@ -589,7 +586,7 @@ import UIKit
             !Task.isCancelled && wire === client && serial == statusSerial && roster == reloadSerial
         }
         do {
-            let reply = try await client.call("session.active_list", [:])
+            let reply = try await client.call(.sessionActiveList)
             guard current() else { return }
             setLiveStatuses(BotLiveStatus.statuses(reply["sessions"].list ?? [], profiles: profiles))
             retriesStatusRead = false
@@ -705,8 +702,7 @@ import UIKit
 
     func renameRoom(_ room: BotGroupRoom, to name: String) async {
         guard mayRenameRoom(room), BotRoomRPC.validName(name), name != room.name, let client = wire else { return }
-        await commandRoom(room, "groups.rename", ["room_id": .string(room.id),
-            "event_id": .string(UUID().uuidString), "name": .string(name)], client) { result in
+        await commandRoom(room, .groupsRename(roomID: room.id, eventID: UUID().uuidString, name: name), client) { result in
             guard let updated = BotGroupRoom(result["room"]), updated.id == room.id, !updated.disbanded
             else { throw BotFailure.unsupported }
             if let index = rooms.firstIndex(where: { $0.id == room.id }) { rooms[index] = updated }
@@ -717,7 +713,7 @@ import UIKit
     /// reply is settled by the next room list, which prunes what is gone.
     func disbandRoom(_ room: BotGroupRoom) async {
         guard mayDisbandRoom(room), let client = wire, let key = roomKey(room) else { return }
-        let disbanded = await commandRoom(room, "groups.disband", ["room_id": .string(room.id)], client) { result in
+        let disbanded = await commandRoom(room, .groupsDisband(roomID: room.id), client) { result in
             guard result["tombstone"]["room_id"].text == room.id,
                   result["tombstone"]["disbanded_at"].number != nil else { throw BotFailure.unsupported }
             rooms.removeAll { $0.id == room.id }
@@ -728,13 +724,13 @@ import UIKit
 
     /// True when the host accepted the write and `accept` took it.
     @discardableResult
-    private func commandRoom(_ room: BotGroupRoom, _ method: String, _ params: [String: BotJSON],
+    private func commandRoom(_ room: BotGroupRoom, _ call: HermesCall,
                              _ client: any BotTransport, accept: (BotJSON) throws -> Void) async -> Bool {
         let id = ChatRow.room(room).id
         editing.insert(id); notice = nil
         defer { editing.remove(id) }
         do {
-            let result = try await client.call(method, params)
+            let result = try await client.call(call)
             guard wire === client else { return false }
             try accept(result)
             return true
@@ -755,7 +751,7 @@ import UIKit
     /// a mutating probe. Unsupported hosts keep their ordinary Bot inbox.
     private func refreshRooms(_ client: any BotTransport) async {
         do {
-            let value = try await client.call("groups.capabilities", [:])
+            let value = try await client.call(.groupsCapabilities)
             guard wire === client, !Task.isCancelled else { return }
             let capabilities = BotRoomCapabilities(value)
             roomCapabilities = capabilities
@@ -763,7 +759,7 @@ import UIKit
             var found: [BotGroupRoom] = []
             var offset = 0
             while true {
-                let page = try await client.call("groups.list", ["limit": .number(500), "offset": .number(Double(offset))])
+                let page = try await client.call(.groupsList(offset: offset))
                 guard wire === client, !Task.isCancelled else { return }
                 guard let rows = page["rooms"].list else { throw BotFailure.unsupported }
                 found += rows.compactMap(BotGroupRoom.init).filter { !$0.disbanded }

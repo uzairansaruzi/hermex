@@ -315,7 +315,7 @@ extension BotHostStatus {
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
                 password: password, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID)
-            let result = try await wire.call("profiles.list", ["include_sessions": .bool(true)])
+            let result = try await wire.call(.profilesList(includeSessions: true))
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
             let old = saved

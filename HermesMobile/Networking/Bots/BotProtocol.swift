@@ -105,31 +105,6 @@ enum BotConnectionAdvice {
     }
 }
 
-enum BotEndpoint: String {
-    case status = "api/status", login = "auth/password-login", identity = "api/auth/me"
-    case ticket = "api/auth/ws-ticket", socket = "api/ws"
-    case imageUpload = "api/chat/image-upload"
-    /// Dashboard routes push provisioning uses (#557), verified against a 0.21.3 host on
-    /// 2026-09-19: install takes `{identifier, enable, force, ref}` and has no profile
-    /// parameter, enable and disable are path-only, and `PUT /api/env` and the gateway
-    /// restart take an optional `profile` Hermex leaves unset so every profile inherits.
-    case environment = "api/env"
-    case pluginInstall = "api/dashboard/agent-plugins/install"
-    case gatewayRestart = "api/gateway/restart"
-    case pushPairing = "api/plugins/hermex-push/pairing"
-    func url(base: URL) -> URL { base.appendingPathComponent(rawValue) }
-    /// `POST /api/dashboard/agent-plugins/{name}/{action}` for `enable` and `disable`.
-    static func pluginURL(base: URL, name: String, action: String) -> URL {
-        base.appendingPathComponent("api/dashboard/agent-plugins")
-            .appendingPathComponent(name).appendingPathComponent(action)
-    }
-    /// `DELETE /api/profiles/{name}`, the only Profile removal the host exposes; the
-    /// gateway has no `profiles.delete` RPC. `name` is a validated Profile slug.
-    static func profileURL(base: URL, name: String) -> URL {
-        base.appendingPathComponent("api/profiles").appendingPathComponent(name)
-    }
-}
-
 @MainActor protocol BotTransport: AnyObject {
     var replayEpoch: String? { get }
     var serverVersion: String? { get }
@@ -139,7 +114,9 @@ enum BotEndpoint: String {
     var onEvent: ((BotJSON) -> Void)? { get set }
     var onDisconnect: ((Error) -> Void)? { get set }
     func connect() async throws
-    func call(_ method: String, _ params: [String: BotJSON], validateDispatch: (() throws -> Void)?) async throws -> BotJSON
+    /// Sends one typed request. `validateDispatch` runs immediately before the
+    /// socket write, so an action that went stale while queued is never sent.
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String
     func artifactData(path: String, context: BotArtifactContext) async throws -> Data
     /// Removes a Profile on the host over the authenticated HTTP session. Only
@@ -164,8 +141,8 @@ extension BotTransport {
         throw BotFailure.unsupported
     }
 
-    func call(_ method: String, _ params: [String: BotJSON]) async throws -> BotJSON {
-        try await call(method, params, validateDispatch: nil)
+    func call(_ call: HermesCall) async throws -> BotJSON {
+        try await self.call(call, validateDispatch: nil)
     }
 }
 
@@ -226,11 +203,11 @@ struct BotHostStatusProbe {
     func check(_ address: URL) async -> Result<BotHostStatus, BotHostProbeFailure> {
         let session = URLSession(configuration: configuration)
         defer { session.finishTasksAndInvalidate() }
-        let url = BotEndpoint.status.url(base: address)
         do {
-            let (data, response) = try await session.data(from: url)
+            let request = try HermesREST.status.request(base: address)
+            let (data, response) = try await session.data(for: request)
             guard let response = response as? HTTPURLResponse else { return .failure(.notHermes) }
-            if response.url?.host != url.host || [401, 403].contains(response.statusCode) { return .failure(.blocked) }
+            if response.url?.host != request.url?.host || [401, 403].contains(response.statusCode) { return .failure(.blocked) }
             guard response.statusCode == 200 else { return .failure(.answered(response.statusCode)) }
             guard let json = try? JSONDecoder().decode(BotJSON.self, from: data), json.fields != nil else {
                 return .failure(.notHermes)

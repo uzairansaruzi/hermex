@@ -36,20 +36,13 @@ enum BotPromptMode: CaseIterable, Hashable {
     /// skill invocation, so it is also the only place the `/` panel opens.
     var startsTurn: Bool { self == .send || self == .queue }
 
-    var method: String {
+    /// Send and Queue both submit a queued prompt; see `HermesCall.promptSubmit`.
+    func call(runtime: String, text: String) -> HermesCall {
         switch self {
-        case .send, .queue: return "prompt.submit"
-        case .steer: return "session.steer"
-        case .redirect: return "session.redirect"
+        case .send, .queue: return .promptSubmit(sessionID: runtime, text: text)
+        case .steer: return .sessionSteer(sessionID: runtime, text: text)
+        case .redirect: return .sessionRedirect(sessionID: runtime, text: text)
         }
-    }
-
-    func params(runtime: String, text: String) -> [String: BotJSON] {
-        var params: [String: BotJSON] = ["session_id": .string(runtime), "text": .string(text)]
-        // Even an idle Send can race Desktop. Never inherit a host setting that
-        // silently converts a fresh send into a redirect or steer.
-        if self == .send || self == .queue { params["queued"] = .bool(true) }
-        return params
     }
 
     func outcome(_ reply: BotJSON) -> BotPromptOutcome {
