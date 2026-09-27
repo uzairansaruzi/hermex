@@ -15,7 +15,7 @@ import XCTest
         super.tearDown()
     }
 
-    func testConsumersShareOneSignInAndOneCookieJarAndKeepProvisioningDeadlines() async throws {
+    func testConsumersShareOneSignInAndOneCookieJar() async throws {
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil })
         let chat = BotClient(http: http) { _ in BotScriptedSocket() }
         let inbox = BotClient(http: http) { _ in BotScriptedSocket() }
@@ -32,10 +32,41 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/api/dashboard/agent-plugins/hermex-push/disable"), 1)
         let jar = try XCTUnwrap(http.session.configuration.httpCookieStorage)
         XCTAssertTrue(http.provisioningSession.configuration.httpCookieStorage === jar)
-        XCTAssertEqual(http.session.configuration.timeoutIntervalForRequest, 15)
-        XCTAssertEqual(http.session.configuration.timeoutIntervalForResource, 30)
-        XCTAssertEqual(http.provisioningSession.configuration.timeoutIntervalForRequest, 120)
-        XCTAssertEqual(http.provisioningSession.configuration.timeoutIntervalForResource, 180)
+    }
+
+    /// Each request is held at the host while the sessions' in-flight tasks are read, so
+    /// the test sees the session it actually went out on.
+    func testOnlyProvisioningStepsGoOutOnTheLongDeadlineSession() async throws {
+        var parking: String?
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == parking ? .park : nil
+        })
+        let dashboard = BotDashboardClient(http: http)
+        let chat = BotClient(http: http) { _ in BotScriptedSocket() }
+        defer { chat.close() }
+        let steps: [(path: String, provisioning: Bool, run: () async throws -> Void)] = [
+            ("/auth/password-login", false, { try await dashboard.signIn() }),
+            ("/api/auth/ws-ticket", false, { try await chat.connect() }),
+            ("/api/dashboard/agent-plugins/install", true, { try await dashboard.installPlugin(identifier: "hermex-push") }),
+            ("/api/dashboard/agent-plugins/hermex-push/enable", true, { try await dashboard.setPlugin("hermex-push", enabled: true) }),
+            ("/api/gateway/restart", true, { try await dashboard.restartGateway() })
+        ]
+        let standard = http.session.configuration, long = http.provisioningSession.configuration
+        XCTAssertGreaterThan(long.timeoutIntervalForRequest, standard.timeoutIntervalForRequest)
+        XCTAssertGreaterThan(long.timeoutIntervalForResource, standard.timeoutIntervalForResource)
+
+        for step in steps {
+            let parked = expectation(description: "\(step.path) in flight")
+            HermesHostFixture.onPark = { parked.fulfill() }
+            HermesHostFixture.script { parking = step.path }
+            let running = Task { try await step.run() }
+            await fulfillment(of: [parked], timeout: 2)
+            let onStandard = await http.session.allTasks.contains { $0.originalRequest?.url?.path == step.path }
+            let onLong = await http.provisioningSession.allTasks.contains { $0.originalRequest?.url?.path == step.path }
+            HermesHostFixture.releaseParked()
+            try await running.value
+            XCTAssertEqual([onStandard, onLong], [!step.provisioning, step.provisioning], step.path)
+        }
     }
 
     func testCancellingOneWaitingConsumerLeavesTheSignInToTheOthers() async throws {
@@ -185,7 +216,11 @@ import XCTest
         }
     }
 
+    /// The active webui server's custom headers are loaded too, and never reach Hermes.
     func testHeadersReachEveryRequestToTheOriginAndTheGatewayUpgradeUnderItsBuiltIns() async throws {
+        let previous = CustomHeaderStore.shared.snapshot()
+        defer { CustomHeaderStore.shared.replace(with: previous) }
+        CustomHeaderStore.shared.replace(with: [CustomHeader(name: "X-Webui-Token", value: "webui")])
         let headers = try HermesHeaders([cloudflare, access, CustomHeader(name: "Content-Type", value: "text/plain")])
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil }, headers: headers)
         var upgrade: URLRequest?
@@ -204,6 +239,7 @@ import XCTest
         for request in requests {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), cloudflare.value, request.url?.path ?? "")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Access"), "token", request.url?.path ?? "")
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Webui-Token"), request.url?.path ?? "")
         }
         XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Content-Type"), "application/json", "The built-in wins")
         let socket = try XCTUnwrap(upgrade)
@@ -211,6 +247,7 @@ import XCTest
         XCTAssertEqual(socket.value(forHTTPHeaderField: "Sec-WebSocket-Protocol"), "hermes-gateway-v1, hermes-gateway-ticket.ticket")
         XCTAssertEqual(socket.value(forHTTPHeaderField: "Authorization"), cloudflare.value)
         XCTAssertEqual(socket.value(forHTTPHeaderField: "X-Access"), "token")
+        XCTAssertNil(socket.value(forHTTPHeaderField: "X-Webui-Token"))
     }
 
     /// The fixture carries the headers onto the redirected request, as a server's redirect
@@ -258,9 +295,10 @@ private final class HermesHostFixture: URLProtocol {
     static var requests: [URLRequest] { lock.withLock { log } }
     static func count(_ path: String) -> Int { requests.filter { $0.url?.path == path }.count }
 
-    static func releaseParked(_ reply: Reply) {
+    /// Answers every parked request with `reply`, or with the host's ordinary reply when nil.
+    static func releaseParked(_ reply: Reply? = nil) {
         let parked = lock.withLock { let parked = waiting; waiting = []; return parked }
-        for fixture in parked where !fixture.stopped { fixture.respond(reply) }
+        for fixture in parked where !fixture.stopped { fixture.respond(reply ?? ordinary(fixture.request)) }
     }
 
     static func reset() {
