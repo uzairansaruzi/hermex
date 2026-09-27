@@ -34,32 +34,36 @@ import XCTest
         XCTAssertTrue(http.provisioningSession.configuration.httpCookieStorage === jar)
     }
 
-    /// Each request is held at the host while the sessions' in-flight tasks are read, so
-    /// the test sees the session it actually went out on.
-    func testOnlyProvisioningStepsGoOutOnTheLongDeadlineSession() async throws {
+    /// Each step runs on a fresh connection, and its request is held at the host while the
+    /// sessions' in-flight tasks are read, so the test sees the session it went out on.
+    func testOnlyProvisioningAndItsSignInGoOutOnTheLongDeadlineSession() async throws {
         var parking: String?
-        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
-            request.url?.path == parking ? .park : nil
-        })
-        let dashboard = BotDashboardClient(http: http)
-        let chat = BotClient(http: http) { _ in BotScriptedSocket() }
-        defer { chat.close() }
-        let steps: [(path: String, provisioning: Bool, run: () async throws -> Void)] = [
-            ("/auth/password-login", false, { try await dashboard.signIn() }),
-            ("/api/auth/ws-ticket", false, { try await chat.connect() }),
-            ("/api/dashboard/agent-plugins/install", true, { try await dashboard.installPlugin(identifier: "hermex-push") }),
-            ("/api/dashboard/agent-plugins/hermex-push/enable", true, { try await dashboard.setPlugin("hermex-push", enabled: true) }),
-            ("/api/gateway/restart", true, { try await dashboard.restartGateway() })
+        let configuration = HermesHostFixture.configuration { request in request.url?.path == parking ? .park : nil }
+        let connect: (HermesConnection) async throws -> Void = { http in
+            let chat = BotClient(http: http) { _ in BotScriptedSocket() }
+            try await chat.connect()
+            chat.close()
+        }
+        let steps: [(path: String, provisioning: Bool, run: (HermesConnection) async throws -> Void)] = [
+            ("/auth/password-login", false, connect),
+            ("/api/auth/ws-ticket", false, connect),
+            ("/auth/password-login", true, { try await BotDashboardClient(http: $0).signIn() }),
+            ("/api/dashboard/agent-plugins/install", true, { try await BotDashboardClient(http: $0).installPlugin(identifier: "hermex-push") }),
+            ("/api/dashboard/agent-plugins/hermex-push/enable", true, { try await BotDashboardClient(http: $0).setPlugin("hermex-push", enabled: true) }),
+            ("/api/gateway/restart", true, { try await BotDashboardClient(http: $0).restartGateway() })
         ]
-        let standard = http.session.configuration, long = http.provisioningSession.configuration
+
+        let sessions = HermesConnection(connection: record, configuration: configuration)
+        let standard = sessions.session.configuration, long = sessions.provisioningSession.configuration
         XCTAssertGreaterThan(long.timeoutIntervalForRequest, standard.timeoutIntervalForRequest)
         XCTAssertGreaterThan(long.timeoutIntervalForResource, standard.timeoutIntervalForResource)
 
         for step in steps {
+            let http = HermesConnection(connection: record, configuration: configuration)
             let parked = expectation(description: "\(step.path) in flight")
             HermesHostFixture.onPark = { parked.fulfill() }
             HermesHostFixture.script { parking = step.path }
-            let running = Task { try await step.run() }
+            let running = Task { try await step.run(http) }
             await fulfillment(of: [parked], timeout: 2)
             let onStandard = await http.session.allTasks.contains { $0.originalRequest?.url?.path == step.path }
             let onLong = await http.provisioningSession.allTasks.contains { $0.originalRequest?.url?.path == step.path }

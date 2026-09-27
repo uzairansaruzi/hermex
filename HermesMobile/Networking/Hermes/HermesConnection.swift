@@ -19,7 +19,7 @@ import Foundation
         case standard
         /// 120 and 180: installing a plugin clones a repository on the host, and a restart
         /// takes the gateway down and back up. 15 seconds would read as a failure while
-        /// the host was still succeeding.
+        /// the host was still succeeding. A sign-in provisioning starts gets them too.
         case provisioning
     }
 
@@ -57,20 +57,21 @@ import Foundation
         provisioningSession = URLSession(configuration: provisioning)
     }
 
-    /// Signs in unless this connection already is. Concurrent callers share one attempt.
-    func signIn() async throws {
+    /// Signs in unless this connection already is. Concurrent callers share one attempt,
+    /// which runs on the session for the `deadline` of the caller that started it.
+    func signIn(deadline: Deadline = .standard) async throws {
         try checkCurrent()
         if isSignedIn { return }
-        let attempt = signInTask ?? beginSignIn()
+        let attempt = signInTask ?? beginSignIn(on: session(for: deadline))
         do { try await attempt.value } catch { try checkCurrent(); throw error }
         try checkCurrent()
     }
 
-    private func beginSignIn() -> Task<Void, Error> {
+    private func beginSignIn(on session: URLSession) -> Task<Void, Error> {
         let attempt = Task {
             defer { signInTask = nil }
             let status: BotJSON
-            do { status = try await decoded(.status) }
+            do { status = try await decoded(.status, on: session) }
             // `/api/status` is public on every dashboard, so a 401, a 404 or a non-JSON
             // body there means the address is something else, such as the webui.
             catch BotFailure.rejected(let code) where code == 401 || code == 404 { throw BotFailure.notDashboard }
@@ -81,9 +82,9 @@ import Foundation
             try connection.requireSameInstall(serverInstallID)
             guard status["auth_required"].flag == true,
                   status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
-            _ = try await decoded(.login(username: connection.username, password: connection.password))
+            _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
             try checkCurrent()
-            let identity = try await decoded(.identity)
+            let identity = try await decoded(.identity, on: session)
             try checkCurrent()
             guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
             // Trust on first use, in memory only: a later sign-in here must reach the same install.
@@ -110,8 +111,8 @@ import Foundation
     func authorized<T: Sendable>(_ request: URLRequest, deadline: Deadline = .standard,
                                  _ perform: @Sendable (URLRequest, URLSession) async throws -> T) async throws -> T {
         let request = prepared(request)
-        let session = deadline == .provisioning ? provisioningSession : self.session
-        try await signIn()
+        let session = self.session(for: deadline)
+        try await signIn(deadline: deadline)
         let sentEpoch = epoch
         do {
             let value = try await perform(request, session)
@@ -121,7 +122,7 @@ import Foundation
             try checkCurrent()
             // The first reply to show the session expired drops it; later ones join the same sign-in.
             if epoch == sentEpoch { isSignedIn = false }
-            try await signIn()
+            try await signIn(deadline: deadline)
             let value = try await perform(request, session)
             try checkCurrent()
             return value
@@ -155,10 +156,14 @@ import Foundation
     }
 
     /// The status, login and identity reads, which run before there is a session.
-    private func decoded(_ rest: HermesREST) async throws -> BotJSON {
+    private func decoded(_ rest: HermesREST, on session: URLSession) async throws -> BotJSON {
         let data = try await Self.send(prepared(try rest.request(base: connection.address)), on: session,
                                        accepting: 200..<201, redirectGuard: redirectGuard)
         return try JSONDecoder().decode(BotJSON.self, from: data)
+    }
+
+    private func session(for deadline: Deadline) -> URLSession {
+        deadline == .provisioning ? provisioningSession : session
     }
 
     private nonisolated static func send(_ request: URLRequest, on session: URLSession, accepting accepted: Range<Int>,

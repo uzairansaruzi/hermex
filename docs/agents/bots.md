@@ -38,8 +38,9 @@ runs (`hermes_cli/dashboard_auth/middleware.py`), so the resend cannot repeat a
 write. A 401 from the login itself (bad credentials) ends the recovery and leaves
 the connection signed out; the next request signs in again. A transport failure,
 proxy status or 5xx fails only its request and leaves the sign-in as it was, and
-is never resent. Provisioning keeps its 120/180-second deadlines on a second
-session that shares the jar; everything else keeps 15/30. `HermesConnection`
+is never resent. Provisioning keeps its 120/180-second deadlines, for its steps and
+for a sign-in it starts, on a second session that shares the jar; everything else
+keeps 15/30. `HermesConnection`
 accepts origin-bound `HermesHeaders` for tests and a later editor: they reach only
 its own origin, a cross-origin redirect drops them before the push relay or any
 other host, and the policy refuses transport names (`Host`, `Cookie`,
@@ -1426,8 +1427,8 @@ code, a timeout, a rejected sign-in), the relay (its status code, or unreachable
 (no device token). Only a connection failure at sign-in, before anything on the host has
 changed, says the host could not be reached. `BotFailure`'s chat copy never reaches this
 screen.
-`BotDashboardClient` signs in on the connection the Bot screens share, and each step
-waits up to 120 seconds, because installing clones a repository on the host and a
+`BotDashboardClient` signs in on the connection the Bot screens share, and its sign-in
+and each step wait up to 120 seconds, because installing clones a repository on the host and a
 restart takes the gateway down and back up.
 
 `HermexPushPlugin` owns only what the plugin itself defines: its name, its install

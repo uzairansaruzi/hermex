@@ -15,11 +15,11 @@ import Foundation
 
     init(http: HermesConnection) { self.http = http }
 
-    /// Signs in through the host's password gate unless the connection already is. The
-    /// install identity is checked before the password goes out, so a swapped host is
-    /// refused before anything on it changes.
+    /// Signs in through the host's password gate unless the connection already is, with
+    /// the provisioning deadline. The install identity is checked before the password
+    /// goes out, so a swapped host is refused before anything on it changes.
     func signIn() async throws {
-        try await http.signIn()
+        try await http.signIn(deadline: .provisioning)
     }
 
     /// Writes one managed environment value at the host root. No `profile` is sent: a
