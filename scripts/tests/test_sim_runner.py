@@ -268,10 +268,3 @@ while True:
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class ThrowawayGateCheck(unittest.TestCase):
-    """Deliberately failing; proves a tooling failure fails CI Gate. Never merged."""
-
-    def test_fails(self):
-        self.fail("deliberate failure")
