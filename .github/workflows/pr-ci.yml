@@ -133,6 +133,15 @@ jobs:
               output.write(f"udid={udid}\n")
           PYTHON
 
+      - name: Start booting simulator (experiment)
+        env:
+          SIMULATOR_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -euo pipefail
+          # Returns once the boot request is accepted; the OS finishes booting
+          # (including first-boot data migration) while the app compiles.
+          xcrun simctl boot "${SIMULATOR_UDID}" 2>&1 | tee "${CI_LOG_DIR}/boot.log"
+
       - name: Build for testing
         id: build
         env:
@@ -152,6 +161,16 @@ jobs:
             -disableAutomaticPackageResolution \
             -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/build.log"
+
+      - name: Wait for simulator (experiment)
+        timeout-minutes: 10
+        env:
+          SIMULATOR_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -euo pipefail
+          start_seconds=${SECONDS}
+          xcrun simctl bootstatus "${SIMULATOR_UDID}" -b 2>&1 | tail -3 | tee -a "${CI_LOG_DIR}/boot.log"
+          echo "- Waited for boot after build: $((SECONDS - start_seconds))s" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Test without building
         id: tests
@@ -173,8 +192,7 @@ jobs:
             -derivedDataPath "${DERIVED_DATA_PATH}" \
             -resultBundlePath "${RESULT_BUNDLE_PATH}" \
             -disableAutomaticPackageResolution \
-            -parallel-testing-enabled YES \
-            -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/tests.log"
 
       - name: Check String Catalog coverage
