@@ -329,6 +329,34 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertTrue(mergedOrdinary.contains { $0.messageId == "local-2" })
     }
 
+    /// A steer that carried attachments ends with the web UI's attached-files
+    /// note, whose bracketed line must not read as Hermex's `[Attached files:`
+    /// marker: the echo still merges into the persisted row (#856).
+    func testSteerEchoWithAttachmentNoteMatchesPersistedSteerRow() {
+        let sent = PendingAttachment.steerMessageText(
+            draft: "also read this",
+            attachments: [PendingAttachment(name: "notes.txt", path: "/tmp/workspace/notes.txt", mime: "text/plain", size: 5, isImage: false)]
+        )
+        let persistedSteer = ChatMessage(
+            role: "user",
+            content: Self.wrapped(sent),
+            timestamp: 1_770_000_095,
+            messageId: "msg-steer-1",
+            displayKind: "steer"
+        )
+        let echo = ChatMessage(
+            role: "user",
+            content: sent,
+            timestamp: 1_770_000_100,
+            messageId: "local-steer-1",
+            displayKind: "steer"
+        )
+
+        let merged = ChatViewModel.mergingLoadedMessages([persistedSteer], withLocalOptimisticMessages: [echo])
+
+        XCTAssertEqual(merged.map(\.messageId), ["msg-steer-1"])
+    }
+
     /// An accepted steer appends a local echo immediately; when the persisted
     /// steer row arrives in `.done`, the echo is replaced with no duplicate.
     @MainActor

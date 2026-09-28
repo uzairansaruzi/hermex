@@ -71,6 +71,23 @@ struct ChatSteerResponse: Decodable, Equatable {
     let error: String?
 }
 
+/// What became of a steer, independent of the transport that carried it.
+/// `APIClient.steerChat` maps webui's `{accepted, fallback}` reply here, so the
+/// Hermes gateway (#701) only needs a new mapping. No case stops the run.
+enum ChatSteerOutcome {
+    /// The agent took the hint into the running turn.
+    case delivered
+    /// The run can't take steers (webui's gateway backend); the message waits
+    /// for the next turn.
+    case serverQueued
+    /// The session has no live run any more; the message goes out as a normal send.
+    case runEnded
+    /// Anything else. `transportError` is set when the request itself failed
+    /// (network, HTTP status, or an unreadable reply), so an expired login can
+    /// still sign out.
+    case refused(transportError: Error?)
+}
+
 struct BtwStartResponse: Decodable, Equatable {
     let streamId: String?
     let sessionId: String?

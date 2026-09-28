@@ -465,6 +465,11 @@ struct ChatView: View {
             chipFilePaths: viewModel.fileChipPaths,
             filePathSearch: viewModel.filePathSearch,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
+            steerFailure: viewModel.steerFailureMessage.map { message in
+                ComposerRetryableStatus(message: message) {
+                    Task { await sendDraftMessage(behavior: .steer) }
+                }
+            },
             onSend: {
                 Task { await sendDraftMessage() }
             },
@@ -1877,7 +1882,11 @@ struct ChatView: View {
         }
     }
 
-    private func sendDraftMessage() async {
+    /// Sends the composer's draft. A send during a run uses `behavior`, or the
+    /// Send While Responding setting when it is nil; Retry after a refused
+    /// steer forces `.steer`.
+    private func sendDraftMessage(behavior: StreamingSendBehavior? = nil) async {
+        viewModel.clearSteerFailure()
         let submittedContent = ComposerDraftContent(text: draftMessage, quotes: draftQuotes)
         let submittedDraft = submittedContent.text
         let outboundMessage = ComposerQuoteMessageFormatter.message(
@@ -1925,13 +1934,11 @@ struct ChatView: View {
         let didStart: Bool
         if viewModel.activeStreamID != nil {
             prepareTranscriptForExplicitSend()
-            let result = await viewModel.submitStreamingMessage(
-                outboundMessage,
-                behavior: StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue)
-            )
+            let behavior = behavior ?? StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue)
+            let result = await viewModel.submitStreamingMessage(outboundMessage, behavior: behavior)
             handleSlashExecutionResult(
                 result,
-                parsedCommand: SlashCommandCatalog.command(named: streamingSendBehaviorCommandName),
+                parsedCommand: SlashCommandCatalog.command(named: Self.slashCommandName(for: behavior)),
                 submittedDraft: submittedDraft,
                 submittedQuotes: submittedContent.quotes,
                 submittedDraftRevision: submittedDraftRevision,
@@ -2076,7 +2083,9 @@ struct ChatView: View {
             }
         case .needsSubArg:
             viewModel.setSendErrorMessage(String(localized: "Choose a slash command or continue typing."))
-        case .sendAsMessage:
+        case .sendAsMessage, .notDelivered:
+            // `.notDelivered` keeps the draft; the view model's steer status
+            // says why and offers Retry.
             break
         }
     }
@@ -2089,8 +2098,8 @@ struct ChatView: View {
             command?.handler == .serverSide(.background)
     }
 
-    private var streamingSendBehaviorCommandName: String {
-        switch StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue) {
+    private static func slashCommandName(for behavior: StreamingSendBehavior) -> String {
+        switch behavior {
         case .steer:
             "steer"
         case .interrupt:
@@ -2110,10 +2119,11 @@ struct ChatView: View {
     }
 
     /// Records a draft edit the user made, after it lands in `draftMessage`:
-    /// bumps the revision a failed send checks before restoring, and persists
-    /// the draft. Writes that are not the user's (clearing on send, restoring,
-    /// hydrating) skip it.
+    /// clears a "Couldn't steer" status, bumps the revision a failed send
+    /// checks before restoring, and persists the draft. Writes that are not the
+    /// user's (clearing on send, restoring, hydrating) skip it.
     private func persistDraftEdit(_ text: String) {
+        viewModel.clearSteerFailure()
         draftRevision &+= 1
         draftStore.setContent(
             ComposerDraftContent(text: text, quotes: draftQuotes),
@@ -3236,7 +3246,7 @@ private extension SlashCommandExecutionResult {
         switch self {
         case .executed, .openedSession:
             true
-        case .sendAsMessage, .unsupported, .needsSubArg:
+        case .sendAsMessage, .unsupported, .needsSubArg, .notDelivered:
             false
         }
     }

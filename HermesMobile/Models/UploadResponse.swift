@@ -153,10 +153,7 @@ extension PendingAttachment {
     }
 
     static func chatMessageText(draft: String, attachments: [PendingAttachment]) -> String {
-        let references = attachments
-            .map { $0.path.isEmpty ? $0.name : $0.path }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let references = agentReferences(for: attachments)
 
         guard !references.isEmpty else {
             return draft
@@ -170,5 +167,30 @@ extension PendingAttachment {
         }
 
         return "\(draft)\n\n[Attached files: \(references.joined(separator: ", "))]"
+    }
+
+    /// The steer text with the web UI's attached-files note appended verbatim
+    /// (`static/commands.js`, `_steerTextWithPendingFiles`), so a steer reads
+    /// the same from either client. The files are already uploaded, so the
+    /// note is all the agent needs to find them.
+    static func steerMessageText(draft: String, attachments: [PendingAttachment]) -> String {
+        let references = agentReferences(for: attachments)
+
+        guard !references.isEmpty else {
+            return draft
+        }
+
+        let note = "[Attached files for this steer: \(references.joined(separator: ", "))]\n"
+            + "Use the file tools/read_file to inspect these documents if needed."
+        return "\(draft)\n\n\(note)"
+    }
+
+    /// Where the agent reads each attachment: its uploaded path, or its name
+    /// when the upload returned no path.
+    private static func agentReferences(for attachments: [PendingAttachment]) -> [String] {
+        attachments
+            .map { $0.path.isEmpty ? $0.name : $0.path }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }

@@ -13,6 +13,9 @@ enum SlashCommandExecutionResult: Equatable {
     case sendAsMessage
     case unsupported(friendlyMessage: String)
     case needsSubArg
+    /// The message didn't reach the run (a refused steer). The draft stays in
+    /// the composer, and the view model's status says why and offers Retry.
+    case notDelivered
 }
 
 enum SlashCommandExecutor {

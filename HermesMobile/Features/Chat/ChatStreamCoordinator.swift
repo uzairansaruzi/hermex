@@ -892,14 +892,11 @@ final class ChatStreamCoordinator {
             delegate?.streamCoordinatorDidConfirmRecovery()
 
             if response.active == false {
-                await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
-                // Same generation/clobber guard as the reconnect and refresh paths;
-                // the extra `!isConnectionSuspended` keeps the reconnect path owning
-                // a stream that was suspended mid-load. (PR #266 review #3)
-                guard canFinalizeRunAfterLoad(streamID: expectedStreamID, capturedGeneration: generation),
-                      !isConnectionSuspended else { return }
-
-                finalizeInactiveStream(streamID: expectedStreamID)
+                await loadTranscriptAndFinalizeInactiveStream(
+                    streamID: expectedStreamID,
+                    capturedGeneration: generation,
+                    modelContext: modelContext
+                )
                 return
             }
 
@@ -922,10 +919,11 @@ final class ChatStreamCoordinator {
             if (error as? APIError)?.indicatesMissingStream == true,
                activeStreamID == expectedStreamID,
                !isConnectionSuspended {
-                await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
-                guard canFinalizeRunAfterLoad(streamID: expectedStreamID, capturedGeneration: generation),
-                      !isConnectionSuspended else { return }
-                finalizeInactiveStream(streamID: expectedStreamID)
+                await loadTranscriptAndFinalizeInactiveStream(
+                    streamID: expectedStreamID,
+                    capturedGeneration: generation,
+                    modelContext: modelContext
+                )
                 return
             }
 
@@ -939,6 +937,45 @@ final class ChatStreamCoordinator {
 
             reconnectStaleStream(streamID: expectedStreamID, usesReplay: true)
         }
+    }
+
+    /// Asks the server whether the active run is over, after a steer came back
+    /// saying it ended, and finalizes it the way stale recovery does, so
+    /// `finishStream` drains the queued message as a normal send. A live run,
+    /// a suspended connection, or a failed check leaves the stream alone.
+    func finalizeRunIfServerReportsEnded(modelContext: ModelContext?) async {
+        guard let streamID = activeStreamID, !isConnectionSuspended else { return }
+        let generation = runGeneration
+
+        let isInactive: Bool
+        do {
+            isInactive = try await client.chatStreamStatus(streamID: streamID).active == false
+        } catch {
+            isInactive = (error as? APIError)?.indicatesMissingStream == true
+        }
+        guard isInactive, activeStreamID == streamID, !isConnectionSuspended else { return }
+
+        await loadTranscriptAndFinalizeInactiveStream(
+            streamID: streamID,
+            capturedGeneration: generation,
+            modelContext: modelContext
+        )
+    }
+
+    /// The server says `streamID` is no longer active: reload the transcript,
+    /// then finalize the run. Same generation/clobber guard as the reconnect and
+    /// refresh paths; the extra `!isConnectionSuspended` keeps the reconnect
+    /// path owning a stream that was suspended mid-load. (PR #266 review #3)
+    private func loadTranscriptAndFinalizeInactiveStream(
+        streamID: String,
+        capturedGeneration: Int,
+        modelContext: ModelContext?
+    ) async {
+        await delegate?.streamCoordinatorLoadMessages(modelContext: modelContext)
+        guard canFinalizeRunAfterLoad(streamID: streamID, capturedGeneration: capturedGeneration),
+              !isConnectionSuspended else { return }
+
+        finalizeInactiveStream(streamID: streamID)
     }
 
     private func reconnectStaleStream(streamID: String, usesReplay: Bool) {
@@ -991,9 +1028,10 @@ final class ChatStreamCoordinator {
     /// a *different* run is now active — finalizing would clobber the newer stream.
     /// A run reconciled to `nil` during the load still passes: it should be
     /// finalized from the refreshed transcript so its Live Activity can't dangle on
-    /// "running" (#246). Shared by all three post-load finalize paths
-    /// (reconnect-after-suspend, foreground refresh, stale recovery) so they stay in
-    /// lockstep — recoverStaleStream previously used a stricter, hand-rolled guard.
+    /// "running" (#246). Shared by every post-load finalize path
+    /// (reconnect-after-suspend, foreground refresh, stale recovery, a steer that
+    /// found the run ended) so they stay in lockstep — recoverStaleStream
+    /// previously used a stricter, hand-rolled guard.
     /// (PR #266 review #3)
     private func canFinalizeRunAfterLoad(streamID: String, capturedGeneration: Int) -> Bool {
         guard runGeneration == capturedGeneration else { return false }
@@ -1003,8 +1041,9 @@ final class ChatStreamCoordinator {
     /// The server reports this stream is no longer active. Complete from the
     /// just-refreshed transcript when an assistant reply surfaced, otherwise
     /// finalize as failed. Either branch ends the Live Activity, so it can never
-    /// dangle on "running" after the run is over (#246). Shared by the two paths
-    /// with no live SSE behind them — reconnect-after-suspend and stale recovery.
+    /// dangle on "running" after the run is over (#246). Shared by the paths
+    /// that trust the server's status over the SSE — reconnect-after-suspend,
+    /// stale recovery, and a steer that found the run ended.
     /// The foreground transcript-refresh safety net deliberately keeps waiting
     /// instead, because its live SSE still owns completion.
     private func finalizeInactiveStream(streamID: String?) {

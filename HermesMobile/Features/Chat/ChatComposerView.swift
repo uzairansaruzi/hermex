@@ -1,10 +1,17 @@
 import SwiftUI
 import UIKit
 
+/// A composer status line that offers Retry, such as "Couldn't steer".
+struct ComposerRetryableStatus {
+    let message: String
+    let onRetry: () -> Void
+}
+
 private struct ComposerStatusView: View {
     let text: String
     let isError: Bool
     let isDismissible: Bool
+    let onRetry: (() -> Void)?
     let onDismiss: () -> Void
 
     var body: some View {
@@ -14,6 +21,12 @@ private struct ComposerStatusView: View {
                 .foregroundStyle(textColor)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let onRetry {
+                Button("Retry", action: onRetry)
+                    .font(AppFont.caption(weight: .semibold))
+                    .buttonStyle(.borderless)
+            }
 
             if isDismissible {
                 Button(action: onDismiss) {
@@ -159,6 +172,8 @@ struct MessageComposerView: View {
     /// again the first time the panel opens.
     let filePathSearch: ComposerFilePathSearch
     let uploadAttachmentErrorMessage: String?
+    /// "Couldn't steer" with Retry, after a steer didn't reach the run.
+    let steerFailure: ComposerRetryableStatus?
     let onSend: () -> Void
     let onSendVoiceNote: (Data, String) -> Void
     let onCancel: () -> Void
@@ -402,6 +417,7 @@ struct MessageComposerView: View {
                         text: composerStatus.text,
                         isError: composerStatus.isError,
                         isDismissible: composerStatus.isDismissible,
+                        onRetry: composerStatus.onRetry,
                         onDismiss: onDismissUploadAttachmentError
                     )
                 }
@@ -1022,25 +1038,27 @@ struct MessageComposerView: View {
         showsAllModelsSheet = true
     }
 
-    private var composerStatus: (text: String, isError: Bool, isDismissible: Bool)? {
+    private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?)? {
         if let readOnlyMessage {
-            return (readOnlyMessage, false, false)
+            return (readOnlyMessage, false, false, nil)
         } else if isWaitingForStream && isCancellingStream {
-            return (String(localized: "Stopping response..."), false, false)
+            return (String(localized: "Stopping response..."), false, false, nil)
         } else if isCompressingSession {
-            return (String(localized: "Compressing context..."), false, false)
+            return (String(localized: "Compressing context..."), false, false, nil)
         } else if let uploadAttachmentErrorMessage {
-            return (uploadAttachmentErrorMessage, true, true)
+            return (uploadAttachmentErrorMessage, true, true, nil)
         } else if isSendingVoiceNote {
-            return (String(localized: "Sending voice note..."), false, false)
+            return (String(localized: "Sending voice note..."), false, false, nil)
         } else if isUploadingAttachment {
-            return (String(localized: "Uploading attachment..."), false, false)
+            return (String(localized: "Uploading attachment..."), false, false, nil)
+        } else if let steerFailure {
+            return (steerFailure.message, true, false, steerFailure.onRetry)
         } else if let errorMessage {
-            return (errorMessage, true, false)
+            return (errorMessage, true, false, nil)
         } else if let configurationErrorMessage {
-            return (configurationErrorMessage, true, false)
+            return (configurationErrorMessage, true, false, nil)
         } else if isUpdatingConfiguration {
-            return (String(localized: "Updating composer settings..."), false, false)
+            return (String(localized: "Updating composer settings..."), false, false, nil)
         }
 
         return nil

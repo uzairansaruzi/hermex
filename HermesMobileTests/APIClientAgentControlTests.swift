@@ -189,7 +189,7 @@ final class APIClientAgentControlTests: APIClientTestCase {
         XCTAssertEqual(requestCount, 2)
     }
 
-    func testSteerChatBuildsExpectedBodyAndDecodesResponse() async throws {
+    func testSteerChatBuildsExpectedBodyAndReportsDelivery() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/chat/steer")
             XCTAssertEqual(request.httpMethod, "POST")
@@ -208,11 +208,63 @@ final class APIClientAgentControlTests: APIClientTestCase {
             """, for: request)
         }
 
-        let response = try await client.steerChat(sessionID: "abc123", text: "prefer tests")
+        let outcome = await client.steerChat(sessionID: "abc123", text: "prefer tests")
 
-        XCTAssertEqual(response.accepted, true)
-        XCTAssertNil(response.fallback)
-        XCTAssertEqual(response.streamId, "stream-123")
+        XCTAssertEqual(Self.label(outcome), "delivered")
+    }
+
+    /// Every `fallback` `_handle_chat_steer` can return, plus the failures that
+    /// never reach it, lands on the outcome the chat acts on (#856).
+    func testSteerOutcomeMapsEveryFallback() async throws {
+        let cases: [(reply: String, expected: String)] = [
+            (#"{"accepted":false,"fallback":"gateway_steer_queued","stream_id":"s"}"#, "serverQueued"),
+            (#"{"accepted":false,"fallback":"not_running","stream_id":null}"#, "runEnded"),
+            (#"{"accepted":false,"fallback":"stream_dead","stream_id":null}"#, "runEnded"),
+            (#"{"accepted":false,"fallback":"no_cached_agent","stream_id":null}"#, "refused"),
+            (#"{"accepted":false,"fallback":"agent_lacks_steer","stream_id":null}"#, "refused"),
+            (#"{"accepted":false,"fallback":"session_not_found","stream_id":null}"#, "refused"),
+            (#"{"accepted":false,"fallback":"steer_error","stream_id":"s"}"#, "refused"),
+            (#"{"accepted":false,"fallback":null,"stream_id":"s"}"#, "refused"),
+            (#"{"accepted":false,"fallback":"a_future_code"}"#, "refused"),
+        ]
+        for (reply, expected) in cases {
+            let client = makeClient { request in apiTestJSONResponse(reply, for: request) }
+            let outcome = await client.steerChat(sessionID: "abc123", text: "hint")
+            XCTAssertEqual(Self.label(outcome), expected, reply)
+        }
+
+        let offline = makeClient { _ in throw URLError(.notConnectedToInternet) }
+        let offlineOutcome = await offline.steerChat(sessionID: "abc123", text: "hint")
+        XCTAssertEqual(Self.label(offlineOutcome), "refused(network)")
+
+        let badRequest = makeClient { request in
+            apiTestJSONResponse(#"{"error":"text required"}"#, for: request, status: 400)
+        }
+        let badRequestOutcome = await badRequest.steerChat(sessionID: "abc123", text: "hint")
+        XCTAssertEqual(Self.label(badRequestOutcome), "refused(http 400)")
+    }
+
+    /// A comparable name for an outcome: `refused` carries a non-`Equatable` error.
+    private static func label(_ outcome: ChatSteerOutcome) -> String {
+        switch outcome {
+        case .delivered:
+            return "delivered"
+        case .serverQueued:
+            return "serverQueued"
+        case .runEnded:
+            return "runEnded"
+        case .refused(transportError: .none):
+            return "refused"
+        case .refused(transportError: .some(let error)):
+            switch error as? APIError {
+            case .network?:
+                return "refused(network)"
+            case .http(let statusCode, _)?:
+                return "refused(http \(statusCode))"
+            default:
+                return "refused(\(error))"
+            }
+        }
     }
 
     func testSubmitGoalBuildsExpectedBodyAndDecodesResponse() async throws {

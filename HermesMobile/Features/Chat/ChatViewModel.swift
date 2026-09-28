@@ -440,6 +440,10 @@ final class ChatViewModel {
     var localAttachmentPreviews: [String: [String: Data]] { attachmentCoordinator.localAttachmentPreviews }
     private(set) var pinnedLocalNotices: [String] = []
     private(set) var steeringConfirmationNotice: String?
+    /// "Couldn't steer", plus the system's reason for a network or HTTP
+    /// failure, after the latest steer didn't reach the run. The composer shows
+    /// it with Retry; `clearSteerFailure()` removes it.
+    private(set) var steerFailureMessage: String?
     var approvalPrompt: ApprovalPromptState? { pendingActionCoordinator.approvalPrompt }
     var isRespondingToApproval: Bool { pendingActionCoordinator.isRespondingToApproval }
     var approvalErrorMessage: String? { pendingActionCoordinator.approvalErrorMessage }
@@ -2891,25 +2895,72 @@ final class ChatViewModel {
             return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
         }
 
-        guard activeStreamID != nil else {
+        guard let steeredStreamID = activeStreamID else {
             let sent = await sendMessage(message)
             return sent ? .executed(message: nil) : .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the steering message."))
         }
 
-        do {
-            let response = try await client.steerChat(sessionID: sessionID, text: message)
-            if response.accepted == true {
-                appendLocalSteerEcho(message)
-                showSteeringConfirmation(String(localized: "Steering hint delivered."))
-                return .executed(message: nil)
+        // Staged attachments ride along as an attached-files note. No outcome
+        // stops the run: the server's steer contract leaves Queue and Stop &
+        // send to the user.
+        let steeredAttachments = attachmentCoordinator.pendingAttachments
+        let steerText = PendingAttachment.steerMessageText(draft: message, attachments: steeredAttachments)
+
+        switch await client.steerChat(sessionID: sessionID, text: steerText) {
+        case .delivered:
+            appendLocalSteerEcho(steerText)
+            showSteeringConfirmation(String(localized: "Steering hint delivered."))
+            // Take only the attachments that rode along, keeping any staged
+            // while the steer was in flight, then delete their durable copies
+            // as `sendMessage` does.
+            if !steeredAttachments.isEmpty {
+                let steeredIDs = Set(steeredAttachments.map(\.id))
+                attachmentCoordinator.replacePendingAttachments(
+                    attachmentCoordinator.pendingAttachments.filter { !steeredIDs.contains($0.id) }
+                )
+                for fileName in steeredAttachments.compactMap(\.draftFileName) {
+                    await attachmentCoordinator.deleteDraftCopy(named: fileName)
+                }
             }
-        } catch {
-            lastError = error
+            return .executed(message: nil)
+        case .refused(let transportError):
+            let title = String(localized: "Couldn't steer")
+            if let transportError {
+                lastError = transportError
+                steerFailureMessage = "\(title)\n\(transportError.localizedDescription)"
+            } else {
+                steerFailureMessage = title
+            }
+            return .notDelivered
+        case .serverQueued:
+            enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
+        case .runEnded:
+            // Queue first, then let the coordinator confirm the run is over:
+            // finishing it drains the queue, so the message goes out as a normal
+            // send only once the server has released the session.
+            enqueueQueuedSlashMessage(
+                message,
+                attachments: attachmentCoordinator.consumePendingAttachments(),
+                atFront: true
+            )
+            await streamCoordinator.finalizeRunIfServerReportsEnded(modelContext: nil)
         }
 
-        _ = enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
-        await cancelActiveStream()
-        return .executed(message: String(localized: "Steer was unavailable, so the message was queued and the current response was stopped."))
+        // The run may have finished while the steer was in flight, after its
+        // own drain found the queue empty.
+        drainQueuedSlashMessageIfIdle()
+        return activeStreamID == steeredStreamID
+            ? .executed(message: String(localized: "Queued, sends when this run finishes"))
+            : .executed(message: nil)
+    }
+
+    /// Clears "Couldn't steer" once the user moves on: the next send, a draft
+    /// edit, or the end of the run.
+    func clearSteerFailure() {
+        // Guarded: draft edits call this on every keystroke, and an
+        // `@Observable` write notifies even when the value is unchanged.
+        guard steerFailureMessage != nil else { return }
+        steerFailureMessage = nil
     }
 
     /// Appends the local echo of an accepted steer immediately, so the hint is
@@ -5879,6 +5930,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
         dismissSteeringConfirmation()
+        clearSteerFailure()
         responseCompletionNeedsTranscriptRefresh = false
         if let ending = streamCoordinator.latestRunEnding {
             latestRunOutcome = TranscriptTurnRunOutcome(

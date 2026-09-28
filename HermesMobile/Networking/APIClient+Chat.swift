@@ -95,12 +95,32 @@ extension APIClient {
         )
     }
 
-    func steerChat(sessionID: String, text: String) async throws -> ChatSteerResponse {
-        try await send(
-            endpoint: .chatSteer,
-            method: "POST",
-            body: ChatSteerRequest(sessionId: sessionID, text: text)
-        )
+    /// Steers the session's active run and reports what became of the hint.
+    /// Never throws: a failed request is a refusal carrying its error.
+    func steerChat(sessionID: String, text: String) async -> ChatSteerOutcome {
+        let response: ChatSteerResponse
+        do {
+            response = try await send(
+                endpoint: .chatSteer,
+                method: "POST",
+                body: ChatSteerRequest(sessionId: sessionID, text: text)
+            )
+        } catch {
+            return .refused(transportError: error)
+        }
+
+        if response.accepted == true {
+            return .delivered
+        }
+        // Fallback codes from `_handle_chat_steer` (api/streaming.py).
+        switch response.fallback {
+        case "gateway_steer_queued":
+            return .serverQueued
+        case "not_running", "stream_dead":
+            return .runEnded
+        default:
+            return .refused(transportError: nil)
+        }
     }
 
     func submitGoal(

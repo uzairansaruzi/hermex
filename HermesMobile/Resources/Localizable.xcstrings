@@ -110,6 +110,7 @@
     "Couldn't reach %@. Check the address and network." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ ist nicht erreichbar. Prüfe die Adresse und das Netzwerk." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo contactar con %@. Revisa la dirección y la red." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible de joindre %@. Vérifiez l’adresse et le réseau." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile raggiungere %@. Controlla l’indirizzo e la rete." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie można połączyć się z %@. Sprawdź adres i sieć." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível alcançar %@. Verifique o endereço e a rede." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kan %@ niet bereiken. Controleer het adres en het netwerk." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ adresine ulaşılamadı. Adresi ve ağı kontrol edin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось подключиться к %@. Проверьте адрес и сеть." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ に接続できませんでした。アドレスとネットワークを確認してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法访问 %@。请检查地址和网络。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@에 연결할 수 없습니다. 주소와 네트워크를 확인하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر الوصول إلى %@. تحقّق من العنوان والشبكة." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן להגיע אל %@. בדוק את הכתובת ואת הרשת." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ تک رسائی نہیں ہو سکی۔ پتہ اور نیٹ ورک چیک کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法連到 %@。請檢查位址和網路。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法連到 %@。請檢查位址和網絡。" } } } },
     "Couldn't read the recorded voice note. Try again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Die aufgenommene Sprachnotiz konnte nicht gelesen werden. Versuche es erneut." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo leer la nota de voz grabada. Inténtalo de nuevo." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible de lire la note vocale enregistrée. Réessayez." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile leggere la nota vocale registrata. Riprova." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie można odczytać nagranej notatki głosowej. Spróbuj ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível ler a nota de voz gravada. Tente novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kan de opgenomen spraaknotitie niet lezen. Probeer het opnieuw." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kaydedilen sesli not okunamadı. Tekrar deneyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось прочитать записанное голосовое сообщение. Повторите попытку." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "録音した音声メモを読み込めませんでした。もう一度お試しください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法读取录制的语音消息。请重试。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "녹음한 음성 메모를 읽을 수 없습니다. 다시 시도하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّرت قراءة الملاحظة الصوتية المسجلة. حاول مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן לקרוא את ההודעה הקולית שהוקלטה. יש לנסות שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ریکارڈ شدہ صوتی نوٹ پڑھا نہیں جا سکا۔ دوبارہ کوشش کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法讀取錄製的語音訊息。請再試一次。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法讀取錄製的語音訊息。請再試一次。" } } } },
     "Couldn't start recording. Try again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Aufnahme konnte nicht gestartet werden. Versuche es erneut." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo iniciar la grabación. Inténtalo de nuevo." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible de démarrer l’enregistrement. Réessayez." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile avviare la registrazione. Riprova." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie można rozpocząć nagrywania. Spróbuj ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível iniciar a gravação. Tente novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kan opname niet starten. Probeer het opnieuw." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kayıt başlatılamadı. Tekrar deneyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось начать запись. Повторите попытку." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "録音を開始できませんでした。もう一度お試しください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法开始录音。请重试。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "녹음을 시작할 수 없습니다. 다시 시도하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر بدء التسجيل. حاول مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן להתחיל הקלטה. יש לנסות שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ریکارڈنگ شروع نہیں ہو سکی۔ دوبارہ کوشش کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法開始錄音。請再試一次。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法開始錄音。請再試一次。" } } } },
+    "Couldn't steer" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Lenken nicht möglich" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo dirigir" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible d’orienter" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile guidare" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie można pokierować" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível direcionar" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kan niet bijsturen" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Yönlendirilemedi" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось направить" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "誘導できませんでした" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法引导" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "유도할 수 없습니다" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر التوجيه" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן לכוון" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "رہنمائی نہیں ہو سکی" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法引導" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法引導" } } } },
     "Couldn't transcribe that voice note. Try recording again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Diese Sprachnotiz konnte nicht transkribiert werden. Nimm sie erneut auf." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo transcribir esa nota de voz. Vuelve a grabarla." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible de transcrire cette note vocale. Réessayez l’enregistrement." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile trascrivere la nota vocale. Prova a registrare di nuovo." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie można przetranskrybować tej notatki głosowej. Nagraj ją ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível transcrever essa nota de voz. Tente gravar novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kan die spraaknotitie niet transcriberen. Neem opnieuw op." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sesli not metne dönüştürülemedi. Yeniden kaydetmeyi deneyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось расшифровать это голосовое сообщение. Запишите его снова." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "その音声メモを文字起こしできませんでした。もう一度録音してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法转写该语音消息。请重新录制。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "해당 음성 메모를 텍스트로 변환할 수 없습니다. 다시 녹음하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر تحويل هذه الملاحظة الصوتية إلى نص. حاول التسجيل مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן לתמלל את ההודעה הקולית הזו. יש לנסות להקליט שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس صوتی نوٹ کی ٹرانسکرپشن نہیں ہو سکی۔ دوبارہ ریکارڈ کرنے کی کوشش کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法轉寫該語音訊息。請重新錄製。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法轉寫該語音訊息。請重新錄製。" } } } },
     "Couldn’t add media" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Medien konnten nicht hinzugefügt werden" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo añadir el contenido multimedia" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible d’ajouter le média" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile aggiungere i media" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie można dodać multimediów" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível adicionar mídia" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kan media niet toevoegen" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Medya eklenemedi" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось добавить медиа" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "メディアを追加できませんでした" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法添加媒体" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "미디어를 추가할 수 없음" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّرت إضافة الوسائط" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן להוסיף מדיה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "میڈیا شامل نہیں ہو سکا" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法加入媒體" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法加入媒體" } } } },
     "Creating…" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Wird erstellt…" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Creando…" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Création…" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Creazione…" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Tworzenie…" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Criando…" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Aanmaken…" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Oluşturuluyor…" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Создание…" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "作成中…" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "正在创建…" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "생성 중…" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "جارٍ الإنشاء…" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "יוצר…" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "بنایا جا رہا ہے…" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "正在建立…" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "正在建立…" } } } },
@@ -59613,6 +59614,112 @@
         }
       }
     },
+    "Queued, sends when this run finishes" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "في قائمة الانتظار، يُرسل عند انتهاء هذا التشغيل"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eingereiht, wird nach diesem Lauf gesendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "En cola, se enviará cuando termine esta ejecución"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "En file d’attente, envoyé à la fin de cette exécution"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "בתור, יישלח בסיום הרצה זו"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "In coda, verrà inviato al termine di questa esecuzione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "キューに追加しました。この実行が終わると送信されます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "대기열에 추가됨. 이 실행이 끝나면 전송됩니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "In wachtrij, wordt verzonden als deze uitvoering klaar is"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "W kolejce, zostanie wysłane po zakończeniu tego uruchomienia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Na fila, será enviada quando esta execução terminar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "В очереди, отправится после завершения этого запуска"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kuyruğa alındı, bu çalışma bitince gönderilecek"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "قطار میں، اس رن کے ختم ہونے پر بھیجا جائے گا"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已排入佇列，此次執行結束後傳送"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已排队，此次运行结束后发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已排入佇列，此次執行結束後傳送"
+          }
+        }
+      }
+    },
     "Read-only" : {
       "localizations" : {
         "ar" : {
@@ -78929,112 +79036,6 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "引導使用中的回應"
-          }
-        }
-      }
-    },
-    "Steer was unavailable, so the message was queued and the current response was stopped." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "التوجيه غير متاح، لذا وُضعت الرسالة في قائمة الانتظار وأُوقف الرد الحالي."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Steuern war nicht verfügbar, daher wurde die Nachricht in die Warteschlange gestellt und die aktuelle Antwort gestoppt."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "La dirección no estaba disponible, por lo que el mensaje se puso en cola y la respuesta actual se detuvo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "L'orientation était indisponible ; le message a été mis en attente et la réponse actuelle a été arrêtée."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "הכוונה לא הייתה זמינה, ולכן ההודעה הוכנסה לתור והתגובה הנוכחית נעצרה."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "La guida non era disponibile, il messaggio è stato messo in coda e la risposta corrente è stata interrotta."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "誘導を利用できなかったため、メッセージはキューに入れられ、現在の応答は停止されました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "유도를 사용할 수 없어 메시지가 대기열에 추가되고 현재 응답이 중지되었어요."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bijsturen was niet beschikbaar, dus het bericht is in de wachtrij geplaatst en het huidige antwoord is gestopt."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sterowanie było niedostępne, więc wiadomość została dodana do kolejki, a bieżąca odpowiedź została zatrzymana."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O direcionamento estava indisponível, então a mensagem foi colocada na fila e a resposta atual foi parada."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Направление было недоступно, поэтому сообщение поставлено в очередь, а текущий ответ остановлен."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Yönlendirme kullanılamadı, bu yüzden mesaj kuyruğa alındı ve mevcut yanıt durduruldu."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "رہنمائی دستیاب نہیں تھی، اس لیے پیغام قطار میں ڈال دیا گیا اور موجودہ جواب بند کر دیا گیا۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "引導功能無法使用，因此訊息已排隊，目前的回應已停止。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "引导功能不可用，因此消息已排队，当前响应已停止。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "引導功能無法使用，因此訊息已排隊，目前的回應已停止。"
           }
         }
       }
