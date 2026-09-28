@@ -512,37 +512,42 @@ final class SessionNavigationStateTests: XCTestCase {
         )
     }
 
-    func testCompletedSessionListRefreshesWhenTheAppReturnsToForeground() {
-        XCTAssertTrue(
-            SessionListForegroundRefreshPolicy.shouldRefresh(
-                previousPhase: .background,
-                currentPhase: .active,
-                didCompleteInitialLoad: true,
-                isLoading: false
-            )
-        )
+    func testForegroundReturnRefreshesAtOnceWhenNothingIsLoading() {
+        var refresh = SessionListForegroundRefresh()
+
+        XCTAssertTrue(refresh.appReturned(didCompleteInitialLoad: true, isLoading: false))
+        XCTAssertFalse(refresh.isPending)
+        XCTAssertFalse(refresh.loadSettled())
     }
 
-    func testInitialSceneActivationDoesNotDuplicateTheInitialLoad() {
-        XCTAssertFalse(
-            SessionListForegroundRefreshPolicy.shouldRefresh(
-                previousPhase: .inactive,
-                currentPhase: .active,
-                didCompleteInitialLoad: false,
-                isLoading: false
-            )
-        )
+    func testForegroundReturnBeforeTheInitialLoadDoesNothing() {
+        var refresh = SessionListForegroundRefresh()
+
+        XCTAssertFalse(refresh.appReturned(didCompleteInitialLoad: false, isLoading: true))
+        XCTAssertFalse(refresh.loadSettled())
     }
 
-    func testForegroundActivationDoesNotOverlapAnExistingRefresh() {
-        XCTAssertFalse(
-            SessionListForegroundRefreshPolicy.shouldRefresh(
-                previousPhase: .background,
-                currentPhase: .active,
-                didCompleteInitialLoad: true,
-                isLoading: true
-            )
-        )
+    func testForegroundReturnDuringALoadRefreshesOnceWhenItSettles() {
+        var refresh = SessionListForegroundRefresh()
+
+        XCTAssertFalse(refresh.appReturned(didCompleteInitialLoad: true, isLoading: true))
+        XCTAssertTrue(refresh.loadSettled())
+        XCTAssertFalse(refresh.loadSettled(), "the deferred refresh runs once, and its own load must not trigger another")
+    }
+
+    func testRepeatedForegroundReturnsDuringALoadCoalesce() {
+        var refresh = SessionListForegroundRefresh()
+
+        XCTAssertFalse(refresh.appReturned(didCompleteInitialLoad: true, isLoading: true))
+        XCTAssertFalse(refresh.appReturned(didCompleteInitialLoad: true, isLoading: true))
+        XCTAssertTrue(refresh.loadSettled())
+        XCTAssertFalse(refresh.loadSettled())
+    }
+
+    func testLoadsWithoutAForegroundReturnDoNotRefresh() {
+        var refresh = SessionListForegroundRefresh()
+
+        XCTAssertFalse(refresh.loadSettled())
     }
 }
 

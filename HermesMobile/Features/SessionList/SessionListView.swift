@@ -3,17 +3,32 @@ import SwiftData
 import UIKit
 import StoreKit
 
-enum SessionListForegroundRefreshPolicy {
-    static func shouldRefresh(
-        previousPhase: ScenePhase,
-        currentPhase: ScenePhase,
-        didCompleteInitialLoad: Bool,
-        isLoading: Bool
-    ) -> Bool {
-        previousPhase != .active
-            && currentPhase == .active
-            && didCompleteInitialLoad
-            && !isLoading
+/// Refreshes the session list when the app returns from the background, so
+/// sessions started or finished elsewhere show without a pull. A return that
+/// lands while another load is running is remembered and refreshed once that
+/// load settles: the running load may have started before backgrounding and
+/// would otherwise leave stale rows. Repeated returns coalesce to one refresh.
+struct SessionListForegroundRefresh: Equatable {
+    private(set) var isPending = false
+
+    /// Called on a real background-to-active return. Returns true when the
+    /// list should refresh now; false defers it (a load is running) or skips
+    /// it (the initial load hasn't finished, and will fetch fresh rows itself).
+    mutating func appReturned(didCompleteInitialLoad: Bool, isLoading: Bool) -> Bool {
+        guard didCompleteInitialLoad else { return false }
+        guard !isLoading else {
+            isPending = true
+            return false
+        }
+        isPending = false
+        return true
+    }
+
+    /// Called when the list stops loading. Returns true once for a deferred return.
+    mutating func loadSettled() -> Bool {
+        guard isPending else { return false }
+        isPending = false
+        return true
     }
 }
 
@@ -41,6 +56,7 @@ struct SessionListView: View {
     @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
     @AppStorage(TipJar.dismissedReleaseKey) private var tipDismissedRelease: String?
     @State private var wasBackgrounded = false
+    @State private var foregroundRefresh = SessionListForegroundRefresh()
     @State private var ratingRequestID: UUID?
     @State private var ratingMoment: RatingPromptMoment = .coldLaunch
     @Environment(\.modelContext) private var modelContext
@@ -48,7 +64,6 @@ struct SessionListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: SessionListViewModel
     @State private var navigationState: SessionNavigationState
     @State private var sessionPendingRename: SessionSummary?
@@ -149,6 +164,12 @@ struct SessionListView: View {
                 }
                 if phase == .active, wasBackgrounded {
                     wasBackgrounded = false
+                    if foregroundRefresh.appReturned(
+                        didCompleteInitialLoad: didCompleteInitialLoad,
+                        isLoading: viewModel.isLoading
+                    ) {
+                        refreshAfterReturningIfNeeded()
+                    }
                     ratingMoment = .foreground
                     ratingRequestID = UUID()
                 } else if phase != .active {
@@ -340,15 +361,9 @@ struct SessionListView: View {
                 sessionOpenTask?.cancel()
                 viewModel.invalidateSessionOpening()
             }
-            .onChange(of: scenePhase) { previousPhase, currentPhase in
-                guard SessionListForegroundRefreshPolicy.shouldRefresh(
-                    previousPhase: previousPhase,
-                    currentPhase: currentPhase,
-                    didCompleteInitialLoad: didCompleteInitialLoad,
-                    isLoading: viewModel.isLoading
-                ) else { return }
-
-                Task { await refreshSessionsAndActiveProfile() }
+            .onChange(of: viewModel.isLoading) { _, isLoading in
+                guard !isLoading, foregroundRefresh.loadSettled() else { return }
+                refreshAfterReturningIfNeeded()
             }
             .onChange(of: pendingSharedImport) {
                 openPendingSharedImportIfNeeded()
@@ -1589,10 +1604,11 @@ enum SessionListInitialLoad {
     }
 }
 
-/// Runs the return refresh that `SessionListDestinationReturn` requests. It
-/// reloads the rows, then runs one poll tick when the poll was paused while a
-/// destination covered the compact list, so badges such as Approval do not
-/// stay as they were before the push until the restarted poll's first tick.
+/// Runs the return refresh that `SessionListDestinationReturn` and
+/// `SessionListForegroundRefresh` request. It reloads the rows, then runs one
+/// poll tick when the poll was paused while a destination covered the compact
+/// list, so badges such as Approval do not stay as they were before the push
+/// until the restarted poll's first tick.
 enum SessionListReturnRefresh {
     @MainActor
     static func run(
