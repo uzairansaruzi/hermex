@@ -817,6 +817,11 @@ final class ComposerDropRouteTests: XCTestCase {
 
 @MainActor
 final class ComposerFocusTransitionTests: XCTestCase {
+    override class func setUp() {
+        super.setUp()
+        MainActor.assumeIsolated { warmUpSoftwareKeyboard() }
+    }
+
     private final class AppearingController: UIViewController {
         var onAppearance: (() -> Void)?
 
@@ -935,9 +940,9 @@ final class ComposerFocusTransitionTests: XCTestCase {
         XCTAssertTrue(textView.isFirstResponder)
     }
 
-    /// Ceiling only: every transition wait ends on an appearance or completion
-    /// callback. Hosted CI runners stall for seconds at a time (#649), so a tight
-    /// ceiling fails healthy runs without catching a broken transition any sooner.
+    /// Safety net only: every transition wait ends on an appearance or completion
+    /// callback, and the class warms the keyboard first. Without that, a push on a
+    /// fresh CI simulator waited for the keyboard daemon to start (5–30 s).
     private let transitionTimeout: TimeInterval = 30
 
     /// A real UIKit pop exercises first-responder restoration and coordinator

@@ -1451,6 +1451,30 @@ extension XCTestCase {
             window.layoutIfNeeded()
         }
     }
+
+    /// A freshly cloned CI simulator boots without the keyboard daemon. The first
+    /// focus change after a text view takes focus blocks the main thread inside
+    /// UIKit until `kbd` answers, which took 5–30 s on hosted runners, so no
+    /// wait's ceiling is safe while it starts. Classes that focus text views call
+    /// this from `class setUp()`, where no clock runs; later calls return at once.
+    @MainActor static func warmUpSoftwareKeyboard() {
+        guard !softwareKeyboardIsWarm,
+              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
+        else { return }
+        softwareKeyboardIsWarm = true
+        let window = UIWindow(windowScene: scene)
+        let field = UITextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        window.addSubview(field)
+        window.makeKeyAndVisible()
+        let shown = XCTNSNotificationExpectation(name: UIResponder.keyboardWillShowNotification)
+        field.becomeFirstResponder()
+        // The keyboard is requested on focus; giving focus up is what waits for it.
+        _ = XCTWaiter().wait(for: [shown], timeout: 5)
+        field.resignFirstResponder()
+        window.isHidden = true
+    }
+
+    @MainActor private static var softwareKeyboardIsWarm = false
 }
 
 actor BotMemoryDrafts: ChatDraftPersisting {
