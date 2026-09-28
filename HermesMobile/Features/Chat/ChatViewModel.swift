@@ -371,6 +371,8 @@ final class ChatViewModel {
     /// keeps its background task open until then (#862). A stopped run never bumps.
     private(set) var runEndTrigger = 0
     private(set) var runEndOutcome: ResponseCompletionOutcome = .completed
+    /// The coordinator's ending the last bump counted, so no ending counts twice.
+    @ObservationIgnored private var runEndRecordedAt: Date?
     /// Bumps at most once per throttle interval while live (non-replay) assistant
     /// text arrives; the view turns each bump into one streaming pulse haptic.
     private(set) var streamingHapticPulseTrigger = 0
@@ -5896,10 +5898,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         dismissSteeringConfirmation()
         responseCompletionNeedsTranscriptRefresh = false
         if let ending = streamCoordinator.latestRunEnding {
-            // A completion was recorded when it completed. A late teardown can find
-            // the previous run's ending still on record, so only a new failure counts.
-            if ending.ending == .failed, latestRunOutcome?.endedAt != ending.endedAt {
-                recordRunEnd(.failed)
+            // A `done` completion already counted when it completed, and a late
+            // teardown can find an ending still on record, so each ending counts once.
+            // This catches failures and a `stream_end` that arrives without `done`.
+            if ending.endedAt != runEndRecordedAt, let outcome = ResponseCompletionOutcome(ending: ending.ending) {
+                recordRunEnd(outcome)
             }
             latestRunOutcome = TranscriptTurnRunOutcome(
                 turnKey: TranscriptTurnClassifier.latestTurnKey(in: messages, messageOffset: messagesOffset),
@@ -5915,6 +5918,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     private func recordRunEnd(_ outcome: ResponseCompletionOutcome) {
+        runEndRecordedAt = streamCoordinator.latestRunEnding?.endedAt
         runEndOutcome = outcome
         runEndTrigger += 1
     }

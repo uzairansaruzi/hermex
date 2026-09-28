@@ -294,6 +294,10 @@ final class LiveActivityTests: XCTestCase {
         let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
         let streamClient = LiveActivitySpySSEClient()
         LiveActivityURLProtocol.handler = { request in
+            // A finished `done` run refreshes the chat title from the session.
+            if request.url?.path == "/api/session" {
+                return Self.jsonResponse(#"{"session":{"session_id":"session-abc","title":"Deploy notes"}}"#, for: request)
+            }
             XCTAssertEqual(request.url?.path, "/api/chat/start")
             return Self.jsonResponse(#"{"stream_id":"stream-123","session_id":"session-abc"}"#, for: request)
         }
@@ -324,6 +328,20 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertTrue(completedRunStarted)
         streamClient.emit(.done(DoneStreamEvent()))
         XCTAssertEqual(viewModel.runEndTrigger, 2)
+        XCTAssertEqual(viewModel.runEndOutcome, .completed)
+        streamClient.emit(.streamEnd)
+        XCTAssertEqual(viewModel.runEndTrigger, 2, "The teardown after done is the same run")
+
+        let secondFailedRunStarted = await viewModel.sendMessage("And again")
+        XCTAssertTrue(secondFailedRunStarted)
+        streamClient.emit(.error("No API key"))
+        XCTAssertEqual(viewModel.runEndOutcome, .failed)
+
+        // The Live Activity calls a `stream_end` without `done` complete; so does the alert.
+        let bareEndRunStarted = await viewModel.sendMessage("Last one")
+        XCTAssertTrue(bareEndRunStarted)
+        streamClient.emit(.streamEnd)
+        XCTAssertEqual(viewModel.runEndTrigger, 4)
         XCTAssertEqual(viewModel.runEndOutcome, .completed)
     }
 
@@ -1020,9 +1038,9 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", sessionTitle: "Title", updatedAt: now),
-                OrphanedLiveActivity(streamID: "running", sessionID: "s-running", sessionTitle: "Title", updatedAt: now),
-                OrphanedLiveActivity(streamID: "errored", sessionID: "s-errored", sessionTitle: "Title", updatedAt: now)
+                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
+                OrphanedLiveActivity(streamID: "running", sessionID: "s-running", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
+                OrphanedLiveActivity(streamID: "errored", sessionID: "s-errored", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1067,7 +1085,7 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60))
+                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60), server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1093,7 +1111,8 @@ final class LiveActivityTests: XCTestCase {
                     streamID: "stale",
                     sessionID: "s-stale",
                     sessionTitle: "Title",
-                    updatedAt: now.addingTimeInterval(-(LiveActivityReconciler.recentCompletionWindow + 1))
+                    updatedAt: now.addingTimeInterval(-(LiveActivityReconciler.recentCompletionWindow + 1)),
+                    server: Self.reconcilerServer
                 )
             ],
             server: Self.reconcilerServer,
@@ -1117,7 +1136,7 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "dup", sessionID: "s-dup", sessionTitle: "Title", updatedAt: now)
+                OrphanedLiveActivity(streamID: "dup", sessionID: "s-dup", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1140,7 +1159,7 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now)
+                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1162,7 +1181,7 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "future", sessionID: "s-future", sessionTitle: "Title", updatedAt: now.addingTimeInterval(120))
+                OrphanedLiveActivity(streamID: "future", sessionID: "s-future", sessionTitle: "Title", updatedAt: now.addingTimeInterval(120), server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1218,9 +1237,9 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "ok", sessionID: "s-ok", sessionTitle: "Title", updatedAt: now),
-                OrphanedLiveActivity(streamID: "lost", sessionID: "s-lost", sessionTitle: "Title", updatedAt: now),
-                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now)
+                OrphanedLiveActivity(streamID: "ok", sessionID: "s-ok", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
+                OrphanedLiveActivity(streamID: "lost", sessionID: "s-lost", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
+                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1251,9 +1270,9 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "failed", sessionID: "s-failed", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60)),
-                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60)),
-                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60))
+                OrphanedLiveActivity(streamID: "failed", sessionID: "s-failed", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60), server: Self.reconcilerServer),
+                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60), server: Self.reconcilerServer),
+                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60), server: Self.reconcilerServer)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1274,8 +1293,8 @@ final class LiveActivityTests: XCTestCase {
     }
 
     // #862: another server's stream ID means nothing to the checked server, so its
-    // run never alerts from here. An activity an older build persisted has no
-    // server and keeps alerting.
+    // run never alerts from here. Neither does an activity a build before 1.7.0
+    // persisted, which has no recorded server.
     @MainActor
     func testReconcilerNeverNotifiesForAnotherServersOrphan() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -1287,7 +1306,8 @@ final class LiveActivityTests: XCTestCase {
                                      server: Self.reconcilerServer),
                 OrphanedLiveActivity(streamID: "other", sessionID: "s-other", sessionTitle: "Title", updatedAt: now,
                                      server: URL(string: "https://b.example.test")!),
-                OrphanedLiveActivity(streamID: "legacy", sessionID: "s-legacy", sessionTitle: "Title", updatedAt: now)
+                OrphanedLiveActivity(streamID: "legacy", sessionID: "s-legacy", sessionTitle: "Title", updatedAt: now,
+                                     server: nil)
             ],
             server: Self.reconcilerServer,
             now: now,
@@ -1297,7 +1317,7 @@ final class LiveActivityTests: XCTestCase {
             notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
-        XCTAssertEqual(notified, ["s-own", "s-legacy"])
+        XCTAssertEqual(notified, ["s-own"])
     }
 
     // #246 follow-up (PR #266 #3): the orphan reconciler must defer to a stream

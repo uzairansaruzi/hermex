@@ -538,6 +538,15 @@ enum ResponseCompletionOutcome: Equatable {
         }
     }
 
+    /// A chat run's recorded ending; nil for a stopped one.
+    init?(ending: TranscriptTurnRunOutcome.Ending) {
+        switch ending {
+        case .completed: self = .completed
+        case .failed: self = .failed
+        case .cancelled: return nil
+        }
+    }
+
     /// The Live Activity's own end line, so the alert matches the Lock Screen.
     var body: String {
         switch self {

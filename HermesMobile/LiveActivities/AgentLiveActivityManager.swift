@@ -35,8 +35,8 @@ struct OrphanedLiveActivity: Equatable {
     let sessionID: String
     let sessionTitle: String
     let updatedAt: Date
-    /// The server the run belongs to; nil for an activity an older build persisted.
-    var server: URL? = nil
+    /// The server the run belongs to; nil for an activity a build before 1.7.0 persisted.
+    let server: URL?
 }
 
 /// Where the relay delivers an activity's pushes: the paired server, and the agent
@@ -1026,9 +1026,10 @@ enum LiveActivityReconciler {
     /// already knows (#862), (c) `endOrphan` reports it actually ended a
     /// still-running activity — so a run another path already finalized can't
     /// double-fire (#248), (d) the run finished within `recencyWindow`, and (e) the
-    /// orphan belongs to `server`, the server whose status was checked. Another
-    /// server's stream ID means nothing to `server`, so its alert would name the
-    /// wrong chat and route to the wrong server (#862).
+    /// orphan is known to belong to `server`, the server whose status was checked.
+    /// Another server's stream ID means nothing to `server`, so its alert would name
+    /// the wrong chat and route to the wrong server (#862). An activity from a build
+    /// before 1.7.0 has no recorded server, so it ends without an alert.
     static func reconcileOrphanedActivities(
         orphans: [OrphanedLiveActivity],
         server: URL,
@@ -1047,7 +1048,7 @@ enum LiveActivityReconciler {
             let outcome = reconciledOutcome(forTerminalState: status.journal?.terminalState)
             let didEnd = await endOrphan(orphan, outcome)
             guard notifiesOnCompletion, didEnd, let alertOutcome = ResponseCompletionOutcome(outcome.status),
-                  orphan.server == nil || orphan.server == server else { continue }
+                  orphan.server == server else { continue }
             let age = now.timeIntervalSince(orphan.updatedAt)
             guard age >= 0, age <= recencyWindow else { continue }
             await notify(orphan, alertOutcome)
