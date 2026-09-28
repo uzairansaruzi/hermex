@@ -8,4 +8,6 @@ sessionDefaults:
   configuration: "Debug"
   simulatorName: "iPhone 17"
   bundleId: "com.uzairansar.hermesmobile"
+  # Shared with scripts/test-sim, so a launch after tests reuses their build.
+  derivedDataPath: "./.build/DerivedData"
 sentryDisabled: true

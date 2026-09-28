@@ -20,6 +20,8 @@ import time
 # Same override as scripts/sim-login, for a Config/Local.xcconfig bundle ID.
 APP_BUNDLE_ID = os.environ.get("HERMEX_BUNDLE_ID", "com.uzairansar.hermesmobile")
 RUNNER_HANG = "The test runner hung before establishing connection"
+# Build products live inside the checkout, one set per worktree.
+BUILD_DIR = ".build/DerivedData"
 # A terminate that outlasts this means the simulator itself is stuck.
 TERMINATE_TIMEOUT = 25
 
@@ -209,6 +211,9 @@ def main():
     runs = cache / "runs"
     runs.mkdir(exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix=datetime.now().strftime("%Y%m%d-%H%M%S-"), dir=runs))
+    # XcodeBuildMCP builds here too (.xcodebuildmcp/config.yaml), so the final app
+    # launch reuses this signed Debug build instead of compiling a second copy.
+    build_dir = root / BUILD_DIR
     locks_dir = Path.home() / "Library/Caches/HermexSimulatorLocks"
     owner = "PID {}: {} ({})".format(os.getpid(), root, args.device)
     print("Checkout: {}\nLogs: {}".format(root, run_dir), flush=True)
@@ -230,7 +235,7 @@ def main():
                     "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
                     "-scheme", "HermesMobile", "-configuration", "Debug",
                     "-destination", "platform=iOS Simulator,id=" + device["udid"],
-                    "-destination-timeout", "30", "-derivedDataPath", str(cache / "Build"),
+                    "-destination-timeout", "30", "-derivedDataPath", str(build_dir),
                     "-resultBundlePath", str(result), "-parallel-testing-enabled", "NO",
                     "-maximum-concurrent-test-simulator-destinations", "1",
                     "-collect-test-diagnostics", "never",

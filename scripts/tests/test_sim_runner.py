@@ -103,6 +103,15 @@ class SimulatorRunnerTests(unittest.TestCase):
         paths = [c[c.index("-derivedDataPath") + 1] for c in self.commands if c[0] == "xcodebuild"]
         self.assertNotEqual(paths[0], paths[1])
 
+    def test_builds_where_xcodebuildmcp_builds(self):
+        config = (SCRIPT.parents[1] / ".xcodebuildmcp/config.yaml").read_text()
+        shared = next(line.split(":", 1)[1].strip().strip('"') for line in config.splitlines()
+                      if line.strip().startswith("derivedDataPath:"))
+        self.assertEqual(self.invoke(), 0)
+        command = next(c for c in self.commands if c[0] == "xcodebuild")
+        self.assertEqual(Path(command[command.index("-derivedDataPath") + 1]),
+                         (self.home / "one/hermex").resolve() / shared)
+
     def test_ambiguous_names_require_udid(self):
         second = dict(self.device, udid="SIM-B")
         with self.assertRaisesRegex(runner.RunnerError, "Ambiguous"):

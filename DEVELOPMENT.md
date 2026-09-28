@@ -97,10 +97,13 @@ owner immediately; different checkout/device pairs run independently. These
 locks coordinate this runner only: keep other build/install tools on their
 session's assigned device, and do not run them during its test run.
 
-Build products and timestamped logs live under
-`~/Library/Developer/Xcode/DerivedData/hermex-tests-<checkout-path-hash>/`.
-The full absolute checkout path determines the hash, so identically named
-worktrees do not share build files. The command prints the log directory at
+Build products live in the checkout's gitignored `.build/DerivedData/`, which
+XcodeBuildMCP also uses (`.xcodebuildmcp/config.yaml`), so launching the app
+after a test run reuses that build instead of compiling a second copy, and
+removing a worktree removes its build. Timestamped logs live under
+`~/Library/Developer/Xcode/DerivedData/hermex-tests-<checkout-path-hash>/runs/`;
+the full absolute checkout path determines the hash, so identically named
+worktrees do not share them. The command prints the log directory at
 startup and test counts/failures at completion; `command.json`, `test.log`,
 `summary.json`, and `Tests.xcresult` retain the evidence.
 
