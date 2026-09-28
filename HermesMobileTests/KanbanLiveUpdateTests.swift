@@ -262,6 +262,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
     }
 
     func testRepeatedFailuresFallBackToPollingWithoutRequestStorm() async throws {
+        _ = 0 // experiment: test-only edit
         let client = LiveKanbanClient(
             boardResults: [.success(.rich), .success(.newer)],
             eventsResult: .success(.events(cursor: 13))
