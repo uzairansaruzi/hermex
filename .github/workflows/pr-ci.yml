@@ -133,6 +133,22 @@ jobs:
               output.write(f"udid={udid}\n")
           PYTHON
 
+      - name: Restore Swift packages
+        id: spm
+        uses: actions/cache/restore@v6
+        with:
+          path: DerivedData/SourcePackages
+          key: spm-${{ hashFiles('HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+      - name: Restore compilation cache
+        id: xcc
+        uses: actions/cache/restore@v6
+        with:
+          path: DerivedData/CompilationCache.noindex
+          key: xcc-${{ runner.arch }}-xcode26.6-${{ hashFiles('HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            xcc-${{ runner.arch }}-xcode26.6-${{ hashFiles('HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-
+
       - name: Build for testing
         id: build
         env:
@@ -151,7 +167,29 @@ jobs:
             -derivedDataPath "${DERIVED_DATA_PATH}" \
             -disableAutomaticPackageResolution \
             -showBuildTimingSummary \
+            COMPILATION_CACHE_ENABLE_CACHING=YES \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/build.log"
+
+      - name: Report cache sizes (experiment)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          du -sh DerivedData/SourcePackages DerivedData/CompilationCache.noindex || true
+          du -shA DerivedData/SourcePackages DerivedData/CompilationCache.noindex || true
+          grep -E "cacheable tasks|Compilation cache" "${CI_LOG_DIR}/build.log" | tail -5 || true
+
+      - name: Save Swift packages
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.spm.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: DerivedData/SourcePackages
+          key: ${{ steps.spm.outputs.cache-primary-key }}
+
+      - name: Save compilation cache
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.xcc.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: DerivedData/CompilationCache.noindex
+          key: ${{ steps.xcc.outputs.cache-primary-key }}
 
       - name: Test without building
         id: tests
