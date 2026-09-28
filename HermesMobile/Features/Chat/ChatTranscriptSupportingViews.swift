@@ -966,14 +966,22 @@ struct BottomComposerMaterialFade: View {
     }
 }
 
+/// Transcript chip shown while the active stream is being checked or
+/// reconnected. It spins, or shows a static dot under Reduce Motion.
 struct StreamRecoveryStatusView: View {
     let state: ActiveStreamRecoveryState
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.mini)
-                .accessibilityHidden(true)
+            if reduceMotion {
+                ChatRunStatusDot()
+            } else {
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityHidden(true)
+            }
 
             Text(label)
                 .font(.caption.weight(.semibold))

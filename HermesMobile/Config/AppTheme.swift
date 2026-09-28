@@ -403,25 +403,48 @@ enum ChatActiveRunStatusKind: Equatable {
     }
 }
 
+/// What the run-status pill above the composer shows. An active run with a
+/// start date counts its elapsed time, like the transcript's "Working for" row.
 struct ChatActiveRunStatusPresentation: Equatable {
     let kind: ChatActiveRunStatusKind
+    /// Start of the active run, or nil when the pill shows no time. Only
+    /// `.active` keeps it; every other kind drops it, so only an active run ticks.
+    let startedAt: Date?
 
-    var label: String {
-        kind.label
+    init(kind: ChatActiveRunStatusKind, startedAt: Date? = nil) {
+        self.kind = kind
+        self.startedAt = kind == .active ? startedAt : nil
     }
 
-    var accessibilityLabel: String {
-        kind.accessibilityLabel
+    /// "Hermes is working · 2m 13s" while `startedAt` is set, else the kind's label.
+    func label(now: Date) -> String {
+        guard let startedAt else { return kind.label }
+        return String(
+            localized: "Hermes is working · \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: now))"
+        )
+    }
+
+    /// The spoken form of `label(now:)`, matching the tail row's VoiceOver label.
+    func accessibilityLabel(now: Date) -> String {
+        guard let startedAt else { return kind.accessibilityLabel }
+        return String(
+            localized: "Hermes has been working for \(ChatWorkingElapsedFormatter.spokenLabel(startedAt: startedAt, now: now))"
+        )
     }
 }
 
 enum ChatActiveRunStatusPolicy {
+    /// The pill's state while the transcript is scrolled away from its bottom,
+    /// or nil when it hides. `activeRunStartedAt` is the tail row's start date
+    /// (`ChatWorkingRowPolicy.startedAt`), so both count from the same start
+    /// and drop the time in the same cases.
     static func presentation(
         isStartingChat: Bool,
         hasActiveStream: Bool,
         activeStreamRecoveryState: ActiveStreamRecoveryState,
         isCancellingStream: Bool,
-        isScrolledNearBottom: Bool
+        isScrolledNearBottom: Bool,
+        activeRunStartedAt: Date?
     ) -> ChatActiveRunStatusPresentation? {
         guard !isScrolledNearBottom else { return nil }
 
@@ -443,7 +466,7 @@ enum ChatActiveRunStatusPolicy {
         }
 
         guard hasActiveStream else { return nil }
-        return ChatActiveRunStatusPresentation(kind: .active)
+        return ChatActiveRunStatusPresentation(kind: .active, startedAt: activeRunStartedAt)
     }
 }
 

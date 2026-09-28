@@ -255,7 +255,6 @@ struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
     private let transcriptSpacing: CGFloat = 8
     private let composerAccessoryVerticalSpacing: CGFloat = 8
-    private let activeRunStatusSpacerHeight: CGFloat = 36
     private let approvalBypassStatusSpacerHeight: CGFloat = 38
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -341,6 +340,9 @@ struct ChatView: View {
     /// Measured height of the collapsed clarification bar, the request's only
     /// layout footprint; the expanded card overlays the transcript instead.
     @State private var clarificationBarHeight: CGFloat = 0
+    /// Measured height of the run-status pill, which wraps at accessibility
+    /// text sizes. Seeded with its one-line height at the default size.
+    @State private var activeRunStatusHeight: CGFloat = 28
     @State private var composerIsFocused = false
     @State private var didHydrateDraft = false
     /// Whether this chat has already asked the server for its skills on the
@@ -1345,6 +1347,11 @@ struct ChatView: View {
 
                 if let activeRunStatusPresentation {
                     ChatActiveRunStatusView(presentation: activeRunStatusPresentation)
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            activeRunStatusHeight = height
+                        }
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
 
@@ -1611,7 +1618,8 @@ struct ChatView: View {
             hasActiveStream: viewModel.activeStreamID != nil,
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
             isCancellingStream: viewModel.isCancellingStream,
-            isScrolledNearBottom: isScrolledNearBottom
+            isScrolledNearBottom: isScrolledNearBottom,
+            activeRunStartedAt: workingRowStartedAt
         )
     }
 
@@ -1622,7 +1630,9 @@ struct ChatView: View {
     private var composerAccessorySpacerHeight: CGFloat {
         var height = pinnedNoticeSpacerHeight
         if activeRunStatusPresentation != nil {
-            height += activeRunStatusSpacerHeight
+            // The measured pill plus one accessory gap: 36 pt at the default
+            // size, and a full wrapped pill at accessibility sizes.
+            height += activeRunStatusHeight + composerAccessoryVerticalSpacing
         }
         if showsApprovalBypassStatus {
             height += approvalBypassStatusSpacerHeight
