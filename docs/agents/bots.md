@@ -350,8 +350,8 @@ without a card. The card answers with `connection.respond {owner, op_id,
 result}`, where `owner` is `{type: "session", session_id}`. A host older than
 0.21.5 takes a bare `session_id` instead, and each release refuses the other's
 key with `4000`, so `HermesCall` picks the shape from the `/api/status` version
-the last sign-in read (numeric part only; a missing or unreadable one gets
-`owner`). `result` is one row's `approved` (with `env` for an MCP
+the last sign-in read (numeric part only; a missing, partial or unreadable one
+gets `owner`). `result` is one row's `approved` (with `env` for an MCP
 install's `required_env`; a plain field starts at its `default` and sends it,
 since the host never fills one in) or `skipped`, or `{settled_by: "continue"}` alone;
 `BotClient` refuses every other shape. A managed connector's `connect_url`

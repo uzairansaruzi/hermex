@@ -349,8 +349,8 @@ import XCTest
 
     /// 0.21.5 names the answered session as an `owner`, 0.21.4 as a bare `session_id`, and
     /// each refuses the other's key, so the answer takes the shape of the release the host
-    /// reported at sign-in. A canary reads as its base release; a missing or unreadable
-    /// version as the pin.
+    /// reported at sign-in. A canary reads as its base release; a missing, partial or
+    /// unreadable version as the pin.
     func testConnectionRespondNamesTheSessionTheWayTheHostsReleaseTakesIt() async throws {
         let owner: BotJSON = .object(["type": .string("session"), "session_id": .string("runtime")])
         let releases: [(version: String?, key: String, session: BotJSON)] = [
@@ -359,6 +359,7 @@ import XCTest
             ("0.21.5", "owner", owner),
             ("0.22.0", "owner", owner),
             (nil, "owner", owner),
+            ("0.21", "owner", owner),
             ("dev", "owner", owner)
         ]
         for release in releases {

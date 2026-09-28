@@ -324,11 +324,12 @@ enum HermesCall: Equatable, Sendable {
 
     /// Whether `version` is a release before 0.21.5, which moved `connection.respond`'s
     /// `session_id` into `owner`. Only the leading `MAJOR.MINOR.PATCH` counts, so a canary
-    /// (`0.21.4+canary…`) reads as its base release; a missing or unreadable one reads as the pin.
+    /// (`0.21.4+canary…`) reads as its base release; a missing, partial or unreadable one
+    /// reads as the pin.
     private static func predatesSessionOwner(_ version: String?) -> Bool {
         guard let version else { return false }
         let release = version.prefix { $0.isASCII && ($0.isNumber || $0 == ".") }.split(separator: ".").compactMap { Int($0) }
-        return !release.isEmpty && release.lexicographicallyPrecedes([0, 21, 5])
+        return release.count >= 3 && release.lexicographicallyPrecedes([0, 21, 5])
     }
 
     /// The value rules each case's types cannot express. A case with none is `true`.
