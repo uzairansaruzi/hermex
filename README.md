@@ -145,7 +145,7 @@ Hermex is funded by its members. Thank you.
 
 **Founding members:** James Cross · Alexey
 
-<sub>Updated monthly from [Buy Me a Coffee](https://buymeacoffee.com/callmeuzi/membership). Members who join anonymously aren't listed. Ask to be added or removed any time.</sub>
+<sub>Updated monthly from [Buy Me a Coffee](https://buymeacoffee.com/callmeuzi/membership). Members who join anonymously aren't listed. Email [uzairansar@gmail.com](mailto:uzairansar@gmail.com) to be added or removed.</sub>
 
 ## License
 
