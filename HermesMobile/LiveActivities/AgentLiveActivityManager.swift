@@ -28,13 +28,15 @@ enum AgentLiveActivityEvent: Equatable {
 /// A persisted Live Activity left over from a previous launch that this manager
 /// isn't currently driving — a reconciliation candidate (#246). Carries the bits
 /// the reconciler needs to decide whether a run-ended notification is still worth
-/// firing and what it says: the run's session, its title, and when it last
-/// advanced (#248, #862).
+/// firing and what it says: the run's server and session, its title, and when it
+/// last advanced (#248, #862).
 struct OrphanedLiveActivity: Equatable {
     let streamID: String
     let sessionID: String
     let sessionTitle: String
     let updatedAt: Date
+    /// The server the run belongs to; nil for an activity an older build persisted.
+    var server: URL? = nil
 }
 
 /// Where the relay delivers an activity's pushes: the paired server, and the agent
@@ -478,7 +480,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 streamID: streamID,
                 sessionID: state.sessionID,
                 sessionTitle: state.sessionTitle,
-                updatedAt: state.updatedAt
+                updatedAt: state.updatedAt,
+                server: activity.attributes.server
             )
         }
         return result
@@ -973,6 +976,7 @@ enum LiveActivityReconciler {
         let client = APIClient(baseURL: server)
         await reconcileOrphanedActivities(
             orphans: orphans,
+            server: server,
             now: now,
             notifiesOnCompletion: notifiesOnCompletion,
             streamStatus: { streamID in
@@ -1021,9 +1025,13 @@ enum LiveActivityReconciler {
     /// cancelled run is finalized without an alert, because whoever stopped it
     /// already knows (#862), (c) `endOrphan` reports it actually ended a
     /// still-running activity — so a run another path already finalized can't
-    /// double-fire (#248) — and (d) the run finished within `recencyWindow`.
+    /// double-fire (#248), (d) the run finished within `recencyWindow`, and (e) the
+    /// orphan belongs to `server`, the server whose status was checked. Another
+    /// server's stream ID means nothing to `server`, so its alert would name the
+    /// wrong chat and route to the wrong server (#862).
     static func reconcileOrphanedActivities(
         orphans: [OrphanedLiveActivity],
+        server: URL,
         now: Date,
         notifiesOnCompletion: Bool,
         recencyWindow: TimeInterval = recentCompletionWindow,
@@ -1038,7 +1046,8 @@ enum LiveActivityReconciler {
             guard let status = await streamStatus(orphan.streamID), status.active == false else { continue }
             let outcome = reconciledOutcome(forTerminalState: status.journal?.terminalState)
             let didEnd = await endOrphan(orphan, outcome)
-            guard notifiesOnCompletion, didEnd, let alertOutcome = ResponseCompletionOutcome(outcome.status) else { continue }
+            guard notifiesOnCompletion, didEnd, let alertOutcome = ResponseCompletionOutcome(outcome.status),
+                  orphan.server == nil || orphan.server == server else { continue }
             let age = now.timeIntervalSince(orphan.updatedAt)
             guard age >= 0, age <= recencyWindow else { continue }
             await notify(orphan, alertOutcome)
