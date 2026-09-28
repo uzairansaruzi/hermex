@@ -8,34 +8,35 @@ struct TipJarCard: View {
     @State private var greetingPhase = TipJarGreetingState.Phase.neutral
 
     @State private var isVisible = false
-    @AppStorage(TipJar.dismissedKey) private var dismissed = false
+    @AppStorage(TipJar.dismissedReleaseKey) private var dismissedRelease: String?
+
+    private var dismissed: Bool {
+        dismissedRelease == TipJarPromptState(defaults: .standard).release
+    }
 
     private var canAnimate: Bool {
         isVisible && scenePhase == .active && !reduceMotion && !dismissed
     }
 
+    private var faceSize: CGFloat { dynamicTypeSize.isAccessibilitySize ? 36 : 50 }
+
     private let accent = Color(red: 1, green: 224 / 255, blue: 0)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 companion
-                Text("Enjoying Hermex?")
+                Text("Keep Hermex going")
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: faceSize, alignment: .leading)
+                closeButton
             }
-            Text("It's free and open source. If it's earned a coffee, that would mean a lot.")
+            Text("Hermex is free and open source, with no ads and no tracking. Supporters make that possible.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 8) { actions }
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 16) { actions }
-                    VStack(alignment: .leading, spacing: 8) { actions }
-                }
-            }
+            links
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -81,34 +82,58 @@ struct TipJarCard: View {
             fallbackTitle: "Hermex"
         )
         return BotAvatarMarkView(name: "Hermex", appearance: appearance,
-                                 size: dynamicTypeSize.isAccessibilitySize ? 36 : 50,
+                                 size: faceSize,
                                  pose: pose)
             .animation(canAnimate ? .easeInOut(duration: 0.18) : nil, value: phase)
             .accessibilityHidden(true)
     }
 
-    @ViewBuilder
-    private var actions: some View {
-        Link(destination: AppConfig.tipURL) {
-            Text("Buy Uzi a coffee")
-                .foregroundStyle(.black)
-                .fixedSize(horizontal: false, vertical: true)
+    /// Opening either link hides the card for good; the membership page sells any perks.
+    private var links: some View {
+        VStack(spacing: 4) {
+            Link(destination: AppConfig.membershipURL) {
+                Text("Become a supporter")
+                    .foregroundStyle(.black)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+            }
+            .font(.subheadline.weight(.semibold))
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+            .tint(accent)
+            .accessibilityLabel("Become a supporter, opens in browser")
+
+            Link(destination: AppConfig.tipURL) {
+                Text("or buy Uzi a coffee")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .font(.subheadline)
+            .accessibilityLabel("Buy Uzi a coffee, opens in browser")
         }
-        .font(.subheadline.weight(.semibold))
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.capsule)
-        .tint(accent)
-        .accessibilityLabel("Buy Uzi a coffee, opens in browser")
         .environment(\.openURL, OpenURLAction { url in
             TipJarPromptState(defaults: .standard).recordLinkOpened()
             return .systemAction(url)
         })
-        Button("Not now") {
+    }
+
+    /// "Not now": hides the card until the next feature release.
+    private var closeButton: some View {
+        Button {
             TipJarPromptState(defaults: .standard).dismiss()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .background(.fill.tertiary, in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
-        .font(.subheadline)
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .frame(minHeight: 44)
+        .buttonStyle(.plain)
+        .padding([.top, .trailing], -12)
+        .accessibilityLabel("Not now")
     }
 }

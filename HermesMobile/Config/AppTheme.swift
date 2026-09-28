@@ -7,7 +7,8 @@ import UIKit
 
 // Device-wide engagement and tip preferences, shared across every configured server.
 enum TipJar {
-    static let dismissedKey = "tipJar.dismissed"
+    /// The release (major.minor) on which "Not now" was last tapped.
+    static let dismissedReleaseKey = "tipJar.dismissedRelease"
     static let linkOpenedKey = "tipJar.linkOpened"
     static let completedResponseCountKey = "engagement.completedResponseCount"
 }

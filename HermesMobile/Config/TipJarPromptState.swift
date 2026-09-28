@@ -1,18 +1,26 @@
 import Foundation
 
-/// Device-wide preferences: opening a tip link records intent, not a payment.
+/// Device-wide preferences: opening a tip link records intent, not a payment, and hides
+/// the card for good. "Not now" hides it until the next feature release.
 struct TipJarPromptState {
     let defaults: UserDefaults
+    /// The installed marketing version; tests inject one.
+    var appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+
+    /// Major.minor, so a patch update never brings a dismissed card back.
+    var release: String {
+        appVersion.split(separator: ".").prefix(2).joined(separator: ".")
+    }
 
     func isEligible(completedResponses: Int, hasSharedImport: Bool, ratingPolicy: RatingPromptPolicy,
                     now: Date = Date()) -> Bool {
-        completedResponses >= 25 && !defaults.bool(forKey: TipJar.dismissedKey)
+        completedResponses >= 25 && defaults.string(forKey: TipJar.dismissedReleaseKey) != release
             && !defaults.bool(forKey: TipJar.linkOpenedKey)
             && !hasSharedImport && ratingPolicy.allowsTipCard(at: now)
     }
 
     func dismiss() {
-        defaults.set(true, forKey: TipJar.dismissedKey)
+        defaults.set(release, forKey: TipJar.dismissedReleaseKey)
     }
 
     func recordLinkOpened() {

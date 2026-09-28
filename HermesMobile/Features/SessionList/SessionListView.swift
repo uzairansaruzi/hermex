@@ -25,7 +25,7 @@ struct SessionListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
     @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
-    @AppStorage(TipJar.dismissedKey) private var tipDismissed = false
+    @AppStorage(TipJar.dismissedReleaseKey) private var tipDismissedRelease: String?
     @State private var wasBackgrounded = false
     @State private var ratingRequestID: UUID?
     @State private var ratingMoment: RatingPromptMoment = .coldLaunch
@@ -378,7 +378,9 @@ struct SessionListView: View {
     }
 
     private var showsTipCard: Bool {
-        !tipDismissed && TipJarPromptState(defaults: .standard).isEligible(
+        let tip = TipJarPromptState(defaults: .standard)
+        // Reading the stored release subscribes the list, so "Not now" hides the card at once.
+        return tipDismissedRelease != tip.release && tip.isEligible(
             completedResponses: completedResponses,
             hasSharedImport: hasWaitingSharedImport || pendingSharedImport != nil,
             ratingPolicy: RatingPromptState.shared.policy

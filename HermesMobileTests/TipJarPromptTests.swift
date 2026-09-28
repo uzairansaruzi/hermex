@@ -26,11 +26,15 @@ final class TipJarPromptTests: XCTestCase {
     }
 
     @MainActor
-    func testDismissalSurvivesNewStateAndDoesNotClaimTip() throws {
+    func testDismissalLastsUntilTheNextFeatureReleaseAndDoesNotClaimTip() throws {
         let defaults = try makeDefaults()
         defaults.set(25, forKey: TipJar.completedResponseCountKey)
-        TipJarPromptState(defaults: defaults).dismiss()
-        XCTAssertFalse(eligible(TipJarPromptState(defaults: defaults), rating: RatingPromptState(defaults: defaults, now: now)))
+        let rating = RatingPromptState(defaults: defaults, now: now)
+        TipJarPromptState(defaults: defaults, appVersion: "1.8").dismiss()
+        XCTAssertFalse(eligible(TipJarPromptState(defaults: defaults, appVersion: "1.8"), rating: rating))
+        XCTAssertFalse(eligible(TipJarPromptState(defaults: defaults, appVersion: "1.8.1"), rating: rating),
+                       "A patch update keeps the dismissal")
+        XCTAssertTrue(eligible(TipJarPromptState(defaults: defaults, appVersion: "1.9"), rating: rating))
         XCTAssertFalse(defaults.bool(forKey: TipJar.linkOpenedKey))
     }
 
@@ -38,10 +42,13 @@ final class TipJarPromptTests: XCTestCase {
     func testSettingsOrCardLinkPermanentlySuppressesCardAndRecordsOnlyLinkIntent() throws {
         let defaults = try makeDefaults()
         defaults.set(25, forKey: TipJar.completedResponseCountKey)
-        let tip = TipJarPromptState(defaults: defaults)
+        let rating = RatingPromptState(defaults: defaults, now: now)
+        let tip = TipJarPromptState(defaults: defaults, appVersion: "1.8")
         tip.recordLinkOpened()
         tip.recordLinkOpened()
-        XCTAssertFalse(eligible(TipJarPromptState(defaults: defaults), rating: RatingPromptState(defaults: defaults, now: now)))
+        XCTAssertFalse(eligible(TipJarPromptState(defaults: defaults, appVersion: "1.8"), rating: rating))
+        XCTAssertFalse(eligible(TipJarPromptState(defaults: defaults, appVersion: "2.0"), rating: rating),
+                       "Opening a link hides the card on every later release")
         XCTAssertTrue(defaults.bool(forKey: TipJar.linkOpenedKey))
     }
 

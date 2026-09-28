@@ -609,15 +609,29 @@ struct SettingsView: View {
 
                     SettingsDivider()
 
-                    Link(destination: AppConfig.tipURL) {
-                        SettingsAccessoryRow(
-                            title: String(localized: "Buy Uzi a coffee"),
-                            systemImage: "cup.and.saucer",
-                            accessorySystemImage: "arrow.up.forward"
-                        )
+                    Group {
+                        Link(destination: AppConfig.membershipURL) {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Become a supporter"),
+                                systemImage: "heart",
+                                accessorySystemImage: "arrow.up.forward"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Become a supporter, opens in browser")
+
+                        SettingsDivider()
+
+                        Link(destination: AppConfig.tipURL) {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Buy Uzi a coffee"),
+                                systemImage: "cup.and.saucer",
+                                accessorySystemImage: "arrow.up.forward"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Buy Uzi a coffee, opens in browser")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Buy Uzi a coffee, opens in browser")
                     .environment(\.openURL, OpenURLAction { url in
                         TipJarPromptState(defaults: .standard).recordLinkOpened()
                         return .systemAction(url)
