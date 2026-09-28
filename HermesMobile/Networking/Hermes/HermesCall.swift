@@ -221,9 +221,10 @@ enum HermesCall: Equatable, Sendable {
         }
     }
 
-    /// The JSON-RPC `params`, after admission. Throws `BotFailure.unsupported`
-    /// for a value the host must never receive from this app.
-    func params() throws -> [String: BotJSON] {
+    /// The JSON-RPC `params`, after admission, in the shape the host's release takes.
+    /// `hostVersion` is the `version` `/api/status` reported; nil reads as the pin.
+    /// Throws `BotFailure.unsupported` for a value the host must never receive from this app.
+    func params(hostVersion: String? = nil) throws -> [String: BotJSON] {
         try admit()
         switch self {
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
@@ -266,7 +267,12 @@ enum HermesCall: Equatable, Sendable {
         case .clarifyLock(let requestID, let questionID, let answer):
             return ["request_id": .string(requestID), "question_id": .string(questionID), "answer": .string(answer)]
         case .connectionRespond(let sessionID, let opID, let answer):
-            return ["session_id": .string(sessionID), "op_id": .string(opID), "result": answer.result]
+            // 0.21.5 names the session as an `owner`; 0.21.4 took a bare `session_id`.
+            // Each refuses the other's key, so send the one the host's release expects.
+            var params: [String: BotJSON] = ["op_id": .string(opID), "result": answer.result]
+            if Self.predatesSessionOwner(hostVersion) { params["session_id"] = .string(sessionID) }
+            else { params["owner"] = .object(["type": .string("session"), "session_id": .string(sessionID)]) }
+            return params
         case .messageReact(let sessionID, let rowID, let emoji):
             return ["session_id": .string(sessionID), "row_id": .number(Double(rowID)), "emoji": emoji.map(BotJSON.string) ?? .null]
         case .modelOptions(let sessionID, let profile), .sessionControlRead(let sessionID, let profile):
@@ -314,6 +320,15 @@ enum HermesCall: Equatable, Sendable {
             return ["room_id": .string(roomID), "event_id": .string(eventID), "name": .string(name)]
         case .clientCapabilities: return ["server_requests": .bool(true)]
         }
+    }
+
+    /// Whether `version` is a release before 0.21.5, which moved `connection.respond`'s
+    /// `session_id` into `owner`. Only the leading `MAJOR.MINOR.PATCH` counts, so a canary
+    /// (`0.21.4+canary…`) reads as its base release; a missing or unreadable one reads as the pin.
+    private static func predatesSessionOwner(_ version: String?) -> Bool {
+        guard let version else { return false }
+        let release = version.prefix { $0.isASCII && ($0.isNumber || $0 == ".") }.split(separator: ".").compactMap { Int($0) }
+        return !release.isEmpty && release.lexicographicallyPrecedes([0, 21, 5])
     }
 
     /// The value rules each case's types cannot express. A case with none is `true`.

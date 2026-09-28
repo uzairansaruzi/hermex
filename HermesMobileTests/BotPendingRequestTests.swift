@@ -1290,7 +1290,7 @@ extension BotAnsweringTests {
 
         await model.respondToConnection(action(model), .skip(target: "gmail"))
         XCTAssertEqual(wire.calls.last { $0.0 == "connection.respond" }?.1, [
-            "session_id": .string("runtime"), "op_id": .string("op-1"),
+            "owner": .object(["type": .string("session"), "session_id": .string("runtime")]), "op_id": .string("op-1"),
             "result": .object(["targets": .array([.object(["name": .string("gmail"), "status": .string("skipped")])])])
         ])
         XCTAssertNotNil(operation(model))

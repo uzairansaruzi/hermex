@@ -346,8 +346,12 @@ carries the full snapshot again (keep the highest `seq` per `op_id`; the
 restores it, so an omitted field clears the card. `BotConnectionOperation`
 reads all three tolerantly: an unknown `kind`, `action` or `state` keeps its row
 but offers nothing, and an operation with no readable row is needs-attention
-without a card. The card answers with `connection.respond {session_id, op_id,
-result}`, where `result` is one row's `approved` (with `env` for an MCP
+without a card. The card answers with `connection.respond {owner, op_id,
+result}`, where `owner` is `{type: "session", session_id}`. A host older than
+0.21.5 takes a bare `session_id` instead, and each release refuses the other's
+key with `4000`, so `HermesCall` picks the shape from the `/api/status` version
+the last sign-in read (numeric part only; a missing or unreadable one gets
+`owner`). `result` is one row's `approved` (with `env` for an MCP
 install's `required_env`; a plain field starts at its `default` and sends it,
 since the host never fills one in) or `skipped`, or `{settled_by: "continue"}` alone;
 `BotClient` refuses every other shape. A managed connector's `connect_url`
@@ -361,7 +365,8 @@ settled. Setup values stay in the row's view state and are cleared on send.
 Try again on a failed managed row (`connectors.connect {reconnect}`) and
 `connectors.operation.wake` are not used. The shapes are verified against
 `tui_gateway/contracts/connectors_operation.py`, `tui_gateway/methods_connectors.py`
-and `tools/connectors/mcp.py` at `HERMES_AGENT_TESTED_SHA` (0.21.4).
+and `tools/connectors/mcp.py` at 0.21.4 (`d337b736`); the `owner` rename against
+`apps/shared/src/gateway-contract.openrpc.json` at 0.21.5 (`ca678285`).
 
 `BotApprovalRequest` keeps the host's own `choices`
 (`once`/`session`/`always`/`deny`) and only rebuilds them when an older host omits

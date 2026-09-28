@@ -309,7 +309,8 @@ import XCTest
         defer { client.close() }
 
         func respond(_ result: BotJSON) -> BotJSON {
-            .object(["session_id": .string("runtime"), "op_id": .string("op-1"), "result": result])
+            .object(["owner": .object(["type": .string("session"), "session_id": .string("runtime")]),
+                     "op_id": .string("op-1"), "result": result])
         }
         func row(_ fields: [String: BotJSON]) -> BotJSON { .object(["targets": .array([.object(fields)])]) }
 
@@ -344,6 +345,46 @@ import XCTest
             }
         }
         XCTAssertEqual(socket.sentTextFrames, admitted.count)
+    }
+
+    /// 0.21.5 names the answered session as an `owner`, 0.21.4 as a bare `session_id`, and
+    /// each refuses the other's key, so the answer takes the shape of the release the host
+    /// reported at sign-in. A canary reads as its base release; a missing or unreadable
+    /// version as the pin.
+    func testConnectionRespondNamesTheSessionTheWayTheHostsReleaseTakesIt() async throws {
+        let owner: BotJSON = .object(["type": .string("session"), "session_id": .string("runtime")])
+        let releases: [(version: String?, key: String, session: BotJSON)] = [
+            ("0.21.4", "session_id", .string("runtime")),
+            ("0.21.4+canary.20260928T071354Z", "session_id", .string("runtime")),
+            ("0.21.5", "owner", owner),
+            ("0.22.0", "owner", owner),
+            (nil, "owner", owner),
+            ("dev", "owner", owner)
+        ]
+        for release in releases {
+            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+            status["version"] = release.version.map(BotJSON.string)
+            BotHTTPFixture.handler = { request in
+                switch request.url!.path {
+                case "/api/status": return (200, .object(status))
+                case "/auth/password-login": return (200, .object([:]))
+                case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+                case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+                default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+                }
+            }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [BotHTTPFixture.self]
+            let socket = BotScriptedSocket()
+            let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
+            try await client.connect()
+            _ = try await client.call(.connectionRespond(sessionID: "runtime", opID: "op-1", answer: .continueWithout))
+            client.close()
+            XCTAssertEqual(socket.sentRequests.last?["params"], .object([
+                release.key: release.session, "op_id": .string("op-1"),
+                "result": .object(["settled_by": .string("continue")])
+            ]), "\(release.version ?? "missing")")
+        }
     }
 
     func testCancellingDelegatedReadsKeepsTheConversationSocketAvailable() async throws {

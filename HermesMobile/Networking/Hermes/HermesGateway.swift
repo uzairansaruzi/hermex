@@ -119,9 +119,10 @@ import Foundation
 
     /// Admits and sends one typed request for `consumer` (nil: the handshake's own), then
     /// waits for its reply. `HermesCall.params()` refuses a value the host must never
-    /// receive; `validateDispatch` runs at the actual socket write.
+    /// receive and shapes it for the release the last sign-in read; `validateDispatch`
+    /// runs at the actual socket write.
     func send(_ call: HermesCall, for consumer: Int?, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        let params = try call.params()
+        let params = try call.params(hostVersion: http.serverVersion)
         guard let socket, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
         nextID += 1
         let id = nextID, owner = generation
