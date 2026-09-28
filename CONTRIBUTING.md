@@ -10,7 +10,10 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
   deployment target is iOS 18).
 - Clone the repo and open `HermesMobile.xcodeproj`. Dependencies resolve
   automatically via Swift Package Manager — the dependency list is locked in
-  `AGENTS.md`; do not add new ones without maintainer approval.
+  `AGENTS.md`; do not add new ones without maintainer approval. Their versions
+  are pinned in the committed `Package.resolved`; Dependabot proposes updates,
+  and CI fails rather than re-resolving when the pin no longer matches the
+  project.
 - Build and run the **`HermesMobile`** scheme on an iPhone simulator
   (`iPhone 17` is the reference device; any recent iPhone simulator works).
 - To actually use the app you need your own

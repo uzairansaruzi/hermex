@@ -9,6 +9,9 @@ build/
 # Swift Package Manager
 .build/
 Package.resolved
+# The app's pinned package versions are committed so every build and CI run
+# uses the same package code; Dependabot proposes updates.
+!HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 .swiftpm/
 
 # macOS

@@ -146,6 +146,7 @@ jobs:
             -scheme "${SCHEME}" \
             -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             -derivedDataPath "${DERIVED_DATA_PATH}" \
+            -disableAutomaticPackageResolution \
             -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/build.log"
 
@@ -168,6 +169,7 @@ jobs:
             -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             -derivedDataPath "${DERIVED_DATA_PATH}" \
             -resultBundlePath "${RESULT_BUNDLE_PATH}" \
+            -disableAutomaticPackageResolution \
             -parallel-testing-enabled YES \
             -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/tests.log"
