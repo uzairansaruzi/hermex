@@ -9428,6 +9428,107 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(newTurnMessage, "one more thing")
     }
 
+    /// The run ends while the steer is in flight, then the server refuses it:
+    /// no "Couldn't steer" on an idle composer, and the message goes out as a
+    /// normal new turn.
+    @MainActor
+    func testSteerRefusedAfterRunEndsSendsAsNewMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let steerStarted = expectation(description: "Steer request started")
+        let releaseSteer = DispatchSemaphore(value: 0)
+        let newTurn = expectation(description: "Steer text starts a new turn")
+        var chatStartCount = 0
+        var newTurnMessage: String?
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                chatStartCount += 1
+                if chatStartCount == 2 {
+                    let body = try XCTUnwrap(apiTestBodyData(from: request))
+                    newTurnMessage = (try JSONSerialization.jsonObject(with: body) as? [String: Any])?["message"] as? String
+                    newTurn.fulfill()
+                }
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
+                    for: request
+                )
+            case "/api/chat/steer":
+                steerStarted.fulfill()
+                XCTAssertEqual(releaseSteer.wait(timeout: .now() + .seconds(5)), .success)
+                return apiTestJSONResponse(
+                    #"{"accepted":false,"fallback":"no_cached_agent","stream_id":null}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a response")
+        XCTAssertTrue(didStart)
+
+        let steer = Task { @MainActor in
+            await viewModel.submitStreamingMessage("one more thing", behavior: .steer)
+        }
+        defer { releaseSteer.signal() }
+        await fulfillment(of: [steerStarted], timeout: 2)
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+        releaseSteer.signal()
+        let result = await steer.value
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertNil(viewModel.steerFailureMessage)
+        await fulfillment(of: [newTurn], timeout: 5)
+        XCTAssertEqual(newTurnMessage, "one more thing")
+    }
+
+    /// A steer that fails on the network after the run ended is a failed send:
+    /// the draft stays and the send error says why, with no steer Retry.
+    @MainActor
+    func testSteerNetworkErrorAfterRunEndsShowsSendError() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let steerStarted = expectation(description: "Steer request started")
+        let releaseSteer = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/chat/steer":
+                steerStarted.fulfill()
+                XCTAssertEqual(releaseSteer.wait(timeout: .now() + .seconds(5)), .success)
+                throw URLError(.notConnectedToInternet)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a response")
+        XCTAssertTrue(didStart)
+
+        let steer = Task { @MainActor in
+            await viewModel.submitStreamingMessage("hint", behavior: .steer)
+        }
+        defer { releaseSteer.signal() }
+        await fulfillment(of: [steerStarted], timeout: 2)
+        streamClient.emit(.streamEnd)
+        releaseSteer.signal()
+        let result = await steer.value
+
+        XCTAssertEqual(result, .notDelivered)
+        XCTAssertNil(viewModel.steerFailureMessage)
+        XCTAssertEqual(
+            viewModel.sendErrorMessage,
+            "This device is offline. Connect to the internet, then try again."
+        )
+        guard case let .network(underlying)? = viewModel.lastError as? APIError else {
+            return XCTFail("Expected the steer's network error, got \(String(describing: viewModel.lastError))")
+        }
+        XCTAssertEqual((underlying as? URLError)?.code, .notConnectedToInternet)
+    }
+
     @MainActor
     func testAcceptedSteerCarriesAttachmentNote() async throws {
         let attachmentStore = RecordingSendDraftAttachmentStore()

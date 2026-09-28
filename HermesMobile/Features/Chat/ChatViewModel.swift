@@ -2924,14 +2924,26 @@ final class ChatViewModel {
             }
             return .executed(message: nil)
         case .refused(let transportError):
-            let title = String(localized: "Couldn't steer")
             if let transportError {
                 lastError = transportError
-                steerFailureMessage = "\(title)\n\(transportError.localizedDescription)"
-            } else {
-                steerFailureMessage = title
             }
-            return .notDelivered
+            if activeStreamID == steeredStreamID {
+                let title = String(localized: "Couldn't steer")
+                steerFailureMessage = transportError.map { "\(title)\n\($0.localizedDescription)" } ?? title
+                return .notDelivered
+            }
+            // The run ended while the steer was in flight, so "Couldn't steer"
+            // and its Retry would outlive it. A network failure is now a failed
+            // send; a server refusal goes out as a normal turn, like `.runEnded`.
+            if let transportError {
+                sendErrorMessage = transportError.localizedDescription
+                return .notDelivered
+            }
+            enqueueQueuedSlashMessage(
+                message,
+                attachments: attachmentCoordinator.consumePendingAttachments(),
+                atFront: true
+            )
         case .serverQueued:
             enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
         case .runEnded:

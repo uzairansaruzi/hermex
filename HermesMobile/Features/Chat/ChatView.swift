@@ -2084,8 +2084,8 @@ struct ChatView: View {
         case .needsSubArg:
             viewModel.setSendErrorMessage(String(localized: "Choose a slash command or continue typing."))
         case .sendAsMessage, .notDelivered:
-            // `.notDelivered` keeps the draft; the view model's steer status
-            // says why and offers Retry.
+            // `.notDelivered` keeps the draft; the view model already set the
+            // status line that says why.
             break
         }
     }
