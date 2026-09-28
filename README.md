@@ -134,8 +134,18 @@ Hermex is free and built in the open. If it's useful to you:
 - ⭐ **Star this repo** — it helps others find the project.
 - 🐦 **Follow [@uzairansar on X](https://x.com/uzairansar)** for updates and dev logs.
 - ☕ **[Buy me a coffee](https://buymeacoffee.com/callmeuzi)** to support development.
+- 💬 **[Join the Hermex Discord](https://discord.gg/xDQWBCG4DQ)** for help, updates, and to talk with other users.
+- 💛 **[Become a member](https://buymeacoffee.com/callmeuzi/membership)** for early TestFlight builds, the members-only Discord channels, and a vote on what gets built next.
 
 <a href="https://buymeacoffee.com/callmeuzi"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-callmeuzi-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" height="40" /></a>
+
+### Supporters
+
+Hermex is funded by its members. Thank you.
+
+**Founding members:** James Cross · Alexey
+
+<sub>Updated monthly from [Buy Me a Coffee](https://buymeacoffee.com/callmeuzi/membership). Members who join anonymously aren't listed. Ask to be added or removed any time.</sub>
 
 ## License
 
