@@ -935,6 +935,11 @@ final class ComposerFocusTransitionTests: XCTestCase {
         XCTAssertTrue(textView.isFirstResponder)
     }
 
+    /// Ceiling only: every transition wait ends on an appearance or completion
+    /// callback. Hosted CI runners stall for seconds at a time (#649), so a tight
+    /// ceiling fails healthy runs without catching a broken transition any sooner.
+    private let transitionTimeout: TimeInterval = 30
+
     /// A real UIKit pop exercises first-responder restoration and coordinator
     /// completion ordering. Readiness comes from appearance, not a timed delay.
     private func withPopTransition(
@@ -954,14 +959,14 @@ final class ComposerFocusTransitionTests: XCTestCase {
         root.onAppearance = { appeared.fulfill() }
         let window = try show(navigation)
         defer { cleanUp(window) }
-        wait(for: [appeared], timeout: 3)
+        wait(for: [appeared], timeout: transitionTimeout)
 
         beforePush()
         let destination = AppearingController()
         let pushed = expectation(description: "destination appeared")
         destination.onAppearance = { pushed.fulfill() }
         navigation.pushViewController(destination, animated: true)
-        wait(for: [pushed], timeout: 3)
+        wait(for: [pushed], timeout: transitionTimeout)
         navigation.popViewController(animated: true)
         let coordinator = try XCTUnwrap(root.transitionCoordinator)
         let settled = expectation(description: "pop finished")
@@ -971,7 +976,7 @@ final class ComposerFocusTransitionTests: XCTestCase {
         }, completion: { _ in
             DispatchQueue.main.async { settled.fulfill() }
         })
-        wait(for: [settled], timeout: 3)
+        wait(for: [settled], timeout: transitionTimeout)
         after()
     }
 
