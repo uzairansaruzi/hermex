@@ -141,7 +141,17 @@ a missing pin fails setup rather than selecting another toolchain or runtime.
 CI resolves the device UDID and runs the complete suite with one test worker.
 Xcode owns that worker's simulator clone and boot. Explicit preboot plus fully
 serial execution did not improve the hosted trial, so retain the one-worker
-configuration unless new measurements justify changing it.
+configuration unless new measurements justify changing it. Two more hosted
+experiments were measured and rejected (details in the closed PRs):
+
+- Booting the base device during the build and testing on it serially (#845):
+  the fresh device's first boot competed with the compiler on the 3-core
+  runner, tripling the build while saving less in test preparation, and a
+  keyboard test behaved differently on the base device.
+- Caching Swift packages and Xcode compilation results (#838): any app-source
+  change recompiles the whole app module, the build's longest step, so a
+  typical PR built no faster; only reruns and test-only PRs gained. Package
+  caching saved about 3 s net.
 The test step has a 30-minute timeout covering worker preparation and the full
 suite, so a stalled worker does not consume the 90-minute job budget and prevent
 failure diagnostics from running. This is a combined limit, not a separate
