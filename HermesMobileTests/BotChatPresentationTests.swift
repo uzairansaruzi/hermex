@@ -292,7 +292,7 @@ import XCTest
         let text = try screenshot(window, name: "481-bot-search")
         XCTAssertTrue(text.contains("Apartments"), text)
         XCTAssertTrue(text.contains("Inbox"), text)
-        await fulfillment(of: [focused], timeout: 5)
+        await fulfillment(of: [focused], timeout: callbackTimeout)
         XCTAssertNotNil(descendants(window).compactMap { $0 as? UITextField }.first { $0.isFirstResponder })
         // The status read runs beside the room read, so only the set of calls is fixed.
         XCTAssertEqual(wire.calls.map { $0.0 }.sorted(), ["groups.capabilities", "profiles.list", "session.active_list"])
@@ -405,7 +405,7 @@ import XCTest
         let sent = expectation(description: "Explicit keyboard send reaches host")
         wire.beforeSubmit = { sent.fulfill() }
         editor.onKeyboardSend()
-        await fulfillment(of: [sent], timeout: 3)
+        await fulfillment(of: [sent], timeout: callbackTimeout)
         XCTAssertEqual(wire.calls.filter { $0.0 == "prompt.submit" }.count, 2)
     }
 
@@ -465,7 +465,7 @@ import XCTest
         XCTAssertTrue(editor.becomeFirstResponder())
         await settle(window)
         let send = Task { await model.send() }
-        await fulfillment(of: [uploadStarted], timeout: 3)
+        await fulfillment(of: [uploadStarted], timeout: callbackTimeout)
         // Laying out reaches the focused, hosted Send transition, where
         // setEditable re-entering SwiftUI during updateUIView froze the screen.
         await settle(window)
@@ -1237,6 +1237,11 @@ import XCTest
         if bandHeight >= minimumHeight { bands.append(["orange", "green"].filter(colors.contains)) }
         return bands
     }
+
+    /// Ceiling only: these waits end on a notification or callback. Hosted CI
+    /// runners stall for seconds at a time (#649), so a tight ceiling fails healthy
+    /// runs without catching a broken flow any sooner.
+    private let callbackTimeout: TimeInterval = 30
 
     private func show<V: View>(_ view: V) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
