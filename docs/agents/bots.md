@@ -28,14 +28,18 @@ in once; a reconnect only mints a new ticket. The registry holds its one entry w
 and keys it by configured server and connection UUID. A request for another server
 or UUID, or for the same UUID with a new address, account or password, retires the
 old connection first: its sign-in in flight stops and its late replies throw
-`.stale`. Nothing is pooled by hostname, so the same host and account under two
+`.stale`. Switching away from, signing out of or removing the configured server, and
+saving other credentials or removing them, retire it at once rather than at the next
+lookup, so a sign-in finishing afterwards stores nothing and resends nothing; a
+rename or an install id backfill keeps it. Nothing is pooled by hostname, so the same host and account under two
 configured servers get two jars. The connection form and dev auto-login probe
 unsaved credentials on their own `HermesConnection`, never the shared one.
 Cancelling one waiting consumer never cancels the shared sign-in. A signed-in
 request answered 401 signs in again once, sharing that sign-in with every other
 consumer's 401, and is resent: the auth gate refuses `/api/*` before any handler
 runs (`hermes_cli/dashboard_auth/middleware.py`), so the resend cannot repeat a
-write. A 401 from the login itself (bad credentials) ends the recovery and leaves
+write. A Bot screen's delete, upload or download is sent, and resent, only while
+that screen still owns it: one that closed during the sign-in sends nothing. A 401 from the login itself (bad credentials) ends the recovery and leaves
 the connection signed out; the next request signs in again. A transport failure,
 proxy status or 5xx fails only its request and leaves the sign-in as it was, and
 is never resent. Provisioning keeps its 120/180-second deadlines, for its steps and
@@ -44,7 +48,8 @@ keeps 15/30. `HermesConnection`
 accepts origin-bound `HermesHeaders` for tests and a later editor: they reach only
 its own origin, a cross-origin redirect drops them before the push relay or any
 other host, and the policy refuses transport names (`Host`, `Cookie`,
-`Sec-WebSocket-*` and similar) and `Bearer` authorization while allowing
+`Sec-WebSocket-*` and similar), the names Hermes reads for its own checks (`Origin`,
+`X-Forwarded-Prefix`, `X-Hermes-Session-Token`) and `Bearer` authorization while allowing
 Cloudflare Access's JSON `Authorization` form. Production passes none, and the
 webui's custom headers are never a source.
 

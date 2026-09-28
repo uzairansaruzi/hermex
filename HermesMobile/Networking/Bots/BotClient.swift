@@ -251,13 +251,15 @@ import Foundation
         let id = UUID()
         let http = self.http
         let task = Task {
-            try await http.authorized(request) { request, session in try await BotArtifactDownload.data(session: session, request: request) }
+            try await http.authorized(request, validateDispatch: { try self.checkOwner(owner) }) { request, session in
+                try await BotArtifactDownload.data(session: session, request: request)
+            }
         }
         artifactTasks[id] = task
         defer { artifactTasks[id] = nil }
         return try await withTaskCancellationHandler {
             let data = try await task.value
-            guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
+            try checkOwner(owner)
             return data
         } onCancel: { task.cancel() }
     }
@@ -265,8 +267,8 @@ import Foundation
     func deleteProfile(_ name: String) async throws {
         guard socket != nil, BotProfileName.isValid(name) else { throw BotFailure.stale }
         let owner = generation
-        let data = try await http.data(.deleteProfile(name: name))
-        guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
+        let data = try await http.data(.deleteProfile(name: name), validateDispatch: { try self.checkOwner(owner) })
+        try checkOwner(owner)
         guard (try? JSONDecoder().decode(BotJSON.self, from: data))?["ok"].flag == true else { throw BotFailure.unsupported }
     }
 
@@ -275,14 +277,24 @@ import Foundation
         let owner = generation
         let id = UUID()
         let http = self.http
-        let task = Task { try await BotAttachmentUpload.image(data: data, filename: filename, profile: context.profile, via: http) }
+        let task = Task {
+            try await BotAttachmentUpload.image(data: data, filename: filename, profile: context.profile, via: http,
+                                                validateDispatch: { try self.checkOwner(owner) })
+        }
         imageUploads[id] = task
         defer { imageUploads[id] = nil }
         return try await withTaskCancellationHandler {
             let path = try await task.value
-            guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
+            try checkOwner(owner)
             return path
         } onCancel: { task.cancel() }
+    }
+
+    /// Throws `.stale` once `close()` or a reconnect has ended the `owner` generation. The
+    /// HTTP calls check it on their result and, through `validateDispatch`, before each
+    /// send: `close()` can land while they wait on the shared sign-in.
+    private func checkOwner(_ owner: Int) throws {
+        guard owner == generation, !Task.isCancelled else { throw BotFailure.stale }
     }
 
     func close() {

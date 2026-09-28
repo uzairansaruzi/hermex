@@ -4,10 +4,14 @@ import Foundation
 /// no RPC adds an image to the gateway's shared next-prompt queue.
 enum BotAttachmentUpload {
     /// Stores one image over `http`'s signed-in session. Being nonisolated and async, it
-    /// builds the base64 body off the main actor.
-    static func image(data: Data, filename: String, profile: String, via http: HermesConnection) async throws -> String {
+    /// builds the base64 body off the main actor. `validateDispatch` is as in
+    /// `HermesConnection.authorized`.
+    static func image(data: Data, filename: String, profile: String, via http: HermesConnection,
+                      validateDispatch: (@MainActor () throws -> Void)? = nil) async throws -> String {
         let request = try Self.request(data: data, filename: filename, profile: profile, base: await http.connection.address)
-        return try await http.authorized(request) { request, session in try await Self.send(request, on: session) }
+        return try await http.authorized(request, validateDispatch: validateDispatch) { request, session in
+            try await Self.send(request, on: session)
+        }
     }
 
     static func request(data: Data, filename: String, profile: String, base: URL) throws -> URLRequest {

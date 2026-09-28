@@ -38,7 +38,7 @@ import Foundation
     /// Counts sign-ins, so a 401 can tell whether another consumer has already recovered.
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
-    private var isRetired = false
+    private(set) var isRetired = false
 
     /// `headers` are sent to this connection's origin only. Production passes none.
     init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral, headers: HermesHeaders = .none) {
@@ -98,9 +98,12 @@ import Foundation
 
     /// Sends one signed-in request built from `rest` and returns the body of a reply whose
     /// status is in `accepted`. Any other status throws `BotFailure.rejected`.
-    func data(_ rest: HermesREST, deadline: Deadline = .standard, accepting accepted: Range<Int> = 200..<201) async throws -> Data {
+    /// `validateDispatch` is as in `authorized`.
+    func data(_ rest: HermesREST, deadline: Deadline = .standard, accepting accepted: Range<Int> = 200..<201,
+              validateDispatch: (@MainActor () throws -> Void)? = nil) async throws -> Data {
         let redirectGuard = self.redirectGuard
-        return try await authorized(try rest.request(base: connection.address), deadline: deadline) { request, session in
+        return try await authorized(try rest.request(base: connection.address), deadline: deadline,
+                                    validateDispatch: validateDispatch) { request, session in
             try await Self.send(request, on: session, accepting: accepted, redirectGuard: redirectGuard)
         }
     }
@@ -108,11 +111,15 @@ import Foundation
     /// Runs `perform` signed in, with `request` given this connection's headers. `perform`
     /// sends it on the session for `deadline` and throws `BotFailure.rejected(401)` for an
     /// unauthenticated reply, which alone signs in again and resends it, once.
+    /// `validateDispatch` runs just before each send, the resend included, once any sign-in
+    /// it waited on is done: a consumer that closed meanwhile throws there, and nothing goes out.
     func authorized<T: Sendable>(_ request: URLRequest, deadline: Deadline = .standard,
+                                 validateDispatch: (@MainActor () throws -> Void)? = nil,
                                  _ perform: @Sendable (URLRequest, URLSession) async throws -> T) async throws -> T {
         let request = prepared(request)
         let session = self.session(for: deadline)
         try await signIn(deadline: deadline)
+        try validateDispatch?()
         let sentEpoch = epoch
         do {
             let value = try await perform(request, session)
@@ -123,6 +130,7 @@ import Foundation
             // The first reply to show the session expired drops it; later ones join the same sign-in.
             if epoch == sentEpoch { isSignedIn = false }
             try await signIn(deadline: deadline)
+            try validateDispatch?()
             let value = try await perform(request, session)
             try checkCurrent()
             return value
@@ -147,7 +155,8 @@ import Foundation
     }
 
     /// Ends this connection when its server or configuration is replaced: a sign-in in
-    /// flight stops, and every call and late reply after this throws `.stale`.
+    /// flight stops and stores nothing, and every call, late reply and resend after this
+    /// throws `.stale`.
     func retire() {
         isRetired = true
         isSignedIn = false
@@ -211,12 +220,26 @@ import Foundation
         self.server = server.absoluteString
         return fresh
     }
+
+    /// Retires `server`'s connection now unless `saved`, its newly saved record, is still
+    /// that connection. `AuthManager` calls it when `server` stops being active, and
+    /// `BotConnectionStore` when its credentials are saved or removed, so a sign-in in
+    /// flight stores nothing and no request is sent or resent after the change, rather
+    /// than until the next lookup.
+    func retire(server: URL, unlessStill saved: BotConnection? = nil) {
+        guard let current, self.server == server.absoluteString else { return }
+        if let saved, current.adopt(saved) { return }
+        current.retire()
+        self.current = nil
+    }
 }
 
 /// Request headers for one direct-Hermes origin, admitted by the policy the host needs:
 /// no name the transport owns (the URL loading system, the cookie jar and the gateway
-/// handshake set those) and no `Bearer` authorization, which Hermes reads as its own
-/// session token. Any other `Authorization` value passes, such as Cloudflare Access's
+/// handshake set those), no name Hermes reads for its own checks (`Origin` for the
+/// gateway upgrade, `X-Forwarded-Prefix` for the session cookie's path,
+/// `X-Hermes-Session-Token`), and no `Bearer` authorization, which Hermes also reads as
+/// its session token. Any other `Authorization` value passes, such as Cloudflare Access's
 /// single-header JSON service token. Hermex has no editor or storage for these yet:
 /// production passes `.none`, and the webui's custom headers are never a source.
 struct HermesHeaders: Sendable {
@@ -225,7 +248,8 @@ struct HermesHeaders: Sendable {
     static let none = HermesHeaders(admitted: [])
     private static let reserved: Set<String> = [
         "host", "connection", "upgrade", "content-length", "transfer-encoding", "te", "trailer",
-        "keep-alive", "proxy-connection", "proxy-authorization", "cookie"
+        "keep-alive", "proxy-connection", "proxy-authorization", "cookie",
+        "origin", "x-forwarded-prefix", "x-hermes-session-token"
     ]
 
     let values: [CustomHeader]

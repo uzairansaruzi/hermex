@@ -326,6 +326,37 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: serverB))
     }
 
+    /// The shared Bot connection signs in with the active server's saved credentials, so
+    /// each change here retires it at once, not when the next Bot screen looks it up.
+    func testServerAndBotCredentialChangesRetireTheSharedBotConnectionAtOnce() async throws {
+        let serverA = try XCTUnwrap(URL(string: "https://a.test"))
+        let saved = BotConnection(id: UUID(), name: "Host", address: try XCTUnwrap(URL(string: "https://hermes.example")),
+                                  username: "u", password: "p")
+        var renamed = saved
+        renamed.name = "Renamed"
+        renamed.installID = String(repeating: "a", count: 32)
+        var rotated = saved
+        rotated.password = "rotated"
+        let changes: [(String, Bool, (AuthManager, ServerAccount, ServerAccount, BotConnectionStore) async throws -> Void)] = [
+            ("server switch", true, { manager, _, b, _ in manager.switchActiveServer(to: b) }),
+            ("sign-out", true, { manager, _, _, _ in await manager.signOut() }),
+            ("server removal", true, { manager, a, _, _ in await manager.removeServer(a) }),
+            ("replaced credentials", true, { _, _, _, store in try store.save(rotated, server: serverA) }),
+            ("removed credentials", true, { _, _, _, store in try store.remove(server: serverA) }),
+            ("rename and install id backfill", false, { _, _, _, store in try store.save(renamed, server: serverA) })
+        ]
+        for (change, retires, apply) in changes {
+            let keychain = InMemoryKeychainStore()
+            let (manager, aAccount, bAccount) = try await makeTwoServerManager(keychain: keychain,
+                                                                               registry: ServerRegistry.inMemory(keychain: keychain))
+            let store = BotConnectionStore(keychain: keychain)
+            try store.save(saved, server: serverA)
+            let shared = HermesConnections.shared.connection(for: saved, server: serverA)
+            try await apply(manager, aAccount, bAccount, store)
+            XCTAssertEqual(shared.isRetired, retires, change)
+        }
+    }
+
     func testSignOutWithRemainingServerAutoSwitches() async throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory(keychain: keychain)

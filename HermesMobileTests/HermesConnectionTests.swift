@@ -123,6 +123,40 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/api/profiles/old-bot"), 2, "A write the gate refused is resent once")
     }
 
+    /// Each request is refused with 401 and its recovery sign-in is held at the host while
+    /// the screen closes, so only an ownership check can stop the resend.
+    func testAScreenClosedDuringTheSharedSignInDoesNotResendItsRequest() async throws {
+        let context = BotArtifactContext(connectionID: record.id, profile: "inbox-triage", sessionID: "tip", generation: 1)
+        let requests: [(path: String, send: (BotClient) async throws -> Void)] = [
+            ("/api/profiles/old-bot", { try await $0.deleteProfile("old-bot") }),
+            ("/api/chat/image-upload", { _ = try await $0.uploadImage(data: Data([1]), filename: "a.png", context: context) }),
+            ("/api/fs/download", { _ = try await $0.artifactData(path: "report.pdf", context: context) })
+        ]
+        for request in requests {
+            HermesHostFixture.reset()
+            let parked = expectation(description: "\(request.path): recovery sign-in in flight")
+            HermesHostFixture.onPark = { parked.fulfill() }
+            var expired = false
+            let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { sent in
+                guard expired else { return nil }
+                switch sent.url?.path {
+                case "/auth/password-login": return .park
+                case request.path: return .json(401, .object(["error": .string("session_expired")]))
+                default: return nil
+                }
+            })
+            let screen = BotClient(http: http) { _ in BotScriptedSocket() }
+            try await screen.connect()
+            HermesHostFixture.script { expired = true }
+            let sending = Task { try await request.send(screen) }
+            await fulfillment(of: [parked], timeout: 2)
+            screen.close()
+            HermesHostFixture.releaseParked()
+            do { try await sending.value; XCTFail("\(request.path): a closed screen's request must not succeed") } catch {}
+            XCTAssertEqual(HermesHostFixture.count(request.path), 1, "\(request.path) is not resent for a closed screen")
+        }
+    }
+
     func testFailuresKeepTheSignInAndOnlyRefusedCredentialsSignOut() async throws {
         var next: [String: HermesHostFixture.Reply] = [:]
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
@@ -186,21 +220,31 @@ import XCTest
         XCTAssertNil(released, "The registry holds its connection only while a consumer does")
     }
 
+    /// The retirement lands while a refused write waits on its recovery sign-in.
     func testARetiredConnectionDropsItsLateSignInAndSendsNothingMore() async throws {
-        let parked = expectation(description: "login in flight")
+        let parked = expectation(description: "recovery login in flight")
         HermesHostFixture.onPark = { parked.fulfill() }
+        var expired = false
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
-            request.url?.path == "/auth/password-login" ? .park : nil
+            guard expired else { return nil }
+            switch request.url?.path {
+            case "/auth/password-login": return .park
+            case "/api/profiles/old-bot": return .json(401, .object(["error": .string("session_expired")]))
+            default: return nil
+            }
         })
-        let signingIn = Task { try await http.signIn() }
+        try await http.signIn()
+        HermesHostFixture.script { expired = true }
+        let deletion = Task { try await http.data(.deleteProfile(name: "old-bot")) }
         await fulfillment(of: [parked], timeout: 2)
         http.retire()
         HermesHostFixture.releaseParked(.json(200, .object([:])))
-        await assertStale("late sign-in") { try await signingIn.value }
+        await assertStale("late recovery") { _ = try await deletion.value }
+        XCTAssertEqual(HermesHostFixture.count("/api/profiles/old-bot"), 1, "The refused write is not resent")
+        XCTAssertEqual(HermesHostFixture.count("/api/auth/me"), 1, "The late login never went on to the identity read")
         let sent = HermesHostFixture.requests.count
         await assertStale("later request") { _ = try await http.data(.pushPairing) }
         XCTAssertEqual(HermesHostFixture.requests.count, sent, "Nothing more reaches the host")
-        XCTAssertEqual(HermesHostFixture.count("/api/auth/me"), 0, "The late login never went on to the identity read")
     }
 
     func testHeaderPolicyRefusesTransportNamesAndBearerAndKeepsTheCloudflareJSONForm() throws {
@@ -217,6 +261,17 @@ import XCTest
         ]
         for (header, rejection) in refused {
             XCTAssertThrowsError(try HermesHeaders([access, header]), header.name) { XCTAssertEqual($0 as? HermesHeaders.Rejection, rejection) }
+        }
+    }
+
+    /// Hermes reads these for its own checks at the pinned commit: the gateway upgrade's
+    /// Origin guard, the reverse-proxy prefix that sets the session cookie's path, and the
+    /// dashboard's own session token.
+    func testHeaderPolicyRefusesTheNamesHermesReadsForItsOwnChecks() {
+        for name in ["Origin", "origin", "X-Forwarded-Prefix", "x-forwarded-prefix", "X-Hermes-Session-Token", "X-HERMES-SESSION-TOKEN"] {
+            XCTAssertThrowsError(try HermesHeaders([CustomHeader(name: name, value: "x")]), name) {
+                XCTAssertEqual($0 as? HermesHeaders.Rejection, .reserved(name))
+            }
         }
     }
 

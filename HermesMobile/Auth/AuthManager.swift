@@ -54,7 +54,10 @@ final class AuthManager {
         return passkeyOnlyMessage
     }
 
-    private(set) var state: State = .unconfigured
+    private(set) var state: State = .unconfigured {
+        // The shared Bot connection signs in with the active server's saved credentials.
+        didSet { if let old = oldValue.server, old != state.server { HermesConnections.shared.retire(server: old) } }
+    }
     private(set) var lastErrorMessage: String?
 
     /// Observable snapshot of every configured server, mirrored from the
@@ -405,16 +408,17 @@ final class AuthManager {
     }
 
     /// Deletes one server's local auth artifacts — its scoped custom headers, its
-    /// Bot connection with that connection's cached avatars, and its cookies — without
-    /// touching the registry or the global `server_url` key. Its push pairing lives in
-    /// the shared Keychain access group and is torn down by `PushRegistrar.forget`,
-    /// which the removal paths above await first.
+    /// Bot connection with that connection's cached avatars and shared sign-in, and its
+    /// cookies — without touching the registry or the global `server_url` key. Its push
+    /// pairing lives in the shared Keychain access group and is torn down by
+    /// `PushRegistrar.forget`, which the removal paths above await first.
     private func clearLocalArtifacts(for server: URL) {
         try? keychain.delete(.customHeaders, scope: server.absoluteString)
-        if let connection = try? BotConnectionStore(keychain: keychain).load(server: server) {
+        let bots = BotConnectionStore(keychain: keychain)
+        if let connection = try? bots.load(server: server) {
             BotAvatarStore.shared.removeAll(connectionID: connection.id)
         }
-        try? keychain.delete(.botConnection, scope: server.absoluteString)
+        try? bots.remove(server: server)
         clearSessionCookies(for: server)
     }
 

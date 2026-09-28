@@ -89,6 +89,8 @@ struct BotConnection: Codable, Equatable, Identifiable {
 /// One credential record per configured webui server. Replacing an endpoint or
 /// account mints a new identity even when Profile names happen to match, unless the
 /// host reports the record's stored `install_id` (`BotConnectionSetup.connect`).
+/// Saving other credentials, or removing them, retires the server's shared
+/// `HermesConnection` at once; a rename or an install id backfill keeps it.
 @MainActor struct BotConnectionStore {
     var keychain: any KeychainStoring = KeychainStore()
     func load(server: URL) throws -> BotConnection? {
@@ -98,9 +100,11 @@ struct BotConnection: Codable, Equatable, Identifiable {
     func save(_ connection: BotConnection, server: URL) throws {
         let value = String(decoding: try JSONEncoder().encode(connection), as: UTF8.self)
         try keychain.save(value, forKey: .botConnection, scope: server.absoluteString)
+        HermesConnections.shared.retire(server: server, unlessStill: connection)
     }
     func remove(server: URL) throws {
         try keychain.delete(.botConnection, scope: server.absoluteString)
+        HermesConnections.shared.retire(server: server)
     }
 }
 
