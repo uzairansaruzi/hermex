@@ -2407,6 +2407,7 @@ final class ChatViewModel {
     }
 
     func sendMessage(_ draft: String, modelContext: ModelContext? = nil) async -> Bool {
+        _ = draft.isEmpty
         guard !isViewingCachedData else {
             sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
             return false
