@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftUI
 import UserNotifications
@@ -522,23 +523,46 @@ enum ChatWorkingElapsedFormatter {
     }
 }
 
+/// How a run ended, as far as a local alert cares (#862). A run someone stopped
+/// never alerts, because they already know, so it has no case.
+enum ResponseCompletionOutcome: Equatable {
+    case completed
+    case failed
+
+    /// A finalized Live Activity's outcome; nil for a cancelled or still-running one.
+    init?(_ status: AgentRunActivityStatus) {
+        switch status {
+        case .complete: self = .completed
+        case .failed: self = .failed
+        default: return nil
+        }
+    }
+
+    /// The Live Activity's own end line, so the alert matches the Lock Screen.
+    var body: String {
+        switch self {
+        case .completed: String(localized: "Response complete")
+        case .failed: String(localized: "Response failed")
+        }
+    }
+}
+
 enum ResponseCompletionNotificationPolicy {
-    /// Fire a "response complete" notification when the user almost certainly isn't
-    /// watching: notifications are enabled + permitted, the run finished normally,
-    /// and the scene is not active at completion time. Deliberately does NOT depend
-    /// on any "was streaming" / "was backgrounded during the stream" memory — those
-    /// in-memory flags were wiped on suspend→cold-relaunch, which is exactly when the
-    /// stuck-mid-response reports happened (#248). Every in-session completion path
-    /// funnels through one chokepoint, so scene-not-active is the only gate needed.
+    /// Fire a run-ended notification when the user almost certainly isn't watching:
+    /// notifications are enabled + permitted and the scene is not active when the run
+    /// ends. Deliberately does NOT depend on any "was streaming" / "was backgrounded
+    /// during the stream" memory — those in-memory flags were wiped on
+    /// suspend→cold-relaunch, which is exactly when the stuck-mid-response reports
+    /// happened (#248). Every in-session run end funnels through one chokepoint, so
+    /// scene-not-active is the only gate needed. A stopped run never gets here:
+    /// `ResponseCompletionOutcome` cannot represent it.
     static func shouldSchedule(
         preferenceEnabled: Bool,
         authorizationStatus: UNAuthorizationStatus,
-        completedNormally: Bool,
         sceneIsActive: Bool
     ) -> Bool {
         guard preferenceEnabled,
               authorizationStatus.allowsResponseCompletionNotifications,
-              completedNormally,
               !sceneIsActive else {
             return false
         }
@@ -547,15 +571,62 @@ enum ResponseCompletionNotificationPolicy {
     }
 }
 
+/// One local alert for a run that ended while the app was not in the foreground.
+/// Titled with the chat, bodied with the outcome, and keyed by server and session:
+/// the same session ID on two servers never collides, and a newer alert for the
+/// same chat replaces the one before it (#862). Its `userInfo` is read back by
+/// `destination(userInfo:servers:)` when the alert is tapped.
 struct ResponseCompletionNotificationRequest: Equatable {
-    static let title = String(localized: "Hermes response complete")
-    static let body = String(localized: "The assistant finished responding.")
+    static let source = "local"
 
     let sessionID: String?
+    let server: URL
+    /// The chat title when the alert is scheduled, trimmed the way the Live Activity
+    /// trims it, falling back to "Hermes session".
+    let title: String
+    let outcome: ResponseCompletionOutcome
 
+    init(sessionID: String?, server: URL, title: String, outcome: ResponseCompletionOutcome) {
+        self.sessionID = sessionID?.isEmpty == false ? sessionID : nil
+        self.server = server
+        self.title = AgentRunActivitySanitizer.sessionTitle(title)
+        self.outcome = outcome
+    }
+
+    var body: String { outcome.body }
+
+    /// Stable per chat, so a new alert replaces the delivered one.
+    var identifier: String {
+        "run-alert-\(Self.serverHash(server).prefix(16))-\(sessionID ?? "")"
+    }
+
+    /// Groups the chat's alerts apart from every other chat's.
+    var threadIdentifier: String { identifier }
+
+    /// A hash rather than the URL: iOS keeps delivered alerts, and server URLs are
+    /// credential-like. No `install_hash`, so it is never read as a relay push (#653).
     var userInfo: [String: String] {
-        guard let sessionID, !sessionID.isEmpty else { return [:] }
-        return ["session_id": sessionID]
+        var info = ["server_hash": Self.serverHash(server), "source": Self.source]
+        info["session_id"] = sessionID
+        return info
+    }
+
+    /// Lowercase hex SHA-256 of the server's normalized URL.
+    static func serverHash(_ server: URL) -> String {
+        SHA256.hash(data: Data(server.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The chat a tapped local alert names, on a server that is still configured.
+    /// Nil for a relay push, a removed server, or a missing session, so the tap only
+    /// opens the app.
+    static func destination(userInfo: [AnyHashable: Any], servers: [URL]) -> WebuiPushDestination? {
+        guard userInfo["source"] as? String == source,
+              let hash = userInfo["server_hash"] as? String,
+              let sessionID = (userInfo["session_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty,
+              let server = servers.first(where: { serverHash($0) == hash })
+        else { return nil }
+        return WebuiPushDestination(server: server, sessionID: sessionID)
     }
 }
 
@@ -563,25 +634,28 @@ struct ResponseCompletionNotificationCompletionContext: Equatable {
     let sceneIsActive: Bool
 }
 
+/// Consumes `ChatViewModel.runEndTrigger`, which bumps once for every run that ends
+/// completed or failed, and holds the background task open until that run's alert
+/// has been handled.
 struct ResponseCompletionNotificationTracker {
-    private var lastHandledCompletionTrigger = 0
+    private var lastHandledRunEndTrigger = 0
 
-    func shouldEndBackgroundTaskOnStreamInactive(completionTrigger: Int) -> Bool {
-        completionTrigger <= lastHandledCompletionTrigger
+    func shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: Int) -> Bool {
+        runEndTrigger <= lastHandledRunEndTrigger
     }
 
-    /// Returns the completion context exactly once per completion trigger, so a run
-    /// that completes is handled a single time even if the trigger is observed
-    /// repeatedly. The scene state at completion is the only gate the policy needs.
+    /// Returns the context exactly once per run-end trigger, so a run is handled a
+    /// single time even if the trigger is observed repeatedly. The scene state when
+    /// the run ends is the only gate the policy needs.
     mutating func completionContext(
-        completionTrigger: Int,
+        runEndTrigger: Int,
         sceneIsActive: Bool
     ) -> ResponseCompletionNotificationCompletionContext? {
-        guard completionTrigger > lastHandledCompletionTrigger else {
+        guard runEndTrigger > lastHandledRunEndTrigger else {
             return nil
         }
 
-        lastHandledCompletionTrigger = completionTrigger
+        lastHandledRunEndTrigger = runEndTrigger
         return ResponseCompletionNotificationCompletionContext(sceneIsActive: sceneIsActive)
     }
 }
@@ -611,19 +685,14 @@ struct UserNotificationResponseCompletionScheduler: ResponseCompletionNotificati
 
     func schedule(_ request: ResponseCompletionNotificationRequest) async {
         let content = UNMutableNotificationContent()
-        content.title = ResponseCompletionNotificationRequest.title
-        content.body = ResponseCompletionNotificationRequest.body
+        content.title = request.title
+        content.body = request.body
         content.sound = .default
+        content.threadIdentifier = request.threadIdentifier
         content.userInfo = request.userInfo
 
-        let identifierSessionPart: String
-        if let sessionID = request.sessionID, !sessionID.isEmpty {
-            identifierSessionPart = sessionID
-        } else {
-            identifierSessionPart = UUID().uuidString
-        }
         let notificationRequest = UNNotificationRequest(
-            identifier: "response-complete-\(identifierSessionPart)-\(UUID().uuidString)",
+            identifier: request.identifier,
             content: content,
             trigger: nil
         )
@@ -649,30 +718,32 @@ enum ResponseCompletionNotificationService {
         await scheduler.requestAuthorization()
     }
 
+    /// Both the chat's run end and cold-launch Live Activity reconciliation use this.
     @MainActor @discardableResult
-    static func scheduleResponseCompletedIfAllowed(
+    static func scheduleRunEndedIfAllowed(
+        _ outcome: ResponseCompletionOutcome,
         sessionID: String?,
+        title: String,
+        server: URL,
         preferenceEnabled: Bool,
-        completedNormally: Bool,
         sceneIsActive: Bool,
-        server: URL? = nil,
         isPushPaired: @MainActor (URL) -> Bool = { @MainActor in PushRegistrar.shared?.pairing(for: $0) != nil },
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
     ) async -> Bool {
         let status = await authorizationStatus(scheduler: scheduler)
         // Read after the permission await: pairing can change while it is suspended.
-        // Both chat completion and cold-launch Live Activity reconciliation use this.
-        if let server, isPushPaired(server) { return false }
+        // A paired server's relay alerts for it instead.
+        if isPushPaired(server) { return false }
         guard ResponseCompletionNotificationPolicy.shouldSchedule(
             preferenceEnabled: preferenceEnabled,
             authorizationStatus: status,
-            completedNormally: completedNormally,
             sceneIsActive: sceneIsActive
         ) else {
             return false
         }
 
-        await scheduler.schedule(ResponseCompletionNotificationRequest(sessionID: sessionID))
+        await scheduler.schedule(ResponseCompletionNotificationRequest(
+            sessionID: sessionID, server: server, title: title, outcome: outcome))
         return true
     }
 }

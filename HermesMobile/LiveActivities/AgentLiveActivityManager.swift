@@ -27,11 +27,13 @@ enum AgentLiveActivityEvent: Equatable {
 
 /// A persisted Live Activity left over from a previous launch that this manager
 /// isn't currently driving — a reconciliation candidate (#246). Carries the bits
-/// the reconciler needs to decide whether a "response complete" notification is
-/// still worth firing: the run's session and when it last advanced (#248).
+/// the reconciler needs to decide whether a run-ended notification is still worth
+/// firing and what it says: the run's session, its title, and when it last
+/// advanced (#248, #862).
 struct OrphanedLiveActivity: Equatable {
     let streamID: String
     let sessionID: String
+    let sessionTitle: String
     let updatedAt: Date
 }
 
@@ -475,6 +477,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             return OrphanedLiveActivity(
                 streamID: streamID,
                 sessionID: state.sessionID,
+                sessionTitle: state.sessionTitle,
                 updatedAt: state.updatedAt
             )
         }
@@ -910,10 +913,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 /// reconnect path to adopt.
 @MainActor
 enum LiveActivityReconciler {
-    /// How recently a run must have completed for the cold-launch reconciler to
-    /// still fire a "response complete" notification for it. Matches the 300s
-    /// non-stale `staleDate` window the widget uses (#248): an older completion is
-    /// finalized silently — the user has long since moved on.
+    /// How recently a run must have ended for the cold-launch reconciler to still
+    /// fire a run-ended notification for it. Matches the 300s non-stale `staleDate`
+    /// window the widget uses (#248): an older run is finalized silently — the user
+    /// has long since moved on.
     /// `nonisolated` so it can serve as a default argument (evaluated off the main
     /// actor) without a Swift-6 isolation warning; it's an immutable `Double`.
     nonisolated static let recentCompletionWindow: TimeInterval = 300
@@ -952,9 +955,9 @@ enum LiveActivityReconciler {
     ///
     /// `notifiesOnCompletion` is true only for the cold-launch pass: a relaunched
     /// process means every orphan's run finished while the app was *not* active, so
-    /// a recent one is worth a "response complete" notification (#248). The
-    /// foreground pass passes false — the in-session completion paths own
-    /// notifications while the app is alive, so reconciling there must stay silent.
+    /// a recent one is worth a run-ended notification (#248). The foreground pass
+    /// passes false — the in-session run-end paths own notifications while the app
+    /// is alive, so reconciling there must stay silent.
     static func reconcileOrphanedActivities(
         server: URL,
         notifiesOnCompletion: Bool,
@@ -978,8 +981,8 @@ enum LiveActivityReconciler {
             endOrphan: { orphan, outcome in
                 liveActivityReconcilerLogger.notice("Ending orphaned Live Activity \(orphan.streamID, privacy: .public) — server reports the run is over (\(outcome.status.rawValue, privacy: .public))")
                 // #267: finalize each orphan with its real outcome, mapped from the
-                // server journal's `terminal_state`, so a run that failed silently
-                // or was cancelled no longer shows "Response complete" on the
+                // server journal's `terminal_state`, so a run that failed or was
+                // cancelled no longer shows "Response complete" on the
                 // auto-dismissing widget.
                 return await manager.endOrphanedActivity(
                     streamID: orphan.streamID,
@@ -987,20 +990,21 @@ enum LiveActivityReconciler {
                     activity: outcome.activity
                 )
             },
-            notify: { orphan in
-                liveActivityReconcilerLogger.notice("Notifying response complete for reconciled Live Activity \(orphan.streamID, privacy: .public)")
-                // The run completed while the app was *not* active (it was
-                // terminated); the recency check in the core stands in for "you
-                // weren't watching", so this path always passes sceneIsActive: false.
-                // #267: the core only calls `notify` for an orphan that mapped to
-                // `.complete`, so this is always a genuine completion — a silently
-                // failed run is finalized silently and no longer mis-notifies.
-                await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
-                    sessionID: orphan.sessionID.isEmpty ? nil : orphan.sessionID,
+            notify: { orphan, outcome in
+                liveActivityReconcilerLogger.notice("Notifying run ended for reconciled Live Activity \(orphan.streamID, privacy: .public)")
+                // The run ended while the app was *not* active (it was terminated);
+                // the recency check in the core stands in for "you weren't
+                // watching", so this path always passes sceneIsActive: false.
+                // #862: the core calls `notify` for a completed or failed run, with
+                // the outcome the widget was finalized with; a cancelled one ends
+                // without an alert.
+                await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
+                    outcome,
+                    sessionID: orphan.sessionID,
+                    title: orphan.sessionTitle,
+                    server: server,
                     preferenceEnabled: preferenceEnabled,
-                    completedNormally: true,
-                    sceneIsActive: false,
-                    server: server
+                    sceneIsActive: false
                 )
             }
         )
@@ -1012,12 +1016,12 @@ enum LiveActivityReconciler {
     /// status check (`nil` response) or a still-active stream is left alone, so a
     /// transient error or a live run can never cut an activity short.
     ///
-    /// A "response complete" notification fires only when (a) this is the notifying
-    /// (cold-launch) pass, (b) the orphan mapped to `.complete` — a failed or
-    /// cancelled run is finalized silently (#267), (c) `endOrphan` reports it
-    /// actually ended a still-running activity — so a completion another path
-    /// already finalized can't double-fire (#248) — and (d) the run finished within
-    /// `recencyWindow`.
+    /// A run-ended notification fires only when (a) this is the notifying
+    /// (cold-launch) pass, (b) the orphan mapped to `.complete` or `.failed` — a
+    /// cancelled run is finalized without an alert, because whoever stopped it
+    /// already knows (#862), (c) `endOrphan` reports it actually ended a
+    /// still-running activity — so a run another path already finalized can't
+    /// double-fire (#248) — and (d) the run finished within `recencyWindow`.
     static func reconcileOrphanedActivities(
         orphans: [OrphanedLiveActivity],
         now: Date,
@@ -1025,7 +1029,7 @@ enum LiveActivityReconciler {
         recencyWindow: TimeInterval = recentCompletionWindow,
         streamStatus: (String) async -> ChatStreamStatusResponse?,
         endOrphan: (OrphanedLiveActivity, ReconciledOutcome) async -> Bool,
-        notify: (OrphanedLiveActivity) async -> Void
+        notify: (OrphanedLiveActivity, ResponseCompletionOutcome) async -> Void
     ) async {
         for orphan in orphans {
             // `active == false` is the only signal that ends the orphan: a `nil`
@@ -1034,10 +1038,10 @@ enum LiveActivityReconciler {
             guard let status = await streamStatus(orphan.streamID), status.active == false else { continue }
             let outcome = reconciledOutcome(forTerminalState: status.journal?.terminalState)
             let didEnd = await endOrphan(orphan, outcome)
-            guard notifiesOnCompletion, didEnd, outcome.status == .complete else { continue }
+            guard notifiesOnCompletion, didEnd, let alertOutcome = ResponseCompletionOutcome(outcome.status) else { continue }
             let age = now.timeIntervalSince(orphan.updatedAt)
             guard age >= 0, age <= recencyWindow else { continue }
-            await notify(orphan)
+            await notify(orphan, alertOutcome)
         }
     }
 }

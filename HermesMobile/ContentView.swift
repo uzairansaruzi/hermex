@@ -42,8 +42,8 @@ struct ContentView: View {
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
                 // run that finished while the app was terminated. #248: this is also
-                // the one pass allowed to fire a recent run's "response complete"
-                // notification, since a relaunch means it finished while not active.
+                // the one pass allowed to alert for a recent run that completed or
+                // failed, since a relaunch means it ended while not active.
                 await reconcileOrphanedLiveActivities(notifiesOnCompletion: true)
                 // #489: a bot activity has no server status to reconcile against.
                 // #566: a finished webui activity releases its relay registration.
@@ -52,7 +52,7 @@ struct ContentView: View {
             .onChange(of: scenePhase) {
                 guard scenePhase == .active else { return }
                 importPendingSharedDraftIfAvailable()
-                // #248: the foreground pass stays silent — the in-session completion
+                // #248: the foreground pass stays silent — the in-session run-end
                 // paths own notifications while the app is alive.
                 Task { await reconcileOrphanedLiveActivities(notifiesOnCompletion: false) }
             }

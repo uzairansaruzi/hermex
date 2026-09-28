@@ -199,7 +199,7 @@ struct SettingsView: View {
                             systemImage: "bell",
                             isOn: responseCompletionNotificationBinding
                         )
-                        SettingsFootnote(String(localized: "Local completion alerts for servers without push notifications."))
+                        SettingsFootnote(String(localized: "Alerts when a reply finishes or fails, for servers without push notifications."))
                         if let notificationStatusText {
                             SettingsFootnote(notificationStatusText)
                         }

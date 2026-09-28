@@ -47,7 +47,9 @@ Pairing is per configured server, and everything derived from a pairing stays
 with that server. The device token registers with each paired relay
 independently, a tap resolves its server through the pairing, and removing a
 server wipes its keys (`PushRegistrar.forget`). Nothing one server's push
-touches may show up under another.
+touches may show up under another. A server without a pairing gets local run
+alerts instead, which route the same way: their `server_hash` must match a
+configured server (`ResponseCompletionNotificationRequest.destination`).
 
 One caveat: two configured servers that reach the same host pair with the
 same install, because the host hands out one key pair. A tap on one of that

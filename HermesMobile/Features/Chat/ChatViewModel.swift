@@ -366,6 +366,11 @@ final class ChatViewModel {
     private(set) var hasOlderMessages = false
     private(set) var contextWindowSnapshot: ContextWindowSnapshot?
     private(set) var responseCompletionHapticTrigger = 0
+    /// Bumps once for every run that ends completed or failed, after `runEndOutcome`
+    /// records which. `ChatView` turns each bump into at most one local alert and
+    /// keeps its background task open until then (#862). A stopped run never bumps.
+    private(set) var runEndTrigger = 0
+    private(set) var runEndOutcome: ResponseCompletionOutcome = .completed
     /// Bumps at most once per throttle interval while live (non-replay) assistant
     /// text arrives; the view turns each bump into one streaming pulse haptic.
     private(set) var streamingHapticPulseTrigger = 0
@@ -5883,6 +5888,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: Bool) {
         responseCompletionNeedsTranscriptRefresh = needsTranscriptRefresh
         responseCompletionHapticTrigger += 1
+        recordRunEnd(.completed)
     }
 
     func streamCoordinatorDidFinishStream() {
@@ -5890,6 +5896,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         dismissSteeringConfirmation()
         responseCompletionNeedsTranscriptRefresh = false
         if let ending = streamCoordinator.latestRunEnding {
+            // A completion was recorded when it completed. A late teardown can find
+            // the previous run's ending still on record, so only a new failure counts.
+            if ending.ending == .failed, latestRunOutcome?.endedAt != ending.endedAt {
+                recordRunEnd(.failed)
+            }
             latestRunOutcome = TranscriptTurnRunOutcome(
                 turnKey: TranscriptTurnClassifier.latestTurnKey(in: messages, messageOffset: messagesOffset),
                 startedAt: ending.startedAt,
@@ -5901,6 +5912,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {
         sendErrorMessage = message
+    }
+
+    private func recordRunEnd(_ outcome: ResponseCompletionOutcome) {
+        runEndOutcome = outcome
+        runEndTrigger += 1
     }
 
     func streamCoordinatorDidReceiveRecoveryError(_ error: Error) {

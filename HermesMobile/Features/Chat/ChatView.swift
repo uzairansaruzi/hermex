@@ -828,6 +828,10 @@ struct ChatView: View {
                 guard viewModel.responseCompletionHapticTrigger > 0 else { return }
                 handleResponseCompletionSideEffects()
             }
+            .onChange(of: viewModel.runEndTrigger) {
+                guard viewModel.runEndTrigger > 0 else { return }
+                handleRunEnd()
+            }
             .onChange(of: viewModel.streamingHapticPulseTrigger, handleStreamingHapticPulse)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -2693,7 +2697,7 @@ struct ChatView: View {
             activeStreamStatusRefreshTask = nil
 
             if responseCompletionNotificationTracker.shouldEndBackgroundTaskOnStreamInactive(
-                completionTrigger: viewModel.responseCompletionHapticTrigger
+                runEndTrigger: viewModel.runEndTrigger
             ) {
                 endResponseCompletionBackgroundTask()
             }
@@ -2740,28 +2744,34 @@ struct ChatView: View {
             viewModel.cacheCompletedResponse(modelContext: modelContext)
         }
 
-        guard let completionContext = responseCompletionNotificationTracker.completionContext(
-            completionTrigger: viewModel.responseCompletionHapticTrigger,
+        ChatHaptics.assistantResponseCompleted(isEnabled: isHapticsEnabled)
+    }
+
+    /// Alerts once for a run that completed or failed while the scene was not active,
+    /// then releases the background task that kept the stream alive for it.
+    private func handleRunEnd() {
+        guard let runEndContext = responseCompletionNotificationTracker.completionContext(
+            runEndTrigger: viewModel.runEndTrigger,
             sceneIsActive: scenePhase == .active
         ) else {
             return
         }
-
-        ChatHaptics.assistantResponseCompleted(isEnabled: isHapticsEnabled)
+        let outcome = viewModel.runEndOutcome
 
         Task { @MainActor in
             defer { endResponseCompletionBackgroundTask() }
 
-            if viewModel.responseCompletionNeedsTranscriptRefresh {
+            if outcome == .completed, viewModel.responseCompletionNeedsTranscriptRefresh {
                 await loadMessages()
             }
 
-            await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
+            await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
+                outcome,
                 sessionID: session.sessionId,
+                title: viewModel.displayTitle,
+                server: server,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
-                completedNormally: true,
-                sceneIsActive: completionContext.sceneIsActive,
-                server: server
+                sceneIsActive: runEndContext.sceneIsActive
             )
         }
     }

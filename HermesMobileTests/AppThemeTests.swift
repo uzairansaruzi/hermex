@@ -192,37 +192,32 @@ final class CodeBlockWrappingSettingsTests: XCTestCase {
 }
 
 final class ResponseCompletionNotificationPolicyTests: XCTestCase {
-    func testAllowsEnabledAuthorizedNormalCompletionWhileSceneInactive() {
+    func testAllowsEnabledAuthorizedRunEndWhileSceneInactive() {
         XCTAssertTrue(
             ResponseCompletionNotificationPolicy.shouldSchedule(
                 preferenceEnabled: true,
                 authorizationStatus: .authorized,
-                completedNormally: true,
                 sceneIsActive: false
             )
         )
     }
 
-    func testBlocksForegroundCompletion() {
+    func testBlocksForegroundRunEnd() {
         XCTAssertFalse(
             ResponseCompletionNotificationPolicy.shouldSchedule(
                 preferenceEnabled: true,
                 authorizationStatus: .authorized,
-                completedNormally: true,
                 sceneIsActive: true
             )
         )
     }
 
-    func testBlocksCancelledOrFailedCompletion() {
-        XCTAssertFalse(
-            ResponseCompletionNotificationPolicy.shouldSchedule(
-                preferenceEnabled: true,
-                authorizationStatus: .authorized,
-                completedNormally: false,
-                sceneIsActive: false
-            )
-        )
+    // #862: a completed or failed run can alert; a stopped one has no outcome to alert with.
+    func testOnlyCompletedAndFailedRunsHaveAnAlertOutcome() {
+        XCTAssertEqual(ResponseCompletionOutcome(.complete), .completed)
+        XCTAssertEqual(ResponseCompletionOutcome(.failed), .failed)
+        XCTAssertNil(ResponseCompletionOutcome(.cancelled))
+        XCTAssertNil(ResponseCompletionOutcome(.waitingForApproval))
     }
 
     func testBlocksWhenPreferenceOrPermissionDisallows() {
@@ -230,7 +225,6 @@ final class ResponseCompletionNotificationPolicyTests: XCTestCase {
             ResponseCompletionNotificationPolicy.shouldSchedule(
                 preferenceEnabled: false,
                 authorizationStatus: .authorized,
-                completedNormally: true,
                 sceneIsActive: false
             )
         )
@@ -239,47 +233,90 @@ final class ResponseCompletionNotificationPolicyTests: XCTestCase {
             ResponseCompletionNotificationPolicy.shouldSchedule(
                 preferenceEnabled: true,
                 authorizationStatus: .denied,
-                completedNormally: true,
                 sceneIsActive: false
             )
         )
     }
 }
 
+@MainActor
 final class ResponseCompletionNotificationServiceTests: XCTestCase {
-    func testRequestCarriesOnlySessionIDPayload() {
-        XCTAssertEqual(
-            ResponseCompletionNotificationRequest(sessionID: "session-abc").userInfo,
-            ["session_id": "session-abc"]
-        )
-        XCTAssertEqual(ResponseCompletionNotificationRequest(sessionID: "").userInfo, [:])
-        XCTAssertEqual(ResponseCompletionNotificationRequest(sessionID: nil).userInfo, [:])
+    private let serverA = URL(string: "https://a.example.com")!
+    private let serverB = URL(string: "https://b.example.com")!
+
+    // #862: the alert names the chat, says how the run ended, and carries a hash of
+    // its server rather than the URL. No `install_hash`, so it is never read as a
+    // relay push (#653).
+    func testRequestCarriesTitleOutcomeAndServerHash() {
+        let request = ResponseCompletionNotificationRequest(
+            sessionID: "session-abc", server: serverA, title: "  Deploy notes\n", outcome: .failed)
+
+        XCTAssertEqual(request.title, "Deploy notes")
+        XCTAssertEqual(request.body, "Response failed")
+        XCTAssertEqual(request.userInfo, [
+            "session_id": "session-abc",
+            // printf 'https://a.example.com' | shasum -a 256
+            "server_hash": "93d446a9d8ca42b500faf019713f245eaf0377bd89add0676ece0b22d3ebfb02",
+            "source": "local"
+        ])
+        XCTAssertEqual(request.identifier, "run-alert-93d446a9d8ca42b5-session-abc")
+        XCTAssertEqual(request.threadIdentifier, request.identifier)
     }
 
-    func testSchedulesAllowedResponseCompletionWithSessionID() async {
+    func testTitleFallsBackToHermesSession() {
+        let request = ResponseCompletionNotificationRequest(
+            sessionID: "session-abc", server: serverA, title: " \n ", outcome: .completed)
+
+        XCTAssertEqual(request.title, "Hermes session")
+        XCTAssertEqual(request.body, "Response complete")
+    }
+
+    // #862: a newer alert for the same chat replaces the last one; the same session ID
+    // on another server is a different chat.
+    func testIdentifierIsStablePerChatAndDistinctPerServer() {
+        let failed = ResponseCompletionNotificationRequest(
+            sessionID: "same-id", server: serverA, title: "A", outcome: .failed)
+        let retried = ResponseCompletionNotificationRequest(
+            sessionID: "same-id", server: serverA, title: "A renamed", outcome: .completed)
+        let otherServer = ResponseCompletionNotificationRequest(
+            sessionID: "same-id", server: serverB, title: "A", outcome: .failed)
+
+        XCTAssertEqual(failed.identifier, retried.identifier)
+        XCTAssertNotEqual(failed.identifier, otherServer.identifier)
+        XCTAssertNotEqual(failed.threadIdentifier, otherServer.threadIdentifier)
+    }
+
+    func testSchedulesAFailedRunInTheBackground() async {
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)
 
-        let didSchedule = await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
+        let didSchedule = await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
+            .failed,
             sessionID: "session-abc",
+            title: "Deploy notes",
+            server: serverA,
             preferenceEnabled: true,
-            completedNormally: true,
             sceneIsActive: false,
+            isPushPaired: { _ in false },
             scheduler: scheduler
         )
 
         XCTAssertTrue(didSchedule)
         XCTAssertEqual(scheduler.authorizationStatusCallCount, 1)
-        XCTAssertEqual(scheduler.scheduledRequests, [ResponseCompletionNotificationRequest(sessionID: "session-abc")])
+        XCTAssertEqual(scheduler.scheduledRequests, [ResponseCompletionNotificationRequest(
+            sessionID: "session-abc", server: serverA, title: "Deploy notes", outcome: .failed)])
     }
 
-    func testDoesNotScheduleBlockedResponseCompletion() async {
+    func testDoesNotScheduleInTheForeground() async {
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)
 
-        let didSchedule = await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
+        let didSchedule = await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
+            .completed,
             sessionID: "session-abc",
+            title: "Deploy notes",
+            server: serverA,
             preferenceEnabled: true,
-            completedNormally: true,
             sceneIsActive: true,
+            isPushPaired: { _ in false },
             scheduler: scheduler
         )
 
@@ -299,32 +336,40 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
 }
 
 final class ResponseCompletionNotificationTrackerTests: XCTestCase {
-    func testDefersBackgroundTaskEndUntilNormalCompletionContextIsHandled() {
+    func testDefersBackgroundTaskEndUntilRunEndContextIsHandled() {
         var tracker = ResponseCompletionNotificationTracker()
 
-        XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(completionTrigger: 0))
-        XCTAssertFalse(tracker.shouldEndBackgroundTaskOnStreamInactive(completionTrigger: 1))
+        XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 0))
+        XCTAssertFalse(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 1))
 
-        let context = tracker.completionContext(completionTrigger: 1, sceneIsActive: false)
+        let context = tracker.completionContext(runEndTrigger: 1, sceneIsActive: false)
 
         XCTAssertEqual(context, ResponseCompletionNotificationCompletionContext(sceneIsActive: false))
-        XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(completionTrigger: 1))
-        // The same completion trigger is consumed only once.
-        XCTAssertNil(tracker.completionContext(completionTrigger: 1, sceneIsActive: false))
+        XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 1))
+        // The same run-end trigger is consumed only once.
+        XCTAssertNil(tracker.completionContext(runEndTrigger: 1, sceneIsActive: false))
     }
 
-    func testCompletionContextCapturesSceneStateAtCompletion() {
+    // #862: a failure after a handled completion is a new bump, so the stream going
+    // inactive leaves the background task open until the failure's alert is handled.
+    func testFailureBumpKeepsBackgroundTaskOpenUntilItsContextIsConsumed() {
+        var tracker = ResponseCompletionNotificationTracker()
+        _ = tracker.completionContext(runEndTrigger: 1, sceneIsActive: false)
+
+        XCTAssertFalse(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 2))
+        XCTAssertEqual(
+            tracker.completionContext(runEndTrigger: 2, sceneIsActive: false),
+            ResponseCompletionNotificationCompletionContext(sceneIsActive: false)
+        )
+        XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 2))
+    }
+
+    func testCompletionContextCapturesSceneStateAtRunEnd() {
         var tracker = ResponseCompletionNotificationTracker()
 
-        let context = tracker.completionContext(completionTrigger: 1, sceneIsActive: true)
+        let context = tracker.completionContext(runEndTrigger: 1, sceneIsActive: true)
 
         XCTAssertEqual(context, ResponseCompletionNotificationCompletionContext(sceneIsActive: true))
-    }
-
-    func testInactiveStreamWithoutCompletionTriggerCanEndBackgroundTaskImmediately() {
-        let tracker = ResponseCompletionNotificationTracker()
-
-        XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(completionTrigger: 0))
     }
 }
 

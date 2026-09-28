@@ -285,6 +285,48 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
     }
 
+    // #862: every run that ends completed or failed bumps the run-end trigger once,
+    // with its outcome, so ChatView can alert for it. A stopped run never does.
+    func testChatViewModelRunEndTriggerCoversFailedAndCompletedRunsButNotStoppedOnes() async throws {
+        let baseURL = URL(string: "https://example.test")!
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [LiveActivityURLProtocol.self]
+        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let streamClient = LiveActivitySpySSEClient()
+        LiveActivityURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return Self.jsonResponse(#"{"stream_id":"stream-123","session_id":"session-abc"}"#, for: request)
+        }
+        let viewModel = ChatViewModel(
+            session: try Self.sessionSummary(id: "session-abc", title: "Deploy notes"),
+            server: baseURL,
+            client: client,
+            streamClient: streamClient,
+            approvalStreamClient: LiveActivitySpySSEClient(),
+            clarifyStreamClient: LiveActivitySpySSEClient(),
+            liveActivityManager: SpyAgentLiveActivityManager()
+        )
+
+        let failedRunStarted = await viewModel.sendMessage("Use the broken provider")
+        XCTAssertTrue(failedRunStarted)
+        streamClient.emit(.error("No API key"))
+        streamClient.emit(.error("A late duplicate"))
+        XCTAssertEqual(viewModel.runEndTrigger, 1)
+        XCTAssertEqual(viewModel.runEndOutcome, .failed)
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 0, "A failure is not a completion")
+
+        let stoppedRunStarted = await viewModel.sendMessage("Try again")
+        XCTAssertTrue(stoppedRunStarted)
+        streamClient.emit(.cancelled)
+        XCTAssertEqual(viewModel.runEndTrigger, 1, "Whoever stopped the run already knows")
+
+        let completedRunStarted = await viewModel.sendMessage("Once more")
+        XCTAssertTrue(completedRunStarted)
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(viewModel.runEndTrigger, 2)
+        XCTAssertEqual(viewModel.runEndOutcome, .completed)
+    }
+
     func testChatViewModelSuppressesLiveActivityResponseExcerptsByDefault() async throws {
         let baseURL = URL(string: "https://example.test")!
         let configuration = URLSessionConfiguration.ephemeral
@@ -912,9 +954,9 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", updatedAt: now),
-                OrphanedLiveActivity(streamID: "running", sessionID: "s-running", updatedAt: now),
-                OrphanedLiveActivity(streamID: "errored", sessionID: "s-errored", updatedAt: now)
+                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", sessionTitle: "Title", updatedAt: now),
+                OrphanedLiveActivity(streamID: "running", sessionID: "s-running", sessionTitle: "Title", updatedAt: now),
+                OrphanedLiveActivity(streamID: "errored", sessionID: "s-errored", sessionTitle: "Title", updatedAt: now)
             ],
             now: now,
             notifiesOnCompletion: false,
@@ -926,7 +968,7 @@ final class LiveActivityTests: XCTestCase {
                 }
             },
             endOrphan: { orphan, _ in ended.append(orphan.streamID); return true },
-            notify: { _ in }
+            notify: { _, _ in }
         )
 
         XCTAssertEqual(ended, ["done"])
@@ -942,7 +984,7 @@ final class LiveActivityTests: XCTestCase {
             notifiesOnCompletion: true,
             streamStatus: { _ in self.statusResponse(active: false) },
             endOrphan: { _, _ in endCount += 1; return true },
-            notify: { _ in }
+            notify: { _, _ in }
         )
 
         XCTAssertEqual(endCount, 0)
@@ -957,13 +999,13 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", updatedAt: now.addingTimeInterval(-60))
+                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60))
             ],
             now: now,
             notifiesOnCompletion: true,
             streamStatus: { _ in self.statusResponse(active: false) },
             endOrphan: { _, _ in true },
-            notify: { notified.append($0.sessionID) }
+            notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
         XCTAssertEqual(notified, ["s-recent"])
@@ -981,6 +1023,7 @@ final class LiveActivityTests: XCTestCase {
                 OrphanedLiveActivity(
                     streamID: "stale",
                     sessionID: "s-stale",
+                    sessionTitle: "Title",
                     updatedAt: now.addingTimeInterval(-(LiveActivityReconciler.recentCompletionWindow + 1))
                 )
             ],
@@ -988,7 +1031,7 @@ final class LiveActivityTests: XCTestCase {
             notifiesOnCompletion: true,
             streamStatus: { _ in self.statusResponse(active: false) },
             endOrphan: { orphan, _ in ended.append(orphan.streamID); return true },
-            notify: { notified.append($0.sessionID) }
+            notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
         XCTAssertEqual(ended, ["stale"])
@@ -1004,13 +1047,13 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "dup", sessionID: "s-dup", updatedAt: now)
+                OrphanedLiveActivity(streamID: "dup", sessionID: "s-dup", sessionTitle: "Title", updatedAt: now)
             ],
             now: now,
             notifiesOnCompletion: true,
             streamStatus: { _ in self.statusResponse(active: false) },
             endOrphan: { _, _ in false },   // already final — nothing transitioned here
-            notify: { notified.append($0.sessionID) }
+            notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
         XCTAssertTrue(notified.isEmpty)
@@ -1026,13 +1069,13 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", updatedAt: now)
+                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now)
             ],
             now: now,
             notifiesOnCompletion: false,
             streamStatus: { _ in self.statusResponse(active: false) },
             endOrphan: { orphan, _ in ended.append(orphan.streamID); return true },
-            notify: { notified.append($0.sessionID) }
+            notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
         XCTAssertEqual(ended, ["recent"])
@@ -1047,13 +1090,13 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "future", sessionID: "s-future", updatedAt: now.addingTimeInterval(120))
+                OrphanedLiveActivity(streamID: "future", sessionID: "s-future", sessionTitle: "Title", updatedAt: now.addingTimeInterval(120))
             ],
             now: now,
             notifiesOnCompletion: true,
             streamStatus: { _ in self.statusResponse(active: false) },
             endOrphan: { _, _ in true },
-            notify: { notified.append($0.sessionID) }
+            notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
         XCTAssertTrue(notified.isEmpty)
@@ -1102,9 +1145,9 @@ final class LiveActivityTests: XCTestCase {
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "ok", sessionID: "s-ok", updatedAt: now),
-                OrphanedLiveActivity(streamID: "lost", sessionID: "s-lost", updatedAt: now),
-                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", updatedAt: now)
+                OrphanedLiveActivity(streamID: "ok", sessionID: "s-ok", sessionTitle: "Title", updatedAt: now),
+                OrphanedLiveActivity(streamID: "lost", sessionID: "s-lost", sessionTitle: "Title", updatedAt: now),
+                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now)
             ],
             now: now,
             notifiesOnCompletion: false,
@@ -1116,7 +1159,7 @@ final class LiveActivityTests: XCTestCase {
                 }
             },
             endOrphan: { orphan, outcome in endedWith[orphan.streamID] = outcome.status; return true },
-            notify: { _ in }
+            notify: { _, _ in }
         )
 
         XCTAssertEqual(endedWith["ok"], .complete)
@@ -1124,33 +1167,35 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(endedWith["stopped"], .cancelled)
     }
 
-    // #267: a recently silently-failed run must still be finalized but must NOT
-    // fire a "response complete" notification on the cold-launch pass — only a
-    // run that mapped to `.complete` notifies.
+    // #862: the cold-launch pass alerts for a recent run that completed or failed,
+    // and finalizes a run someone stopped without alerting.
     @MainActor
-    func testReconcilerNotifiesOnlyCompletedTerminalStateOnColdLaunch() async {
+    func testReconcilerNotifiesCompletedAndFailedButNotCancelledRunsOnColdLaunch() async {
         let now = Date(timeIntervalSince1970: 10_000)
         var ended: [String] = []
-        var notified: [String] = []
+        var notified: [String: ResponseCompletionOutcome] = [:]
 
         await LiveActivityReconciler.reconcileOrphanedActivities(
             orphans: [
-                OrphanedLiveActivity(streamID: "failed", sessionID: "s-failed", updatedAt: now.addingTimeInterval(-60)),
-                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", updatedAt: now.addingTimeInterval(-60))
+                OrphanedLiveActivity(streamID: "failed", sessionID: "s-failed", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60)),
+                OrphanedLiveActivity(streamID: "done", sessionID: "s-done", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60)),
+                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60))
             ],
             now: now,
             notifiesOnCompletion: true,
             streamStatus: { streamID in
-                streamID == "failed"
-                    ? self.statusResponse(active: false, terminalState: "errored")
-                    : self.statusResponse(active: false, terminalState: "completed")
+                switch streamID {
+                case "failed": self.statusResponse(active: false, terminalState: "errored")
+                case "done": self.statusResponse(active: false, terminalState: "completed")
+                default: self.statusResponse(active: false, terminalState: "interrupted-by-user")
+                }
             },
             endOrphan: { orphan, _ in ended.append(orphan.streamID); return true },
-            notify: { notified.append($0.sessionID) }
+            notify: { orphan, outcome in notified[orphan.sessionID] = outcome }
         )
 
-        XCTAssertEqual(ended.sorted(), ["done", "failed"])  // both finalized
-        XCTAssertEqual(notified, ["s-done"])                // only the completed one notifies
+        XCTAssertEqual(ended.sorted(), ["done", "failed", "stopped"])
+        XCTAssertEqual(notified, ["s-done": .completed, "s-failed": .failed])
     }
 
     // #246 follow-up (PR #266 #3): the orphan reconciler must defer to a stream

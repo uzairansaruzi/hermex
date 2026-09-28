@@ -15,15 +15,17 @@ final class PushRegistrationTests: XCTestCase {
         harness.deliverTokenOnRegister("ab12")
         try await harness.registrar.enable(harness.pairing(install: installA), for: serverA)
         let scheduler = CompletionScheduler()
-        func schedule(_ server: URL) async -> Bool {
-            await ResponseCompletionNotificationService.scheduleResponseCompletedIfAllowed(
-                sessionID: "same-id", preferenceEnabled: true, completedNormally: true,
-                sceneIsActive: false, server: server,
+        func schedule(_ server: URL, _ outcome: ResponseCompletionOutcome = .completed) async -> Bool {
+            await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
+                outcome, sessionID: "same-id", title: "Chat", server: server,
+                preferenceEnabled: true, sceneIsActive: false,
                 isPushPaired: { harness.registrar.pairing(for: $0) != nil }, scheduler: scheduler)
         }
         let paired = await schedule(serverA)
+        let pairedFailure = await schedule(serverA, .failed)
         let unpaired = await schedule(serverB)
         XCTAssertFalse(paired)
+        XCTAssertFalse(pairedFailure, "The relay alerts for a paired server's failed runs too")
         XCTAssertTrue(unpaired)
         try await harness.registrar.disable(for: serverA)
         let disabled = await schedule(serverA)
