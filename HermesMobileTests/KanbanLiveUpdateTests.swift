@@ -267,15 +267,17 @@ final class KanbanLiveUpdateTests: XCTestCase {
             eventsResult: .success(.events(cursor: 13))
         )
         let stream = KanbanStreamSpy()
+        let polling = PollingProbe()
         let state = makeState(
             client: client,
             stream: stream,
             timing: KanbanLiveUpdateTiming(
                 coalescingDelay: .milliseconds(5),
                 reconnectDelays: [.zero, .zero],
-                pollingInterval: .milliseconds(20),
+                pollingInterval: PollingProbe.interval,
                 failuresBeforePolling: 3
-            )
+            ),
+            sleep: { duration in try await polling.sleep(duration) }
         )
 
         await state.load()
@@ -288,6 +290,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
 
         try await waitUntil { state.liveUpdatesDelayed }
         try await waitUntil { await client.boardCallCount == 2 }
+        // The loop is parked on its second interval, so no further poll can land.
+        try await waitUntil { polling.intervalsStarted == 2 }
         let eventCallCount = await client.eventCallCount
         XCTAssertEqual(eventCallCount, 1)
         XCTAssertEqual(state.liveCursor, 13)
@@ -828,6 +832,21 @@ private final class RefreshingProbe {
 
     func recordSleep() {
         refreshingAtEachSleep.append(state?.isRefreshing ?? true)
+    }
+}
+
+/// Stands in for the polling timer: the first interval elapses at once and every
+/// later one holds until the polling task is cancelled, so a test counts polls
+/// exactly instead of racing a real timer. Other sleeps run for their duration.
+@MainActor
+private final class PollingProbe {
+    static let interval = Duration.seconds(30)
+    private(set) var intervalsStarted = 0
+
+    func sleep(_ duration: Duration) async throws {
+        guard duration == Self.interval else { return try await Task.sleep(for: duration) }
+        intervalsStarted += 1
+        if intervalsStarted > 1 { try await Task.sleep(for: .seconds(3600)) }
     }
 }
 
