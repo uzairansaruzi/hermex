@@ -143,7 +143,7 @@ Hermex is free and built in the open. If it's useful to you:
 
 Hermex is funded by its members. Thank you.
 
-**Members:** Robin Edwards
+**Patrons:** Robin Edwards
 
 **Founding members:** James Cross · Alexey
 
