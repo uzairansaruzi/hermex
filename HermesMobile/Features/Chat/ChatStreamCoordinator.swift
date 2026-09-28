@@ -120,6 +120,9 @@ final class ChatStreamCoordinator {
     private let ratingPromptState: RatingPromptState
     private let timing: ChatStreamCoordinatorTiming
     private let reconnectDelay: ChatStreamReconnectDelay
+    /// Whether the device has a network. False parks recovery in
+    /// `.waitingForNetwork` without probing; tests pass a fake.
+    private let isNetworkAvailable: @MainActor () -> Bool
     private var showsLiveActivityResponseExcerpts: Bool
 
     private(set) var activeStreamID: String? {
@@ -186,7 +189,8 @@ final class ChatStreamCoordinator {
         showsLiveActivityResponseExcerpts: Bool,
         timing: ChatStreamCoordinatorTiming = .standard,
         ratingPromptState: RatingPromptState? = nil,
-        reconnectDelay: @escaping ChatStreamReconnectDelay = ChatStreamReconnectBackoff.standardDelay
+        reconnectDelay: @escaping ChatStreamReconnectDelay = ChatStreamReconnectBackoff.standardDelay,
+        isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }
     ) {
         self.client = client
         self.streamClient = streamClient
@@ -194,6 +198,7 @@ final class ChatStreamCoordinator {
         self.showsLiveActivityResponseExcerpts = showsLiveActivityResponseExcerpts
         self.timing = timing
         self.reconnectDelay = reconnectDelay
+        self.isNetworkAvailable = isNetworkAvailable
         self.ratingPromptState = ratingPromptState ?? .shared
         self.ratingPromptState.register(self, server: client.baseURL)
     }
@@ -423,6 +428,18 @@ final class ChatStreamCoordinator {
         await task.value
     }
 
+    /// The open chat calls this when the device's network path changes (#869).
+    /// A suspended stream retries at once through the single-flight reconnect,
+    /// so a flapping path joins one attempt. A live stream that was waiting
+    /// drops back to idle, and the stale-stream loop decides whether to probe.
+    func networkPathDidChange(modelContext: ModelContext? = nil) async {
+        if isConnectionSuspended {
+            await reconnectIfNeeded(modelContext: modelContext)
+        } else if recoveryState == .waitingForNetwork {
+            setRecoveryStateIfChanged(.idle)
+        }
+    }
+
     private func performReconnectIfNeeded(
         reconnectTaskID: UUID,
         streamID: String,
@@ -434,6 +451,9 @@ final class ChatStreamCoordinator {
                 streamID: streamID,
                 runGeneration: runGeneration
             ) else { return }
+            // Offline: end the attempt uncounted and stay suspended; the
+            // network's return starts a fresh one.
+            guard networkAllowsStatusProbe() else { return }
 
             do {
                 let response = try await client.chatStreamStatus(streamID: streamID)
@@ -524,7 +544,21 @@ final class ChatStreamCoordinator {
                     return
                 }
 
-                let canRetry = Self.isTransientReconnectFailure(error)
+                let isTransientFailure = Self.isTransientReconnectFailure(error)
+                // The probe failed because the network went away: wait for it
+                // instead of spending the rest of the budget on an error (#869).
+                if isTransientFailure, !isNetworkAvailable() {
+                    if reconnectTaskIsCurrent(
+                        reconnectTaskID: reconnectTaskID,
+                        streamID: streamID,
+                        runGeneration: runGeneration
+                    ) {
+                        setRecoveryStateIfChanged(.waitingForNetwork)
+                    }
+                    return
+                }
+
+                let canRetry = isTransientFailure
                     && attempt < ChatStreamReconnectBackoff.delays.count
                 guard canRetry else {
                     guard reconnectTaskIsCurrent(
@@ -647,6 +681,7 @@ final class ChatStreamCoordinator {
                 return
             }
 
+            guard networkAllowsStatusProbe() else { return }
             setRecoveryStateIfChanged(.checking)
             lastRecoveryStatusCheckDate = now
             await recoverStaleStream(
@@ -673,6 +708,7 @@ final class ChatStreamCoordinator {
             return
         }
 
+        guard networkAllowsStatusProbe() else { return }
         setRecoveryStateIfChanged(.checking)
         let shouldForceReconnect = transportElapsed >= reconnectInterval
         guard shouldForceReconnect || shouldPollStatus(now: now) else { return }
@@ -870,6 +906,20 @@ final class ChatStreamCoordinator {
         Task { @MainActor [weak self] in
             await self?.reconnectIfNeeded()
         }
+    }
+
+    /// Parks recovery in `.waitingForNetwork` and returns false while the
+    /// device is offline, so no status probe is sent (#869). Online, it lifts
+    /// an earlier wait so a failing probe can't leave that label behind.
+    private func networkAllowsStatusProbe() -> Bool {
+        guard isNetworkAvailable() else {
+            setRecoveryStateIfChanged(.waitingForNetwork)
+            return false
+        }
+        if recoveryState == .waitingForNetwork {
+            setRecoveryStateIfChanged(.idle)
+        }
+        return true
     }
 
     private func shouldPollStatus(now: Date) -> Bool {

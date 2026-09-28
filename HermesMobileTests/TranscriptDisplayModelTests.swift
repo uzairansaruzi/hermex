@@ -613,6 +613,22 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
             XCTAssertNil(presentation?.startedAt, "\(recoveryState) must not tick an elapsed counter")
         }
     }
+
+    func testWaitingForNetworkMapsToItsOwnKind() {
+        let now = Date(timeIntervalSince1970: 1_700_000_133)
+        let presentation = ChatActiveRunStatusPolicy.presentation(
+            isStartingChat: false,
+            hasActiveStream: true,
+            activeStreamRecoveryState: .waitingForNetwork,
+            isCancellingStream: false,
+            isScrolledNearBottom: false,
+            activeRunStartedAt: now.addingTimeInterval(-133)
+        )
+
+        XCTAssertEqual(presentation?.kind, .waitingForNetwork)
+        XCTAssertEqual(presentation?.label(now: now), "Waiting for network")
+        XCTAssertNil(presentation?.startedAt)
+    }
 }
 
 final class ChatMessageTimestampFormatterTests: XCTestCase {

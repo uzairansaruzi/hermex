@@ -411,6 +411,122 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
     }
 
     @MainActor
+    func testReconnectWaitsForNetworkWithoutSpendingProbeBudget() async {
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            delegate: delegate,
+            isOnline: CoordinatorLockedBox(false)
+        ) { request in
+            _ = statusRequestCount.increment()
+            throw URLError(.notConnectedToInternet)
+        }
+
+        coordinator.start(streamID: "stream-123")
+        streamClient.emit(.transportError("The network connection was lost."))
+        await coordinator.reconnectIfNeeded()
+
+        XCTAssertEqual(statusRequestCount.value, 0)
+        XCTAssertEqual(coordinator.recoveryState, .waitingForNetwork)
+        XCTAssertEqual(delegate.recoveryErrors, [])
+        XCTAssertTrue(coordinator.isConnectionSuspended)
+    }
+
+    @MainActor
+    func testTransientFailureWaitsForNetworkWhenThePathDrops() async {
+        let isOnline = CoordinatorLockedBox(true)
+        let statusRequestCount = CoordinatorLockedCounter()
+        let delaySeconds = CoordinatorLockedBox<[TimeInterval]>([])
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            delegate: delegate,
+            reconnectDelay: { seconds in
+                delaySeconds.mutate { $0.append(seconds) }
+            },
+            isOnline: isOnline
+        ) { request in
+            // The probe fails because the phone just lost its network.
+            _ = statusRequestCount.increment()
+            isOnline.mutate { $0 = false }
+            throw URLError(.notConnectedToInternet)
+        }
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+        await coordinator.reconnectIfNeeded()
+
+        XCTAssertEqual(statusRequestCount.value, 1)
+        XCTAssertEqual(delaySeconds.value, [])
+        XCTAssertEqual(coordinator.recoveryState, .waitingForNetwork)
+        XCTAssertEqual(delegate.recoveryErrors, [])
+        XCTAssertTrue(coordinator.isConnectionSuspended)
+    }
+
+    @MainActor
+    func testNetworkReturnReconnectsSuspendedStreamOnce() async {
+        let isOnline = CoordinatorLockedBox(true)
+        let isServerReachable = CoordinatorLockedBox(false)
+        let statusRequestCount = CoordinatorLockedCounter()
+        let reattachProbeStarted = expectation(description: "reattach status probe started")
+        let releaseReattachProbe = DispatchSemaphore(value: 0)
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            delegate: delegate,
+            isOnline: isOnline
+        ) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/stream/status")
+            _ = statusRequestCount.increment()
+            guard isServerReachable.value else { throw URLError(.cannotConnectToHost) }
+            reattachProbeStarted.fulfill()
+            releaseReattachProbe.wait()
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+
+        // Online but the server is out of reach: the budget runs out and the
+        // error shows, as before.
+        coordinator.start(streamID: "stream-123")
+        coordinator.suspendActiveStreamConnection()
+        await coordinator.reconnectIfNeeded()
+        XCTAssertEqual(statusRequestCount.value, 4)
+        XCTAssertEqual(delegate.recoveryErrors.count, 1)
+
+        // Going offline parks the stream without probing.
+        isOnline.mutate { $0 = false }
+        await coordinator.networkPathDidChange()
+        XCTAssertEqual(statusRequestCount.value, 4)
+        XCTAssertEqual(coordinator.recoveryState, .waitingForNetwork)
+
+        // The network returns and the path flaps: both updates share one reattach.
+        isOnline.mutate { $0 = true }
+        isServerReachable.mutate { $0 = true }
+        let firstPathChange = Task { @MainActor in
+            await coordinator.networkPathDidChange()
+        }
+        await fulfillment(of: [reattachProbeStarted], timeout: 1)
+
+        let secondPathChangeStarted = expectation(description: "second path change started")
+        let secondPathChange = Task { @MainActor in
+            secondPathChangeStarted.fulfill()
+            await coordinator.networkPathDidChange()
+        }
+        await fulfillment(of: [secondPathChangeStarted], timeout: 1)
+
+        releaseReattachProbe.signal()
+        await firstPathChange.value
+        await secondPathChange.value
+
+        XCTAssertEqual(statusRequestCount.value, 5)
+        XCTAssertEqual(delegate.loadMessagesCount, 1)
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
+        XCTAssertFalse(coordinator.isConnectionSuspended)
+        XCTAssertEqual(coordinator.recoveryState, .idle)
+    }
+
+    @MainActor
     func testReconnectSurfacesNonTransientFailuresAfterOneProbe() async {
         let cases: [(String, (URLRequest) throws -> (HTTPURLResponse, Data))] = [
             ("unauthorized", { request in
@@ -1091,6 +1207,39 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(12.1))
         XCTAssertEqual(statusRequests, 1)
         XCTAssertEqual(coordinator.recoveryState, .checking)
+    }
+
+    @MainActor
+    func testStaleRecoverySkipsProbesWhileOffline() async {
+        let isOnline = CoordinatorLockedBox(false)
+        let statusRequestCount = CoordinatorLockedCounter()
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let coordinator = makeCoordinator(
+            streamClient: streamClient,
+            isOnline: isOnline
+        ) { request in
+            _ = statusRequestCount.increment()
+            return apiTestJSONResponse(#"{"active": true, "stream_id": "stream-123"}"#, for: request)
+        }
+        let start = Date(timeIntervalSince1970: 1_770_000_000)
+
+        coordinator.start(streamID: "stream-123")
+        coordinator.markProgress(now: start)
+
+        // Quiet past the forced-reconnect threshold, but offline: wait, don't probe.
+        await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(18.1))
+        XCTAssertEqual(statusRequestCount.value, 0)
+        XCTAssertEqual(coordinator.recoveryState, .waitingForNetwork)
+        XCTAssertEqual(streamClient.startedURLs.count, 1)
+
+        // The network returns: the live stream drops back to idle, and the
+        // next stale tick probes it.
+        isOnline.mutate { $0 = true }
+        await coordinator.networkPathDidChange()
+        XCTAssertEqual(coordinator.recoveryState, .idle)
+
+        await coordinator.recoverStaleStreamIfNeeded(now: start.addingTimeInterval(19))
+        XCTAssertEqual(statusRequestCount.value, 1)
     }
 
     @MainActor
@@ -2375,6 +2524,9 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         timing: ChatStreamCoordinatorTiming = .standard,
         ratingPromptState: RatingPromptState? = nil,
         reconnectDelay: @escaping ChatStreamReconnectDelay = { _ in },
+        // Online unless a test passes its own box, so no test depends on the
+        // simulator's network path.
+        isOnline: CoordinatorLockedBox<Bool>? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data) = { request in
             apiTestJSONResponse(#"{"active": true}"#, for: request)
         }
@@ -2389,7 +2541,8 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             showsLiveActivityResponseExcerpts: false,
             timing: timing,
             ratingPromptState: ratingPromptState ?? .shared,
-            reconnectDelay: reconnectDelay
+            reconnectDelay: reconnectDelay,
+            isNetworkAvailable: { isOnline?.value ?? true }
         )
         coordinator.attach(delegate: delegate)
         return coordinator

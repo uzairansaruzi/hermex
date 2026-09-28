@@ -370,6 +370,7 @@ enum ChatActiveRunStatusKind: Equatable {
     case active
     case checking
     case reconnecting
+    case waitingForNetwork
     case stopping
 
     var label: String {
@@ -382,6 +383,8 @@ enum ChatActiveRunStatusKind: Equatable {
             return String(localized: "Checking stream")
         case .reconnecting:
             return String(localized: "Reconnecting stream")
+        case .waitingForNetwork:
+            return String(localized: "Waiting for network")
         case .stopping:
             return String(localized: "Stopping response")
         }
@@ -397,6 +400,8 @@ enum ChatActiveRunStatusKind: Equatable {
             return String(localized: "Hermes is checking the response stream")
         case .reconnecting:
             return String(localized: "Hermes is reconnecting the response stream")
+        case .waitingForNetwork:
+            return String(localized: "Hermes is waiting for the network to return")
         case .stopping:
             return String(localized: "Hermes is stopping the response")
         }
@@ -461,6 +466,8 @@ enum ChatActiveRunStatusPolicy {
             return ChatActiveRunStatusPresentation(kind: .checking)
         case .reconnecting:
             return ChatActiveRunStatusPresentation(kind: .reconnecting)
+        case .waitingForNetwork:
+            return ChatActiveRunStatusPresentation(kind: .waitingForNetwork)
         case .idle:
             break
         }

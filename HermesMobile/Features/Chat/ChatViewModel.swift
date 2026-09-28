@@ -193,6 +193,9 @@ enum ActiveStreamRecoveryState: Equatable {
     case idle
     case checking
     case reconnecting
+    /// The phone is offline, so the stream waits for the network path to
+    /// return instead of spending its status probes (#869).
+    case waitingForNetwork
 }
 
 @MainActor
@@ -4499,6 +4502,12 @@ final class ChatViewModel {
 
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
         await streamCoordinator.reconnectIfNeeded(modelContext: modelContext)
+    }
+
+    /// Retries a suspended stream, or clears a stale "Waiting for network",
+    /// when the device's network path changes (#869).
+    func networkPathDidChange(modelContext: ModelContext? = nil) async {
+        await streamCoordinator.networkPathDidChange(modelContext: modelContext)
     }
 
     func refreshTranscriptIfActiveStreamCompleted(

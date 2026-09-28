@@ -763,6 +763,9 @@ struct ChatView: View {
         .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)
             }
+            .onChange(of: NetworkPathMonitor.shared.changeCount) {
+                handleNetworkPathChange()
+            }
             .onChange(of: viewModel.activeStreamID) {
                 handleActiveStreamChange()
             }
@@ -2669,6 +2672,18 @@ struct ChatView: View {
             break
         @unknown default:
             break
+        }
+    }
+
+    /// The network came back or moved to another interface: retry a suspended
+    /// stream now instead of waiting for a foreground or reopen (#869).
+    private func handleNetworkPathChange() {
+        Task {
+            await viewModel.networkPathDidChange(modelContext: modelContext)
+
+            if let lastError = viewModel.lastError {
+                onAPIError(lastError)
+            }
         }
     }
 
