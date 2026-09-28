@@ -151,6 +151,11 @@ failed phase before rerunning. The reporter cannot turn a failed build or test
 green. Validate workflow changes with `actionlint .github/workflows/pr-ci.yml`
 and `python3 -m unittest discover -s ci -p 'test_*.py'`.
 
+A separate Linux job, Tooling Tests, runs the `scripts/tests` and `ci/` Python
+suites and the TestFlight build-number selector test on every PR and master
+push, including docs- and scripts-only PRs that skip the macOS runner. CI Gate
+fails when it fails.
+
 ## Build and Launch With XcodeBuildMCP
 
 Defaults and the verification flow live in `AGENTS.md` § Verifying. Human/CLI equivalents:

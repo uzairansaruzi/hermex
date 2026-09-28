@@ -4,11 +4,13 @@
 # full suite too: PRs need not be up to date to merge, so two green PRs can
 # still break master together. PRs limited to docs
 # (markdown, docs/, community files) and local tooling (scripts/) skip the
-# macOS runner entirely and pass via the cheap gate job.
+# macOS runner entirely. The tooling tests (scripts/tests, ci/) run on Linux for
+# every PR and push, so a tooling-only change still gets tested.
 #
 # The required branch-protection check is "CI Gate", not "Build and Test":
 # a skipped required check would block merges forever, so the gate always
-# runs and passes when the suite either succeeded or was legitimately skipped.
+# runs and passes when the tooling tests passed and the suite either succeeded
+# or was legitimately skipped.
 #
 # Uses no repository secrets, so PRs from forks get green CI too.
 #
@@ -60,8 +62,9 @@ jobs:
           echo "${files}"
           # Fail closed: anything NOT on the allowlist triggers the full suite
           # (including workflow, project, and config changes). scripts/ is
-          # local tooling that no workflow or build phase calls; take it off
-          # the allowlist if that ever changes.
+          # local tooling that no build phase or iOS step calls (the tooling
+          # job only runs its tests); take it off the allowlist if that ever
+          # changes.
           app_changes=$(echo "${files}" | grep -vE '^(docs/.*|scripts/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
           if [[ -n "${app_changes}" ]]; then
             echo "App-affecting changes detected — running the full suite:"
@@ -199,9 +202,24 @@ jobs:
             ${{ env.CI_LOG_DIR }}
           if-no-files-found: ignore
 
+  tooling:
+    name: Tooling Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Run tooling tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/tests
+          python3 -m unittest discover -s ci -p 'test_*.py'
+          ruby ci/select_testflight_build_number_test.rb
+
   gate:
     name: CI Gate
-    needs: [changes, test]
+    needs: [changes, test, tooling]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -211,8 +229,13 @@ jobs:
           set -euo pipefail
           echo "changes: ${{ needs.changes.result }}"
           echo "test: ${{ needs.test.result }}"
+          echo "tooling: ${{ needs.tooling.result }}"
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             echo "Path detection failed — failing the gate." >&2
+            exit 1
+          fi
+          if [[ "${{ needs.tooling.result }}" != "success" ]]; then
+            echo "Tooling tests did not pass — failing the gate." >&2
             exit 1
           fi
           case "${{ needs.test.result }}" in
