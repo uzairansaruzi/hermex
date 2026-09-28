@@ -10,7 +10,7 @@ Hermex is on the App Store and people run it against their own servers every day
 
 ### 1. Open at the core
 
-Hermex is truly open. We share our roadmap (GitHub Issues), we share how we think about things, and of course we share all our code. There is no Hermex relay, hosted backend, analytics service, or tracking layer: agent work and data stay on the user's hardware. We work in the open, and should strive to stay that way.
+Hermex is truly open. We share our roadmap (GitHub Issues), we share how we think about things, and of course we share all our code. There is no Hermex hosted backend, analytics service, or tracking layer: agent work and data stay on the user's hardware. Push notifications are the one exception, and they are optional and off until enabled: they route through an open-source, self-hostable relay (`uzairansaruzi/hermex-push`) that sees device tokens, notification metadata, and ciphertext, never message text, server URLs, or Hermes server credentials. `docs/agents/push.md` has the details. We work in the open, and should strive to stay that way.
 
 ### 2. Performance without compromise
 
@@ -71,19 +71,20 @@ We need to be on the same page with terminology. When communicating, use this la
 The most common defect in this repo is a change that works on the path you tested and is missing everywhere else. Before calling UI work done, walk this list and say which entries applied:
 
 - **Entry points.** A behavior reachable from the chat view is usually also reachable from the session list's context menus, Settings, hardware-keyboard shortcuts, deep links, App Intents, the share extension, and Live Activity taps. Fixing one is not fixing the feature.
-- **Targets.** Main app, `HermesShareExtension`, `HermesLiveActivityWidget`, and `HermesMobileTests`. A shared model or resource change needs a target-membership decision for every target that consumes it.
+- **Targets.** Main app, `HermesShareExtension`, `HermesLiveActivityWidget`, `HermesNotificationService`, and `HermesMobileTests`. A shared model or resource change needs a target-membership decision for every target that consumes it. A PR that adds a target needs its App ID registered to our team before it merges: the repo is public, and any build with the default bundle IDs can claim an unregistered ID for another team (#659).
 - **Servers.** Multiple configured servers are real. Switch between two and check that credentials, custom headers, cache, drafts, identity, selections, and defaults stay with their server. Read `docs/agents/multi-server-state-isolation.md` before touching auth, server switching, cache keying, or per-server settings.
 - **Contracts.** Anything crossing the wire goes through `Endpoint` and a tolerant `Codable` model. Change endpoint construction, request body, decode, and SSE handling together, and verify each against upstream (see Working with the server).
 - **Reverse states.** If you added a way in, add the way out and the way to see it. Archive needs restore. Pin needs unpin. Start needs stop. Optimistic mutation needs rollback. A one-way door is a bug.
 - **Connection modes.** `localhost`, Tailscale, and tunnel behave differently; Cloudflare closes quiet streams. Backgrounding, reconnecting, and reattaching to a live stream instead of resending the message are real cases.
 - **Native quality.** Dynamic Type, VoiceOver labels, Reduce Motion, light and dark appearance, keyboard focus, and localization. Read `docs/agents/i18n.md` before touching the String Catalog, plurals, casing, or RTL.
-- **Docs.** Agent conventions live in `docs/agents/`; new vocabulary in `CONTEXT.md`; build and simulator mechanics in `DEVELOPMENT.md`; upstream parity status in `docs/agents/feature-gap-index.md`; Kanban contract and behavior rules in `docs/agents/kanban.md`. `CHANGELOG.md` is written at release time, not per PR.
+- **Docs.** Agent conventions live in `docs/agents/`; new vocabulary in `CONTEXT.md`; build and simulator mechanics in `DEVELOPMENT.md`; upstream parity status in `docs/agents/feature-gap-index.md`; Kanban contract and behavior rules in `docs/agents/kanban.md`. Push components, keys, and relay data in `docs/agents/push.md`. `CHANGELOG.md` is written at release time, not per PR.
 
 ## Working with the server
 
 - There is no in-repo dev server. Hermex is developed against a self-hosted `hermes-webui` reachable over real HTTPS; `curl https://<your-server>/health` before debugging the client. For simulator-only work `http://localhost:8787` works when the server runs on the same Mac. Setup options live in `DEVELOPMENT.md`.
 - **Never invent an endpoint, header, SSE event, or JSON shape.** Verify in this precedence order: (a) `curl` a running server, the final arbiter; (b) the official API docs at https://get-hermes.ai/api-docs/ for endpoint intent, the auth contract, and SSE vocabulary (no version pin; tracks the latest release); (c) the pinned upstream copy at `.codex-tmp/hermes-webui/api/routes.py` for exact JSON shapes, which may lag the release the docs describe. Clone it if missing: `git clone https://github.com/nesquena/hermes-webui .codex-tmp/hermes-webui`. It is read-only; refreshing with `git pull` is fine.
 - `UPSTREAM_TESTED_SHA` is the compatibility pin and the only place the pinned commit is written down. To advance it: `curl` the read-only endpoints in `Endpoints.swift` against a live server, run the mutating ones against one disposable session, then edit the file and name the validating commit in the PR. When a contract changes, record the verified handler, shape, and upstream commit in the issue or PR. Validate volatile details just in time instead of copying them into long-lived docs.
+- `HERMES_AGENT_TESTED_SHA` is the same pin for the direct-Hermes Bot connection: line 1 the tested `hermes-agent` commit, line 2 the release `/api/status` reports as `version`. `BotConnection.testedHermesVersion` mirrors line 2 and a test keeps them equal. The connection records the host's reported release but shows no warning for a different one (removed in #626). To advance it: edit both lines and the constant to the live host's commit and release, run `scripts/capture-hermes-fixtures` (it signs in, reads `/api/status` and `profiles.list`, runs one canned turn in a disposable hidden session on the test bot and deletes it, then rewrites the sanitized fixtures in `HermesMobileTests/Fixtures/HermesAgent/`), diff upstream's `apps/shared/src/gateway-contract.openrpc.json` between the old and new commit for the methods `HermesCall` defines, run `HermesAgentFixtureTests` and `BotConnectionVersionTests`, and name the validating commit in the PR.
 - Every server-facing `Codable` model decodes tolerantly: optionals for fields upstream might add, omit, or rename. Unknown fields never crash the app.
 - No new third-party dependency without approval. The locked list is LDSwiftEventSource, swift-markdown-ui, Splash, Highlightr, KeychainAccess, and SwiftMath; everything else is Apple frameworks (`URLSession`, SwiftData, Keychain, OSLog, XCTest).
 - A bug that also reproduces in the upstream web UI against the same server is a server bug. File it upstream and link it from a Hermex issue only if the app still needs a safer fallback.
@@ -97,21 +98,24 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 
 ## Verifying
 
-- Smallest proof that the change works while iterating: focused XCTest for the behavior you touched, via XcodeBuildMCP `test_sim`. Defaults live in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that sim is missing, pick a nearby iPhone and say which.
-- **Run the full XCTest suite before asking for review or committing a slice.** A failing build or test becomes the current task; fix it before writing more code on top.
+- Run local XCTest through `scripts/test-sim <assigned-simulator-udid>`; add `--only HermesMobileTests/<TestClass>` for focused validation. Each worktree keeps its own simulator; different simulators can test concurrently. See `DEVELOPMENT.md` § Local XCTest for assignment, logs, and failure handling.
+- **Run affected tests locally before asking for review or committing a slice.** Select the changed behavior and its callers with `--only`; report the selection and result. PR CI runs the complete retained suite on every push and is the full-suite gate, checked before merge; a local full run repeats it. Run the full suite locally only when a change touches shared test infrastructure, the Xcode project, or `Config/`, where a CI failure is slow to diagnose. A change limited to `scripts/`, docs, or `.github/` runs its own checks instead: `python3 -m unittest discover -s scripts/tests` for `scripts/test-sim`, and a real run of any other script you changed. A failing build or test becomes the current task; fix it before writing more code on top.
 - Behavior changes ship with focused tests for that behavior.
+- Prefer model and policy assertions for state transitions. Hosted UI tests cover behavior that needs a real view, such as focus, secure input, selection, or scrolling. Each rendered scenario needs a distinct assertion; capture matrices and exact editorial copy checks belong in manual visual review. Keep screenshots from automated tests as failure evidence.
 - Async flows wait on expectations and scripted fixtures, never on sleeps or polling. A test that needs a timeout to pass is wrong.
-- UI or runtime changes get one integrated pass in the real app: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
+- UI or runtime changes get one integrated pass in the real app, on the final head at handoff: build, install, and launch a signed Debug build (`build_run_sim`), then hand the maintainer a short manual simulator test plan. Capture screenshots or logs when they are evidence. Subagents do not launch their own builds.
+- If the simulator lands on the login screen or Bots has no connection, run `scripts/sim-login <udid>` instead of stopping. It signs the installed Debug build in from the macOS Keychain (`DEVELOPMENT.md` § Signing a simulator in).
 - Run `scripts/check-swift-file-sizes` when a production Swift file grows. It is a warning, not a gate: use it to notice a missing seam, not to force unrelated refactors into the current issue.
 
 ## Pull requests
 
 - Never push a branch, open or update a PR, or merge unless the developer explicitly asks you to do so.
-- One issue → one short `issue/<n>-slug` branch → one PR (`chore/` or `fix/` for approved work without an issue). `master` is the protected internal-TestFlight candidate: keep it buildable, never do feature work on it.
+- One issue → one short `issue/<n>-slug` branch → one PR (`chore/` or `fix/` for approved work without an issue). `master` is the protected release-candidate branch: keep it buildable, never do feature work on it.
 - Conventional commit titles, plain language: `fix(chat): recover the active stream after foregrounding`.
 - Body: follow the PR template. `Fixes #<n>`, the problem in a sentence or two, then how you fixed it and exactly how it was tested. End with the model and harness that did the work.
 - UI changes need before/after images. Motion or timing needs a short video.
 - Upload PR evidence to GitHub. Never commit PR-only screenshots or assets.
+- Prefer `gh --attach` to upload PR/issue screenshots and videos; check the relevant command's `--help` before trying browser upload.
 - One concern per PR. If the description says "also", split it.
 - When babysitting: poll checks and comments newer than the last push, verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
 
@@ -137,6 +141,7 @@ Canonical vocabulary: `CONTEXT.md`.
 - `HermesMobile/Auth/` - authentication and Keychain access.
 - `HermesMobile/Persistence/` - SwiftData cache models and stores.
 - `HermesMobile/AppIntents/` and `HermesMobile/LiveActivities/` - system entry points and activity coordination.
+- `HermesMobile/Push/` - APNs registration: the build's push environment, per-server pairing keys in the shared Keychain access group, the relay client, and the app delegate that receives device tokens.
 - `HermesShareExtension/` and `HermesLiveActivityWidget/` - separate targets. Shared files need target-membership checks.
 - `HermesMobileTests/` - the XCTest suite, one target directory. Keep tests near the behavior in name and scope.
 - `Config/`, `ci/`, and `.github/workflows/` - signing, CI, and release configuration. Treat edits there as release-sensitive. App identity resolves through xcconfig and is not grep-able: bundle ID `com.uzairansar.hermesmobile`, tests `….tests`, Team `6GYD9C9N6R`, SKU `hermes-mobile-ios`.
@@ -157,7 +162,7 @@ Canonical vocabulary: `CONTEXT.md`.
 
 ## Branch TestFlight (maintainer-only)
 
-"push to branch testflight" means upload the current branch to the side-by-side **Hermex Branch** internal TestFlight app (`com.uzairansar.hermesmobile.branch`). It is a TestFlight upload, **not** a git push. Validate first, use a unique `CURRENT_PROJECT_VERSION` (e.g. `YYYYMMDDHHMM`), and follow the archive and export commands in `DEVELOPMENT.md`. Never touch the production `com.uzairansar.hermesmobile` app, invite testers, or change App Store Connect state unless explicitly asked. `TESTFLIGHT.md` owns release gates.
+"push to branch testflight" means upload the current branch to the side-by-side **Hermex Branch** internal TestFlight app (`com.uzairansar.hermesmobile.branch`). It is a TestFlight upload, **not** a git push. Validate and commit first, then run `scripts/branch-testflight` from the feature branch (`DEVELOPMENT.md` has the details). Never touch the production `com.uzairansar.hermesmobile` app, invite testers, or change App Store Connect state unless explicitly asked. `TESTFLIGHT.md` owns release gates.
 
 ## Additional tips
 

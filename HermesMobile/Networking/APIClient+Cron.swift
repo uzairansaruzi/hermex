@@ -67,6 +67,12 @@ extension APIClient {
         try await send(endpoint: .cronDeliveryOptions, method: "GET")
     }
 
+    /// Each job's most recent completion. Unordered on the wire; see
+    /// `CronRecentCompletionsResponse.completions`.
+    func cronRecent() async throws -> CronRecentCompletionsResponse {
+        try await send(endpoint: .cronRecent, method: "GET")
+    }
+
     func deleteCron(jobID: String) async throws -> CronMutationResponse {
         try await send(
             endpoint: .cronDelete,
@@ -105,6 +111,20 @@ extension APIClient {
 
     func cronOutput(jobID: String, limit: Int? = 5) async throws -> CronOutputResponse {
         try await send(endpoint: .cronOutput(jobID: jobID, limit: limit), method: "GET")
+    }
+
+    /// One page of a job's run history, newest first.
+    ///
+    /// Callers advance `offset` by the `limit` they passed, not by
+    /// `response.runs.count`: see `CronRunHistoryResponse`.
+    func cronHistory(jobID: String, offset: Int, limit: Int) async throws -> CronRunHistoryResponse {
+        try await send(endpoint: .cronHistory(jobID: jobID, offset: offset, limit: limit), method: "GET")
+    }
+
+    /// One past run's full output. The GET twin of `runCron`'s POST on the same
+    /// path.
+    func cronRunDetail(jobID: String, filename: String) async throws -> CronRunDetailResponse {
+        try await send(endpoint: .cronRunDetail(jobID: jobID, filename: filename), method: "GET")
     }
 }
 

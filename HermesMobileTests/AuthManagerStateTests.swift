@@ -307,6 +307,56 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertTrue(HTTPCookieStorage.shared.cookies(for: serverB)?.isEmpty ?? true)
     }
 
+    func testRemovingAServerPurgesItsBotConnectionAvatars() async throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = ServerRegistry.inMemory(keychain: keychain)
+        let (manager, _, bAccount) = try await makeTwoServerManager(keychain: keychain, registry: registry)
+        let serverB = try XCTUnwrap(URL(string: "https://b.test"))
+        let connection = BotConnection(id: UUID(), name: "B", address: try XCTUnwrap(URL(string: "http://b.local:9120")), username: "u", password: "p")
+        try BotConnectionStore(keychain: keychain).save(connection, server: serverB)
+        let profile = try XCTUnwrap(BotProfile(.object(["name": .string("default"), "has_avatar": .bool(true)])))
+        let wire = BotAvatarFixtureWire()
+        wire.assets = ["default": .object(["found": .bool(true), "data": .string(botAvatarDataURL(side: 4))])]
+        await BotAvatarStore.shared.refresh([profile], connectionID: connection.id, using: wire) {}
+        XCTAssertEqual(BotAvatarStore.shared.images(connectionID: connection.id).count, 1)
+
+        await manager.removeServer(bAccount)
+
+        XCTAssertTrue(BotAvatarStore.shared.images(connectionID: connection.id).isEmpty)
+        XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: serverB))
+    }
+
+    /// The shared Bot connection signs in with the active server's saved credentials, so
+    /// each change here retires it at once, not when the next Bot screen looks it up.
+    func testServerAndBotCredentialChangesRetireTheSharedBotConnectionAtOnce() async throws {
+        let serverA = try XCTUnwrap(URL(string: "https://a.test"))
+        let saved = BotConnection(id: UUID(), name: "Host", address: try XCTUnwrap(URL(string: "https://hermes.example")),
+                                  username: "u", password: "p")
+        var renamed = saved
+        renamed.name = "Renamed"
+        renamed.installID = String(repeating: "a", count: 32)
+        var rotated = saved
+        rotated.password = "rotated"
+        let changes: [(String, Bool, (AuthManager, ServerAccount, ServerAccount, BotConnectionStore) async throws -> Void)] = [
+            ("server switch", true, { manager, _, b, _ in manager.switchActiveServer(to: b) }),
+            ("sign-out", true, { manager, _, _, _ in await manager.signOut() }),
+            ("server removal", true, { manager, a, _, _ in await manager.removeServer(a) }),
+            ("replaced credentials", true, { _, _, _, store in try store.save(rotated, server: serverA) }),
+            ("removed credentials", true, { _, _, _, store in try store.remove(server: serverA) }),
+            ("rename and install id backfill", false, { _, _, _, store in try store.save(renamed, server: serverA) })
+        ]
+        for (change, retires, apply) in changes {
+            let keychain = InMemoryKeychainStore()
+            let (manager, aAccount, bAccount) = try await makeTwoServerManager(keychain: keychain,
+                                                                               registry: ServerRegistry.inMemory(keychain: keychain))
+            let store = BotConnectionStore(keychain: keychain)
+            try store.save(saved, server: serverA)
+            let shared = HermesConnections.shared.connection(for: saved, server: serverA)
+            try await apply(manager, aAccount, bAccount, store)
+            XCTAssertEqual(shared.isRetired, retires, change)
+        }
+    }
+
     func testSignOutWithRemainingServerAutoSwitches() async throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory(keychain: keychain)
@@ -317,6 +367,28 @@ final class AuthManagerStateTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .loggedIn(server: serverB))
         XCTAssertEqual(registry.servers.map(\.id), ["https://b.test"])
+    }
+
+    func testSignOutAndServerRemovalClearOnlyTheirUnreadMarks() async throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = ServerRegistry.inMemory(keychain: keychain)
+        let (manager, _, bAccount) = try await makeTwoServerManager(keychain: keychain, registry: registry)
+        let first = try XCTUnwrap(URL(string: "https://a.test"))
+        let second = try XCTUnwrap(URL(string: "https://b.test"))
+        let store = SessionUnreadStore()
+        defer {
+            store.remove(for: first)
+            store.remove(for: second)
+        }
+        store.save(["same": 100], for: first)
+        store.save(["same": 200], for: second)
+
+        await manager.signOut()
+        XCTAssertTrue(store.load(for: first).isEmpty)
+        XCTAssertEqual(store.load(for: second), ["same": 200])
+
+        await manager.removeServer(bAccount)
+        XCTAssertTrue(store.load(for: second).isEmpty)
     }
 
     func testConfiguringASecondServerAddsItAndMakesItActive() async throws {
@@ -483,6 +555,25 @@ final class AuthManagerStateTests: XCTestCase {
         let aAccount = try XCTUnwrap(registry.servers.first { $0.id == "https://a.test" })
         let bAccount = try XCTUnwrap(registry.servers.first { $0.id == "https://b.test" })
         return (manager, aAccount, bAccount)
+    }
+
+    func testDevAutoLoginSignsInFromLaunchEnvironment() async throws {
+        let manager = AuthManager(
+            keychain: InMemoryKeychainStore(),
+            clientFactory: { _ in
+                MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
+            },
+            serverRegistry: ServerRegistry.inMemory()
+        )
+
+        await DevAutoLogin.run(authManager: manager, environment: [:])
+        XCTAssertEqual(manager.state, .unconfigured)
+
+        await DevAutoLogin.run(authManager: manager, environment: [
+            "HERMEX_DEV_SERVER_URL": "https://example.test",
+            "HERMEX_DEV_PASSWORD": "secret"
+        ])
+        XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://example.test"))))
     }
 
     private func makeLoggedInManager(

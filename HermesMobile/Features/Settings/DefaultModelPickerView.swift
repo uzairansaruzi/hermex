@@ -1,246 +1,69 @@
 import SwiftUI
 
+/// Settings > Default Model: the loader and server-saver around the shared
+/// `ModelPickerSheet`. The sheet owns the list, search, favorites, and the
+/// custom entry; this view owns the catalog request, the save request, and the
+/// checkmark rule that has to reconcile the server's saved spelling with the
+/// catalog's.
 struct DefaultModelPickerView: View {
     let server: URL
     let currentDefaultModel: String?
     let onSave: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var isLoading = false
     @State private var groups: [ModelCatalogGroup] = []
     @State private var defaultModel: String?
     @State private var activeProvider: String?
-    @State private var customModel = ""
     @State private var selectedModel: String?
     @State private var selectedProvider: String?
-    @State private var searchText = ""
-    @State private var overflowExpansion = ModelPickerOverflowExpansionState()
+    @State private var favoriteModelKeys: [ModelFavoriteKey] = ModelFavoritesStore.shared.favoriteKeys
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var isSavingCustom = false
     @State private var saveError: String?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    ModelPickerSearchField(text: $searchText)
-
-                    if let saveError {
-                        Text(saveError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    ModelPickerCard(title: String(localized: "Custom")) {
-                        TextField("Custom model ID", text: $customModel)
-                            .font(.subheadline)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                        Text("Type a model ID exactly as the server expects it.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        ModelPickerButton(
-                            String(localized: "Save Custom Model"),
-                            isLoading: isSavingCustom
-                        ) {
-                            Task { await save(customModel, isCustom: true) }
-                        }
-                        .disabled(customModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
-                    }
-
-                    modelListContent
-                }
-                .padding()
+        ModelPickerSheet(
+            configuration: .serverDefault,
+            modelGroups: groups,
+            selectedModelID: defaultModel,
+            selectedModelProviderID: activeProvider,
+            favoriteModelKeys: favoriteModelKeys,
+            isSelected: isCurrentDefault,
+            loadStatus: loadStatus,
+            inFlightKey: inFlightKey,
+            isCommittingCustom: isSavingCustom,
+            isSelectionDisabled: isSaving,
+            errorMessage: saveError,
+            onSelect: { option in
+                Task { await save(option.id, providerID: option.providerID) }
+            },
+            onCommitCustom: { option in
+                Task { await save(option.id, providerID: option.providerID, isCustom: true) }
+            },
+            onToggleFavorite: { option in
+                favoriteModelKeys = ModelFavoritesStore.shared.toggleFavorite(for: option)
             }
-            .navigationTitle("Default Model")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-            .task {
-                await loadModels()
-            }
-        }
-        .adaptiveFormPresentation()
-    }
-
-    @ViewBuilder
-    private var modelListContent: some View {
-        if isLoading && groups.isEmpty {
-            ModelPickerCard(title: String(localized: "Models")) {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Loading models...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } else if let errorMessage, groups.isEmpty {
-            ModelPickerCard(title: String(localized: "Models")) {
-                Label("Could Not Load Models", systemImage: "exclamationmark.triangle")
-                    .font(.subheadline.weight(.semibold))
-
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else if filteredGroups.isEmpty {
-            ModelPickerCard(title: String(localized: "Models")) {
-                Label("No Matching Models", systemImage: "magnifyingglass")
-                    .font(.subheadline.weight(.semibold))
-
-                Text("Try a different model name or ID.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            ForEach(filteredGroups) { group in
-                let displayedModels = overflowExpansion.displayedModels(in: group)
-
-                ModelPickerCard(title: group.name, detail: modelCountLabel(for: group)) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(displayedModels.enumerated()), id: \.element.id) { index, model in
-                            modelRow(model)
-
-                            if index < displayedModels.count - 1 {
-                                Divider()
-                            }
-                        }
-                    }
-
-                    if shouldShowOverflowToggle(for: group) {
-                        Divider()
-                        overflowToggle(for: group)
-                    }
-                }
-            }
+        )
+        .task {
+            await loadModels()
         }
     }
 
-    private func modelCountLabel(for group: ModelCatalogGroup) -> String {
-        let displayedCount = overflowExpansion.displayedModels(in: group).count
-        let totalCount = group.allModels.count
-        return totalCount > group.models.count
-            ? "\(displayedCount) / \(totalCount)"
-            : "\(displayedCount)"
+    private var loadStatus: ModelPickerLoadStatus {
+        if isLoading && groups.isEmpty { return .loading }
+        if let errorMessage, groups.isEmpty { return .failed(errorMessage) }
+        return .loaded
     }
 
-    private func shouldShowOverflowToggle(for group: ModelCatalogGroup) -> Bool {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !group.extraModels.isEmpty
-    }
-
-    private func overflowToggle(for group: ModelCatalogGroup) -> some View {
-        let isExpanded = overflowExpansion.isExpanded(groupID: group.id)
-
-        return Button {
-            overflowExpansion.setExpanded(!isExpanded, groupID: group.id)
-        } label: {
-            HStack(spacing: 8) {
-                Text(
-                    isExpanded
-                        ? String(localized: "Show fewer models")
-                        : String(localized: "Show all models")
-                )
-                    .font(.subheadline.weight(.medium))
-
-                Spacer(minLength: 0)
-
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .accessibilityHidden(true)
-            }
-            .foregroundStyle(.primary)
-            .padding(.vertical, 9)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var filteredGroups: [ModelCatalogGroup] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return groups }
-
-        return groups.compactMap { group in
-            let matchingModels = group.allModels.filter { model in
-                model.displayName.lowercased().contains(query)
-                    || model.id.lowercased().contains(query)
-                    || group.name.lowercased().contains(query)
-            }
-
-            guard !matchingModels.isEmpty else { return nil }
-            return ModelCatalogGroup(
-                id: group.id,
-                name: group.name,
-                providerID: group.providerID,
-                models: matchingModels
-            )
-        }
-    }
-
-    private func modelRow(_ model: ModelCatalogOption) -> some View {
-        Button {
-            Task { await save(model.id, providerID: model.providerID) }
-        } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.displayName)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-
-                    if !model.id.isEmpty && model.id != model.displayName {
-                        Text(model.id)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    }
-                }
-
-                Spacer(minLength: 12)
-
-                if isSavingRow(model) {
-                    ProgressView()
-                } else if isCurrentDefault(model) {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(.vertical, 9)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isSaving)
-        .accessibilityLabel(modelAccessibilityLabel(for: model))
-        .accessibilityValue(isCurrentDefault(model) ? "Selected" : "")
-    }
-
-    /// Whether this row shows the spinner for an in-flight save.
-    ///
-    /// Both the id and the provider recorded at tap time must agree: after
-    /// the live overlay replaces the active provider's prefixed cached row
-    /// with a bare id, two providers can offer the same spelling, and ticking
-    /// by id alone would spin both rows.
-    private func isSavingRow(_ model: ModelCatalogOption) -> Bool {
-        isSaving && selectedModel == model.id && model.providerID == selectedProvider
+    /// The tapped catalog row while its save is in flight. A custom save names
+    /// no catalog row — the custom entry owns that spinner via
+    /// `isCommittingCustom` — so it stays nil.
+    private var inFlightKey: ModelFavoriteKey? {
+        guard isSaving, !isSavingCustom, let selectedModel else { return nil }
+        return ModelFavoriteKey(modelID: selectedModel, providerID: selectedProvider)
     }
 
     /// Whether this row is the current default.
@@ -305,14 +128,6 @@ struct DefaultModelPickerView: View {
         return model.matchesSelection(modelID: defaultModel, providerID: defaultProvider)
     }
 
-    private func modelAccessibilityLabel(for model: ModelCatalogOption) -> String {
-        guard !model.id.isEmpty, model.id != model.displayName else {
-            return model.displayName
-        }
-
-        return "\(model.displayName), \(model.id)"
-    }
-
     private func loadModels() async {
         guard !isLoading else { return }
         isLoading = true
@@ -340,6 +155,9 @@ struct DefaultModelPickerView: View {
         groups = groups.mergingLiveModels(from: live)
     }
 
+    /// Saves `model` as the server default. The sheet stays open until the
+    /// server confirms with `ok == true`; a failure clears the optimistic
+    /// selection so no wrong row reads as checked.
     private func save(_ model: String, providerID: String? = nil, isCustom: Bool = false) async {
         let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -367,110 +185,5 @@ struct DefaultModelPickerView: View {
 
         isSaving = false
         isSavingCustom = false
-    }
-
-}
-
-private struct ModelPickerSearchField: View {
-    @Binding var text: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            TextField("Search models", text: $text)
-                .font(.subheadline)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear model search")
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 44)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-private struct ModelPickerCard<Content: View>: View {
-    let title: String
-    var detail: String?
-    @ViewBuilder let content: Content
-
-    init(title: String, detail: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.detail = detail
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .textCase(.uppercase)
-
-                if let detail {
-                    Text(detail)
-                        .accessibilityLabel(detail)
-                }
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
-            .padding(.bottom, 8)
-
-            VStack(alignment: .leading, spacing: 12) {
-                content
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-}
-
-private struct ModelPickerButton: View {
-    let title: String
-    var isLoading = false
-    let action: () -> Void
-
-    init(_ title: String, isLoading: Bool = false, action: @escaping () -> Void) {
-        self.title = title
-        self.isLoading = isLoading
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if isLoading {
-                    ProgressView()
-                } else {
-                    Text(title)
-                }
-            }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .frame(minHeight: 44)
-            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }

@@ -27,7 +27,7 @@ Your server. Your iPhone. No middleman.
 Hermex is a native SwiftUI iPhone app for driving a self-hosted [hermes-webui](https://github.com/nesquena/hermes-webui) server — a mobile cockpit for an AI agent that lives on a machine **you** control. The phone is the control plane, not the compute plane: the agent, its tools, and your data stay on your own hardware.
 
 - **Free.** No subscriptions, no in-app purchases.
-- **Private.** No analytics, no tracking, no third-party relay — the app talks only to your server.
+- **Private.** No analytics, no tracking. The app talks only to your server. Push notifications are optional and off until you enable them: an open-source relay you can self-host forwards them, seeing device tokens, notification metadata (kind, source, thread and session ids, timestamps), and ciphertext. It never sees message text, server URLs, or credentials.
 - **Native.** Real SwiftUI, built for iOS 18+, not a web wrapper.
 
 ## Features
@@ -107,6 +107,8 @@ Local validation defaults for XcodeBuildMCP users live in `.xcodebuildmcp/config
 
 The app is developed and tested against the `hermes-webui` commit pinned in [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA). Upstream does not yet guarantee API stability (its README declares version skew unsupported pending their stable-API work), so newer or older server versions may break individual features — please include your server version in bug reports. The app decodes tolerantly (unknown fields never crash it) and endpoint shapes are verified against upstream source, never invented.
 
+Bot Mode's direct-Hermes connection has its own pin, [`HERMES_AGENT_TESTED_SHA`](HERMES_AGENT_TESTED_SHA): line 1 is the tested `hermes-agent` commit and line 2 the release string its `/api/status` reports. When a host reports a different release, the Bot connection screen shows a one-line "Untested Hermes version" note. It never blocks signing in.
+
 ## Documentation map
 
 - [`AGENTS.md`](AGENTS.md): the working agreement — product boundaries, server-contract rules, locked dependencies, verification, and PR flow.
@@ -132,11 +134,25 @@ Hermex is free and built in the open. If it's useful to you:
 - ⭐ **Star this repo** — it helps others find the project.
 - 🐦 **Follow [@uzairansar on X](https://x.com/uzairansar)** for updates and dev logs.
 - ☕ **[Buy me a coffee](https://buymeacoffee.com/callmeuzi)** to support development.
+- 💬 **[Join the Hermex Discord](https://discord.gg/xDQWBCG4DQ)** for help, updates, and to talk with other users.
+- 💛 **[Become a member](https://buymeacoffee.com/callmeuzi/membership)** for early TestFlight builds, the members-only Discord channels, and a vote on what gets built next.
 
 <a href="https://buymeacoffee.com/callmeuzi"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-callmeuzi-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" height="40" /></a>
+
+### Supporters
+
+Hermex is funded by its members. Thank you.
+
+**Patrons:** Robin Edwards
+
+**Founding members:** James Cross · Alexey
+
+<sub>Updated monthly from [Buy Me a Coffee](https://buymeacoffee.com/callmeuzi/membership). Members who join anonymously aren't listed. Email [uzairansar@gmail.com](mailto:uzairansar@gmail.com) to be added or removed.</sub>
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+The file-type icons in the workspace tree are [Pierre](https://pierre.co)'s `@pierre/trees` icons (Apache-2.0) with six additions from [T3 Code](https://github.com/pingdotgg/t3code) (MIT).
 
 Hermex is an independent client and is not affiliated with the upstream [hermes-webui](https://github.com/nesquena/hermes-webui) project. Apple, the Apple logo, and App Store are trademarks of Apple Inc.

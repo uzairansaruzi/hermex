@@ -1,6 +1,10 @@
 import Foundation
 
 enum AppConfig {
+    static let tipURL = URL(staticString: "https://buymeacoffee.com/callmeuzi")
+    static let membershipURL = URL(staticString: "https://buymeacoffee.com/callmeuzi/membership")
+    static let writeReviewURL = URL(staticString: "https://apps.apple.com/app/id6767006319?action=write-review")
+    static let reportProblemURL = URL(staticString: "https://github.com/uzairansaruzi/hermex/issues/new/choose")
     static let privacyPolicyURL = URL(staticString: "https://www.uzairansar.com/hermes-mobile/privacy")
     static let supportURL = URL(staticString: "https://www.uzairansar.com/hermes-mobile")
 }

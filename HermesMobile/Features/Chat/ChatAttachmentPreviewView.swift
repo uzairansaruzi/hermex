@@ -275,6 +275,77 @@ struct ChatAttachmentPreviewView: View {
     }
 }
 
+/// An attachment that is already known to be an image opens in the full-bleed lightbox.
+/// Text, audio, and anything without a preview keeps `ChatAttachmentPreviewView`, which
+/// only learns what it has once the server answers.
+struct ChatAttachmentImageLightbox: View {
+    let onAPIError: (Error) -> Void
+
+    private let item: ChatAttachmentPreviewItem
+    @State private var viewModel: ChatAttachmentPreviewViewModel
+
+    init(
+        session: SessionSummary,
+        server: URL,
+        item: ChatAttachmentPreviewItem,
+        onAPIError: @escaping (Error) -> Void
+    ) {
+        self.item = item
+        self.onAPIError = onAPIError
+        _viewModel = State(
+            initialValue: ChatAttachmentPreviewViewModel(session: session, server: server, item: item)
+        )
+    }
+
+    var body: some View {
+        ImageLightboxView(
+            content: content,
+            title: item.displayName,
+            path: item.displayPath,
+            imageAccessibilityLabel: item.displayName,
+            onRetry: { Task { await loadAttachment(force: true) } }
+        )
+        .task {
+            await loadAttachment()
+        }
+    }
+
+    private var content: ImageLightboxContent {
+        switch viewModel.preview {
+        case let .image(file):
+            if let image = UIImage(data: file.data) {
+                return .image(
+                    image,
+                    detail: ByteCountFormatter.string(
+                        fromByteCount: Int64(file.originalByteCount),
+                        countStyle: .file
+                    )
+                )
+            }
+            return .failure(String(localized: "Could not preview this image."))
+
+        case let .unavailable(message):
+            return .failure(message)
+
+        case .text, .audio:
+            return .failure(String(localized: "Preview is not available for this attachment."))
+
+        case .none:
+            if !viewModel.isLoading, let message = viewModel.errorMessage {
+                return .failure(message)
+            }
+            return .loading(String(localized: "Loading attachment..."))
+        }
+    }
+
+    private func loadAttachment(force: Bool = false) async {
+        await viewModel.load(force: force)
+        if let lastError = viewModel.lastError {
+            onAPIError(lastError)
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ChatAttachmentPreviewViewModel {

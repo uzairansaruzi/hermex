@@ -99,6 +99,31 @@ final class SharedDraftStoreTests: XCTestCase {
         )
     }
 
+    // Reserving runs on the main actor during share handoff, so staged files
+    // are mapped there and only paged in when the upload reads them.
+    func testReservedAttachmentsAreMappedFromStagedFiles() throws {
+        let directory = try temporaryDirectory()
+        let attachmentData = Data(repeating: 0x42, count: 1_024 * 1_024)
+
+        try HermesShareDraft.savePendingImport(
+            draft: "",
+            attachments: [
+                SharedAttachmentImport(filename: "scan.pdf", typeIdentifier: "com.adobe.pdf", data: attachmentData)
+            ],
+            in: directory
+        )
+
+        let reservation = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: directory))
+        let attachment = try XCTUnwrap(reservation.sharedImport.attachments.first)
+
+        XCTAssertTrue(isFileBacked(attachment.data), "staged files must be mapped, not read into memory")
+
+        // The app consumes the reservation before uploading, so the first read
+        // of the mapped bytes happens after their staged file is removed.
+        try HermesShareDraft.consume(reservation, from: directory)
+        XCTAssertEqual(attachment.data, attachmentData, "the mapping outlives the consumed reservation")
+    }
+
     func testPendingImportSupportsAttachmentOnlyShare() throws {
         let directory = try temporaryDirectory()
 

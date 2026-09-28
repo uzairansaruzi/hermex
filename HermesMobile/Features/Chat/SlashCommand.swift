@@ -1,6 +1,6 @@
 import Foundation
 
-struct SlashCommand: Identifiable, Equatable {
+struct SlashCommand: Identifiable, Equatable, Sendable {
     let id = UUID()
     let name: String
     let description: String
@@ -30,20 +30,20 @@ struct SlashCommand: Identifiable, Equatable {
     }
 }
 
-enum SlashCommandHandler: Equatable {
+enum SlashCommandHandler: Equatable, Sendable {
     case unsupported
     case clientSide(ClientSideAction)
     case serverSide(ServerSideAction)
 }
 
-enum ClientSideAction: String, Equatable {
+enum ClientSideAction: String, Equatable, Sendable {
     case clear
     case stop
     case new
     case help
 }
 
-enum ServerSideAction: String, Equatable {
+enum ServerSideAction: String, Equatable, Sendable {
     case model
     case workspace
     case reasoning
@@ -63,7 +63,7 @@ enum ServerSideAction: String, Equatable {
     case goal
 }
 
-enum SlashCommandSubArgs: Equatable {
+enum SlashCommandSubArgs: Equatable, Sendable {
     case none
     case models
     case personalities
@@ -71,4 +71,22 @@ enum SlashCommandSubArgs: Equatable {
     case workspaces
     case skills
     case goalActions
+}
+
+extension SlashCommandSubArgs {
+    /// Whether the argument is free-form and so may contain spaces.
+    ///
+    /// A path, a personality name, and a skill query are all things the user
+    /// types spaces into, and `ParsedSlashQuery` splits them off with
+    /// `maxSplits: 1` so the whole rest of the line is the argument. The other
+    /// lists are fixed single tokens, so a space after one means the user has
+    /// stopped naming a value and gone back to writing prose.
+    var allowsSpaces: Bool {
+        switch self {
+        case .workspaces, .personalities, .skills:
+            return true
+        case .models, .reasoningLevels, .goalActions, .none:
+            return false
+        }
+    }
 }

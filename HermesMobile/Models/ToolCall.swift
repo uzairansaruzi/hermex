@@ -2,6 +2,8 @@ import Foundation
 
 struct ToolCall: Identifiable, Equatable {
     let id: String
+    /// Keeps disclosure state attached while a later event replaces a generated server ID.
+    let presentationID: String
     var name: String?
     var preview: String?
     var args: [String: JSONValue]?
@@ -12,6 +14,7 @@ struct ToolCall: Identifiable, Equatable {
 
     init(
         id: String = "live-tool-\(UUID().uuidString)",
+        presentationID: String? = nil,
         name: String?,
         preview: String?,
         args: [String: JSONValue]?,
@@ -21,6 +24,7 @@ struct ToolCall: Identifiable, Equatable {
         startedAt: Double = Date().timeIntervalSince1970
     ) {
         self.id = id
+        self.presentationID = presentationID ?? id
         self.name = name
         self.preview = preview
         self.args = args
@@ -45,6 +49,10 @@ struct PersistedToolCall: Decodable, Equatable {
     let tid: String?
     let assistantMsgIdx: Int?
     let args: [String: JSONValue]?
+    /// The server's verdict for the call, when the transcript carries one.
+    /// `nil` on older transcripts; the settled log then falls back to the result text.
+    let isError: Bool?
+    let duration: Double?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -53,6 +61,8 @@ struct PersistedToolCall: Decodable, Equatable {
         case assistantMsgIdx
         case assistantMsgIdxSnake = "assistant_msg_idx"
         case args
+        case isError = "is_error"
+        case duration
     }
 
     init(
@@ -60,13 +70,17 @@ struct PersistedToolCall: Decodable, Equatable {
         snippet: String?,
         tid: String?,
         assistantMsgIdx: Int?,
-        args: [String: JSONValue]?
+        args: [String: JSONValue]?,
+        isError: Bool? = nil,
+        duration: Double? = nil
     ) {
         self.name = name
         self.snippet = snippet
         self.tid = tid
         self.assistantMsgIdx = assistantMsgIdx
         self.args = args
+        self.isError = isError
+        self.duration = duration
     }
 
     init(from decoder: Decoder) throws {
@@ -77,6 +91,8 @@ struct PersistedToolCall: Decodable, Equatable {
         assistantMsgIdx = container.decodeLossyIntIfPresent(forKey: .assistantMsgIdx)
             ?? container.decodeLossyIntIfPresent(forKey: .assistantMsgIdxSnake)
         args = try? container.decodeIfPresent([String: JSONValue].self, forKey: .args)
+        isError = container.decodeLossyBoolIfPresent(forKey: .isError)
+        duration = container.decodeLossyDoubleIfPresent(forKey: .duration)
     }
 
     func toolCall(fallbackIndex: Int) -> ToolCall {
@@ -93,6 +109,8 @@ struct PersistedToolCall: Decodable, Equatable {
             name: name,
             preview: snippet,
             args: args,
+            duration: duration,
+            isError: isError,
             isCompleted: true
         )
     }
@@ -584,7 +602,8 @@ struct ToolCallGroup: Identifiable, Equatable {
             ) {
                 mergedToolCalls[existingIndex] = mergingToolCall(
                     mergedToolCalls[existingIndex],
-                    with: fallbackToolCall
+                    with: fallbackToolCall,
+                    presentationID: fallbackToolCall.presentationID
                 )
             } else {
                 mergedToolCalls.append(fallbackToolCall)
@@ -662,11 +681,16 @@ struct ToolCallGroup: Identifiable, Equatable {
         return JSONValue.object(sortedObject).compactJSONString ?? ""
     }
 
-    private static func mergingToolCall(_ existing: ToolCall, with fallback: ToolCall) -> ToolCall {
+    private static func mergingToolCall(
+        _ existing: ToolCall,
+        with fallback: ToolCall,
+        presentationID: String? = nil
+    ) -> ToolCall {
         let id = isGeneratedToolID(existing.id) && !isGeneratedToolID(fallback.id) ? fallback.id : existing.id
 
         return ToolCall(
             id: id,
+            presentationID: presentationID ?? existing.presentationID,
             name: existing.name ?? fallback.name,
             preview: existing.preview ?? fallback.preview,
             args: existing.args ?? fallback.args,

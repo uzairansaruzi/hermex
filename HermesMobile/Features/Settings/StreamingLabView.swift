@@ -39,7 +39,7 @@ struct StreamingLabView: View {
             }
         }
         .background(Color(.systemBackground))
-        .navigationTitle("Streaming Lab")
+        .navigationTitle(Text(verbatim: "Streaming Lab"))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: replayID) {
             await replayFixture()
@@ -54,7 +54,7 @@ struct StreamingLabView: View {
                 Button {
                     replayID += 1
                 } label: {
-                    Label("Restart", systemImage: "arrow.counterclockwise")
+                    Label { Text(verbatim: "Restart") } icon: { Image(systemName: "arrow.counterclockwise") }
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -65,20 +65,20 @@ struct StreamingLabView: View {
                     glyphStagger = StreamingTextFadeDefaults.Baseline.glyphStagger
                     maxStampLead = StreamingTextFadeDefaults.Baseline.maxStampLead
                 } label: {
-                    Label("Reset Knobs", systemImage: "slider.horizontal.2.arrow.trianglehead.counterclockwise")
+                    Label { Text(verbatim: "Reset Knobs") } icon: { Image(systemName: "slider.horizontal.2.arrow.trianglehead.counterclockwise") }
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
             }
 
-            Toggle("Follow tail while streaming", isOn: $followsTail)
+            Toggle(isOn: $followsTail) { Text(verbatim: "Follow tail while streaming") }
                 .font(.subheadline)
 
-            Toggle("Streamed text animation (user setting)", isOn: $isStreamedTextAnimationEnabled)
+            Toggle(isOn: $isStreamedTextAnimationEnabled) { Text(verbatim: "Streamed text animation (user setting)") }
                 .font(.subheadline)
 
             if !isStreamedTextAnimationEnabled {
-                Text("Animation is off — the knobs below have no visible effect until it's re-enabled.")
+                Text(verbatim: "Animation is off — the knobs below have no visible effect until it's re-enabled.")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -150,7 +150,7 @@ struct StreamingLabView: View {
     /// chosen (the lab never persists anything across launches).
     private var knobReadout: some View {
         Text(
-            """
+            verbatim: """
             static let fadeDuration: TimeInterval = \(String(format: "%.3f", fadeDuration))
             static let glyphStagger: TimeInterval = \(String(format: "%.3f", glyphStagger))
             static let maxStampLead: TimeInterval = \(String(format: "%.3f", maxStampLead))

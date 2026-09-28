@@ -43,28 +43,6 @@ final class AppIconChoiceTests: XCTestCase {
         )
     }
 
-    func testExistingChoiceDisplayMetadata() {
-        XCTAssertEqual(AppIconChoice.system.title, "System")
-        XCTAssertEqual(AppIconChoice.system.subtitle, "Matches device appearance")
-        XCTAssertEqual(AppIconChoice.light.title, "Light")
-        XCTAssertEqual(AppIconChoice.light.subtitle, "Always use the light icon")
-        XCTAssertEqual(AppIconChoice.dark.title, "Dark")
-        XCTAssertEqual(AppIconChoice.dark.subtitle, "Always use the dark icon")
-        XCTAssertEqual(AppIconChoice.disco.title, "Disco")
-        XCTAssertEqual(AppIconChoice.disco.subtitle, "Always use the disco icon")
-    }
-
-    func testNewChoiceDisplayMetadata() {
-        XCTAssertEqual(AppIconChoice.monochromeLight.title, "Monochrome Light")
-        XCTAssertEqual(AppIconChoice.monochromeLight.subtitle, "Always use the monochrome light icon")
-        XCTAssertEqual(AppIconChoice.monochromeDark.title, "Monochrome Dark")
-        XCTAssertEqual(AppIconChoice.monochromeDark.subtitle, "Always use the monochrome dark icon")
-        XCTAssertEqual(AppIconChoice.gradientLight.title, "Gradient Light")
-        XCTAssertEqual(AppIconChoice.gradientLight.subtitle, "Always use the gradient light icon")
-        XCTAssertEqual(AppIconChoice.gradientDark.title, "Gradient Dark")
-        XCTAssertEqual(AppIconChoice.gradientDark.subtitle, "Always use the gradient dark icon")
-    }
-
     func testExplicitIconNamesAndPreviewNamesAreUnique() {
         let alternateIconNames = AppIconChoice.allCases.compactMap(\.alternateIconName)
         let previewImageNames = AppIconChoice.allCases.compactMap(\.previewImageName)

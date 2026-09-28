@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 import SwiftUI
 
@@ -88,6 +87,10 @@ final class TranscriptMediaPreviewViewModel {
                 }
                 temporaryVideoURL = fileURL
                 videoFileURL = fileURL
+            } else if reference.isExtensionlessRemoteMediaCandidate, Self.isAudioData(data) {
+                // Sniffed before the image decode: a WAV header is a RIFF
+                // container, which sends ImageIO looking for a WebP codec.
+                audioData = data
             } else {
                 if let downsampled = await ImagePreviewDownsampler.previewDataAsync(
                     from: data,
@@ -98,13 +101,9 @@ final class TranscriptMediaPreviewViewModel {
                 } else {
                     guard !Task.isCancelled, loadGeneration == generation else { return }
                     if reference.isExtensionlessRemoteMediaCandidate {
-                        if Self.isAudioData(data) {
-                            audioData = data
-                        } else {
-                            let fileURL = try writeTemporaryVideoFile(data)
-                            temporaryVideoURL = fileURL
-                            videoFileURL = fileURL
-                        }
+                        let fileURL = try writeTemporaryVideoFile(data)
+                        temporaryVideoURL = fileURL
+                        videoFileURL = fileURL
                     } else {
                         errorMessage = String(localized: "Could not decode this image.")
                     }
@@ -143,15 +142,7 @@ final class TranscriptMediaPreviewViewModel {
     }
 
     private func transcriptMediaData() async throws -> Data {
-        switch reference.source {
-        case .localPath:
-            guard let sessionID = resolvedSessionID else {
-                throw TranscriptMediaPreviewError.missingSessionID
-            }
-            return try await apiClient.transcriptMediaData(for: reference, sessionID: sessionID)
-        case .remoteURL:
-            return try await apiClient.transcriptMediaData(for: reference, sessionID: resolvedSessionID ?? "")
-        }
+        try await apiClient.transcriptMediaData(for: reference, sessionID: resolvedSessionID)
     }
 
     private var resolvedSessionID: String? {
@@ -187,7 +178,7 @@ final class TranscriptMediaPreviewViewModel {
     }
 
     private static func isAudioData(_ data: Data) -> Bool {
-        (try? AVAudioPlayer(data: data)) != nil
+        AttachmentAudioDetection.containerType(of: data) != nil
     }
 
     private var resolvedExportKind: TranscriptMediaResolvedExportKind? {
@@ -207,7 +198,7 @@ final class TranscriptMediaPreviewViewModel {
     }
 }
 
-private enum TranscriptMediaPreviewError: LocalizedError {
+enum TranscriptMediaPreviewError: LocalizedError {
     case missingSessionID
 
     var errorDescription: String? {

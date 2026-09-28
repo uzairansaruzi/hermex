@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 enum KanbanCompatibilityState: Equatable {
     case idle
@@ -179,6 +180,16 @@ private enum KanbanBoardCollectionExpectation {
     case dispatch(generation: Int, board: String, mode: KanbanDispatchMode)
 }
 
+/// How a Board refresh ended. `unchanged` is a since-cursor check that found no new
+/// event, so the snapshot on screen was kept as it is.
+private enum KanbanBoardRefreshOutcome {
+    case failed
+    case unchanged
+    case changed
+
+    var succeeded: Bool { self != .failed }
+}
+
 enum KanbanCardMutationPhase: Equatable, Sendable {
     case updating
     case checkingResult
@@ -300,9 +311,32 @@ struct KanbanLiveUpdateTiming: Sendable {
     )
 }
 
-/// Server-bound, transient Kanban browsing state. Each instance owns one
-/// server's Board choice, filters, selection, and snapshots; nothing is shared
-/// across servers or persisted by this slice.
+/// Remembers the last locally browsed Board per server (#259) so a rebuilt
+/// `KanbanFeatureState` reopens it instead of the server-global active Board.
+/// Keyed by the server's absolute URL like the other per-server defaults. The
+/// value is only a hint: `load()` validates it against the fresh Board list
+/// before it reaches the wire, and it never changes the server's active Board.
+enum KanbanBoardPreference {
+    static func key(for server: URL) -> String {
+        "kanban.selectedBoard|\(server.absoluteString)"
+    }
+
+    static func savedSlug(for server: URL, in defaults: UserDefaults) -> String? {
+        defaults.string(forKey: key(for: server))
+    }
+
+    static func save(_ slug: String?, for server: URL, in defaults: UserDefaults) {
+        if let slug {
+            defaults.set(slug, forKey: key(for: server))
+        } else {
+            defaults.removeObject(forKey: key(for: server))
+        }
+    }
+}
+
+/// Server-bound Kanban browsing state. Each instance owns one server's Board
+/// choice, filters, selection, and snapshots; nothing is shared across servers.
+/// Only the browsed Board slug outlives the instance, via `KanbanBoardPreference`.
 @MainActor
 @Observable
 final class KanbanFeatureState {
@@ -338,7 +372,12 @@ final class KanbanFeatureState {
     private(set) var dispatchState: KanbanDispatchState?
     private(set) var dispatcherCapabilityIsIncompatible = false
 
-    private(set) var selectedBoardSlug: String?
+    private(set) var selectedBoardSlug: String? {
+        didSet {
+            guard selectedBoardSlug != oldValue else { return }
+            KanbanBoardPreference.save(selectedBoardSlug, for: server, in: defaults)
+        }
+    }
     var selectedStatus = "triage"
     var searchText = ""
     var selectedProfile: String?
@@ -357,6 +396,7 @@ final class KanbanFeatureState {
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
     private let now: @MainActor @Sendable () -> Date
     private let onAPIError: (Error) -> Void
+    private let defaults: UserDefaults
     private var isVisible = false
     private var sceneIsActive = true
     private var liveGeneration = 0
@@ -364,6 +404,18 @@ final class KanbanFeatureState {
     private var streamFailureCount = 0
     private var reconnectTask: Task<Void, Never>?
     private var coalescingTask: Task<Void, Never>?
+    /// True while `coalescingTask` is past its first debounce: fetching the Board or
+    /// waiting out the debounce before a follow-up fetch.
+    @ObservationIgnored private var liveRefreshIsFetching = false
+    /// A burst landed during that fetch; the running task refreshes once more.
+    @ObservationIgnored private var needsLiveRefresh = false
+    /// A refresh asked for stats and assignee history and has not finished reading them;
+    /// a live refresh that supersedes it reads them instead.
+    @ObservationIgnored private var supplementaryRefreshPending = false
+    /// The Board and filters (without `since`) of the fetch that produced `snapshot`.
+    /// Upstream's `latest_event_id` ignores filters, so a cursor refresh is only sound
+    /// when this still matches the current request.
+    @ObservationIgnored private var snapshotRequest: KanbanBoardRequest?
     private var pollingTask: Task<Void, Never>?
     private var activeCardMutationIDs: [String: UUID] = [:]
     private var pendingOptimisticStatuses: [String: String] = [:]
@@ -387,7 +439,8 @@ final class KanbanFeatureState {
             try await Task.sleep(for: duration)
         },
         now: @escaping @MainActor @Sendable () -> Date = { Date() },
-        onAPIError: @escaping (Error) -> Void = { _ in }
+        onAPIError: @escaping (Error) -> Void = { _ in },
+        defaults: UserDefaults = .standard
     ) {
         self.server = server
         self.client = client ?? APIClient(baseURL: server)
@@ -397,6 +450,28 @@ final class KanbanFeatureState {
         self.sleep = sleep
         self.now = now
         self.onAPIError = onAPIError
+        self.defaults = defaults
+    }
+
+    /// Whether the Card list shows its "Refreshing Board" row: while a Board loads with no
+    /// snapshot on screen (first load, Board switch) or with one fetched under other filters
+    /// (a filter change). Live, poll, mutation, and pull refreshes of the Board on screen
+    /// update the rows in place without it.
+    var showsBoardLoadingRow: Bool {
+        isRefreshing && (snapshot == nil || snapshotRequest != filteredBoardRequest)
+    }
+
+    /// The selected Board with the current server-side filters, without `since`.
+    private var filteredBoardRequest: KanbanBoardRequest? {
+        selectedBoardSlug.map {
+            KanbanBoardRequest(
+                board: $0,
+                tenant: selectedTenant,
+                assignee: selectedProfile,
+                includeArchived: includeArchived,
+                onlyMine: onlyMine
+            )
+        }
     }
 
     /// Future write slices must use this single seam before exposing any
@@ -494,10 +569,6 @@ final class KanbanFeatureState {
 
     var requiresBoardSelection: Bool {
         selectedBoardSlug == nil && !boards.isEmpty
-    }
-
-    func canArchiveBoard(_ board: KanbanBoard) -> Bool {
-        canManageBoards && normalizedOptional(board.slug) != "default"
     }
 
     var selectedCardCount: Int { selectedCardIDs.count }
@@ -914,8 +985,11 @@ final class KanbanFeatureState {
                 state = report.isPartial ? .partial : .compatible
                 return
             }
-            let boardToLoad = previouslySelectedBoard ?? currentBoard
-            let snapshot = try await client.kanbanBoard(KanbanBoardRequest(board: boardToLoad))
+            let boardToLoad = previouslySelectedBoard
+                ?? restoredBoard(from: availableBoards)
+                ?? currentBoard
+            let request = KanbanBoardRequest(board: boardToLoad)
+            let snapshot = try await client.kanbanBoard(request)
             guard isCurrent(loadID) else { return }
 
             let report = try KanbanCompatibilityValidator.validate(
@@ -933,6 +1007,7 @@ final class KanbanFeatureState {
             selectedBoardSlug = boardToLoad
             boardSelectionNotice = nil
             self.snapshot = snapshot
+            snapshotRequest = request
             markBoardActivity()
             detailRefreshRevision &+= 1
             liveCursor = max(0, snapshot.latestEventID ?? 0)
@@ -951,6 +1026,28 @@ final class KanbanFeatureState {
             state = Self.classify(error)
             forwardAuthentication(error)
         }
+    }
+
+    /// Cold-loads only when no Board is loaded. `KanbanView` calls this every time the
+    /// Board reappears, so returning from a pushed Card keeps its rows, scroll position,
+    /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
+    /// When a pop cancelled a live refresh (the stream already moved `liveCursor` past the
+    /// Board on screen) or the first load's stats and assignee reads, this refreshes the
+    /// Board in place instead of starting over.
+    func loadIfNeeded() async {
+        guard let snapshot else {
+            await load()
+            return
+        }
+        let boardIsBehindStream = liveCursor > (snapshot.latestEventID ?? 0)
+        guard boardIsBehindStream || !supplementaryReadsSettled else { return }
+        _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+    }
+
+    /// Each supplementary read either returned a value or recorded its warning.
+    private var supplementaryReadsSettled: Bool {
+        (stats != nil || capabilityWarnings.contains(.statsUnavailable))
+            && (assigneeHistory != nil || capabilityWarnings.contains(.profileHistoryUnavailable))
     }
 
     func retry() async {
@@ -978,7 +1075,7 @@ final class KanbanFeatureState {
             usingCursor: false,
             refreshSupplementary: true,
             preserveRefreshFailure: !boardCollectionSucceeded
-        )
+        ).succeeded
         guard !Task.isCancelled else {
             if boardCollectionSucceeded {
                 refreshFailed = previousRefreshFailed
@@ -1021,7 +1118,7 @@ final class KanbanFeatureState {
         report = nil
         capabilityWarnings = []
         state = .compatible
-        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true).succeeded
         if succeeded { startLiveUpdatesIfReady() }
     }
 
@@ -1296,7 +1393,7 @@ final class KanbanFeatureState {
             )
             return
         }
-        let boardSucceeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+        let boardSucceeded = await refreshBoard(usingCursor: false, refreshSupplementary: true).succeeded
         guard continueDispatch(generation, board: board, mode: .run) else { return }
         dispatchState = KanbanDispatchState(
             mode: .run,
@@ -1324,46 +1421,42 @@ final class KanbanFeatureState {
         }
     }
 
-    func setSceneActive(_ active: Bool) async {
+    /// `KanbanLabView` forwards every scene phase change. Only `.background` suspends live
+    /// updates: `.inactive` is a transient overlay (Control Center, Notification Center, a
+    /// system alert, the app switcher), so the stream and the Board stay as they are.
+    /// Returning to `.active` asks the server for the Board since the snapshot's cursor.
+    /// When no event landed, the Board, its stats, and the Board list are kept and the
+    /// stream resumes from `liveCursor`; a changed Board also reconciles the Board list.
+    func setScenePhase(_ phase: ScenePhase) async {
+        guard phase != .inactive else { return }
+        let active = phase == .active
         guard sceneIsActive != active else { return }
         sceneIsActive = active
         if !active {
             suspendLiveUpdates()
             return
         }
-        guard isVisible, snapshot != nil else { return }
+        guard isVisible, snapshot != nil, let board = selectedBoardSlug else { return }
         let previousRefreshFailed = refreshFailed
-        let boardCollectionSucceeded = await reconcileBoardCollection()
+        let generation = liveGeneration
+        let outcome = await refreshBoard(usingCursor: true, refreshSupplementary: true)
         guard !Task.isCancelled else {
             refreshFailed = previousRefreshFailed
             return
         }
-        if !boardCollectionSucceeded {
-            reportBoardCollectionRefreshFailure()
-        }
-        guard let board = selectedBoardSlug else { return }
-        let generation = liveGeneration
-        let succeeded = await refreshBoard(
-            usingCursor: false,
-            refreshSupplementary: true,
-            preserveRefreshFailure: !boardCollectionSucceeded
-        )
-        guard !Task.isCancelled else {
-            if boardCollectionSucceeded {
-                refreshFailed = previousRefreshFailed
-            } else {
-                reportBoardCollectionRefreshFailure()
-            }
+        guard isCurrentLiveWork(board: board, generation: generation) else { return }
+        guard outcome.succeeded else {
+            startPollingIfNeeded()
             return
         }
-        guard isCurrentLiveWork(board: board, generation: generation) else { return }
-        if succeeded {
-            isOffline = false
-            loadedDetailIsStale = false
-            retryLiveStream()
-        } else {
-            startPollingIfNeeded()
+        var boardCollectionSucceeded = true
+        if outcome == .changed {
+            boardCollectionSucceeded = await reconcileBoardCollection()
+            guard isCurrentLiveWork(board: board, generation: generation) else { return }
         }
+        isOffline = false
+        loadedDetailIsStale = false
+        retryLiveStream()
         if !boardCollectionSucceeded {
             reportBoardCollectionRefreshFailure()
         }
@@ -1377,18 +1470,6 @@ final class KanbanFeatureState {
 
     func setTenantFilter(_ tenant: String?) async {
         selectedTenant = normalized(tenant)
-        await refreshBoard(usingCursor: false)
-    }
-
-    func setIncludeArchived(_ included: Bool) async {
-        includeArchived = included
-        if !included, selectedStatus == "archived" { selectedStatus = "triage" }
-        await refreshBoard(usingCursor: false)
-    }
-
-    func setOnlyMine(_ enabled: Bool) async {
-        onlyMine = enabled
-        if enabled { selectedProfile = nil }
         await refreshBoard(usingCursor: false)
     }
 
@@ -2265,6 +2346,18 @@ final class KanbanFeatureState {
         boardSelectionNotice = KanbanBoardSelectionNotice(boardName: boardDisplayName)
     }
 
+    /// The saved per-server Board choice, only while the fresh Board list still
+    /// contains it. A stale slug is dropped here so it never reaches the wire and
+    /// a cold start falls back silently to the server's current Board.
+    private func restoredBoard(from availableBoards: [KanbanBoard]) -> String? {
+        guard let saved = normalized(KanbanBoardPreference.savedSlug(for: server, in: defaults)) else {
+            return nil
+        }
+        if availableBoards.contains(where: { normalized($0.slug) == saved }) { return saved }
+        KanbanBoardPreference.save(nil, for: server, in: defaults)
+        return nil
+    }
+
     private func normalizedOptional(_ value: String?) -> String? {
         let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return value?.isEmpty == false ? value : nil
@@ -2280,15 +2373,26 @@ final class KanbanFeatureState {
         }
     }
 
+    /// Refetches the selected Board. A cursor refresh (`usingCursor`) sends the snapshot's
+    /// `latest_event_id` as `since` when the snapshot came from the same Board and filters;
+    /// when the server answers `changed: false` the snapshot stays untouched, and
+    /// `refreshSupplementary` reads stats and assignee history only when one is missing or
+    /// an earlier refresh left them pending.
     @discardableResult
     private func refreshBoard(
         usingCursor: Bool,
         refreshSupplementary: Bool = false,
         preserveRefreshFailure: Bool = false
-    ) async -> Bool {
-        guard let board = selectedBoardSlug else { return false }
+    ) async -> KanbanBoardRefreshOutcome {
+        guard let board = selectedBoardSlug, let filteredRequest = filteredBoardRequest else {
+            return .failed
+        }
         let boardLoadID = UUID()
         activeBoardLoadID = boardLoadID
+        // Missing stats or assignee history (never read, or a failed read that left only a
+        // warning) is retried even when the Board itself is unchanged.
+        let supplementaryReadsOwed = supplementaryRefreshPending || stats == nil || assigneeHistory == nil
+        if refreshSupplementary { supplementaryRefreshPending = true }
         isRefreshing = true
         if !preserveRefreshFailure {
             refreshFailed = false
@@ -2297,26 +2401,26 @@ final class KanbanFeatureState {
             if activeBoardLoadID == boardLoadID { isRefreshing = false }
         }
 
-        let request = KanbanBoardRequest(
-            board: board,
-            tenant: selectedTenant,
-            assignee: selectedProfile,
-            includeArchived: includeArchived,
-            onlyMine: onlyMine,
-            since: usingCursor ? snapshot?.latestEventID : nil
-        )
+        var request = filteredRequest
+        if usingCursor, snapshotRequest == filteredRequest {
+            request.since = snapshot?.latestEventID
+        }
         do {
             let response = try await client.kanbanBoard(request)
-            guard isCurrentBoardLoad(boardLoadID, board: board) else { return false }
-            if usingCursor, response.changed == false {
-                // A cursor refresh may return the minimal unchanged envelope.
+            guard isCurrentBoardLoad(boardLoadID, board: board) else { return .failed }
+            let outcome: KanbanBoardRefreshOutcome
+            if request.since != nil, response.changed == false {
+                // The minimal unchanged envelope: no event since the snapshot on screen.
+                outcome = .unchanged
             } else {
                 let report = try validateBrowsingSnapshot(response, board: board)
                 snapshot = applyingPendingOptimism(to: response)
+                snapshotRequest = filteredRequest
                 markBoardActivity()
                 detailRefreshRevision &+= 1
                 self.report = report
                 state = report.isPartial ? .partial : .compatible
+                outcome = .changed
             }
             liveCursor = max(liveCursor, response.latestEventID ?? 0)
             isOffline = false
@@ -2324,21 +2428,25 @@ final class KanbanFeatureState {
                 refreshFailed = true
             }
             if refreshSupplementary {
-                await loadSupplementaryReads(board: board, boardLoadID: boardLoadID)
+                if outcome == .changed || supplementaryReadsOwed {
+                    await loadSupplementaryReads(board: board, boardLoadID: boardLoadID)
+                } else {
+                    supplementaryRefreshPending = false
+                }
             }
-            return true
+            return outcome
         } catch is CancellationError {
-            return false
+            return .failed
         } catch {
-            guard isCurrentBoardLoad(boardLoadID, board: board) else { return false }
+            guard isCurrentBoardLoad(boardLoadID, board: board) else { return .failed }
             if isNotFound(error) {
                 _ = await reconcileBoardCollection()
-                if selectedBoardSlug == nil { return false }
+                if selectedBoardSlug == nil { return .failed }
             }
             refreshFailed = true
             markOfflineIfNeeded(error)
             forwardAuthentication(error)
-            return false
+            return .failed
         }
     }
 
@@ -2437,16 +2545,46 @@ final class KanbanFeatureState {
         }
     }
 
+    /// Debounces live event bursts into one Board-only refresh; stats and assignee
+    /// history refresh on load, pull, a changed foreground, and mutations instead, unless
+    /// they have not settled yet or this refresh supersedes one still reading them.
+    /// A burst that lands while that refresh is fetching queues one follow-up pass
+    /// rather than cancelling the in-flight download; the follow-up waits out the same
+    /// debounce, so writes unlock between passes. `suspendLiveUpdates` clears both flags.
     private func scheduleCoalescedReconciliation(board: String, generation: Int) {
+        if liveRefreshIsFetching {
+            needsLiveRefresh = true
+            return
+        }
         let sleep = self.sleep
         let delay = timing.coalescingDelay
         coalescingTask?.cancel()
         coalescingTask = Task { @MainActor [weak self] in
             do { try await sleep(delay) } catch { return }
             guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
-            let succeeded = await self.refreshBoard(usingCursor: false, refreshSupplementary: true)
-            guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
-            if !succeeded, self.isOffline { self.startPollingIfNeeded() }
+            self.liveRefreshIsFetching = true
+            defer {
+                // A suspend already cleared the flag, and a newer generation may own it.
+                if self.liveGeneration == generation { self.liveRefreshIsFetching = false }
+            }
+            repeat {
+                self.needsLiveRefresh = false
+                let succeeded = await self.refreshBoard(
+                    usingCursor: false,
+                    refreshSupplementary: !self.supplementaryReadsSettled
+                        || self.supplementaryRefreshPending
+                ).succeeded
+                guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
+                if !succeeded, self.isOffline {
+                    self.startPollingIfNeeded()
+                    return
+                }
+                if self.needsLiveRefresh {
+                    // Bursts keep folding into the flag while this debounce runs.
+                    do { try await sleep(delay) } catch { return }
+                    guard self.isCurrentLiveWork(board: board, generation: generation) else { return }
+                }
+            } while self.needsLiveRefresh
         }
     }
 
@@ -2483,7 +2621,7 @@ final class KanbanFeatureState {
             let wasOffline = isOffline
             if wasOffline {
                 liveCursor = max(liveCursor, cursor)
-                let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+                let succeeded = await refreshBoard(usingCursor: false, refreshSupplementary: true).succeeded
                 if succeeded {
                     loadedDetailIsStale = false
                     retryLiveStream()
@@ -2519,6 +2657,8 @@ final class KanbanFeatureState {
         reconnectTask = nil
         coalescingTask?.cancel()
         coalescingTask = nil
+        liveRefreshIsFetching = false
+        needsLiveRefresh = false
         pollingTask?.cancel()
         pollingTask = nil
     }
@@ -2597,6 +2737,7 @@ final class KanbanFeatureState {
             capabilityWarnings.insert(.profileHistoryUnavailable)
             forwardAuthentication(error)
         }
+        supplementaryRefreshPending = false
         updatePartialState()
     }
 

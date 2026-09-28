@@ -14,11 +14,18 @@ struct SettingsView: View {
     let server: URL
     /// When set, Settings scrolls to this section once on first appear (#283).
     let initialScrollTarget: SettingsScrollAnchor?
+    let onDefaultProfileSelected: (DefaultProfileSelection) -> Void
 
-    init(authManager: AuthManager, server: URL, initialScrollTarget: SettingsScrollAnchor? = nil) {
+    init(
+        authManager: AuthManager,
+        server: URL,
+        initialScrollTarget: SettingsScrollAnchor? = nil,
+        onDefaultProfileSelected: @escaping (DefaultProfileSelection) -> Void = { _ in }
+    ) {
         self.authManager = authManager
         self.server = server
         self.initialScrollTarget = initialScrollTarget
+        self.onDefaultProfileSelected = onDefaultProfileSelected
         // The CLI-sessions toggle is server-synced (#19): loads adopt the
         // server's `show_cli_sessions`, toggles POST it back, failures revert.
         // Stored per-server so one server's value never leaks into another.
@@ -59,6 +66,7 @@ struct SettingsView: View {
     @State private var notificationStatusMessage: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(ResponseCompletionNotifications.hasRequestedPermissionKey) private var hasRequestedResponseCompletionNotificationPermission = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
@@ -73,8 +81,9 @@ struct SettingsView: View {
     @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var toolCardsStartExpanded = false
+    @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
-    @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
+    @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
@@ -92,6 +101,8 @@ struct SettingsView: View {
     @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
+    @AppStorage(BotQuickReplyStore.storageKey) private var storedQuickReplies = ""
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -116,6 +127,16 @@ struct SettingsView: View {
                         SettingsAccessoryRow(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
                     }
                     .buttonStyle(.plain)
+                }
+
+                SettingsCard(title: String(localized: "Preview")) {
+                    SettingsToggleRow(
+                        title: String(localized: "Bot Mode (beta)"),
+                        systemImage: "cpu",
+                        isOn: $isBotModeEnabled
+                    )
+
+                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Bots row to the main screen for your direct Hermes bots. Each server’s Hermes connection is available with it off."))
                 }
 
                 SettingsCard(title: String(localized: "Appearance")) {
@@ -158,17 +179,39 @@ struct SettingsView: View {
                         isOn: $isHapticsEnabled
                     )
 
+                    if isHapticsEnabled {
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Pulse While Streaming"),
+                            systemImage: "waveform",
+                            isOn: $isStreamingPulseEnabled
+                        )
+
+                        SettingsFootnote(String(localized: "A light tick as each reply streams in."))
+                    }
+
                     SettingsDivider()
 
-                    SettingsToggleRow(
-                        title: String(localized: "Response Complete Alerts"),
-                        systemImage: "bell",
-                        isOn: responseCompletionNotificationBinding
-                    )
-
-                    if let notificationStatusText {
-                        SettingsFootnote(notificationStatusText)
+                    HermexPushSectionView(server: server) {
+                        SettingsToggleRow(
+                            title: String(localized: "Response Complete Alerts"),
+                            systemImage: "bell",
+                            isOn: responseCompletionNotificationBinding
+                        )
+                        SettingsFootnote(String(localized: "Local completion alerts for servers without push notifications."))
+                        if let notificationStatusText {
+                            SettingsFootnote(notificationStatusText)
+                        }
+                        SettingsDivider()
+                        SettingsToggleRow(
+                            title: String(localized: "Live Activity Excerpts"),
+                            systemImage: "lock",
+                            isOn: $showsLiveActivityResponseExcerpts
+                        )
+                        SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
                     }
+                    .id(server)
 
                     SettingsDivider()
 
@@ -183,6 +226,25 @@ struct SettingsView: View {
                     }
 
                     SettingsDivider()
+
+                    if isBotModeEnabled {
+                        NavigationLink {
+                            BotQuickRepliesEditorView()
+                        } label: {
+                            let count = BotQuickReplyStore.decode(storedQuickReplies).count
+                            SettingsAccessoryRow(
+                                title: String(localized: "Quick Replies"),
+                                value: count > 0 ? count.formatted() : nil,
+                                systemImage: "text.bubble"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the quick replies editor.")
+
+                        SettingsFootnote(String(localized: "Short replies above the Bot Chat composer. A tap fills the draft."))
+
+                        SettingsDivider()
+                    }
 
                     SettingsPickerRow(
                         title: String(localized: "Dictation Provider"),
@@ -225,6 +287,16 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
+                        title: String(localized: "Fold Finished Turns"),
+                        systemImage: "rectangle.compress.vertical",
+                        isOn: $foldsSettledTurns
+                    )
+
+                    SettingsFootnote(String(localized: "Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it."))
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
                         title: String(localized: "Streamed Text Animation"),
                         systemImage: "sparkles",
                         isOn: $isStreamedTextAnimationEnabled
@@ -235,12 +307,12 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
-                        title: String(localized: "Response Timestamps"),
+                        title: String(localized: "Message Timestamps"),
                         systemImage: "clock",
                         isOn: $showsAssistantTurnTimestamps
                     )
 
-                    SettingsFootnote(String(localized: "Adds a small marker and the time above each response so back-to-back replies are easier to tell apart."))
+                    SettingsFootnote(String(localized: "Shows the time under your messages and under each finished response."))
 
                     SettingsDivider()
 
@@ -279,16 +351,6 @@ struct SettingsView: View {
                     )
 
                     SettingsFootnote(String(localized: "Hides the appended file-path line in your sent messages. Attachments still appear as previews, and the server still receives the paths."))
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Live Activity Excerpts"),
-                        systemImage: "lock",
-                        isOn: $showsLiveActivityResponseExcerpts
-                    )
-
-                    SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
 
                     SettingsDivider()
 
@@ -343,7 +405,7 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
-                        title: String(localized: "Insights"),
+                        title: String(localized: "Usage"),
                         systemImage: "chart.bar",
                         isOn: $showsInsightsSection
                     )
@@ -544,18 +606,83 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Support")
+
+                    SettingsDivider()
+
+                    Group {
+                        Link(destination: AppConfig.membershipURL) {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Become a supporter"),
+                                systemImage: "heart",
+                                accessorySystemImage: "arrow.up.forward"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Become a supporter, opens in browser")
+
+                        SettingsDivider()
+
+                        Link(destination: AppConfig.tipURL) {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Buy Uzi a coffee"),
+                                systemImage: "cup.and.saucer",
+                                accessorySystemImage: "arrow.up.forward"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Buy Uzi a coffee, opens in browser")
+                    }
+                    .environment(\.openURL, OpenURLAction { url in
+                        TipJarPromptState(defaults: .standard).recordLinkOpened()
+                        return .systemAction(url)
+                    })
+
+                    SettingsDivider()
+
+                    Link(destination: AppConfig.writeReviewURL) {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Rate Hermex"),
+                            systemImage: "star",
+                            accessorySystemImage: "arrow.up.forward"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Rate Hermex, opens the App Store")
+
+                    SettingsDivider()
+
+                    Link(destination: AppConfig.reportProblemURL) {
+                        SettingsAccessoryRow(
+                            title: String(localized: "Report a Problem"),
+                            systemImage: "ladybug",
+                            accessorySystemImage: "arrow.up.forward"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Report a Problem, opens in browser")
                 }
 
                 #if DEBUG
-                SettingsCard(title: String(localized: "Developer")) {
+                SettingsCard(title: "Developer") {
+                    SettingsButton(String(localized: "Reset rating prompt state")) {
+                        RatingPromptState.shared.reset()
+                    }
+
                     NavigationLink {
                         StreamingLabView()
                     } label: {
-                        SettingsAccessoryRow(title: String(localized: "Streaming Lab"), systemImage: "waveform.path.ecg")
+                        SettingsAccessoryRow(title: "Streaming Lab", systemImage: "waveform.path.ecg")
                     }
                     .buttonStyle(.plain)
 
-                    SettingsFootnote(String(localized: "Debug builds only. Replay a canned reply and tune the streamed-text fade feel live."))
+                    NavigationLink {
+                        ProviderGlyphGalleryView()
+                    } label: {
+                        SettingsAccessoryRow(title: "Provider Glyphs", systemImage: "square.grid.2x2")
+                    }
+                    .buttonStyle(.plain)
+
+                    SettingsFootnote("Debug builds only. Replay a canned reply and tune the streamed-text fade feel live.")
                 }
                 #endif
 
@@ -671,6 +798,7 @@ struct SettingsView: View {
                 server: server,
                 currentDefaultProfileName: defaultProfileName,
                 onSave: { selection in
+                    onDefaultProfileSelected(selection)
                     defaultProfileName = selection.name
                     defaultProfileDisplayName = selection.displayName
                     if let defaultModel = selection.defaultModel, !defaultModel.isEmpty {
@@ -1225,6 +1353,7 @@ struct SettingsView: View {
             // Scoped to the active server only, so clearing one server's cache
             // never wipes another configured server's offline data (#18).
             try CacheStore.clearCache(for: server, in: modelContext)
+            try await BotHistoryCache.shared.remove(server: server)
             cacheStatusMessage = String(localized: "This server's offline cache was cleared.")
         } catch {
             cacheStatusMessage = String(localized: "Could not clear offline cache.")
@@ -2101,6 +2230,21 @@ private struct ServerDetailView: View {
 
                     SettingsValueRow(title: String(localized: "Status")) {
                         SettingsStatusPill(label: isActive ? String(localized: "Active") : String(localized: "Inactive"))
+                    }
+                }
+
+                // Not behind the Bot Mode preview gate (#557): this login is what push
+                // pairing needs, and push serves this server's webui sessions too.
+                if let server = URL(string: account.urlString) {
+                    SettingsCard(title: String(localized: "Hermes connection")) {
+                        SettingsFootnote(String(localized: "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots."))
+
+                        NavigationLink {
+                            BotConnectionView(server: server)
+                        } label: {
+                            SettingsAccessoryRow(title: String(localized: "Hermes connection"), systemImage: "bell.badge")
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
 

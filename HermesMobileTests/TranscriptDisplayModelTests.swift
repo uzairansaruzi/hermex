@@ -3,6 +3,7 @@ import AVFoundation
 import ImageIO
 import SwiftData
 import UIKit
+import SwiftUI
 import UniformTypeIdentifiers
 @testable import HermesMobile
 
@@ -257,56 +258,51 @@ final class TranscriptMessageTests: XCTestCase {
 }
 
 final class ChatTranscriptDisplaySettingsTests: XCTestCase {
-    func testTypingIndicatorStaysHiddenBehindVisibleThinkingAndToolCards() {
-        XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
-            hasActiveStream: true,
-            isCancellingStream: false,
-            hasStreamingAssistantMessage: false,
-            liveReasoningText: "Inspecting files",
-            hasLiveToolCalls: false,
-            showsThinkingAndToolCards: true
-        ))
+    func testWorkingRowShowsForActiveRunOnly() {
+        let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
-        XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
-            hasActiveStream: true,
+        XCTAssertEqual(
+            ChatWorkingRowPolicy.startedAt(
+                activeRunStartedAt: startedAt,
+                isCancellingStream: false,
+                hasPendingClarificationPrompt: false
+            ),
+            startedAt
+        )
+        XCTAssertNil(ChatWorkingRowPolicy.startedAt(
+            activeRunStartedAt: nil,
             isCancellingStream: false,
-            hasStreamingAssistantMessage: false,
-            liveReasoningText: "",
-            hasLiveToolCalls: true,
-            showsThinkingAndToolCards: true
+            hasPendingClarificationPrompt: false
         ))
     }
 
-    func testTypingIndicatorShowsWhenHiddenCardsAreOnlyLiveActivity() {
-        XCTAssertTrue(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
-            hasActiveStream: true,
-            isCancellingStream: false,
-            hasStreamingAssistantMessage: false,
-            liveReasoningText: "Inspecting files",
-            hasLiveToolCalls: true,
-            showsThinkingAndToolCards: false
-        ))
+    func testWorkingRowHidesWhileStoppingOrAwaitingClarification() {
+        let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
-        XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
-            hasActiveStream: true,
+        XCTAssertNil(ChatWorkingRowPolicy.startedAt(
+            activeRunStartedAt: startedAt,
+            isCancellingStream: true,
+            hasPendingClarificationPrompt: false
+        ))
+        XCTAssertNil(ChatWorkingRowPolicy.startedAt(
+            activeRunStartedAt: startedAt,
             isCancellingStream: false,
-            hasStreamingAssistantMessage: true,
-            liveReasoningText: "Inspecting files",
-            hasLiveToolCalls: true,
-            showsThinkingAndToolCards: false
+            hasPendingClarificationPrompt: true
         ))
     }
 
-    func testTypingIndicatorHidesBehindPendingClarificationPrompt() {
-        XCTAssertFalse(ChatTranscriptDisplaySettings.shouldShowAssistantTypingIndicator(
-            hasActiveStream: true,
-            isCancellingStream: false,
-            hasStreamingAssistantMessage: false,
-            hasPendingClarificationPrompt: true,
-            liveReasoningText: "",
-            hasLiveToolCalls: false,
-            showsThinkingAndToolCards: false
-        ))
+    func testWorkingElapsedLabelUsesCompactUnits() {
+        let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+
+        XCTAssertEqual(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: startedAt), "0s")
+        XCTAssertEqual(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: startedAt.addingTimeInterval(5.9)), "5s")
+        XCTAssertEqual(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: startedAt.addingTimeInterval(64)), "1m 4s")
+        XCTAssertEqual(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: startedAt.addingTimeInterval(3_723)), "1h 2m 3s")
+        XCTAssertEqual(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: startedAt.addingTimeInterval(-30)), "0s")
+        XCTAssertEqual(
+            ChatWorkingElapsedFormatter.spokenLabel(startedAt: startedAt, now: startedAt.addingTimeInterval(64)),
+            "1 minute, 4 seconds"
+        )
     }
 
     func testStreamingBubbleRenderingDoesNotMatchNilMessageIDs() {
@@ -399,33 +395,21 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         )
     }
 
-    func testTimestampAndResponseSpeedTogglesAreIndependent() {
+    func testTimestampsDefaultOn() {
+        XCTAssertTrue(ChatTranscriptDisplaySettings.defaultShowsTimestamps)
+    }
+
+    func testAssistantTurnHeaderIsOnlyTheResponseSpeedMarker() {
+        XCTAssertTrue(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
+            role: "assistant",
+            hasTextContent: true,
+            showsResponseSpeed: true,
+            hasResponseSpeed: true
+        ))
         XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: "assistant",
             hasTextContent: true,
-            isEnabled: false,
             showsResponseSpeed: false,
-            hasResponseSpeed: true
-        ))
-        XCTAssertTrue(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: true,
-            isEnabled: true,
-            showsResponseSpeed: false,
-            hasResponseSpeed: true
-        ))
-        XCTAssertTrue(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: true,
-            isEnabled: false,
-            showsResponseSpeed: true,
-            hasResponseSpeed: true
-        ))
-        XCTAssertTrue(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: true,
-            isEnabled: true,
-            showsResponseSpeed: true,
             hasResponseSpeed: true
         ))
     }
@@ -434,25 +418,8 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: "assistant",
             hasTextContent: true,
-            isEnabled: false,
             showsResponseSpeed: true,
             hasResponseSpeed: false
-        ))
-    }
-
-    func testAssistantTurnHeaderShowsForAssistantTextTurnWhenEnabled() {
-        XCTAssertTrue(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: true,
-            isEnabled: true
-        ))
-    }
-
-    func testAssistantTurnHeaderHiddenWhenToggleOff() {
-        XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: true,
-            isEnabled: false
         ))
     }
 
@@ -460,7 +427,8 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: "assistant",
             hasTextContent: false,
-            isEnabled: true
+            showsResponseSpeed: true,
+            hasResponseSpeed: true
         ))
     }
 
@@ -470,7 +438,8 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
                 ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
                     role: role,
                     hasTextContent: true,
-                    isEnabled: true
+                    showsResponseSpeed: true,
+                    hasResponseSpeed: true
                 ),
                 "Header must not render for role \(role)"
             )
@@ -479,7 +448,8 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: nil,
             hasTextContent: true,
-            isEnabled: true
+            showsResponseSpeed: true,
+            hasResponseSpeed: true
         ))
     }
 
@@ -591,13 +561,13 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
     }
 }
 
-final class AssistantTurnTimestampFormatterTests: XCTestCase {
+final class ChatMessageTimestampFormatterTests: XCTestCase {
     // 2021-01-01 14:14:00 UTC
     private let fixedTimestamp: Double = 1_609_510_440
     private let utc = TimeZone(identifier: "UTC")!
 
     func testFormatsTwelveHourLocaleAsShortTime() {
-        let result = AssistantTurnTimestampFormatter.shortTime(
+        let result = ChatMessageTimestampFormatter.shortTime(
             forUnixTimestamp: fixedTimestamp,
             locale: Locale(identifier: "en_US"),
             timeZone: utc
@@ -609,7 +579,7 @@ final class AssistantTurnTimestampFormatterTests: XCTestCase {
     }
 
     func testFormatsTwentyFourHourLocaleAsShortTime() {
-        let result = AssistantTurnTimestampFormatter.shortTime(
+        let result = ChatMessageTimestampFormatter.shortTime(
             forUnixTimestamp: fixedTimestamp,
             locale: Locale(identifier: "en_GB"),
             timeZone: utc
@@ -621,8 +591,8 @@ final class AssistantTurnTimestampFormatterTests: XCTestCase {
     }
 
     func testReturnsNilForNilTimestamp() {
-        XCTAssertNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: nil))
-        XCTAssertNil(AssistantTurnTimestampFormatter.shortTime(
+        XCTAssertNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: nil))
+        XCTAssertNil(ChatMessageTimestampFormatter.shortTime(
             forUnixTimestamp: nil,
             locale: Locale(identifier: "en_US"),
             timeZone: utc
@@ -630,12 +600,12 @@ final class AssistantTurnTimestampFormatterTests: XCTestCase {
     }
 
     func testReturnsNilForNonFiniteTimestamp() {
-        XCTAssertNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: .nan))
-        XCTAssertNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: .infinity))
+        XCTAssertNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: .nan))
+        XCTAssertNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: .infinity))
     }
 
     func testCurrentLocaleOverloadFormatsFiniteTimestamp() {
-        XCTAssertNotNil(AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: fixedTimestamp))
+        XCTAssertNotNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: fixedTimestamp))
     }
 }
 
@@ -656,5 +626,96 @@ final class ResponseSpeedFormatterTests: XCTestCase {
         XCTAssertNil(ResponseSpeedFormatter.compactText(-1))
         XCTAssertNil(ResponseSpeedFormatter.compactText(.infinity))
         XCTAssertNil(ResponseSpeedFormatter.compactText(.nan))
+    }
+}
+
+final class ClarificationRequestPresentationTests: XCTestCase {
+    func testBarSummaryIsFirstNonEmptyLineOfQuestion() {
+        XCTAssertEqual(ClarificationRequestBar.summary(for: "Which branch?"), "Which branch?")
+        XCTAssertEqual(
+            ClarificationRequestBar.summary(for: "\n  Which branch should I use?  \n1. main\n2. release"),
+            "Which branch should I use?"
+        )
+        XCTAssertEqual(ClarificationRequestBar.summary(for: "   "), "")
+    }
+
+    func testToggleCurveIsOneEaseOutClockAndSnapsUnderReduceMotion() {
+        XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
+        XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
+    }
+
+    func testHeightPolicyFitsContentWithoutGrowingTheCard() {
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 500,
+                fixedContentHeight: 160,
+                bodyContentHeight: 180,
+                minimumBodyHeight: 44
+            ),
+            180
+        )
+    }
+
+    func testHeightPolicyClampsBodyToSafeGapAndCap() {
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 360,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 44
+            ),
+            200
+        )
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 600,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 44
+            ),
+            300
+        )
+    }
+
+    func testHeightPolicyCollapsesWhenOneScaledChoiceCannotFit() {
+        XCTAssertNil(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 247,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 88
+            )
+        )
+        XCTAssertEqual(
+            ClarificationRequestHeightPolicy.bodyHeight(
+                maximumExpandedHeight: 248,
+                fixedContentHeight: 160,
+                bodyContentHeight: 500,
+                minimumBodyHeight: 88
+            ),
+            88
+        )
+    }
+}
+
+final class ChatMotionTests: XCTestCase {
+    func testEveryCurveSnapsUnderReduceMotion() {
+        XCTAssertNil(ChatMotion.press(duration: 0.2, reduceMotion: true))
+        XCTAssertNil(ChatMotion.quickState(reduceMotion: true))
+        XCTAssertNil(ChatMotion.disclosure(reduceMotion: true))
+        XCTAssertNil(ChatMotion.composerChrome(reduceMotion: true))
+        XCTAssertNil(ChatMotion.scrollToLatest(reduceMotion: true))
+        XCTAssertNil(ChatMotion.streamingFollow(reduceMotion: true))
+        XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
+    }
+
+    func testCurvesKeepTheirUnreducedTiming() {
+        XCTAssertEqual(ChatMotion.press(duration: 0.2, reduceMotion: false), .smooth(duration: 0.2, extraBounce: 0))
+        XCTAssertEqual(ChatMotion.quickState(reduceMotion: false), .easeInOut(duration: 0.16))
+        XCTAssertEqual(ChatMotion.disclosure(reduceMotion: false), .smooth(duration: 0.18, extraBounce: 0))
+        XCTAssertEqual(ChatMotion.composerChrome(reduceMotion: false), .smooth(duration: 0.22, extraBounce: 0))
+        XCTAssertEqual(ChatMotion.scrollToLatest(reduceMotion: false), .easeOut(duration: 0.20))
+        XCTAssertEqual(ChatMotion.streamingFollow(reduceMotion: false), .easeOut(duration: 0.15))
+        XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
     }
 }

@@ -64,6 +64,7 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "archive session", method: "POST", endpoint: .archiveSession, path: "/api/session/archive"),
             .init(name: "branch session", method: "POST", endpoint: .branchSession, path: "/api/session/branch"),
             .init(name: "compress session", method: "POST", endpoint: .compressSession, path: "/api/session/compress"),
+            .init(name: "clear session", method: "POST", endpoint: .clearSession, path: "/api/session/clear"),
             .init(name: "undo session", method: "POST", endpoint: .undoSession, path: "/api/session/undo"),
             .init(name: "retry session", method: "POST", endpoint: .retrySession, path: "/api/session/retry"),
             .init(name: "truncate session", method: "POST", endpoint: .truncateSession, path: "/api/session/truncate"),
@@ -87,6 +88,13 @@ final class ContractReadinessTests: XCTestCase {
                 endpoint: .chatStream(streamID: "stream-123"),
                 path: "/api/chat/stream",
                 query: ["stream_id": "stream-123"]
+            ),
+            .init(
+                name: "chat stream replay",
+                method: "GET",
+                endpoint: .chatStream(streamID: "stream-123", replayAfterSeq: 4),
+                path: "/api/chat/stream",
+                query: ["stream_id": "stream-123", "replay": "1", "after_seq": "4"]
             ),
             .init(
                 name: "chat cancel",
@@ -222,6 +230,22 @@ final class ContractReadinessTests: XCTestCase {
             .init(name: "cron update", method: "POST", endpoint: .cronUpdate, path: "/api/crons/update"),
             .init(name: "cron delete", method: "POST", endpoint: .cronDelete, path: "/api/crons/delete"),
             .init(name: "cron run", method: "POST", endpoint: .cronRun, path: "/api/crons/run"),
+            // Same path as the POST above, different operation: GET reads one
+            // past run's output.
+            .init(
+                name: "cron run detail",
+                method: "GET",
+                endpoint: .cronRunDetail(jobID: "job-123", filename: "2026-09-03T07-00-00.md"),
+                path: "/api/crons/run",
+                query: ["job_id": "job-123", "filename": "2026-09-03T07-00-00.md"]
+            ),
+            .init(
+                name: "cron history",
+                method: "GET",
+                endpoint: .cronHistory(jobID: "job-123", offset: 50, limit: 50),
+                path: "/api/crons/history",
+                query: ["job_id": "job-123", "offset": "50", "limit": "50"]
+            ),
             .init(name: "cron pause", method: "POST", endpoint: .cronPause, path: "/api/crons/pause"),
             .init(name: "cron resume", method: "POST", endpoint: .cronResume, path: "/api/crons/resume"),
             .init(name: "cron status all", method: "GET", endpoint: .cronStatus(jobID: nil), path: "/api/crons/status"),
@@ -245,6 +269,7 @@ final class ContractReadinessTests: XCTestCase {
                 endpoint: .cronDeliveryOptions,
                 path: "/api/crons/delivery-options"
             ),
+            .init(name: "cron recent", method: "GET", endpoint: .cronRecent, path: "/api/crons/recent"),
             .init(name: "memory", method: "GET", endpoint: .memory, path: "/api/memory"),
             .init(name: "memory write", method: "POST", endpoint: .memoryWrite, path: "/api/memory/write"),
             .init(name: "skills", method: "GET", endpoint: .skills, path: "/api/skills"),

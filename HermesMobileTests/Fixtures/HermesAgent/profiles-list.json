@@ -1,0 +1,44 @@
+{
+  "bot_mode_protocol" : true,
+  "profiles" : [
+    {
+      "canonical_session" : {
+        "id" : "20260916_133600_3b1e0b",
+        "last_active" : 1790131994.38938,
+        "message_count" : 33,
+        "preview" : "fixture-redacted",
+        "resolved_id" : "20260916_133600_3b1e0b",
+        "root_title" : "fixture-redacted",
+        "started_at" : 1789580160.646865,
+        "title" : "fixture-redacted"
+      },
+      "description" : "fixture-redacted",
+      "display_name" : "fixture-redacted",
+      "has_avatar" : false,
+      "is_default" : false,
+      "last_session" : null,
+      "model" : "fixture-redacted",
+      "name" : "inbox-triage",
+      "path" : "/fixture/path",
+      "previous_names" : [],
+      "provider" : "fixture-redacted",
+      "role" : null,
+      "skill_count" : 58,
+      "ui_meta" : {
+        "hermes-bots" : {
+          "color" : "fixture-redacted",
+          "custom" : true,
+          "hidden" : true,
+          "imageKind" : "fixture-redacted",
+          "pinned" : false,
+          "shape" : "fixture-redacted",
+          "title" : "fixture-redacted"
+        }
+      },
+      "ui_meta_revisions" : {
+        "hermes-bots" : 6
+      },
+      "worker_session" : null
+    }
+  ]
+}

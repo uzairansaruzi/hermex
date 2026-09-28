@@ -60,6 +60,13 @@ struct SessionNavigationState: Equatable {
         }
     }
 
+    /// Explicit list navigation must also discard the previous restore target.
+    mutating func openSessionList() {
+        rootRevision += 1
+        clearDestination()
+        lastSelectedSessionID = nil
+    }
+
     mutating func clearDestination() {
         destination = nil
         newChatSessionID = nil
@@ -147,5 +154,27 @@ enum SessionNavigationPersistence {
         } else {
             defaults.removeObject(forKey: key)
         }
+    }
+}
+
+/// Device-local last-seen server timestamps for session rows. The server URL
+/// scopes equal session IDs on different configured servers independently.
+struct SessionUnreadStore {
+    var defaults: UserDefaults = .standard
+
+    private func key(for server: URL) -> String {
+        "session-inbox-seen." + server.absoluteString
+    }
+
+    func load(for server: URL) -> [String: Double] {
+        defaults.dictionary(forKey: key(for: server)) as? [String: Double] ?? [:]
+    }
+
+    func save(_ seen: [String: Double], for server: URL) {
+        defaults.set(seen, forKey: key(for: server))
+    }
+
+    func remove(for server: URL) {
+        defaults.removeObject(forKey: key(for: server))
     }
 }

@@ -8,6 +8,11 @@ enum HermesDeepLink {
 
     static let sessionHost = "session"
 
+    /// Host for the one bot route (#554): `hermes-agent://bot?server=…&connection=…&profile=…`.
+    /// The builder, parser and typed `BotDestination` live in `Features/Bots/BotDeepLink.swift`,
+    /// which is main-app only; this file is shared with the Live Activity widget.
+    static let botHost = "bot"
+
     /// Host for the parameter-less "open the New Chat composer" deep link used by the
     /// New Chat App Intent (issue #337). Mirrors the share extension's host-based routing
     /// so the intent can reuse `ContentView.handleOpenURL` rather than inventing a new path.

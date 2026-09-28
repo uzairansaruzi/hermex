@@ -23,6 +23,23 @@ struct ScheduledSessionGroups: Equatable {
     let scheduled: [SessionSummary]
     let totalScheduledCount: Int
 
+    /// Splits the visible rows in one pass, keeping their order: cron rows go
+    /// to `scheduled` unless archived, everything else to `ordinary`.
+    init(partitioning visible: [SessionSummary], totalScheduledCount: Int) {
+        var ordinary: [SessionSummary] = []
+        var scheduled: [SessionSummary] = []
+        for session in visible {
+            if session.isCronSession {
+                if session.archived != true { scheduled.append(session) }
+            } else {
+                ordinary.append(session)
+            }
+        }
+        self.ordinary = ordinary
+        self.scheduled = scheduled
+        self.totalScheduledCount = totalScheduledCount
+    }
+
     var scheduledPreview: [SessionSummary] {
         Array(scheduled.prefix(5))
     }
@@ -79,16 +96,35 @@ final class SessionListViewModel {
     /// server omits the field — the Archived entry stays hidden then.
     private(set) var archivedCount: Int?
 
+    /// Attention state per streaming session, refreshed on the same tick that
+    /// already checks stream liveness. Only sessions with an active stream ever
+    /// have an entry, and the map is reassigned only when a value actually
+    /// changes so rows do not invalidate on every poll tick.
+    private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
+    private(set) var seenMessageTimes: [String: Double]
+
     private(set) var remoteContentSearchSessionIDs: [String] = []
+    /// `match_preview` per content-matched session from the last search, so a
+    /// row can show why it matched. Empty against servers that omit the field.
+    private(set) var remoteContentSearchExcerpts: [String: String] = [:]
     private var activeRemoteSearchQuery: String?
     private var sessionOpenGeneration = 0
+    private var activeProfileGeneration = 0
 
     private let client: APIClient
     private let sessionMutator: SessionMutator
     private let server: URL
+    private let unreadStore: SessionUnreadStore
+    private var viewingSessionID: String?
+    private var returnedFromSessionIDs: Set<String> = []
+    private var firstReturnLoad: (revision: Int, sessionIDs: Set<String>)?
+    private var returnRevision = 0
+    private var activeLoadCount = 0
 
-    init(server: URL, client: APIClient? = nil) {
+    init(server: URL, client: APIClient? = nil, unreadStore: SessionUnreadStore = SessionUnreadStore()) {
         self.server = server
+        self.unreadStore = unreadStore
+        seenMessageTimes = unreadStore.load(for: server)
         let resolvedClient = client ?? APIClient(baseURL: server)
         self.client = resolvedClient
         self.sessionMutator = SessionMutator(client: resolvedClient)
@@ -145,13 +181,49 @@ final class SessionListViewModel {
         .filter { !$0.sessions.isEmpty }
     }
 
+    /// The rows the list shows for this search, project filter, and automated
+    /// visibility: local matches sorted, then loaded remote content matches.
     func visibleSessions(
-        searchText rawSearchText: String,
+        searchText: String,
         selectedProjectID: String?,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> [SessionSummary] {
+        visibleSessions(
+            among: sessions,
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedVisibility
+        )
+    }
+
+    /// The visible rows that are still streaming, for the list's active-row
+    /// monitor. Filters to streaming rows first (usually zero to two), so a
+    /// body pass does not filter and sort every session to find them.
+    func visibleActiveSessions(
+        searchText: String,
+        selectedProjectID: String?,
+        automatedVisibility: AutomatedSessionVisibility = .showAll
+    ) -> [SessionSummary] {
+        let activeSessions = sessions.filter(SessionRowView.isActiveStreaming)
+        guard !activeSessions.isEmpty else { return [] }
+        return visibleSessions(
+            among: activeSessions,
+            searchText: searchText,
+            selectedProjectID: selectedProjectID,
+            automatedVisibility: automatedVisibility
+        )
+    }
+
+    /// Visibility is decided per row, so running this over a subset of
+    /// `sessions` yields exactly the visible rows of that subset.
+    private func visibleSessions(
+        among candidates: [SessionSummary],
+        searchText rawSearchText: String,
+        selectedProjectID: String?,
+        automatedVisibility: AutomatedSessionVisibility
+    ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
-        let baseSessions = sessions.filter { automatedVisibility.shows($0) }
+        let baseSessions = candidates.filter { automatedVisibility.shows($0) }
         let projectFilteredSessions = baseSessions.filter { session in
             guard let selectedProjectID else { return true }
             return session.projectId == selectedProjectID
@@ -187,20 +259,12 @@ final class SessionListViewModel {
         selectedProjectID: String?,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> ScheduledSessionGroups {
-        let ordinaryCandidates = visibleSessions(
-            searchText: searchText,
-            selectedProjectID: selectedProjectID,
-            automatedVisibility: automatedVisibility
-        )
-        let scheduledCandidates = visibleSessions(
-            searchText: searchText,
-            selectedProjectID: selectedProjectID,
-            automatedVisibility: automatedVisibility
-        )
-
-        return ScheduledSessionGroups(
-            ordinary: ordinaryCandidates.filter { !$0.isCronSession },
-            scheduled: scheduledCandidates.filter { $0.isCronSession && $0.archived != true },
+        ScheduledSessionGroups(
+            partitioning: visibleSessions(
+                searchText: searchText,
+                selectedProjectID: selectedProjectID,
+                automatedVisibility: automatedVisibility
+            ),
             totalScheduledCount: automatedVisibility.showsCron
                 ? sessions.filter { $0.isCronSession && $0.archived != true }.count
                 : 0
@@ -209,21 +273,41 @@ final class SessionListViewModel {
 
     @discardableResult
     func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
+        // Overlapping requests for the same return share its mark. A later
+        // return starts a new window, even if the prior load is still in flight.
+        let revision = returnRevision
+        let firstReturnedIDs = returnedFromSessionIDs
+        let inFlightIDs = firstReturnLoad?.revision == revision ? firstReturnLoad?.sessionIDs ?? [] : []
+        let returnedFromIDs = firstReturnedIDs.union(inFlightIDs)
+        returnedFromSessionIDs.removeAll()
+        if !firstReturnedIDs.isEmpty {
+            firstReturnLoad = (revision, firstReturnedIDs)
+        }
+        activeLoadCount += 1
         isLoading = true
         errorMessage = nil
         cacheErrorMessage = nil
         sessionLoadError = nil
         lastError = nil
-        defer { isLoading = false }
+        defer {
+            if !firstReturnedIDs.isEmpty && firstReturnLoad?.revision == revision {
+                firstReturnLoad = nil
+            }
+            activeLoadCount -= 1
+            isLoading = activeLoadCount > 0
+        }
 
         do {
             let response = try await client.sessions()
-            let visibleSessions = (response.sessions ?? [])
+            guard revision == returnRevision else { return false }
+            let allSessions = response.sessions ?? []
+            let visibleSessions = allSessions
                 .filter {
                     Self.nonEmpty($0.sessionId) != nil
                         && $0.archived != true
                         && $0.shouldAppearInSessionList
                 }
+            reconcileUnread(visibleSessions, allSessions: allSessions, returnedFromIDs: returnedFromIDs)
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 
@@ -238,6 +322,7 @@ final class SessionListViewModel {
             return true
         } catch {
             guard !isCancellationError(error) else { return false }
+            guard revision == returnRevision else { return false }
 
             lastError = error
             sessionLoadError = error
@@ -249,6 +334,9 @@ final class SessionListViewModel {
                         sessions = cachedSessions
                         isViewingCachedData = true
                         errorMessage = nil
+                        // Cached rows carry no live server state, so nothing can
+                        // still be waiting on the user here.
+                        clearAttentionStates()
                     } else {
                         isViewingCachedData = false
                         errorMessage = error.localizedDescription
@@ -272,16 +360,31 @@ final class SessionListViewModel {
 
         isLoadingActiveProfile = true
         activeProfileErrorMessage = nil
+        let generation = activeProfileGeneration
         defer { isLoadingActiveProfile = false }
 
         do {
             let response = try await client.profiles()
+            guard !Task.isCancelled, generation == activeProfileGeneration else { return }
             applyActiveProfile(response)
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard !Task.isCancelled, !isCancellationError(error),
+                  generation == activeProfileGeneration else { return }
 
             activeProfileErrorMessage = error.localizedDescription
         }
+    }
+
+    /// Adopts Settings' confirmed switch synchronously, before New Chat can run.
+    /// Earlier profile reads must not replace this newer server-confirmed selection.
+    func adoptDefaultProfileSelection(_ selection: DefaultProfileSelection) {
+        activeProfileGeneration += 1
+        let profile = profileOptions.first { $0.normalizedName == selection.name }
+        activeProfileName = selection.name
+        activeProfileDisplayName = selection.displayName
+        activeProfileModel = Self.nonEmpty(selection.defaultModel) ?? Self.nonEmpty(profile?.model)
+        activeProfileProvider = Self.nonEmpty(profile?.provider)
+        activeProfileErrorMessage = nil
     }
 
     func switchActiveProfile(_ profile: ProfileSummary) async -> Bool {
@@ -347,6 +450,7 @@ final class SessionListViewModel {
         let query = Self.normalizedSearchQuery(rawQuery)
         activeRemoteSearchQuery = query
         remoteContentSearchSessionIDs = []
+        remoteContentSearchExcerpts = [:]
         searchErrorMessage = nil
 
         guard !query.isEmpty, !isViewingCachedData else {
@@ -366,7 +470,9 @@ final class SessionListViewModel {
 
             guard !Task.isCancelled, activeRemoteSearchQuery == query else { return }
 
-            remoteContentSearchSessionIDs = contentMatchIDs(from: response.sessions ?? [])
+            let matches = contentMatches(from: response.sessions ?? [])
+            remoteContentSearchSessionIDs = matches.sessionIDs
+            remoteContentSearchExcerpts = matches.excerpts
             isSearchingRemoteSessions = false
         } catch {
             guard activeRemoteSearchQuery == query else { return }
@@ -375,14 +481,37 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return }
 
             remoteContentSearchSessionIDs = []
+            remoteContentSearchExcerpts = [:]
             searchErrorMessage = error.localizedDescription
             lastError = error
         }
     }
 
+    /// The excerpt to show under a row, paired with the query that produced it.
+    /// nil when the row did not match on content, when the search was cleared,
+    /// or when the server is older than `match_preview`.
+    ///
+    /// `searchText` is the query of the *screen* asking, not the view model's:
+    /// screens with their own search field (Scheduled sessions) share this view
+    /// model, and they must not inherit the sidebar's last excerpts. Same guard
+    /// `visibleSessions(searchText:selectedProjectID:)` applies to remote rows.
+    func searchExcerpt(for session: SessionSummary, searchText: String) -> SessionSearchExcerpt? {
+        let query = Self.normalizedSearchQuery(searchText)
+
+        guard !query.isEmpty, activeRemoteSearchQuery == query,
+              let sessionID = session.sessionId,
+              let text = remoteContentSearchExcerpts[sessionID]
+        else {
+            return nil
+        }
+
+        return SessionSearchExcerpt(text: text, query: query)
+    }
+
     func clearSearchResults() {
         activeRemoteSearchQuery = nil
         remoteContentSearchSessionIDs = []
+        remoteContentSearchExcerpts = [:]
         searchErrorMessage = nil
         isSearchingRemoteSessions = false
     }
@@ -418,21 +547,207 @@ final class SessionListViewModel {
             }
         }
 
+        return await refreshAttentionStates()
+    }
+
+    /// The attention state a row should show, or nil while nothing is pending.
+    func attentionState(for session: SessionSummary) -> SessionRowAttentionState? {
+        guard let sessionID = Self.nonEmpty(session.sessionId) else { return nil }
+        return attentionStatesBySessionID[sessionID]
+    }
+
+    /// A settled row is unread only when its server timestamp moved past the
+    /// last timestamp this device showed. No phone clock enters the comparison.
+    func isUnread(_ session: SessionSummary) -> Bool {
+        guard let sessionID = Self.nonEmpty(session.sessionId),
+              let timestamp = Self.messageTime(for: session),
+              let seen = seenMessageTimes[sessionID],
+              !SessionRowView.isActiveStreaming(session),
+              session.hasPendingUserMessage != true
+        else { return false }
+        return timestamp > seen
+    }
+
+    func canToggleUnread(_ session: SessionSummary) -> Bool {
+        Self.nonEmpty(session.sessionId) != nil
+            && Self.messageTime(for: session) != nil
+            && !SessionRowView.isActiveStreaming(session)
+            && session.hasPendingUserMessage != true
+    }
+
+    /// Every chat entry point selects a destination, so this one stamp covers
+    /// rows, deep links, push, App Intents and Live Activity navigation.
+    func beginViewing(_ session: SessionSummary) {
+        viewingSessionID = Self.nonEmpty(session.sessionId)
+        markSeen(session)
+    }
+
+    /// The next list load after a chat closes stamps its freshest server
+    /// timestamp if it succeeds, including a reply completed during that visit.
+    func noteReturn(from session: SessionSummary) {
+        guard let sessionID = Self.nonEmpty(session.sessionId) else { return }
+        if viewingSessionID == sessionID { viewingSessionID = nil }
+        returnedFromSessionIDs.insert(sessionID)
+        returnRevision &+= 1
+    }
+
+    func toggleUnread(_ session: SessionSummary) {
+        guard canToggleUnread(session),
+              let sessionID = Self.nonEmpty(session.sessionId),
+              let timestamp = Self.messageTime(for: session)
+        else { return }
+        seenMessageTimes[sessionID] = isUnread(session) ? timestamp : timestamp.nextDown
+        persistSeen()
+    }
+
+    private func markSeen(_ session: SessionSummary) {
+        guard let sessionID = Self.nonEmpty(session.sessionId),
+              let timestamp = Self.messageTime(for: session),
+              (seenMessageTimes[sessionID] ?? 0) < timestamp
+        else { return }
+        seenMessageTimes[sessionID] = timestamp
+        persistSeen()
+    }
+
+    private func reconcileUnread(
+        _ visibleSessions: [SessionSummary],
+        allSessions: [SessionSummary],
+        returnedFromIDs: Set<String>
+    ) {
+        let presentIDs = Set(allSessions.compactMap { Self.nonEmpty($0.sessionId) })
+        var updated = seenMessageTimes.filter { presentIDs.contains($0.key) }
+        for session in visibleSessions {
+            guard let sessionID = Self.nonEmpty(session.sessionId),
+                  let timestamp = Self.messageTime(for: session)
+            else { continue }
+            if updated[sessionID] == nil
+                || returnedFromIDs.contains(sessionID)
+                || viewingSessionID == sessionID {
+                updated[sessionID] = max(updated[sessionID] ?? timestamp, timestamp)
+            }
+        }
+        guard updated != seenMessageTimes else { return }
+        seenMessageTimes = updated
+        persistSeen()
+    }
+
+    private func persistSeen() {
+        unreadStore.save(seenMessageTimes, for: server)
+    }
+
+    private static func messageTime(for session: SessionSummary) -> Double? {
+        guard let timestamp = session.lastMessageAt, timestamp.isFinite, timestamp > 0 else { return nil }
+        return timestamp
+    }
+
+    /// One approval probe and one clarification probe per streaming row, on the
+    /// tick the caller already runs. Sessions without an active stream are never
+    /// probed, and there is no separate polling loop or timer. A row's two
+    /// probes go out together, so N streaming rows cost about N round trips per
+    /// tick instead of 2N.
+    private func refreshAttentionStates() async -> ActiveSessionStateRefreshResult {
+        let streamingSessions = sessions.filter { SessionRowView.isActiveStreaming($0) }
+        guard !streamingSessions.isEmpty else {
+            clearAttentionStates()
+            return .unchanged
+        }
+
+        var refreshed: [String: SessionRowAttentionState] = [:]
+
+        for session in streamingSessions {
+            guard let sessionID = Self.nonEmpty(session.sessionId) else { continue }
+
+            async let pendingApproval = client.approvalPending(sessionID: sessionID)
+            async let pendingClarification = client.clarifyPending(sessionID: sessionID)
+
+            // A failed probe is not evidence that nothing is pending, so it
+            // keeps what the last successful tick knew rather than letting the
+            // row fall back to "Working". The rule is deliberately simple: a
+            // previous `.approval` masks any clarification, so it carries no
+            // clarify knowledge, and a clarify probe that fails behind it
+            // resolves to nothing pending.
+            let previous = attentionStatesBySessionID[sessionID]
+            var hasPendingApproval = false
+            var hasPendingClarification = false
+            var probeErrors: [Error] = []
+
+            do {
+                let response = try await pendingApproval
+                hasPendingApproval = Self.hasPending(response.pending)
+            } catch {
+                probeErrors.append(error)
+                hasPendingApproval = previous == .approval
+            }
+
+            do {
+                let response = try await pendingClarification
+                hasPendingClarification = Self.hasPending(response.pending)
+            } catch {
+                probeErrors.append(error)
+                hasPendingClarification = previous == .input
+            }
+
+            for error in probeErrors {
+                guard !isCancellationError(error) else { return .unchanged }
+                if case APIError.unauthorized = error {
+                    lastError = error
+                    return .failed
+                }
+            }
+
+            refreshed[sessionID] = SessionRowAttentionState.resolve(
+                session: session,
+                hasPendingApproval: hasPendingApproval,
+                hasPendingClarification: hasPendingClarification
+            )
+        }
+
+        guard refreshed != attentionStatesBySessionID else { return .unchanged }
+        attentionStatesBySessionID = refreshed
         return .unchanged
     }
 
-    func loadSessionForDeepLink(id rawSessionID: String, modelContext: ModelContext? = nil) async -> SessionSummary? {
+    private static func hasPending(_ pending: PendingApproval?) -> Bool {
+        guard let pending else { return false }
+        return !pending.isEmpty
+    }
+
+    private static func hasPending(_ pending: PendingClarification?) -> Bool {
+        guard let pending else { return false }
+        return !pending.isEmpty
+    }
+
+    private func clearAttentionStates() {
+        guard !attentionStatesBySessionID.isEmpty else { return }
+        attentionStatesBySessionID = [:]
+    }
+
+    /// Attention state only means something for a row the server still reports
+    /// as streaming, so a reload that ends a stream drops that row's entry.
+    private func pruneAttentionStates() {
+        guard !attentionStatesBySessionID.isEmpty else { return }
+
+        let streamingSessionIDs = Set(sessions.compactMap { session -> String? in
+            guard SessionRowView.isActiveStreaming(session) else { return nil }
+            return Self.nonEmpty(session.sessionId)
+        })
+        let pruned = attentionStatesBySessionID.filter { streamingSessionIDs.contains($0.key) }
+        guard pruned != attentionStatesBySessionID else { return }
+        attentionStatesBySessionID = pruned
+    }
+
+    func loadSessionForDeepLink(id rawSessionID: String, modelContext: ModelContext? = nil, isPush: Bool = false) async -> SessionSummary? {
         let sessionID = rawSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sessionID.isEmpty else { return nil }
 
-        if let loadedSession = sessions.first(where: { $0.sessionId == sessionID }) {
+        if !isPush, let loadedSession = sessions.first(where: { $0.sessionId == sessionID }) {
             return loadedSession
         }
 
         actionErrorMessage = nil
         lastError = nil
 
-        if let modelContext {
+        if !isPush, let modelContext {
             do {
                 if let cachedSession = try CacheStore.cachedSessions(serverURL: server, in: modelContext)
                     .first(where: { $0.sessionId == sessionID }) {
@@ -445,11 +760,14 @@ final class SessionListViewModel {
 
         do {
             let response = try await client.session(id: sessionID, includeMessages: false, messageLimit: nil)
+            guard !Task.isCancelled else { return nil }
             guard let sessionDetail = response.session else {
+                if isPush { return nil }
                 actionErrorMessage = String(localized: "The server did not return the linked session.")
                 return nil
             }
 
+            if isPush, sessionDetail.sessionId != sessionID { return nil }
             let session = SessionSummary(from: sessionDetail)
             if session.archived != true,
                session.shouldAppearInSessionList,
@@ -467,6 +785,8 @@ final class SessionListViewModel {
 
             return session
         } catch {
+            guard !Task.isCancelled else { return nil }
+            if isPush, case APIError.http(404, _) = error { return nil }
             lastError = error
             actionErrorMessage = error.localizedDescription
             return nil
@@ -995,9 +1315,9 @@ final class SessionListViewModel {
         }
     }
 
-    /// Creates a new session. `profile` pins it to a specific server profile (the "New Chat
-    /// in <Profile>" App Intent, #339); nil keeps the legacy behavior of letting the server
-    /// use its active profile (the "+" button / plain New Chat).
+    /// Creates a session in the explicit App Intent profile or the sidebar's selected
+    /// profile. The server supplies that profile's model and last workspace. With
+    /// neither profile known, preserve the cookie-scoped workspace lookup.
     func createSession(modelContext: ModelContext? = nil, profile: String? = nil) async -> SessionSummary? {
         isCreatingSession = true
         actionErrorMessage = nil
@@ -1005,13 +1325,17 @@ final class SessionListViewModel {
         defer { isCreatingSession = false }
 
         do {
-            let workspaces = try await client.workspaces()
-            let workspace = workspaces.last ?? workspaces.workspaces?.compactMap(\.path).first
+            let requestedProfile = Self.nonEmpty(profile) ?? Self.nonEmpty(activeProfileName)
+            var workspace: String?
+            if requestedProfile == nil {
+                let workspaces = try await client.workspaces()
+                workspace = workspaces.last ?? workspaces.workspaces?.compactMap(\.path).first
+            }
             let response = try await client.createSession(
                 workspace: workspace,
                 model: nil,
                 modelProvider: nil,
-                profile: Self.nonEmpty(profile)
+                profile: requestedProfile
             )
 
             guard let sessionDetail = response.session else {
@@ -1119,6 +1443,7 @@ final class SessionListViewModel {
         guard let animation else {
             sessions = newSessions
             archivedCount = newArchivedCount
+            pruneAttentionStates()
             return
         }
 
@@ -1126,9 +1451,14 @@ final class SessionListViewModel {
             sessions = newSessions
             archivedCount = newArchivedCount
         }
+        pruneAttentionStates()
     }
 
-    private func contentMatchIDs(from sessions: [SessionSummary]) -> [String] {
+    /// Content-match rows narrowed to sessions the list can actually show, in
+    /// server order, plus each row's excerpt when the server sent one.
+    private func contentMatches(
+        from sessions: [SessionSummary]
+    ) -> (sessionIDs: [String], excerpts: [String: String]) {
         let locallyVisibleSessionIDs = Set(self.sessions.compactMap { session -> String? in
             guard session.archived != true, let sessionID = session.sessionId, !sessionID.isEmpty else {
                 return nil
@@ -1137,19 +1467,28 @@ final class SessionListViewModel {
             return sessionID
         })
         var seenSessionIDs = Set<String>()
+        var sessionIDs: [String] = []
+        var excerpts: [String: String] = [:]
 
-        return sessions.compactMap { session in
+        for session in sessions {
             guard session.matchType?.lowercased() == "content",
                   let sessionID = session.sessionId,
                   locallyVisibleSessionIDs.contains(sessionID),
                   !seenSessionIDs.contains(sessionID)
             else {
-                return nil
+                continue
             }
 
             seenSessionIDs.insert(sessionID)
-            return sessionID
+            sessionIDs.append(sessionID)
+
+            if let preview = session.matchPreview?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !preview.isEmpty {
+                excerpts[sessionID] = preview
+            }
         }
+
+        return (sessionIDs, excerpts)
     }
 
     private func timestamp(for session: SessionSummary) -> Double {
@@ -1185,6 +1524,7 @@ final class SessionListViewModel {
         fallbackProfile: ProfileSummary? = nil,
         fallbackDefaultModel: String? = nil
     ) {
+        activeProfileGeneration += 1
         profileOptions = response.profiles ?? profileOptions
 
         // Tolerant: only a present field moves the flag, so an older server

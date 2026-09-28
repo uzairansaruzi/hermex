@@ -1,6 +1,7 @@
 import XCTest
 import AVFoundation
 import ImageIO
+import Observation
 import SwiftData
 import UIKit
 import UniformTypeIdentifiers
@@ -1068,6 +1069,116 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(text, "Summarize this\n\n[Attached files: /tmp/workspace/report.pdf]")
     }
 
+    func testChatMessageTextSynthesizesUploadedFormForEmptyDraft() {
+        // Attachment-only send (#403): with no typed draft the message text is
+        // synthesized exactly like the web UI (`static/messages.js`), since the
+        // server requires non-empty text.
+        let image = PendingAttachment(
+            name: "photo.jpg",
+            path: "/tmp/workspace/photo.jpg",
+            mime: "image/jpeg",
+            size: 45_678,
+            isImage: true,
+            thumbnailData: nil
+        )
+        let file = PendingAttachment(
+            name: "report.pdf",
+            path: "/tmp/workspace/report.pdf",
+            mime: "application/pdf",
+            size: 1234,
+            isImage: false,
+            thumbnailData: nil
+        )
+
+        XCTAssertEqual(
+            PendingAttachment.chatMessageText(draft: "", attachments: [image, file]),
+            "I've uploaded 2 file(s): /tmp/workspace/photo.jpg, /tmp/workspace/report.pdf"
+        )
+        XCTAssertEqual(
+            PendingAttachment.chatMessageText(draft: "   ", attachments: [file]),
+            "I've uploaded 1 file(s): /tmp/workspace/report.pdf",
+            "Whitespace-only draft counts as attachment-only"
+        )
+        XCTAssertEqual(
+            PendingAttachment.chatMessageText(draft: "", attachments: []),
+            "",
+            "No attachments: the empty draft passes through unchanged"
+        )
+    }
+
+    @MainActor
+    func testSendMessageWithEmptyDraftAndStagedAttachmentSendsSynthesizedMessage() async throws {
+        let streamClient = SpySSEStreamingClient()
+        var startMessage: String?
+        var startAttachments: [[String: Any]]?
+
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/upload":
+                return apiTestJSONResponse("""
+                {
+                  "filename": "photo.jpg",
+                  "path": "/tmp/workspace/photo.jpg",
+                  "size": 45678,
+                  "mime": "image/jpeg",
+                  "is_image": true
+                }
+                """, for: request)
+            case "/api/chat/start":
+                let body = try apiTestJSONBody(from: request)
+                startMessage = body["message"] as? String
+                startAttachments = body["attachments"] as? [[String: Any]]
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-403"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        // Stage one attachment through the real coordinator (mocked upload).
+        let staged = await viewModel.uploadAttachment(
+            data: Data("fake-jpeg".utf8),
+            filename: "photo.jpg"
+        )
+        try XCTUnwrap(staged)
+        XCTAssertEqual(viewModel.pendingAttachments.count, 1)
+
+        // Empty draft + staged attachment: previously rejected, now sends.
+        let didStart = await viewModel.sendMessage("")
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(startMessage, "I've uploaded 1 file(s): /tmp/workspace/photo.jpg")
+        XCTAssertEqual(viewModel.activeStreamID, "stream-403")
+
+        // Optimistic bubble shows the synthesized text plus the attachment.
+        let optimistic = try XCTUnwrap(viewModel.messages.first)
+        XCTAssertEqual(optimistic.role, "user")
+        XCTAssertEqual(optimistic.content, "I've uploaded 1 file(s): /tmp/workspace/photo.jpg")
+        XCTAssertEqual(optimistic.attachments?.count, 1)
+        XCTAssertEqual(optimistic.attachments?.first?.path, "/tmp/workspace/photo.jpg")
+        XCTAssertEqual(try XCTUnwrap(startAttachments)?.count, 1)
+
+        // The composer strip is empty after a successful send.
+        XCTAssertTrue(viewModel.pendingAttachments.isEmpty)
+    }
+
+    @MainActor
+    func testSendMessageWithEmptyDraftAndNoAttachmentsStillReturnsFalse() async {
+        let viewModel = try? makeViewModel { _ in
+            XCTFail("No request should be made for an empty draft with no attachments")
+            throw URLError(.badURL)
+        }
+
+        let didStart = await viewModel?.sendMessage("") ?? false
+
+        XCTAssertFalse(didStart)
+    }
+
     @MainActor
     func testSubmitGoalAttachesToServerStartedKickoffStream() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -1409,6 +1520,146 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testPendingApprovalRemainsAnswerableAfterChatStreamEnds() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        var responded = false
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/approval/respond":
+                responded = true
+                return apiTestJSONResponse(#"{"ok":true,"choice":"once"}"#, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run setup")
+        XCTAssertTrue(didStart)
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(approvalId: "approval-1", command: "make install"),
+            pendingCount: 1
+        )))
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(pending: nil, pendingCount: nil)))
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+        XCTAssertEqual(approvalStreamClient.stopCount, 0)
+
+        let didRespond = await viewModel.respondToApproval(.once)
+        XCTAssertTrue(didRespond)
+        XCTAssertTrue(responded)
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertEqual(approvalStreamClient.stopCount, 1)
+    }
+
+    @MainActor
+    func testApprovalArrivingAfterChatStreamEndsIsShown() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/approval/respond":
+                return apiTestJSONResponse(#"{"ok":true,"choice":"once"}"#, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run setup")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(approvalStreamClient.stopCount, 0)
+
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(pending: nil, pendingCount: 0)))
+        XCTAssertEqual(approvalStreamClient.stopCount, 0)
+
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(approvalId: "approval-1", command: "make install"),
+            pendingCount: 1
+        )))
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+
+        let didRespond = await viewModel.respondToApproval(.once)
+        XCTAssertTrue(didRespond)
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertEqual(approvalStreamClient.stopCount, 1)
+    }
+
+    @MainActor
+    func testIdleSessionLoadsPendingApprovalAndClearsOnServerUpdate() async throws {
+        let approvalStreamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(approvalStreamClient: approvalStreamClient) { request in
+            switch request.url?.path {
+            case "/api/session/yolo":
+                return apiTestJSONResponse(#"{"ok":true,"yolo_enabled":false}"#, for: request)
+            case "/api/approval/pending":
+                return apiTestJSONResponse(
+                    #"{"pending":{"approval_id":"approval-1","command":"make install"},"pending_count":1}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.refreshApprovalBypassState()
+
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+        XCTAssertEqual(approvalStreamClient.startedURLs.count, 1)
+
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(pending: nil, pendingCount: 0)))
+        XCTAssertNil(viewModel.approvalPrompt)
+        XCTAssertEqual(approvalStreamClient.stopCount, 1)
+    }
+
+    @MainActor
+    func testSuspendingChatConnectionKeepsPendingApprovalVisible() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient
+        ) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+        }
+
+        let didStart = await viewModel.sendMessage("Run setup")
+        XCTAssertTrue(didStart)
+        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
+            pending: PendingApproval(approvalId: "approval-1", command: "make install"),
+            pendingCount: 1
+        )))
+
+        viewModel.suspendStreamForBackground()
+
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+        XCTAssertEqual(approvalStreamClient.stopCount, 1)
+    }
+
+    @MainActor
     func testApprovalResponseDoesNotUseSyntheticDisplayIDWhenServerIdentifierMissing() async throws {
         let streamClient = SpySSEStreamingClient()
         let approvalStreamClient = SpySSEStreamingClient()
@@ -1694,6 +1945,57 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testApprovalFallbackFindsLateApprovalAfterEmptyIdleProbe() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let approvalStreamClient = SpySSEStreamingClient()
+        let approvalPendingRequests = LockedCounter()
+        let approvalAppeared = expectation(description: "late approval appeared")
+        let pollingIntervals = ChatPollingIntervals(
+            approvalNanoseconds: 10_000_000,
+            clarificationNanoseconds: 100_000_000,
+            backgroundNanoseconds: 100_000_000
+        )
+        let viewModel = try makeViewModel(
+            streamClient: streamClient,
+            approvalStreamClient: approvalStreamClient,
+            pollingIntervals: pollingIntervals
+        ) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/approval/pending":
+                if approvalPendingRequests.increment() == 1 {
+                    return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
+                }
+                return apiTestJSONResponse(
+                    #"{"pending":{"approval_id":"approval-1","command":"make install"},"pending_count":1}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Run setup")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.activeStreamID)
+
+        withObservationTracking {
+            _ = viewModel.approvalPrompt
+        } onChange: {
+            approvalAppeared.fulfill()
+        }
+        approvalStreamClient.emit(.transportError("approval stream failed"))
+        await fulfillment(of: [approvalAppeared], timeout: 2)
+
+        XCTAssertGreaterThanOrEqual(approvalPendingRequests.count, 2)
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
+        viewModel.cleanupPollingTasks()
+    }
+
+    @MainActor
     func testCleanupPollingTasksCancelsStoredPollingTasks() async throws {
         let streamClient = SpySSEStreamingClient()
         let approvalStreamClient = SpySSEStreamingClient()
@@ -1871,18 +2173,28 @@ final class ChatViewModelSendTests: XCTestCase {
             duration: nil,
             isError: nil
         )))
+        let presentationID = try XCTUnwrap(viewModel.liveToolCalls.first?.presentationID)
+        XCTAssertTrue(viewModel.liveToolCalls.first?.id.hasPrefix("live-tool-") == true)
+
         streamClient.emit(.toolCompleted(ToolStreamEvent(
             eventType: "tool.completed",
             name: "read_file",
             preview: "Read PROJECT_SPEC.md",
             args: ["path": .string("PROJECT_SPEC.md")],
             duration: 0.25,
-            isError: false
+            isError: false,
+            stableID: "call-read-file"
         )))
         streamClient.emit(.token("First live token."))
 
         XCTAssertEqual(viewModel.liveReasoningText, "I need to inspect the workspace.")
         XCTAssertEqual(viewModel.liveToolCalls.count, 1)
+        XCTAssertEqual(viewModel.liveToolCalls.first?.id, "call-read-file")
+        XCTAssertEqual(viewModel.liveToolCalls.first?.presentationID, presentationID)
+        XCTAssertEqual(
+            ToolCallSummaryFormatter.entries(for: viewModel.liveToolCalls, isLive: true).first?.id,
+            presentationID
+        )
         XCTAssertEqual(viewModel.liveToolCalls.first?.name, "read_file")
         XCTAssertEqual(viewModel.liveToolCalls.first?.isCompleted, true)
         XCTAssertEqual(viewModel.messages.compactMap(\.role), ["user", "assistant"])
@@ -1914,7 +2226,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.messageId, liveAssistantID)
         XCTAssertEqual(viewModel.messages.last?.content, "")
         XCTAssertEqual(viewModel.reasoningAnchorMessageID, liveAssistantID)
-        XCTAssertFalse(viewModel.hasStreamingAssistantMessageContent)
 
         streamClient.emit(.toolStarted(ToolStreamEvent(
             eventType: "tool.started",
@@ -1936,7 +2247,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.streamingAssistantMessageID, liveAssistantID)
         XCTAssertEqual(viewModel.messages.last?.messageId, liveAssistantID)
         XCTAssertEqual(viewModel.messages.last?.content, "Live answer starts now.")
-        XCTAssertTrue(viewModel.hasStreamingAssistantMessageContent)
     }
 
     @MainActor
@@ -2308,6 +2618,80 @@ final class ChatViewModelSendTests: XCTestCase {
             XCTAssertEqual(replayQueryItems.first(where: { $0.name == "replay" })?.value, "1")
             XCTAssertEqual(replayQueryItems.first(where: { $0.name == "after_seq" })?.value, "9")
             XCTAssertEqual(reopenedViewModel.messages.compactMap(\.content), ["Keep working", "Partial live answer."])
+        }
+    }
+
+    @MainActor
+    func testStreamTicksAndKeystrokesReuseTheStoredReasoningGroups() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Reasoning",
+                    "messages": [
+                      {"role": "user", "content": "First question", "message_id": "user-1"},
+                      {
+                        "role": "assistant",
+                        "content": "First answer.",
+                        "reasoning": "Work through the first question.",
+                        "message_id": "assistant-1"
+                      },
+                      {"role": "user", "content": "Second question", "message_id": "user-2"},
+                      {
+                        "role": "assistant",
+                        "content": "Second answer.",
+                        "reasoning": "Work through the second question.",
+                        "message_id": "assistant-2"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let groups = viewModel.displayedReasoningGroups
+        XCTAssertEqual(groups.map(\.text), ["Work through the first question.", "Work through the second question."])
+        XCTAssertEqual(viewModel.reasoningGroupsByAnchorID["assistant-2"]?.map(\.text), ["Work through the second question."])
+
+        // A keystroke-only ChatView pass reads the groups again; it must get the stored buffer back.
+        XCTAssertTrue(sharesStorage(groups, viewModel.displayedReasoningGroups))
+
+        let didStart = await viewModel.sendMessage("Third question")
+        XCTAssertTrue(didStart)
+        let probe = ObservationChangeProbe()
+        withObservationTracking {
+            _ = viewModel.displayedReasoningGroups
+            _ = viewModel.reasoningGroupsByAnchorID
+        } onChange: {
+            probe.increment()
+        }
+
+        streamClient.emit(.token("Streaming the third answer"))
+
+        XCTAssertEqual(viewModel.messages.last?.content, "Streaming the third answer")
+        XCTAssertEqual(probe.value, 0, "a stream tick that leaves the cards unchanged must not invalidate them")
+        XCTAssertTrue(sharesStorage(groups, viewModel.displayedReasoningGroups))
+    }
+
+    private func sharesStorage(_ lhs: [ReasoningGroup], _ rhs: [ReasoningGroup]) -> Bool {
+        lhs.withUnsafeBufferPointer { lhsBuffer in
+            rhs.withUnsafeBufferPointer { $0.baseAddress == lhsBuffer.baseAddress }
         }
     }
 
@@ -2808,6 +3192,7 @@ final class ChatViewModelSendTests: XCTestCase {
             pendingCount: 1
         )))
         streamClient.emit(.token("Same"))
+        streamClient.emit(.approvalPending(ApprovalPendingResponse(pending: nil, pendingCount: 0)))
 
         let completedSession = try makeSessionDetail("""
         {
@@ -3549,7 +3934,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testPrepareInitialMessageLoadPrimesCacheWithoutStartingNetwork() throws {
+    func testPrepareInitialMessageLoadSendsTranscriptRequestThatOnlyTheInitialLoadApplies() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
         try CacheStore.cacheMessages(
@@ -3562,20 +3947,141 @@ final class ChatViewModelSendTests: XCTestCase {
             in: context
         )
 
+        let sessionRequests = LockedCounter()
+        let sessionRequestStarted = expectation(description: "session request started")
+        let releaseSessionResponse = DispatchSemaphore(value: 0)
         let viewModel = try makeViewModel { request in
-            XCTFail("Cache preparation must not start a request: \(request.url?.absoluteString ?? "nil")")
-            throw URLError(.badURL)
+            XCTAssertEqual(request.url?.path, "/api/session")
+            _ = sessionRequests.increment()
+            sessionRequestStarted.fulfill()
+            XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
+            return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
         }
+        defer { releaseSessionResponse.signal() }
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
 
+        // The request goes out during the push transition while the cache paints.
+        await fulfillment(of: [sessionRequestStarted], timeout: 2)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question", "Cached answer"])
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
+
+        // A second first-pass preparation keeps the request already in flight.
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        releaseSessionResponse.signal()
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+        XCTAssertEqual(sessionRequests.count, 1)
     }
 
     @MainActor
-    func testPrepareInitialMessageLoadBoundsLargeCachedTranscriptToNewestPage() throws {
+    func testLoadMessagesWithoutInitialPrefetchDiscardsItAndRefetches() async throws {
+        let context = try makeContext()
+        let sessionRequests = LockedCounter()
+        let prefetchStarted = expectation(description: "prefetch started")
+        let releasePrefetch = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            if sessionRequests.increment() == 1 {
+                prefetchStarted.fulfill()
+                _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
+                return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Stale answer"), for: request)
+            }
+            return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
+        }
+        defer { releasePrefetch.signal() }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        await fulfillment(of: [prefetchStarted], timeout: 2)
+
+        // Any other load (refresh, reconnect, after a mutation) must not apply a
+        // response requested before it.
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+
+        // Nor may the initial load, which runs later, reuse the discarded prefetch.
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+        XCTAssertEqual(sessionRequests.count, 3)
+    }
+
+    @MainActor
+    func testCleanupPollingTasksDiscardsTheInitialPrefetch() async throws {
+        let context = try makeContext()
+        let sessionRequests = LockedCounter()
+        let prefetchStarted = expectation(description: "prefetch started")
+        let releasePrefetch = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            if sessionRequests.increment() == 1 {
+                prefetchStarted.fulfill()
+                _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
+                return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Stale answer"), for: request)
+            }
+            return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
+        }
+        defer { releasePrefetch.signal() }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        await fulfillment(of: [prefetchStarted], timeout: 2)
+
+        // Leaving the chat (ChatView.onDisappear) drops the in-flight prefetch, so
+        // a later initial load on the same view model asks the server again.
+        viewModel.cleanupPollingTasks()
+        releasePrefetch.signal()
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
+        XCTAssertEqual(sessionRequests.count, 2)
+    }
+
+    @MainActor
+    func testInitialLoadRefetchesWhenAStreamStartedAfterThePrefetch() async throws {
+        let context = try makeContext()
+        let streamClient = SpySSEStreamingClient()
+        let sessionRequests = LockedCounter()
+        let prefetchStarted = expectation(description: "prefetch started")
+        let releasePrefetch = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            case "/api/session":
+                if sessionRequests.increment() == 1 {
+                    prefetchStarted.fulfill()
+                    _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
+                    return apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Before send"), for: request)
+                }
+                return apiTestJSONResponse(
+                    Self.initialLoadSessionJSON(content: "After send", activeStreamID: "stream-123"),
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        defer { releasePrefetch.signal() }
+
+        viewModel.prepareInitialMessageLoad(modelContext: context)
+        await fulfillment(of: [prefetchStarted], timeout: 2)
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        releasePrefetch.signal()
+
+        // The prefetch predates the stream, so it would read as the stream having
+        // ended; the initial load asks again instead.
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+
+        XCTAssertEqual(sessionRequests.count, 2)
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+        XCTAssertTrue(viewModel.messages.contains { $0.content == "After send" })
+    }
+
+    @MainActor
+    func testPrepareInitialMessageLoadBoundsLargeCachedTranscriptToNewestPage() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
         let cachedMessages = (0..<75).map { index in
@@ -3594,8 +4100,7 @@ final class ChatViewModelSendTests: XCTestCase {
         )
 
         let viewModel = try makeViewModel { request in
-            XCTFail("Cache preparation must not start a request: \(request.url?.absoluteString ?? "nil")")
-            throw URLError(.badURL)
+            apiTestJSONResponse(Self.initialLoadSessionJSON(content: "Fresh answer"), for: request)
         }
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
@@ -3605,6 +4110,24 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.content, "Cached message 74")
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
+
+        // Settle the transcript request prepare sent so it cannot outlive this test.
+        await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
+    }
+
+    private static func initialLoadSessionJSON(content: String, activeStreamID: String? = nil) -> String {
+        let activeStream = activeStreamID.map { #", "active_stream_id": "\#($0)""# } ?? ""
+        return """
+        {
+          "session": {
+            "session_id": "session-abc",
+            "title": "Planning"\(activeStream),
+            "messages": [
+              {"role": "assistant", "content": "\(content)", "timestamp": 1770000100, "message_id": "fresh-assistant"}
+            ]
+          }
+        }
+        """
     }
 
     @MainActor
@@ -3692,12 +4215,12 @@ final class ChatViewModelSendTests: XCTestCase {
             """, for: request)
         }
 
-        XCTAssertEqual(viewModel.cacheFirstReconcileScrollToken, 0)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
         await viewModel.loadMessages(modelContext: context)
 
         // The cache-first reconcile fired exactly once so the view can snap back to the
         // bottom as the taller server transcript replaces the lighter cached render.
-        XCTAssertEqual(viewModel.cacheFirstReconcileScrollToken, 1)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
     }
 
     @MainActor
@@ -3726,7 +4249,7 @@ final class ChatViewModelSendTests: XCTestCase {
         await viewModel.loadMessages(modelContext: context)
 
         // No cache was rendered first, so there is nothing to re-pin and the token stays put.
-        XCTAssertEqual(viewModel.cacheFirstReconcileScrollToken, 0)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
     }
 
     @MainActor
@@ -5687,8 +6210,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(reopenedStreamClient.startedURLs.count, 1)
         let reconnectURL = try XCTUnwrap(reopenedStreamClient.startedURLs.last)
         let reconnectQueryItems = URLComponents(url: reconnectURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertNil(reconnectQueryItems.first(where: { $0.name == "replay" }))
-        XCTAssertNil(reconnectQueryItems.first(where: { $0.name == "after_seq" }))
+        XCTAssertEqual(reconnectQueryItems.first(where: { $0.name == "replay" })?.value, "1")
+        XCTAssertEqual(reconnectQueryItems.first(where: { $0.name == "after_seq" })?.value, "4")
         XCTAssertEqual(reopenedViewModel.activeStreamID, "stream-123")
         XCTAssertEqual(reopenedViewModel.liveReasoningText, "Planning the tiger story.")
         XCTAssertEqual(reopenedViewModel.liveToolCalls.count, 1)
@@ -5710,7 +6233,7 @@ final class ChatViewModelSendTests: XCTestCase {
     func testComposerConfigurationUsesSessionProfileDefaultBeforeSending() async throws {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
         let streamClient = SpySSEStreamingClient()
-        var requestPaths: [String] = []
+        let requestPaths = LockedStrings()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             sessionSummary: makeSession(model: nil, modelProvider: nil, profile: "work")
@@ -5786,15 +6309,15 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        XCTAssertEqual(requestPaths, [
-            "/api/profiles",
-            "/api/profile/switch",
-            "/api/models",
-            "/api/reasoning",
-            "/api/workspaces",
-            "/api/commands",
-            "/api/chat/start"
-        ])
+        // Config after the profile switch loads concurrently; the send follows it.
+        let paths = requestPaths.values
+        XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
+        XCTAssertEqual(
+            Set(paths.dropFirst(2).dropLast()),
+            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
+        )
+        XCTAssertEqual(paths.last, "/api/chat/start")
+        XCTAssertEqual(paths.count, 7)
     }
 
     @MainActor
@@ -6010,7 +6533,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
     @MainActor
     func testDraftSettingsRestoreStopsWhenSavedProfileSwitchFails() async throws {
-        var requestPaths: [String] = []
+        let requestPaths = LockedStrings()
         let viewModel = try makeViewModel(
             sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
         ) { request in
@@ -6078,8 +6601,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedProfileName, "work")
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
         XCTAssertEqual(viewModel.selectedWorkspacePath, "/tmp/workspace")
-        XCTAssertEqual(requestPaths.last, "/api/profile/switch")
-        XCTAssertFalse(requestPaths.contains("/api/session/update"))
+        XCTAssertEqual(requestPaths.values.last, "/api/profile/switch")
+        XCTAssertFalse(requestPaths.values.contains("/api/session/update"))
     }
 
     @MainActor
@@ -7139,6 +7662,43 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(streamClient.startedURLs.first?.path, "/api/chat/stream")
     }
 
+    /// #406 fallback ordering: an older server omits `pending_started_at`, so the
+    /// run clock falls back to the latest user turn rather than the moment this
+    /// session was opened.
+    @MainActor
+    func testLoadMessagesWithoutPendingStartedAtSeedsRunStartFromLatestUserMessage() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-123",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Keep working",
+                        "timestamp": 1770000100,
+                        "message_id": "user-1"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+        XCTAssertEqual(viewModel.activeRunStartedAt, Date(timeIntervalSince1970: 1_770_000_100))
+    }
+
     @MainActor
     func testLoadMessagesDoesNotFailForWebUICreatedSessionDecodeDrift() async throws {
         let viewModel = try makeViewModel { request in
@@ -8088,6 +8648,273 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testClearSlashCommandEmptiesTranscriptTitleAndCacheAfterServerClear() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        try CacheStore.cacheMessages(
+            [
+                ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user"),
+                ChatMessage(role: "assistant", content: "Cached answer", timestamp: 1_770_000_002, messageId: "cached-assistant")
+            ],
+            serverURL: serverURL,
+            sessionID: "session-abc",
+            in: context
+        )
+
+        var requestPaths: [String] = []
+        let viewModel = try makeViewModel { request in
+            requestPaths.append(request.url?.path ?? "")
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/clear":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Untitled"
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertFalse(viewModel.messages.isEmpty)
+
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: context)
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(requestPaths, ["/api/session", "/api/session/clear"])
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(viewModel.displayTitle, "Untitled")
+        XCTAssertTrue(try CacheStore.cachedMessages(serverURL: serverURL, sessionID: "session-abc", in: context).isEmpty)
+    }
+
+    @MainActor
+    func testSendIsRefusedWhileClearIsInFlight() async throws {
+        let clearRequestStarted = expectation(description: "clear request reached the server")
+        let releaseClearResponse = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session/clear":
+                clearRequestStarted.fulfill()
+                releaseClearResponse.wait()
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "session": {"session_id": "session-abc", "title": "Untitled"}
+                }
+                """, for: request)
+            default:
+                XCTFail("A send during a clear must not reach \(request.url?.path ?? "unknown path").")
+                throw URLError(.badURL)
+            }
+        }
+
+        let clearTask = Task { await viewModel.clearConversationFromSlashCommand(modelContext: nil) }
+        await fulfillment(of: [clearRequestStarted], timeout: 5)
+
+        XCTAssertTrue(viewModel.isClearingConversation)
+        let didSend = await viewModel.sendMessage("Sneak this in")
+        XCTAssertFalse(didSend)
+        XCTAssertEqual(viewModel.sendErrorMessage, "Wait for the conversation to finish clearing.")
+
+        let secondClear = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+        XCTAssertEqual(secondClear, .unsupported(friendlyMessage: "Wait for the conversation to finish clearing."))
+
+        releaseClearResponse.signal()
+        let result = await clearTask.value
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertFalse(viewModel.isClearingConversation)
+    }
+
+    @MainActor
+    func testClearRefusalIsKnownBeforeConfirmingForCLISessions() async throws {
+        let webUIViewModel = try makeViewModel { request in
+            XCTFail("Reading the refusal must not call \(request.url?.path ?? "unknown path").")
+            throw URLError(.badURL)
+        }
+        XCTAssertNil(webUIViewModel.clearConversationRefusal)
+
+        let cliViewModel = try makeViewModel(
+            sessionSummary: SessionSummary(sessionId: "session-abc", title: "Planning", isCliSession: true)
+        ) { request in
+            XCTFail("Reading the refusal must not call \(request.url?.path ?? "unknown path").")
+            throw URLError(.badURL)
+        }
+
+        XCTAssertEqual(
+            cliViewModel.clearConversationRefusal,
+            "Clearing the conversation is available for WebUI sessions only."
+        )
+    }
+
+    @MainActor
+    func testClearSlashCommandLeavesTranscriptIntactOnServerError() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/clear":
+                return apiTestJSONResponse("""
+                {
+                  "error": "Session not found"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+
+        XCTAssertEqual(result, .unsupported(friendlyMessage: "Session not found"))
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Old question"])
+        XCTAssertEqual(viewModel.displayTitle, "Planning")
+    }
+
+    @MainActor
+    func testClearSlashCommandLeavesTranscriptIntactWhenRequestThrows() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/clear":
+                throw URLError(.timedOut)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+
+        guard case .unsupported = result else {
+            return XCTFail("Expected a thrown request to surface as .unsupported, got \(result).")
+        }
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Old question"])
+        XCTAssertNotNil(viewModel.lastError)
+    }
+
+    @MainActor
+    func testClearSlashCommandRefusesWhileViewingCachedData() async throws {
+        let context = try makeContext()
+        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user")],
+            serverURL: serverURL,
+            sessionID: "session-abc",
+            in: context
+        )
+
+        let viewModel = try makeViewModel { request in
+            guard request.url?.path == "/api/session" else {
+                XCTFail("Clear should not call the server while viewing cached data.")
+                throw URLError(.badURL)
+            }
+            throw URLError(.timedOut)
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertTrue(viewModel.isViewingCachedData)
+
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: context)
+
+        XCTAssertEqual(result, .unsupported(friendlyMessage: "Reconnect to the server to clear the conversation."))
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question"])
+    }
+
+    @MainActor
+    func testClearSlashCommandRefusesForCLISessions() async throws {
+        let viewModel = try makeViewModel(
+            sessionSummary: SessionSummary(sessionId: "session-abc", title: "Planning", isCliSession: true)
+        ) { request in
+            XCTFail("Clear should not call the server for a CLI session: \(request.url?.path ?? "nil")")
+            throw URLError(.badURL)
+        }
+
+        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
+
+        XCTAssertEqual(
+            result,
+            .unsupported(friendlyMessage: "Clearing the conversation is available for WebUI sessions only.")
+        )
+    }
+
+    @MainActor
+    func testClearSlashCommandIsBlockedWhileStreaming() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/session/clear":
+                XCTFail("Clear should not call the server while streaming.")
+                throw URLError(.badURL)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+
+        let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "clear")))
+
+        XCTAssertEqual(
+            result,
+            .unsupported(friendlyMessage: "Wait for the current response to finish before clearing the conversation.")
+        )
+    }
+
+    @MainActor
     func testUndoSlashCommandCallsServerThenReloadsMessages() async throws {
         var requestPaths: [String] = []
         let viewModel = try makeViewModel { request in
@@ -8272,38 +9099,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testClearSlashCommandClearsLocalTranscriptWithoutServerRequest() async throws {
-        var requestCount = 0
-        let viewModel = try makeViewModel { request in
-            requestCount += 1
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {"role": "user", "content": "Question", "timestamp": 1, "message_id": "u-1"},
-                      {"role": "assistant", "content": "Answer", "timestamp": 2, "message_id": "a-2"}
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Clear should not call \(request.url?.path ?? "unknown path").")
-                throw URLError(.badURL)
-            }
-        }
-
-        await viewModel.loadMessages()
-        let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "clear")))
-
-        XCTAssertEqual(result, .executed(message: nil))
-        XCTAssertTrue(viewModel.messages.isEmpty)
-        XCTAssertEqual(requestCount, 1)
-    }
-
-    @MainActor
     func testSuccessfulSteeringUsesOneTransientConfirmationAndRestartsDismissal() async throws {
         let streamClient = SpySSEStreamingClient()
         let dismissalDelay = ManualAsyncDelay()
@@ -8349,8 +9144,17 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
 
+        // The restarted timer resumes on `ManualAsyncDelay`, then hops back to the main
+        // actor to clear the notice. Draining main can finish before that hop lands, so
+        // wait for the notice to change instead.
+        let cleared = expectation(description: "Steering notice cleared")
+        withObservationTracking {
+            _ = viewModel.steeringConfirmationNotice
+        } onChange: {
+            cleared.fulfill()
+        }
         await dismissalDelay.resumeNext()
-        await drainMainActor()
+        await fulfillment(of: [cleared], timeout: 5)
 
         XCTAssertNil(viewModel.steeringConfirmationNotice)
         XCTAssertFalse(viewModel.messages.contains { $0.content == "Steering hint delivered." })
@@ -8528,9 +9332,11 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
     }
 
-    /// Lets a `Task { @MainActor … }` enqueued by a delegate callback run to completion
-    /// before assertions. Same-actor tasks run FIFO, so awaiting a task enqueued *after*
-    /// the callback's drains it; the leading yields add slack.
+    /// Lets a `Task { @MainActor … }` that a delegate callback already enqueued run to
+    /// completion before assertions. Same-actor tasks run FIFO, so awaiting a task enqueued
+    /// *after* the callback's drains it; the leading yields add slack. It does not wait for
+    /// work still running on another actor (such as a delay resumed on `ManualAsyncDelay`)
+    /// that will hop back to main later: observe the state change for that instead.
     @MainActor
     private func drainMainActor() async {
         for _ in 0..<3 { await Task.yield() }
@@ -8539,6 +9345,511 @@ final class ChatViewModelSendTests: XCTestCase {
 
     /// A `503 {"error": ...}` for `/api/tts` — the canonical "server TTS refused,
     /// use the on-device fallback" stimulus for Listen tests (#15).
+    // MARK: - Skill slash suggestions
+
+    /// The composer asks for the skill list from `.task` modifiers that SwiftUI
+    /// cancels on an unrelated view update — the chip warm-up for a restored
+    /// draft is keyed on the draft itself, so hydrating one cancels it. The
+    /// request used to run inside the caller, so that cancellation threw it away
+    /// and left a draft's `/skill` references drawn as plain text.
+    @MainActor
+    func testCancellingACallerDoesNotAbortTheSkillLoad() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/skills")
+            return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+        }
+
+        let caller = Task { await viewModel.loadSkillSlashSuggestions() }
+        caller.cancel()
+        await caller.value
+
+        XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
+    }
+
+    /// A load that fails leaves nothing behind, so the next caller retries
+    /// rather than being told the list is already loaded.
+    @MainActor
+    func testAFailedSkillLoadIsRetriedByTheNextCaller() async throws {
+        var attempts = 0
+        let viewModel = try makeViewModel { request in
+            attempts += 1
+            guard attempts > 1 else {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                    Data()
+                )
+            }
+            return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+        }
+
+        await viewModel.loadSkillSlashSuggestions()
+        XCTAssertTrue(viewModel.skillSlashSuggestions.isEmpty)
+
+        await viewModel.loadSkillSlashSuggestions()
+        XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
+        XCTAssertEqual(attempts, 2)
+    }
+
+    // MARK: - Personality slash suggestions
+
+    /// The personality list is loaded from the same kind of `.task` modifier as
+    /// the skill list, so it needs the same protection (#387): a caller SwiftUI
+    /// cancels must not take the shared fetch down with it and leave the
+    /// personality picker permanently empty.
+    @MainActor
+    func testCancellingACallerDoesNotAbortThePersonalityLoad() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/personalities")
+            return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+        }
+
+        let caller = Task { await viewModel.loadPersonalitySuggestions() }
+        caller.cancel()
+        await caller.value
+
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+    }
+
+    /// A load that fails leaves nothing behind, so the next caller retries
+    /// rather than awaiting the finished, empty-handed task.
+    @MainActor
+    func testAFailedPersonalityLoadIsRetriedByTheNextCaller() async throws {
+        var attempts = 0
+        let viewModel = try makeViewModel { request in
+            attempts += 1
+            guard attempts > 1 else {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                    Data()
+                )
+            }
+            return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+        }
+
+        await viewModel.loadPersonalitySuggestions()
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none"])
+
+        await viewModel.loadPersonalitySuggestions()
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+        XCTAssertEqual(attempts, 2)
+    }
+
+    /// The point of the shared handle: a caller arriving mid-flight joins the
+    /// request already running instead of firing its own and returning early
+    /// with an empty list. The mock holds the response open until the second
+    /// caller has arrived, so it really does land on the in-flight branch.
+    @MainActor
+    func testAConcurrentCallerJoinsTheInFlightPersonalityLoad() async throws {
+        let requestStarted = XCTestExpectation(description: "personality request started")
+        let releaseResponse = DispatchSemaphore(value: 0)
+        var attempts = 0
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/personalities")
+            attempts += 1
+            requestStarted.fulfill()
+            // Bounded so a second, unshared request fails the count assertion
+            // below instead of hanging the test.
+            _ = releaseResponse.wait(timeout: .now() + 5)
+            return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+        }
+
+        let first = Task { await viewModel.loadPersonalitySuggestions() }
+        await fulfillment(of: [requestStarted], timeout: 5)
+
+        let second = Task { await viewModel.loadPersonalitySuggestions() }
+        await Task.yield()
+        releaseResponse.signal()
+
+        await first.value
+        await second.value
+
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+        XCTAssertEqual(attempts, 1)
+    }
+
+    /// Sent references become chips the moment the catalog lands, and a chip is
+    /// not the size of the `/slug` it replaces, so the transcript has to be told
+    /// it just re-laid out under the reader (#388).
+    @MainActor
+    func testTheFirstSkillCatalogSignalsATranscriptRelayout() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/skills")
+            return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+        }
+
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
+        XCTAssertTrue(viewModel.skillChipCatalog.isEmpty)
+
+        await viewModel.loadSkillSlashSuggestions()
+
+        XCTAssertEqual(viewModel.skillChipCatalog.label(forSlug: "handoff"), "handoff")
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
+    }
+
+    /// A server with no skills leaves the transcript exactly as it was drawn, so
+    /// it must not claim a relayout. Covers the general rule too: a catalog that
+    /// came back unchanged says nothing.
+    @MainActor
+    func testAnEmptySkillListDoesNotSignalARelayout() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(#"{"skills": []}"#, for: request)
+        }
+
+        await viewModel.loadSkillSlashSuggestions()
+        await viewModel.loadSkillSlashSuggestions()
+
+        XCTAssertTrue(viewModel.skillChipCatalog.isEmpty)
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
+    }
+
+    // MARK: - Workspace file references (`@path`)
+
+    /// `.` holds `a/`; `a/` holds `b.md` and `c.md`.
+    private func fileListingJSON(for path: String) -> String? {
+        switch path {
+        case ".":
+            return #"{"path": ".", "entries": [{"name": "a", "path": "a", "type": "dir", "is_dir": true}]}"#
+        case "a":
+            return #"{"path": "a", "entries": [{"name": "b.md", "path": "a/b.md", "type": "file"}, {"name": "c.md", "path": "a/c.md", "type": "file"}]}"#
+        default:
+            return nil
+        }
+    }
+
+    private func listedPath(in request: URLRequest) -> String {
+        let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+        return components?.queryItems?.first { $0.name == "path" }?.value ?? "."
+    }
+
+    /// What the composer picked dies with the view model, so a chat re-entered
+    /// from the session list has to ask the server whether a `@word` in the
+    /// restored draft is really a file before it can draw the chip again.
+    @MainActor
+    func testARestoredDraftReferenceIsConfirmedAgainstTheWorkspace() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            XCTAssertEqual(request.url?.path, "/api/list")
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadFileChipReferences(draft: "read @a/b.md please")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.fileChipPaths.contains("a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
+    }
+
+    /// A `@word` the folder does not hold stays plain text, and the answer
+    /// sticks: it must not cost a listing on every later transcript update.
+    @MainActor
+    func testACandidateItsFolderDoesNotHoldIsNeverDrawnAsAChip() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "see @a/missing.md now")
+        await viewModel.loadFileChipReferences(draft: "see @a/missing.md now")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/missing.md"))
+        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
+    }
+
+    @MainActor
+    func testTwoReferencesInOneFolderCostOneListing() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md and @a/c.md together")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
+    }
+
+    /// The confirmation lives on a task the view model owns, so a caller
+    /// cancelled by an unrelated view update cannot take the listing down with
+    /// it — and the next caller finds the answer rather than asking again.
+    @MainActor
+    func testACancelledCallerDoesNotCancelTheConfirmation() async throws {
+        let listed = LockedStrings()
+        let listingStarted = expectation(description: "listing started")
+        let releaseListing = DispatchSemaphore(value: 0)
+
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            listingStarted.fulfill()
+            releaseListing.wait()
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        let cancelled = Task { await viewModel.loadFileChipReferences(draft: "@a/b.md here") }
+        await fulfillment(of: [listingStarted], timeout: 5)
+        cancelled.cancel()
+        releaseListing.signal()
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// A listing that failed is not an answer, so the candidate stays open and
+    /// the next pass asks again.
+    @MainActor
+    func testAFailedListingIsRetriedByTheNextCaller() async throws {
+        let attempts = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            attempts.append(path)
+            if attempts.values.count == 1 {
+                return apiTestJSONResponse(#"{"error": "boom"}"#, for: request, status: 500)
+            }
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        XCTAssertEqual(attempts.values, ["a", "a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// The sent bubble draws from the same catalog, so a reference that only
+    /// exists in the loaded transcript has to be confirmed too.
+    @MainActor
+    func testASentMessageReferenceIsConfirmedAfterTheTranscriptLoads() async throws {
+        let viewModel = try makeViewModel { [self] request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "look at @a/b.md",
+                        "timestamp": 1770000100,
+                        "message_id": "user-1"
+                      }
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/list":
+                let path = listedPath(in: request)
+                return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadFileChipReferences(draft: "")
+
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// A path the panel just offered is a chip immediately: the listing that
+    /// produced the row is the same answer a confirmation pass would get.
+    @MainActor
+    func testAPickedPathIsNeverRecheckedAgainstTheServer() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        viewModel.recordFileChipReference("a/b.md")
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        XCTAssertTrue(listed.values.isEmpty)
+    }
+
+    /// A path is only a file inside the workspace it was found in, so switching
+    /// the session's workspace has to take every confirmed chip with it —
+    /// including one accepted straight from the panel — and ask again.
+    @MainActor
+    func testAWorkspaceChangeDropsConfirmedFileChipsAndAsksAgain() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            guard request.url?.path == "/api/list" else {
+                return apiTestJSONResponse(#"""
+                {"session": {"session_id": "session-abc", "workspace": "/tmp/other", "model": "gpt-5.4"}}
+                """#, for: request)
+            }
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+        viewModel.recordFileChipReference("a/c.md")
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
+        let scopeBefore = viewModel.fileChipScopeRevision
+
+        await viewModel.selectWorkspacePath("/tmp/other")
+
+        XCTAssertTrue(viewModel.fileChipPaths.isEmpty)
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
+        XCTAssertGreaterThan(viewModel.fileChipScopeRevision, scopeBefore)
+
+        await viewModel.loadFileChipReferences(draft: "@a/b.md here")
+
+        // The folder is listed again rather than answered from a cache filled
+        // against the old root.
+        XCTAssertEqual(listed.values, ["a", "a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
+    /// A pass still listing the old workspace's folders when the workspace moves
+    /// is cancelled outright: it stops before the next folder, settles nothing,
+    /// and the candidates are asked again under the new root.
+    @MainActor
+    func testAWorkspaceChangeCancelsTheConfirmationPassInFlight() async throws {
+        let listed = LockedStrings()
+        let listingStarted = expectation(description: "first listing started")
+        let releaseListing = DispatchSemaphore(value: 0)
+
+        let viewModel = try makeViewModel { [self] request in
+            guard request.url?.path == "/api/list" else {
+                return apiTestJSONResponse(#"""
+                {"session": {"session_id": "session-abc", "workspace": "/tmp/other", "model": "gpt-5.4"}}
+                """#, for: request)
+            }
+
+            let path = listedPath(in: request)
+            listed.append(path)
+            if listed.values.count == 1 {
+                listingStarted.fulfill()
+                releaseListing.wait()
+            }
+            return apiTestJSONResponse(
+                #"{"path": "\#(path)", "entries": [{"name": "b.md", "path": "\#(path)/b.md", "type": "file"}]}"#,
+                for: request
+            )
+        }
+
+        let draft = "@a/b.md and @e/b.md here"
+        let stale = Task { await viewModel.loadFileChipReferences(draft: draft) }
+        await fulfillment(of: [listingStarted], timeout: 5)
+
+        // Moves `currentWorkspace` synchronously, before its own request goes out.
+        await viewModel.selectWorkspacePath("/tmp/other")
+        releaseListing.signal()
+        await stale.value
+
+        // Stopped between folders: `e` was never asked for, and `a`'s listing
+        // arrived after the reset so it settled nothing.
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.fileChipPaths.isEmpty)
+
+        await viewModel.loadFileChipReferences(draft: draft)
+
+        XCTAssertEqual(listed.values, ["a", "a", "e"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "e/b.md"))
+    }
+
+    /// Every folder the candidates name is answered, a batch at a time, rather
+    /// than the first batch and silence for the rest.
+    @MainActor
+    func testEveryFolderIsAnsweredBeyondOneBatch() async throws {
+        let folders = (0..<25).map { "d\($0)" }
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(
+                #"{"path": "\#(path)", "entries": [{"name": "f.md", "path": "\#(path)/f.md", "type": "file"}]}"#,
+                for: request
+            )
+        }
+
+        let draft = folders.map { "@\($0)/f.md" }.joined(separator: " ") + " done"
+        await viewModel.loadFileChipReferences(draft: draft)
+
+        XCTAssertEqual(listed.values, folders)
+        for folder in folders {
+            XCTAssertTrue(
+                viewModel.composerChipCatalog.containsFile(path: "\(folder)/f.md"),
+                "\(folder)/f.md was never confirmed"
+            )
+        }
+    }
+
+    /// A cache-first transcript swapped for the server's copy can rewrite a
+    /// message in the middle of the list without changing the count or the last
+    /// id, so the swap itself has to be the signal.
+    @MainActor
+    func testReplacingAMiddleUserMessageIsRescanned() async throws {
+        let loads = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            switch request.url?.path {
+            case "/api/session":
+                loads.append("session")
+                let firstUserContent = loads.values.count == 1 ? "hello" : "look at @a/b.md"
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "\(firstUserContent)", "timestamp": 1770000100, "message_id": "user-1"},
+                      {"role": "assistant", "content": "sure", "timestamp": 1770000101, "message_id": "assistant-1"},
+                      {"role": "user", "content": "thanks", "timestamp": 1770000102, "message_id": "user-2"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/list":
+                let path = listedPath(in: request)
+                return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadFileChipReferences(draft: "")
+        let revisionBefore = viewModel.transcriptRevision
+        XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(viewModel.messages.count, 3)
+        XCTAssertEqual(viewModel.messages.last?.messageId, "user-2")
+        XCTAssertGreaterThan(viewModel.transcriptRevision, revisionBefore)
+
+        await viewModel.loadFileChipReferences(draft: "")
+
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
     private static func ttsUnavailableResponse(for request: URLRequest) -> (HTTPURLResponse, Data) {
         let response = HTTPURLResponse(
             url: request.url!,
@@ -8759,6 +10070,27 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 }
 
+/// Every request path a handler was asked for, in call order. Handlers run
+/// off the test's thread, so the record needs its own lock.
+private final class LockedStrings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+
+    func append(_ value: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        stored.append(value)
+    }
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return stored
+    }
+}
+
 private final class LockedCounter {
     private let lock = NSLock()
     private var value = 0
@@ -8789,7 +10121,7 @@ private final class SpyChatLiveActivityManager: AgentLiveActivityManaging {
 
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {}
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {}
 
     func update(_ event: AgentLiveActivityEvent) {}
 

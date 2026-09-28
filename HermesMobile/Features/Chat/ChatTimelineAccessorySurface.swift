@@ -1,26 +1,26 @@
 import SwiftUI
 
-private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
+private struct ChatTimelineAccessorySurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     let fallbackMaterial: Material
-    let cornerRadius: CGFloat
+    let shape: SurfaceShape
 
     func body(content: Content) -> some View {
         content
             .background(
                 Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.28 : 0.48),
-                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                in: shape
             )
             .adaptiveGlass(
                 .regular,
                 isInteractive: false,
                 fallbackMaterial: fallbackMaterial,
-                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                in: shape
             )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(shape)
             .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                shape
                     .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
                     .allowsHitTesting(false)
             }
@@ -58,9 +58,21 @@ extension View {
         fallbackMaterial: Material,
         cornerRadius: CGFloat
     ) -> some View {
+        chatTimelineAccessorySurface(
+            fallbackMaterial: fallbackMaterial,
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
+    }
+
+    /// Shape-based entry point for accessories that are not a rounded rectangle,
+    /// such as the one-line run-status capsule.
+    func chatTimelineAccessorySurface(
+        fallbackMaterial: Material,
+        in shape: some Shape
+    ) -> some View {
         modifier(ChatTimelineAccessorySurfaceModifier(
             fallbackMaterial: fallbackMaterial,
-            cornerRadius: cornerRadius
+            shape: shape
         ))
     }
 

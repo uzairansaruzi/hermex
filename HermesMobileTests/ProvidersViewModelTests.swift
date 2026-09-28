@@ -234,6 +234,44 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertEqual(ProvidersViewModel.modelCount(for: bare), 0)
         XCTAssertNil(ProvidersViewModel.truncatedModelInfo(for: bare))
     }
+
+    /// The disclosure count follows the model picker: `shown / total` only when
+    /// the server trimmed the catalog, a plain count otherwise.
+    @MainActor
+    func testModelCountLabelShowsShownOverTotalOnlyWhenTrimmed() {
+        let trimmed = ProviderSummary(
+            id: "nous",
+            models: [ProviderModel(id: "a"), ProviderModel(id: "b")],
+            modelsTotal: 396
+        )
+        XCTAssertEqual(ProvidersViewModel.modelCountLabel(for: trimmed), "2 / 396")
+
+        let complete = ProviderSummary(
+            id: "openai",
+            models: [ProviderModel(id: "a"), ProviderModel(id: "b")],
+            modelsTotal: 2
+        )
+        XCTAssertEqual(ProvidersViewModel.modelCountLabel(for: complete), "2")
+
+        // A total with nothing visible is not a trim — advertise the total alone.
+        let hidden = ProviderSummary(id: "p", models: [], modelsTotal: 4)
+        XCTAssertEqual(ProvidersViewModel.modelCountLabel(for: hidden), "4")
+
+        // No catalog at all reserves no count slot.
+        XCTAssertNil(ProvidersViewModel.modelCountLabel(for: ProviderSummary(id: "p")))
+    }
+
+    /// The Providers rows only reserve a glyph slot when the provider id resolves,
+    /// matching #361's "unknown providers render nothing" rule.
+    @MainActor
+    func testProviderGlyphResolutionSkipsUnknownAndMissingIDs() {
+        XCTAssertEqual(ProviderGlyphKind.resolve(providerID: "anthropic"), .anthropic)
+        XCTAssertEqual(ProviderGlyphKind.resolve(providerID: " OpenAI-Codex "), .openAI)
+        XCTAssertNil(ProviderGlyphKind.resolve(providerID: nil))
+        XCTAssertNil(ProviderGlyphKind.resolve(providerID: "   "))
+        XCTAssertNil(ProviderGlyphKind.resolve(providerID: "huggingface"))
+        XCTAssertNil(ProviderGlyphKind.resolve(providerID: "custom:glmcode"))
+    }
 }
 
 /// URLProtocol whose responses are completed manually by the test, so two

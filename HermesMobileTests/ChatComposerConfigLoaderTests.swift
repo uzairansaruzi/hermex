@@ -4,7 +4,7 @@ import XCTest
 final class ChatComposerConfigLoaderTests: APIClientTestCase {
     func testLoadUsesSessionProfileDefaultAndRefreshesCommands() async throws {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
-        var requestPaths: [String] = []
+        let requestPaths = ConfigRequestLog()
         let client = makeClient { request in
             requestPaths.append(request.url?.path ?? "")
 
@@ -76,14 +76,56 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNil(result.state.supportsReasoningEffort)
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        XCTAssertEqual(requestPaths, [
-            "/api/profiles",
-            "/api/profile/switch",
-            "/api/models",
-            "/api/reasoning",
-            "/api/workspaces",
-            "/api/commands"
-        ])
+        // The profile-scoped requests wait for the switch; reasoning waits for models.
+        let paths = requestPaths.values
+        XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
+        XCTAssertEqual(
+            Set(paths.dropFirst(2)),
+            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
+        )
+        XCTAssertEqual(paths.count, 6)
+        XCTAssertLessThan(
+            try XCTUnwrap(paths.firstIndex(of: "/api/models")),
+            try XCTUnwrap(paths.firstIndex(of: "/api/reasoning"))
+        )
+    }
+
+    func testLoadRequestsWorkspacesAndCommandsWhileModelsIsInFlight() async throws {
+        // `/api/models` answers only once the workspaces and commands requests
+        // have arrived, which a serial chain could never satisfy.
+        let concurrentRequests = DispatchGroup()
+        concurrentRequests.enter()
+        concurrentRequests.enter()
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse(#"{"active": "default", "profiles": [{"name": "default"}]}"#, for: request)
+            case "/api/models":
+                XCTAssertEqual(concurrentRequests.wait(timeout: .now() + .seconds(5)), .success)
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "low"}"#, for: request)
+            case "/api/workspaces":
+                concurrentRequests.leave()
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}]}"#, for: request)
+            case "/api/commands":
+                concurrentRequests.leave()
+                return apiTestJSONResponse(#"{"commands": [{"name": "status"}]}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: ChatComposerConfigState()
+        )
+
+        XCTAssertNil(result.configurationError)
+        XCTAssertEqual(result.state.currentModel, "gpt-5.4")
+        XCTAssertEqual(result.state.selectedReasoningEffort, "low")
+        XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
+        XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
     }
 
     func testLoadKeepsSessionModelOverrideWhenProfileHasDifferentDefault() async throws {
@@ -167,7 +209,7 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
     }
 
     func testLoadReturnsPartialStateAndStillRefreshesCommandsWhenConfigurationFails() async throws {
-        var requestPaths: [String] = []
+        let requestPaths = ConfigRequestLog()
         let client = makeClient { request in
             requestPaths.append(request.url?.path ?? "")
 
@@ -189,6 +231,8 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                     headerFields: ["Content-Type": "application/json"]
                 )
                 return (try XCTUnwrap(response), Data(#"{"error":"models unavailable"}"#.utf8))
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
             case "/api/commands":
                 return apiTestJSONResponse(#"{"commands": [{"name": "status"}]}"#, for: request)
             default:
@@ -207,7 +251,12 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModel, "gpt-5.4")
         XCTAssertNil(result.state.currentModelProvider)
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        XCTAssertEqual(requestPaths, ["/api/profiles", "/api/models", "/api/commands"])
+        // Workspaces loads alongside models, but a models failure still keeps
+        // its result out of the state, as the serial chain did.
+        XCTAssertTrue(result.state.workspaceRoots.isEmpty)
+        XCTAssertNil(result.state.currentWorkspace)
+        XCTAssertFalse(requestPaths.values.contains("/api/reasoning"))
+        XCTAssertEqual(requestPaths.values.first, "/api/profiles")
     }
 
     func testLoadStoresSingleProfileModeFromProfilesResponse() async throws {
@@ -243,6 +292,21 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
 
         XCTAssertNil(result.configurationError)
         XCTAssertTrue(result.state.isSingleProfileMode)
+    }
+}
+
+/// Request paths in arrival order. Handlers run concurrently off the test's
+/// thread, so the log needs its own lock.
+private final class ConfigRequestLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths: [String] = []
+
+    func append(_ path: String) {
+        lock.withLock { paths.append(path) }
+    }
+
+    var values: [String] {
+        lock.withLock { paths }
     }
 }
 

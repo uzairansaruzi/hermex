@@ -1,12 +1,18 @@
 import SwiftUI
 
+/// A turn's tool calls as a dense log. The last call stays visible while earlier
+/// calls sit behind a `+N previous tool calls` toggle, during and after streaming.
 struct ToolActivityGroupView: View {
     let group: ToolCallGroup
+    var isLive = false
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
 
+    /// Whether previous rows are shown. Follows "Expand Tools by Default"
+    /// until the user taps the toggle.
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
@@ -14,146 +20,67 @@ struct ToolActivityGroupView: View {
         )
     }
 
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-            Button {
-                withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                    userToggledExpansion = !isExpanded
-                }
-            } label: {
-                header
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(activityAccessibilityLabel)
-            .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+        let entries = ToolCallSummaryFormatter.entries(for: group.toolCalls, isLive: isLive)
 
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(group.toolCalls) { toolCall in
-                        ToolCallCardView(toolCall: toolCall)
+        if let lastEntry = entries.last {
+            let previousEntries = Array(entries.dropLast())
+
+            VStack(alignment: .leading, spacing: 1) {
+                if !previousEntries.isEmpty {
+                    previousRowsToggle(hiddenCount: previousEntries.count)
+
+                    if isExpanded {
+                        ForEach(previousEntries) { entry in
+                            ToolCallLogRowView(entry: entry)
+                        }
+                        .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
                     }
                 }
-                .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+
+                ToolCallLogRowView(entry: lastEntry)
+                    .id(lastEntry.id)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .contain)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .thinMaterial,
-            cornerRadius: 10
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
     }
 
-    private var usesStackedHeader: Bool {
-        dynamicTypeSize.isAccessibilitySize
+    private func toggleExpansion() {
+        chatDisclosureToggled()
+        withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+            userToggledExpansion = !isExpanded
+        }
     }
 
-    private var header: some View {
-        HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image(systemName: activityIcon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(activityColor)
-                .frame(width: 18, height: 18)
+    private func previousRowsToggle(hiddenCount: Int) -> some View {
+        Button(action: toggleExpansion) {
+            HStack(spacing: 6) {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 18)
 
-            if usesStackedHeader {
-                VStack(alignment: .leading, spacing: 3) {
-                    titleText
-                    summaryTextView(lineLimit: 2)
-                    if let collapsedStateText {
-                        TranscriptStatusPill(text: collapsedStateText, color: activityColor)
-                    }
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    titleText
-                    summaryTextView(lineLimit: 1)
-                    if let collapsedStateText {
-                        TranscriptStatusPill(text: collapsedStateText, color: activityColor)
-                    }
-                }
+                Text(previousRowsToggleTitle(hiddenCount: hiddenCount))
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
             }
-
-            Spacer(minLength: 6)
-
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            .padding(.horizontal, 2)
+            .frame(minHeight: TranscriptLogRowMetrics.minimumHeight)
+            .contentShape(Rectangle())
         }
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .accessibilityLabel(previousRowsToggleTitle(hiddenCount: hiddenCount))
     }
 
-    private var titleText: some View {
-        Text(group.activityTitle)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
+    private func previousRowsToggleTitle(hiddenCount: Int) -> String {
+        isExpanded
+            ? String(localized: "Show fewer tool calls")
+            : String(localized: "+\(hiddenCount) previous tool calls")
     }
 
-    private func summaryTextView(lineLimit: Int) -> some View {
-        Text(summaryText)
-            .font(AppFont.caption())
-            .foregroundStyle(.secondary)
-            .lineLimit(lineLimit)
-    }
-
-    private var activityIcon: String {
-        if group.hasFailedTool {
-            return "exclamationmark.triangle.fill"
-        }
-
-        return group.isComplete ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill"
-    }
-
-    private var activityColor: Color {
-        if group.hasFailedTool {
-            return .red
-        }
-
-        return .secondary
-    }
-
-    private var collapsedStateText: String? {
-        if group.hasFailedTool {
-            return String(localized: "Failed")
-        }
-
-        return group.isComplete ? nil : String(localized: "Running")
-    }
-
-    private var activityAccessibilityLabel: String {
-        "\(group.activityTitle), \(activityStateText), \(summaryText)"
-    }
-
-    private var activityStateText: String {
-        if group.hasFailedTool {
-            return String(localized: "Failed")
-        }
-
-        return group.isComplete ? String(localized: "Completed") : String(localized: "Running")
-    }
-
-    private var summaryText: String {
-        let names = group.toolCalls.map(\.displayName)
-        let uniqueNames = names.reduce(into: [String]()) { result, name in
-            if !result.contains(name) {
-                result.append(name)
-            }
-        }
-
-        guard !uniqueNames.isEmpty else {
-            return String(localized: "No tools")
-        }
-
-        let visibleNames = uniqueNames.prefix(3)
-        let remainingCount = uniqueNames.count - visibleNames.count
-        let visibleSummary = visibleNames.joined(separator: ", ")
-
-        guard remainingCount > 0 else {
-            return visibleSummary
-        }
-
-        return "\(visibleSummary), +\(remainingCount)"
-    }
 }

@@ -9,6 +9,7 @@ struct MarkerMessageCardView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @State private var isExpanded = false
 
     var body: some View {
@@ -17,6 +18,7 @@ struct MarkerMessageCardView: View {
 
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
             Button {
+                chatDisclosureToggled()
                 withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
                     isExpanded.toggle()
                 }

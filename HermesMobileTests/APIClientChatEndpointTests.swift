@@ -269,4 +269,36 @@ final class APIClientChatEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.active, true)
         XCTAssertEqual(response.streamId, "stream-123")
     }
+
+    func testChatStreamURLUsesEndpointReplayQueryItems() {
+        let client = makeClient { _ in
+            throw URLError(.badURL)
+        }
+        let base = URL(string: "https://example.test")!
+
+        XCTAssertEqual(
+            client.chatStreamURL(streamID: "stream-123", replayAfterSeq: 4),
+            Endpoint.chatStream(streamID: "stream-123", replayAfterSeq: 4).url(relativeTo: base)
+        )
+        XCTAssertEqual(
+            client.chatStreamURL(streamID: "stream-123"),
+            Endpoint.chatStream(streamID: "stream-123").url(relativeTo: base)
+        )
+
+        let replayQuery = queryDictionary(
+            of: Endpoint.chatStream(streamID: "stream-123", replayAfterSeq: 4)
+        )
+        XCTAssertEqual(replayQuery["stream_id"], "stream-123")
+        XCTAssertEqual(replayQuery["replay"], "1")
+        XCTAssertEqual(replayQuery["after_seq"], "4")
+
+        let liveQuery = queryDictionary(of: Endpoint.chatStream(streamID: "stream-123"))
+        XCTAssertEqual(liveQuery["stream_id"], "stream-123")
+        XCTAssertNil(liveQuery["replay"])
+        XCTAssertNil(liveQuery["after_seq"])
+    }
+
+    private func queryDictionary(of endpoint: Endpoint) -> [String: String?] {
+        Dictionary(uniqueKeysWithValues: endpoint.queryItems.map { ($0.name, $0.value) })
+    }
 }

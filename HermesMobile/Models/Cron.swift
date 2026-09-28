@@ -36,8 +36,11 @@ struct CronStatusResponse: Decodable, Equatable {
 }
 
 struct CronJob: Decodable, Equatable, Identifiable {
+    /// Stable across refreshes. Never a fresh `UUID` — `id` is computed, so a
+    /// UUID fallback would hand SwiftUI a different identity on every read and
+    /// rebuild every row of the list on every poll.
     var id: String {
-        jobId ?? name ?? UUID().uuidString
+        jobId ?? name ?? ""
     }
 
     let jobId: String?
@@ -461,6 +464,50 @@ struct CronJobEditorDraft: Equatable {
         }
 
         return nil
+    }
+
+    /// Applies a model picked in the editor, or `nil` for "Server default".
+    ///
+    /// Model and provider always move together, because every picker option
+    /// names both: writing one without the other is how a job ends up asking a
+    /// provider for a model it does not serve. Clearing writes both back to
+    /// empty, which is the server's cue to fall back to the selected profile.
+    mutating func applyModelSelection(_ option: ModelCatalogOption?) {
+        model = option?.id ?? ""
+        provider = option?.providerID ?? ""
+    }
+
+    /// Applies a profile picked in the editor, or `nil` for "Server default".
+    ///
+    /// Deliberately leaves `model` and `provider` alone. Upstream computes both
+    /// from the profile's environment only when at least one of them is blank
+    /// (`_selected_profile_snapshot_updates`), so prefilling the model here
+    /// would suppress the server's own snapshot and move a server decision into
+    /// the app.
+    mutating func applyProfileSelection(_ profileName: String?) {
+        profile = profileName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Applies a skill selection from the picker.
+    ///
+    /// `skillsText` stays the storage, so a job created before the picker
+    /// existed keeps round-tripping through the same comma-separated form the
+    /// server has always received.
+    mutating func applySkillSelection(_ names: [String]) {
+        skillsText = names.joined(separator: ", ")
+    }
+
+    /// `selection` with `name` added if absent, removed if present.
+    ///
+    /// Order is the user's: a newly selected skill goes on the end rather than
+    /// re-sorting a list they just read. Matching is exact, because the server
+    /// stores back whatever spelling it was sent.
+    static func togglingSkill(_ name: String, in selection: [String]) -> [String] {
+        guard let index = selection.firstIndex(of: name) else { return selection + [name] }
+
+        var next = selection
+        next.remove(at: index)
+        return next
     }
 
     private static func nonEmpty(_ value: String) -> String? {

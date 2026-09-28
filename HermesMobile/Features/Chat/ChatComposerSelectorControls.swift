@@ -4,9 +4,6 @@ import UIKit
 struct ComposerWorkspaceSelectorButton: View {
     let title: String
     let isDisabled: Bool
-    let lineLimit: Int
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
     let color: Color
     let controlFont: Font
     let chevronFont: Font
@@ -14,18 +11,15 @@ struct ComposerWorkspaceSelectorButton: View {
 
     var body: some View {
         Button(action: onTap) {
-            ComposerSecondaryBarLabel(
+            ComposerInlineControlLabel(
                 title: title,
                 systemImage: "folder",
-                lineLimit: lineLimit,
-                verticalPadding: verticalPadding,
-                horizontalPadding: horizontalPadding,
                 color: color,
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
         }
-        .buttonStyle(.chatTactile(.capsule))
+        .buttonStyle(.chatTactile(.compactControl))
         .disabled(isDisabled)
         .accessibilityLabel("Choose workspace path")
     }
@@ -35,120 +29,187 @@ struct ComposerProfileSelectorMenu: View {
     let profileOptions: [ProfileSummary]
     let selectedProfileName: String?
     let selectedProfileTitle: String
+    /// Single-profile servers reject switches (#24), so the control is a plain
+    /// label: no chevron, no menu, no button trait.
+    let isStatic: Bool
     let isDisabled: Bool
-    let lineLimit: Int
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
     let color: Color
     let controlFont: Font
     let chevronFont: Font
     let onSelectProfile: (ProfileSummary) -> Void
 
     var body: some View {
-        Menu {
-            if profileOptions.isEmpty {
-                Text("No profiles available")
-            } else {
-                Section("Profile") {
-                    ForEach(profileOptions, id: \.self) { profile in
-                        Button {
-                            onSelectProfile(profile)
-                        } label: {
-                            if profile.name == selectedProfileName {
-                                Label(profile.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(profile.displayName)
-                            }
-                        }
-                    }
-                }
-            }
-        } label: {
-            ComposerSecondaryBarLabel(
+        if isStatic {
+            ComposerInlineControlLabel(
                 title: selectedProfileTitle,
                 systemImage: "person.crop.circle",
-                lineLimit: lineLimit,
-                verticalPadding: verticalPadding,
-                horizontalPadding: horizontalPadding,
+                showsChevron: false,
                 color: color,
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Profile: \(selectedProfileTitle)"))
+        } else {
+            profileMenu
         }
-        .buttonStyle(.chatTactile(.capsule))
-        .tint(color)
-        .disabled(isDisabled)
-        .accessibilityLabel("Choose profile")
     }
-}
 
-struct ComposerModelMenu: View {
-    let modelGroups: [ModelCatalogGroup]
-    let selectedModelID: String?
-    let selectedModelProviderID: String?
-    let selectedModelTitle: String
-    let isLoadingModels: Bool
-    let favoriteModelKeys: [ModelFavoriteKey]
-    let recentModelKeys: [ModelFavoriteKey]
-    let isDisabled: Bool
-    let maxWidth: CGFloat
-    let color: Color
-    let controlFont: Font
-    let chevronFont: Font
-    let onSelectModel: (ModelCatalogOption) -> Void
-    let onShowAllModels: () -> Void
-
-    var body: some View {
-        ChatUIKitMenuButton(horizontalPadding: 0, verticalPadding: 14) {
-            ComposerMetaControlLabel(
-                title: selectedModelTitle,
-                systemImage: nil,
-                maxWidth: maxWidth,
+    private var profileMenu: some View {
+        ChatUIKitMenuButton {
+            ComposerInlineControlLabel(
+                title: selectedProfileTitle,
+                systemImage: "person.crop.circle",
                 color: color,
                 controlFont: controlFont,
                 chevronFont: chevronFont
             )
         } menu: {
-            makeModelMenu()
+            makeMenu()
         }
         .tint(color)
         .disabled(isDisabled)
-        .accessibilityLabel("Select model")
+        .accessibilityLabel("Choose profile")
     }
 
-    private func makeModelMenu() -> UIMenu {
-        if isLoadingModels {
-            return UIMenu(children: [disabledMenuAction(title: String(localized: "Loading models..."))])
+    func makeMenu() -> UIMenu {
+        guard !profileOptions.isEmpty else {
+            return UIMenu(children: [
+                UIAction(
+                    title: String(localized: "No profiles available"),
+                    attributes: .disabled
+                ) { _ in }
+            ])
         }
 
-        var children: [UIMenuElement] = []
-        if modelGroups.isEmpty && favoriteOptions.isEmpty && recentOptions.isEmpty && compactOptions.isEmpty {
-            children.append(disabledMenuAction(title: String(localized: "No catalog models")))
+        return UIMenu(children: [
+            UIMenu(
+                title: String(localized: "Profile"),
+                options: [.displayInline],
+                children: profileOptions.map { profile in
+                    UIAction(
+                        title: profile.displayName,
+                        state: profile.name == selectedProfileName ? .on : .off
+                    ) { _ in
+                        Task { @MainActor in
+                            onSelectProfile(profile)
+                        }
+                    }
+                }
+            )
+        ])
+    }
+}
+
+struct ComposerModelEffortMenu: View {
+    /// Allows a caller to disable effort while retaining access to the model menu.
+    var allowsEffortChanges = true
+    let selection: ComposerModelEffortSelection
+    let modelGroups: [ModelCatalogGroup]
+    let favoriteModelKeys: [ModelFavoriteKey]
+    let recentModelKeys: [ModelFavoriteKey]
+    let isDisabled: Bool
+    let color: Color
+    let controlFont: Font
+    let chevronFont: Font
+    let onSelectModel: (ModelCatalogOption) -> Void
+    let onSelectEffort: (String) -> Void
+    let onShowAllModels: () -> Void
+
+    var body: some View {
+        // UIKit needs the nested menu's full geometry before presentation. Deferring
+        // this tree makes the first submenu expansion visibly re-anchor.
+        ChatUIKitMenuButton(loadsMenuEagerly: true) {
+            HStack(spacing: 5) {
+                if ProviderGlyphKind.resolve(providerID: selection.modelProviderID) != nil {
+                    ProviderGlyph(providerID: selection.modelProviderID)
+                        .frame(width: 15, height: 15)
+                }
+
+                Text(selection.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .font(controlFont)
+                    .layoutPriority(1)
+
+                Image(systemName: "chevron.down")
+                    .font(chevronFont)
+            }
+            .foregroundStyle(color)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, ComposerInlineControlLabel.horizontalPadding)
+            .frame(minHeight: ComposerInlineControlLabel.minimumHeight)
+            .contentShape(Rectangle())
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+        } menu: {
+            makeMenu()
         }
+        .tint(color)
+        .disabled(isDisabled)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func makeMenu() -> UIMenu {
+        var children: [UIMenuElement] = [modelMenu]
+        if selection.showsEffortControl {
+            children.append(effortMenu)
+        }
+        return UIMenu(children: children)
+    }
+
+    private var modelMenu: UIMenu {
+        var children: [UIMenuElement] = []
 
         if !favoriteOptions.isEmpty {
             children.append(modelSection(title: String(localized: "Favorites"), options: favoriteOptions))
         }
-
         if !recentOptions.isEmpty {
             children.append(modelSection(title: String(localized: "Recent"), options: recentOptions))
         }
+        // The active model always has a checked row, even when it is neither a
+        // favorite nor a recent, so the submenu never opens with nothing selected.
+        let listedKeys = Set((favoriteOptions + recentOptions).map(\.favoriteKey))
+        if !listedKeys.contains(selection.model.favoriteKey) {
+            children.append(modelSection(title: "", options: [selection.model]))
+        }
 
         children.append(UIMenu(
-            title: String(localized: "Model"),
             options: [.displayInline],
-            children: compactOptions.map(modelAction)
-                + [
-                    UIAction(title: String(localized: "All Models...")) { _ in
-                        Task { @MainActor in
-                            await Task.yield()
-                            onShowAllModels()
-                        }
+            children: [
+                UIAction(title: String(localized: "All Models...")) { _ in
+                    Task { @MainActor in
+                        await Task.yield()
+                        onShowAllModels()
                     }
-                ]
+                }
+            ]
         ))
 
-        return UIMenu(children: children)
+        return UIMenu(
+            title: String(localized: "Model"),
+            subtitle: selection.model.displayName,
+            children: children
+        )
+    }
+
+    private var effortMenu: UIMenu {
+        UIMenu(
+            title: String(localized: "Effort"),
+            subtitle: selection.effortTitle,
+            children: selection.effortOptions.map { option in
+                UIAction(
+                    title: option.title,
+                    attributes: allowsEffortChanges ? [] : [.disabled],
+                    state: selection.committedEffort == option.id ? .on : .off
+                ) { _ in
+                    Task { @MainActor in
+                        onSelectEffort(option.id)
+                    }
+                }
+            }
+        )
     }
 
     private func modelSection(title: String, options: [ModelCatalogOption]) -> UIMenu {
@@ -162,38 +223,15 @@ struct ComposerModelMenu: View {
     private func modelAction(_ option: ModelCatalogOption) -> UIAction {
         UIAction(
             title: option.displayName,
-            state: isSelected(option) ? .on : .off
+            state: option.matchesSelection(
+                modelID: selection.model.id,
+                providerID: selection.modelProviderID
+            ) ? .on : .off
         ) { _ in
             Task { @MainActor in
                 onSelectModel(option)
             }
         }
-    }
-
-    private func disabledMenuAction(title: String) -> UIAction {
-        let action = UIAction(title: title) { _ in }
-        action.attributes.insert(.disabled)
-        return action
-    }
-
-    private var compactOptions: [ModelCatalogOption] {
-        let allModels = modelGroups.flatMap(\.allModels)
-        let favoriteKeys = Set(favoriteOptions.map(\.favoriteKey))
-        let recentKeys = Set(recentOptions.map(\.favoriteKey))
-        var seen = Set<ModelFavoriteKey>()
-        var result: [ModelCatalogOption] = []
-
-        func append(_ option: ModelCatalogOption?) {
-            guard let option,
-                  !favoriteKeys.contains(option.favoriteKey),
-                  !recentKeys.contains(option.favoriteKey),
-                  seen.insert(option.favoriteKey).inserted else { return }
-            result.append(option)
-        }
-
-        append(selectedModelOption(in: allModels))
-
-        return result
     }
 
     private var favoriteOptions: [ModelCatalogOption] {
@@ -211,131 +249,68 @@ struct ComposerModelMenu: View {
         )
     }
 
-    private func selectedModelOption(in options: [ModelCatalogOption]) -> ModelCatalogOption? {
-        guard let selectedModelID, !selectedModelID.isEmpty else { return nil }
-
-        if let selectedModelProviderID {
-            return options.firstMatchingSelection(
-                modelID: selectedModelID,
-                providerID: selectedModelProviderID
-            )
-            ?? ModelCatalogOption(
-                id: selectedModelID,
-                displayName: selectedModelID,
-                providerID: selectedModelProviderID
-            )
-        }
-
-        return options.firstMatchingSelection(modelID: selectedModelID, providerID: nil)
-            ?? ModelCatalogOption(
-                id: selectedModelID,
-                displayName: selectedModelID,
-                providerID: nil
-            )
-    }
-
-    private func isSelected(_ option: ModelCatalogOption) -> Bool {
-        option.matchesSelection(modelID: selectedModelID, providerID: selectedModelProviderID)
+    private var accessibilityLabel: Text {
+        Text(verbatim: selection.title)
     }
 }
 
-struct ComposerReasoningMenu: View {
-    let selectedReasoningEffort: String?
-    /// Server-provided effort vocabulary for the current model; `nil` falls
-    /// back to the full static list (older servers, issue #18).
+struct ComposerModelEffortSelection: Equatable, Sendable {
+    let model: ModelCatalogOption
+    let effort: String?
     let supportedEfforts: [String]?
-    let reasoningTitle: String
-    let isDisabled: Bool
-    let width: CGFloat
-    let color: Color
-    let controlFont: Font
-    let chevronFont: Font
-    let onSelectReasoningEffort: (String) -> Void
+    let supportsEffort: Bool?
 
-    var body: some View {
-        ChatUIKitMenuButton(horizontalPadding: 0, verticalPadding: 14) {
-            ComposerMetaControlLabel(
-                title: reasoningTitle,
-                systemImage: "lucide.brain",
-                minWidth: width,
-                maxWidth: width,
-                color: color,
-                controlFont: controlFont,
-                chevronFont: chevronFont
-            )
-        } menu: {
-            makeReasoningMenu()
-        }
-        .tint(color)
-        .disabled(isDisabled)
-        .accessibilityLabel("Select reasoning effort")
+    var modelProviderID: String? {
+        model.providerID ?? model.id.modelIDProviderPrefix
     }
 
-    private func makeReasoningMenu() -> UIMenu {
-        UIMenu(
-            title: String(localized: "Reasoning"),
-            options: [.displayInline],
-            children: ReasoningEffortOption.options(forSupportedEfforts: supportedEfforts).map { option in
-                UIAction(
-                    title: option.title,
-                    state: selectedReasoningEffort == option.id ? .on : .off
-                ) { _ in
-                    Task { @MainActor in
-                        onSelectReasoningEffort(option.id)
-                    }
-                }
-            }
+    var showsEffortControl: Bool {
+        ReasoningEffortOption.showsEffortControl(
+            supportsReasoningEffort: supportsEffort,
+            supportedEfforts: supportedEfforts
         )
     }
-}
 
-private struct ComposerMetaControlLabel: View {
-    @ScaledMetric(relativeTo: .footnote) private var brainIconSize: CGFloat = 13
+    var effortOptions: [ReasoningEffortOption] {
+        ReasoningEffortOption.options(forSupportedEfforts: supportedEfforts)
+    }
 
-    let title: String
-    let systemImage: String?
-    var minWidth: CGFloat?
-    let maxWidth: CGFloat
-    let color: Color
-    let controlFont: Font
-    let chevronFont: Font
+    var staticEffort: ReasoningEffortOption? {
+        ReasoningEffortOption.singleOption(forSupportedEfforts: supportedEfforts)
+    }
 
-    var body: some View {
-        HStack(spacing: 5) {
-            if let systemImage {
-                if systemImage == "lucide.brain" {
-                    LucideBrainIcon()
-                        .frame(width: brainIconSize, height: brainIconSize)
-                } else {
-                    Image(systemName: systemImage)
-                        .font(controlFont)
-                }
-            }
+    var committedEffort: String? {
+        guard showsEffortControl else { return nil }
+        return staticEffort?.id ?? normalizedEffort(effort)
+    }
 
-            Text(title)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .font(controlFont)
-                .layoutPriority(1)
+    var effortTitle: String? {
+        guard showsEffortControl else { return nil }
+        guard let effort = committedEffort else { return String(localized: "Reasoning") }
+        return ReasoningEffortOption.title(for: effort)
+    }
 
-            Image(systemName: "chevron.down")
-                .font(chevronFont)
-        }
-        .foregroundStyle(color)
-        .frame(minWidth: minWidth, maxWidth: maxWidth, alignment: .leading)
-        .transaction { transaction in
-            transaction.animation = nil
-        }
-        .chatMinimumHitTarget(horizontalPadding: 0, verticalPadding: 14, in: Rectangle())
+    var title: String {
+        guard let effortTitle else { return model.displayName }
+        return "\(model.displayName) · \(effortTitle)"
+    }
+
+    private func normalizedEffort(_ effort: String?) -> String? {
+        guard let effort else { return nil }
+        let normalized = effort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
     }
 }
 
-private struct ComposerSecondaryBarLabel: View {
+/// Quiet toolbar-row control: icon, one-line title, optional chevron, no pill
+/// background, so the row reads as one surface. 44 pt tall for the hit target.
+struct ComposerInlineControlLabel: View {
+    static let minimumHeight: CGFloat = 44
+    static let horizontalPadding: CGFloat = 6
+
     let title: String
     let systemImage: String
-    let lineLimit: Int
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
+    var showsChevron = true
     let color: Color
     let controlFont: Font
     let chevronFont: Font
@@ -346,90 +321,20 @@ private struct ComposerSecondaryBarLabel: View {
                 .font(controlFont)
 
             Text(title)
-                .lineLimit(lineLimit)
+                .lineLimit(1)
                 .truncationMode(.middle)
                 .font(controlFont)
 
-            Image(systemName: "chevron.down")
-                .font(chevronFont)
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, verticalPadding)
-        .adaptiveGlass(
-            .regular,
-            isInteractive: true,
-            fallbackMaterial: .ultraThinMaterial,
-            in: Capsule()
-        )
-        .clipShape(Capsule())
-        .chatMinimumHitTarget(in: Capsule())
-    }
-}
-
-private struct LucideBrainIcon: View {
-    var body: some View {
-        Canvas { context, size in
-            let scale = min(size.width / 24, size.height / 24)
-            let xOffset = (size.width - (24 * scale)) / 2
-            let yOffset = (size.height - (24 * scale)) / 2
-
-            context.translateBy(x: xOffset, y: yOffset)
-            context.scaleBy(x: scale, y: scale)
-
-            let strokeStyle = StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
-            for path in Self.paths {
-                context.stroke(path, with: .foreground, style: strokeStyle)
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(chevronFont)
             }
         }
-        .accessibilityHidden(true)
+        .foregroundStyle(color)
+        .padding(.horizontal, Self.horizontalPadding)
+        .frame(minHeight: Self.minimumHeight)
+        .contentShape(Rectangle())
     }
-
-    private static let paths: [Path] = [
-        Path { path in
-            path.move(to: CGPoint(x: 12, y: 18))
-            path.addLine(to: CGPoint(x: 12, y: 5))
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 15, y: 13))
-            path.addCurve(
-                to: CGPoint(x: 12, y: 9),
-                control1: CGPoint(x: 13.4, y: 12.4),
-                control2: CGPoint(x: 12, y: 10.8)
-            )
-            path.addCurve(
-                to: CGPoint(x: 9, y: 13),
-                control1: CGPoint(x: 12, y: 10.8),
-                control2: CGPoint(x: 10.6, y: 12.4)
-            )
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 17.6, y: 6.5))
-            path.addCurve(to: CGPoint(x: 12, y: 5), control1: CGPoint(x: 18.2, y: 3.7), control2: CGPoint(x: 14.1, y: 2.4))
-            path.addCurve(to: CGPoint(x: 6.4, y: 6.5), control1: CGPoint(x: 9.9, y: 2.4), control2: CGPoint(x: 5.8, y: 3.7))
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 18, y: 5.1))
-            path.addCurve(to: CGPoint(x: 20.5, y: 10.9), control1: CGPoint(x: 21, y: 5.6), control2: CGPoint(x: 22, y: 8.7))
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 18, y: 18))
-            path.addCurve(to: CGPoint(x: 20, y: 10.5), control1: CGPoint(x: 22, y: 17.1), control2: CGPoint(x: 22.7, y: 12.4))
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 20, y: 17.5))
-            path.addCurve(to: CGPoint(x: 12, y: 18), control1: CGPoint(x: 19.4, y: 22.5), control2: CGPoint(x: 12.6, y: 22.8))
-            path.addCurve(to: CGPoint(x: 4, y: 17.5), control1: CGPoint(x: 11.4, y: 22.8), control2: CGPoint(x: 4.6, y: 22.5))
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 6, y: 18))
-            path.addCurve(to: CGPoint(x: 4, y: 10.5), control1: CGPoint(x: 2, y: 17.1), control2: CGPoint(x: 1.3, y: 12.4))
-        },
-        Path { path in
-            path.move(to: CGPoint(x: 6, y: 5.1))
-            path.addCurve(to: CGPoint(x: 3.5, y: 10.9), control1: CGPoint(x: 3, y: 5.6), control2: CGPoint(x: 2, y: 8.7))
-        }
-    ]
 }
 
 struct ReasoningEffortOption: Identifiable, CaseIterable {
@@ -466,6 +371,13 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
                 allCases.first(where: { $0.id == id })
                     ?? ReasoningEffortOption(id: id, title: id.capitalized)
             }
+    }
+
+    /// The lone effort when the server vocabulary leaves nothing to choose, so the
+    /// composer can render a static label instead of a one-item menu.
+    static func singleOption(forSupportedEfforts supportedEfforts: [String]?) -> ReasoningEffortOption? {
+        let options = options(forSupportedEfforts: supportedEfforts)
+        return options.count == 1 ? options[0] : nil
     }
 
     /// Whether the composer should show the effort control at all (issue #18).

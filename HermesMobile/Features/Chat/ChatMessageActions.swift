@@ -15,6 +15,89 @@ struct SelectableTextPresentation: Identifiable, Equatable {
     }
 }
 
+/// One entry of the message action menu. The SwiftUI menu and the UIKit
+/// context-menu interaction both build from this list so they never drift.
+struct ChatMessageActionItem: Identifiable {
+    enum Kind: Hashable {
+        case listen
+        case regenerate
+        case edit
+        case fork
+        case copy
+        /// One Tapback; consecutive ones form the menu's inline emoji row.
+        case react(String)
+        case removeReaction
+    }
+
+    let kind: Kind
+    /// The menu title, and the VoiceOver name of a Tapback, which shows only its emoji.
+    let title: String
+    let systemImage: String
+    let isEnabled: Bool
+    let perform: () -> Void
+    /// Draws the item checked; the Tapback row highlights your current reaction.
+    var isSelected = false
+
+    var id: Kind { kind }
+
+    @MainActor private static var emojiImages: [String: UIImage] = [:]
+
+    /// A Tapback's emoji drawn as its menu image. A small-element menu row
+    /// shows images only, so the item title stays free for VoiceOver.
+    @MainActor
+    static func emojiImage(_ emoji: String) -> UIImage {
+        if let image = emojiImages[emoji] { return image }
+        let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 22)]
+        let text = emoji as NSString
+        let image = UIGraphicsImageRenderer(size: text.size(withAttributes: attributes)).image { _ in
+            text.draw(at: .zero, withAttributes: attributes)
+        }.withRenderingMode(.alwaysOriginal)
+        emojiImages[emoji] = image
+        return image
+    }
+}
+
+/// The long-press menu is built from the item list alone, so any transcript
+/// that can name its own actions — Sessions, a Bot chat, a group room — gets
+/// the same UIKit menu without owning a chat view model.
+extension Array where Element == ChatMessageActionItem {
+    @MainActor
+    func uiMenu() -> UIMenu {
+        var children: [UIMenuElement] = []
+        var tapbacks: [UIAction] = []
+        func closeTapbackRow() {
+            guard !tapbacks.isEmpty else { return }
+            children.append(UIMenu(options: .displayInline, preferredElementSize: .small, children: tapbacks))
+            tapbacks = []
+        }
+        for item in self {
+            let image: UIImage?
+            if case .react(let emoji) = item.kind {
+                image = ChatMessageActionItem.emojiImage(emoji)
+            } else {
+                image = UIImage(systemName: item.systemImage)
+            }
+            let action = UIAction(title: item.title, image: image) { _ in
+                item.perform()
+            }
+            if !item.isEnabled {
+                action.attributes = .disabled
+            }
+            if item.isSelected {
+                action.state = .on
+            }
+            if case .react = item.kind {
+                tapbacks.append(action)
+            } else {
+                closeTapbackRow()
+                children.append(action)
+            }
+        }
+        closeTapbackRow()
+        return UIMenu(children: children)
+    }
+}
+
 struct ChatMessageActionMenu: View {
     let context: MessageActionContext
     let listeningMessageID: String?
@@ -24,58 +107,77 @@ struct ChatMessageActionMenu: View {
     let isEditingMessage: Bool
     let isForkingMessage: Bool
     let onToggleListening: (MessageActionContext) -> Void
-    let onSelectText: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
 
     var body: some View {
+        ForEach(items) { item in
+            Button {
+                item.perform()
+            } label: {
+                Label(item.title, systemImage: item.systemImage)
+            }
+            .disabled(!item.isEnabled)
+        }
+    }
+
+    /// The actions for this message in display order. Mutating actions are
+    /// disabled while the transcript is cached or a stream is active.
+    var items: [ChatMessageActionItem] {
+        var items: [ChatMessageActionItem] = []
+
         if context.role == .assistant {
-            Button {
-                onToggleListening(context)
-            } label: {
-                Label(
-                    isListening ? "Stop Listening" : "Listen",
-                    systemImage: isListening ? "speaker.slash" : "speaker.wave.2"
-                )
-            }
-
-            Button {
-                onSelectText(context)
-            } label: {
-                Label("Select Text", systemImage: "text.cursor")
-            }
-
-            Button {
-                onRegenerate(context)
-            } label: {
-                Label("Regenerate Response", systemImage: "arrow.clockwise")
-            }
-            .disabled(isViewingCachedData || hasActiveStream || isRegeneratingMessage)
+            items.append(ChatMessageActionItem(
+                kind: .listen,
+                title: isListening ? String(localized: "Stop Listening") : String(localized: "Listen"),
+                systemImage: isListening ? "speaker.slash" : "speaker.wave.2",
+                isEnabled: true,
+                perform: { onToggleListening(context) }
+            ))
+            items.append(ChatMessageActionItem(
+                kind: .regenerate,
+                title: String(localized: "Regenerate Response"),
+                systemImage: "arrow.clockwise",
+                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage),
+                perform: { onRegenerate(context) }
+            ))
         }
 
         if context.role == .user {
-            Button {
-                onEdit(context)
-            } label: {
-                Label("Edit Message", systemImage: "pencil")
-            }
-            .disabled(isViewingCachedData || hasActiveStream || isEditingMessage)
+            items.append(ChatMessageActionItem(
+                kind: .edit,
+                title: String(localized: "Edit Message"),
+                systemImage: "pencil",
+                isEnabled: !(isViewingCachedData || hasActiveStream || isEditingMessage),
+                perform: { onEdit(context) }
+            ))
         }
 
-        Button {
-            onFork(context)
-        } label: {
-            Label("Fork From Here", systemImage: "arrow.triangle.branch")
+        items.append(ChatMessageActionItem(
+            kind: .fork,
+            title: String(localized: "Fork From Here"),
+            systemImage: "arrow.triangle.branch",
+            isEnabled: !(isViewingCachedData || hasActiveStream || isForkingMessage),
+            perform: { onFork(context) }
+        ))
+        if context.role == .user {
+            items.append(ChatMessageActionItem(
+                kind: .copy,
+                title: String(localized: "Copy"),
+                systemImage: "doc.on.doc",
+                isEnabled: true,
+                perform: { onCopy(context) }
+            ))
         }
-        .disabled(isViewingCachedData || hasActiveStream || isForkingMessage)
 
-        Button {
-            onCopy(context)
-        } label: {
-            Label("Copy", systemImage: "doc.on.doc")
-        }
+        return items
+    }
+
+    /// The same actions as a UIKit menu, for `ChatMessageContextMenuView`.
+    func uiMenu() -> UIMenu {
+        items.uiMenu()
     }
 
     private var isListening: Bool {

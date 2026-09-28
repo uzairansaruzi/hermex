@@ -5,6 +5,20 @@ import UserNotifications
 import UIKit
 #endif
 
+// Device-wide engagement and tip preferences, shared across every configured server.
+enum TipJar {
+    /// The release (major.minor) on which "Not now" was last tapped.
+    static let dismissedReleaseKey = "tipJar.dismissedRelease"
+    static let linkOpenedKey = "tipJar.linkOpened"
+    static let completedResponseCountKey = "engagement.completedResponseCount"
+}
+
+enum RatingPromptSettings {
+    static let firstLaunchDateKey = "ratingPrompt.firstLaunchDate"
+    static let lastRequestDateKey = "ratingPrompt.lastRequestDate"
+    static let responseCountAtLastRequestKey = "ratingPrompt.responseCountAtLastRequest"
+}
+
 enum AppTheme: String, CaseIterable, Identifiable {
     case system
     case light
@@ -174,6 +188,9 @@ enum PrimaryActionTintSettings {
 
 enum AppHaptics {
     static let isEnabledKey = "appHaptics.isEnabled"
+    /// Opt-in selection tick while assistant text streams. Off by default and
+    /// only honored when `isEnabledKey` is also on.
+    static let streamingPulseIsEnabledKey = "appHaptics.streamingPulse.isEnabled"
 }
 
 enum ResponseCompletionNotifications {
@@ -207,9 +224,16 @@ enum ChatTranscriptDisplaySettings {
     static let thinkingCardsStartExpandedKey = "chatTranscript.thinkingCardsStartExpanded"
     static let toolCardsStartExpandedKey = "chatTranscript.toolCardsStartExpanded"
     static let hidesAttachmentPathsKey = "chatTranscript.hidesAttachmentPaths"
+    /// Settings → Chat "Message Timestamps": the time under each user message
+    /// and each finished reply. The key name predates the move under the
+    /// message and stays so a stored choice keeps working.
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"
+    static let defaultShowsTimestamps = true
     static let showsResponseSpeedKey = "chatTranscript.showsResponseSpeed"
     static let wrapsCodeBlockLinesKey = "chatTranscript.wrapsCodeBlockLines"
+    /// Settings → Chat "Fold Finished Turns": settled turns collapse their
+    /// thinking, tool rows, and interim replies behind one elapsed-time row.
+    static let foldsSettledTurnsKey = "chatTranscript.foldsSettledTurns"
 
     /// Backs the Settings → Chat "Right-to-Left Chat Layout" toggle (issue #259).
     /// Local-only: there is no server settings object to mirror an `rtl` flag
@@ -251,27 +275,6 @@ enum ChatTranscriptDisplaySettings {
         userToggled ?? startsExpanded
     }
 
-    static func shouldShowAssistantTypingIndicator(
-        hasActiveStream: Bool,
-        isCancellingStream: Bool,
-        hasStreamingAssistantMessage: Bool,
-        hasPendingClarificationPrompt: Bool = false,
-        liveReasoningText: String,
-        hasLiveToolCalls: Bool,
-        showsThinkingAndToolCards: Bool
-    ) -> Bool {
-        guard hasActiveStream, !isCancellingStream else { return false }
-        guard !hasStreamingAssistantMessage else { return false }
-        guard !hasPendingClarificationPrompt else { return false }
-
-        guard showsThinkingAndToolCards else {
-            return true
-        }
-
-        guard liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return !hasLiveToolCalls
-    }
-
     static func shouldUseStreamingBubbleRendering(
         hasActiveStream: Bool,
         messageRole: String?,
@@ -284,18 +287,19 @@ enum ChatTranscriptDisplaySettings {
             messageID == streamingAssistantMessageID
     }
 
-    /// Whether to draw the per-turn `glyph + timestamp` header above an assistant
-    /// turn. The header is a turn *separator*, not an identity, so it is limited
-    /// to real assistant turns that carry visible text — never user bubbles,
+    /// Whether to draw the `glyph + speed` header above an assistant reply. It
+    /// only exists to carry Response Speed, so it is limited to real assistant
+    /// turns with visible text and a measured speed — never user bubbles,
     /// system/marker cards, tool-call cards, or empty/tool-only assistant rows.
+    /// The reply's time lives under the message (`ChatMessageMetaRow`).
     static func showsAssistantTurnHeader(
         role: String?,
         hasTextContent: Bool,
-        isEnabled: Bool,
-        showsResponseSpeed: Bool = false,
-        hasResponseSpeed: Bool = false
+        showsResponseSpeed: Bool,
+        hasResponseSpeed: Bool
     ) -> Bool {
-        (isEnabled || (showsResponseSpeed && hasResponseSpeed)) &&
+        showsResponseSpeed &&
+            hasResponseSpeed &&
             role == "assistant" &&
             hasTextContent
     }
@@ -321,6 +325,21 @@ enum SectionVisibilitySettings {
     /// looks exactly as it did before.
     static func isVisible(_ key: String, in defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: key) as? Bool ?? true
+    }
+}
+
+/// App-wide preview gate for Bot Mode (#496). Default off so unfinished Bot UI
+/// never ships through a hotfix cut from `master`. Not per-server: it hides
+/// screens, it is not user data, and Bot connections and drafts stay in the
+/// Keychain while it is off. The Hermes connection screen is deliberately no
+/// longer behind it (#557): that login is what push pairing needs, and push
+/// serves a server's webui sessions too. Delete this gate and its Settings row
+/// in the release PR that ships Bot Mode; see `docs/agents/bots.md`.
+enum BotModeGate {
+    static let isEnabledKey = "botMode.isEnabled"
+
+    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: isEnabledKey)
     }
 }
 
@@ -425,6 +444,51 @@ enum ChatActiveRunStatusPolicy {
 
         guard hasActiveStream else { return nil }
         return ChatActiveRunStatusPresentation(kind: .active)
+    }
+}
+
+enum ChatWorkingRowPolicy {
+    /// Start date for the transcript's "Working for" tail row, or nil when the
+    /// row stays hidden: no active run, the run is being stopped, or the agent
+    /// is waiting on a clarification answer rather than working.
+    static func startedAt(
+        activeRunStartedAt: Date?,
+        isCancellingStream: Bool,
+        hasPendingClarificationPrompt: Bool
+    ) -> Date? {
+        guard let activeRunStartedAt, !isCancellingStream, !hasPendingClarificationPrompt else {
+            return nil
+        }
+        return activeRunStartedAt
+    }
+}
+
+enum ChatWorkingElapsedFormatter {
+    /// Compact elapsed time for the tail row: `12s`, `1m 4s`, `1h 2m 3s`.
+    static func label(startedAt: Date, now: Date) -> String {
+        label(seconds: now.timeIntervalSince(startedAt))
+    }
+
+    /// Spelled-out elapsed time for VoiceOver: `1 minute, 4 seconds`.
+    static func spokenLabel(startedAt: Date, now: Date) -> String {
+        spokenLabel(seconds: now.timeIntervalSince(startedAt))
+    }
+
+    /// Compact form of a finished span, shared with the settled-turn fold row.
+    static func label(seconds: TimeInterval) -> String {
+        Duration.seconds(wholeSeconds(seconds))
+            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
+    }
+
+    /// Spelled-out form of a finished span, for VoiceOver.
+    static func spokenLabel(seconds: TimeInterval) -> String {
+        Duration.seconds(wholeSeconds(seconds))
+            .formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
+    }
+
+    private static func wholeSeconds(_ seconds: TimeInterval) -> Int {
+        guard seconds.isFinite else { return 0 }
+        return max(0, Int(seconds.rounded(.down)))
     }
 }
 
@@ -555,15 +619,20 @@ enum ResponseCompletionNotificationService {
         await scheduler.requestAuthorization()
     }
 
-    @discardableResult
+    @MainActor @discardableResult
     static func scheduleResponseCompletedIfAllowed(
         sessionID: String?,
         preferenceEnabled: Bool,
         completedNormally: Bool,
         sceneIsActive: Bool,
+        server: URL? = nil,
+        isPushPaired: @MainActor (URL) -> Bool = { @MainActor in PushRegistrar.shared?.pairing(for: $0) != nil },
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
     ) async -> Bool {
         let status = await authorizationStatus(scheduler: scheduler)
+        // Read after the permission await: pairing can change while it is suspended.
+        // Both chat completion and cold-launch Live Activity reconciliation use this.
+        if let server, isPushPaired(server) { return false }
         guard ResponseCompletionNotificationPolicy.shouldSchedule(
             preferenceEnabled: preferenceEnabled,
             authorizationStatus: status,

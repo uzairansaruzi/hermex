@@ -129,6 +129,18 @@ final class ProvidersViewModel {
         max(provider.modelsTotal ?? 0, provider.models?.count ?? 0)
     }
 
+    /// Compact catalog count for a provider's disclosure, following the model
+    /// picker's convention: `shown / total` when the server trimmed the list,
+    /// the plain count otherwise. `nil` when the provider reports no models.
+    static func modelCountLabel(for provider: ProviderSummary) -> String? {
+        if let info = truncatedModelInfo(for: provider) {
+            return "\(info.shown.formatted()) / \(info.total.formatted())"
+        }
+
+        let count = modelCount(for: provider)
+        return count > 0 ? count.formatted() : nil
+    }
+
     /// Non-nil only when the server trimmed the model list (`models_total` exceeds
     /// the entries actually sent) — drives the "Showing X of Y models" footer.
     static func truncatedModelInfo(for provider: ProviderSummary) -> (shown: Int, total: Int)? {

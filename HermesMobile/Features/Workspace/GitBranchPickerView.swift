@@ -19,27 +19,24 @@ struct GitBranchPickerButton: View {
             HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
             showsPicker = true
         } label: {
+            // Quiet inline control matching the composer toolbar row: no pill
+            // background, 44 pt tall for the hit target.
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 16, weight: .regular))
+                    .font(AppFont.subheadline())
                 Text(currentBranch)
                     .font(AppFont.subheadline())
                     .lineLimit(1)
                     .truncationMode(.middle)
+                Image(systemName: "chevron.down")
+                    .font(AppFont.caption2())
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .adaptiveGlass(
-                .regular,
-                isInteractive: true,
-                fallbackMaterial: .ultraThinMaterial,
-                in: Capsule()
-            )
-            .clipShape(Capsule())
-            .chatMinimumHitTarget(in: Capsule())
+            .padding(.horizontal, 6)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.chatTactile(.compactControl))
         .disabled(isDisabled || isLoading || isSwitching)
         .accessibilityLabel("Current Git branch")
         .accessibilityValue(currentBranch)

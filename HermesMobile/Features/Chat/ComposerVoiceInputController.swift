@@ -20,7 +20,7 @@ final class ComposerVoiceInputController {
     private(set) var errorMessage: String?
     private(set) var liveTranscript = ""
 
-    private let speechRecognizerFactory: () -> SFSpeechRecognizer?
+    private let speechRecognizerFactory: (Locale) -> SFSpeechRecognizer?
     private let audioEngineFactory: () -> AVAudioEngine
     private var speechRecognizer: SFSpeechRecognizer?
     private var audioEngine: AVAudioEngine?
@@ -39,10 +39,9 @@ final class ComposerVoiceInputController {
 
     @ObservationIgnored var apiClient: APIClient?
     @ObservationIgnored var providerPreference = ComposerSTTProviderPreference.defaultValue
-    @ObservationIgnored var locale = Locale.current
 
     init(
-        speechRecognizerFactory: @escaping () -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: Locale.current) },
+        speechRecognizerFactory: @escaping (Locale) -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: $0) },
         audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() }
     ) {
         self.speechRecognizerFactory = speechRecognizerFactory
@@ -728,31 +727,28 @@ final class ComposerVoiceInputController {
         }
     }
 
+    /// The on-device recognizer for the first dictation locale candidate that
+    /// has a model, cached for the controller's lifetime. Live dictation and
+    /// the server-failure file fallback both record through this pick.
     private func onDeviceSpeechRecognizerForRecording() -> SFSpeechRecognizer? {
         if let speechRecognizer {
             return speechRecognizer.supportsOnDeviceRecognition ? speechRecognizer : nil
         }
 
-        guard Self.isLocaleSupportedBySpeechRecognizer(locale) else {
-            return nil
-        }
-        let speechRecognizer = speechRecognizerFactory()
-        guard speechRecognizer?.supportsOnDeviceRecognition == true else {
-            return nil
+        let speechRecognizer = ComposerSpeechLocalePolicy.firstAvailable(
+            in: ComposerSpeechLocalePolicy.candidates(
+                current: .current,
+                preferredLanguages: Locale.preferredLanguages
+            ),
+            supportedLocales: SFSpeechRecognizer.supportedLocales()
+        ) { locale -> SFSpeechRecognizer? in
+            guard let recognizer = self.speechRecognizerFactory(locale),
+                  recognizer.supportsOnDeviceRecognition
+            else { return nil }
+            return recognizer
         }
         self.speechRecognizer = speechRecognizer
         return speechRecognizer
-    }
-
-    private static func isLocaleSupportedBySpeechRecognizer(_ locale: Locale) -> Bool {
-        let target = normalizedLocaleIdentifier(locale.identifier)
-        return SFSpeechRecognizer.supportedLocales().contains { supportedLocale in
-            normalizedLocaleIdentifier(supportedLocale.identifier) == target
-        }
-    }
-
-    private static func normalizedLocaleIdentifier(_ identifier: String) -> String {
-        identifier.replacingOccurrences(of: "_", with: "-").lowercased()
     }
 
     private func fail(_ message: String, logCategory: VoiceInputFailureLogCategory) {
@@ -878,6 +874,76 @@ enum VoiceInputFailureLogCategory: String {
     case invalidInputFormat
     case audioEngineAlreadyRunning
     case audioStartup
+}
+
+/// Chooses the dictation language. `Locale.current` (app language plus device
+/// region) stays first so users whose dictation already works keep the same
+/// recognizer; the user's preferred languages and `en-US` cover regions whose
+/// pairing has no on-device model, such as `en_PK`.
+enum ComposerSpeechLocalePolicy {
+    static let preferredLanguageLimit = 3
+    static let lastResortIdentifier = "en-US"
+
+    /// `current`, then the first few distinct preferred languages, then `en-US`,
+    /// deduplicated by normalized identifier. Duplicates of `current` (usually
+    /// the first preferred language) do not use up a preferred-language slot.
+    static func candidates(current: Locale, preferredLanguages: [String]) -> [Locale] {
+        let leading = distinct([current.identifier] + preferredLanguages).prefix(1 + preferredLanguageLimit)
+        return distinct(leading + [lastResortIdentifier]).map(Locale.init(identifier:))
+    }
+
+    /// Walks `candidates` in order and returns the first `recognizer` result.
+    /// `recognizer` is called only for candidates listed in `supportedLocales`,
+    /// with the supported locale itself, and returns nil when that locale has
+    /// no on-device model. An exact identifier match wins over a language plus
+    /// region match, so `hi-IN` never resolves to `hi-IN-translit`.
+    static func firstAvailable<Recognizer>(
+        in candidates: [Locale],
+        supportedLocales: Set<Locale>,
+        recognizer: (Locale) -> Recognizer?
+    ) -> Recognizer? {
+        // Sorted so collisions resolve the same way on every launch.
+        let supported = supportedLocales.sorted { $0.identifier < $1.identifier }
+        let byExactIdentifier = Dictionary(
+            supported.map { (exactIdentifier($0.identifier), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let byLanguageAndRegion = Dictionary(
+            supported.map { (normalizedIdentifier($0.identifier), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for candidate in candidates {
+            let match = byExactIdentifier[exactIdentifier(candidate.identifier)]
+                ?? byLanguageAndRegion[normalizedIdentifier(candidate.identifier)]
+            if let match, let result = recognizer(match) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    /// Language plus region, lowercased: `en_US`, `en-US`, and `en_US@rg=pkzzzz`
+    /// all normalize to `en-us`, and `zh-Hans-CN` to `zh-cn`, because
+    /// `SFSpeechRecognizer.supportedLocales()` lists Chinese without a script.
+    /// An identifier without a region (`en`) keeps its exact form.
+    static func normalizedIdentifier(_ identifier: String) -> String {
+        let language = Locale(identifier: identifier).language
+        if let code = language.languageCode?.identifier, let region = language.region?.identifier {
+            return "\(code)-\(region)".lowercased()
+        }
+        return exactIdentifier(identifier)
+    }
+
+    /// The identifier without any `@…` keywords, with `-` separators, lowercased.
+    private static func exactIdentifier(_ identifier: String) -> String {
+        let base = identifier.split(separator: "@", maxSplits: 1).first.map(String.init) ?? identifier
+        return base.replacingOccurrences(of: "_", with: "-").lowercased()
+    }
+
+    private static func distinct<Identifiers: Sequence<String>>(_ identifiers: Identifiers) -> [String] {
+        var seen = Set<String>()
+        return identifiers.filter { seen.insert(normalizedIdentifier($0)).inserted }
+    }
 }
 
 enum ComposerVoiceInputStartPolicy {

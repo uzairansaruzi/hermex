@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 import UIKit
 import UniformTypeIdentifiers
@@ -44,8 +43,8 @@ enum TranscriptMediaExportSupport {
             return TranscriptMediaExportDescriptor(kind: .image, contentType: .png, fileExtension: "png")
         }
 
-        if resolvedKind == .audio || isAudioData(data) {
-            let audioType = audioType(from: data) ?? (UTType(filenameExtension: "m4a") ?? .audio, "m4a")
+        if resolvedKind == .audio || AttachmentAudioDetection.containerType(of: data) != nil {
+            let audioType = AttachmentAudioDetection.containerType(of: data) ?? (UTType(filenameExtension: "m4a") ?? .audio, "m4a")
             return TranscriptMediaExportDescriptor(
                 kind: .audio,
                 contentType: audioType.contentType,
@@ -85,32 +84,6 @@ enum TranscriptMediaExportSupport {
         return .data
     }
 
-    private static func isAudioData(_ data: Data) -> Bool {
-        (try? AVAudioPlayer(data: data)) != nil
-    }
-
-    private static func audioType(from data: Data) -> (contentType: UTType, fileExtension: String)? {
-        if data.starts(with: Array("RIFF".utf8)), data.dropFirst(8).starts(with: Array("WAVE".utf8)) {
-            return (.wav, "wav")
-        }
-
-        if data.starts(with: [0x49, 0x44, 0x33]) {
-            return (.mp3, "mp3")
-        }
-
-        if data.count >= 2 {
-            let bytes = Array(data.prefix(2))
-            if bytes[0] == 0xFF, (bytes[1] & 0xE0) == 0xE0 {
-                return (.mp3, "mp3")
-            }
-        }
-
-        if data.starts(with: Array("caff".utf8)) {
-            return (UTType(filenameExtension: "caf") ?? .audio, "caf")
-        }
-
-        return nil
-    }
 }
 
 private struct TranscriptMediaExportDescriptor {

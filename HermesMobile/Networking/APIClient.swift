@@ -4,23 +4,17 @@ actor APIClient {
     let baseURL: URL
     let session: URLSession
     let publicMediaSession: URLSession
-    /// The redirect guard wired into both default sessions. Strips the user's
-    /// custom headers when the server redirects a same-origin request to a
-    /// cross-origin host (#277). `nonisolated` so tests can drive the exact
-    /// delegate the client installs; it is immutable and `Sendable`.
+    /// The redirect guard passed as the per-task delegate on every request this
+    /// client sends. Strips the user's custom headers when the server redirects a
+    /// same-origin request to a cross-origin host (#277). `nonisolated` so tests
+    /// can drive the exact delegate the client installs; it is immutable and
+    /// `Sendable`.
     nonisolated let redirectHeaderStripper: CrossOriginHeaderStripper
-    /// Sessions this client created (vs. ones a caller injected). A `URLSession`
-    /// built with a delegate keeps a strong reference to it and to itself until
-    /// invalidated, so we tear these down in `deinit` to avoid leaking them — many
-    /// `APIClient`s are created ad hoc and discarded (#277).
-    private let ownedSessions: [URLSession]
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     /// Read when building each request so live edits apply without rebuilding the
     /// client. Defaults to the process-wide store; tests inject a fixed list (#255).
-    /// Internal, not private, because the upload and transcribe extensions build
-    /// their multipart requests by hand and need the same header injection (#61).
-    let customHeaderProvider: @Sendable () -> [CustomHeader]
+    private let customHeaderProvider: @Sendable () -> [CustomHeader]
 
     init(
         baseURL: URL,
@@ -31,27 +25,23 @@ actor APIClient {
         self.baseURL = baseURL
         self.customHeaderProvider = customHeaderProvider
 
-        // One redirect guard shared by both sessions (same origin + same header
-        // provider). Wired into the default sessions so a server-issued
-        // same-origin → cross-origin redirect can't forward the user's custom
-        // headers off-origin (#277).
-        let redirectHeaderStripper = CrossOriginHeaderStripper(
+        // One redirect guard per client (its origin + header provider), attached
+        // to each request as a per-task delegate so a server-issued same-origin →
+        // cross-origin redirect can't forward the user's custom headers off-origin
+        // (#277). It is per-task, not per-session, so every client can share the
+        // process-wide sessions below.
+        self.redirectHeaderStripper = CrossOriginHeaderStripper(
             baseURL: baseURL,
             customHeaderProvider: customHeaderProvider
         )
-        self.redirectHeaderStripper = redirectHeaderStripper
 
-        let resolvedSession = session ?? Self.makeDefaultSession(delegate: redirectHeaderStripper)
-        let resolvedPublicMediaSession = publicMediaSession
-            ?? Self.makeDefaultPublicMediaSession(delegate: redirectHeaderStripper)
-        self.session = resolvedSession
-        self.publicMediaSession = resolvedPublicMediaSession
-        // Only the sessions we created carry our delegate and must be invalidated;
-        // an injected session is the caller's to manage.
-        var ownedSessions: [URLSession] = []
-        if session == nil { ownedSessions.append(resolvedSession) }
-        if publicMediaSession == nil { ownedSessions.append(resolvedPublicMediaSession) }
-        self.ownedSessions = ownedSessions
+        // Process-wide sessions by default, so a newly opened chat reuses the warm
+        // connection pool (keep-alive, HTTP/2, TLS) the session list already holds
+        // instead of paying a fresh handshake (#688). They carry nothing
+        // server-specific: cookies live in the shared jar either way, and custom
+        // headers are applied per request.
+        self.session = session ?? Self.sharedSession
+        self.publicMediaSession = publicMediaSession ?? Self.sharedPublicMediaSession
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -60,16 +50,6 @@ actor APIClient {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         self.encoder = encoder
-    }
-
-    deinit {
-        // Break the session ↔ delegate retain so the sessions we created don't
-        // outlive this client (#277). `finishTasksAndInvalidate` lets any in-flight
-        // request finish first; by deinit there should be none, since an in-flight
-        // actor call keeps `self` alive.
-        for session in ownedSessions {
-            session.finishTasksAndInvalidate()
-        }
     }
 
     func health() async throws -> HealthResponse {
@@ -94,9 +74,10 @@ actor APIClient {
 
     func send<Response: Decodable>(
         endpoint: Endpoint,
-        method: String
+        method: String,
+        timeout: TimeInterval? = nil
     ) async throws -> Response {
-        let data = try await sendData(endpoint: endpoint, method: method, encodedBody: nil)
+        let data = try await sendData(endpoint: endpoint, method: method, encodedBody: nil, timeout: timeout)
         return try decode(Response.self, from: data)
     }
 
@@ -177,14 +158,57 @@ actor APIClient {
             request.httpBody = encodedBody
         }
 
+        return try await sendPreparedRequest(request)
+    }
+
+    /// Multipart POST using the same URLSession + `APIError` mapping as `sendData`.
+    /// Custom headers first, then the multipart Content-Type so it always wins
+    /// over a caller-supplied `Content-Type` (#61).
+    ///
+    /// `requireSuccess` defaults to the sendData 2xx guard. Transcribe opts out
+    /// so it can decode `{error: ...}` bodies on non-2xx (except 401).
+    func sendMultipart(
+        endpoint: Endpoint,
+        body: Data,
+        contentType: String,
+        requireSuccess: Bool = true
+    ) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        customHeaderProvider().apply(to: &request)
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        return try await sendPreparedRequest(request, requireSuccess: requireSuccess)
+    }
+
+    /// Shared URLSession hop + status mapping for JSON and multipart sends.
+    private func sendPreparedRequest(
+        _ request: URLRequest,
+        requireSuccess: Bool = true
+    ) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: redirectHeaderStripper)
         } catch {
             throw APIError.network(underlying: error)
         }
 
+        return try Self.mappedHTTPResponse(
+            data: data,
+            response: response,
+            requireSuccess: requireSuccess
+        )
+    }
+
+    /// 401 → `.unauthorized`; other non-2xx → `.http` when `requireSuccess`.
+    /// Non-HTTP responses map to `.http(statusCode: -1)` like `sendData`.
+    private static func mappedHTTPResponse(
+        data: Data,
+        response: URLResponse,
+        requireSuccess: Bool
+    ) throws -> (Data, HTTPURLResponse) {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.http(statusCode: -1, body: nil)
         }
@@ -193,11 +217,13 @@ actor APIClient {
             throw APIError.unauthorized
         }
 
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw APIError.http(
-                statusCode: httpResponse.statusCode,
-                body: String(data: data, encoding: .utf8)
-            )
+        if requireSuccess {
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw APIError.http(
+                    statusCode: httpResponse.statusCode,
+                    body: String(data: data, encoding: .utf8)
+                )
+            }
         }
 
         return (data, httpResponse)
@@ -225,7 +251,7 @@ actor APIClient {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: redirectHeaderStripper)
         } catch {
             throw APIError.network(underlying: error)
         }
@@ -278,22 +304,28 @@ actor APIClient {
     }
 }
 
-private extension APIClient {
-    static func makeDefaultSession(delegate: URLSessionDelegate?) -> URLSession {
+extension APIClient {
+    /// The default session every `APIClient` shares, so connections are pooled
+    /// across clients (#688). Cookie-bearing: the shared jar holds each server's
+    /// auth cookie. No session delegate; redirects are guarded per task.
+    /// Never invalidate it.
+    static let sharedSession: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = .shared
         configuration.httpCookieAcceptPolicy = .always
         configuration.httpShouldSetCookies = true
-        return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-    }
+        return URLSession(configuration: configuration)
+    }()
 
-    static func makeDefaultPublicMediaSession(delegate: URLSessionDelegate?) -> URLSession {
+    /// The cookie-less session every `APIClient` shares for public and
+    /// third-party transcript media. Never invalidate it.
+    static let sharedPublicMediaSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpShouldSetCookies = false
-        return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-    }
+        return URLSession(configuration: configuration)
+    }()
 }
 
 private struct LoginRequest: Encodable {
@@ -315,9 +347,10 @@ private struct EmptyBody: Encodable {}
 ///
 /// Same-origin → same-origin redirects keep the headers (a proxy path rewrite
 /// still needs them); a request with no custom headers is left byte-identical.
-/// Only `willPerformHTTPRedirection` is implemented, so every other delegate
+/// `APIClient` passes it as the per-task delegate on each request. Only
+/// `willPerformHTTPRedirection` is implemented, so every other delegate
 /// responsibility (TLS trust, auth challenges) falls back to `URLSession`'s
-/// default handling — unchanged from when these sessions had no delegate.
+/// default handling.
 ///
 /// `@unchecked Sendable` is safe: both stored properties are immutable and
 /// `Sendable` (the header provider is `@Sendable`); `NSObject` just isn't

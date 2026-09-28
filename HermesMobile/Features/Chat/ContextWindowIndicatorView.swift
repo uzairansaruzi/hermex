@@ -48,10 +48,13 @@ struct ContextWindowIndicatorView: View {
                     .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
             }
             .frame(width: ringSize, height: ringSize)
+            // Lives inside the masked toolbar scroller: glass would draw over
+            // the pinned Send button instead of fading behind it.
             .adaptiveGlass(
                 .regular,
                 isInteractive: presentation.isInteractive,
                 fallbackMaterial: .ultraThinMaterial,
+                inheritsClipping: true,
                 in: Circle()
             )
             .frame(width: tapTargetSize, height: tapTargetSize)

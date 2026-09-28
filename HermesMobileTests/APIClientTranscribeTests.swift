@@ -56,6 +56,21 @@ final class APIClientTranscribeTests: APIClientTestCase {
         XCTAssertNil(response.transcript)
     }
 
+    func testTranscribeAudioMapsURLErrorToNetwork() async {
+        let client = makeClient { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            _ = try await client.transcribeAudio(data: Data("x".utf8), filename: "v.m4a")
+            XCTFail("Expected APIError.network")
+        } catch let APIError.network(underlying) {
+            XCTAssertEqual((underlying as? URLError)?.code, .notConnectedToInternet)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testTranscribeAudioMapsUnauthorized() async {
         let client = makeClient { request in
             let response = HTTPURLResponse(

@@ -20,6 +20,9 @@ enum Endpoint {
     /// fork lineage. `branchSession` means "fork a child from here" (#25).
     case duplicateSession
     case compressSession
+    /// Truncates the session to empty on the server, resetting the title.
+    /// Destructive and irreversible: always confirm before calling it (#389).
+    case clearSession
     case undoSession
     case retrySession
     case truncateSession
@@ -32,7 +35,7 @@ enum Endpoint {
     case renameProject
     case deleteProject
     case chatStart
-    case chatStream(streamID: String)
+    case chatStream(streamID: String, replayAfterSeq: Int? = nil)
     case chatCancel(streamID: String)
     case chatStreamStatus(streamID: String)
     case chatSteer
@@ -83,6 +86,10 @@ enum Endpoint {
     case switchProfile
     case createProfile
     case providers
+    /// `GET /api/provider/quota` — subscription limits or credits for one
+    /// provider. `refresh` bypasses the server's 45 s probe cache; a cold probe
+    /// can take several seconds, so only explicit refresh gestures pass it.
+    case providerQuota(provider: String, refresh: Bool = false)
     case settings
     case updatesCheck
     case updatesApply
@@ -91,12 +98,20 @@ enum Endpoint {
     case cronCreate
     case cronUpdate
     case cronDelete
+    /// POST: triggers a run. `/api/crons/run` also serves a GET that reads one
+    /// past run's output — that is `cronRunDetail`, a separate case.
     case cronRun
+    /// GET on `/api/crons/run`: one past run's full output.
+    case cronRunDetail(jobID: String, filename: String)
+    case cronHistory(jobID: String, offset: Int, limit: Int)
     case cronPause
     case cronResume
     case cronStatus(jobID: String?)
     case cronOutput(jobID: String, limit: Int?)
     case cronDeliveryOptions
+    /// GET: every job's latest completion, for the Tasks list's recent-runs
+    /// group. Upstream also accepts `since` for polling; this app does not poll.
+    case cronRecent
     case kanbanConfig
     case kanbanBoards
     case kanbanCreateBoard
@@ -165,6 +180,8 @@ enum Endpoint {
             return "/api/session/duplicate"
         case .compressSession:
             return "/api/session/compress"
+        case .clearSession:
+            return "/api/session/clear"
         case .undoSession:
             return "/api/session/undo"
         case .retrySession:
@@ -291,6 +308,8 @@ enum Endpoint {
             return "/api/profile/create"
         case .providers:
             return "/api/providers"
+        case .providerQuota:
+            return "/api/provider/quota"
         case .settings:
             return "/api/settings"
         case .updatesCheck:
@@ -307,8 +326,10 @@ enum Endpoint {
             return "/api/crons/update"
         case .cronDelete:
             return "/api/crons/delete"
-        case .cronRun:
+        case .cronRun, .cronRunDetail:
             return "/api/crons/run"
+        case .cronHistory:
+            return "/api/crons/history"
         case .cronPause:
             return "/api/crons/pause"
         case .cronResume:
@@ -319,6 +340,8 @@ enum Endpoint {
             return "/api/crons/output"
         case .cronDeliveryOptions:
             return "/api/crons/delivery-options"
+        case .cronRecent:
+            return "/api/crons/recent"
         case .kanbanConfig:
             return "/api/kanban/config"
         case .kanbanBoards, .kanbanCreateBoard:
@@ -426,8 +449,16 @@ enum Endpoint {
             return items
         case let .sessionStatus(id):
             return [URLQueryItem(name: "session_id", value: id)]
-        case let .chatStream(streamID),
-            let .chatCancel(streamID),
+        case let .chatStream(streamID, replayAfterSeq):
+            var items = [URLQueryItem(name: "stream_id", value: streamID)]
+            // Opt-in reconnect: omitted on a live attach so the URL stays
+            // byte-identical. Negative cursors clamp to 0.
+            if let replayAfterSeq {
+                items.append(URLQueryItem(name: "replay", value: "1"))
+                items.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
+            }
+            return items
+        case let .chatCancel(streamID),
             let .chatStreamStatus(streamID):
             return [URLQueryItem(name: "stream_id", value: streamID)]
         case let .sessionYolo(sessionID):
@@ -477,6 +508,17 @@ enum Endpoint {
         case let .cronStatus(jobID):
             guard let jobID else { return [] }
             return [URLQueryItem(name: "job_id", value: jobID)]
+        case let .cronRunDetail(jobID, filename):
+            return [
+                URLQueryItem(name: "job_id", value: jobID),
+                URLQueryItem(name: "filename", value: filename)
+            ]
+        case let .cronHistory(jobID, offset, limit):
+            return [
+                URLQueryItem(name: "job_id", value: jobID),
+                URLQueryItem(name: "offset", value: "\(offset)"),
+                URLQueryItem(name: "limit", value: "\(limit)")
+            ]
         case let .cronOutput(jobID, limit):
             var items = [URLQueryItem(name: "job_id", value: jobID)]
             if let limit {
@@ -522,6 +564,12 @@ enum Endpoint {
             return items
         case let .insights(days):
             return [URLQueryItem(name: "days", value: "\(days)")]
+        case let .providerQuota(provider, refresh):
+            var items = [URLQueryItem(name: "provider", value: provider)]
+            if refresh {
+                items.append(URLQueryItem(name: "refresh", value: "1"))
+            }
+            return items
         case let .skillContent(name, file):
             var items = [URLQueryItem(name: "name", value: name)]
             if let file {

@@ -83,7 +83,7 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(SessionRowView.metadataLabel(for: session, showsMessageCount: false, showsWorkspace: false))
     }
 
-    func testSessionRowAccessibilityStateLabelsIncludeStreamingPinnedAndCachedState() {
+    func testSessionRowAccessibilityStateLabelsIncludeAttentionPinnedAndCachedState() {
         let session = SessionSummary(
             sessionId: "stateful",
             pinned: true,
@@ -91,9 +91,15 @@ final class SessionIdentityTests: XCTestCase {
             isStreaming: false
         )
 
+        // Cached rows say nothing about attention: the stream fields in a
+        // cached summary are as old as the cache.
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: session, isViewingCachedData: true),
-            ["Streaming", "Pinned", "Cached"]
+            ["Pinned", "Cached"]
+        )
+        XCTAssertEqual(
+            SessionRowView.accessibilityStateLabels(for: session, isViewingCachedData: false),
+            ["Working", "Pinned"]
         )
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: SessionSummary(sessionId: "plain"), isViewingCachedData: false),
@@ -299,7 +305,6 @@ final class AvatarServerSwitcherModelTests: XCTestCase {
             displayName: displayName,
             initials: "",
             headerLogoColorHex: HeaderLogoColor.defaultHex,
-            customHeadersRef: id,
             createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 0)
         )
@@ -453,7 +458,7 @@ final class SidebarSectionVisibilityTests: XCTestCase {
         XCTAssertTrue(visibility.showsAnyUtilityLink)
     }
 
-    func testUtilityLinkRowDropsOnlyWhenAllFiveAreHidden() {
+    func testUtilityLinkRowDropsOnlyWhenEveryLinkIsHidden() {
         var visibility = SidebarSectionVisibility.showAll
         visibility.tasks = false
         visibility.kanban = false
@@ -461,6 +466,8 @@ final class SidebarSectionVisibilityTests: XCTestCase {
         visibility.memory = false
         visibility.insights = false
 
+        XCTAssertTrue(visibility.showsAnyUtilityLink, "the Bots row keeps the row alive while Bot Mode is on")
+        visibility.bots = false
         XCTAssertFalse(visibility.showsAnyUtilityLink)
     }
 

@@ -9,12 +9,26 @@ struct SessionRowView: View {
     var showsMessageCount = true
     var showsWorkspace = true
     var isViewingCachedData = false
+    var isUnread = false
+    /// The resolved attention state for this row, supplied by the screen that
+    /// polls the server (`SessionListViewModel`). Screens that do not poll pass
+    /// nothing and the row falls back to what the session itself reports.
+    var attentionState: SessionRowAttentionState?
+    /// Set only while a remote content search is showing this row, so the row
+    /// can say why it matched.
+    var searchExcerpt: SessionSearchExcerpt?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            if Self.isActiveStreaming(session) {
+            if Self.isActiveStreaming(session) && !isViewingCachedData {
                 ActiveSessionStreamingIndicator()
                     .padding(.top, streamingIndicatorTopPadding)
+            } else if isUnread && effectiveAttentionState == nil {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 10, height: 10)
+                    .padding(.top, streamingIndicatorTopPadding)
+                    .accessibilityHidden(true)
             }
 
             rowContent
@@ -52,14 +66,47 @@ struct SessionRowView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
+    /// The state the row actually shows: what the polling screen resolved, or —
+    /// for screens that do not poll — whatever the session alone can say.
+    ///
+    /// The fallback is off while the row is showing cached data: a cached
+    /// summary keeps whatever `isStreaming`/`activeStreamId` it was captured
+    /// with, so an offline row would otherwise claim the agent is still
+    /// working. Cached rows fall back to their relative time instead.
+    static func effectiveAttentionState(
+        for session: SessionSummary,
+        attentionState: SessionRowAttentionState?,
+        isViewingCachedData: Bool
+    ) -> SessionRowAttentionState? {
+        if let attentionState {
+            return attentionState
+        }
+
+        guard !isViewingCachedData else { return nil }
+
+        return SessionRowAttentionState.resolve(
+            session: session,
+            hasPendingApproval: false,
+            hasPendingClarification: false
+        )
+    }
+
     static func accessibilityStateLabels(
         for session: SessionSummary,
-        isViewingCachedData: Bool
+        isViewingCachedData: Bool,
+        attentionState: SessionRowAttentionState? = nil,
+        isUnread: Bool = false
     ) -> [String] {
         var labels: [String] = []
 
-        if isActiveStreaming(session) {
-            labels.append(String(localized: "Streaming"))
+        if let state = effectiveAttentionState(
+            for: session,
+            attentionState: attentionState,
+            isViewingCachedData: isViewingCachedData
+        ) {
+            labels.append(state.accessibilityLabel)
+        } else if isUnread {
+            labels.append(String(localized: "Unread"))
         }
 
         if session.pinned == true {
@@ -115,6 +162,10 @@ struct SessionRowView: View {
         VStack(alignment: .leading, spacing: rowContentSpacing) {
             titleArea
 
+            if let searchExcerpt {
+                excerptText(searchExcerpt)
+            }
+
             if showsSupplementalContent {
                 supplementalArea
             }
@@ -128,21 +179,53 @@ struct SessionRowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 titleAndPin
 
-                if let relativeDate {
-                    relativeDateText(relativeDate)
-                }
+                trailingStatusSlot
             }
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 titleAndPin
 
-                if let relativeDate {
+                if showsTrailingStatus {
                     Spacer(minLength: 8)
-
-                    relativeDateText(relativeDate)
                 }
+
+                trailingStatusSlot
             }
         }
+    }
+
+    /// One line, one meaning: the attention state when the session wants
+    /// something, otherwise the relative time. Never both, so the row keeps its
+    /// height in every state.
+    @ViewBuilder
+    private var trailingStatusSlot: some View {
+        if let effectiveAttentionState {
+            attentionStateText(effectiveAttentionState)
+        } else if let relativeDate {
+            relativeDateText(relativeDate)
+        }
+    }
+
+    private var showsTrailingStatus: Bool {
+        effectiveAttentionState != nil || relativeDate != nil
+    }
+
+    private var effectiveAttentionState: SessionRowAttentionState? {
+        Self.effectiveAttentionState(
+            for: session,
+            attentionState: attentionState,
+            isViewingCachedData: isViewingCachedData
+        )
+    }
+
+    private func attentionStateText(_ state: SessionRowAttentionState) -> some View {
+        Text(state.title)
+            .font(AppFont.caption(weight: .semibold))
+            .monospacedDigit()
+            .foregroundStyle(state.tint)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHidden(true)
     }
 
     private var titleAndPin: some View {
@@ -170,6 +253,18 @@ struct SessionRowView: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHidden(true)
+    }
+
+    /// One-line "why this row matched", with the query bolded. Hidden from
+    /// VoiceOver because `accessibilitySummary` already reads it in order.
+    private func excerptText(_ excerpt: SessionSearchExcerpt) -> some View {
+        Text(excerpt.highlighted)
+            .font(AppFont.caption())
+            .foregroundStyle(.secondary)
+            .lineLimit(excerptLineLimit)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityHidden(true)
     }
 
@@ -230,11 +325,9 @@ struct SessionRowView: View {
     }
 
     private var visibleStateBadges: [SessionRowStateBadgeKind] {
+        // Streaming has no badge: the trailing "Working" label and the pulsing
+        // dot already say it, and a third marker only added noise.
         var badges: [SessionRowStateBadgeKind] = []
-
-        if Self.isActiveStreaming(session) {
-            badges.append(.streaming)
-        }
 
         if isViewingCachedData {
             badges.append(.cached)
@@ -260,7 +353,8 @@ struct SessionRowView: View {
     }
 
     private var rowMinimumHeight: CGFloat {
-        showsSupplementalContent ? 54 : 46
+        let base: CGFloat = showsSupplementalContent ? 54 : 46
+        return searchExcerpt == nil ? base : base + 16
     }
 
     private var titleLineLimit: Int {
@@ -268,6 +362,10 @@ struct SessionRowView: View {
     }
 
     private var metadataLineLimit: Int {
+        dynamicTypeSize.isAccessibilitySize ? 3 : 1
+    }
+
+    private var excerptLineLimit: Int {
         dynamicTypeSize.isAccessibilitySize ? 3 : 1
     }
 
@@ -288,7 +386,16 @@ struct SessionRowView: View {
     private var accessibilitySummary: String {
         var parts = [displayTitle]
 
-        parts.append(contentsOf: Self.accessibilityStateLabels(for: session, isViewingCachedData: isViewingCachedData))
+        if let searchExcerpt {
+            parts.append(String(localized: "Matched: \(searchExcerpt.text)"))
+        }
+
+        parts.append(contentsOf: Self.accessibilityStateLabels(
+            for: session,
+            isViewingCachedData: isViewingCachedData,
+            attentionState: attentionState,
+            isUnread: isUnread
+        ))
 
         if let metadataLabel {
             parts.append(metadataLabel)
@@ -302,8 +409,68 @@ struct SessionRowView: View {
     }
 }
 
+/// What one session row is asking of the user, shown where the relative time
+/// otherwise sits. `nil` means no attention is pending: the row shows its
+/// time, with an unread dot when a newer settled reply exists.
+enum SessionRowAttentionState: String, Equatable {
+    case approval
+    case input
+    case working
+
+    /// Precedence: approval → input → working → ready. Pure by design — the
+    /// caller decides which sessions are worth asking the server about, so a
+    /// pending flag on a non-streaming session still resolves here.
+    static func resolve(
+        session: SessionSummary,
+        hasPendingApproval: Bool,
+        hasPendingClarification: Bool
+    ) -> SessionRowAttentionState? {
+        if hasPendingApproval {
+            return .approval
+        }
+
+        if hasPendingClarification {
+            return .input
+        }
+
+        return SessionRowView.isActiveStreaming(session) ? .working : nil
+    }
+
+    var title: String {
+        switch self {
+        case .approval:
+            return String(localized: "Approval")
+        case .input:
+            return String(localized: "Input")
+        case .working:
+            return String(localized: "Working")
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .approval:
+            return String(localized: "Waiting for approval")
+        case .input:
+            return String(localized: "Needs input")
+        case .working:
+            return String(localized: "Working")
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .approval:
+            return Color("AttentionApproval")
+        case .input:
+            return Color("AttentionInput")
+        case .working:
+            return Color("AttentionWorking")
+        }
+    }
+}
+
 private enum SessionRowStateBadgeKind: String, Identifiable {
-    case streaming
     case cached
     case readOnly
 
@@ -311,8 +478,6 @@ private enum SessionRowStateBadgeKind: String, Identifiable {
 
     var title: String {
         switch self {
-        case .streaming:
-            return String(localized: "Live")
         case .cached:
             return String(localized: "Cached")
         case .readOnly:
@@ -322,8 +487,6 @@ private enum SessionRowStateBadgeKind: String, Identifiable {
 
     var tint: Color {
         switch self {
-        case .streaming:
-            return .green
         case .cached:
             return .orange
         case .readOnly:
@@ -400,7 +563,8 @@ private func nonEmpty(_ value: String?) -> String? {
     return trimmed.isEmpty ? nil : trimmed
 }
 
-private enum SessionRelativeDateFormatter {
+/// Shared "2h ago" formatter for session and Bot rows.
+enum SessionRelativeDateFormatter {
     static let shared: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated

@@ -19,6 +19,10 @@ enum MarkdownMathLayout: Equatable {
 
 struct MarkdownMathSegmenter {
     static func segments(in content: String) -> [MarkdownMathSegment] {
+        // Skip Markdown protection and delimiter scans when no math opener is possible.
+        guard content.utf8.contains(0x24) || content.utf8.contains(0x5C) else {
+            return [.markdown(content)]
+        }
         let characters = Array(content)
         guard characters.count >= 4 else {
             return [.markdown(MarkdownMathFormatter.replacingInlineMath(in: content))]

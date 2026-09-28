@@ -1,24 +1,37 @@
 import SwiftUI
 
 struct MessageBubbleView: View {
+    @State private var responseIsVisible = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The skills this chat can draw as chips, published by `ChatView`.
+    @Environment(\.composerChipCatalog) private var composerChipCatalog
+    @Environment(\.chatWorkspaceRoot) private var chatWorkspaceRoot
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
-    @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
+    /// Bot snapshots are text-only and must render synchronously while growing.
+    let textOnly: Bool
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
     let loadAttachmentData: ((String) async -> Data?)?
     let loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)?
+    /// Server (and session) identity for in-memory image caches. Required so
+    /// attachment thumbnails and transcript media cannot share an empty bucket.
     let transcriptMediaCacheNamespace: String
     let localAttachmentPreviews: [String: Data]?
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
     let liveTokensPerSecond: Double?
+    let onAskHermex: (String) -> Void
+    /// Long-press actions, attached to the message content only so the empty
+    /// gutter beside a user bubble does not open its menu.
+    let contextMenuActions: [ChatMessageActionItem]
 
     init(
         message: ChatMessage,
@@ -26,13 +39,17 @@ struct MessageBubbleView: View {
         loadAttachmentData: ((String) async -> Data?)? = nil,
         loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)? = nil,
         loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)? = nil,
-        transcriptMediaCacheNamespace: String = "",
+        transcriptMediaCacheNamespace: String,
         localAttachmentPreviews: [String: Data]? = nil,
         onPreviewAttachment: ((MessageAttachment, Data?) -> Void)? = nil,
         onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
         isStreaming: Bool = false,
-        liveTokensPerSecond: Double? = nil
+        liveTokensPerSecond: Double? = nil,
+        onAskHermex: @escaping (String) -> Void = { _ in },
+        contextMenuActions: [ChatMessageActionItem] = [],
+        textOnly: Bool = false
     ) {
+        self.textOnly = textOnly
         self.message = message
         self.loadAttachmentImage = loadAttachmentImage
         self.loadAttachmentData = loadAttachmentData
@@ -44,6 +61,8 @@ struct MessageBubbleView: View {
         self.onPreviewTranscriptMedia = onPreviewTranscriptMedia
         self.isStreaming = isStreaming
         self.liveTokensPerSecond = liveTokensPerSecond
+        self.onAskHermex = onAskHermex
+        self.contextMenuActions = contextMenuActions
     }
 
     var body: some View {
@@ -51,59 +70,110 @@ struct MessageBubbleView: View {
             localNoticeRow
         } else if isLocalAssistant {
             localAssistantRow
+        } else if message.isSteerMessage {
+            steerBubble
         } else if isUserMessage {
             userMessageRow
+        } else if textOnly {
+            MarkdownRenderer(content: message.content ?? "")
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             assistantMessageRow
         }
     }
 
     private var userMessageRow: some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            if let attachments = message.attachments, !attachments.isEmpty {
+        let previewURL = linkPreviewURL
+
+        return VStack(alignment: .trailing, spacing: 8) {
+            if !textOnly, let attachments = message.attachments, !attachments.isEmpty {
                 attachmentPreviews
             }
 
             // When the attachment-path line is hidden, an attachment-only
             // message has no bubble text left; skip the empty pill so only the
             // attachment grid shows.
-            if hasVisibleUserBubbleText || hasLinkPreview {
+            if hasVisibleUserBubbleText || previewURL != nil {
                 HStack(alignment: .bottom, spacing: 0) {
                     Spacer(minLength: userBubbleLeadingGutter)
                     VStack(alignment: .trailing, spacing: 8) {
                         if hasVisibleUserBubbleText {
                             userBubble
                         }
-                        linkPreview
+                        linkPreview(previewURL)
                     }
+                    .chatMessageContextMenu(contextMenuActions)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
+    /// A mid-turn steering hint: compact and visually distinct from the user's
+    /// own messages, with the server's out-of-band wrapper stripped. Steer
+    /// rows are annotations on the active turn, not user-editable content, so
+    /// they carry no context menu or meta row.
+    private var steerBubble: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            Label {
+                Text("Steer")
+                    .font(.caption.weight(.semibold))
+            } icon: {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.secondary)
+
+            if !message.steerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(message.steerText)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Color.accentColor.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(
+                                Color.accentColor.opacity(colorScheme == .dark ? 0.45 : 0.3),
+                                lineWidth: 0.5
+                            )
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(String(localized: "Steering hint"))
+        .accessibilityValue(message.steerText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     private var assistantMessageRow: some View {
-        let segments = TranscriptMediaParser.segments(in: messageText)
+        let segments = TranscriptMediaSegmentCache.segments(
+            in: messageText,
+            workspaceRoot: chatWorkspaceRoot,
+            isStreaming: isStreaming
+        )
 
         return VStack(alignment: .leading, spacing: 6) {
             if showsAssistantTurnHeaderForThisMessage {
                 assistantTurnHeader
             }
 
-            if segments.containsTranscriptMedia {
-                TranscriptMediaContentView(
-                    segments: segments,
-                    cacheNamespace: transcriptMediaCacheNamespace,
-                    loadMediaImage: loadTranscriptMediaImage,
-                    loadMediaData: loadTranscriptMediaData,
-                    onPreviewMedia: onPreviewTranscriptMedia,
-                    isStreaming: isStreaming
-                )
+            if isStreaming {
+                assistantContent(segments: segments)
             } else {
-                MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+                ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible, onAskHermex: onAskHermex) {
+                    assistantContent(segments: segments)
+                }
+                .onGeometryChange(for: Bool.self) { geometry in
+                    guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
+                    return viewport.intersects(CGRect(origin: .zero, size: geometry.size))
+                } action: { responseIsVisible = $0 }
             }
 
-            linkPreview
+            linkPreview(linkPreviewURL)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // While this row is the active streaming message, animate its height
@@ -115,22 +185,33 @@ struct MessageBubbleView: View {
         )
     }
 
+    @ViewBuilder
+    private func assistantContent(segments: [TranscriptMediaSegment]) -> some View {
+        if segments.containsTranscriptMedia {
+            TranscriptMediaContentView(
+                segments: segments,
+                cacheNamespace: transcriptMediaCacheNamespace,
+                loadMediaImage: loadTranscriptMediaImage,
+                loadMediaData: loadTranscriptMediaData,
+                onPreviewMedia: onPreviewTranscriptMedia,
+                isStreaming: isStreaming
+            )
+        } else {
+            MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+        }
+    }
+
     // MARK: - Assistant turn header (issue #258)
 
-    /// A compact, generic `glyph + time` marker drawn above each assistant text
-    /// turn so back-to-back responses are visually separable. Deliberately carries
-    /// no model/profile/agent identity — only the message's own timestamp, which
-    /// is the single per-message-accurate datum available.
+    /// A compact `glyph + speed` marker drawn above an assistant reply while
+    /// Response Speed is on. Deliberately carries no model/profile/agent
+    /// identity. The reply's time is not here: it sits under the message in
+    /// `ChatMessageMetaRow`, next to the copy button.
     private var assistantTurnHeader: some View {
         HStack(spacing: 5) {
             Image(systemName: "sparkle")
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
-
-            if let time = assistantTurnTimeText {
-                Text(time)
-                    .foregroundStyle(.secondary)
-            }
 
             if let speed = assistantResponseSpeedText {
                 Text(speed)
@@ -146,7 +227,6 @@ struct MessageBubbleView: View {
         ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
             role: message.role,
             hasTextContent: hasVisibleAssistantText,
-            isEnabled: showsAssistantTurnTimestamps,
             showsResponseSpeed: showsResponseSpeed,
             hasResponseSpeed: assistantResponseSpeedText != nil
         )
@@ -160,23 +240,16 @@ struct MessageBubbleView: View {
         return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var assistantTurnTimeText: String? {
-        guard showsAssistantTurnTimestamps else { return nil }
-        return AssistantTurnTimestampFormatter.shortTime(forUnixTimestamp: message.timestamp)
-    }
-
     private var assistantResponseSpeedText: String? {
         guard showsResponseSpeed else { return nil }
         return ResponseSpeedFormatter.compactText(isStreaming ? liveTokensPerSecond : message.turnTps)
     }
 
     private var assistantTurnHeaderAccessibilityLabel: String {
-        let details = [
-            assistantTurnTimeText,
-            assistantResponseSpeedAccessibilityText
-        ].compactMap { $0 }
-        guard !details.isEmpty else { return String(localized: "Assistant") }
-        return String(localized: "Assistant, \(details.joined(separator: ", "))")
+        guard let speed = assistantResponseSpeedAccessibilityText else {
+            return String(localized: "Assistant")
+        }
+        return String(localized: "Assistant, \(speed)")
     }
 
     private var assistantResponseSpeedAccessibilityText: String? {
@@ -219,8 +292,17 @@ struct MessageBubbleView: View {
         .padding(.vertical, 4)
     }
 
+    /// The sent message, with any skill reference drawn as the same chip the
+    /// composer showed before the send.
+    ///
+    /// A chip is a picture, so dragging a selection across one leaves its
+    /// `/slug` out of what is copied; the message's own Copy and Select Text
+    /// actions read `message.content`, which is always the exact text.
     private var userBubble: some View {
-        Text(verbatim: userBubbleText)
+        let text = userBubbleText
+        let chips = textOnly ? [] : userBubbleChips(in: text)
+
+        return ComposerChipTextLine.text(text, tokens: chips, style: chipStyle)
             .font(.body)
             .textSelection(.enabled)
             .padding(.horizontal, 14)
@@ -231,18 +313,47 @@ struct MessageBubbleView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(userBubbleBorder, lineWidth: 0.5)
             )
+            // VoiceOver reads a chip by its skill's name rather than announcing
+            // an image, the way both composer states already do.
+            .accessibilityLabel(
+                chips.isEmpty
+                    ? Text(verbatim: text)
+                    : Text(verbatim: ComposerChipTokenizer.spokenText(in: text, tokens: chips))
+            )
+    }
+
+    /// The references in a sent message. `isComplete` is what a send means: the
+    /// text will not grow, so a reference that ends the message is finished and
+    /// draws as a chip even though the composer was still waiting for a space.
+    /// A slug the server no longer knows resolves to nothing and stays plain
+    /// text, which is the same rule the composer follows.
+    private func userBubbleChips(in text: String) -> [ComposerChipToken] {
+        guard !composerChipCatalog.isEmpty else { return [] }
+        return ComposerChipTokenizer.tokens(in: text, catalog: composerChipCatalog, isComplete: true)
+    }
+
+    private var chipStyle: ComposerChipTextStyle {
+        ComposerChipTextStyle(
+            colorScheme: colorScheme,
+            contrast: colorSchemeContrast,
+            layoutDirection: layoutDirection,
+            dynamicTypeSize: dynamicTypeSize
+        )
+    }
+
+    /// Read once per row body; the user row needs it both to decide whether to
+    /// draw the bubble stack and to draw the preview inside it.
+    private var linkPreviewURL: URL? {
+        guard !textOnly else { return nil }
+        return TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming)
     }
 
     @ViewBuilder
-    private var linkPreview: some View {
-        if let url = TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) {
+    private func linkPreview(_ url: URL?) -> some View {
+        if let url {
             TranscriptLinkPreviewView(url: url)
                 .frame(maxWidth: 300)
         }
-    }
-
-    private var hasLinkPreview: Bool {
-        TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming) != nil
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked
@@ -281,6 +392,8 @@ struct MessageBubbleView: View {
                 )
             }
         }
+        // Before the full-width frame, so the marker covers the grid only.
+        .chatMessageContextMenu(contextMenuActions)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
@@ -301,6 +414,7 @@ struct MessageBubbleView: View {
                         GridAttachmentCell(
                             attachment: item.attachment,
                             localData: item.localData,
+                            cacheNamespace: transcriptMediaCacheNamespace,
                             loadAttachmentImage: loadAttachmentImage,
                             onPreviewAttachment: onPreviewAttachment,
                             size: cellSize
@@ -398,7 +512,7 @@ struct MessageBubbleView: View {
     /// sent payload are untouched.
     private var userBubbleText: String {
         let content = message.content ?? ""
-        guard hidesAttachmentPaths else { return content }
+        guard !textOnly, hidesAttachmentPaths else { return content }
         return MessageAttachment.contentWithoutAttachedFilesMarker(in: content)
     }
 
@@ -421,6 +535,7 @@ private extension [TranscriptMediaSegment] {
 private struct GridAttachmentCell: View {
     let attachment: MessageAttachment
     let localData: Data?
+    let cacheNamespace: String
     let loadAttachmentImage: ((String) async -> Data?)?
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let size: CGFloat
@@ -481,6 +596,7 @@ private struct GridAttachmentCell: View {
             } else if let path = resolvedPath, let loadAttachmentImage {
                 RemoteAttachmentImage(
                     path: path,
+                    cacheNamespace: cacheNamespace,
                     loadAttachmentImage: loadAttachmentImage
                 )
                 .frame(width: size, height: size)
@@ -611,6 +727,7 @@ private struct GridAttachmentCell: View {
 /// cookie. Deduplicates concurrent requests and caches in memory.
 private struct RemoteAttachmentImage: View {
     let path: String
+    let cacheNamespace: String
     let loadAttachmentImage: (String) async -> Data?
     @State private var image: UIImage?
     @State private var didAttempt = false
@@ -627,9 +744,12 @@ private struct RemoteAttachmentImage: View {
                 fallbackImage
             }
         }
-        .task(id: path) {
+        .task(id: imageCacheKey) {
+            image = nil
+            didAttempt = false
             let loaded = await AttachmentImageCache.shared.image(
                 for: path,
+                cacheNamespace: cacheNamespace,
                 loadAttachmentImage: loadAttachmentImage
             )
             guard !Task.isCancelled else { return }
@@ -638,6 +758,10 @@ private struct RemoteAttachmentImage: View {
                 self.didAttempt = true
             }
         }
+    }
+
+    private var imageCacheKey: AttachmentImageCacheKey {
+        AttachmentImageCacheKey(namespace: cacheNamespace, path: path)
     }
 
     private var fallbackImage: some View {
@@ -661,22 +785,26 @@ private struct RemoteAttachmentImage: View {
 }
 
 /// In-memory image cache that delegates loading to the authenticated client.
-/// Deduplicates concurrent requests for the same path.
+/// Deduplicates concurrent requests for the same namespaced path. The cache is
+/// process-wide and survives `.id(server)` teardown, so keys include the
+/// server (and session) namespace rather than the relative path alone.
 private actor AttachmentImageCache {
     static let shared = AttachmentImageCache()
 
-    private var cache: [String: UIImage] = [:]
-    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private var cache: [AttachmentImageCacheKey: UIImage] = [:]
+    private var inFlight: [AttachmentImageCacheKey: Task<UIImage?, Never>] = [:]
 
     func image(
         for path: String,
+        cacheNamespace: String,
         loadAttachmentImage: @escaping (String) async -> Data?
     ) async -> UIImage? {
-        if let cached = cache[path] {
+        let key = AttachmentImageCacheKey(namespace: cacheNamespace, path: path)
+        if let cached = cache[key] {
             return cached
         }
 
-        if let task = inFlight[path] {
+        if let task = inFlight[key] {
             return await task.value
         }
 
@@ -691,55 +819,20 @@ private actor AttachmentImageCache {
             return UIImage(data: previewData)
         }
 
-        inFlight[path] = task
+        inFlight[key] = task
         let image = await task.value
-        inFlight[path] = nil
+        inFlight[key] = nil
 
         if let image {
-            cache[path] = image
+            cache[key] = image
         }
         return image
     }
 }
 
-// MARK: - Assistant turn timestamp formatting
-
-/// Formats an assistant turn's unix `timestamp` as a short, locale-/24h-aware
-/// time (e.g. `2:14 PM` or `14:14`). Returns `nil` for a missing or non-finite
-/// timestamp so the per-turn header falls back to glyph-only.
-enum AssistantTurnTimestampFormatter {
-    private static let sharedFormatter: DateFormatter = makeFormatter(
-        locale: .autoupdatingCurrent,
-        timeZone: .autoupdatingCurrent
-    )
-
-    static func shortTime(forUnixTimestamp timestamp: Double?) -> String? {
-        format(timestamp, with: sharedFormatter)
-    }
-
-    /// Test seam: format against an explicit locale/time zone so 12h/24h
-    /// assertions stay deterministic regardless of host device settings.
-    static func shortTime(
-        forUnixTimestamp timestamp: Double?,
-        locale: Locale,
-        timeZone: TimeZone
-    ) -> String? {
-        format(timestamp, with: makeFormatter(locale: locale, timeZone: timeZone))
-    }
-
-    private static func makeFormatter(locale: Locale, timeZone: TimeZone) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter
-    }
-
-    private static func format(_ timestamp: Double?, with formatter: DateFormatter) -> String? {
-        guard let timestamp, timestamp.isFinite else { return nil }
-        return formatter.string(from: Date(timeIntervalSince1970: timestamp))
-    }
+struct AttachmentImageCacheKey: Hashable {
+    let namespace: String
+    let path: String
 }
 
 enum ResponseSpeedFormatter {

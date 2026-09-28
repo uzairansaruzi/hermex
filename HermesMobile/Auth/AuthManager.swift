@@ -54,7 +54,10 @@ final class AuthManager {
         return passkeyOnlyMessage
     }
 
-    private(set) var state: State = .unconfigured
+    private(set) var state: State = .unconfigured {
+        // The shared Bot connection signs in with the active server's saved credentials.
+        didSet { if let old = oldValue.server, old != state.server { HermesConnections.shared.retire(server: old) } }
+    }
     private(set) var lastErrorMessage: String?
 
     /// Observable snapshot of every configured server, mirrored from the
@@ -307,6 +310,10 @@ final class AuthManager {
             await attemptBestEffortServerLogout(server: active)
         }
 
+        try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
+        SessionUnreadStore().remove(for: active)
+        await ChatDraftStore.shared.discardBotDrafts(server: active)
+        await PushRegistrar.shared?.forget(for: active)
         advanceAfterRemoving(activeServer: active)
     }
 
@@ -316,6 +323,10 @@ final class AuthManager {
     /// headers, and cookies — leaving the active server's auth untouched (#17).
     func removeServer(_ account: ServerAccount) async {
         guard let serverURL = URL(string: account.urlString) else { return }
+        try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
+        SessionUnreadStore().remove(for: serverURL)
+        await ChatDraftStore.shared.discardBotDrafts(server: serverURL)
+        await PushRegistrar.shared?.forget(for: serverURL)
         let isActive = state.server?.absoluteString == account.id
 
         if isActive {
@@ -396,10 +407,18 @@ final class AuthManager {
         }
     }
 
-    /// Deletes one server's local auth artifacts — its scoped custom headers and
-    /// its cookies — without touching the registry or the global `server_url` key.
+    /// Deletes one server's local auth artifacts — its scoped custom headers, its
+    /// Bot connection with that connection's cached avatars and shared sign-in, and its
+    /// cookies — without touching the registry or the global `server_url` key. Its push
+    /// pairing lives in the shared Keychain access group and is torn down by
+    /// `PushRegistrar.forget`, which the removal paths above await first.
     private func clearLocalArtifacts(for server: URL) {
         try? keychain.delete(.customHeaders, scope: server.absoluteString)
+        let bots = BotConnectionStore(keychain: keychain)
+        if let connection = try? bots.load(server: server) {
+            BotAvatarStore.shared.removeAll(connectionID: connection.id)
+        }
+        try? bots.remove(server: server)
         clearSessionCookies(for: server)
     }
 

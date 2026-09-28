@@ -139,14 +139,6 @@ extension PendingAttachment {
         "\(filename) is too large. Attachments must be \(maximumUploadSizeDescription) or smaller."
     }
 
-    var chatReference: String {
-        if isImage {
-            return path.isEmpty ? name : path
-        }
-
-        return path.isEmpty ? name : path
-    }
-
     func toJSONValue() -> JSONValue {
         var object: [String: JSONValue] = [
             "name": .string(name),
@@ -162,12 +154,19 @@ extension PendingAttachment {
 
     static func chatMessageText(draft: String, attachments: [PendingAttachment]) -> String {
         let references = attachments
-            .map(\.chatReference)
+            .map { $0.path.isEmpty ? $0.name : $0.path }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
         guard !references.isEmpty else {
             return draft
+        }
+
+        // Attachment-only sends synthesize the message the web UI sends
+        // (`static/messages.js`), since the server requires non-empty text.
+        let base = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.isEmpty {
+            return "I've uploaded \(references.count) file(s): \(references.joined(separator: ", "))"
         }
 
         return "\(draft)\n\n[Attached files: \(references.joined(separator: ", "))]"

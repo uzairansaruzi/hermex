@@ -5,7 +5,30 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var sessionID: String
         var sessionTitle: String
-        var status: AgentRunActivityStatus
+        var schemaVersion = 1
+        // The wire value stays open-ended; only presentation maps known statuses.
+        var rawStatus: String
+        var tool: String?
+        var toolCalls: Int?
+        var status: AgentRunActivityStatus {
+            get {
+                guard schemaVersion <= 1 else { return .starting }
+                switch rawStatus {
+                case "running":
+                    guard let tool else { return .thinking }
+                    switch AgentRunActivitySanitizer.toolKind(name: tool) {
+                    case .command: return .runningCommand
+                    case .search: return .searchingFiles
+                    case .files: return .readingFiles
+                    case .generic: return .usingTool
+                    }
+                case "waiting": return .waiting
+                case "done": return .complete
+                default: return AgentRunActivityStatus(rawValue: rawStatus) ?? .starting
+                }
+            }
+            set { rawStatus = newValue.rawValue }
+        }
         var currentActivity: String
         var responseExcerpt: String
         var startedAt: Date
@@ -13,6 +36,14 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         var isStale: Bool
         var isFinal: Bool
         var errorSummary: String?
+        /// A bot's bounded work summary ("Plan 2 of 5", "2 workers"): counts only, never
+        /// reply text, so it is safe on a locked phone. Nil for a webui session, and
+        /// optional so an activity persisted by an older build still decodes (#489).
+        var chips: [String]?
+        /// False only for a relay state that arrived without `updated_at`: its
+        /// `updatedAt` is then just when it was decoded, so nothing may present it
+        /// as the time of the last update (#644). Re-encoding keeps it false.
+        var updateTimeIsKnown = true
 
         init(
             sessionID: String,
@@ -28,7 +59,7 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         ) {
             self.sessionID = sessionID
             self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
-            self.status = status
+            self.rawStatus = status.rawValue
             self.currentActivity = AgentRunActivitySanitizer.activityLine(currentActivity)
             self.responseExcerpt = AgentRunActivitySanitizer.responseExcerpt(responseExcerpt)
             self.startedAt = startedAt
@@ -37,18 +68,170 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             self.isFinal = isFinal
             self.errorSummary = errorSummary.map(AgentRunActivitySanitizer.activityLine)
         }
+
+        enum CodingKeys: String, CodingKey {
+            case schemaVersion = "v", rawStatus = "status", tool, toolCalls = "tool_calls"
+            case pushStartedAt = "started_at", pushUpdatedAt = "updated_at"
+            case sessionID, sessionTitle, currentActivity, responseExcerpt, startedAt, updatedAt
+            case isStale, isFinal, errorSummary, chips, updatedAtEstimated
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+            rawStatus = try c.decodeIfPresent(String.self, forKey: .rawStatus) ?? "unknown"
+            tool = try c.decodeIfPresent(String.self, forKey: .tool)
+            toolCalls = try c.decodeIfPresent(Int.self, forKey: .toolCalls)
+            sessionID = try c.decodeIfPresent(String.self, forKey: .sessionID) ?? ""
+            sessionTitle = try c.decodeIfPresent(String.self, forKey: .sessionTitle) ?? ""
+            let unixStart = try c.decodeIfPresent(Double.self, forKey: .pushStartedAt)
+            startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
+                ?? unixStart.map(Date.init(timeIntervalSince1970:)) ?? .distantPast
+            // The relay stamps `updated_at` with its send time. A state without one
+            // (an older relay) freezes the final timer at receipt time rather than
+            // showing a zero-length completed run.
+            let unixUpdate = try c.decodeIfPresent(Double.self, forKey: .pushUpdatedAt)
+            let knownUpdate = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
+                ?? unixUpdate.map(Date.init(timeIntervalSince1970:))
+            updatedAt = knownUpdate ?? Date()
+            let estimated = try c.decodeIfPresent(Bool.self, forKey: .updatedAtEstimated) ?? false
+            updateTimeIsKnown = knownUpdate != nil && !estimated
+            isStale = try c.decodeIfPresent(Bool.self, forKey: .isStale) ?? false
+            isFinal = try c.decodeIfPresent(Bool.self, forKey: .isFinal)
+                ?? (schemaVersion <= 1 && ["done", "failed"].contains(rawStatus))
+            responseExcerpt = try c.decodeIfPresent(String.self, forKey: .responseExcerpt) ?? ""
+            errorSummary = try c.decodeIfPresent(String.self, forKey: .errorSummary)
+            chips = try c.decodeIfPresent([String].self, forKey: .chips)
+            currentActivity = try c.decodeIfPresent(String.self, forKey: .currentActivity) ?? ""
+            if currentActivity.isEmpty {
+                if schemaVersion <= 1, rawStatus == "running", let tool,
+                   case .generic(let label) = AgentRunActivitySanitizer.toolKind(name: tool) {
+                    currentActivity = String(localized: "Using \(label)")
+                } else { currentActivity = status.title }
+            }
+            if schemaVersion > 1 {
+                currentActivity = AgentRunActivityStatus.starting.title
+                responseExcerpt = ""
+                chips = nil
+                isFinal = false
+            } else if let toolCalls, chips == nil, toolCalls > 0 {
+                chips = [String(localized: "\(toolCalls) tools")]
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(schemaVersion, forKey: .schemaVersion)
+            try c.encode(rawStatus, forKey: .rawStatus)
+            try c.encodeIfPresent(tool, forKey: .tool)
+            try c.encodeIfPresent(toolCalls, forKey: .toolCalls)
+            try c.encode(sessionID, forKey: .sessionID)
+            try c.encode(sessionTitle, forKey: .sessionTitle)
+            try c.encode(currentActivity, forKey: .currentActivity)
+            try c.encode(responseExcerpt, forKey: .responseExcerpt)
+            try c.encode(startedAt, forKey: .startedAt)
+            try c.encode(updatedAt, forKey: .updatedAt)
+            if !updateTimeIsKnown { try c.encode(true, forKey: .updatedAtEstimated) }
+            try c.encode(isStale, forKey: .isStale)
+            try c.encode(isFinal, forKey: .isFinal)
+            try c.encodeIfPresent(errorSummary, forKey: .errorSummary)
+            try c.encodeIfPresent(chips, forKey: .chips)
+        }
+
+        /// What a webui activity shows in place of reply text (#644): its counts, then
+        /// how fresh the state is, or where the reply is once the run completed. Only a
+        /// real update time is shown; an unknown one is left out rather than guessed.
+        /// An update from the run's first moments would only repeat the elapsed timer,
+        /// as it does for a whole turn without tools, so it is left out too.
+        var detailChips: [AgentRunDetailChip] {
+            let counts = (chips ?? []).map(AgentRunDetailChip.text)
+            if isFinal { return status == .complete ? counts + [.openReply] : counts }
+            let addsToTimer = updatedAt.timeIntervalSince(startedAt) > Self.freshnessAfterStart
+            return updateTimeIsKnown && addsToTimer ? counts + [.updated(updatedAt)] : counts
+        }
+
+        /// How long after the run's start an update must land before "Updated … ago"
+        /// says something the elapsed timer does not.
+        static let freshnessAfterStart: TimeInterval = 10
+
+        /// Pushes omit identity and freshness flags: immutable attributes and
+        /// ActivityKit's stale-date clock supply those to every widget surface.
+        func presented(attributes: AgentRunActivityAttributes, systemIsStale: Bool) -> Self {
+            var value = self
+            if value.sessionID.isEmpty { value.sessionID = attributes.sessionID }
+            if value.sessionTitle.isEmpty { value.sessionTitle = attributes.sessionTitle }
+            if value.startedAt == .distantPast { value.startedAt = attributes.startedAt }
+            value.isStale = value.isStale || systemIsStale
+            return value
+        }
+
     }
 
     var sessionID: String
     var sessionTitle: String
     var streamID: String?
     var startedAt: Date
+    /// Set when a bot owns this activity: the tap target and the avatar. Nil for a
+    /// webui session, and for an activity persisted by a build older than #489.
+    var bot: AgentRunActivityBot?
+    /// The configured server a webui run belongs to, so its relay registration finds
+    /// that server's push pairing (#566). Nil for a bot, whose destination names the
+    /// server, and for an activity persisted by an older build.
+    var server: URL?
 
-    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date) {
+    init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date,
+         bot: AgentRunActivityBot? = nil, server: URL? = nil) {
         self.sessionID = sessionID
         self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
         self.streamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
         self.startedAt = startedAt
+        self.bot = bot
+        self.server = server
+    }
+}
+
+/// One chip in an activity's detail row. The widget renders `updated` as system-drawn
+/// relative time, so the row stays current without the app repainting it.
+enum AgentRunDetailChip: Hashable {
+    case text(String)
+    case updated(Date)
+    case openReply
+}
+
+/// The bot behind a Live Activity (#489). `key` stands in for the session id, so an
+/// activity is only ever reused by the same bot on the same Bot connection: equal
+/// Profile names on two connections get different keys. The widget sees only this
+/// value; the typed `BotDestination` it was built from stays in the main app.
+struct AgentRunActivityBot: Codable, Hashable {
+    /// `bot:<connection UUID>:<Profile name>`.
+    let key: String
+    /// The `hermes-agent://bot?...` route a tap opens.
+    let destinationURL: URL
+    /// File name of the rendered avatar in `AgentRunActivityAvatarFile.directory`,
+    /// or nil when none could be written; the widget then keeps the status dot.
+    var avatarFile: String?
+    /// Stored agent session ID (`session_key`, the resolved compression tip) used
+    /// by plugin hooks and the relay. Never the gateway runtime ID or chat root.
+    var pushSessionID: String? = nil
+
+    /// One activity per bot turn: a reconnect inside the turn reuses it, the next turn does not.
+    func streamID(turn: String) -> String { "\(key)#\(turn)" }
+}
+
+/// Where the app leaves a bot's rendered avatar for the widget: one small PNG in the
+/// shared app group, since a Live Activity cannot carry image data in its state.
+enum AgentRunActivityAvatarFile {
+    static var directory: URL? {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "HermesAppGroupIdentifier") as? String,
+              !group.isEmpty else { return nil }
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?
+            .appendingPathComponent("LiveActivityAvatars", isDirectory: true)
+    }
+
+    static func url(named name: String?) -> URL? {
+        // A bare file name only: the attribute is never allowed to walk out of the directory.
+        guard let name, !name.isEmpty, !name.contains("/") else { return nil }
+        return directory?.appendingPathComponent(name)
     }
 }
 
@@ -60,6 +243,7 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
     case readingFiles
     case runningCommand
     case responding
+    case waiting
     case waitingForApproval
     case waitingForClarification
     case complete
@@ -82,6 +266,8 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
             String(localized: "Running command")
         case .responding:
             String(localized: "Responding")
+        case .waiting:
+            String(localized: "Waiting for you")
         case .waitingForApproval:
             String(localized: "Waiting for approval")
         case .waitingForClarification:
@@ -111,6 +297,8 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
             String(localized: "Cmd")
         case .responding:
             String(localized: "Reply")
+        case .waiting:
+            "…"
         case .waitingForApproval:
             String(localized: "Approve")
         case .waitingForClarification:
@@ -136,7 +324,19 @@ enum AgentRunActivitySanitizer {
     static let maximumSessionTitleCharacters = 42
     static let maximumActivityCharacters = 64
     static let maximumExcerptCharacters = 140
+    /// How much of a reply callers hand `responseExcerpt`. The excerpt is a prefix,
+    /// and this much text still normalizes to well past it, so reading the whole
+    /// reply on every token or frame would only repeat work (#676).
+    static let maximumExcerptSourceLength = 2_048
     static let maximumToolLabelCharacters = 28
+    static let maximumChips = 3
+    static let maximumChipCharacters = 24
+
+    static func chips(_ rawValues: [String]) -> [String] {
+        rawValues.map { trimmed(normalizedSingleLine($0), limit: maximumChipCharacters) }
+            .filter { !$0.isEmpty }
+            .prefix(maximumChips).map { $0 }
+    }
 
     static func sessionTitle(_ rawValue: String) -> String {
         let normalized = normalizedSingleLine(rawValue)
@@ -222,21 +422,6 @@ enum AgentRunActivitySanitizer {
     }
 }
 
-enum AgentRunElapsedTimeFormatter {
-    static func label(startedAt: Date, updatedAt: Date) -> String {
-        let elapsedSeconds = max(0, Int(updatedAt.timeIntervalSince(startedAt).rounded(.down)))
-        let hours = elapsedSeconds / 3_600
-        let minutes = (elapsedSeconds % 3_600) / 60
-        let seconds = elapsedSeconds % 60
-
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-}
-
 enum AgentLiveActivityReusePolicy {
     static func normalizedStreamID(_ streamID: String?) -> String? {
         guard let streamID else { return nil }
@@ -288,23 +473,6 @@ enum AgentRunActivityStateReducer {
             currentActivity: String(localized: "Starting response"),
             startedAt: startedAt,
             updatedAt: startedAt
-        )
-    }
-
-    static func appendingToken(
-        _ text: String,
-        to state: AgentRunActivityAttributes.ContentState,
-        now: Date = Date()
-    ) -> AgentRunActivityAttributes.ContentState {
-        guard !text.isEmpty else { return state }
-        return AgentRunActivityAttributes.ContentState(
-            sessionID: state.sessionID,
-            sessionTitle: state.sessionTitle,
-            status: .responding,
-            currentActivity: String(localized: "Writing response"),
-            responseExcerpt: state.responseExcerpt + text,
-            startedAt: state.startedAt,
-            updatedAt: now
         )
     }
 
@@ -375,6 +543,13 @@ enum AgentRunActivityStateReducer {
         now: Date = Date()
     ) -> AgentRunActivityAttributes.ContentState {
         statusState(.responding, activity: String(localized: "Processing result"), state: state, now: now)
+    }
+
+    static func responding(
+        state: AgentRunActivityAttributes.ContentState,
+        now: Date = Date()
+    ) -> AgentRunActivityAttributes.ContentState {
+        statusState(.responding, activity: String(localized: "Writing response"), state: state, now: now)
     }
 
     static func waitingForApproval(

@@ -29,7 +29,7 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
     // the picker with an empty query, must still classify it as NOT rendered so
     // the "Current Custom" row appears and shows the active selection.
     func testOverflowSelectionWithEmptyQueryIsNotRendered() {
-        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: overflowModel,
             modelGroups: groups,
             searchQuery: ""
@@ -42,7 +42,7 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
     }
 
     func testVisibleModelWithEmptyQueryIsRendered() {
-        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: visibleModel,
             modelGroups: groups,
             searchQuery: ""
@@ -55,7 +55,7 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         var overflowExpansion = ModelPickerOverflowExpansionState()
         overflowExpansion.setExpanded(true, groupID: "openrouter")
 
-        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: overflowModel,
             modelGroups: groups,
             searchQuery: "",
@@ -86,7 +86,7 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
     // While searching, allModels are rendered — an overflow match found by that
     // search IS represented and must not duplicate a Current Custom row.
     func testOverflowMatchWhileSearchingIsRendered() {
-        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: overflowModel,
             modelGroups: groups,
             searchQuery: "deepseek"
@@ -96,7 +96,7 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
     }
 
     func testVisibleMatchWhileSearchingIsRendered() {
-        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: visibleModel,
             modelGroups: groups,
             searchQuery: "claude"
@@ -113,7 +113,7 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
             providerID: "nous"
         )
 
-        let rendered = ComposerModelPickerSheet.isRenderedByCurrentPicker(
+        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: otherProvider,
             modelGroups: groups,
             searchQuery: ""

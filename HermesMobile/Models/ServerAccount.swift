@@ -28,11 +28,6 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     /// Per-server Header Logo Color (hex). Seeded from the global color on
     /// migration; editable per server in #17.
     var headerLogoColorHex: String
-    /// Reference under which this server's custom request headers are scoped.
-    /// Seeded to the server `id`; as of #16 headers are persisted per server under
-    /// a Keychain key scoped by that id (`AuthManager` scopes by the equivalent
-    /// normalized URL string), so server A's proxy token is never sent to server B.
-    var customHeadersRef: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -42,7 +37,6 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         displayName: String,
         initials: String,
         headerLogoColorHex: String,
-        customHeadersRef: String?,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -51,7 +45,6 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         self.displayName = displayName
         self.initials = initials
         self.headerLogoColorHex = headerLogoColorHex
-        self.customHeadersRef = customHeadersRef
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -62,7 +55,6 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         case displayName
         case initials
         case headerLogoColorHex
-        case customHeadersRef
         case createdAt
         case updatedAt
     }
@@ -86,7 +78,6 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         initials = try container.decodeIfPresent(String.self, forKey: .initials) ?? ""
         headerLogoColorHex = try container.decodeIfPresent(String.self, forKey: .headerLogoColorHex)
             ?? HeaderLogoColor.defaultHex
-        customHeadersRef = try container.decodeIfPresent(String.self, forKey: .customHeadersRef)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
     }
@@ -325,7 +316,6 @@ final class ServerRegistry: @unchecked Sendable {
             displayName: displayName,
             initials: initials,
             headerLogoColorHex: colorHex,
-            customHeadersRef: id,
             createdAt: timestamp,
             updatedAt: timestamp
         )

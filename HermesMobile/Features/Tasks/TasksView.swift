@@ -6,6 +6,13 @@ struct TasksView: View {
 
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
+    @State private var jobPendingDeletion: CronJob?
+    /// "Ran Recently" shows a few rows until the user asks for the rest. View
+    /// state only: every fresh visit starts compact.
+    @State private var isShowingAllRecentRuns = false
+
+    /// Rows "Ran Recently" shows before it needs a "Show all" row.
+    private static let compactRecentRunCount = 3
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.server = server
@@ -38,9 +45,14 @@ struct TasksView: View {
                     .disabled(viewModel.isLoading)
                 }
             }
-            .sheet(isPresented: $isPresentingCreateTask) {
+            .sheet(isPresented: $isPresentingCreateTask, onDismiss: {
+                // A failed create leaves its message behind; without this the
+                // list's own alert would fire the moment the sheet closes.
+                viewModel.clearActionError()
+            }) {
                 CronJobEditorSheet(
                     title: String(localized: "New Task"),
+                    server: server,
                     draft: CronJobEditorDraft(),
                     saveTitle: String(localized: "Create"),
                     isSaving: viewModel.isMutating,
@@ -53,6 +65,19 @@ struct TasksView: View {
                     }
                     return didCreate
                 }
+            }
+            .alert("Delete Task?", isPresented: deletionConfirmationBinding, presenting: jobPendingDeletion) { job in
+                Button("Delete", role: .destructive) {
+                    Task { await performAction { await viewModel.delete(job) } }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { job in
+                Text("“\(job.displayName)” will be removed from the Hermes server.")
+            }
+            .alert("Could Not Update Task", isPresented: actionErrorBinding) {
+                Button("OK", role: .cancel) { viewModel.clearActionError() }
+            } message: {
+                Text(viewModel.actionErrorMessage ?? "")
             }
             .task {
                 await loadTasks()
@@ -80,40 +105,198 @@ struct TasksView: View {
                 Text("Scheduled jobs from the Hermes server will appear here.")
             }
         } else {
-            List {
-                Section {
-                    HStack {
-                        Label("Running now", systemImage: "bolt.fill")
-                        Spacer()
-                        Text("\(viewModel.activeRunningCount)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            agenda
+        }
+    }
 
-                Section("Scheduled Jobs") {
-                    ForEach(viewModel.jobs) { job in
-                        NavigationLink {
-                            TaskDetailView(
-                                job: job,
-                                runningElapsed: viewModel.runningElapsed(for: job),
-                                server: server,
-                                onAPIError: onAPIError,
-                                onMutation: { mutation in
-                                    viewModel.apply(mutation)
-                                }
-                            )
-                        } label: {
-                            CronJobRowView(
-                                job: job,
-                                runningElapsed: viewModel.runningElapsed(for: job)
-                            )
+    private var sections: [TaskAgendaSection] {
+        viewModel.sections()
+    }
+
+    @ViewBuilder
+    private var agenda: some View {
+        Group {
+            if sections.isEmpty && viewModel.recentRuns.isEmpty {
+                noMatchingTasks
+            } else {
+                // The list stays mounted while the feed has rows, so switching
+                // to a filter with no tasks does not take "Ran Recently" away.
+                List {
+                    recentRunsSection
+
+                    if sections.isEmpty {
+                        Section {
+                            noMatchingTasks
+                                .listRowBackground(Color.clear)
+                        }
+                    }
+
+                    ForEach(sections) { section in
+                        Section(section.group.title) {
+                            ForEach(section.jobs) { job in
+                                row(for: job, in: section.group)
+                            }
                         }
                     }
                 }
+                .refreshable {
+                    await loadTasks()
+                }
             }
-            .refreshable {
-                await loadTasks()
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            filterPicker
+        }
+    }
+
+    private var noMatchingTasks: some View {
+        ContentUnavailableView {
+            Label("No Matching Tasks", systemImage: "line.3.horizontal.decrease.circle")
+        } description: {
+            Text("No tasks match this filter.")
+        }
+    }
+
+    private var filterPicker: some View {
+        Picker("Filter", selection: $viewModel.filter) {
+            ForEach(TaskFilter.allCases) { filter in
+                Text(filter.title(count: viewModel.count(for: filter))).tag(filter)
             }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    /// Cross-task recent completions, above the agenda and outside the filter.
+    /// Absent until the feed answers and whenever it is empty or failed.
+    @ViewBuilder
+    private var recentRunsSection: some View {
+        let recentRuns = viewModel.recentRuns
+        if !recentRuns.isEmpty {
+            let isTruncated = recentRuns.count > Self.compactRecentRunCount && !isShowingAllRecentRuns
+            let visibleRuns = isTruncated ? Array(recentRuns.prefix(Self.compactRecentRunCount)) : recentRuns
+
+            Section("Ran Recently") {
+                ForEach(visibleRuns) { completion in
+                    if let job = viewModel.job(for: completion) {
+                        NavigationLink {
+                            detail(for: job)
+                        } label: {
+                            TaskRecentRunRowView(completion: completion)
+                        }
+                    } else {
+                        // The feed named a job the list does not have: no link,
+                        // no chevron, and nothing that reads as a button.
+                        TaskRecentRunRowView(completion: completion)
+                    }
+                }
+
+                if recentRuns.count > Self.compactRecentRunCount {
+                    Button {
+                        isShowingAllRecentRuns.toggle()
+                    } label: {
+                        Text(isTruncated ? "Show All (\(recentRuns.count))" : "Show Less")
+                            .font(.subheadline)
+                    }
+                }
+            }
+        }
+    }
+
+    private func detail(for job: CronJob) -> some View {
+        TaskDetailView(
+            job: job,
+            runningElapsed: viewModel.runningElapsed(for: job),
+            server: server,
+            onAPIError: onAPIError,
+            onMutation: { mutation in
+                viewModel.apply(mutation)
+            }
+        )
+    }
+
+    private func row(for job: CronJob, in group: TaskAgendaGroup) -> some View {
+        NavigationLink {
+            detail(for: job)
+        } label: {
+            CronJobRowView(
+                job: job,
+                group: group,
+                runningElapsed: viewModel.runningElapsed(for: job)
+            )
+        }
+        .swipeActions(edge: .trailing) {
+            pauseResumeButton(for: job)
+            runNowButton(for: job)
+        }
+        .contextMenu {
+            runNowButton(for: job)
+            pauseResumeButton(for: job)
+
+            Divider()
+
+            Button(role: .destructive) {
+                jobPendingDeletion = job
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .disabled(job.jobId == nil)
+        }
+    }
+
+    @ViewBuilder
+    private func runNowButton(for job: CronJob) -> some View {
+        Button {
+            Task { await performAction { await viewModel.runNow(job) } }
+        } label: {
+            Label("Run Now", systemImage: "play.fill")
+        }
+        .tint(.blue)
+        .disabled(job.jobId == nil || viewModel.isPendingAction(job))
+    }
+
+    @ViewBuilder
+    private func pauseResumeButton(for job: CronJob) -> some View {
+        if job.isLive {
+            Button {
+                Task { await performAction { await viewModel.pause(job) } }
+            } label: {
+                Label("Pause", systemImage: "pause.fill")
+            }
+            .tint(.orange)
+            .disabled(job.jobId == nil || viewModel.isPendingAction(job))
+        } else {
+            Button {
+                Task { await performAction { await viewModel.resume(job) } }
+            } label: {
+                Label("Resume", systemImage: "play.circle")
+            }
+            .tint(.green)
+            .disabled(job.jobId == nil || viewModel.isPendingAction(job))
+        }
+    }
+
+    private var deletionConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { jobPendingDeletion != nil },
+            set: { if !$0 { jobPendingDeletion = nil } }
+        )
+    }
+
+    private var actionErrorBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.actionErrorMessage != nil && !isPresentingCreateTask },
+            set: { if !$0 { viewModel.clearActionError() } }
+        )
+    }
+
+    private func performAction(_ action: () async -> Void) async {
+        await action()
+
+        if let lastError = viewModel.lastError {
+            onAPIError(lastError)
         }
     }
 
@@ -123,304 +306,6 @@ struct TasksView: View {
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
         }
-    }
-}
-
-private struct CronJobRowView: View {
-    let job: CronJob
-    let runningElapsed: Double?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(job.displayName)
-                    .font(.headline)
-                    .lineLimit(2)
-
-                Spacer(minLength: 8)
-
-                StatusBadge(
-                    text: runningElapsed == nil ? job.status.label : String(localized: "Running"),
-                    color: statusColor
-                )
-            }
-
-            if let prompt = job.prompt, !prompt.isEmpty {
-                Text(prompt)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                CronJobMetadataRow(
-                    title: String(localized: "Schedule"),
-                    value: job.scheduleText ?? String(localized: "Not available")
-                )
-
-                CronJobMetadataRow(
-                    title: String(localized: "Next"),
-                    value: job.nextRunAt?.formatted ?? String(localized: "Not available")
-                )
-
-                CronJobMetadataRow(
-                    title: String(localized: "Last"),
-                    value: job.lastRunAt?.formatted ?? String(localized: "Never")
-                )
-
-                if let runningElapsed {
-                    CronJobMetadataRow(
-                        title: String(localized: "Elapsed"),
-                        value: Self.elapsedText(runningElapsed)
-                    )
-                }
-
-                CronJobMetadataRow(
-                    title: String(localized: "Deliver"),
-                    value: job.deliver ?? "local"
-                )
-
-                if let model = job.model, !model.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Model"), value: model)
-                }
-
-                if let provider = job.provider, !provider.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Provider"), value: provider)
-                }
-
-                if let profile = job.profile, !profile.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Profile"), value: profile)
-                }
-
-                if let skills = job.skills, !skills.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Skills"), value: skills.joined(separator: ", "))
-                }
-
-                if let error = job.lastError ?? job.lastDeliveryError, !error.isEmpty {
-                    CronJobMetadataRow(title: String(localized: "Error"), value: error)
-                        .foregroundStyle(.red)
-                }
-            }
-            .font(.footnote)
-        }
-        .padding(.vertical, 6)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var statusColor: Color {
-        if runningElapsed != nil {
-            return .blue
-        }
-
-        switch job.status {
-        case .active:
-            return .green
-        case .paused, .off:
-            return .orange
-        case .error:
-            return .red
-        case .needsAttention:
-            return .yellow
-        }
-    }
-
-    private static func elapsedText(_ elapsed: Double) -> String {
-        if elapsed < 60 {
-            return "\(Int(elapsed.rounded()))s"
-        }
-
-        let minutes = Int(elapsed / 60)
-        let seconds = Int(elapsed.truncatingRemainder(dividingBy: 60))
-        return "\(minutes)m \(seconds)s"
-    }
-}
-
-struct CronJobEditorSheet: View {
-    let title: String
-    let saveTitle: String
-    let isSaving: Bool
-    let errorMessage: String?
-    let onSave: (CronJobEditorDraft) async -> Bool
-
-    @State private var draft: CronJobEditorDraft
-    @Environment(\.dismiss) private var dismiss
-
-    /// Server-provided deliver targets. A plain `let` so a re-init while the
-    /// sheet is presented (options finishing their async load) swaps in the
-    /// fresh list, unlike `@State draft`, which keeps the user's edits.
-    private let serverDeliveryOptions: [CronDeliveryOption]?
-    /// The draft's deliver value when the editor opened; stable across
-    /// re-inits because callers rebuild the same draft.
-    private let initialDeliver: String
-
-    /// Picker rows recomputed from the live draft so a value typed while the
-    /// options were still loading keeps a matching row, and the initial
-    /// unknown/legacy value keeps its custom row even after the user selects
-    /// another option. `nil` means fall back to free-text entry.
-    private var deliverPickerOptions: [CronDeliverPickerOption]? {
-        CronDeliverPicker.options(
-            serverOptions: serverDeliveryOptions,
-            currentValue: draft.deliver,
-            initialValue: initialDeliver
-        )
-    }
-
-    init(
-        title: String,
-        draft: CronJobEditorDraft,
-        saveTitle: String,
-        isSaving: Bool,
-        errorMessage: String?,
-        deliveryOptions: [CronDeliveryOption]? = nil,
-        onSave: @escaping (CronJobEditorDraft) async -> Bool
-    ) {
-        self.title = title
-        self.saveTitle = saveTitle
-        self.isSaving = isSaving
-        self.errorMessage = errorMessage
-        self.onSave = onSave
-        self.serverDeliveryOptions = deliveryOptions
-        self.initialDeliver = draft.deliver
-        _draft = State(initialValue: draft)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Task") {
-                    TextField("Name", text: $draft.name)
-
-                    TextField("Prompt", text: $draft.prompt, axis: .vertical)
-                        .lineLimit(3...8)
-
-                    TextField("Schedule", text: $draft.schedule)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
-
-                Section("Delivery") {
-                    if let deliverPickerOptions {
-                        Picker("Deliver", selection: $draft.deliver) {
-                            ForEach(deliverPickerOptions) { option in
-                                Group {
-                                    if option.isCustom {
-                                        Text("\(option.label) (custom)")
-                                    } else {
-                                        Text(option.label)
-                                    }
-                                }
-                                .tag(option.value)
-                            }
-                        }
-                    } else {
-                        TextField("Deliver", text: $draft.deliver)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-
-                    Toggle("Toast Notifications", isOn: $draft.toastNotifications)
-                }
-
-                Section("Configuration") {
-                    TextField("Skills", text: $draft.skillsText, axis: .vertical)
-                        .lineLimit(1...4)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    TextField("Model", text: $draft.model)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    TextField("Provider", text: $draft.provider)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    TextField("Profile", text: $draft.profile)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
-
-                if let formMessage {
-                    Section {
-                        Text(formMessage)
-                            .font(.footnote)
-                            .foregroundStyle(messageColor)
-                    }
-                }
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        Task {
-                            if await onSave(draft) {
-                                dismiss()
-                            }
-                        }
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                        } else {
-                            Text(saveTitle)
-                        }
-                    }
-                    .disabled(isSaving || draft.validationMessage != nil)
-                }
-            }
-        }
-        .adaptiveFormPresentation()
-    }
-
-    private var formMessage: String? {
-        errorMessage ?? draft.validationMessage
-    }
-
-    private var messageColor: Color {
-        errorMessage == nil ? .secondary : .red
-    }
-}
-
-struct CronJobMetadataRow: View {
-    let title: String
-    let value: String
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 2) {
-                    titleText
-                    valueText
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    titleText
-                        .frame(width: 64, alignment: .leading)
-                    valueText
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var titleText: some View {
-        Text(title)
-            .foregroundStyle(.secondary)
-    }
-
-    private var valueText: some View {
-        Text(value)
-            .foregroundStyle(.primary)
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
     }
 }
 

@@ -3,8 +3,9 @@ import SwiftUI
 /// Turn-end "File changes" recap card shown under the latest assistant turn for git
 /// workspaces (issue #316, Slice D, surface B). The per-file list is derived from the
 /// turn's tool-call metadata and joined to `git/status` for counts/chips. The card is
-/// collapsible (default expanded); the header "Open diff" opens the per-turn diff sheet
-/// and each file row opens that file's diff. The host owns the actual sheet presentation.
+/// collapsible (default expanded); the header "Open diff" opens the turn's files in the
+/// diff surface and each file row opens that surface at the file. The host owns the
+/// actual sheet presentation.
 struct GitTurnChangesCard: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -128,65 +129,5 @@ struct GitTurnChangesCard: View {
 
     private var divider: some View {
         Rectangle().fill(dividerColor).frame(height: 0.5)
-    }
-}
-
-/// Per-turn diff sheet: lists the turn's changed files and drills into each file's diff
-/// (reusing the restyled #318 `GitDiffView`). Presented for the composer capsule tap and
-/// the recap card's "Open diff" button.
-struct GitTurnDiffSheet: View {
-    let session: SessionSummary
-    let server: URL
-    let files: [GitFile]
-    let onAPIError: (Error) -> Void
-
-    @State private var selectedFile: GitFile?
-    @Environment(\.dismiss) private var dismiss
-
-    private var title: String {
-        files.count == 1
-            ? String(localized: "1 file changed")
-            : String(localized: "\(files.count) files changed")
-    }
-
-    var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
-                }
-        }
-        .presentationDetents([.medium, .large])
-        .adaptivePagePresentation()
-        .sheet(item: $selectedFile) { file in
-            GitDiffView(session: session, server: server, file: file, onAPIError: onAPIError)
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if files.isEmpty {
-            ContentUnavailableView(
-                "No File Diffs",
-                systemImage: "doc.text.magnifyingglass",
-                description: Text("Diffs for this turn aren't available yet.")
-            )
-        } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(files) { file in
-                        Button {
-                            selectedFile = file
-                        } label: {
-                            GitFileCard(file: file)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(16)
-            }
-        }
     }
 }

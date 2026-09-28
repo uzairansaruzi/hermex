@@ -8,6 +8,7 @@ struct OnboardingView: View {
     @State private var hasBypassedCopyReminder = false
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
@@ -68,10 +69,10 @@ struct OnboardingView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if isEditingConnectionField {
                 keyboardActionBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: isEditingConnectionField)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: isEditingConnectionField)
         .preferredColorScheme(.dark)
         .onChange(of: currentPage) { oldPage, newPage in
             handlePageChange(from: oldPage, to: newPage)
@@ -221,13 +222,13 @@ struct OnboardingView: View {
 
     private func advanceToNextPage() {
         guard currentPage < OnboardingFlowPolicy.connectPageIndex else { return }
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
             currentPage += 1
         }
     }
 
     private func jumpToConnectPage() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
             currentPage = OnboardingFlowPolicy.connectPageIndex
         }
     }

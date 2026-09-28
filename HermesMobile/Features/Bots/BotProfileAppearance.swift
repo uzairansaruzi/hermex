@@ -1,0 +1,350 @@
+import SwiftUI
+import UIKit
+
+/// Static Bot Mode presentation shared with Hermes Desktop. The raw metadata
+/// dictionary remains the source of truth; this projection only edits the keys
+/// Hermex owns on the Profile screen.
+struct BotProfileAppearance: Equatable, Sendable {
+    var title: String
+    var shape: String?
+    var color: String?
+    var custom: Bool
+    var imageKind: String?
+    /// A `BotAvatarExpression` raw value. Hermex-owned: Desktop keeps the key but renders its own eyes.
+    var expression: String?
+
+    init(profile: BotProfile) { self.init(look: profile.look, fallbackTitle: profile.name) }
+
+    /// Reads a look object directly, so the editor can rebuild its appearance from the
+    /// look it last saved instead of the roster row it was opened with.
+    init(look: [String: BotJSON], fallbackTitle: String) {
+        let storedTitle = look["title"]?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        title = storedTitle.isEmpty ? fallbackTitle : storedTitle
+        shape = look["shape"]?.text
+        color = look["color"]?.text
+        custom = look["custom"]?.flag == true || shape != nil || color != nil
+        imageKind = look["imageKind"]?.text
+        expression = look["expression"]?.text
+    }
+
+    /// Applies only the compatible static appearance fields while retaining
+    /// Desktop-owned organization, groups, timestamps and future fields.
+    func merging(into received: [String: BotJSON]) -> [String: BotJSON] {
+        var result = received
+        Self.set(title, key: "title", in: &result)
+        if let expression { result["expression"] = .string(expression) } else { result.removeValue(forKey: "expression") }
+        if custom {
+            result["custom"] = .bool(true)
+            if let shape { result["shape"] = .string(shape) } else { result.removeValue(forKey: "shape") }
+            if let color { result["color"] = .string(color) } else { result.removeValue(forKey: "color") }
+            if let imageKind { result["imageKind"] = .string(imageKind) }
+            else { result.removeValue(forKey: "imageKind") }
+        } else {
+            for key in ["custom", "shape", "color", "imageKind"] { result.removeValue(forKey: key) }
+        }
+        return result
+    }
+
+    private static func set(_ value: String, key: String, in result: inout [String: BotJSON]) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { result.removeValue(forKey: key) }
+        else { result[key] = .string(trimmed) }
+    }
+}
+
+/// The swatches the editor and the create sheet offer for a drawn face. The first,
+/// stored as Desktop's `#ffffff`, is the adaptive one: white on a dark screen and
+/// black on a light one, so it never disappears into the background.
+struct BotAvatarColor: Identifiable {
+    let hex: String
+    let name: LocalizedStringResource
+    var id: String { hex }
+    var localizedName: String { String(localized: name) }
+    /// What the swatch and the face paint for this entry.
+    var swatch: Color { Color.botBody(hex) }
+
+    static let adaptiveHex = "#ffffff"
+
+    static let palette = [
+        BotAvatarColor(hex: adaptiveHex, name: "Auto"), BotAvatarColor(hex: "#a9703d", name: "Brown"),
+        BotAvatarColor(hex: "#ef4444", name: "Red"), BotAvatarColor(hex: "#f97316", name: "Orange"),
+        BotAvatarColor(hex: "#f59e0b", name: "Amber"), BotAvatarColor(hex: "#22c55e", name: "Green"),
+        BotAvatarColor(hex: "#14b8a6", name: "Teal"), BotAvatarColor(hex: "#38bdf8", name: "Blue"),
+        BotAvatarColor(hex: "#8b5cf6", name: "Purple"), BotAvatarColor(hex: "#ec4899", name: "Pink"),
+        BotAvatarColor(hex: "#8e8e93", name: "Gray")
+    ]
+}
+
+enum BotAvatarShape: String, CaseIterable, Identifiable, Sendable {
+    case circle, blob, squircle, pill, triangle, hexagon, cloud, drop
+    var id: String { rawValue }
+    var localizedName: String {
+        switch self {
+        case .circle: return String(localized: "Circle")
+        case .blob: return String(localized: "Blob")
+        case .squircle: return String(localized: "Squircle")
+        case .pill: return String(localized: "Pill")
+        case .triangle: return String(localized: "Triangle")
+        case .hexagon: return String(localized: "Hexagon")
+        case .cloud: return String(localized: "Cloud")
+        case .drop: return String(localized: "Drop")
+        }
+    }
+}
+
+/// The rest expression of a drawn face: eye size, lean and spacing, after Bloub's
+/// measured catalogue (MIT, jeremy-prt/bloub). Values are in Bloub's units of body
+/// radius and degrees; `BotAvatarMarkView` scales them onto the mark.
+enum BotAvatarExpression: String, CaseIterable, Identifiable, Sendable {
+    case neutral, attentive, surprised, excited, happy, laughing, angry, sad
+    case scared, wary, confused, curious, proud, shy, bored, sleepy
+    var id: String { rawValue }
+
+    struct Eye: Equatable { let width: Double; let height: Double; let tilt: Double }
+    struct Geometry: Equatable { let left: Eye; let right: Eye; let split: Double }
+
+    /// An unknown or missing stored value reads as neutral rather than failing the row.
+    static func resolve(_ raw: String?) -> BotAvatarExpression { raw.flatMap(BotAvatarExpression.init(rawValue:)) ?? .neutral }
+
+    var geometry: Geometry {
+        func pair(_ w: Double, _ h: Double, _ tilt: Double = 0, split: Double) -> Geometry {
+            Geometry(left: Eye(width: w, height: h, tilt: tilt), right: Eye(width: w, height: h, tilt: -tilt), split: split)
+        }
+        switch self {
+        case .neutral: return pair(0.186, 0.412, split: 15.46)
+        case .attentive: return pair(0.21, 0.44, split: 16)
+        case .surprised: return pair(0.45, 0.47, split: 19)
+        case .excited: return pair(0.4, 0.56, -10, split: 19.5)
+        case .happy: return pair(0.27, 0.17, 14, split: 17)
+        case .laughing: return pair(0.34, 0.13, 20, split: 18)
+        case .angry: return pair(0.34, 0.15, 30, split: 17)
+        case .sad: return pair(0.22, 0.4, -28, split: 16)
+        case .scared: return pair(0.4, 0.6, split: 20.5)
+        case .wary: return Geometry(left: Eye(width: 0.21, height: 0.4, tilt: 0), right: Eye(width: 0.22, height: 0.15, tilt: 0), split: 16)
+        case .confused: return Geometry(left: Eye(width: 0.2, height: 0.44, tilt: -18), right: Eye(width: 0.28, height: 0.17, tilt: 14), split: 16.5)
+        case .curious: return Geometry(left: Eye(width: 0.24, height: 0.46, tilt: -8), right: Eye(width: 0.2, height: 0.38, tilt: -8), split: 16.5)
+        case .proud: return pair(0.3, 0.15, 18, split: 17)
+        case .shy: return pair(0.17, 0.3, split: 14)
+        case .bored: return pair(0.3, 0.12, split: 16)
+        case .sleepy: return pair(0.2, 0.42 * 0.42, split: 16)
+        }
+    }
+
+    var localizedName: String {
+        switch self {
+        case .neutral: return String(localized: "Neutral")
+        case .attentive: return String(localized: "Attentive")
+        case .surprised: return String(localized: "Surprised")
+        case .excited: return String(localized: "Excited")
+        case .happy: return String(localized: "Happy")
+        case .laughing: return String(localized: "Laughing")
+        case .angry: return String(localized: "Angry")
+        case .sad: return String(localized: "Sad")
+        case .scared: return String(localized: "Scared")
+        case .wary: return String(localized: "Wary")
+        case .confused: return String(localized: "Confused")
+        case .curious: return String(localized: "Curious")
+        case .proud: return String(localized: "Proud")
+        case .shy: return String(localized: "Shy")
+        case .bored: return String(localized: "Bored")
+        case .sleepy: return String(localized: "Sleepy")
+        }
+    }
+}
+
+/// One frame of Desktop's classic shape vocabulary. It has no clock of its own:
+/// `BotAnimatedFaceView` supplies the pose, and tile grids draw it at rest.
+struct BotAvatarMarkView: View {
+    let name: String
+    let appearance: BotProfileAppearance
+    let size: CGFloat
+    var pose: BotFacePose = .rest
+
+    private var presentation: BotAvatarPresentation {
+        BotAvatarPresentation(name: name, appearance: appearance)
+    }
+
+    var body: some View {
+        ZStack {
+            BotAvatarBody(shape: presentation.shape)
+                .fill(presentation.color)
+            let geometry = BotAvatarExpression.resolve(appearance.expression).geometry
+            HStack(spacing: size * 0.1 * geometry.split / 15.46) {
+                eye(geometry.left)
+                eye(geometry.right)
+            }
+            .offset(x: size * (0.12 + pose.gazeX), y: size * (-0.08 + pose.gazeY))
+        }
+        .rotationEffect(.degrees(pose.roll))
+        .scaleEffect(x: pose.scaleX, y: pose.scaleY, anchor: .bottom)
+        .offset(y: -size * pose.lift)
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    /// Bloub measures eyes against the body radius; the neutral eye maps onto the
+    /// mark's original 0.075 x 0.22 capsule with its 18 degree lean.
+    private func eye(_ eye: BotAvatarExpression.Eye) -> some View {
+        Capsule().fill(presentation.eyeColor)
+            .frame(width: size * 0.075 * eye.width / 0.186, height: size * 0.22 * eye.height / 0.412 * pose.lid)
+            .rotationEffect(.degrees(-18 + eye.tilt))
+    }
+}
+
+/// An asset wins over the compatible static mark. The fallback now honors the
+/// same shape and color fields the editor writes instead of inventing a letter tile.
+struct BotAvatarView: View {
+    let profile: BotProfile
+    let avatar: UIImage?
+    let size: CGFloat
+    /// Photos never move; a drawn face blinks unless the caller asks for a frozen frame.
+    var motion: BotFaceMotion = .idle
+    /// Replaces the pinned expression on a drawn face, for a state the title shows; photos ignore it.
+    var expression: BotAvatarExpression? = nil
+
+    var body: some View {
+        if let avatar {
+            Image(uiImage: avatar).resizable().scaledToFit()
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else {
+            BotAnimatedFaceView(name: profile.id, appearance: appearance, size: size, motion: motion)
+        }
+    }
+
+    private var appearance: BotProfileAppearance {
+        var appearance = BotProfileAppearance(profile: profile)
+        if let expression { appearance.expression = expression.rawValue }
+        return appearance
+    }
+}
+
+private struct BotAvatarPresentation {
+    let shape: BotAvatarShape
+    let color: Color
+    let eyeColor: Color
+
+    init(name: String, appearance: BotProfileAppearance) {
+        if name.lowercased() == "default", !appearance.custom {
+            shape = .squircle
+            color = Color(botHex: "#8b5cf6") ?? .purple
+            eyeColor = Color.botHexIsDark("#8b5cf6") ? .white.opacity(0.9) : .black.opacity(0.85)
+            return
+        }
+        let hash = name.utf8.reduce(UInt64(1_469_598_103_934_665_603)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
+        let shapes = BotAvatarShape.allCases.filter { $0 != .blob }
+        let colors = ["#8b5cf6", "#38bdf8", "#14b8a6", "#22c55e", "#f59e0b", "#f97316", "#ef4444", "#ec4899"]
+        shape = appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) ?? shapes[Int(hash % UInt64(shapes.count))]
+        let hex = appearance.color ?? colors[Int(hash % UInt64(colors.count))]
+        color = Color.botBody(hex)
+        eyeColor = Color.botEyes(on: hex)
+    }
+}
+
+private struct BotAvatarBody: Shape {
+    let shape: BotAvatarShape
+
+    func path(in rect: CGRect) -> Path {
+        let inset = rect.insetBy(dx: rect.width * 0.08, dy: rect.height * 0.08)
+        switch shape {
+        case .circle:
+            return Path(ellipseIn: inset)
+        case .squircle:
+            return Path(roundedRect: inset, cornerRadius: rect.width * 0.28)
+        case .pill:
+            let pill = CGRect(x: inset.minX, y: rect.midY - rect.height * 0.27,
+                              width: inset.width, height: rect.height * 0.54)
+            return Path(roundedRect: pill, cornerRadius: pill.height / 2)
+        case .triangle:
+            var path = Path()
+            path.move(to: CGPoint(x: rect.midX, y: inset.minY))
+            path.addLine(to: CGPoint(x: inset.maxX, y: inset.maxY))
+            path.addLine(to: CGPoint(x: inset.minX, y: inset.maxY))
+            path.closeSubpath()
+            return path
+        case .hexagon:
+            var path = Path()
+            let points = [
+                CGPoint(x: rect.midX, y: inset.minY), CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.3),
+                CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.7), CGPoint(x: rect.midX, y: inset.maxY),
+                CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.7), CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.3)
+            ]
+            path.move(to: points[0]); for point in points.dropFirst() { path.addLine(to: point) }; path.closeSubpath()
+            return path
+        case .cloud:
+            var path = Path()
+            path.addEllipse(in: CGRect(x: rect.minX + rect.width * 0.08, y: rect.minY + rect.height * 0.38,
+                                       width: rect.width * 0.48, height: rect.height * 0.48))
+            path.addEllipse(in: CGRect(x: rect.minX + rect.width * 0.28, y: rect.minY + rect.height * 0.12,
+                                       width: rect.width * 0.5, height: rect.height * 0.64))
+            path.addEllipse(in: CGRect(x: rect.minX + rect.width * 0.55, y: rect.minY + rect.height * 0.35,
+                                       width: rect.width * 0.38, height: rect.height * 0.45))
+            return path
+        case .drop:
+            var path = Path()
+            path.move(to: CGPoint(x: rect.midX, y: inset.minY))
+            path.addCurve(to: CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.62),
+                          control1: CGPoint(x: rect.midX + rect.width * 0.22, y: rect.minY + rect.height * 0.2),
+                          control2: CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.42))
+            path.addCurve(to: CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.62),
+                          control1: CGPoint(x: inset.maxX, y: inset.maxY), control2: CGPoint(x: inset.minX, y: inset.maxY))
+            path.addCurve(to: CGPoint(x: rect.midX, y: inset.minY),
+                          control1: CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.42),
+                          control2: CGPoint(x: rect.midX - rect.width * 0.22, y: rect.minY + rect.height * 0.2))
+            return path
+        case .blob:
+            var path = Path()
+            path.move(to: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.minY + rect.height * 0.17))
+            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.86, y: rect.minY + rect.height * 0.2),
+                          control1: CGPoint(x: rect.minX + rect.width * 0.4, y: rect.minY),
+                          control2: CGPoint(x: rect.minX + rect.width * 0.78, y: rect.minY + rect.height * 0.02))
+            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.78, y: rect.minY + rect.height * 0.86),
+                          control1: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.4),
+                          control2: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.72))
+            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.minY + rect.height * 0.78),
+                          control1: CGPoint(x: rect.minX + rect.width * 0.55, y: rect.maxY),
+                          control2: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.maxY))
+            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.minY + rect.height * 0.17),
+                          control1: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.6),
+                          control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.3))
+            return path
+        }
+    }
+}
+
+extension Color {
+    /// The body color for a stored hex. Desktop's white is drawn adaptively here:
+    /// white in dark appearance, black in light.
+    static func botBody(_ hex: String) -> Color {
+        if hex.lowercased() == BotAvatarColor.adaptiveHex {
+            return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .white : .black })
+        }
+        return Color(botHex: hex) ?? .purple
+    }
+
+    /// Eyes that contrast with `botBody(hex)` in both appearances.
+    static func botEyes(on hex: String) -> Color {
+        if hex.lowercased() == BotAvatarColor.adaptiveHex {
+            return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
+                ? UIColor.black.withAlphaComponent(0.85) : UIColor.white.withAlphaComponent(0.9) })
+        }
+        return botHexIsDark(hex) ? .white.opacity(0.9) : .black.opacity(0.85)
+    }
+
+    init?(botHex: String) {
+        let value = botHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.count == 7, value.first == "#", let rgb = UInt64(value.dropFirst(), radix: 16) else { return nil }
+        self.init(red: Double((rgb >> 16) & 0xff) / 255,
+                  green: Double((rgb >> 8) & 0xff) / 255,
+                  blue: Double(rgb & 0xff) / 255)
+    }
+
+    fileprivate static func botHexIsDark(_ botHex: String) -> Bool {
+        let value = botHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.count == 7, value.first == "#", let rgb = UInt64(value.dropFirst(), radix: 16) else { return false }
+        let red = Double((rgb >> 16) & 0xff)
+        let green = Double((rgb >> 8) & 0xff)
+        let blue = Double(rgb & 0xff)
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue < 110
+    }
+}

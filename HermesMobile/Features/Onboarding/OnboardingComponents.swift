@@ -56,6 +56,7 @@ struct OnboardingCommandPill: View {
     var prefix: String? = "$"
     var copyValue: String?
     @State private var didCopy = false
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     var body: some View {
         HStack(spacing: 10) {
@@ -76,6 +77,7 @@ struct OnboardingCommandPill: View {
                 Button {
                     UIPasteboard.general.string = copyValue
                     didCopy = true
+                    ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 13, weight: .semibold))
@@ -249,7 +251,7 @@ struct OnboardingAgentPromptCard: View {
             Button {
                 UIPasteboard.general.string = prompt
                 hasCopied = true
-                HapticButtonHaptics.tap(style: .light, isEnabled: isHapticsEnabled)
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 withAnimation(.easeInOut(duration: 0.2)) {
                     didCopyRecently = true
                 }
@@ -277,6 +279,8 @@ struct OnboardingPageIndicator: View {
     let pageCount: Int
     let currentPage: Int
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(0..<pageCount, id: \.self) { index in
@@ -285,7 +289,7 @@ struct OnboardingPageIndicator: View {
                     .frame(width: index == currentPage ? 24 : 8, height: 8)
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentPage)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: currentPage)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Page \(currentPage + 1) of \(pageCount)"))
     }

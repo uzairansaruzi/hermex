@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GitActionProgress: Equatable {
     let title: String
@@ -20,9 +21,17 @@ final class GitActionToastState {
     private(set) var success: GitActionSuccess?
     private var dismissTask: Task<Void, Never>?
 
+    static func toastAnimation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.18)
+    }
+
+    static func toastTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+
     func showProgress(_ value: GitActionProgress) {
         dismissTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.18)) {
+        animate {
             success = nil
             progress = value
         }
@@ -30,7 +39,7 @@ final class GitActionToastState {
 
     func showSuccess(_ value: GitActionSuccess, autoDismissAfter duration: Duration = .seconds(6)) {
         dismissTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.18)) {
+        animate {
             progress = nil
             success = value
         }
@@ -44,20 +53,26 @@ final class GitActionToastState {
     func dismissSuccess() {
         dismissTask?.cancel()
         dismissTask = nil
-        withAnimation(.easeInOut(duration: 0.18)) {
+        animate {
             success = nil
         }
     }
 
     func dismissProgress() {
-        withAnimation(.easeInOut(duration: 0.18)) {
+        animate {
             progress = nil
         }
+    }
+
+    private func animate(_ updates: () -> Void) {
+        withAnimation(Self.toastAnimation(reduceMotion: UIAccessibility.isReduceMotionEnabled), updates)
     }
 }
 
 struct GitActionToastOverlay: View {
     let state: GitActionToastState
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -87,7 +102,7 @@ struct GitActionToastOverlay: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .transition(GitActionToastState.toastTransition(reduceMotion: reduceMotion))
     }
 
     private func toast<Icon: View>(

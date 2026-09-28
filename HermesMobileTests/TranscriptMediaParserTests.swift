@@ -327,6 +327,31 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertNotEqual(firstSessionKey, secondServerKey)
     }
 
+    func testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions() {
+        let path = "/tmp/workspace/photo.png"
+
+        let firstSessionKey = AttachmentImageCacheKey(
+            namespace: "https://one.example.test|session-a",
+            path: path
+        )
+        let secondSessionKey = AttachmentImageCacheKey(
+            namespace: "https://one.example.test|session-b",
+            path: path
+        )
+        let secondServerKey = AttachmentImageCacheKey(
+            namespace: "https://two.example.test|session-a",
+            path: path
+        )
+        let pathOnlyKey = AttachmentImageCacheKey(namespace: path, path: path)
+
+        XCTAssertNotEqual(firstSessionKey, secondSessionKey)
+        XCTAssertNotEqual(firstSessionKey, secondServerKey)
+        XCTAssertNotEqual(firstSessionKey, pathOnlyKey)
+        XCTAssertFalse(firstSessionKey.namespace.isEmpty)
+        XCTAssertTrue(firstSessionKey.namespace.contains("https://one.example.test"))
+        XCTAssertEqual(firstSessionKey.path, path)
+    }
+
     private func mediaReferences(in segments: [TranscriptMediaSegment]) -> [TranscriptMediaReference] {
         segments.compactMap { segment in
             if case let .media(reference) = segment {
@@ -343,5 +368,89 @@ final class TranscriptMediaParserTests: XCTestCase {
             }
             return nil
         }
+    }
+
+    // MARK: - Streaming scan cost (#675)
+
+    /// A reply with no media marker is the whole input as one text segment,
+    /// including near-misses the byte pre-scan must not mistake for markers.
+    func testReplyWithoutMediaMarkersIsOneTextSegment() {
+        let markdown = String(
+            repeating: "Run `echo $HOME` [docs](https://example.test) ! [x] MEDIA file:/tmp\n",
+            count: 400
+        )
+
+        XCTAssertEqual(TranscriptMediaParser.segments(in: markdown), [.text(markdown)])
+    }
+
+    /// Text runs across many lines stay merged into one segment per gap
+    /// between media, with a marker as the very last bytes of the reply.
+    func testTextAroundMediaMergesIntoOneRunPerGap() {
+        let before = String(repeating: "Line before the image.\n", count: 200)
+        let between = String(repeating: "Line between.\n", count: 200)
+        let markdown = before + "MEDIA:/tmp/first.png\n" + between + "MEDIA:/tmp/second.png"
+
+        XCTAssertEqual(
+            TranscriptMediaParser.segments(in: markdown),
+            [
+                .text(before),
+                .media(.init(rawReference: "/tmp/first.png")),
+                .text("\n" + between),
+                .media(.init(rawReference: "/tmp/second.png"))
+            ]
+        )
+    }
+
+    /// Bots opt into plain `[label](path)` file links, so any `[` must still
+    /// reach the full parse.
+    func testLocalFileLinkWithoutImageMarkerStillParsesForBots() {
+        let segments = TranscriptMediaParser.segments(
+            in: "Saved [chart](/tmp/chart.png)",
+            includesLocalFileLinks: true
+        )
+
+        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/chart.png"])
+    }
+
+    // MARK: - Segment cache (#680)
+
+    /// A settled row parses once; later body evaluations read the memoized
+    /// segments, which must match a fresh parse.
+    func testSettledSegmentsAreMemoized() {
+        TranscriptMediaSegmentCache.removeAll()
+        let markdown = "Screenshot: MEDIA:/tmp/cache-680.png done"
+
+        XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
+        let first = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: false)
+        XCTAssertTrue(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
+
+        XCTAssertEqual(first, TranscriptMediaParser.segments(in: markdown))
+        XCTAssertEqual(TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: false), first)
+    }
+
+    /// Streaming text changes per token; caching it would evict settled rows.
+    func testStreamingSegmentsDoNotPopulateTheCache() {
+        TranscriptMediaSegmentCache.removeAll()
+        let markdown = "Still streaming MEDIA:/tmp/cache-680.png"
+
+        let segments = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: true)
+
+        XCTAssertEqual(segments, TranscriptMediaParser.segments(in: markdown))
+        XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
+    }
+
+    /// A relative image resolves against the workspace root, so the same text
+    /// under two roots must not share an entry.
+    func testWorkspaceRootIsPartOfTheSegmentCacheKey() {
+        TranscriptMediaSegmentCache.removeAll()
+        let markdown = "![](./shots/login.png)"
+
+        let first = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: "/srv/one", isStreaming: false)
+        XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: "/srv/two"))
+        let second = TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: "/srv/two", isStreaming: false)
+
+        XCTAssertEqual(first, TranscriptMediaParser.segments(in: markdown, workspaceRoot: "/srv/one"))
+        XCTAssertEqual(second, TranscriptMediaParser.segments(in: markdown, workspaceRoot: "/srv/two"))
+        XCTAssertNotEqual(first, second)
     }
 }

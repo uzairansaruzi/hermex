@@ -42,8 +42,15 @@ struct HermexCommands: Commands {
 
 @main
 struct HermesMobileApp: App {
+    // APNs hands device tokens to a UIKit delegate and nowhere else.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
+
+    init() {
+        // Record installation age even before a server has been configured.
+        _ = RatingPromptState.shared
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -58,6 +65,9 @@ struct HermesMobileApp: App {
             } else {
                 ContentView(authManager: authManager)
                     .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                    // Signs in from `HERMEX_DEV_*` launch environment variables
+                    // (`scripts/sim-login`); a no-op when they are absent.
+                    .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
             }
             #else
             ContentView(authManager: authManager)

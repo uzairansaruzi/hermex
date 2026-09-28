@@ -25,11 +25,68 @@ struct ComposerAttachmentStripView: View {
                 .padding(.bottom, 4)
             }
             .frame(height: stripHeight)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
     }
 
     private var stripHeight: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 132 : 108
+    }
+}
+
+/// Pill-state summary of pending attachments: up to three 30 pt tiles plus a
+/// `+N` chip, so nothing pending is ever out of sight while the editor is idle.
+struct ComposerAttachmentPillPreview: View {
+    let attachments: [PendingAttachment]
+    let onPreview: (PendingAttachment) -> Void
+
+    private let tileSize: CGFloat = 30
+    private let visibleLimit = 3
+
+    var body: some View {
+        if !attachments.isEmpty {
+            HStack(spacing: 4) {
+                ForEach(attachments.prefix(visibleLimit)) { attachment in
+                    Button {
+                        onPreview(attachment)
+                    } label: {
+                        tile(for: attachment)
+                    }
+                    .buttonStyle(.chatTactile(.thumbnail))
+                    .accessibilityLabel("Open attachment \(attachment.name)")
+                }
+
+                if attachments.count > visibleLimit {
+                    Text("+\(attachments.count - visibleLimit)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .frame(width: tileSize, height: tileSize)
+                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .accessibilityLabel(Text("\(attachments.count - visibleLimit) more attachments"))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(for attachment: PendingAttachment) -> some View {
+        Group {
+            if attachment.isImage,
+               let thumbnailData = attachment.thumbnailData,
+               let uiImage = UIImage(data: thumbnailData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: attachment.isImage ? "photo" : "doc")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.tertiarySystemFill))
+            }
+        }
+        .frame(width: tileSize, height: tileSize)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

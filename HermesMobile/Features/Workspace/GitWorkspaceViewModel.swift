@@ -452,10 +452,6 @@ struct GitWriteAvailability: Equatable {
     var fetchDisabled: Bool { isViewingCachedData }
 }
 
-enum GitToolbarStatusDot: Equatable {
-    case gray
-}
-
 /// Pure presentation state for the toolbar menu, kept outside UIKit so its edge cases are testable.
 struct GitToolbarPresentation: Equatable {
     let hasRepository: Bool
@@ -463,12 +459,6 @@ struct GitToolbarPresentation: Equatable {
     let info: GitInfo?
     let status: GitStatus?
     let statusFailed: Bool
-
-    var statusDot: GitToolbarStatusDot? {
-        guard hasRepository else { return nil }
-        if (info?.dirty ?? 0) > 0 || (info?.behind ?? 0) > 0 { return .gray }
-        return nil
-    }
 
     var accessibilityValue: String {
         guard hasRepository else { return String(localized: "Repository status unavailable") }
@@ -481,13 +471,6 @@ struct GitToolbarPresentation: Equatable {
         if behind { return String(localized: "Remote branch ahead of local branch") }
         if ahead { return String(localized: "Local branch ahead of remote") }
         return String(localized: "Repository up to date")
-    }
-
-    var changesTitle: String {
-        if statusFailed { return String(localized: "Changes unavailable") }
-        guard let status else { return String(localized: "No changes") }
-        guard status.changedCount > 0 else { return String(localized: "No changes") }
-        return "+\(status.totalAdditions) −\(status.totalDeletions)  \(status.changedCount)"
     }
 
     var changesAreEnabled: Bool { !isLoading && (status != nil || statusFailed) }

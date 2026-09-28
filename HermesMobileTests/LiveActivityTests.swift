@@ -3,6 +3,9 @@ import XCTest
 
 @MainActor
 final class LiveActivityTests: XCTestCase {
+    /// An unpaired server: these runs stay local-only.
+    private let server = URL(string: "https://webui.example")!
+
     override func tearDown() {
         LiveActivityURLProtocol.handler = nil
         super.tearDown()
@@ -39,46 +42,6 @@ final class LiveActivityTests: XCTestCase {
         let generic = AgentRunActivityStateReducer.toolStarted(name: "apply_patch", state: state)
         XCTAssertEqual(generic.status, .usingTool)
         XCTAssertEqual(generic.currentActivity, "Using apply patch")
-    }
-
-    func testElapsedTimeFormatterUsesStableClockLabels() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 100)
-            ),
-            "00:00"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 106)
-            ),
-            "00:06"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 190)
-            ),
-            "01:30"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 3_761)
-            ),
-            "1:01:01"
-        )
-        XCTAssertEqual(
-            AgentRunElapsedTimeFormatter.label(
-                startedAt: startedAt,
-                updatedAt: Date(timeIntervalSince1970: 99)
-            ),
-            "00:00"
-        )
     }
 
     func testLiveActivityReusePolicyRequiresMatchingSessionAndStream() {
@@ -132,6 +95,54 @@ final class LiveActivityTests: XCTestCase {
         )
     }
 
+    /// #740: a local alert fires once on entering an approval or a question, and only when
+    /// the relay can't banner it and the user isn't already looking at the app.
+    func testAlertPolicyAlertsOnlyOnEnteringWaitingWhenTheRelayCannot() {
+        func alerts(_ previous: AgentRunActivityStatus, _ next: AgentRunActivityStatus,
+                    paired: Bool = false, active: Bool = false) -> Bool {
+            AgentLiveActivityAlertPolicy.alerts(previous: previous, next: next, canReceivePush: paired, appIsActive: active)
+        }
+
+        XCTAssertTrue(alerts(.runningCommand, .waitingForApproval))
+        XCTAssertTrue(alerts(.thinking, .waitingForClarification))
+        XCTAssertTrue(alerts(.waitingForApproval, .waitingForClarification), "a new kind of ask is a new alert")
+        XCTAssertFalse(alerts(.waitingForApproval, .waitingForApproval), "a repeated waiting event stays silent")
+        XCTAssertFalse(alerts(.waitingForClarification, .waitingForClarification))
+        XCTAssertFalse(alerts(.runningCommand, .waitingForApproval, paired: true), "the relay banners a paired server")
+        XCTAssertFalse(alerts(.runningCommand, .waitingForApproval, active: true), "no alert in the foreground")
+        XCTAssertFalse(alerts(.waitingForApproval, .runningCommand), "leaving waiting is silent")
+        XCTAssertFalse(alerts(.runningCommand, .waiting), "the relay's generic waiting is never a local write")
+        XCTAssertFalse(alerts(.responding, .complete))
+
+        // A stale write keeps the waiting status, so a replayed approval after a reconnect stays silent.
+        let waiting = AgentRunActivityStateReducer.waitingForApproval(
+            state: AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Build", startedAt: Date())
+        )
+        let stale = AgentRunActivityStateReducer.stale(state: waiting)
+        XCTAssertFalse(alerts(stale.status, AgentRunActivityStateReducer.waitingForApproval(state: stale).status))
+    }
+
+    /// #740 review: a Bot feed writes its chips in the same tick as the approval, and that
+    /// write supersedes the send that carried the alert. The ask stays owed until a send lands.
+    func testPendingAlertSurvivesASameStatusWriteAndDropsWhenTheAskEnds() {
+        func pending(_ owed: AgentRunActivityStatus?, _ previous: AgentRunActivityStatus,
+                     _ next: AgentRunActivityStatus, paired: Bool = false,
+                     active: Bool = false) -> AgentRunActivityStatus? {
+            AgentLiveActivityAlertPolicy.pending(owed, previous: previous, next: next,
+                                                 canReceivePush: paired, appIsActive: active)
+        }
+
+        let owed = pending(nil, .runningCommand, .waitingForApproval)
+        XCTAssertEqual(owed, .waitingForApproval)
+        XCTAssertEqual(pending(owed, .waitingForApproval, .waitingForApproval), .waitingForApproval,
+                       "a chips write keeps the ask owed")
+        XCTAssertNil(pending(nil, .waitingForApproval, .waitingForApproval), "a delivered ask never re-alerts")
+        XCTAssertEqual(pending(owed, .waitingForApproval, .waitingForClarification), .waitingForClarification)
+        XCTAssertNil(pending(owed, .waitingForApproval, .runningCommand), "answering the ask drops it")
+        XCTAssertNil(pending(owed, .waitingForApproval, .waitingForApproval, active: true),
+                     "opening the app drops it")
+    }
+
     func testActiveLiveActivityStatesCarryRenderableText() {
         let startedAt = Date(timeIntervalSince1970: 100)
         let later = Date(timeIntervalSince1970: 106)
@@ -147,7 +158,6 @@ final class LiveActivityTests: XCTestCase {
             AgentRunActivityStateReducer.toolCompleted(state: initial, now: later),
             AgentRunActivityStateReducer.waitingForApproval(state: initial, now: later),
             AgentRunActivityStateReducer.waitingForClarification(state: initial, now: later),
-            AgentRunActivityStateReducer.appendingToken("Hello", to: initial, now: later),
             AgentRunActivityStateReducer.settingInterimAssistant("Drafting the answer", on: initial, now: later)
         ]
 
@@ -156,12 +166,6 @@ final class LiveActivityTests: XCTestCase {
             XCTAssertFalse(state.sessionTitle.isEmpty)
             XCTAssertFalse(state.currentActivity.isEmpty)
             XCTAssertGreaterThanOrEqual(state.updatedAt, state.startedAt)
-            XCTAssertFalse(
-                AgentRunElapsedTimeFormatter.label(
-                    startedAt: state.startedAt,
-                    updatedAt: state.updatedAt
-                ).isEmpty
-            )
         }
     }
 
@@ -1161,7 +1165,7 @@ final class LiveActivityTests: XCTestCase {
         let manager = AgentLiveActivityManager()
 
         // A live SSE connection claims the stream so the reconciler leaves it alone.
-        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc")
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
         // Suspension / transport trouble releases the claim — the suspended stream is
@@ -1170,12 +1174,136 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertNil(manager.activeConnectedStreamID)
 
         // Reconnecting the same stream re-claims it.
-        manager.start(sessionID: "session-1", sessionTitle: "Title", streamID: "stream-abc")
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
         // Finalizing the run releases the claim.
         manager.end(status: .complete, activity: "Response complete")
         XCTAssertNil(manager.activeConnectedStreamID)
+    }
+
+    // Reusing an activity for the same session and stream keeps the earliest start
+    // it has been told about, so a widget first started from a discovery stamp
+    // adopts the server's earlier turn start once the coordinator learns it.
+    @MainActor
+    func testReusingAnActivityAdoptsTheEarliestKnownStart() throws {
+        let manager = AgentLiveActivityManager()
+        let discoveredAt = Date(timeIntervalSince1970: 1_000)
+        let serverStart = discoveredAt.addingTimeInterval(-95)
+
+        manager.start(
+            sessionID: "session-1",
+            server: server,
+            sessionTitle: "Title",
+            streamID: "stream-abc",
+            startedAt: discoveredAt
+        )
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, discoveredAt)
+
+        manager.start(
+            sessionID: "session-1",
+            server: server,
+            sessionTitle: "Title",
+            streamID: "stream-abc",
+            startedAt: serverStart
+        )
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
+
+        // A later stamp for the same run never pushes the widget timer forward.
+        manager.start(
+            sessionID: "session-1",
+            server: server,
+            sessionTitle: "Title",
+            streamID: "stream-abc",
+            startedAt: discoveredAt.addingTimeInterval(30)
+        )
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
+    }
+
+    // #566: the same session and stream IDs on another configured server are a
+    // different run, so they get their own activity and relay route.
+    @MainActor
+    func testSameIDsOnAnotherServerStartAFreshActivity() throws {
+        let manager = AgentLiveActivityManager()
+        let firstStart = Date(timeIntervalSince1970: 1_000)
+        let laterStart = firstStart.addingTimeInterval(60)
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title",
+                      streamID: "stream-abc", startedAt: firstStart)
+        manager.start(sessionID: "session-1", server: URL(string: "https://other.example")!, sessionTitle: "Title",
+                      streamID: "stream-abc", startedAt: laterStart)
+        XCTAssertEqual(manager.currentStateForTesting()?.startedAt, laterStart,
+                       "Reusing would keep the first server's earlier start")
+    }
+
+    // #676: only entering Thinking skips the throttle; a burst of reasoning events
+    // joins the coalesced path, and a reasoning event after a stale mark clears it at once.
+    @MainActor
+    func testRepeatedReasoningJoinsTheThrottleAndStillClearsStale() throws {
+        let manager = AgentLiveActivityManager()
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
+
+        for _ in 0..<100 { manager.update(.reasoning("step")) }
+        XCTAssertEqual(manager.immediateWriteCountForTesting, 1)
+
+        manager.markStale()
+        manager.update(.reasoning("step"))
+        manager.update(.reasoning("step"))
+        let state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(state.status, .thinking)
+        XCTAssertFalse(state.isStale)
+        XCTAssertEqual(manager.immediateWriteCountForTesting, 3, "stale mark and the one clearing it")
+    }
+
+    // #676: the excerpt is a prefix, so once the buffered reply covers it, more
+    // tokens neither re-read the reply nor rewrite the state.
+    @MainActor
+    func testTokensStopRewritingTheExcerptOnceItsPrefixIsFull() throws {
+        let manager = AgentLiveActivityManager()
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
+
+        for _ in 0..<1_000 { manager.update(.token("word ")) }
+        let full = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(full.responseExcerpt,
+                       AgentRunActivitySanitizer.responseExcerpt(String(repeating: "word ", count: 1_000)))
+
+        for _ in 0..<1_000 { manager.update(.token("more ")) }
+        XCTAssertEqual(manager.currentStateForTesting(), full)
+
+        // A token after a status change still puts "Writing response" back.
+        manager.update(.reasoning("step"))
+        manager.update(.token("more "))
+        var state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(state.status, .responding)
+        XCTAssertEqual(state.currentActivity, String(localized: "Writing response"))
+        XCTAssertEqual(state.responseExcerpt, full.responseExcerpt)
+
+        manager.update(.toolCompleted)
+        manager.update(.token("more "))
+        XCTAssertEqual(manager.currentStateForTesting()?.currentActivity, String(localized: "Writing response"))
+
+        manager.markStale()
+        manager.update(.token("more "))
+        state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertFalse(state.isStale)
+
+        // A new reply segment starts filling again.
+        manager.update(.clearResponseExcerpt)
+        manager.update(.token("next"))
+        XCTAssertEqual(manager.currentStateForTesting()?.responseExcerpt, "next")
+    }
+
+    // #676: leading whitespace does not fill the bounded buffer, so a reply that
+    // opens with a lot of it still reaches "Writing response".
+    @MainActor
+    func testLeadingWhitespaceDoesNotFillTheExcerptBuffer() throws {
+        let manager = AgentLiveActivityManager()
+        manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
+
+        for _ in 0..<1_000 { manager.update(.token(" \n\t")) }
+        manager.update(.token("Hello"))
+        let state = try XCTUnwrap(manager.currentStateForTesting())
+        XCTAssertEqual(state.status, .responding)
+        XCTAssertEqual(state.responseExcerpt, "Hello")
     }
 }
 
@@ -1198,7 +1326,7 @@ private final class SpyAgentLiveActivityManager: AgentLiveActivityManaging {
     private(set) var didMarkStale = false
     private(set) var ends: [End] = []
 
-    func start(sessionID: String, sessionTitle: String, streamID: String?) {
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {
         starts.append(Start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: streamID))
     }
 

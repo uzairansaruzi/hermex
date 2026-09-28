@@ -1,0 +1,73 @@
+{
+  "active_agents" : 0,
+  "active_sessions" : 0,
+  "auth_flows" : [
+    "fixture-redacted",
+    "fixture-redacted"
+  ],
+  "auth_providers" : [
+    "basic"
+  ],
+  "auth_required" : true,
+  "can_update_hermes" : true,
+  "components" : {
+    "dashboard" : {
+      "last_error_at" : null,
+      "recent_unhandled_errors" : 0,
+      "selftest" : "fixture-redacted",
+      "status" : "ok"
+    },
+    "gateway" : {
+      "state" : "fixture-redacted",
+      "status" : "ok"
+    },
+    "platforms" : {
+      "configured" : 5,
+      "connected" : 5,
+      "status" : "ok"
+    },
+    "storage" : {
+      "status" : "ok"
+    }
+  },
+  "config_version" : 46,
+  "disk" : {
+    "free_mb" : 53113,
+    "pressure" : "fixture-redacted",
+    "total_mb" : 471482,
+    "used_percent" : 88.7
+  },
+  "gateway_busy" : false,
+  "gateway_drainable" : true,
+  "gateway_exit_reason" : null,
+  "gateway_heartbeat_stale_s" : null,
+  "gateway_mode" : "fixture-redacted",
+  "gateway_platforms" : {},
+  "gateway_running" : true,
+  "gateway_shared_with" : null,
+  "gateway_state" : "fixture-redacted",
+  "gateway_updated_at" : "fixture-redacted",
+  "install_id" : "fixture-install",
+  "latest_config_version" : 46,
+  "memory" : {
+    "boot_id" : "fixture-redacted",
+    "gateway_rss_mb" : null,
+    "last_boot_suspected_oom" : false,
+    "last_boot_unclean" : false,
+    "pressure" : "fixture-redacted",
+    "sampled_at" : null,
+    "swap_used_mb" : null,
+    "system_available_mb" : null,
+    "system_total_mb" : null
+  },
+  "multiplex_standalone_reason" : "fixture-redacted",
+  "nous_session_valid" : "fixture-redacted",
+  "overall" : "fixture-redacted",
+  "parked_profiles" : [],
+  "profiles" : [
+    "inbox-triage"
+  ],
+  "release_date" : "fixture-redacted",
+  "restart_drain_timeout" : 60,
+  "version" : "0.21.5"
+}

@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct SlashCommandAutocompleteView: View {
-    private let rowHeight: CGFloat = 48
-    private let emptyPanelHeight: CGFloat = 64
+    // Row height tracks Dynamic Type so the panel is never taller or shorter
+    // than the rows it actually draws.
+    @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
+    @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
     private let maxPanelHeight: CGFloat = 280
 
     let query: String
@@ -13,6 +15,9 @@ struct SlashCommandAutocompleteView: View {
     let personalitySuggestions: [String]
     let skillSuggestions: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
+    /// Whether the trigger is mid-sentence, where only a skill can run on send,
+    /// so command and agent-command rows would insert text nothing executes.
+    let skillsOnly: Bool
     let selectedReasoningEffort: String?
     let onSelectCommand: (SlashCommand) -> Void
     let onSelectSkillCommand: (SkillSlashSuggestion) -> Void
@@ -21,59 +26,131 @@ struct SlashCommandAutocompleteView: View {
     let onSelectSubArg: (String) -> Void
     let onDismiss: () -> Void
 
+    /// The last completed background ranking pass, or `nil` before the first one lands.
+    @State private var cachedResults: SlashAutocompleteResults?
+
     private var parsed: ParsedSlashQuery {
         ParsedSlashQuery(query: query)
     }
 
     var body: some View {
+        let parsed = parsed
+        let results = currentResults
+
         VStack(spacing: 0) {
             if parsed.isSubArgMode, let command = parsed.command {
-                subArgList(for: command)
+                subArgList(for: command, results: results)
             } else {
-                commandList
+                commandList(results)
             }
         }
         .adaptiveGlass(
             .regular,
             fallbackMaterial: .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            in: RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: panelHeight)
+        .frame(height: panelHeight(for: results, parsed: parsed))
+        .task(id: rankingInput) {
+            let ranked = await rankingInput.rankedResults()
+            // A background pass does not inherit this task's cancellation, so
+            // one started for an older query can still finish last. Drop it
+            // rather than let it overwrite newer rows.
+            guard !Task.isCancelled else { return }
+            cachedResults = ranked
+        }
     }
 
-    private var panelHeight: CGFloat {
-        let rowCount = visibleRowCount
+    /// The results to draw, which always describe what the user has typed unless
+    /// the catalog is large enough that re-ranking here would cost a frame.
+    ///
+    /// The background pass usually lands first and its results are used as they
+    /// are. When they do not match — the first frame, a trigger change, a
+    /// keystroke the pass has not caught up with — a small catalog simply ranks
+    /// again, because at that size it costs microseconds. Only a large catalog
+    /// holds the previous rows for the same trigger, and only because the
+    /// alternative is collapsing the panel to an empty box mid-sentence.
+    private var currentResults: SlashAutocompleteResults {
+        let input = rankingInput
+
+        if let cachedResults {
+            if cachedResults.input == input { return cachedResults }
+            if !input.ranksInline, cachedResults.input.mode == input.mode { return cachedResults }
+        }
+
+        return input.results()
+    }
+
+    private var rankingInput: SlashAutocompleteRanking {
+        let parsed = parsed
+
+        // Mid-sentence a skill is the only thing that works, so the panel ranks
+        // skills against the whole trigger word and never enters a sub-argument
+        // list — a command there would be inserted text nothing executes.
+        if skillsOnly {
+            return SlashAutocompleteRanking(
+                mode: .skillsOnly,
+                query: parsed.commandName,
+                skills: skillSuggestions,
+                agentCommands: []
+            )
+        }
+
+        guard parsed.isSubArgMode, let command = parsed.command else {
+            return SlashAutocompleteRanking(
+                mode: .commands,
+                query: parsed.commandName,
+                skills: skillSuggestions,
+                agentCommands: agentCommands
+            )
+        }
+
+        guard command.subArgs == .skills else {
+            return SlashAutocompleteRanking(mode: .inactive, query: "", skills: [], agentCommands: [])
+        }
+
+        return SlashAutocompleteRanking(
+            mode: .skillSubArgs,
+            query: SlashSkillFormatter.skillQuery(from: parsed.argQuery),
+            skills: skillSuggestions,
+            agentCommands: []
+        )
+    }
+
+    private func panelHeight(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> CGFloat {
+        let rowCount = visibleRowCount(for: results, parsed: parsed)
         guard rowCount > 0 else { return emptyPanelHeight }
         return min(maxPanelHeight, CGFloat(rowCount) * rowHeight)
     }
 
-    private var visibleRowCount: Int {
+    private func visibleRowCount(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> Int {
         if parsed.isSubArgMode, let command = parsed.command {
             if command.subArgs == .skills {
-                return filteredSkillSubArgSuggestions.count
+                return results.skillSubArgs.count
             }
             return filteredSubArgs(for: command).count
         }
 
-        return SlashCommandCatalog.matching(parsed.commandName).count +
-            filteredSkillSuggestions.count +
-            filteredAgentCommandSuggestions.count
+        return results.commandRowCount
     }
 
     @ViewBuilder
-    private var commandList: some View {
-        let commands = SlashCommandCatalog.matching(parsed.commandName)
-        let skills = filteredSkillSuggestions
-        let agentCommands = filteredAgentCommandSuggestions
-        if commands.isEmpty && skills.isEmpty && agentCommands.isEmpty {
+    private func commandList(_ results: SlashAutocompleteResults) -> some View {
+        if results.hasNoCommandRows {
+            // Unreachable while open mid-sentence: the composer closes the
+            // panel when no skill matches, so an empty pass here only means a
+            // stale frame before the newer rows land.
             Text("No commands or skills match \"\(parsed.commandName)\"")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
+            let commands = results.commands
+            let skills = results.skills
+            let agentCommands = results.agentCommands
+
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(commands.enumerated()), id: \.element.id) { index, command in
@@ -108,27 +185,12 @@ struct SlashCommandAutocompleteView: View {
         Button {
             onSelectCommand(command)
         } label: {
-            HStack(spacing: 12) {
-                Text("/\(command.name)")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
-
-                if let argHint = command.argHint {
-                    Text(argHint)
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(command.description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
+            rowContent(
+                name: "/\(command.name)",
+                hint: command.argHint,
+                detail: command.description,
+                style: .command
+            )
         }
         .buttonStyle(.plain)
     }
@@ -137,29 +199,12 @@ struct SlashCommandAutocompleteView: View {
         Button {
             onSelectAgentCommand(command)
         } label: {
-            HStack(spacing: 12) {
-                Text("/\(command.name)")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                if let argHint = command.argHint {
-                    Text(argHint)
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(command.description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
+            rowContent(
+                name: "/\(command.name)",
+                hint: command.argHint,
+                detail: command.description,
+                style: .command
+            )
         }
         .buttonStyle(.plain)
     }
@@ -168,37 +213,99 @@ struct SlashCommandAutocompleteView: View {
         Button {
             onSelectSkillCommand(skill)
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 12)
-                    .accessibilityHidden(true)
-
-                Text("/\(skill.slashName)")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                if let category = skill.category {
-                    Text(category)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(skill.description ?? String(localized: "Skill"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
+            rowContent(
+                name: "/\(skill.slashName)",
+                hint: skill.category,
+                detail: skill.description ?? String(localized: "Skill"),
+                style: .skill,
+                icon: "bolt.fill"
+            )
         }
         .buttonStyle(.plain)
+    }
+
+    private func skillSubArgRow(_ skill: SkillSlashSuggestion) -> some View {
+        Button {
+            onSelectSkillSubArg(skill)
+        } label: {
+            rowContent(
+                name: skill.name,
+                hint: skill.category,
+                detail: skill.description ?? String(localized: "Skill"),
+                style: .skillName
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// How a row renders its name and hint. Commands are typed literally, so
+    /// they are monospaced; a skill's category is prose.
+    private enum RowStyle {
+        case command
+        case skill
+        case skillName
+
+        var nameFont: Font {
+            switch self {
+            case .command, .skill:
+                return .system(.subheadline, design: .monospaced).weight(.semibold)
+            case .skillName:
+                return Font.subheadline.weight(.semibold)
+            }
+        }
+
+        var hintFont: Font {
+            switch self {
+            case .command:
+                return .system(.footnote, design: .monospaced)
+            case .skill, .skillName:
+                return .footnote
+            }
+        }
+    }
+
+    /// One autocomplete row: the thing you type, then its supporting copy on the
+    /// same line. The name keeps its width and the detail truncates.
+    private func rowContent(
+        name: String,
+        hint: String?,
+        detail: String,
+        style: RowStyle,
+        icon: String? = nil
+    ) -> some View {
+        HStack(spacing: 12) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+            }
+
+            Text(name)
+                .font(style.nameFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .layoutPriority(2)
+
+            if let hint {
+                Text(hint)
+                    .font(style.hintFont)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
 
     private var rowDivider: some View {
@@ -207,20 +314,18 @@ struct SlashCommandAutocompleteView: View {
     }
 
     @ViewBuilder
-    private func subArgList(for command: SlashCommand) -> some View {
+    private func subArgList(for command: SlashCommand, results: SlashAutocompleteResults) -> some View {
         if command.subArgs == .skills {
-            skillSubArgList
+            skillSubArgList(results.skillSubArgs)
         } else {
             standardSubArgList(for: command)
         }
     }
 
     @ViewBuilder
-    private var skillSubArgList: some View {
-        let filtered = filteredSkillSubArgSuggestions
-
+    private func skillSubArgList(_ filtered: [SkillSlashSuggestion]) -> some View {
         if filtered.isEmpty {
-            Text("No matches for \"\(skillSubArgQuery)\"")
+            skillSubArgEmptyText
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
@@ -240,35 +345,15 @@ struct SlashCommandAutocompleteView: View {
         }
     }
 
-    private func skillSubArgRow(_ skill: SkillSlashSuggestion) -> some View {
-        Button {
-            onSelectSkillSubArg(skill)
-        } label: {
-            HStack(spacing: 12) {
-                Text(skill.name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                if let category = skill.category {
-                    Text(category)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(skill.description ?? String(localized: "Skill"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
+    /// The skill trigger says why it is empty: no catalog at all reads
+    /// differently from a query nothing matched.
+    @ViewBuilder
+    private var skillSubArgEmptyText: some View {
+        if skillSuggestions.isEmpty {
+            Text("No skills are configured on the server.")
+        } else {
+            Text("No skills match \"\(skillSubArgQuery)\".")
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -290,7 +375,7 @@ struct SlashCommandAutocompleteView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Text(subArgDisplayText(item, for: command))
-                                    .font(.system(size: 15, weight: .regular))
+                                    .font(.subheadline)
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
 
@@ -361,88 +446,8 @@ struct SlashCommandAutocompleteView: View {
         }
     }
 
-    private var filteredSkillSuggestions: [SkillSlashSuggestion] {
-        guard !parsed.isSubArgMode else { return [] }
-        return SlashSkillFormatter.matching(parsed.commandName, in: skillSuggestions)
-    }
-
-    private var filteredAgentCommandSuggestions: [AgentSlashCommandSuggestion] {
-        guard !parsed.isSubArgMode else { return [] }
-        let builtinNames = SlashCommandCatalog.matching(parsed.commandName)
-            .map { $0.name.lowercased() }
-        let skillNames = filteredSkillSuggestions.map { $0.slashName.lowercased() }
-        return AgentSlashCommandSuggestion.matching(
-            parsed.commandName,
-            in: agentCommands,
-            excluding: Set(builtinNames + skillNames)
-        )
-    }
-
     private var skillSubArgQuery: String {
         SlashSkillFormatter.skillQuery(from: parsed.argQuery)
-    }
-
-    private var filteredSkillSubArgSuggestions: [SkillSlashSuggestion] {
-        SlashSkillFormatter.matching(skillSubArgQuery, in: skillSuggestions)
-    }
-}
-
-struct AgentSlashCommandSuggestion: Identifiable, Equatable {
-    let name: String
-    let description: String
-    let argHint: String?
-
-    var id: String { name.lowercased() }
-
-    init?(_ command: AgentCommand) {
-        guard command.cliOnly != true,
-              command.gatewayOnly != true,
-              let name = Self.nonEmpty(command.name)
-        else {
-            return nil
-        }
-
-        self.name = name
-        description = Self.nonEmpty(command.description) ?? String(localized: "Agent command")
-        argHint = Self.nonEmpty(command.argsHint)
-    }
-
-    static func matching(
-        _ query: String,
-        in commands: [AgentCommand],
-        excluding excludedNames: Set<String> = []
-    ) -> [AgentSlashCommandSuggestion] {
-        let lower = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        var seen = excludedNames
-        var matches: [AgentSlashCommandSuggestion] = []
-
-        for command in commands {
-            guard let suggestion = AgentSlashCommandSuggestion(command) else { continue }
-
-            let key = suggestion.name.lowercased()
-            guard !seen.contains(key) else { continue }
-            guard lower.isEmpty || key.hasPrefix(lower) else { continue }
-
-            matches.append(suggestion)
-            seen.insert(key)
-        }
-
-        return matches
-    }
-
-    static func command(named name: String, in commands: [AgentCommand]) -> AgentSlashCommandSuggestion? {
-        let lower = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !lower.isEmpty else { return nil }
-        guard SlashCommandCatalog.command(named: lower) == nil else { return nil }
-
-        return commands.lazy.compactMap(AgentSlashCommandSuggestion.init).first { suggestion in
-            suggestion.name.lowercased() == lower
-        }
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 

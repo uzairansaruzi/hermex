@@ -4,11 +4,16 @@ import SwiftUI
 /// about, whether each has a credential (and where it came from), which one is
 /// active, and each provider's model catalog. Deliberately carries no write
 /// affordances — API-key set/delete stays a server-side operation.
+///
+/// Chrome matches the composer's model picker (#361): a plain `List` of
+/// provider disclosures, each labelled with the bundled provider glyph, the
+/// name, and the catalog count.
 struct ProvidersView: View {
     let server: URL
 
     @State private var viewModel: ProvidersViewModel
     @State private var expandedProviderKeys: Set<String> = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(server: URL) {
         self.server = server
@@ -16,70 +21,82 @@ struct ProvidersView: View {
     }
 
     var body: some View {
-        content
-            .navigationTitle("Providers")
-            .background(Color(.systemBackground))
-            .task {
-                await viewModel.load()
+        List {
+            if viewModel.providers.isEmpty {
+                statusRow
+                    .frame(maxWidth: .infinity)
+                    .containerRelativeFrame(.vertical)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+            } else {
+                if let errorMessage = viewModel.errorMessage {
+                    refreshFailureBanner(detail: errorMessage)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                        .listRowSeparator(.hidden)
+                }
+
+                ForEach(Array(viewModel.providers.enumerated()), id: \.offset) { index, provider in
+                    let key = Self.expansionKey(for: provider, at: index)
+                    ProviderDisclosure(
+                        provider: provider,
+                        isActive: viewModel.isActive(provider),
+                        isExpanded: Binding(
+                            get: { expandedProviderKeys.contains(key) },
+                            set: { setExpanded($0, forKey: key) }
+                        )
+                    )
+                    .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 12))
+                    .listRowSeparator(.hidden)
+                }
+
+                Text("Provider keys are managed on the server. This screen is read-only.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 24, trailing: 16))
+                    .listRowSeparator(.hidden)
             }
-            .refreshable {
-                await viewModel.load()
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+        .navigationTitle("Providers")
+        .task {
+            await viewModel.load()
+        }
+        .refreshable {
+            await viewModel.load()
+        }
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
             }
+        }
     }
 
+    /// Loading, load-failure, and empty-catalog states. Rendered as a full-height
+    /// list row rather than an overlay so pull-to-refresh keeps working.
     @ViewBuilder
-    private var content: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if viewModel.isLoading && viewModel.providers.isEmpty {
-                    ProvidersStatusRow(title: String(localized: "Loading providers…"), systemImage: "key.horizontal")
-                        .padding(.horizontal, 24)
-                } else if let errorMessage = viewModel.errorMessage, viewModel.providers.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ProvidersStatusRow(title: String(localized: "Could not load providers"), systemImage: "exclamationmark.triangle")
-
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-
-                        Button("Try Again") {
-                            Task { await viewModel.load() }
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-                    }
-                    .padding(.horizontal, 24)
-                } else if viewModel.providers.isEmpty {
-                    ProvidersStatusRow(title: String(localized: "No providers reported by this server."), systemImage: "key.horizontal")
-                        .padding(.horizontal, 24)
-                } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let errorMessage = viewModel.errorMessage {
-                            refreshFailureBanner(detail: errorMessage)
-                        }
-
-                        ForEach(Array(viewModel.providers.enumerated()), id: \.offset) { index, provider in
-                            let key = Self.expansionKey(for: provider, at: index)
-                            ProviderRow(
-                                provider: provider,
-                                isActive: viewModel.isActive(provider),
-                                isExpanded: expandedProviderKeys.contains(key),
-                                toggleExpanded: { toggleExpanded(key) }
-                            )
-                        }
-
-                        Text("Provider keys are managed on the server. This screen is read-only.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 6)
-                            .padding(.horizontal, 4)
-                    }
-                    .padding(.horizontal, 16)
+    private var statusRow: some View {
+        if viewModel.isLoading {
+            ContentUnavailableView {
+                ProgressView()
+            } description: {
+                Text("Loading providers…")
+            }
+        } else if let errorMessage = viewModel.errorMessage {
+            ContentUnavailableView {
+                Label("Could not load providers", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(verbatim: errorMessage)
+            } actions: {
+                Button("Try Again") {
+                    Task { await viewModel.load() }
                 }
             }
-            .padding(.top, 20)
-            .padding(.bottom, 44)
+        } else {
+            ContentUnavailableView {
+                Label("No providers reported by this server.", systemImage: "key.horizontal")
+            }
         }
     }
 
@@ -124,55 +141,63 @@ struct ProvidersView: View {
         return "#\(index)"
     }
 
-    private func toggleExpanded(_ key: String) {
-        withAnimation(.snappy(duration: 0.22)) {
-            if expandedProviderKeys.contains(key) {
-                expandedProviderKeys.remove(key)
-            } else {
-                expandedProviderKeys.insert(key)
-            }
+    private func setExpanded(_ isExpanded: Bool, forKey key: String) {
+        if isExpanded {
+            expandedProviderKeys.insert(key)
+        } else {
+            expandedProviderKeys.remove(key)
         }
     }
 }
 
-private struct ProviderRow: View {
+/// One provider: a disclosure whose label carries the glyph, name, catalog
+/// count, and credential state, and whose body lists the provider's models.
+/// A provider the server sent no models for renders the label alone.
+private struct ProviderDisclosure: View {
     let provider: ProviderSummary
     let isActive: Bool
-    let isExpanded: Bool
-    let toggleExpanded: () -> Void
+    @Binding var isExpanded: Bool
 
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(ProvidersViewModel.displayName(for: provider))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+        if let models = provider.models, !models.isEmpty {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                modelList(models)
+            } label: {
+                header
+            }
+            .tint(Color(.secondaryLabel))
+            .accessibilityHint("Shows this provider's model list.")
+        } else {
+            header
+        }
+    }
 
-                if isActive {
-                    Text("Active")
-                        .font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color.green.opacity(0.16)))
-                        .foregroundStyle(.green)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if ProviderGlyphKind.resolve(providerID: provider.id) != nil {
+                    ProviderGlyph(providerID: provider.id)
+                        .frame(width: 17, height: 17)
+                }
+
+                Text(ProvidersViewModel.displayName(for: provider))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .textCase(.uppercase)
+
+                if let count = ProvidersViewModel.modelCountLabel(for: provider) {
+                    Text(verbatim: count)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(modelCountAccessibilityLabel)
                 }
 
                 Spacer(minLength: 0)
-
-                if let badge = ProvidersViewModel.keySourceBadge(for: provider) {
-                    // Technical token (env / OAuth / config) — deliberately not localized.
-                    Text(verbatim: badge)
-                        .font(.caption2.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                        .foregroundStyle(.secondary)
-                }
             }
 
-            keyStatusLine
+            statusLine
 
             if let authError = ProvidersViewModel.authErrorText(for: provider) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -189,78 +214,93 @@ private struct ProviderRow: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text("Authentication error: \(authError)"))
             }
-
-            if let models = provider.models, !models.isEmpty {
-                modelsDisclosure(models)
-            }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 
+    /// Key status on the leading edge, the Active and key-source badges trailing.
+    /// The badges keep their intrinsic width so the status text wraps first.
     @ViewBuilder
-    private var keyStatusLine: some View {
-        if let hasKey = provider.hasKey {
+    private var statusLine: some View {
+        let badge = ProvidersViewModel.keySourceBadge(for: provider)
+
+        if provider.hasKey != nil || isActive || badge != nil {
             HStack(spacing: 6) {
-                Image(systemName: hasKey ? "checkmark.seal.fill" : "key.slash")
-                    .font(.caption)
-                    .foregroundStyle(hasKey ? Color.green : Color.secondary)
-                    .accessibilityHidden(true)
-
-                Text(hasKey ? "Key configured" : "No key")
-                    .font(.footnote)
-                    .foregroundStyle(hasKey ? Color.primary : Color.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func modelsDisclosure(_ models: [ProviderModel]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button(action: toggleExpanded) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                if let hasKey = provider.hasKey {
+                    Image(systemName: hasKey ? "checkmark.seal.fill" : "key.slash")
+                        .font(.caption)
+                        .foregroundStyle(hasKey ? Color.green : Color.secondary)
                         .accessibilityHidden(true)
 
-                    Text("Models (\(ProvidersViewModel.modelCount(for: provider)))")
-                        .font(.footnote.weight(.medium))
+                    Text(hasKey ? "Key configured" : "No key")
+                        .font(.footnote)
+                        .foregroundStyle(hasKey ? Color.primary : Color.secondary)
+                        .multilineTextAlignment(.leading)
                 }
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Shows this provider's model list.")
 
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(models.enumerated()), id: \.offset) { _, model in
-                        if let title = modelTitle(model) {
-                            Text(verbatim: title)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
+                Spacer(minLength: 0)
 
-                    if let info = ProvidersViewModel.truncatedModelInfo(for: provider) {
-                        Text("Showing \(info.shown) of \(info.total) models")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 2)
-                    }
+                if isActive {
+                    Text("Active")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.green.opacity(0.16)))
+                        .foregroundStyle(.green)
+                        .layoutPriority(1)
                 }
-                .padding(.leading, 18)
+
+                if let badge {
+                    // Technical token (env / OAuth / config) — deliberately not localized.
+                    Text(verbatim: badge)
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color(.tertiarySystemFill)))
+                        .foregroundStyle(.secondary)
+                        .layoutPriority(1)
+                }
             }
         }
     }
 
-    private func modelTitle(_ model: ProviderModel) -> String? {
+    /// Model rows reuse the picker's row geometry so a provider's catalog reads
+    /// the same on both screens. Entries without a label or id are skipped.
+    private func modelList(_ models: [ProviderModel]) -> some View {
+        let titles = models.enumerated().compactMap { index, model in
+            Self.modelTitle(model).map { (index: index, title: $0) }
+        }
+
+        return VStack(spacing: 1) {
+            Divider()
+                .padding(.leading, 10)
+
+            LazyVStack(spacing: 1) {
+                ForEach(titles, id: \.index) { entry in
+                    Text(verbatim: entry.title)
+                        .font(.body)
+                        .lineLimit(2)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// "Showing X of Y models" when the server trimmed the catalog, otherwise the
+    /// plain count — the visible label is compact, so VoiceOver gets the words.
+    private var modelCountAccessibilityLabel: Text {
+        if let info = ProvidersViewModel.truncatedModelInfo(for: provider) {
+            return Text("Showing \(info.shown) of \(info.total) models")
+        }
+
+        return Text("Models (\(ProvidersViewModel.modelCount(for: provider)))")
+    }
+
+    private static func modelTitle(_ model: ProviderModel) -> String? {
         let label = model.label?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let label, !label.isEmpty {
             return label
@@ -272,28 +312,5 @@ private struct ProviderRow: View {
         }
 
         return nil
-    }
-}
-
-private struct ProvidersStatusRow: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: 42)
     }
 }

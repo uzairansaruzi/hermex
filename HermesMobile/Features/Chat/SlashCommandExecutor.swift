@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 struct ParsedSlashCommand: Equatable {
     let command: SlashCommand?
@@ -37,8 +38,14 @@ enum SlashCommandExecutor {
         )
     }
 
+    /// `modelContext` reaches the handful of commands that rewrite the offline
+    /// cache (`/clear`); callers with no SwiftData context can omit it.
     @MainActor
-    static func execute(text: String, viewModel: ChatViewModel) async -> SlashCommandExecutionResult {
+    static func execute(
+        text: String,
+        viewModel: ChatViewModel,
+        modelContext: ModelContext? = nil
+    ) async -> SlashCommandExecutionResult {
         guard let parsed = parse(text) else { return .sendAsMessage }
         guard !parsed.name.isEmpty else { return .needsSubArg }
 
@@ -57,10 +64,12 @@ enum SlashCommandExecutor {
         }
 
         switch command.handler {
-        case .clientSide:
-            return await viewModel.executeSlashCommand(command, args: parsed.args)
-        case .serverSide:
-            return await viewModel.executeSlashCommand(command, args: parsed.args)
+        case .clientSide, .serverSide:
+            return await viewModel.executeSlashCommand(
+                command,
+                args: parsed.args,
+                modelContext: modelContext
+            )
         case .unsupported:
             return .unsupported(friendlyMessage: unsupportedMessage(for: command.name))
         }

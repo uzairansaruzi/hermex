@@ -9,6 +9,9 @@ build/
 # Swift Package Manager
 .build/
 Package.resolved
+# The app's pinned package versions are committed so every build and CI run
+# uses the same package code; Dependabot proposes updates.
+!HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 .swiftpm/
 
 # macOS
@@ -57,3 +60,6 @@ fastlane/test_output/
 
 # Retired per-session progress log (removed in #224; history lives in git log / merged PRs)
 /PROGRESS.md
+
+# Python bytecode from scripts/tests
+__pycache__/

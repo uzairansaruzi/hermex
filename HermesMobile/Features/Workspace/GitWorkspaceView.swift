@@ -2,6 +2,8 @@ import SwiftUI
 
 struct GitWorkspaceView: View {
     let onAPIError: (Error) -> Void
+    /// Forwarded to the diff surface so a line selection can land in the composer.
+    let onAddToPrompt: ((String) -> Void)?
 
     private let session: SessionSummary
     private let server: URL
@@ -9,10 +11,16 @@ struct GitWorkspaceView: View {
     @State private var selectedFile: GitFile?
     @Environment(\.dismiss) private var dismiss
 
-    init(session: SessionSummary, server: URL, onAPIError: @escaping (Error) -> Void) {
+    init(
+        session: SessionSummary,
+        server: URL,
+        onAPIError: @escaping (Error) -> Void,
+        onAddToPrompt: ((String) -> Void)? = nil
+    ) {
         self.session = session
         self.server = server
         self.onAPIError = onAPIError
+        self.onAddToPrompt = onAddToPrompt
         _viewModel = State(initialValue: GitWorkspaceViewModel(session: session, server: server))
     }
 
@@ -35,7 +43,15 @@ struct GitWorkspaceView: View {
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
         .sheet(item: $selectedFile) { file in
-            GitDiffView(session: session, server: server, file: file, onAPIError: onAPIError)
+            // Every changed file in one surface, opened at the tapped one.
+            GitDiffView(
+                session: session,
+                server: server,
+                files: viewModel.status?.trackedFiles ?? [file],
+                initialFile: file,
+                onAPIError: onAPIError,
+                onAddToPrompt: onAddToPrompt
+            )
         }
     }
 
