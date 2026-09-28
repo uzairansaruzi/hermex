@@ -5,28 +5,24 @@ import StoreKit
 
 /// Refreshes the session list when the app returns from the background, so
 /// sessions started or finished elsewhere show without a pull. A return that
-/// lands while another load is running is remembered and refreshed once that
-/// load settles: the running load may have started before backgrounding and
-/// would otherwise leave stale rows. Repeated returns coalesce to one refresh.
+/// lands while a load is running, or before the initial load has finished, is
+/// remembered and refreshed once the list is idle: that load may have started
+/// before backgrounding and would otherwise leave stale rows. Repeated returns
+/// coalesce to one refresh.
 struct SessionListForegroundRefresh: Equatable {
     private(set) var isPending = false
 
     /// Called on a real background-to-active return. Returns true when the
-    /// list should refresh now; false defers it (a load is running) or skips
-    /// it (the initial load hasn't finished, and will fetch fresh rows itself).
+    /// list should refresh now; otherwise the return waits for `consumeIfReady`.
     mutating func appReturned(didCompleteInitialLoad: Bool, isLoading: Bool) -> Bool {
-        guard didCompleteInitialLoad else { return false }
-        guard !isLoading else {
-            isPending = true
-            return false
-        }
-        isPending = false
-        return true
+        isPending = true
+        return consumeIfReady(didCompleteInitialLoad: didCompleteInitialLoad, isLoading: isLoading)
     }
 
-    /// Called when the list stops loading. Returns true once for a deferred return.
-    mutating func loadSettled() -> Bool {
-        guard isPending else { return false }
+    /// Called when loading stops or the initial load completes. Returns true
+    /// once for a remembered return, as soon as the list is free to refresh.
+    mutating func consumeIfReady(didCompleteInitialLoad: Bool, isLoading: Bool) -> Bool {
+        guard isPending, didCompleteInitialLoad, !isLoading else { return false }
         isPending = false
         return true
     }
@@ -361,9 +357,11 @@ struct SessionListView: View {
                 sessionOpenTask?.cancel()
                 viewModel.invalidateSessionOpening()
             }
-            .onChange(of: viewModel.isLoading) { _, isLoading in
-                guard !isLoading, foregroundRefresh.loadSettled() else { return }
-                refreshAfterReturningIfNeeded()
+            .onChange(of: viewModel.isLoading) {
+                refreshAfterForegroundReturnIfReady()
+            }
+            .onChange(of: didCompleteInitialLoad) {
+                refreshAfterForegroundReturnIfReady()
             }
             .onChange(of: pendingSharedImport) {
                 openPendingSharedImportIfNeeded()
@@ -1226,6 +1224,15 @@ struct SessionListView: View {
     private func refreshAfterReturningIfNeeded() {
         guard didCompleteInitialLoad else { return }
         returnRefreshID = UUID()
+    }
+
+    /// Runs a foreground return that had to wait for a load to settle.
+    private func refreshAfterForegroundReturnIfReady() {
+        guard foregroundRefresh.consumeIfReady(
+            didCompleteInitialLoad: didCompleteInitialLoad,
+            isLoading: viewModel.isLoading
+        ) else { return }
+        refreshAfterReturningIfNeeded()
     }
 
     private func monitorActiveSessionRows() async {
