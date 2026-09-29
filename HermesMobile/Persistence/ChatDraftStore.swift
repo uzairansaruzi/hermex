@@ -135,6 +135,29 @@ enum ChatDraftSendReconciliation {
     }
 }
 
+/// Folds messages that were queued behind a run into their chat's draft when
+/// the user leaves mid-run, so they come back for review instead of sending
+/// on their own (#857).
+enum ChatDraftQueueParking {
+    /// Queued texts first, in queue order, then the draft's own text, joined
+    /// by blank lines: the order they were typed in. The draft's quotes stay
+    /// quotes; a queued text already carries its quotes as Markdown. Queued
+    /// attachments go after the draft's own, without duplicate ids.
+    static func merged(
+        _ draft: ChatDraft,
+        queuedTexts: [String],
+        queuedAttachments: [ChatDraftAttachment]
+    ) -> ChatDraft {
+        var merged = draft
+        merged.text = (queuedTexts + [draft.text])
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        var attachmentIDs = Set(draft.attachments.map(\.id))
+        merged.attachments += queuedAttachments.filter { attachmentIDs.insert($0.id).inserted }
+        return merged
+    }
+}
+
 struct ChatDraftKey: Hashable, Sendable {
     enum Context: Hashable, Sendable {
         case session(String)
@@ -609,6 +632,24 @@ final class ChatDraftStore {
     func setAttachments(_ attachments: [ChatDraftAttachment], for key: ChatDraftKey) {
         markChangedBeforeLoad(key)
         updateDraft(for: key) { $0.attachments = attachments }
+    }
+
+    /// Parks the messages queued behind a run in one draft, in one write
+    /// (merge rule: `ChatDraftQueueParking`). Synchronous, so it lands even
+    /// while the chat's view is going away. Returns the merged draft.
+    func parkQueuedMessages(
+        _ texts: [String],
+        attachments: [ChatDraftAttachment],
+        for key: ChatDraftKey
+    ) -> ChatDraft {
+        markChangedBeforeLoad(key)
+        let merged = ChatDraftQueueParking.merged(
+            drafts[key] ?? ChatDraft(),
+            queuedTexts: texts,
+            queuedAttachments: attachments
+        )
+        updateDraft(for: key) { $0 = merged }
+        return merged
     }
 
     /// Replaces the draft's settings snapshot without disturbing its text or

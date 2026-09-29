@@ -752,6 +752,56 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertTrue(outcome.retained.isEmpty)
     }
 
+    // MARK: - Parking queued messages (#857)
+
+    func testQueuedMessagesMergeIntoEmptyDraft() async {
+        let store = ChatDraftStore(
+            persistence: RecordingChatDraftPersistence(),
+            debounceDuration: .seconds(10)
+        )
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("chat-1"))
+        let photo = makeAttachmentRecord(name: "photo.jpg", file: "a-photo.jpg")
+
+        let parked = store.parkQueuedMessages(["a", "b"], attachments: [photo], for: key)
+
+        let expected = ChatDraft(text: "a\n\nb", attachments: [photo])
+        XCTAssertEqual(parked, expected)
+        let stored = await store.draft(for: key)
+        XCTAssertEqual(stored, expected)
+    }
+
+    /// Queued texts were typed first, so the draft's own text goes last. A
+    /// queued text already carries its quotes as Markdown; the draft's own
+    /// quotes stay quotes.
+    func testQueuedMessagesMergeBeforeExistingDraftText() async {
+        let store = ChatDraftStore(
+            persistence: RecordingChatDraftPersistence(),
+            debounceDuration: .seconds(10)
+        )
+        let key = ChatDraftKey(serverID: "https://one.example", context: .session("chat-1"))
+        let otherServer = ChatDraftKey(serverID: "https://two.example", context: .session("chat-1"))
+        let quote = ComposerQuote(text: "Quoted passage")
+        let own = makeAttachmentRecord(name: "own.txt", file: "a-own.txt")
+        let queued = makeAttachmentRecord(name: "queued.txt", file: "b-queued.txt")
+        store.setContent(ComposerDraftContent(text: "typed later", quotes: [quote]), for: key)
+        store.setAttachments([own], for: key)
+        store.setDraft("other server", for: otherServer)
+
+        let parked = store.parkQueuedMessages(
+            ["> Earlier quote\n\nfirst", "second"],
+            attachments: [own, queued],
+            for: key
+        )
+
+        XCTAssertEqual(parked.text, "> Earlier quote\n\nfirst\n\nsecond\n\ntyped later")
+        XCTAssertEqual(parked.quotes, [quote])
+        XCTAssertEqual(parked.attachments.map(\.id), [own.id, queued.id])
+        let stored = await store.draft(for: key)
+        XCTAssertEqual(stored, parked)
+        let untouched = await store.draft(for: otherServer)
+        XCTAssertEqual(untouched, ChatDraft(text: "other server"))
+    }
+
     private func makeAttachmentRecord(name: String, file: String?) -> ChatDraftAttachment {
         ChatDraftAttachment(
             id: UUID(),

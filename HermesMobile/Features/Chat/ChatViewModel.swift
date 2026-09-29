@@ -449,6 +449,12 @@ final class ChatViewModel {
     var uploadAttachmentErrorMessage: String? { attachmentCoordinator.uploadAttachmentErrorMessage }
     var localAttachmentPreviews: [String: [String: Data]] { attachmentCoordinator.localAttachmentPreviews }
     private(set) var pinnedLocalNotices: [String] = []
+    /// The one composer line shown while messages wait behind the run. It is
+    /// derived from the queue, so it goes away when the queue drains or is
+    /// handed over, and it never enters a stream snapshot.
+    var queuedMessagesReceipt: String? {
+        queuedSlashMessages.isEmpty ? nil : String(localized: "Queued, sends when this run finishes")
+    }
     private(set) var steeringConfirmationNotice: String?
     /// "Couldn't steer", plus the system's reason for a network or HTTP
     /// failure, after the latest steer didn't reach the run. The composer shows
@@ -1405,6 +1411,12 @@ final class ChatViewModel {
 
     func removePendingAttachment(id: UUID) {
         attachmentCoordinator.removePendingAttachment(id: id)
+    }
+
+    /// Stages files after the composer's own, such as the files of queued
+    /// messages parked back into the draft.
+    func appendPendingAttachments(_ attachments: [PendingAttachment]) {
+        attachmentCoordinator.appendPendingAttachments(attachments)
     }
 
     func setUploadAttachmentError(_ message: String?) {
@@ -2891,8 +2903,9 @@ final class ChatViewModel {
             return sent ? .executed(message: nil) : .unsupported(friendlyMessage: sendErrorMessage ?? String(localized: "Could not send the queued message."))
         }
 
-        let position = enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
-        return .executed(message: String(localized: "Queued for next turn (#\(position))."))
+        // `queuedMessagesReceipt` says it's queued.
+        enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
+        return .executed(message: nil)
     }
 
     private func steerResponseFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
@@ -2956,11 +2969,10 @@ final class ChatViewModel {
         }
 
         // The run may have finished while the steer was in flight, after its
-        // own drain found the queue empty.
+        // own drain found the queue empty. While it runs, `queuedMessagesReceipt`
+        // says the message is queued.
         drainQueuedSlashMessageIfIdle()
-        return activeStreamID == steeredStreamID
-            ? .executed(message: String(localized: "Queued, sends when this run finishes"))
-            : .executed(message: nil)
+        return .executed(message: nil)
     }
 
     /// Takes the files that rode along on a steer out of the composer and
@@ -3013,10 +3025,16 @@ final class ChatViewModel {
         await cancelActiveStream()
 
         if activeStreamID != nil {
-            return .executed(message: String(localized: "Could not stop the current response yet, so the interrupt message was queued for the next turn."))
+            return .executed(message: Self.interruptQueuedFallbackNotice)
         }
 
         return .executed(message: String(localized: "Interrupted the current response and queued your message to send next."))
+    }
+
+    /// Pinned when an interrupt couldn't stop the run. It describes the queue,
+    /// so `takeQueuedMessages()` unpins it.
+    private static var interruptQueuedFallbackNotice: String {
+        String(localized: "Could not stop the current response yet, so the interrupt message was queued for the next turn.")
     }
 
     private func statusMessageFromSlashCommand() -> String {
@@ -5472,19 +5490,31 @@ final class ChatViewModel {
         }
     }
 
-    @discardableResult
     private func enqueueQueuedSlashMessage(
         _ text: String,
         attachments: [PendingAttachment],
         atFront: Bool = false
-    ) -> Int {
+    ) {
         let message = QueuedSlashMessage(text: text, attachments: attachments)
         if atFront {
             queuedSlashMessages.insert(message, at: 0)
         } else {
             queuedSlashMessages.append(message)
         }
-        return queuedSlashMessages.count
+    }
+
+    /// Hands the messages waiting behind the run to the caller, in queue order,
+    /// and forgets them, so the run's end sends nothing. ChatView parks them in
+    /// the chat's draft when the user leaves mid-run (#857). A message the drain
+    /// already took is in flight and stays with it.
+    func takeQueuedMessages() -> [QueuedSlashMessage] {
+        // Called on every leave: skip the observable writes when there is
+        // nothing to hand over.
+        guard !queuedSlashMessages.isEmpty else { return [] }
+        let queued = queuedSlashMessages
+        queuedSlashMessages.removeAll()
+        pinnedLocalNotices.removeAll { $0 == Self.interruptQueuedFallbackNotice }
+        return queued
     }
 
     private func drainQueuedSlashMessageIfIdle() {
@@ -5504,7 +5534,14 @@ final class ChatViewModel {
             if !sent {
                 queuedSlashMessages.insert(next, at: 0)
             }
-            attachmentCoordinator.replacePendingAttachments(savedAttachments)
+            // Keep files staged while the send was in flight, such as a parked
+            // queue's (#857); a failed send put `next`'s back, and they are
+            // queued again.
+            let nextAttachmentIDs = Set(next.attachments.map(\.id))
+            let stagedDuringSend = attachmentCoordinator.pendingAttachments.filter {
+                !nextAttachmentIDs.contains($0.id)
+            }
+            attachmentCoordinator.replacePendingAttachments(savedAttachments + stagedDuringSend)
             isDrainingQueuedSlashMessage = false
             // Only chain-drain after a *successful* send. A failed send requeues the message and
             // waits for the next natural trigger (a queue append, stream completion, or an explicit
@@ -6122,7 +6159,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return false }
 
-        _ = enqueueQueuedSlashMessage(message, attachments: [])
+        enqueueQueuedSlashMessage(message, attachments: [])
         appendLocalNoticeMessage(String(localized: "Steering hint was not consumed before the response ended, so it was queued for the next turn."))
         return true
     }
@@ -6197,7 +6234,8 @@ private final class ActiveChatStreamSnapshotStore {
     }
 }
 
-private struct QueuedSlashMessage {
+/// A message waiting behind the run, with the files staged for it.
+struct QueuedSlashMessage {
     let text: String
     let attachments: [PendingAttachment]
 }

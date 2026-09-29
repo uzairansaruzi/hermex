@@ -311,6 +311,11 @@ final class ChatAttachmentCoordinator {
         pendingAttachments = attachments + pendingAttachments
     }
 
+    func appendPendingAttachments(_ attachments: [PendingAttachment]) {
+        guard !attachments.isEmpty else { return }
+        pendingAttachments += attachments
+    }
+
     func consumePendingAttachments() -> [PendingAttachment] {
         let attachments = pendingAttachments
         pendingAttachments.removeAll()
