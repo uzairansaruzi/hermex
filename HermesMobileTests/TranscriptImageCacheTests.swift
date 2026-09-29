@@ -87,6 +87,25 @@ final class TranscriptImageCacheTests: XCTestCase {
         XCTAssertEqual(cgImage.height, 256)
     }
 
+    /// Formats `preparingForDisplay()` can refuse (16-bit gray PNG, CMYK JPEG)
+    /// still show: undecoded, and already within the 512 px cap.
+    func testSmallImagesInUnusualFormatsStillShow() throws {
+        let gray16 = try Self.encodedData(
+            width: 64, height: 48, bitsPerComponent: 16,
+            colorSpace: CGColorSpaceCreateDeviceGray(), type: "public.png"
+        )
+        let cmyk = try Self.encodedData(
+            width: 64, height: 48, bitsPerComponent: 8,
+            colorSpace: CGColorSpaceCreateDeviceCMYK(), type: "public.jpeg"
+        )
+
+        for (name, data) in [("16-bit gray PNG", gray16), ("CMYK JPEG", cmyk)] {
+            let image = try XCTUnwrap(TranscriptImageCache.thumbnail(from: data), name)
+            XCTAssertEqual(image.size.width * image.scale, 64, name)
+            XCTAssertEqual(image.size.height * image.scale, 48, name)
+        }
+    }
+
     func testBytesThatAreNotAnImageReturnNilAndAreNotCached() async {
         let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
         let recorder = LoadRecorder()
@@ -114,6 +133,25 @@ final class TranscriptImageCacheTests: XCTestCase {
             UIColor.systemTeal.setFill()
             context.fill(CGRect(origin: .zero, size: size))
         }
+    }
+
+    /// A filled `width` × `height` image drawn in `colorSpace` and encoded as `type`.
+    private static func encodedData(
+        width: Int, height: Int, bitsPerComponent: Int, colorSpace: CGColorSpace, type: String
+    ) throws -> Data {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: bitsPerComponent,
+            bytesPerRow: 0, space: colorSpace, bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ))
+        let components = [CGFloat](repeating: 0.5, count: colorSpace.numberOfComponents) + [1]
+        context.setFillColor(try XCTUnwrap(CGColor(colorSpace: colorSpace, components: components)))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data, type as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return data as Data
     }
 }
 

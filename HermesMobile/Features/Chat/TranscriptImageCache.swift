@@ -75,10 +75,11 @@ actor TranscriptImageCache {
     }
 
     /// Decodes `data` into a display-ready image aspect-fit within 512 px on
-    /// its long edge, or `nil` when UIKit can't read or prepare it. The data is
-    /// usually already downsampled; this also caps the full-size bytes a
-    /// loader falls back to when downsampling fails. Synchronous: call it off
-    /// the main thread.
+    /// its long edge, or `nil` when UIKit can't read or shrink it. A small image
+    /// UIKit can't pre-decode (some 16-bit, CMYK, or P3 files on device) comes
+    /// back undecoded rather than as nothing. The data is usually already
+    /// downsampled; this also caps the full-size bytes a loader falls back to
+    /// when downsampling fails. Synchronous: call it off the main thread.
     nonisolated static func thumbnail(from data: Data) -> UIImage? {
         guard let image = UIImage(data: data) else { return nil }
         let maxPixelSize = CGFloat(ImagePreviewDownsampler.attachmentMaxPixelSize)
@@ -86,7 +87,7 @@ actor TranscriptImageCache {
         let pixelHeight = image.size.height * image.scale
         let longEdge = max(pixelWidth, pixelHeight)
         guard longEdge > maxPixelSize else {
-            return image.preparingForDisplay()
+            return image.preparingForDisplay() ?? image
         }
 
         let factor = maxPixelSize / longEdge
