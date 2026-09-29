@@ -838,7 +838,8 @@ private struct GridAttachmentCell: View {
 
 /// Loads attachment images through the authenticated `APIClient` instead of
 /// `AsyncImage`, which uses `URLSession.shared` and may not carry our auth
-/// cookie. Deduplicates concurrent requests and caches in memory.
+/// cookie. `TranscriptImageCache` deduplicates concurrent requests and keeps
+/// the thumbnails in memory.
 private struct RemoteAttachmentImage: View {
     let path: String
     let cacheNamespace: String
@@ -861,11 +862,10 @@ private struct RemoteAttachmentImage: View {
         .task(id: imageCacheKey) {
             image = nil
             didAttempt = false
-            let loaded = await AttachmentImageCache.shared.image(
-                for: path,
-                cacheNamespace: cacheNamespace,
-                loadAttachmentImage: loadAttachmentImage
-            )
+            let path = path
+            let loaded = await TranscriptImageCache.shared.image(forKey: imageCacheKey.cacheKey) {
+                await loadAttachmentImage(path)
+            }
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.image = loaded
@@ -898,55 +898,18 @@ private struct RemoteAttachmentImage: View {
     }
 }
 
-/// In-memory image cache that delegates loading to the authenticated client.
-/// Deduplicates concurrent requests for the same namespaced path. The cache is
+/// Identifies an attachment thumbnail in `TranscriptImageCache`. The cache is
 /// process-wide and survives `.id(server)` teardown, so keys include the
 /// server (and session) namespace rather than the relative path alone.
-private actor AttachmentImageCache {
-    static let shared = AttachmentImageCache()
-
-    private var cache: [AttachmentImageCacheKey: UIImage] = [:]
-    private var inFlight: [AttachmentImageCacheKey: Task<UIImage?, Never>] = [:]
-
-    func image(
-        for path: String,
-        cacheNamespace: String,
-        loadAttachmentImage: @escaping (String) async -> Data?
-    ) async -> UIImage? {
-        let key = AttachmentImageCacheKey(namespace: cacheNamespace, path: path)
-        if let cached = cache[key] {
-            return cached
-        }
-
-        if let task = inFlight[key] {
-            return await task.value
-        }
-
-        let task = Task<UIImage?, Never> {
-            guard let data = await loadAttachmentImage(path) else {
-                return nil
-            }
-            let previewData = ImagePreviewDownsampler.previewData(
-                from: data,
-                maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize
-            ) ?? data
-            return UIImage(data: previewData)
-        }
-
-        inFlight[key] = task
-        let image = await task.value
-        inFlight[key] = nil
-
-        if let image {
-            cache[key] = image
-        }
-        return image
-    }
-}
-
 struct AttachmentImageCacheKey: Hashable {
     let namespace: String
     let path: String
+
+    /// The shared cache's key. The kind prefix keeps it apart from media keys;
+    /// the length prefix keeps the namespace boundary fixed.
+    var cacheKey: String {
+        "attachment|\(namespace.utf8.count)|\(namespace)|\(path)"
+    }
 }
 
 enum ResponseSpeedFormatter {

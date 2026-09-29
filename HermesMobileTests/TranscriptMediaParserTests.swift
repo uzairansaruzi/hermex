@@ -352,6 +352,23 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(firstSessionKey.path, path)
     }
 
+    /// Both kinds share one cache, so their flattened keys must stay apart.
+    func testAttachmentAndMediaCacheKeysNeverCollide() {
+        let namespace = "https://one.example.test|session-a"
+        let path = "/tmp/result.png"
+
+        let attachmentKey = AttachmentImageCacheKey(namespace: namespace, path: path)
+        let mediaKey = TranscriptMediaImageCacheKey(
+            namespace: namespace,
+            reference: TranscriptMediaReference(rawReference: path)
+        )
+        XCTAssertNotEqual(attachmentKey.cacheKey, mediaKey.cacheKey)
+
+        // A separator inside the namespace can't shift the namespace boundary.
+        let shiftedKey = AttachmentImageCacheKey(namespace: "https://one.example.test", path: "session-a|\(path)")
+        XCTAssertNotEqual(attachmentKey.cacheKey, shiftedKey.cacheKey)
+    }
+
     private func mediaReferences(in segments: [TranscriptMediaSegment]) -> [TranscriptMediaReference] {
         segments.compactMap { segment in
             if case let .media(reference) = segment {

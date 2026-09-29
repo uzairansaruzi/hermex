@@ -115,11 +115,10 @@ private struct TranscriptMediaThumbnailView: View {
                 guard let loadMediaImage else { return }
                 image = nil
                 didAttemptLoad = false
-                let loadedImage = await TranscriptMediaImageCache.shared.image(
-                    for: reference,
-                    cacheNamespace: cacheNamespace,
-                    loadMediaImage: loadMediaImage
-                )
+                let reference = reference
+                let loadedImage = await TranscriptImageCache.shared.image(forKey: imageCacheKey.cacheKey) {
+                    await loadMediaImage(reference)
+                }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     image = loadedImage
@@ -607,44 +606,8 @@ private struct TranscriptMediaUnavailableChip: View {
     }
 }
 
-private actor TranscriptMediaImageCache {
-    static let shared = TranscriptMediaImageCache()
-
-    private var cache: [TranscriptMediaImageCacheKey: UIImage] = [:]
-    private var inFlight: [TranscriptMediaImageCacheKey: Task<UIImage?, Never>] = [:]
-
-    func image(
-        for reference: TranscriptMediaReference,
-        cacheNamespace: String,
-        loadMediaImage: @escaping (TranscriptMediaReference) async -> Data?
-    ) async -> UIImage? {
-        let key = TranscriptMediaImageCacheKey(namespace: cacheNamespace, reference: reference)
-        if let cached = cache[key] {
-            return cached
-        }
-
-        if let task = inFlight[key] {
-            return await task.value
-        }
-
-        let task = Task<UIImage?, Never> {
-            guard let data = await loadMediaImage(reference) else {
-                return nil
-            }
-            return UIImage(data: data)
-        }
-
-        inFlight[key] = task
-        let image = await task.value
-        inFlight[key] = nil
-
-        if let image {
-            cache[key] = image
-        }
-        return image
-    }
-}
-
+/// Identifies a linked image in `TranscriptImageCache`, scoped by server and
+/// session so identical `MEDIA:` paths can't bypass the session-aware fetch.
 struct TranscriptMediaImageCacheKey: Hashable {
     let namespace: String
     let referenceID: String
@@ -652,6 +615,12 @@ struct TranscriptMediaImageCacheKey: Hashable {
     init(namespace: String, reference: TranscriptMediaReference) {
         self.namespace = namespace
         referenceID = reference.id
+    }
+
+    /// The shared cache's key. The kind prefix keeps it apart from attachment
+    /// keys; the length prefix keeps the namespace boundary fixed.
+    var cacheKey: String {
+        "media|\(namespace.utf8.count)|\(namespace)|\(referenceID)"
     }
 }
 
