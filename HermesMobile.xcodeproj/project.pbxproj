@@ -187,6 +187,7 @@
 		1A2B3C4D5E6F7000000000D6 /* SSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D7 /* SSEClient.swift */; };
 		C0FF000000000000000000A1 /* CustomHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FF000000000000000000A2 /* CustomHeader.swift */; };
 		1A2B3C4D5E6F7000000000D8 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */; };
+		C87100000000000000000001 /* UserBubbleFoldPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87100000000000000000002 /* UserBubbleFoldPolicy.swift */; };
 		BEEF02400000000000000001 /* ChatAttachmentPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02400000000000000002 /* ChatAttachmentPreviewView.swift */; };
 		1A2B3C4D5E6F7000000000DA /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */; };
 		D1FF76200000000000000002 /* MarkdownDiffCodeBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */; };
@@ -208,6 +209,7 @@
 		C8660A000000000000000005 /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000006 /* SafariView.swift */; };
 		C0DE25000000000000000003 /* ChatScrollPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */; };
 		C8660A000000000000000003 /* InAppBrowserPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */; };
+		C87100000000000000000003 /* UserBubbleFoldPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */; };
 		C27800000000000000000001 /* ChatGitControlsVisibilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */; };
 		C27800000000000000000003 /* ChatGitControlsVisibilityPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */; };
 		C0DE22000000000000000001 /* ChatHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE22000000000000000002 /* ChatHaptics.swift */; };
@@ -786,6 +788,7 @@
 		1A2B3C4D5E6F7000000000D7 /* SSEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEClient.swift; sourceTree = "<group>"; };
 		C0FF000000000000000000A2 /* CustomHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomHeader.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubbleView.swift; sourceTree = "<group>"; };
+		C87100000000000000000002 /* UserBubbleFoldPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBubbleFoldPolicy.swift; sourceTree = "<group>"; };
 		BEEF02400000000000000002 /* ChatAttachmentPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachmentPreviewView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDiffCodeBlock.swift; sourceTree = "<group>"; };
@@ -807,6 +810,7 @@
 		C8660A000000000000000006 /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
 		C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollPolicyTests.swift; sourceTree = "<group>"; };
 		C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserPolicyTests.swift; sourceTree = "<group>"; };
+		C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBubbleFoldPolicyTests.swift; sourceTree = "<group>"; };
 		C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicy.swift; sourceTree = "<group>"; };
 		C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicyTests.swift; sourceTree = "<group>"; };
 		C0DE22000000000000000002 /* ChatHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHaptics.swift; sourceTree = "<group>"; };
@@ -1370,6 +1374,7 @@
 				C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */,
 				C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */,
 				C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */,
+				C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */,
 				C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */,
 				1A2B3C4D5E6F7000000000DD /* SSEClientTests.swift */,
 				C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */,
@@ -1744,6 +1749,7 @@
 				C1A042000000000000000004 /* ClarificationRequestCard.swift */,
 				C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */,
 				1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */,
+				C87100000000000000000002 /* UserBubbleFoldPolicy.swift */,
 				C03190000000000000F002 /* InlineAudioPlayerView.swift */,
 				BEEF02400000000000000002 /* ChatAttachmentPreviewView.swift */,
 				C12800000000000000000002 /* ToolActivityGroupView.swift */,
@@ -2488,6 +2494,7 @@
 					C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */,
 					105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */,
 				1A2B3C4D5E6F7000000000D8 /* MessageBubbleView.swift in Sources */,
+				C87100000000000000000001 /* UserBubbleFoldPolicy.swift in Sources */,
 				C03190000000000000B001 /* AttachmentAudioDetection.swift in Sources */,
 				C03190000000000000B002 /* InlineAudioPlayerView.swift in Sources */,
 				BEEF02400000000000000001 /* ChatAttachmentPreviewView.swift in Sources */,
@@ -2713,6 +2720,7 @@
 				C13000000000000000000001 /* ChatVerticalScrollAxisGuardTests.swift in Sources */,
 				C0DE25000000000000000003 /* ChatScrollPolicyTests.swift in Sources */,
 				C8660A000000000000000003 /* InAppBrowserPolicyTests.swift in Sources */,
+				C87100000000000000000003 /* UserBubbleFoldPolicyTests.swift in Sources */,
 				C27800000000000000000003 /* ChatGitControlsVisibilityPolicyTests.swift in Sources */,
 				1A2B3C4D5E6F7000000000DC /* SSEClientTests.swift in Sources */,
 				C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */,
