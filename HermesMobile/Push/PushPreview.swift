@@ -37,7 +37,7 @@ struct PushPayload: Equatable {
 }
 
 /// The plaintext the plugin sealed on the user's host.
-struct PushPreview: Decodable, Equatable {
+struct PushPreview: Codable, Equatable {
     var title: String?
     var subtitle: String?
     var body: String?
@@ -58,8 +58,7 @@ struct PushPreview: Decodable, Equatable {
               let rawKey = Data(base64Encoded: keys.previewKey), rawKey.count == 32,
               let box = try? AES.GCM.SealedBox(combined: blob),
               let plaintext = try? AES.GCM.open(
-                  box, using: SymmetricKey(data: rawKey),
-                  authenticating: Data("hermex-preview-v1:\(keys.installHash)".utf8))
+                  box, using: SymmetricKey(data: rawKey), authenticating: keys.previewAAD)
         else { return nil }
         return try? JSONDecoder().decode(PushPreview.self, from: plaintext)
     }
@@ -74,6 +73,10 @@ struct PushPreviewKeys: Decodable, Equatable {
     var installHash: String {
         SHA256.hash(data: Data(installKey.utf8)).map { String(format: "%02x", $0) }.joined()
     }
+
+    /// The AES-GCM associated data every sealed preview is bound to, so a blob only
+    /// opens under the install it was sealed for.
+    var previewAAD: Data { Data("hermex-preview-v1:\(installHash)".utf8) }
 
     /// The pairing a payload names. One phone can be paired with several servers,
     /// and a preview must only ever be opened with its own server's key.

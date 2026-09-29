@@ -98,6 +98,7 @@ import SwiftUI
             if provisioner.phase == .savingPreferences {
                 Text("Saving…").font(AppFont.caption()).foregroundStyle(.secondary)
             }
+            testNotificationRows(pairing)
             LabeledContent(String(localized: "Relay"), value: pairing.relayURL.host ?? pairing.relayURL.absoluteString)
                 .font(AppFont.subheadline())
             Button(provisioner.phase == .disabling ? String(localized: "Turning off…") : String(localized: "Turn off notifications…"),
@@ -156,6 +157,29 @@ import SwiftUI
         .toggleStyle(.switch)
         .disabled(provisioner.isWorking)
         .frame(minHeight: 44)
+    }
+
+    /// Settings' end-to-end push check (#874). No spinner: the label says "Sending…" while
+    /// the one request runs. A failure shows in the red row at the bottom of the section.
+    @ViewBuilder private func testNotificationRows(_ pairing: PushPairing) -> some View {
+        Button(provisioner.phase == .sendingTest ? String(localized: "Sending…") : String(localized: "Send Test Notification")) {
+            Task { await provisioner.sendTestNotification() }
+        }
+        .disabled(!provisioner.canSendTest)
+        .frame(minHeight: 44)
+        Text("Sends one test through the relay to every iPhone paired with this Hermes host. It checks the relay, Apple and this iPhone, not your host’s connection to the relay.")
+            .font(AppFont.caption()).foregroundStyle(.secondary)
+        if !pairing.effectivePreferences.replies {
+            Text("Turn on Reply Notifications to send a test.")
+                .font(AppFont.caption()).foregroundStyle(.secondary)
+        } else if provisioner.testDelivered {
+            Label {
+                Text("Sent. Apple accepted the test; it should arrive in a few seconds.")
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            }
+            .font(AppFont.caption())
+        }
     }
 
     /// Progress without motion: a finished step is checked, the running one is named, and

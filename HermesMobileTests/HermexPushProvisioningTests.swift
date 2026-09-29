@@ -523,8 +523,104 @@ import XCTest
         XCTAssertEqual(provisioner.pairing?.effectivePreferences, PushPreferences())
     }
 
+    // MARK: - Test notification (#874)
+
+    func testATestNotificationIsOneRequestAndReportsDelivery() async throws {
+        let registrar = FakePushRegistrar()
+        let pairing = PushPairing(relayURL: URL(string: "https://relay.example")!,
+                                  installKey: String(repeating: "a", count: 64), previewKey: "key")
+        try await registrar.enable(pairing, for: serverA)
+        var sent: [String] = []
+        let entered = expectation(description: "test sending")
+        var release: CheckedContinuation<Void, Never>?
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, testSender: {
+            sent.append($0.installKey)
+            await withCheckedContinuation { release = $0; entered.fulfill() }
+            return .delivered
+        })
+        XCTAssertTrue(provisioner.canSendTest)
+
+        let first = Task { await provisioner.sendTestNotification() }
+        await fulfillment(of: [entered], timeout: 2)
+        XCTAssertTrue(provisioner.isWorking)
+        XCTAssertFalse(provisioner.canSendTest)
+        await provisioner.sendTestNotification()
+        release?.resume()
+        await first.value
+
+        XCTAssertEqual(sent, [String(repeating: "a", count: 64)], "A second tap while sending sends nothing")
+        XCTAssertTrue(provisioner.testDelivered)
+        XCTAssertNil(provisioner.failure)
+        XCTAssertFalse(provisioner.isWorking)
+        provisioner.leaveSettings()
+        XCTAssertFalse(provisioner.testDelivered, "Leaving Settings clears the result")
+    }
+
+    func testEachTestOutcomeSaysWhatAnsweredIt() async throws {
+        let registrar = FakePushRegistrar()
+        try await registrar.enable(PushPairing(relayURL: URL(string: "https://relay.example")!,
+                                               installKey: String(repeating: "a", count: 64), previewKey: "key"),
+                                   for: serverA)
+        let cases: [(PushRelayTestOutcome, String)] = [
+            (.unreachable, "Couldn’t reach the relay. Check this iPhone’s internet connection, then try again."),
+            (.rejected(statusCode: 503, result: "apns_rejected"),
+             "Apple refused the test notification. Turn notifications off and on again for this server."),
+            (.rejected(statusCode: 503, result: "delivery_retry"),
+             "The relay couldn’t deliver the test right now (HTTP 503). Try again in a few minutes."),
+            (.rejected(statusCode: 503, result: "temporarily_unavailable"),
+             "The relay couldn’t deliver the test right now (HTTP 503). Try again in a few minutes."),
+            (.rejected(statusCode: 429, result: "event_limit"),
+             "The relay couldn’t deliver the test right now (HTTP 429). Try again in a few minutes."),
+            (.rejected(statusCode: 429, result: nil),
+             "The relay’s hosting refused the request (HTTP 429). The relay may be over its daily limit or switched off."),
+            (.rejected(statusCode: 400, result: "invalid_request"), "The relay couldn’t deliver (HTTP 400)."),
+            (.unusablePairing, "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.")
+        ]
+        for (outcome, message) in cases {
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar, testSender: { _ in outcome })
+            await provisioner.sendTestNotification()
+            XCTAssertEqual(provisioner.failure, HermexPushProvisioner.Failure(title: "Test notification failed", message: message),
+                           "\(outcome)")
+            XCTAssertFalse(provisioner.testDelivered)
+            // The next action replaces the result.
+            await provisioner.updatePreferences(PushPreferences())
+            XCTAssertNil(provisioner.failure)
+        }
+    }
+
+    func testReplyNotificationsOffOrNotificationsDeniedMakeTheTestUnavailable() async throws {
+        let registrar = FakePushRegistrar()
+        var pairing = PushPairing(relayURL: URL(string: "https://relay.example")!,
+                                  installKey: String(repeating: "a", count: 64), previewKey: "key")
+        pairing.preferences = PushPreferences(replies: false)
+        try await registrar.enable(pairing, for: serverA)
+        var sent = 0
+        let permission = FakeNotificationPermission(status: .authorized)
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, notifications: permission,
+                                          testSender: { _ in sent += 1; return .delivered })
+
+        // The relay would skip the banner yet still answer accepted.
+        XCTAssertFalse(provisioner.canSendTest)
+        await provisioner.sendTestNotification()
+        XCTAssertEqual(sent, 0)
+
+        await provisioner.updatePreferences(PushPreferences(replies: true))
+        XCTAssertTrue(provisioner.canSendTest)
+        permission.status = .denied
+        await provisioner.recheckNotificationPermission()
+        XCTAssertFalse(provisioner.canSendTest)
+        await provisioner.sendTestNotification()
+        XCTAssertEqual(sent, 0)
+
+        let unpaired = makeProvisioner(server: serverB, registrar: registrar, testSender: { _ in sent += 1; return .delivered })
+        XCTAssertFalse(unpaired.canSendTest)
+        await unpaired.sendTestNotification()
+        XCTAssertEqual(sent, 0)
+    }
+
     private func makeProvisioner(server: URL, registrar: FakePushRegistrar, installID: String? = nil,
                                  notifications: FakeNotificationPermission = FakeNotificationPermission(status: .authorized),
+                                 testSender: @escaping @MainActor (PushPairing) async -> PushRelayTestOutcome = { _ in .delivered },
                                  stillConnected: @escaping @MainActor () -> Bool = { true }) -> HermexPushProvisioner {
         let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
                                        username: "user", password: "secret", installID: installID)
@@ -534,6 +630,7 @@ import XCTest
             notifications: notifications,
             dashboard: { BotDashboardClient(http: HermesConnection(connection: $0, configuration: PushHTTPFixture.configuration())) },
             connectionID: { stillConnected() ? connection.id : nil },
+            testSender: testSender,
             retryDelays: [.zero, .zero, .zero],
             sleep: { _ in }
         )

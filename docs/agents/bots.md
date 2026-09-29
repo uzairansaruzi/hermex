@@ -1480,6 +1480,20 @@ asked to change — so it can outlive a removal. It commits nothing without re-r
 saved connection first: if the connection or its server is gone, the keys are not written
 and a device registered seconds earlier is dropped again, so teardown stays final.
 
+Settings' "Send Test Notification" (#874) is the only place the phone calls the relay's
+`POST /installs/<install key>/notify`, the plugin's own route, whose only credential is the
+key in the path. `PushRelayClient.sendTestNotification` posts exactly the strict notify
+schema: `v` 1, a fresh 32-hex `event_id` per tap (never deduplicated), fixed 32-hex
+`thread_id` and `collapse_id` (a new test banner replaces the last), `session_id`
+`hermex-test`, `source` `other` (a tap only opens the app), `is_subagent` false, `sent_at`,
+`kind` `reply`, and a `sealed` preview the phone seals itself (`PushPreview.seal`, app target
+only) with the pairing's keys. It rings every iPhone paired with the host and says nothing
+about the host → relay leg. One tap is one request with no retry. Any 200 is delivered;
+`apns_rejected`, the busy codes (`delivery_retry`, `temporarily_unavailable`,
+`event_limit`), a non-JSON refusal from the relay's hosting (#834), and any other answer
+each get their own message. The button is off while Reply Notifications are off (the relay
+would skip the banner yet answer accepted) or iOS notifications are off for Hermex.
+
 Every way out removes this phone at the relay and wipes the keys.
 `HermexPushProvisioner.disable()` stops the host sending first, then calls
 `PushRegistrar.disable`, so a failure at either end changes nothing the user has to

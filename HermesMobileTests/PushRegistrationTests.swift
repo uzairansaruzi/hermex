@@ -517,6 +517,104 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(recorded.request?.httpMethod, "DELETE")
     }
 
+    /// The relay's notify schema is strict, so the Settings test pins its exact keys (#874).
+    func testRelayTestNotificationSendsOneStrictReplyEventPerCall() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let client = PushRelayClient(session: URLSession(configuration: configuration))
+        let recorded = RecordedRequest()
+        MockURLProtocol.requestHandler = { request in
+            recorded.store(request)
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data(#"{"result":"accepted"}"#.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        let pairing = PushPairing(relayURL: relay, installKey: installA,
+                                  previewKey: Data(repeating: 7, count: 32).base64EncodedString())
+        let hex32 = try NSRegularExpression(pattern: "^[a-f0-9]{32}$")
+        func matches32Hex(_ value: Any?) -> Bool {
+            guard let value = value as? String else { return false }
+            return hex32.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+        }
+
+        var events: [[String: Any]] = []
+        for _ in 0..<2 {
+            let before = Int(Date().timeIntervalSince1970)
+            let outcome = await client.sendTestNotification(pairing: pairing)
+            let after = Int(Date().timeIntervalSince1970)
+            XCTAssertEqual(outcome, .delivered)
+            let request = try XCTUnwrap(recorded.request)
+            XCTAssertEqual(request.url?.absoluteString, "https://relay.example.com/installs/\(installA)/notify")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(recorded.body)) as? [String: Any])
+            XCTAssertEqual(Set(json.keys), ["v", "event_id", "thread_id", "session_id", "source", "is_subagent",
+                                            "sent_at", "kind", "collapse_id", "sealed"])
+            XCTAssertEqual(json["v"] as? Int, 1)
+            XCTAssertEqual(json["kind"] as? String, "reply")
+            XCTAssertEqual(json["source"] as? String, "other", "A test tap only opens the app")
+            XCTAssertEqual(json["session_id"] as? String, "hermex-test")
+            XCTAssertEqual(json["is_subagent"] as? Bool, false)
+            let sentAt = try XCTUnwrap(json["sent_at"] as? Int)
+            XCTAssertTrue((before...after).contains(sentAt), "sent_at is unix seconds")
+            for key in ["event_id", "thread_id", "collapse_id"] {
+                XCTAssertTrue(matches32Hex(json[key]), "\(key) is 32 lowercase hex")
+            }
+            let sealed = try XCTUnwrap(json["sealed"] as? String)
+            let keys = PushPreviewKeys(installKey: installA, previewKey: pairing.previewKey)
+            XCTAssertEqual(PushPreview.open(sealed: sealed, keys: keys)?.title, "Hermex test notification")
+            events.append(json)
+        }
+        XCTAssertNotEqual(events[0]["event_id"] as? String, events[1]["event_id"] as? String,
+                          "A second test must never be deduplicated as the first")
+        XCTAssertEqual(events[0]["thread_id"] as? String, events[1]["thread_id"] as? String)
+        XCTAssertEqual(events[0]["collapse_id"] as? String, events[1]["collapse_id"] as? String,
+                       "A second test banner replaces the first")
+    }
+
+    func testRelayTestNotificationReportsEachAnswerWithoutRetrying() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let client = PushRelayClient(session: URLSession(configuration: configuration))
+        let pairing = PushPairing(relayURL: relay, installKey: installA,
+                                  previewKey: Data(repeating: 7, count: 32).base64EncodedString())
+        defer { MockURLProtocol.requestHandler = nil }
+        let answers: [(status: Int, body: String, expected: PushRelayTestOutcome)] = [
+            (200, #"{"result":"accepted"}"#, .delivered),
+            (200, #"{"result":"deduplicated"}"#, .delivered),
+            (503, #"{"result":"apns_rejected"}"#, .rejected(statusCode: 503, result: "apns_rejected")),
+            (429, #"{"result":"event_limit"}"#, .rejected(statusCode: 429, result: "event_limit")),
+            // #834: Cloudflare's own refusal is not JSON.
+            (429, "error code: 1027", .rejected(statusCode: 429, result: nil))
+        ]
+        for answer in answers {
+            var requests = 0
+            MockURLProtocol.requestHandler = { request in
+                requests += 1
+                return (HTTPURLResponse(url: request.url!, statusCode: answer.status, httpVersion: nil, headerFields: nil)!,
+                        Data(answer.body.utf8))
+            }
+            let outcome = await client.sendTestNotification(pairing: pairing)
+            XCTAssertEqual(outcome, answer.expected, answer.body)
+            XCTAssertEqual(requests, 1, "One tap is one request: \(answer.body)")
+        }
+
+        var attempts = 0
+        MockURLProtocol.requestHandler = { _ in
+            attempts += 1
+            throw URLError(.notConnectedToInternet)
+        }
+        let offline = await client.sendTestNotification(pairing: pairing)
+        XCTAssertEqual(offline, .unreachable)
+        XCTAssertEqual(attempts, 1)
+
+        attempts = 0
+        let malformed = PushPairing(relayURL: relay, installKey: "abc", previewKey: pairing.previewKey)
+        let refused = await client.sendTestNotification(pairing: malformed)
+        XCTAssertEqual(refused, .unusablePairing)
+        XCTAssertEqual(attempts, 0, "A key the relay would refuse is never sent")
+    }
+
     func testActivityRelayUsesOneEncodedSessionSegmentAndExactBody() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]

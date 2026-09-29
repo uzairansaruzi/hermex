@@ -27,8 +27,13 @@ import UserNotifications
     struct Failure: Equatable { let title: String; let message: String }
 
     /// `checkingPermission` covers the iOS prompt at the start of setup: it blocks re-entry
-    /// but names no host step, since none has run yet.
-    enum Phase: Equatable { case idle, checkingPermission, enabling(Step), disabling, savingPreferences, refreshing, failed(Failure) }
+    /// but names no host step, since none has run yet. `tested` holds the relay's answer to
+    /// the Settings test notification until the next action replaces it.
+    enum Phase: Equatable {
+        case idle, checkingPermission, enabling(Step), disabling, savingPreferences, refreshing, sendingTest
+        case tested(PushRelayTestOutcome)
+        case failed(Failure)
+    }
 
     let server: URL
     private(set) var pairing: PushPairing?
@@ -50,6 +55,9 @@ import UserNotifications
     private let dashboard: @MainActor (BotConnection) -> BotDashboardClient
     /// The connection this server still has saved, read at the moment state is committed.
     private let connectionID: @MainActor () -> UUID?
+    /// Posts Settings' test notification to this pairing's relay; injected so tests never
+    /// reach one.
+    private let testSender: @MainActor (PushPairing) async -> PushRelayTestOutcome
     /// Retries while the host is coming back from its restart; injected so tests never sleep.
     private let retryDelays: [Duration]
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -61,6 +69,7 @@ import UserNotifications
          notifications: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler(),
          dashboard: (@MainActor (BotConnection) -> BotDashboardClient)? = nil,
          connectionID: (@MainActor () -> UUID?)? = nil,
+         testSender: (@MainActor (PushPairing) async -> PushRelayTestOutcome)? = nil,
          retryDelays: [Duration] = [.seconds(2), .seconds(3), .seconds(5), .seconds(5), .seconds(5), .seconds(10)],
          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.server = server
@@ -69,6 +78,7 @@ import UserNotifications
         self.notifications = notifications
         self.dashboard = dashboard ?? { BotDashboardClient(saved: $0, server: server) }
         self.connectionID = connectionID ?? { (try? BotConnectionStore().load(server: server))?.id }
+        self.testSender = testSender ?? { await PushRelayClient().sendTestNotification(pairing: $0) }
         self.retryDelays = retryDelays
         self.sleep = sleep
         pairing = self.registrar?.pairing(for: server)
@@ -76,12 +86,27 @@ import UserNotifications
 
     var isWorking: Bool {
         switch phase {
-        case .checkingPermission, .enabling, .disabling, .savingPreferences, .refreshing: return true
-        case .idle, .failed: return false
+        case .checkingPermission, .enabling, .disabling, .savingPreferences, .refreshing, .sendingTest: return true
+        case .idle, .tested, .failed: return false
         }
     }
 
-    var failure: Failure? { if case .failed(let failure) = phase { return failure }; return nil }
+    /// A step's failure, or the test notification's. Both show in the same red row.
+    var failure: Failure? {
+        switch phase {
+        case .failed(let failure): return failure
+        case .tested(let outcome): return Self.testFailure(for: outcome)
+        default: return nil
+        }
+    }
+
+    var testDelivered: Bool { phase == .tested(.delivered) }
+
+    /// The test needs a banner this iPhone can show: with Reply Notifications off the relay
+    /// skips it yet still answers accepted, and with iOS notifications off nothing shows.
+    var canSendTest: Bool {
+        !isWorking && !notificationsOff && pairing?.effectivePreferences.replies == true
+    }
 
     func isRunning(_ step: Step) -> Bool { phase == .enabling(step) }
 
@@ -92,7 +117,7 @@ import UserNotifications
         switch phase {
         case .enabling, .failed: return true
         case .checkingPermission: return false
-        case .idle, .disabling, .savingPreferences, .refreshing: return !completed.isEmpty
+        case .idle, .disabling, .savingPreferences, .refreshing, .sendingTest, .tested: return !completed.isEmpty
         }
     }
 
@@ -127,9 +152,47 @@ import UserNotifications
     }
 
     /// The view cancels only its presentation of a preference write. The registrar
-    /// owns completing the durable transaction after this screen goes away.
+    /// owns completing the durable transaction after this screen goes away. A test result
+    /// is cleared too; a test still in flight keeps the phase, so it stays one request.
     func leaveSettings() {
-        if phase == .savingPreferences || phase == .refreshing { phase = .idle }
+        switch phase {
+        case .savingPreferences, .refreshing, .tested: phase = .idle
+        default: break
+        }
+    }
+
+    /// Settings' end-to-end check: one `reply` through this server's relay, to Apple, and
+    /// on to every iPhone paired with the host. One call is one request, and a second call
+    /// while it runs sends nothing. It says nothing about the host → relay leg.
+    func sendTestNotification() async {
+        guard canSendTest, let pairing else { return }
+        phase = .sendingTest
+        phase = .tested(await testSender(pairing))
+    }
+
+    /// Nil for delivered. Every other answer names what refused it: this iPhone's
+    /// connection, Apple, the relay, or the relay's hosting (#834 answered in Cloudflare's
+    /// words, not the relay's JSON). Never the Hermes host: the test does not touch it.
+    private static func testFailure(for outcome: PushRelayTestOutcome) -> Failure? {
+        let message: String
+        switch outcome {
+        case .delivered:
+            return nil
+        case .unreachable:
+            message = String(localized: "Couldn’t reach the relay. Check this iPhone’s internet connection, then try again.")
+        case .unusablePairing:
+            message = Self.message(for: HermexPushFailure.unusablePairing)
+        case .rejected(_, "apns_rejected"?):
+            message = String(localized: "Apple refused the test notification. Turn notifications off and on again for this server.")
+        case .rejected(let status, "delivery_retry"?), .rejected(let status, "temporarily_unavailable"?),
+             .rejected(let status, "event_limit"?):
+            message = String(localized: "The relay couldn’t deliver the test right now (HTTP \(status)). Try again in a few minutes.")
+        case .rejected(let status, nil):
+            message = String(localized: "The relay’s hosting refused the request (HTTP \(status)). The relay may be over its daily limit or switched off.")
+        case .rejected(let status, _):
+            message = String(localized: "The relay couldn’t deliver (HTTP \(status)).")
+        }
+        return Failure(title: String(localized: "Test notification failed"), message: message)
     }
 
     /// The whole setup. A host that already answers the pairing route has its relay set

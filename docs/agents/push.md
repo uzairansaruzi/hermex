@@ -28,6 +28,8 @@ see [Push provisioning](bots.md#push-provisioning) and
   app target carries the Time Sensitive entitlement, so the relay's
   non-reply banners (approval, clarify, turn error) can break through a Focus
   when the user allows it; the extension leaves the interruption level alone.
+  Settings can also send one test `reply` through the paired relay, sealed on
+  the phone, to check relay → APNs → extension (not host → relay).
 - **Notification Service Extension.** `HermesNotificationService` opens the
   sealed preview on device with the preview key and rewrites the banner. On
   any failure the banner stays content-free.
