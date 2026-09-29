@@ -90,6 +90,29 @@ final class NotificationOfferTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "notificationOffer.hasOffered"))
     }
 
+    // Denied and paired installs never get the offer, so every send on them skips the
+    // Keychain reads that could not change the answer.
+    func testClaimSkipsKeychainReadsThatCannotChangeTheAnswer() async {
+        var reads: [String] = []
+        func claimCountingReads(status: UNAuthorizationStatus, isPaired: Bool) async -> NotificationOffer.Offer? {
+            await NotificationOffer.claim(
+                server: server,
+                defaults: defaults,
+                isPushPaired: { _ in reads.append("pairing"); return isPaired },
+                canPair: { _ in reads.append("connection"); return true },
+                scheduler: SpyResponseCompletionNotificationScheduler(status: status)
+            )
+        }
+
+        let denied = await claimCountingReads(status: .denied, isPaired: false)
+        XCTAssertNil(denied)
+        XCTAssertEqual(reads, [])
+
+        let paired = await claimCountingReads(status: .authorized, isPaired: true)
+        XCTAssertNil(paired)
+        XCTAssertEqual(reads, ["pairing"])
+    }
+
     func testClaimSkipsThePermissionCheckWhenLocalAlertsAreOn() async {
         defaults.set(true, forKey: ResponseCompletionNotifications.isEnabledKey)
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)

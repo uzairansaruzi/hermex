@@ -2009,7 +2009,7 @@ struct ChatView: View {
         if didSend {
             onConversationStarted()
             ChatHaptics.messageSent(isEnabled: isHapticsEnabled)
-            await offerNotificationsIfNeeded()
+            offerNotificationsIfNeeded()
         }
 
         if let lastError = viewModel.lastError {
@@ -2064,7 +2064,7 @@ struct ChatView: View {
             // open. Deterministic here rather than waiting on the observation
             // sync that the emptied composer strip will also trigger.
             syncDraftAttachments()
-            await offerNotificationsIfNeeded()
+            offerNotificationsIfNeeded()
         }
 
         return didStart
@@ -2073,11 +2073,14 @@ struct ChatView: View {
     /// Asks once per install, right after a normal send or voice note started a run, whether
     /// the user wants to hear when it ends (#863). Steers, queued messages and slash commands
     /// never get here, and a failed send never started a run, so none of them use it up.
-    private func offerNotificationsIfNeeded() async {
-        guard isOnScreen, let offer = await NotificationOffer.claim(server: server, isCurrent: { isOnScreen }) else {
-            return
+    /// Runs beside the send, so its permission check never delays the send's haptic or
+    /// composer focus; `isCurrent` keeps a chat that closed meanwhile from claiming it.
+    private func offerNotificationsIfNeeded() {
+        guard isOnScreen else { return }
+        Task {
+            guard let offer = await NotificationOffer.claim(server: server, isCurrent: { isOnScreen }) else { return }
+            pendingNotificationOffer = offer
         }
-        pendingNotificationOffer = offer
     }
 
     private func handleSlashExecutionResult(

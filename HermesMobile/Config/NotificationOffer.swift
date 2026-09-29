@@ -19,16 +19,18 @@ enum NotificationOffer {
     /// What to offer, or nil when there is nothing worth asking: already asked, local
     /// alerts already on, iOS permission refused, or the active server already paired.
     /// `canPair` means this build can push and the active server has a saved Hermes
-    /// connection to set it up with.
+    /// connection to set it up with. Both are Keychain reads, so they are evaluated only
+    /// when they can still change the answer: never on a denied install, and `canPair`
+    /// never on a paired server.
     static func decide(
         hasOffered: Bool,
         localAlertsEnabled: Bool,
         authorization: UNAuthorizationStatus,
-        isPaired: Bool,
-        canPair: Bool
+        isPaired: @autoclosure () -> Bool,
+        canPair: @autoclosure () -> Bool
     ) -> Offer? {
-        guard !hasOffered, !localAlertsEnabled, authorization != .denied, !isPaired else { return nil }
-        return canPair ? .push : .localAlerts
+        guard !hasOffered, !localAlertsEnabled, authorization != .denied, !isPaired() else { return nil }
+        return canPair() ? .push : .localAlerts
     }
 
     /// The offer for a run that just started on `server`, marked as made before it is
@@ -46,7 +48,8 @@ enum NotificationOffer {
         },
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
     ) async -> Offer? {
-        // Every send after the offer ends here, before any permission or Keychain read.
+        // Every send after the offer, or with alerts on, ends here before any permission
+        // or Keychain read. Denied and paired installs still check permission each send.
         guard !defaults.bool(forKey: hasOfferedKey),
               !defaults.bool(forKey: ResponseCompletionNotifications.isEnabledKey) else { return nil }
         let authorization = await scheduler.authorizationStatus()
