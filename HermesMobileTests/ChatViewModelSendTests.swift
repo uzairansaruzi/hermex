@@ -2554,71 +2554,70 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }
 
-    func testReopenedInactiveStreamReplayUsesRestoredSnapshotEventID() {
-        runMainActorTest {
-            ChatViewModel.resetActiveStreamSnapshotsForTesting()
-            defer { ChatViewModel.resetActiveStreamSnapshotsForTesting() }
-            let originalStreamClient = SpySSEStreamingClient()
-            let originalViewModel = try self.makeViewModel(streamClient: originalStreamClient) { request in
-                XCTAssertEqual(request.url?.path, "/api/chat/start")
+    @MainActor
+    func testReopenedInactiveStreamReplayUsesRestoredSnapshotEventID() async throws {
+        ChatViewModel.resetActiveStreamSnapshotsForTesting()
+        defer { ChatViewModel.resetActiveStreamSnapshotsForTesting() }
+        let originalStreamClient = SpySSEStreamingClient()
+        let originalViewModel = try makeViewModel(streamClient: originalStreamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
+            }
+            """, for: request)
+        }
+
+        let didStart = await originalViewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        originalStreamClient.emit(.token("Partial live answer."), lastEventID: "session-abc:9")
+        originalViewModel.suspendStreamForNavigation()
+
+        let reopenedStreamClient = SpySSEStreamingClient()
+        let reopenedViewModel = try makeViewModel(streamClient: reopenedStreamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
                 return apiTestJSONResponse("""
                 {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "active_stream_id": "stream-123",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Keep working",
+                        "timestamp": 1770000100,
+                        "message_id": "user-1"
+                      }
+                    ]
+                  }
                 }
                 """, for: request)
-            }
-
-            let didStart = await originalViewModel.sendMessage("Keep working")
-            XCTAssertTrue(didStart)
-            originalStreamClient.emit(.token("Partial live answer."), lastEventID: "session-abc:9")
-            originalViewModel.suspendStreamForNavigation()
-
-            let reopenedStreamClient = SpySSEStreamingClient()
-            let reopenedViewModel = try self.makeViewModel(streamClient: reopenedStreamClient) { request in
-                switch request.url?.path {
-                case "/api/session":
-                    return apiTestJSONResponse("""
-                    {
-                      "session": {
-                        "session_id": "session-abc",
-                        "title": "Planning",
-                        "active_stream_id": "stream-123",
-                        "messages": [
-                          {
-                            "role": "user",
-                            "content": "Keep working",
-                            "timestamp": 1770000100,
-                            "message_id": "user-1"
-                          }
-                        ]
-                      }
-                    }
-                    """, for: request)
-                case "/api/chat/stream/status":
-                    return apiTestJSONResponse("""
-                    {
-                      "active": false,
-                      "stream_id": "stream-123",
-                      "replay_available": true
-                    }
-                    """, for: request)
-                default:
-                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                    throw URLError(.badURL)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse("""
+                {
+                  "active": false,
+                  "stream_id": "stream-123",
+                  "replay_available": true
                 }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
             }
-
-            await reopenedViewModel.loadMessages()
-            await reopenedViewModel.reconnectStreamIfNeeded()
-
-            let replayURL = try XCTUnwrap(reopenedStreamClient.startedURLs.last)
-            let replayQueryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            XCTAssertEqual(replayQueryItems.first(where: { $0.name == "stream_id" })?.value, "stream-123")
-            XCTAssertEqual(replayQueryItems.first(where: { $0.name == "replay" })?.value, "1")
-            XCTAssertEqual(replayQueryItems.first(where: { $0.name == "after_seq" })?.value, "9")
-            XCTAssertEqual(reopenedViewModel.messages.compactMap(\.content), ["Keep working", "Partial live answer."])
         }
+
+        await reopenedViewModel.loadMessages()
+        await reopenedViewModel.reconnectStreamIfNeeded()
+
+        let replayURL = try XCTUnwrap(reopenedStreamClient.startedURLs.last)
+        let replayQueryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(replayQueryItems.first(where: { $0.name == "stream_id" })?.value, "stream-123")
+        XCTAssertEqual(replayQueryItems.first(where: { $0.name == "replay" })?.value, "1")
+        XCTAssertEqual(replayQueryItems.first(where: { $0.name == "after_seq" })?.value, "9")
+        XCTAssertEqual(reopenedViewModel.messages.compactMap(\.content), ["Keep working", "Partial live answer."])
     }
 
     @MainActor
@@ -3065,80 +3064,79 @@ final class ChatViewModelSendTests: XCTestCase {
         ])
     }
 
-    func testActiveStreamStatusRefreshTreatsToolOnlyAssistantAsCompletedResponse() {
-        runMainActorTest {
-            let streamClient = SpySSEStreamingClient()
-            let viewModel = try self.makeViewModel(streamClient: streamClient) { request in
-                switch request.url?.path {
-                case "/api/chat/start":
-                    return apiTestJSONResponse("""
-                    {
-                      "session_id": "session-abc",
-                      "stream_id": "stream-123"
-                    }
-                    """, for: request)
-                case "/api/chat/stream/status":
-                    return apiTestJSONResponse("""
-                    {
-                      "active": false,
-                      "stream_id": "stream-123"
-                    }
-                    """, for: request)
-                case "/api/session":
-                    return apiTestJSONResponse("""
-                    {
-                      "session": {
-                        "session_id": "session-abc",
-                        "title": "Planning",
-                        "messages": [
+    @MainActor
+    func testActiveStreamStatusRefreshTreatsToolOnlyAssistantAsCompletedResponse() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse("""
+                {
+                  "active": false,
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Run terminal",
+                        "timestamp": 1770000100,
+                        "message_id": "user-1"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "",
+                        "timestamp": 1770000110,
+                        "message_id": "assistant-tool",
+                        "tool_calls": [
                           {
-                            "role": "user",
-                            "content": "Run terminal",
-                            "timestamp": 1770000100,
-                            "message_id": "user-1"
-                          },
-                          {
-                            "role": "assistant",
-                            "content": "",
-                            "timestamp": 1770000110,
-                            "message_id": "assistant-tool",
-                            "tool_calls": [
-                              {
-                                "id": "functions.terminal:1",
-                                "function": {
-                                  "name": "terminal",
-                                  "arguments": "{\\"command\\":\\"pwd\\"}"
-                                }
-                              }
-                            ]
-                          },
-                          {
-                            "role": "tool",
-                            "content": "/Users/hermes",
-                            "timestamp": 1770000111,
-                            "message_id": "tool-1",
-                            "tool_call_id": "functions.terminal:1"
+                            "id": "functions.terminal:1",
+                            "function": {
+                              "name": "terminal",
+                              "arguments": "{\\"command\\":\\"pwd\\"}"
+                            }
                           }
                         ]
+                      },
+                      {
+                        "role": "tool",
+                        "content": "/Users/hermes",
+                        "timestamp": 1770000111,
+                        "message_id": "tool-1",
+                        "tool_call_id": "functions.terminal:1"
                       }
-                    }
-                    """, for: request)
-                default:
-                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                    throw URLError(.badURL)
+                    ]
+                  }
                 }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
             }
-
-            let didStart = await viewModel.sendMessage("Run terminal")
-            XCTAssertTrue(didStart)
-
-            await viewModel.refreshTranscriptIfActiveStreamCompleted(streamID: "stream-123")
-
-            XCTAssertNil(viewModel.activeStreamID)
-            XCTAssertEqual(streamClient.stopCount, 1)
-            XCTAssertEqual(viewModel.messages.compactMap(\.role), ["user", "assistant", "tool"])
-            XCTAssertEqual(viewModel.messages.first(where: { $0.role == "assistant" })?.toolCalls?.count, 1)
         }
+
+        let didStart = await viewModel.sendMessage("Run terminal")
+        XCTAssertTrue(didStart)
+
+        await viewModel.refreshTranscriptIfActiveStreamCompleted(streamID: "stream-123")
+
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(streamClient.stopCount, 1)
+        XCTAssertEqual(viewModel.messages.compactMap(\.role), ["user", "assistant", "tool"])
+        XCTAssertEqual(viewModel.messages.first(where: { $0.role == "assistant" })?.toolCalls?.count, 1)
     }
 
     @MainActor
@@ -3224,74 +3222,72 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.last?.messageId, "assistant-1")
     }
 
-    func testCompletedStreamSessionDoesNotRequireFollowUpTranscriptRefresh() {
-        runMainActorTest {
-            let streamClient = SpySSEStreamingClient()
-            let viewModel = try self.makeViewModel(streamClient: streamClient) { request in
-                XCTAssertEqual(request.url?.path, "/api/chat/start")
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            }
-
-            let didStart = await viewModel.sendMessage("Summarize")
-            XCTAssertTrue(didStart)
-
-            let completedSession = try self.makeSessionDetail("""
+    @MainActor
+    func testCompletedStreamSessionDoesNotRequireFollowUpTranscriptRefresh() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
             {
               "session_id": "session-abc",
-              "title": "Planning",
-              "messages": [
-                {
-                  "role": "user",
-                  "content": "Summarize",
-                  "message_id": "user-1"
-                },
-                {
-                  "role": "assistant",
-                  "content": "Done.",
-                  "message_id": "assistant-1"
-                }
-              ]
+              "stream_id": "stream-123"
             }
-            """)
-
-            streamClient.emit(.done(DoneStreamEvent(session: completedSession)))
-
-            XCTAssertNil(viewModel.activeStreamID)
-            XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
-            XCTAssertFalse(viewModel.responseCompletionNeedsTranscriptRefresh)
-            XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Summarize", "Done."])
+            """, for: request)
         }
+
+        let didStart = await viewModel.sendMessage("Summarize")
+        XCTAssertTrue(didStart)
+
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "title": "Planning",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Summarize",
+              "message_id": "user-1"
+            },
+            {
+              "role": "assistant",
+              "content": "Done.",
+              "message_id": "assistant-1"
+            }
+          ]
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(session: completedSession)))
+
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
+        XCTAssertFalse(viewModel.responseCompletionNeedsTranscriptRefresh)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Summarize", "Done."])
     }
 
-    func testDoneWithoutCompletedSessionRequiresFollowUpTranscriptRefresh() {
-        runMainActorTest {
-            let streamClient = SpySSEStreamingClient()
-            let viewModel = try self.makeViewModel(streamClient: streamClient) { request in
-                XCTAssertEqual(request.url?.path, "/api/chat/start")
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
+    @MainActor
+    func testDoneWithoutCompletedSessionRequiresFollowUpTranscriptRefresh() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-123"
             }
-
-            let didStart = await viewModel.sendMessage("Summarize")
-            XCTAssertTrue(didStart)
-
-            streamClient.emit(.token("Done."))
-            streamClient.emit(.done(DoneStreamEvent(session: nil)))
-
-            XCTAssertNil(viewModel.activeStreamID)
-            XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
-            XCTAssertTrue(viewModel.responseCompletionNeedsTranscriptRefresh)
-            XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Summarize", "Done."])
+            """, for: request)
         }
+
+        let didStart = await viewModel.sendMessage("Summarize")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(.token("Done."))
+        streamClient.emit(.done(DoneStreamEvent(session: nil)))
+
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
+        XCTAssertTrue(viewModel.responseCompletionNeedsTranscriptRefresh)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Summarize", "Done."])
     }
 
     @MainActor
@@ -9940,23 +9936,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-    }
-
-    private func runMainActorTest(
-        timeout: TimeInterval = 5,
-        _ body: @escaping @MainActor () async throws -> Void
-    ) {
-        let expectation = expectation(description: "MainActor async test")
-        Task { @MainActor in
-            defer { expectation.fulfill() }
-
-            do {
-                try await body()
-            } catch {
-                XCTFail("Unexpected error: \(error)")
-            }
-        }
-        wait(for: [expectation], timeout: timeout)
     }
 
     private func makeSession(
