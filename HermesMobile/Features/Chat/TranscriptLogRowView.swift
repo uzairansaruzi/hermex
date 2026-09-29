@@ -75,12 +75,13 @@ struct TranscriptLogRowBodyWindow<Content: View>: View {
 }
 
 /// The dense log row settled tool calls and thinking share: a 20 pt icon
-/// column, bold summary, dim one-line detail, `Copied` badge, chevron slot, and
-/// a fixed status slot so labels align across rows. Tap toggles the owner's
-/// expansion state and reveals `expandedBody` under the text behind a hairline,
-/// inside a `TranscriptLogRowBodyWindow` that scrolls once the body outgrows
-/// the cap; long-press copies `copyText` with a haptic and a short "Copied" badge.
-struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View {
+/// column, bold summary, dim one-line detail, `Copied` badge, an optional
+/// trailing accessory, chevron slot, and a fixed status slot so labels align
+/// across rows. Tap toggles the owner's expansion state and reveals
+/// `expandedBody` under the text behind a hairline, inside a
+/// `TranscriptLogRowBodyWindow` that scrolls once the body outgrows the cap;
+/// long-press copies `copyText` with a haptic and a short "Copied" badge.
+struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedBody: View>: View {
     let summary: String
     let detail: String?
     var isFailure = false
@@ -91,6 +92,10 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
     /// animation and suspends the transcript's scroll anchor around it.
     let toggleExpansion: () -> Void
     @ViewBuilder let icon: () -> Icon
+    /// Trailing detail before the chevron, such as an edit's "+N −M". It moves to
+    /// its own line under the detail when the label stacks at accessibility sizes.
+    /// Not read by VoiceOver: fold it into `accessibilityLabel`.
+    @ViewBuilder let accessory: () -> Accessory
     @ViewBuilder let status: () -> Status
     @ViewBuilder let expandedBody: () -> ExpandedBody
 
@@ -148,6 +153,12 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
                         .padding(.trailing, 4)
                 }
 
+                if !usesStackedLabel {
+                    accessory()
+                        .fixedSize()
+                        .padding(.trailing, 4)
+                }
+
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -192,6 +203,7 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
                 if let detail {
                     detailText(detail).lineLimit(2)
                 }
+                accessory()
             }
         } else if let detail {
             (summaryText + Text(" ") + detailText(detail))
@@ -240,5 +252,35 @@ struct TranscriptLogRowView<Icon: View, Status: View, ExpandedBody: View>: View 
                 showsCopied = false
             }
         }
+    }
+}
+
+extension TranscriptLogRowView where Accessory == EmptyView {
+    /// A row with nothing between its label and chevron (thinking, plans).
+    init(
+        summary: String,
+        detail: String?,
+        isFailure: Bool = false,
+        isExpanded: Bool,
+        accessibilityLabel: String,
+        copyText: @escaping () -> String,
+        toggleExpansion: @escaping () -> Void,
+        @ViewBuilder icon: @escaping () -> Icon,
+        @ViewBuilder status: @escaping () -> Status,
+        @ViewBuilder expandedBody: @escaping () -> ExpandedBody
+    ) {
+        self.init(
+            summary: summary,
+            detail: detail,
+            isFailure: isFailure,
+            isExpanded: isExpanded,
+            accessibilityLabel: accessibilityLabel,
+            copyText: copyText,
+            toggleExpansion: toggleExpansion,
+            icon: icon,
+            accessory: { EmptyView() },
+            status: status,
+            expandedBody: expandedBody
+        )
     }
 }

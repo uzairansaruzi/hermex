@@ -19,8 +19,17 @@ struct ToolCallLogRow: Equatable {
     /// The call's target (command, file, query, skill) or the first result line.
     let detail: String?
     let status: Status
+    /// An edit's "+N −M", shown before the chevron once the call succeeds.
+    let diffCounts: ToolCallDiff.Counts?
 
     var isFailure: Bool { status == .failure }
+
+    /// What VoiceOver reads for the whole row: "Updated, App.swift, 3 added, 1 removed, Completed".
+    var accessibilityLabel: String {
+        [summary, detail, diffCounts.map { DiffCountsLabel.spokenText(additions: $0.additions, deletions: $0.deletions) }, statusText]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+    }
 
     var statusText: String {
         switch status {
@@ -76,7 +85,9 @@ enum ToolCallSummaryFormatter {
             icon: icon(kind: toolKind, name: name),
             summary: summary(kind: toolKind, name: name),
             detail: detail,
-            status: rowStatus
+            status: rowStatus,
+            // Counts only once the server says the edit succeeded: a running call has only asked for it.
+            diffCounts: rowStatus == .success ? ToolCallDiff.resolve(for: toolCall)?.counts : nil
         )
     }
 

@@ -241,6 +241,7 @@
 		C12800000000000000000003 /* ChatTimelineAccessorySurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12800000000000000000004 /* ChatTimelineAccessorySurface.swift */; };
 		C12900000000000000000001 /* ChatActiveRunStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12900000000000000000002 /* ChatActiveRunStatusView.swift */; };
 		C06000000000000000000001 /* ToolCallDisplayFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06000000000000000000002 /* ToolCallDisplayFormatter.swift */; };
+		C08640000000000000000001 /* ToolCallDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08640000000000000000002 /* ToolCallDiff.swift */; };
 		1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */; };
 		1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */; };
 		1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */; };
@@ -310,6 +311,7 @@
 		1D1FF0000000000000000B36 /* SourceFileViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */; };
 		C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */; };
 		C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */; };
+		C08640000000000000000003 /* ToolCallDiffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08640000000000000000004 /* ToolCallDiffTests.swift */; };
 		C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */; };
 		C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */; };
 		C0AA05000000000000000B02 /* ChatMessageMetaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */; };
@@ -822,6 +824,7 @@
 		C12800000000000000000004 /* ChatTimelineAccessorySurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineAccessorySurface.swift; sourceTree = "<group>"; };
 		C12900000000000000000002 /* ChatActiveRunStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActiveRunStatusView.swift; sourceTree = "<group>"; };
 		C06000000000000000000002 /* ToolCallDisplayFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallDisplayFormatter.swift; sourceTree = "<group>"; };
+		C08640000000000000000002 /* ToolCallDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallDiff.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningBlockView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
@@ -891,6 +894,7 @@
 		1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileViewModelTests.swift; sourceTree = "<group>"; };
 		C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeAggregatorTests.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatterTests.swift; sourceTree = "<group>"; };
+		C08640000000000000000004 /* ToolCallDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallDiffTests.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFoldingTests.swift; sourceTree = "<group>"; };
 		C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptRowEntryTests.swift; sourceTree = "<group>"; };
 		C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageMetaTests.swift; sourceTree = "<group>"; };
@@ -1368,6 +1372,7 @@
 				1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */,
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
+				C08640000000000000000004 /* ToolCallDiffTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
 				C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */,
 				454454454454454454454431 /* ResponseSelectionTests.swift */,
@@ -1704,6 +1709,7 @@
 				C12800000000000000000004 /* ChatTimelineAccessorySurface.swift */,
 				C12900000000000000000002 /* ChatActiveRunStatusView.swift */,
 				C06000000000000000000002 /* ToolCallDisplayFormatter.swift */,
+				C08640000000000000000002 /* ToolCallDiff.swift */,
 				1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */,
 				B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */,
 				B5A220000000000000000004 /* MarkerMessageCardView.swift */,
@@ -2439,6 +2445,7 @@
 				C12800000000000000000003 /* ChatTimelineAccessorySurface.swift in Sources */,
 				C12900000000000000000001 /* ChatActiveRunStatusView.swift in Sources */,
 				C06000000000000000000001 /* ToolCallDisplayFormatter.swift in Sources */,
+				C08640000000000000000001 /* ToolCallDiff.swift in Sources */,
 				1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */,
 				B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */,
 				B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */,
@@ -2682,6 +2689,7 @@
 				1D1FF0000000000000000B36 /* SourceFileViewModelTests.swift in Sources */,
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
+				C08640000000000000000003 /* ToolCallDiffTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */,
 				454454454454454454454432 /* ResponseSelectionTests.swift in Sources */,

@@ -78,12 +78,18 @@ enum MarkdownDiffFormatter {
 
         let key = code as NSString
         if let cached = cache.object(forKey: key) { return cached.document }
-        // Diff reaches `.highRiskLanguage` only after the empty and size guards pass.
-        let document = MarkdownHighlightPolicy.decision(for: code, language: normalized, isStreaming: false)
-            == .plain(reason: .highRiskLanguage, normalizedLanguage: normalized) ? parse(code) : nil
+        let document = fitsSizeGuards(code) ? parse(code) : nil
         // Only styled documents are kept, so an oversized plain fence never pins its source here.
         if let document { cache.setObject(CacheBox(document), forKey: key) }
         return document
+    }
+
+    /// Whether diff source is non-empty and within the highlighter's size guards
+    /// (characters, lines, line length), so drawing it row by row stays cheap.
+    static func fitsSizeGuards(_ code: String) -> Bool {
+        // Diff reaches `.highRiskLanguage` only after the empty and size guards pass.
+        MarkdownHighlightPolicy.decision(for: code, language: "diff", isStreaming: false)
+            == .plain(reason: .highRiskLanguage, normalizedLanguage: "diff")
     }
 
     /// Settled diff documents keyed by the exact fence source (diff and patch parse the

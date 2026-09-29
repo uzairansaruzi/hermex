@@ -77,6 +77,53 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: write, isLive: false)?.detail, "Notes.md")
     }
 
+    // MARK: - Edit counts
+
+    func testEditRowsCarryTheirDiffCountsAndSpeakThem() throws {
+        let patch = ToolCall(
+            name: "patch",
+            preview: #"{"success": true, "diff": "--- a/App.swift\n+++ b/App.swift\n@@ -1,2 +1,4 @@\n-old\n+new\n+more\n+last\n keep\n"}"#,
+            args: ["path": .string("Sources/App.swift"), "old_string": .string("old"), "new_string": .string("new")],
+            isCompleted: true
+        )
+        let patchRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: patch, isLive: false))
+        XCTAssertEqual(patchRow.diffCounts, ToolCallDiff.Counts(additions: 3, deletions: 1))
+        XCTAssertEqual(patchRow.accessibilityLabel, "Updated, App.swift, 3 added, 1 removed, Completed")
+
+        let write = ToolCall(
+            name: "write_file",
+            preview: nil,
+            args: ["path": .string("docs/Notes.md"), "content": .string("one\ntwo")],
+            isCompleted: true
+        )
+        let writeRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: write, isLive: false))
+        XCTAssertEqual(writeRow.diffCounts, ToolCallDiff.Counts(additions: 2, deletions: nil))
+        XCTAssertEqual(writeRow.accessibilityLabel, "Updated, Notes.md, 2 added, Completed")
+    }
+
+    func testNonEditAndUnfinishedRowsCarryNoCounts() throws {
+        let terminal = ToolCall(
+            name: "terminal",
+            preview: "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b",
+            args: ["command": .string("git diff")],
+            isCompleted: true
+        )
+        let terminalRow = try XCTUnwrap(ToolCallSummaryFormatter.row(for: terminal, isLive: false))
+        XCTAssertNil(terminalRow.diffCounts)
+        XCTAssertEqual(terminalRow.accessibilityLabel, "Ran, git diff, Completed")
+
+        let running = ToolCall(
+            name: "patch",
+            preview: nil,
+            args: ["path": .string("App.swift"), "old_string": .string("a"), "new_string": .string("b")],
+            isCompleted: false
+        )
+        XCTAssertNil(
+            ToolCallSummaryFormatter.row(for: running, isLive: true)?.diffCounts,
+            "an edit shows counts only once the server says it completed"
+        )
+    }
+
     func testReadRowShowsLineRangeAndBasename() throws {
         let toolCall = ToolCall(
             name: "read_file",

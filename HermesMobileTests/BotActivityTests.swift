@@ -140,6 +140,27 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: projected.activity[0].toolCalls[1], isLive: false)?.detail, "draft.md")
     }
 
+    func testSnapshotEditRowsUseTheOriginalResultSoTheirDiffMatchesTheLiveRow() throws {
+        let result = #"{"success": true, "diff": "--- a/App.swift\n+++ b/App.swift\n@@ -1 +1,2 @@\n-old\n+new\n+more\n"}"#
+        let projected = BotTranscriptProjection.project(history: [
+            .object(["role": .string("user"), "text": .string("Edit it")]),
+            .object([
+                "role": .string("tool"), "name": .string("patch"), "context": .string("App.swift"),
+                "content": .string(result),
+                "args": .object(["path": .string("App.swift"), "old_string": .string("old"), "new_string": .string("new\nmore\nextra")])
+            ]),
+            .object(["role": .string("assistant"), "text": .string("Done.")])
+        ], root: "root")
+
+        let toolCall = try XCTUnwrap(projected.activity.first?.toolCalls.first)
+        XCTAssertEqual(toolCall.preview, result)
+        XCTAssertEqual(
+            ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.diffCounts,
+            ToolCallDiff.Counts(additions: 2, deletions: 1),
+            "counts come from the real diff, not the requested arguments"
+        )
+    }
+
     func testSnapshotProjectionKeepsTimestampsInSecondsAndDropsNonNumbers() {
         let projected = BotTranscriptProjection.project(history: [
             .object(["role": .string("user"), "text": .string("Ping"), "timestamp": .number(1_790_251_200.5)]),

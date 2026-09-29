@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// One tool call as a dense log line: icon column, bold verb, dim one-line
-/// detail, chevron, and a status glyph. Tap expands its arguments and result;
-/// long-press copies them.
+/// detail, an edit's "+N −M", chevron, and a status glyph. Tap expands its
+/// diff, arguments, and result; long-press copies the arguments and result.
 struct ToolCallLogRowView: View {
     let entry: ToolCallLogEntry
 
@@ -16,13 +16,17 @@ struct ToolCallLogRowView: View {
             detail: row.detail,
             isFailure: row.isFailure,
             isExpanded: isExpanded,
-            accessibilityLabel: accessibilityLabel,
+            accessibilityLabel: row.accessibilityLabel,
             copyText: { ToolCallSummaryFormatter.copyText(for: entry.toolCall) },
             toggleExpansion: { isExpanded.toggle() }
         ) {
             Image(systemName: row.icon)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(row.isFailure ? Color.red : Color.secondary)
+        } accessory: {
+            if let counts = row.diffCounts {
+                DiffCountsLabel(additions: counts.additions, deletions: counts.deletions)
+            }
         } status: {
             statusGlyph
         } expandedBody: {
@@ -54,25 +58,27 @@ struct ToolCallLogRowView: View {
                 .foregroundStyle(.secondary)
         }
     }
-
-    private var accessibilityLabel: String {
-        [row.summary, row.detail, row.statusText]
-            .compactMap { $0 }
-            .joined(separator: ", ")
-    }
 }
 
-/// The Arguments, Result, and Status sections shown when a tool log row opens.
+/// The Diff, Arguments, Result, and Status sections shown when a tool log row opens.
 struct ToolCallDetailBodyView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
+    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    /// Whether a long diff shows every line instead of the first `collapsedLineLimit`.
+    @State private var showsAllDiffLines = false
 
     let toolCall: ToolCall
     let status: ToolCallLogRow.Status
 
     var body: some View {
-        let displayContent = ToolCallDisplayFormatter.content(for: toolCall)
+        let displayContent = ToolCallDisplayFormatter.openedContent(for: toolCall)
 
         VStack(alignment: .leading, spacing: 7) {
+            if let diff = displayContent.diff {
+                diffSection(diff)
+            }
+
             if !displayContent.argumentRows.isEmpty {
                 argumentsSection(displayContent.argumentRows)
             }
@@ -112,7 +118,9 @@ struct ToolCallDetailBodyView: View {
     }
 
     private func shouldShowStatusDetail(displayContent: ToolCallDisplayContent) -> Bool {
-        let hasPrimaryContent = !displayContent.argumentRows.isEmpty || displayContent.result != nil
+        let hasPrimaryContent = displayContent.diff != nil
+            || !displayContent.argumentRows.isEmpty
+            || displayContent.result != nil
         return !hasPrimaryContent || !toolCall.isCompleted || toolCall.isError == true || toolCall.duration != nil
     }
 
@@ -127,6 +135,70 @@ struct ToolCallDetailBodyView: View {
                 .foregroundStyle(statusColor)
                 .textSelection(.enabled)
         }
+    }
+
+    /// The edit's diff in an inset surface, capped at `collapsedLineLimit` lines
+    /// behind a Show all row like chat's diff fences, with a caption when the
+    /// server cut the source off.
+    @ViewBuilder
+    private func diffSection(_ diff: ToolCallDiff) -> some View {
+        let lines = diff.document.visibleLines(showingAll: showsAllDiffLines)
+
+        VStack(spacing: 0) {
+            Group {
+                if wrapsCodeBlockLines {
+                    DiffCodeBlockText(lines: lines, wraps: true)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    DiffCodeBlockScrollBody(lines: lines)
+                }
+            }
+            .padding(.vertical, 5)
+
+            if diff.document.isCollapsible {
+                showAllDiffLinesButton(lineCount: diff.document.lines.count)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .chatTimelineAccessoryInsetSurface()
+
+        if diff.isTruncated {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: "scissors")
+                    .accessibilityHidden(true)
+                Text("Partial diff. The server sent only the first part of this edit.")
+            }
+            .font(AppFont.caption())
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func showAllDiffLinesButton(lineCount: Int) -> some View {
+        Button {
+            // Pins the reader's offset while the diff grows or shrinks.
+            chatDisclosureToggled()
+            showsAllDiffLines.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                if showsAllDiffLines {
+                    Text("Show first \(MarkdownDiffFormatter.collapsedLineLimit) lines")
+                } else {
+                    Text("Show all \(lineCount) lines")
+                }
+                Image(systemName: showsAllDiffLines ? "chevron.up" : "chevron.down")
+                    .accessibilityHidden(true)
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 11)
+            .padding(.bottom, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.chatTactile(.compactControl))
+        .foregroundStyle(.tint)
+        .overlay(alignment: .top) { Divider() }
     }
 
     private func argumentsSection(_ rows: [ToolCallArgumentDisplay]) -> some View {

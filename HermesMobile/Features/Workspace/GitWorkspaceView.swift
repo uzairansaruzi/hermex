@@ -176,21 +176,30 @@ struct GitAheadBehindBadges: View {
     }
 }
 
+/// "+N −M" in green and red. `deletions: nil` hides the red count, for a
+/// change whose deletions are unknown (a written file's old content).
 struct DiffCountsLabel: View {
     let additions: Int
-    let deletions: Int
+    let deletions: Int?
 
     var body: some View {
         HStack(spacing: 8) {
             Text(verbatim: "+\(additions)").foregroundStyle(.green)
-            Text(verbatim: "−\(deletions)").foregroundStyle(.red)
+            if let deletions {
+                Text(verbatim: "−\(deletions)").foregroundStyle(.red)
+            }
         }
         .font(AppFont.mono(style: .caption, weight: .semibold))
         .monospacedDigit()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            Text("\(additions) added") + Text(verbatim: ", ") + Text("\(deletions) removed")
-        )
+        .accessibilityLabel(Self.spokenText(additions: additions, deletions: deletions))
+    }
+
+    /// "3 added, 1 removed", or "3 added" when deletions are unknown.
+    static func spokenText(additions: Int, deletions: Int?) -> String {
+        let added = String(localized: "\(additions) added")
+        guard let deletions else { return added }
+        return added + ", " + String(localized: "\(deletions) removed")
     }
 }
 

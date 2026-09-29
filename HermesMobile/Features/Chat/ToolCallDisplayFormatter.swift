@@ -3,6 +3,8 @@ import Foundation
 struct ToolCallDisplayContent: Equatable {
     let argumentRows: [ToolCallArgumentDisplay]
     let result: ToolCallResultDisplay?
+    /// An edit's change, drawn above the arguments it did not replace.
+    var diff: ToolCallDiff?
 }
 
 struct ToolCallArgumentDisplay: Identifiable, Equatable {
@@ -23,6 +25,19 @@ enum ToolCallDisplayFormatter {
         ToolCallDisplayContent(
             argumentRows: argumentRows(from: toolCall.args),
             result: resultDisplay(preview: toolCall.preview, toolName: toolCall.name)
+        )
+    }
+
+    /// What an opened row draws. An edit's diff stands in for the arguments it
+    /// was built from, and for the result when the result was its source or was
+    /// cut off. `content(for:)` stays whole, since long-press copies all of it.
+    static func openedContent(for toolCall: ToolCall) -> ToolCallDisplayContent {
+        let content = content(for: toolCall)
+        guard let diff = ToolCallDiff.resolve(for: toolCall) else { return content }
+        return ToolCallDisplayContent(
+            argumentRows: content.argumentRows.filter { !diff.consumedArgumentKeys.contains($0.key) },
+            result: diff.hidesResult ? nil : content.result,
+            diff: diff
         )
     }
 
@@ -247,7 +262,9 @@ enum ToolCallDisplayFormatter {
         }
     }
 
-    private static func parsedJSONValue(from text: String) -> JSONValue? {
+    /// The preview as JSON, tolerating escaped quotes and up to three levels of
+    /// JSON-in-a-string encoding. Nil for plain text and cut-off JSON.
+    static func parsedJSONValue(from text: String) -> JSONValue? {
         let candidates = jsonCandidates(from: text)
 
         for candidate in candidates {
@@ -307,7 +324,7 @@ enum ToolCallDisplayFormatter {
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
-    fileprivate static func normalizedDisplayString(_ value: String) -> String {
+    static func normalizedDisplayString(_ value: String) -> String {
         value
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: #"\\r\\n"#, with: "\n")

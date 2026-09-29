@@ -178,8 +178,11 @@ enum BotTranscriptProjection {
             switch role {
             case "tool":
                 pendingStart = pendingStart ?? index
+                // Edit rows (`write_file`, `patch`) carry the original result as
+                // `content`, so a resumed edit shows the same diff as the live row.
                 pendingTools.append(ToolCall(
-                    id: "\(root)/\(index)", name: row["name"].text, preview: row["context"].text,
+                    id: "\(root)/\(index)", name: row["name"].text,
+                    preview: BotTurnActivity.resultPreview(row["content"]) ?? row["context"].text,
                     args: row["args"].argumentDictionary, isCompleted: true
                 ))
             case "assistant", "user":
