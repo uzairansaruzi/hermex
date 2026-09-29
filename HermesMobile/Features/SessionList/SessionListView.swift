@@ -28,12 +28,55 @@ struct SessionListForegroundRefresh: Equatable {
     }
 }
 
-/// Which screen shows the archive Undo toast: the one whose row was archived.
-/// On iPhone the Scheduled screen covers the list; on iPad it fills the detail
-/// column beside the sidebar.
-private enum SessionListToastHost: Equatable {
-    case list
-    case scheduled
+/// Picks the screen for the archive Undo toast (#865). Each archive gets a
+/// number from `archiveStarted` when it starts. Once the server confirms it,
+/// `archiveConfirmed` returns the host for its toast, or nil for no toast:
+/// - Replies can land out of order, so an older archive never replaces a newer
+///   one's toast.
+/// - The toast shows on the screen the row was swiped on, if the user is still
+///   there. Otherwise it shows on the other session screen if that is showing,
+///   or nowhere. Either way the session is in Archived.
+struct SessionListArchiveToastRoute: Equatable {
+    /// On iPhone the Scheduled screen covers the list; on iPad it fills the
+    /// detail column beside the sidebar.
+    enum Host: Equatable {
+        case list
+        case scheduled
+    }
+
+    /// The screen the current toast belongs to.
+    private(set) var host = Host.list
+    private var startedCount = 0
+    private var newestConfirmed = 0
+
+    mutating func archiveStarted() -> Int {
+        startedCount += 1
+        return startedCount
+    }
+
+    mutating func archiveConfirmed(
+        _ number: Int,
+        swipedOn: Host,
+        destination: SessionNavigationDestination?,
+        isRegularWidth: Bool
+    ) -> Host? {
+        guard number > newestConfirmed else { return nil }
+        newestConfirmed = number
+
+        func isShowing(_ candidate: Host) -> Bool {
+            switch candidate {
+            case .list:
+                return isRegularWidth || destination == nil
+            case .scheduled:
+                return destination == .utility(.scheduled)
+            }
+        }
+
+        let otherHost: Host = swipedOn == .list ? .scheduled : .list
+        guard let chosen = [swipedOn, otherHost].first(where: isShowing) else { return nil }
+        host = chosen
+        return chosen
+    }
 }
 
 @MainActor
@@ -91,7 +134,7 @@ struct SessionListView: View {
     /// Set while compact width pops back to the list on the way to Settings → Notifications.
     @State private var opensNotificationSettingsOnReturn = false
     @State private var actionToast = ActionToastState()
-    @State private var actionToastHost = SessionListToastHost.list
+    @State private var archiveToastRoute = SessionListArchiveToastRoute()
     @FocusState private var searchFieldIsFocused: Bool
     @AppStorage(SessionSidebarDisclosureSettings.profilesAreExpandedKey)
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
@@ -553,7 +596,7 @@ struct SessionListView: View {
             // The Undo toast sits 10 pt above the Chat button, as wide as the
             // column, and grows upward so the button never moves.
             VStack(alignment: .trailing, spacing: 10) {
-                if actionToastHost == .list {
+                if archiveToastRoute.host == .list {
                     ActionToastView(state: actionToast)
                         .padding(.bottom, isSearchingSessions ? 22 : 0)
                 }
@@ -648,10 +691,10 @@ struct SessionListView: View {
                         ? navigationState.selectedSessionID
                         : nil,
                     actions: sessionRowActions(toastHost: .scheduled),
-                    actionToast: actionToastHost == .scheduled ? actionToast : nil
+                    actionToast: archiveToastRoute.host == .scheduled ? actionToast : nil
                 )
                 .onDisappear {
-                    if actionToastHost == .scheduled {
+                    if archiveToastRoute.host == .scheduled {
                         actionToast.dismiss()
                     }
                 }
@@ -1163,7 +1206,7 @@ struct SessionListView: View {
 
     /// `toastHost` names the screen these rows are on, so an archive's Undo
     /// toast shows where the row was swiped.
-    private func sessionRowActions(toastHost: SessionListToastHost = .list) -> SessionListRowActions {
+    private func sessionRowActions(toastHost: SessionListArchiveToastRoute.Host = .list) -> SessionListRowActions {
         SessionListRowActions(
             retryLoad: {
                 Task { await refreshSessionsAndActiveProfile() }
@@ -1364,7 +1407,8 @@ struct SessionListView: View {
         }
     }
 
-    private func archive(_ session: SessionSummary, toastHost: SessionListToastHost) async {
+    private func archive(_ session: SessionSummary, toastHost: SessionListArchiveToastRoute.Host) async {
+        let archiveNumber = archiveToastRoute.archiveStarted()
         let didArchive = await viewModel.archive(
             session,
             modelContext: modelContext,
@@ -1375,18 +1419,23 @@ struct SessionListView: View {
         if didArchive {
             removeSessionFromNavigation(session)
             SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
-            showArchiveUndoToast(for: session, on: toastHost)
+            let shownOn = archiveToastRoute.archiveConfirmed(
+                archiveNumber,
+                swipedOn: toastHost,
+                destination: navigationState.destination,
+                isRegularWidth: horizontalSizeClass == .regular
+            )
+            if shownOn != nil {
+                showArchiveUndoToast(for: session)
+            }
         }
     }
 
-    /// "Archived · Undo" after the server confirms an archive (#865). A second
-    /// archive replaces the toast; the first session stays in Archived.
-    private func showArchiveUndoToast(for session: SessionSummary, on host: SessionListToastHost) {
+    /// "Archived · Undo" after the server confirms an archive (#865), on the
+    /// host `archiveToastRoute` picked. A newer archive replaces the toast; the
+    /// first session stays in Archived.
+    private func showArchiveUndoToast(for session: SessionSummary) {
         let message = String(localized: "Archived")
-        // The reply can land after the user left the Scheduled screen. Its toast
-        // then shows on the list, where they are now, instead of waiting unseen.
-        let isScheduledShowing = navigationState.destination == .utility(.scheduled)
-        actionToastHost = host == .scheduled && !isScheduledShowing ? .list : host
         actionToast.show(
             ActionToast(
                 message: message,

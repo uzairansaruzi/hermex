@@ -555,6 +555,68 @@ final class SessionNavigationStateTests: XCTestCase {
 
         XCTAssertFalse(refresh.consumeIfReady(didCompleteInitialLoad: true, isLoading: false))
     }
+
+    func testArchiveToastShowsOnTheScreenTheRowWasSwipedOn() {
+        var route = SessionListArchiveToastRoute()
+        let scheduledArchive = route.archiveStarted()
+        XCTAssertEqual(
+            route.archiveConfirmed(
+                scheduledArchive, swipedOn: .scheduled, destination: .utility(.scheduled), isRegularWidth: false
+            ),
+            .scheduled
+        )
+        XCTAssertEqual(route.host, .scheduled)
+
+        // iPad: the sidebar keeps its own toast while Scheduled fills the detail column.
+        let sidebarArchive = route.archiveStarted()
+        XCTAssertEqual(
+            route.archiveConfirmed(
+                sidebarArchive, swipedOn: .list, destination: .utility(.scheduled), isRegularWidth: true
+            ),
+            .list
+        )
+        XCTAssertEqual(route.host, .list)
+    }
+
+    func testArchiveToastFollowsTheUserToTheOtherSessionScreen() {
+        var route = SessionListArchiveToastRoute()
+
+        // iPhone: swiped on Scheduled, then tapped Back before the reply.
+        let leftScheduled = route.archiveStarted()
+        XCTAssertEqual(
+            route.archiveConfirmed(leftScheduled, swipedOn: .scheduled, destination: nil, isRegularWidth: false),
+            .list
+        )
+
+        // iPhone: swiped on the list, then opened Scheduled before the reply.
+        let openedScheduled = route.archiveStarted()
+        XCTAssertEqual(
+            route.archiveConfirmed(
+                openedScheduled, swipedOn: .list, destination: .utility(.scheduled), isRegularWidth: false
+            ),
+            .scheduled
+        )
+    }
+
+    func testArchiveToastIsSkippedWhileAnotherScreenCoversBothHosts() {
+        var route = SessionListArchiveToastRoute()
+        let archive = route.archiveStarted()
+        let chat = SessionNavigationDestination.session(SessionSummary(sessionId: "open-chat"))
+
+        XCTAssertNil(route.archiveConfirmed(archive, swipedOn: .scheduled, destination: chat, isRegularWidth: false))
+    }
+
+    func testOlderArchiveNeverReplacesTheNewerArchivesToast() {
+        var route = SessionListArchiveToastRoute()
+        let first = route.archiveStarted()
+        let second = route.archiveStarted()
+
+        XCTAssertEqual(route.archiveConfirmed(second, swipedOn: .list, destination: nil, isRegularWidth: false), .list)
+        XCTAssertNil(
+            route.archiveConfirmed(first, swipedOn: .list, destination: nil, isRegularWidth: false),
+            "the first archive's reply landed last"
+        )
+    }
 }
 
 private enum DestinationReturnEvent: Equatable {
