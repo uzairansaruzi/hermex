@@ -151,6 +151,7 @@ struct FilePreviewView: View {
         } message: {
             Text(saveConfirmationMessage ?? "")
         }
+        .transcriptLinks()
     }
 
     /// Wrap, Copy, and Select Text for source files. The drawn surface owns long

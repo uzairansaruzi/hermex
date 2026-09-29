@@ -147,6 +147,7 @@ import SwiftUI
         .onChange(of: reader.feedback) { _, feedback in
             if let feedback { ChatHaptics.botFeedback(feedback.event, isEnabled: isHapticsEnabled) }
         }
+        .transcriptLinks()
     }
 
     func dismissKeyboard() {

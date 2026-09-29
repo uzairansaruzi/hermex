@@ -54307,108 +54307,108 @@
         }
       }
     },
-    "Opens in the external browser" : {
+    "Opens the web page" : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "يفتح في المتصفح الخارجي"
+            "value" : "يفتح صفحة الويب"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Öffnet im externen Browser"
+            "value" : "Öffnet die Webseite"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Se abre en el navegador externo"
+            "value" : "Abre la página web"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "S'ouvre dans le navigateur externe"
+            "value" : "Ouvre la page web"
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "נפתח בדפדפן החיצוני"
+            "value" : "פותח את דף האינטרנט"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Si apre nel browser esterno"
+            "value" : "Apre la pagina web"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "外部ブラウザで開きます"
+            "value" : "Webページを開きます"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "외부 브라우저에서 열려요"
+            "value" : "웹 페이지를 열어요"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Opent in de externe browser"
+            "value" : "Opent de webpagina"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Otwiera w zewnętrznej przeglądarce"
+            "value" : "Otwiera stronę internetową"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Abre no navegador externo"
+            "value" : "Abre a página da web"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Открывается во внешнем браузере"
+            "value" : "Открывает веб-страницу"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Harici tarayıcıda açılır"
+            "value" : "Web sayfasını açar"
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "بیرونی براؤزر میں کھلتا ہے"
+            "value" : "ویب صفحہ کھولتا ہے"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "在外部瀏覽器中開啟"
+            "value" : "開啟網頁"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "在外部浏览器中打开"
+            "value" : "打开网页"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "在外部瀏覽器中開啟"
+            "value" : "開啟網頁"
           }
         }
       }

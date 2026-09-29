@@ -58,14 +58,16 @@ struct BotArtifactMessageView: View {
                 } action: { responseIsVisible = $0 }
             }
         }
-        .environment(\.openURL, OpenURLAction { url in
-            if let path = try? BotArtifactReference.path(url.absoluteString, address: model.connection.address) {
-                previewContext = model.artifactContext
-                preview = TranscriptMediaPreviewItem(reference: TranscriptMediaReference(rawReference: path))
-                return .handled
+        // Artifact links can be http(s), so the artifact check runs before
+        // `transcriptLinks` opens other web links in the in-app browser.
+        .transcriptLinks { url in
+            guard let path = try? BotArtifactReference.path(url.absoluteString, address: model.connection.address) else {
+                return nil
             }
-            return .systemAction
-        })
+            previewContext = model.artifactContext
+            preview = TranscriptMediaPreviewItem(reference: TranscriptMediaReference(rawReference: path))
+            return .handled
+        }
         .sheet(item: $preview) { item in
             BotArtifactPreview(reference: item.reference) {
                 guard let context = previewContext else { throw BotFailure.stale }

@@ -47,6 +47,7 @@ struct MemoryView: View {
             .task {
                 await loadMemory()
             }
+            .transcriptLinks()
     }
 
     @ViewBuilder

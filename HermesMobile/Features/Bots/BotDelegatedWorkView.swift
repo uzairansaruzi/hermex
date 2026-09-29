@@ -344,6 +344,7 @@ struct BotDelegationResultsSheet: View {
                 }
             }
         }
+        .transcriptLinks()
     }
 
     private var summary: String {

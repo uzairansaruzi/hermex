@@ -240,6 +240,36 @@ final class ChatScrollPolicyTests: XCTestCase {
             ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false, isDisclosureSettling: false)
         )
     }
+
+    // MARK: - Transcript links
+
+    func testTheScreensOwnResultWinsEvenForAWebLink() {
+        let decision = TranscriptLinkRouter.decision(for: URL(string: "https://example.com")!, hostResult: .handled)
+        guard case .host = decision else { return XCTFail("Expected the screen's result, got \(decision)") }
+    }
+
+    func testAWebLinkTheScreenLeavesOpensInApp() {
+        let decision = TranscriptLinkRouter.decision(for: URL(string: "https://example.com")!, hostResult: nil)
+        guard case .inAppBrowser = decision else { return XCTFail("Expected the in-app browser, got \(decision)") }
+    }
+
+    func testAnotherLinkTheScreenLeavesGoesToTheSystem() {
+        let decision = TranscriptLinkRouter.decision(for: URL(string: "mailto:someone@example.com")!, hostResult: nil)
+        guard case .system = decision else { return XCTFail("Expected the system, got \(decision)") }
+    }
+
+    @MainActor
+    func testTappingAWebLinkTheScreenLeavesOpensItInTheInAppBrowser() {
+        let router = TranscriptLinkRouter()
+        let link = URL(string: "https://example.com/docs")!
+        var opened: URL?
+        router.handler = { _ in nil }
+        router.openInAppBrowser = { opened = $0 }
+
+        router.openURL(link)
+
+        XCTAssertEqual(opened, link)
+    }
 }
 
 /// The transcript's disclosure and link actions reach every row through the
@@ -399,9 +429,9 @@ private struct SelfCapturingOwner: View {
 
     private func toggled() { toggles += 1 }
 
-    private func open(_ url: URL) -> OpenURLAction.Result {
+    private func open(_ url: URL) -> OpenURLAction.Result? {
         toggles += 1
-        return .handled
+        return nil
     }
 }
 

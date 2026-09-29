@@ -201,13 +201,40 @@ extension EnvironmentValues {
     }
 }
 
-/// Routes transcript link taps through one `OpenURLAction` that outlives body
-/// passes, for the same reason as `ChatDisclosureToggleAction`.
+/// Routes link taps through one `OpenURLAction` that outlives body passes, for
+/// the same reason as `ChatDisclosureToggleAction`. The screen's `handler` sees
+/// each link first and returns nil for links it does not own; of those, web
+/// pages open in the in-app browser and the rest go to the system.
 final class TranscriptLinkRouter {
-    var handler: (URL) -> OpenURLAction.Result = { _ in .systemAction }
+    enum Decision {
+        case host(OpenURLAction.Result)
+        case inAppBrowser
+        case system
+    }
+
+    var handler: (URL) -> OpenURLAction.Result? = { _ in nil }
+    var openInAppBrowser: (URL) -> Void = { _ in }
 
     private(set) lazy var openURL = OpenURLAction { [weak self] url in
-        self?.handler(url) ?? .systemAction
+        self?.route(url) ?? .systemAction
+    }
+
+    /// What a tap on `url` does, given the screen handler's result for it.
+    static func decision(for url: URL, hostResult: OpenURLAction.Result?) -> Decision {
+        if let hostResult { return .host(hostResult) }
+        return InAppBrowserPolicy.opensInApp(url) ? .inAppBrowser : .system
+    }
+
+    private func route(_ url: URL) -> OpenURLAction.Result {
+        switch Self.decision(for: url, hostResult: handler(url)) {
+        case .host(let result):
+            return result
+        case .inAppBrowser:
+            openInAppBrowser(url)
+            return .handled
+        case .system:
+            return .systemAction
+        }
     }
 }
 
@@ -218,10 +245,18 @@ extension View {
         modifier(ChatDisclosureToggledModifier(handler: handler))
     }
 
-    /// Installs `handler` as the transcript's `openURL` without invalidating
-    /// link readers when the caller rebuilds the closure.
-    func transcriptLinks(perform handler: @escaping (URL) -> OpenURLAction.Result) -> some View {
+    /// Routes every link tap below this view through `handler` first, without
+    /// invalidating link readers when the caller rebuilds the closure. Links
+    /// the handler returns nil for open web pages in an in-app Safari sheet
+    /// presented from here, so a screen that is itself in a sheet installs its
+    /// own; other links go to the system.
+    func transcriptLinks(perform handler: @escaping (URL) -> OpenURLAction.Result?) -> some View {
         modifier(TranscriptLinksModifier(handler: handler))
+    }
+
+    /// `transcriptLinks(perform:)` for a screen with no links of its own.
+    func transcriptLinks() -> some View {
+        transcriptLinks { _ in nil }
     }
 }
 
@@ -240,13 +275,28 @@ private struct ChatDisclosureToggledModifier: ViewModifier {
 }
 
 private struct TranscriptLinksModifier: ViewModifier {
-    let handler: (URL) -> OpenURLAction.Result
+    let handler: (URL) -> OpenURLAction.Result?
     @State private var router = TranscriptLinkRouter()
+    @State private var webPage: InAppBrowserPage?
 
     func body(content: Content) -> some View {
         router.handler = handler
-        return content.environment(\.openURL, router.openURL)
+        // Captures the binding, not self: self's state holds the router, which
+        // would then hold itself through this closure.
+        let presented = $webPage
+        router.openInAppBrowser = { presented.wrappedValue = InAppBrowserPage(url: $0) }
+        return content
+            .environment(\.openURL, router.openURL)
+            .sheet(item: presented) { page in
+                SafariView(url: page.url) { presented.wrappedValue = nil }
+                    .ignoresSafeArea()
+            }
     }
+}
+
+private struct InAppBrowserPage: Identifiable {
+    let url: URL
+    var id: URL { url }
 }
 
 /// Keeps transcript reconciliation and other state-heavy startup work out of

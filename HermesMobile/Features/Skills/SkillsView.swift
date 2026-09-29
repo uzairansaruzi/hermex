@@ -315,6 +315,7 @@ struct SkillDetailView: View {
                 }
                 .adaptivePagePresentation()
             }
+            .transcriptLinks()
     }
 
     @ViewBuilder
@@ -472,6 +473,7 @@ struct SkillLinkedFileView: View {
                 }
             }
         }
+        .transcriptLinks()
     }
 }
 

@@ -19,6 +19,7 @@ struct KanbanCardDetailView: View {
         }
         .navigationTitle(state?.detail?.card?.title ?? String(localized: "Loading"))
         .navigationBarTitleDisplayMode(.inline)
+        .transcriptLinks()
     }
 }
 

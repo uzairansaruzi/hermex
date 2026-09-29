@@ -643,11 +643,11 @@ struct ChatView: View {
     }
 
     /// A chat link that names a workspace file opens the source viewer at its line; every
-    /// other link keeps the system behaviour. The viewer's own error state covers a path
-    /// the server no longer has, so the tap never waits on a fetch.
-    private func handleTranscriptLink(_ url: URL) -> OpenURLAction.Result {
+    /// other link returns nil for `transcriptLinks` to open. The viewer's own error state
+    /// covers a path the server no longer has, so the tap never waits on a fetch.
+    private func handleTranscriptLink(_ url: URL) -> OpenURLAction.Result? {
         guard let reference = FileReference.parse(url.absoluteString, workspaceRoot: session.workspace) else {
-            return .systemAction
+            return nil
         }
         openedFileReference = reference
         return .handled
