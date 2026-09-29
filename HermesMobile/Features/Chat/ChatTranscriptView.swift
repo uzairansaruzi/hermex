@@ -140,6 +140,16 @@ struct ChatTranscriptView: View {
             .onTapGesture {
                 onDismissKeyboard()
             }
+            // A fork can be empty (upstream allows `keep_count: 0`, and an edit of
+            // the first message truncates to nothing); it still links to its parent.
+            .overlay(alignment: .top) {
+                if let forkOrigin {
+                    ForkOriginRowView(origin: forkOrigin, onOpen: onOpenForkParent)
+                        .frame(maxWidth: ChatReadingWidth.maximum)
+                        .padding(.horizontal, transcriptHorizontalPadding)
+                        .padding(.top, 16)
+                }
+            }
         } else {
             transcriptScrollView
         }
