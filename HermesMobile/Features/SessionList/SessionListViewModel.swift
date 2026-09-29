@@ -1352,8 +1352,13 @@ final class SessionListViewModel {
 
     /// Creates a session in the explicit App Intent profile or the sidebar's selected
     /// profile. The server supplies that profile's model and last workspace. With
-    /// neither profile known, preserve the cookie-scoped workspace lookup.
-    func createSession(modelContext: ModelContext? = nil, profile: String? = nil) async -> SessionSummary? {
+    /// neither profile known, preserve the cookie-scoped workspace lookup. In-app New
+    /// Chat passes the project filter the user tapped under as `projectID` (#875).
+    func createSession(
+        modelContext: ModelContext? = nil,
+        profile: String? = nil,
+        projectID: String? = nil
+    ) async -> SessionSummary? {
         isCreatingSession = true
         actionErrorMessage = nil
         lastError = nil
@@ -1370,7 +1375,8 @@ final class SessionListViewModel {
                 workspace: workspace,
                 model: nil,
                 modelProvider: nil,
-                profile: requestedProfile
+                profile: requestedProfile,
+                projectID: Self.nonEmpty(projectID)
             )
 
             guard let sessionDetail = response.session else {

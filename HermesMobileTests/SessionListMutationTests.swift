@@ -462,6 +462,61 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateSessionSendsProjectIDWhenGiven() async throws {
+        var sentProjectIDs: [String?] = []
+        let viewModel = try makeNewSessionViewModel { body in
+            sentProjectIDs.append(body["project_id"] as? String)
+        }
+
+        let created = await viewModel.createSession(projectID: " p1 ")
+
+        XCTAssertEqual(sentProjectIDs, ["p1"])
+        XCTAssertEqual(created?.projectId, "p1")
+        XCTAssertNil(viewModel.lastError)
+    }
+
+    @MainActor
+    func testCreateSessionOmitsProjectIDByDefault() async throws {
+        var bodyKeys: [[String]] = []
+        let viewModel = try makeNewSessionViewModel { body in
+            bodyKeys.append(body.keys.sorted())
+        }
+
+        let unfiltered = await viewModel.createSession()
+        let blank = await viewModel.createSession(projectID: "  ")
+
+        XCTAssertEqual(bodyKeys, [["workspace"], ["workspace"]])
+        XCTAssertNil(unfiltered?.projectId)
+        XCTAssertNil(blank?.projectId)
+        XCTAssertNil(viewModel.lastError)
+    }
+
+    /// A view model whose server answers `/api/session/new` like upstream: it echoes
+    /// the request's `project_id` on the created session. `inspect` sees each body.
+    @MainActor
+    private func makeNewSessionViewModel(
+        inspect: @escaping ([String: Any]) -> Void
+    ) throws -> SessionListViewModel {
+        try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[],"last":"/tmp/workspace"}"#, for: request)
+            case "/api/session/new":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                inspect(body)
+                let projectField = (body["project_id"] as? String).map { #","project_id":"\#($0)""# } ?? ""
+                return apiTestJSONResponse(
+                    #"{"session":{"session_id":"new-1","workspace":"/tmp/workspace"\#(projectField)}}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+    }
+
+    @MainActor
     func testSettingsProfileSelectionWinsOverPendingRefreshAndImmediatelyCreatesInThatProfile() async throws {
         for refreshFails in [false, true] {
             let refreshStarted = expectation(description: "Old profile refresh started")

@@ -644,6 +644,7 @@ struct SessionListView: View {
                 initialAttachments: route.initialAttachments,
                 autoStartsVoiceInput: route.autoStartsVoiceInput,
                 profileName: route.profileName,
+                projectID: route.projectID,
                 server: server,
                 viewModel: viewModel,
                 onAPIError: authManager.handleAPIError,
@@ -1668,8 +1669,11 @@ struct SessionListView: View {
         )
     }
 
+    /// In-app New Chat (Chat button, iPad empty state, ⌘N). The route snapshots the
+    /// project filter at tap time so the new chat joins the project the user sees
+    /// (#875). System entry points (App Intents, deep links, shares) never inherit it.
     private func openNewChat() {
-        selectDestination(PendingNewChatRoute())
+        selectDestination(PendingNewChatRoute(projectID: selectedProjectID))
     }
 
     private func selectSession(_ session: SessionSummary) {
@@ -1894,17 +1898,21 @@ struct PendingNewChatRoute: Identifiable, Hashable {
     let autoStartsVoiceInput: Bool
     /// When set, the new session is created pinned to this profile (#339).
     let profileName: String?
+    /// When set, the new session is created in this project (#875).
+    let projectID: String?
 
     init(
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         autoStartsVoiceInput: Bool = false,
-        profileName: String? = nil
+        profileName: String? = nil,
+        projectID: String? = nil
     ) {
         self.initialDraft = initialDraft
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
+        self.projectID = projectID
     }
 
     static func == (lhs: PendingNewChatRoute, rhs: PendingNewChatRoute) -> Bool {
@@ -1994,6 +2002,7 @@ private struct PendingNewChatView: View {
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
     let profileName: String?
+    let projectID: String?
     let draftStore: ChatDraftStore
 
     @State private var createdSession: SessionSummary?
@@ -2010,6 +2019,7 @@ private struct PendingNewChatView: View {
         initialAttachments: [SharedAttachmentImport] = [],
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
+        projectID: String? = nil,
         server: URL,
         viewModel: SessionListViewModel,
         onAPIError: @escaping (Error) -> Void,
@@ -2023,6 +2033,7 @@ private struct PendingNewChatView: View {
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
+        self.projectID = projectID
         self.draftStore = draftStore ?? .shared
         _draftMessage = State(initialValue: initialDraft)
     }
@@ -2151,7 +2162,11 @@ private struct PendingNewChatView: View {
 
         didStartCreation = true
         creationErrorMessage = nil
-        let session = await viewModel.createSession(modelContext: modelContext, profile: profileName)
+        let session = await viewModel.createSession(
+            modelContext: modelContext,
+            profile: profileName,
+            projectID: projectID
+        )
         guard !Task.isCancelled else { return }
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
