@@ -6,6 +6,7 @@ struct BotRoomComposerView: View {
     let roster: [BotProfile]
     let avatars: [String: UIImage]
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @State private var selection = ComposerSelection()
@@ -63,6 +64,7 @@ struct BotRoomComposerView: View {
                 } else {
                     Image(systemName: stop ? "stop.fill" : "arrow.up")
                         .font(.system(size: iconSize, weight: .semibold))
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                         .frame(width: ChatComposerMetrics.actionSize)
                 }
             }

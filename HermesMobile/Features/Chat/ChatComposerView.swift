@@ -907,8 +907,11 @@ struct MessageComposerView: View {
                 .tint(actionButtonForeground)
                 .scaleEffect(0.9)
         } else {
+            // Morphs between Stop and the default's Send glyph; instant
+            // with Reduce Motion.
             Image(systemName: sendButton.systemName)
                 .font(.system(size: actionIconSize, weight: .semibold))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
         }
     }
 
