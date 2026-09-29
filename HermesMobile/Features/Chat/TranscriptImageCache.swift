@@ -2,8 +2,8 @@ import UIKit
 
 /// The process-wide cache of transcript thumbnails: attached images
 /// (`MessageBubbleView`) and images the agent links in replies
-/// (`TranscriptMediaView`). Every transcript that renders those views shares
-/// it: webui chats, archived sessions, Bot Chat, Bot rooms and cached history.
+/// (`TranscriptMediaView`), in webui chats and archived sessions. Bot
+/// transcripts render `MessageBubbleView` text-only and never reach it.
 ///
 /// Bounded to 48 MB of decoded pixels and 150 images, and emptied on a memory
 /// warning; an evicted image reloads the next time its row appears. Keys carry
@@ -19,14 +19,19 @@ actor TranscriptImageCache {
     private let notificationCenter: NotificationCenter
     private let memoryWarningObserver: NSObjectProtocol
 
-    /// A fresh instance with its own storage; the app uses `shared`. Tests pass
-    /// their own center so a posted memory warning reaches only their cache.
-    init(notificationCenter: NotificationCenter = .default) {
-        // NSCache is thread-safe, which lets the observer clear it on the posting thread.
-        nonisolated(unsafe) let storage = NSCache<NSString, UIImage>()
+    /// A fresh instance that applies the limits to `storage`; the app uses
+    /// `shared`. Tests pass their own center, so a posted memory warning
+    /// reaches only their cache, and may pass storage that records what the
+    /// cache stores.
+    init(
+        notificationCenter: NotificationCenter = .default,
+        storage: NSCache<NSString, UIImage> = NSCache()
+    ) {
         storage.totalCostLimit = 48 * 1024 * 1024
         storage.countLimit = 150
         self.storage = storage
+        // NSCache is thread-safe, which lets the observer clear it on the posting thread.
+        nonisolated(unsafe) let observedStorage = storage
         self.notificationCenter = notificationCenter
         // Loads in flight still finish and may land in the emptied cache.
         memoryWarningObserver = notificationCenter.addObserver(
@@ -34,21 +39,12 @@ actor TranscriptImageCache {
             object: nil,
             queue: nil
         ) { _ in
-            storage.removeAllObjects()
+            observedStorage.removeAllObjects()
         }
     }
 
     deinit {
         notificationCenter.removeObserver(memoryWarningObserver)
-    }
-
-    /// The limits as the underlying `NSCache` reports them.
-    var totalCostLimit: Int {
-        storage.totalCostLimit
-    }
-
-    var countLimit: Int {
-        storage.countLimit
     }
 
     /// The thumbnail for `key`, calling `load` for its bytes only when the
@@ -102,7 +98,7 @@ actor TranscriptImageCache {
     }
 
     /// The memory a decoded image holds; its cost in the cache.
-    nonisolated static func decodedByteCount(of image: UIImage) -> Int {
+    private nonisolated static func decodedByteCount(of image: UIImage) -> Int {
         if let cgImage = image.cgImage {
             return cgImage.bytesPerRow * cgImage.height
         }

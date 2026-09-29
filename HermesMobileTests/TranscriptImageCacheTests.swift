@@ -59,19 +59,18 @@ final class TranscriptImageCacheTests: XCTestCase {
         XCTAssertEqual(reloaded?.cgImage?.width, 64)
     }
 
-    func testStoredImageCostsItsDecodedBytesUnderTheConfiguredLimits() async throws {
-        let cache = TranscriptImageCache(notificationCenter: NotificationCenter())
+    func testStoredImageCostsItsDecodedBytesUnderTheConfiguredLimits() async {
+        let storage = CostRecordingStorage()
+        let cache = TranscriptImageCache(notificationCenter: NotificationCenter(), storage: storage)
         let data = Self.pngData(width: 512, height: 512)
 
         let image = await cache.image(forKey: "row") { data }
-        let stored = try XCTUnwrap(image)
 
-        // 512 × 512 pixels × 4 bytes.
-        XCTAssertEqual(TranscriptImageCache.decodedByteCount(of: stored), 1_048_576)
-        let totalCostLimit = await cache.totalCostLimit
-        let countLimit = await cache.countLimit
-        XCTAssertEqual(totalCostLimit, 50_331_648, "48 MB")
-        XCTAssertEqual(countLimit, 150)
+        XCTAssertEqual(image?.cgImage?.width, 512)
+        // 512 × 512 pixels × 4 bytes, handed to NSCache as the entry's cost.
+        XCTAssertEqual(storage.recordedCosts, [1_048_576])
+        XCTAssertEqual(storage.totalCostLimit, 50_331_648, "48 MB")
+        XCTAssertEqual(storage.countLimit, 150)
     }
 
     /// Stands in for the full-size bytes `transcriptMediaThumbnailData` falls
@@ -125,5 +124,15 @@ private actor LoadRecorder {
     func recordCall() -> Int {
         callCount += 1
         return callCount
+    }
+}
+
+/// Records the cost the cache hands `NSCache` for each stored image.
+private final class CostRecordingStorage: NSCache<NSString, UIImage> {
+    private(set) var recordedCosts: [Int] = []
+
+    override func setObject(_ obj: UIImage, forKey key: NSString, cost g: Int) {
+        recordedCosts.append(g)
+        super.setObject(obj, forKey: key, cost: g)
     }
 }
