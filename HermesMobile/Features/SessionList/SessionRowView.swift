@@ -20,14 +20,11 @@ struct SessionRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            if Self.isActiveStreaming(session) && !isViewingCachedData {
-                ActiveSessionStreamingIndicator()
-                    .padding(.top, streamingIndicatorTopPadding)
-            } else if isUnread && effectiveAttentionState == nil {
+            if isUnread && effectiveAttentionState == nil {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 10, height: 10)
-                    .padding(.top, streamingIndicatorTopPadding)
+                    .padding(.top, unreadDotTopPadding)
                     .accessibilityHidden(true)
             }
 
@@ -330,8 +327,7 @@ struct SessionRowView: View {
     }
 
     private var visibleStateBadges: [SessionRowStateBadgeKind] {
-        // Streaming has no badge: the trailing "Working" label and the pulsing
-        // dot already say it, and a third marker only added noise.
+        // Streaming has no badge: the trailing "Working" label already says it.
         var badges: [SessionRowStateBadgeKind] = []
 
         if isViewingCachedData {
@@ -374,7 +370,7 @@ struct SessionRowView: View {
         dynamicTypeSize.isAccessibilitySize ? 3 : 1
     }
 
-    private var streamingIndicatorTopPadding: CGFloat {
+    private var unreadDotTopPadding: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 8 : 7
     }
 
@@ -531,40 +527,6 @@ private struct SessionRowStateBadge: View {
             .padding(.vertical, 2)
             .background(badge.tint.opacity(0.12), in: Capsule())
             .accessibilityHidden(true)
-    }
-}
-
-private struct ActiveSessionStreamingIndicator: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isExpanded = false
-
-    var body: some View {
-        Circle()
-            .fill(.green)
-            .frame(width: 9, height: 9)
-            .scaleEffect(reduceMotion ? 1 : (isExpanded ? 1.4 : 1.0))
-            .accessibilityHidden(true)
-            .onAppear {
-                updateAnimation()
-            }
-            .onChange(of: reduceMotion) {
-                updateAnimation()
-            }
-            .onDisappear {
-                isExpanded = false
-            }
-    }
-
-    private func updateAnimation() {
-        guard !reduceMotion else {
-            isExpanded = false
-            return
-        }
-
-        isExpanded = false
-        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-            isExpanded = true
-        }
     }
 }
 
