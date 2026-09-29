@@ -576,12 +576,16 @@ struct SessionListView: View {
         Group {
             switch destination {
             case .settings(let scrollTo):
+                // Keyed on the anchor: the scroll and the expanded push section apply only
+                // when Settings is built, and a chat under Settings → Archived Sessions
+                // re-targets the Settings already open on compact (#863).
                 SettingsView(
                     authManager: authManager,
                     server: server,
                     initialScrollTarget: scrollTo,
                     onDefaultProfileSelected: viewModel.adoptDefaultProfileSelection
                 )
+                .id(scrollTo)
             case .bots:
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination)
             case .tasks:
