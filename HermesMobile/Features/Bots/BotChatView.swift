@@ -150,8 +150,7 @@ import SwiftUI
                     // neither the size-change anchor nor the next activity update
                     // moves the reader. Latest brings them back.
                     .chatDisclosureToggled { handleFollowEvent(.userScrollBegin) }
-                    // One link router for the whole transcript, so a page opened
-                    // from the live reply stays open when its settled row replaces it.
+                    // One link router for the whole transcript.
                     .transcriptLinks()
                     .background {
                         ChatScrollObserver(isStreaming: isStreaming, onFollowEvent: handleFollowEvent, onMetrics: updateScrollMetrics)

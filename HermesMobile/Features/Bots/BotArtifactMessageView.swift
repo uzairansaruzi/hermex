@@ -62,9 +62,7 @@ struct BotArtifactMessageView: View {
             }
         }
         // Artifact links can be http(s), so the row checks them first and hands
-        // the rest to the chat's router. Not `transcriptLinks` here: that would
-        // present the web page from this row, and the live reply's row is
-        // replaced when the reply settles, which would close the page.
+        // the rest to the chat's one `transcriptLinks` router.
         .environment(\.openURL, OpenURLAction { url in
             guard let path = try? BotArtifactReference.path(url.absoluteString, address: model.connection.address) else {
                 openURL(url)

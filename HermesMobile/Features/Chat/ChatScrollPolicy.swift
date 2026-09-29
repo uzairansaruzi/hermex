@@ -213,7 +213,9 @@ final class TranscriptLinkRouter {
     }
 
     var handler: (URL) -> OpenURLAction.Result? = { _ in nil }
-    var openInAppBrowser: (URL) -> Void = { _ in }
+    var openInAppBrowser: (URL) -> Void = { url in
+        MainActor.assumeIsolated { SafariView.present(url) }
+    }
 
     private(set) lazy var openURL = OpenURLAction { [weak self] url in
         self?.route(url) ?? .systemAction
@@ -248,10 +250,10 @@ extension View {
     /// Routes every link tap below this view through `handler` first, without
     /// invalidating link readers when the caller rebuilds the closure. Links
     /// the handler returns nil for open web pages in an in-app Safari sheet
-    /// presented from here, so a screen that is itself in a sheet installs its
-    /// own; other links go to the system.
+    /// over whatever is on screen (`SafariView`); other links go to the system.
     func transcriptLinks(perform handler: @escaping (URL) -> OpenURLAction.Result?) -> some View {
-        modifier(TranscriptLinksModifier(handler: handler))
+        modifier(TranscriptLinksModifier())
+            .modifier(TranscriptLinkHandlerModifier(handler: handler))
     }
 
     /// `transcriptLinks(perform:)` for a screen with no links of its own.
@@ -274,34 +276,39 @@ private struct ChatDisclosureToggledModifier: ViewModifier {
     }
 }
 
-private struct TranscriptLinksModifier: ViewModifier {
+/// Owns the router and refreshes its handler on every pass, publishing only the
+/// router itself: a reference that compares equal, as with `chatDisclosureToggled`.
+private struct TranscriptLinkHandlerModifier: ViewModifier {
     let handler: (URL) -> OpenURLAction.Result?
     @State private var router = TranscriptLinkRouter()
-    @State private var webPage: InAppBrowserPage?
 
     func body(content: Content) -> some View {
         router.handler = handler
-        // Captures the binding, not self: self's state holds the router, which
-        // would then hold itself through this closure.
-        let presented = $webPage
-        router.openInAppBrowser = { presented.wrappedValue = InAppBrowserPage(url: $0) }
-        return content
-            .environment(\.openURL, router.openURL)
-            // Presented from a sibling so no presentation modifier wraps the
-            // link readers: with `.sheet` on the content, iOS 26 re-ran every
-            // reader on each owner pass (ChatTranscriptEnvironmentStabilityTests).
-            .background {
-                Color.clear.sheet(item: presented) { page in
-                    SafariView(url: page.url) { presented.wrappedValue = nil }
-                        .ignoresSafeArea()
-                }
-            }
+        return content.environment(\.transcriptLinkRouter, router)
     }
 }
 
-private struct InAppBrowserPage: Identifiable {
-    let url: URL
-    var id: URL { url }
+/// Publishes the enclosing router's `openURL`. It takes no inputs and its one
+/// dependency never changes, so owner passes skip its body and `openURL` is
+/// written once: re-written on every pass, iOS 26 could treat it as changed
+/// and re-run every link reader (ChatTranscriptEnvironmentStabilityTests).
+private struct TranscriptLinksModifier: ViewModifier {
+    @Environment(\.transcriptLinkRouter) private var router
+
+    func body(content: Content) -> some View {
+        content.environment(\.openURL, router?.openURL ?? OpenURLAction { _ in .systemAction })
+    }
+}
+
+private struct TranscriptLinkRouterKey: EnvironmentKey {
+    static let defaultValue: TranscriptLinkRouter? = nil
+}
+
+private extension EnvironmentValues {
+    var transcriptLinkRouter: TranscriptLinkRouter? {
+        get { self[TranscriptLinkRouterKey.self] }
+        set { self[TranscriptLinkRouterKey.self] = newValue }
+    }
 }
 
 /// Keeps transcript reconciliation and other state-heavy startup work out of
