@@ -80,6 +80,8 @@ struct SessionListView: View {
     @State private var sidebarScrollPosition: String?
     @State private var didCompleteInitialLoad = false
     @State private var returnRefreshID: UUID?
+    /// Set while compact width pops back to the list on the way to Settings → Notifications.
+    @State private var opensNotificationSettingsOnReturn = false
     @FocusState private var searchFieldIsFocused: Bool
     @AppStorage(SessionSidebarDisclosureSettings.profilesAreExpandedKey)
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
@@ -476,7 +478,21 @@ struct SessionListView: View {
             .task { showBotsForPendingDestination() }
             .onChange(of: pendingBotDestination) { showBotsForPendingDestination() }
             // Every chat below inherits this for its one-time notification offer (#863).
-            .openNotificationSettings { selectDestination(.settings(.notifications)) }
+            .openNotificationSettings { showNotificationSettings() }
+    }
+
+    /// Opens Settings → Notifications for a chat's one-time offer (#863). On compact
+    /// width a fork or a chat under Settings → Archived Sessions can sit above the
+    /// destination, and retargeting the destination leaves it on top. So compact pops
+    /// to the list first, and the list opens Settings once it is back on screen.
+    /// Regular width pops the detail column on every root selection already.
+    private func showNotificationSettings() {
+        guard horizontalSizeClass != .regular, navigationState.destination != nil else {
+            selectDestination(.settings(.notifications))
+            return
+        }
+        opensNotificationSettingsOnReturn = true
+        navigationState.clearDestination()
     }
 
     /// A bot deep link opens this server's Bots inbox, which owns resolving it. Only
@@ -505,6 +521,12 @@ struct SessionListView: View {
                 sessionListSurface
                     .navigationDestination(item: navigationDestinationBinding) { destination in
                         navigationDestination(destination)
+                    }
+                    .onAppear {
+                        // The pop `showNotificationSettings` started has landed.
+                        guard opensNotificationSettingsOnReturn else { return }
+                        opensNotificationSettingsOnReturn = false
+                        selectDestination(.settings(.notifications))
                     }
             }
         }
@@ -576,16 +598,12 @@ struct SessionListView: View {
         Group {
             switch destination {
             case .settings(let scrollTo):
-                // Keyed on the anchor: the scroll and the expanded push section apply only
-                // when Settings is built, and a chat under Settings → Archived Sessions
-                // re-targets the Settings already open on compact (#863).
                 SettingsView(
                     authManager: authManager,
                     server: server,
                     initialScrollTarget: scrollTo,
                     onDefaultProfileSelected: viewModel.adoptDefaultProfileSelection
                 )
-                .id(scrollTo)
             case .bots:
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination)
             case .tasks:
