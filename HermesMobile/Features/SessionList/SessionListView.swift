@@ -32,7 +32,7 @@ struct SessionListForegroundRefresh: Equatable {
 /// number from `archiveStarted` when it starts. Once the server confirms it,
 /// `archiveConfirmed` returns the host for its toast, or nil for no toast:
 /// - Replies can land out of order, so an older archive never replaces a newer
-///   one's toast.
+///   one's toast. A newer archive that showed no toast blocks nothing.
 /// - The toast shows on the screen the row was swiped on, if the user is still
 ///   there. Otherwise it shows on the other session screen if that is showing,
 ///   or nowhere. Either way the session is in Archived.
@@ -47,7 +47,7 @@ struct SessionListArchiveToastRoute: Equatable {
     /// The screen the current toast belongs to.
     private(set) var host = Host.list
     private var startedCount = 0
-    private var newestConfirmed = 0
+    private var newestShown = 0
 
     mutating func archiveStarted() -> Int {
         startedCount += 1
@@ -60,8 +60,7 @@ struct SessionListArchiveToastRoute: Equatable {
         destination: SessionNavigationDestination?,
         isRegularWidth: Bool
     ) -> Host? {
-        guard number > newestConfirmed else { return nil }
-        newestConfirmed = number
+        guard number > newestShown else { return nil }
 
         func isShowing(_ candidate: Host) -> Bool {
             switch candidate {
@@ -74,6 +73,7 @@ struct SessionListArchiveToastRoute: Equatable {
 
         let otherHost: Host = swipedOn == .list ? .scheduled : .list
         guard let chosen = [swipedOn, otherHost].first(where: isShowing) else { return nil }
+        newestShown = number
         host = chosen
         return chosen
     }

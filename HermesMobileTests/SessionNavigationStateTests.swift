@@ -600,10 +600,16 @@ final class SessionNavigationStateTests: XCTestCase {
 
     func testArchiveToastIsSkippedWhileAnotherScreenCoversBothHosts() {
         var route = SessionListArchiveToastRoute()
-        let archive = route.archiveStarted()
+        let older = route.archiveStarted()
+        let newer = route.archiveStarted()
         let chat = SessionNavigationDestination.session(SessionSummary(sessionId: "open-chat"))
 
-        XCTAssertNil(route.archiveConfirmed(archive, swipedOn: .scheduled, destination: chat, isRegularWidth: false))
+        XCTAssertNil(route.archiveConfirmed(newer, swipedOn: .scheduled, destination: chat, isRegularWidth: false))
+        XCTAssertEqual(
+            route.archiveConfirmed(older, swipedOn: .list, destination: nil, isRegularWidth: false),
+            .list,
+            "a skipped toast must not block an older archive that lands where the user can see it"
+        )
     }
 
     func testOlderArchiveNeverReplacesTheNewerArchivesToast() {
