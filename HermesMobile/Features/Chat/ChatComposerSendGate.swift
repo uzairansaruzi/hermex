@@ -30,7 +30,6 @@ enum ChatComposerSendGate {
     }
 }
 
-
 /// The Sessions composer's trailing circle. Stop while a response runs and the
 /// draft is empty; otherwise Send. Mid-run a tap on Send uses the Send While
 /// Responding default, the glyph and VoiceOver label say which behavior that
@@ -65,5 +64,38 @@ struct ChatComposerSendButton: Equatable {
     /// files keep Steer: a steer carries them as an attached-files note (#856).
     var choices: [StreamingSendBehavior] {
         runningBehavior == nil ? [] : [.steer, .queue, .interrupt]
+    }
+}
+
+/// Keeps a hold on Send from also counting as a tap. A hold that opens the
+/// send-choice card marks its own release to be dropped. A new touch-down, the
+/// dropped release, or the card closing after the finger lifted clears the mark.
+struct ChatComposerSendHold {
+    private var holdOpenedChoices = false
+
+    /// A new touch-down on Send: any earlier hold is over.
+    mutating func pressBegan() {
+        holdOpenedChoices = false
+    }
+
+    /// The hold timer fired and opened the card.
+    mutating func openedChoices() {
+        holdOpenedChoices = true
+    }
+
+    /// The card closed. A finger still down keeps its release dropped; one
+    /// that lifted off the button never reached Send, so the mark goes.
+    mutating func choicesClosed(isPressing: Bool) {
+        if !isPressing {
+            holdOpenedChoices = false
+        }
+    }
+
+    /// Send's Button action: a tap, a keyboard or assistive activation, or a
+    /// hold's release. Returns whether Send should act; a hold's release does not.
+    mutating func activate() -> Bool {
+        guard holdOpenedChoices else { return true }
+        holdOpenedChoices = false
+        return false
     }
 }

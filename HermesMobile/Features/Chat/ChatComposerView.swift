@@ -236,8 +236,8 @@ struct MessageComposerView: View {
     @State private var selectedQuote: ComposerQuote?
     /// True while the send-choice card is up after a hold on Send mid-run.
     @State private var choosingSendBehavior = false
-    /// Set when a hold opened the card, so that hold's release is not a tap.
-    @State private var sendHoldOpenedChoices = false
+    /// Keeps the release of a hold that opened the card from also sending.
+    @State private var sendHold = ChatComposerSendHold()
     @State private var sendHoldWorkItem: DispatchWorkItem?
     @GestureState private var isPressingSend = false
 
@@ -925,11 +925,11 @@ struct MessageComposerView: View {
     }
 
     private func scheduleSendChoices() {
-        sendHoldOpenedChoices = false
+        sendHold.pressBegan()
         cancelScheduledSendChoices()
         guard !sendChoices.isEmpty else { return }
         let item = DispatchWorkItem {
-            sendHoldOpenedChoices = true
+            sendHold.openedChoices()
             choosingSendBehavior = true
         }
         sendHoldWorkItem = item
@@ -945,15 +945,11 @@ struct MessageComposerView: View {
         sendHoldWorkItem = nil
     }
 
-    /// Closes the send-choice card. The hold's swallow flag closes with it,
-    /// unless that finger is still down: its release must not send (or stop).
-    /// A hold released off the button would otherwise leave the flag set and
-    /// eat the next VoiceOver or keyboard activation of Send.
+    /// Closes the send-choice card. A hold still down keeps its release from
+    /// sending (or stopping); see `ChatComposerSendHold`.
     private func closeSendChoices() {
         choosingSendBehavior = false
-        if !isPressingSend {
-            sendHoldOpenedChoices = false
-        }
+        sendHold.choicesClosed(isPressing: isPressingSend)
     }
 
     /// The card's rows and VoiceOver's named actions both land here.
@@ -1327,10 +1323,7 @@ struct MessageComposerView: View {
     /// A tap on the circle. The release of a hold that opened the send-choice
     /// card lands here too, and is dropped so the hold never also sends.
     private func actionButtonPressed() {
-        if sendHoldOpenedChoices {
-            sendHoldOpenedChoices = false
-            return
-        }
+        guard sendHold.activate() else { return }
         actionButtonTapped()
     }
 

@@ -79,6 +79,37 @@ final class ChatComposerSendGateTests: XCTestCase {
         }
     }
 
+    /// A quick tap acts; the release of a hold that opened the card does not,
+    /// and only that one release is dropped.
+    func testHoldReleaseIsDroppedAndQuickTapActs() {
+        var hold = ChatComposerSendHold()
+        hold.pressBegan()
+        XCTAssertTrue(hold.activate(), "a quick tap")
+
+        hold.pressBegan()
+        hold.openedChoices()
+        XCTAssertFalse(hold.activate(), "the hold's own release")
+        XCTAssertTrue(hold.activate(), "the next activation")
+    }
+
+    /// A hold released off Send never reaches the Button, so closing the card
+    /// clears the mark. Otherwise the next VoiceOver or keyboard activation,
+    /// which has no touch-down, would do nothing. A finger still down (the run
+    /// ended under it) keeps its release dropped.
+    func testClosingTheCardAfterLiftingOffSendKeepsTheNextActivation() {
+        var liftedOff = ChatComposerSendHold()
+        liftedOff.pressBegan()
+        liftedOff.openedChoices()
+        liftedOff.choicesClosed(isPressing: false)
+        XCTAssertTrue(liftedOff.activate(), "an activation after the card closed")
+
+        var stillHeld = ChatComposerSendHold()
+        stillHeld.pressBegan()
+        stillHeld.openedChoices()
+        stillHeld.choicesClosed(isPressing: true)
+        XCTAssertFalse(stillHeld.activate(), "the held finger's release")
+    }
+
     func testQuoteOnlySendIsEnabled() {
         XCTAssertFalse(ChatComposerSendGate.isDisabled(
             hasText: false,
