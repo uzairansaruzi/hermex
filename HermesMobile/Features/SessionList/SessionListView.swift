@@ -1383,7 +1383,10 @@ struct SessionListView: View {
     /// archive replaces the toast; the first session stays in Archived.
     private func showArchiveUndoToast(for session: SessionSummary, on host: SessionListToastHost) {
         let message = String(localized: "Archived")
-        actionToastHost = host
+        // The reply can land after the user left the Scheduled screen. Its toast
+        // then shows on the list, where they are now, instead of waiting unseen.
+        let isScheduledShowing = navigationState.destination == .utility(.scheduled)
+        actionToastHost = host == .scheduled && !isScheduledShowing ? .list : host
         actionToast.show(
             ActionToast(
                 message: message,
