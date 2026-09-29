@@ -825,7 +825,10 @@ private extension UNAuthorizationStatus {
     }
 }
 
-enum StreamingSendBehavior: String, CaseIterable, Identifiable {
+/// What a Sessions send does while a response is running. Settings stores the
+/// default a tap on Send uses; a long-press on Send picks one for a single
+/// message (`ChatComposerSendButton`).
+enum StreamingSendBehavior: String, CaseIterable, Identifiable, SendChoice {
     case steer
     case interrupt
     case queue
@@ -834,14 +837,27 @@ enum StreamingSendBehavior: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The send-choice card's row title and VoiceOver action name.
     var title: String {
         switch self {
         case .steer:
-            "Steer"
+            String(localized: "Steer")
         case .interrupt:
-            "Interrupt"
+            String(localized: "Stop and send")
         case .queue:
-            "Queue"
+            String(localized: "Queue")
+        }
+    }
+
+    /// The same symbols as the Bot card's rows (`BotPromptMode.systemImage`).
+    var systemImage: String {
+        switch self {
+        case .steer:
+            "arrow.turn.up.right"
+        case .interrupt:
+            "stop.circle"
+        case .queue:
+            "text.append"
         }
     }
 

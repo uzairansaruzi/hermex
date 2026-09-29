@@ -496,7 +496,7 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
 }
 
 /// The floating card's material and shadow, shared by the attachment picker
-/// and the Bot send-choice card so the two read as one control.
+/// and the send-choice card so the two read as one control.
 struct HermexAttachmentPanelSurface: ViewModifier {
     let reduceTransparency: Bool
 
@@ -996,7 +996,7 @@ private struct HermexPhotoAssetThumbnail: View {
 }
 
 /// One choice in a floating card: a circled icon and a title. Shared by the
-/// attachment picker and the Bot send-choice card.
+/// attachment picker and the send-choice card.
 struct HermexAttachmentMenuRow: View {
     let title: Text
     let systemImage: String

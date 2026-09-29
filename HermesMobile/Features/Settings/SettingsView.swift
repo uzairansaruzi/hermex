@@ -231,6 +231,8 @@ struct SettingsView: View {
                         }
                     }
 
+                    SettingsFootnote(String(localized: "Long-press Send to choose for one message."))
+
                     SettingsDivider()
 
                     if isBotModeEnabled {

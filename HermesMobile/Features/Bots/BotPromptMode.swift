@@ -4,7 +4,7 @@ import Foundation
 /// three are offered when a send lands on a working bot. Queue explicitly
 /// bypasses the host's configurable busy input behavior, which could otherwise
 /// interrupt work started by Desktop.
-enum BotPromptMode: CaseIterable, Hashable {
+enum BotPromptMode: CaseIterable, Hashable, SendChoice {
     case send, steer, queue, redirect
 
     var title: String {

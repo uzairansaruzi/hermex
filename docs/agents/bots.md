@@ -514,12 +514,14 @@ rules. A lost or unrecognized acknowledgment schedules recovery; it never causes
 an automatic prompt retry. Identical text in recovered history cannot reliably
 attribute a submission, so it never silently consumes the restored draft.
 
-The composer offers Send for idle work and a Sessions-style native menu for
-Steer, Queue and Redirect while busy. Selecting a mode does not submit. The
-selected action is labeled beside a separate Stop button; Command-Return uses
-that same action, including Redirect's consequence confirmation. A selected
-busy mode stays disabled after idle until the user chooses Send. No new
-animation or alternate editor is introduced.
+Send is one button, with Stop beside it while the bot works. Idle, Send starts
+a turn. On a working bot it opens the send-choice card (`SendChoiceCard`, the
+same card a long-press on the Sessions Send button opens) listing Steer, Queue
+and Interrupt from `BotPromptMode.busyChoices`. Steer drops out while
+attachments are staged, because the host only accepts them on a fresh turn. A
+pick submits at once; a scrim tap or escape closes the card without sending.
+Command-Return does what a Send tap does. The bot finishing, or the choices
+changing under the card, closes it, so the next send asks again.
 
 `BotPromptMode` validates the acknowledgment for each operation. `session.steer`
 accepts `status: queued` as guidance queued, not read; `session.redirect` accepts

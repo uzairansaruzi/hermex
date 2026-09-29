@@ -20,6 +20,65 @@ final class ChatComposerSendGateTests: XCTestCase {
         ))
     }
 
+    /// Mid-run, Send's glyph and VoiceOver label say what a tap will do to the
+    /// response (#858). Idle it is the plain arrow; with an empty draft the
+    /// circle stays Stop.
+    func testRunningSendShowsDefaultBehaviorGlyphAndLabel() {
+        let expected: [(StreamingSendBehavior, glyph: String, label: String)] = [
+            (.steer, "arrow.turn.up.right", "Steer active response"),
+            (.queue, "text.append", "Send after response"),
+            (.interrupt, "stop.circle", "Stop and send")
+        ]
+        for (behavior, glyph, label) in expected {
+            let running = ChatComposerSendButton(
+                isWaitingForStream: true, hasText: true, hasQuotes: false, defaultBehavior: behavior
+            )
+            XCTAssertEqual(running.systemName, glyph, "\(behavior)")
+            XCTAssertEqual(running.accessibilityLabel, label, "\(behavior)")
+
+            let quoteOnly = ChatComposerSendButton(
+                isWaitingForStream: true, hasText: false, hasQuotes: true, defaultBehavior: behavior
+            )
+            XCTAssertEqual(quoteOnly.systemName, glyph, "\(behavior)")
+
+            let idle = ChatComposerSendButton(
+                isWaitingForStream: false, hasText: true, hasQuotes: false, defaultBehavior: behavior
+            )
+            XCTAssertEqual(idle.systemName, "arrow.up", "\(behavior)")
+            XCTAssertEqual(idle.accessibilityLabel, "Send", "\(behavior)")
+
+            let stop = ChatComposerSendButton(
+                isWaitingForStream: true, hasText: false, hasQuotes: false, defaultBehavior: behavior
+            )
+            XCTAssertEqual(stop.systemName, "stop.fill", "\(behavior)")
+            XCTAssertEqual(stop.accessibilityLabel, "Stop response", "\(behavior)")
+        }
+    }
+
+    /// A long-press offers every behavior, in the Bot card's order, only while
+    /// Send shows mid-run. Staged files are deliberately not an input: unlike
+    /// Bots (`BotPromptMode.busyChoices(hasAttachments:)`), Sessions keep Steer
+    /// with files staged, because #856 sends them with the steer as a note.
+    func testRunningSendOffersEveryChoiceAndIdleOrStopOffersNone() {
+        for behavior in StreamingSendBehavior.allCases {
+            let running = ChatComposerSendButton(
+                isWaitingForStream: true, hasText: true, hasQuotes: false, defaultBehavior: behavior
+            )
+            XCTAssertEqual(running.choices, [.steer, .queue, .interrupt], "\(behavior)")
+            XCTAssertEqual(running.choices.map(\.title), ["Steer", "Queue", "Stop and send"])
+
+            let idle = ChatComposerSendButton(
+                isWaitingForStream: false, hasText: true, hasQuotes: false, defaultBehavior: behavior
+            )
+            XCTAssertEqual(idle.choices, [], "a long-press adds nothing while idle")
+
+            let stop = ChatComposerSendButton(
+                isWaitingForStream: true, hasText: false, hasQuotes: false, defaultBehavior: behavior
+            )
+            XCTAssertEqual(stop.choices, [], "Stop has no choices")
+        }
+    }
+
     func testQuoteOnlySendIsEnabled() {
         XCTAssertFalse(ChatComposerSendGate.isDisabled(
             hasText: false,

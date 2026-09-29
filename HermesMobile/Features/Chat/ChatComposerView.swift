@@ -174,7 +174,14 @@ struct MessageComposerView: View {
     let uploadAttachmentErrorMessage: String?
     /// "Couldn't steer" with Retry, after a steer didn't reach the run.
     let steerFailure: ComposerRetryableStatus?
+    /// The Send While Responding default: what a tap on Send does mid-run, and
+    /// the glyph and VoiceOver label that say so.
+    let streamingSendBehavior: StreamingSendBehavior
+    /// Sends with the default; a mid-run send uses `streamingSendBehavior`.
     let onSend: () -> Void
+    /// Sends this one message with a behavior picked from the send-choice card
+    /// or a VoiceOver action. The default does not change.
+    let onSendWithBehavior: (StreamingSendBehavior) -> Void
     let onSendVoiceNote: (Data, String) -> Void
     let onCancel: () -> Void
     let onSelectModel: (ModelCatalogOption) -> Void
@@ -227,6 +234,12 @@ struct MessageComposerView: View {
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
     @State private var selectedQuote: ComposerQuote?
+    /// True while the send-choice card is up after a hold on Send mid-run.
+    @State private var choosingSendBehavior = false
+    /// Set when a hold opened the card, so that hold's release is not a tap.
+    @State private var sendHoldOpenedChoices = false
+    @State private var sendHoldWorkItem: DispatchWorkItem?
+    @GestureState private var isPressingSend = false
 
     @State private var deferredUploadFocusPhase: DeferredUploadFocusPhase = .none
     @State private var showMediaPicker = false
@@ -532,6 +545,32 @@ struct MessageComposerView: View {
             }
             .frame(width: 0, height: 0)
         }
+        // The same keyboard-retaining overlay as the "+" picker and the Bot
+        // composer's send-choice card, so the keyboard stays up.
+        .background {
+            HermexKeyboardRetainingOverlay(isPresented: choosingSendBehavior) {
+                SendChoiceCard(
+                    choices: sendChoices,
+                    onPick: pickSendBehavior,
+                    onDismiss: { choosingSendBehavior = false }
+                )
+            }
+            .frame(width: 0, height: 0)
+        }
+        // The run ending, or Send turning into Stop, closes the card and drops
+        // a hold that has not opened it yet, as the Bot composer does.
+        .onChange(of: sendChoices) { _, choices in
+            guard choices.isEmpty else { return }
+            cancelScheduledSendChoices()
+            choosingSendBehavior = false
+        }
+        .onChange(of: isPressingSend) { _, isPressing in
+            if isPressing {
+                scheduleSendChoices()
+            } else {
+                cancelScheduledSendChoices()
+            }
+        }
         .task(id: draftMayReferenceSkill) {
             await loadSkillSuggestionsForChipsIfNeeded()
         }
@@ -716,6 +755,7 @@ struct MessageComposerView: View {
         .onDisappear {
             voiceInput.stopBeforeSubmittingDraft()
             cancelVoiceNote()
+            cancelScheduledSendChoices()
         }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
     }
@@ -837,9 +877,11 @@ struct MessageComposerView: View {
     }
 
     /// One trailing circle in both states. Stop while a response streams and the
-    /// draft is empty; Send (which queues mid-run) as soon as there is text.
+    /// draft is empty; Send as soon as there is text. Mid-run a tap sends with
+    /// the Send While Responding default, and a hold opens the send-choice card
+    /// for this one message (`ChatComposerSendButton`).
     private var actionButton: some View {
-        Button(action: actionButtonTapped) {
+        Button(action: actionButtonPressed) {
             actionButtonLabel
                 .frame(width: circleSize, height: circleSize)
                 .background(actionButtonBackground)
@@ -847,8 +889,15 @@ struct MessageComposerView: View {
                 .clipShape(Circle())
         }
         .buttonStyle(.chatTactile(.icon))
+        .simultaneousGesture(sendHoldGesture)
         .disabled(isActionButtonDisabled)
-        .accessibilityLabel(showsStopButton ? "Stop response" : "Send")
+        .accessibilityLabel(sendButton.accessibilityLabel)
+        .accessibilityActions {
+            // VoiceOver can't hold, so each choice is a named action.
+            ForEach(sendChoices, id: \.self) { behavior in
+                Button(behavior.title) { pickSendBehavior(behavior) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -857,13 +906,54 @@ struct MessageComposerView: View {
             ProgressView()
                 .tint(actionButtonForeground)
                 .scaleEffect(0.9)
-        } else if showsStopButton {
-            Image(systemName: "stop.fill")
-                .font(.system(size: actionIconSize, weight: .semibold))
         } else {
-            Image(systemName: "arrow.up")
+            Image(systemName: sendButton.systemName)
                 .font(.system(size: actionIconSize, weight: .semibold))
         }
+    }
+
+    /// Times a hold the way the mic does (`ComposerVoiceControlButton`): one
+    /// `DragGesture(minimumDistance: 0)` beside the button's own tap, where
+    /// touch-down schedules the card and lifting before the delay cancels it.
+    /// The gesture state resets on a cancelled touch too, so a hold can never
+    /// stay armed.
+    private var sendHoldGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .updating($isPressingSend) { _, isPressing, _ in
+                isPressing = true
+            }
+    }
+
+    private func scheduleSendChoices() {
+        sendHoldOpenedChoices = false
+        cancelScheduledSendChoices()
+        guard !sendChoices.isEmpty else { return }
+        let item = DispatchWorkItem {
+            sendHoldOpenedChoices = true
+            choosingSendBehavior = true
+        }
+        sendHoldWorkItem = item
+        // The mic's hold delay, so the composer's two holds feel alike.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + ComposerVoiceNoteGesture.holdActivationDelay,
+            execute: item
+        )
+    }
+
+    private func cancelScheduledSendChoices() {
+        sendHoldWorkItem?.cancel()
+        sendHoldWorkItem = nil
+    }
+
+    /// The card's rows and VoiceOver's named actions both land here.
+    private func pickSendBehavior(_ behavior: StreamingSendBehavior) {
+        choosingSendBehavior = false
+        // A pick can outlive the run or the draft it was offered for.
+        guard sendChoices.contains(behavior) else { return }
+        if voiceInput.isListening {
+            voiceInput.stopBeforeSubmittingDraft()
+        }
+        onSendWithBehavior(behavior)
     }
 
     /// Whether the draft holds anything that could be drawn as a skill chip.
@@ -1185,12 +1275,22 @@ struct MessageComposerView: View {
         draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var showsStopButton: Bool {
-        ChatComposerSendGate.showsStopButton(
+    private var sendButton: ChatComposerSendButton {
+        ChatComposerSendButton(
             isWaitingForStream: isWaitingForStream,
             hasText: !trimmedDraftMessage.isEmpty,
-            hasQuotes: !quotes.isEmpty
+            hasQuotes: !quotes.isEmpty,
+            defaultBehavior: streamingSendBehavior
         )
+    }
+
+    private var showsStopButton: Bool {
+        sendButton.showsStop
+    }
+
+    /// What a hold on Send offers right now: nothing while Send is disabled.
+    private var sendChoices: [StreamingSendBehavior] {
+        isActionButtonDisabled ? [] : sendButton.choices
     }
 
     private var isActionButtonDisabled: Bool {
@@ -1213,6 +1313,17 @@ struct MessageComposerView: View {
         )
     }
 
+    /// A tap on the circle. The release of a hold that opened the send-choice
+    /// card lands here too, and is dropped so the hold never also sends.
+    private func actionButtonPressed() {
+        if sendHoldOpenedChoices {
+            sendHoldOpenedChoices = false
+            return
+        }
+        actionButtonTapped()
+    }
+
+    /// Stop, or Send with the default. Command-Return comes straight here.
     private func actionButtonTapped() {
         if showsStopButton {
             onCancel()

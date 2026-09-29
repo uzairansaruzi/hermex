@@ -29,3 +29,41 @@ enum ChatComposerSendGate {
         return !hasText && !hasQuotes && !hasStagedAttachments
     }
 }
+
+
+/// The Sessions composer's trailing circle. Stop while a response runs and the
+/// draft is empty; otherwise Send. Mid-run a tap on Send uses the Send While
+/// Responding default, the glyph and VoiceOver label say which behavior that
+/// is, and a long-press (or a VoiceOver action) picks any behavior for this one
+/// message. Idle, Send is a plain send with no choices.
+struct ChatComposerSendButton: Equatable {
+    let showsStop: Bool
+    /// What a tap on Send does to the running response; nil while idle or
+    /// while the circle is Stop.
+    let runningBehavior: StreamingSendBehavior?
+
+    init(isWaitingForStream: Bool, hasText: Bool, hasQuotes: Bool, defaultBehavior: StreamingSendBehavior) {
+        showsStop = ChatComposerSendGate.showsStopButton(
+            isWaitingForStream: isWaitingForStream, hasText: hasText, hasQuotes: hasQuotes
+        )
+        runningBehavior = isWaitingForStream && !showsStop ? defaultBehavior : nil
+    }
+
+    /// The circle's one SF Symbol: Stop, the running default's symbol, or the
+    /// plain arrow.
+    var systemName: String {
+        if showsStop { return "stop.fill" }
+        return runningBehavior?.systemImage ?? "arrow.up"
+    }
+
+    var accessibilityLabel: String {
+        if showsStop { return String(localized: "Stop response") }
+        return runningBehavior?.settingsDescription ?? String(localized: "Send")
+    }
+
+    /// The long-press choices, in the Bot card's order. Unlike Bots, staged
+    /// files keep Steer: a steer carries them as an attached-files note (#856).
+    var choices: [StreamingSendBehavior] {
+        runningBehavior == nil ? [] : [.steer, .queue, .interrupt]
+    }
+}
