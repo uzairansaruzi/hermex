@@ -139,6 +139,19 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertTrue(diff.hidesResult)
     }
 
+    func testReplaceAllArgumentsDrawOneReplacementWithoutCounts() throws {
+        let longDiff = unifiedDiff + String(repeating: " context line\n", count: 400)
+        let cutPreview = String(String.UnicodeScalarView(try patchResult(diff: longDiff).unicodeScalars.prefix(4_000)))
+        var args = replacementArgs
+        args["replace_all"] = .string("True")
+
+        let diff = try XCTUnwrap(ToolCallDiff.resolve(for: call("patch", preview: cutPreview, args: args)))
+        XCTAssertEqual(diff.source, .argumentReplacement)
+        XCTAssertEqual(diff.document.lines.map(\.text), ["-let b = 2", "+let b = 3", "+let c = 4"])
+        XCTAssertNil(diff.counts, "one pair's counts would understate an edit that replaced every occurrence")
+        XCTAssertFalse(diff.isTruncated, "the pair itself arrived whole, so no Partial diff caption")
+    }
+
     func testCutArgumentMarksTheDiffTruncatedWithoutCounts() throws {
         let cutPreview = String(repeating: "x", count: 4_000)
         let toolCall = call("patch", preview: cutPreview, args: [
@@ -199,6 +212,12 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertNil(ToolCallDiff.resolve(for: webuiFailure))
         XCTAssertNil(ToolCallDiff.resolve(for: envelopeFailure))
         XCTAssertNil(ToolCallDiff.resolve(for: noChange))
+    }
+
+    func testCallTheServerMarkedFailedNeverDrawsItsArguments() {
+        let failed = ToolCall(name: "patch", preview: nil, args: replacementArgs, isError: true, isCompleted: true)
+
+        XCTAssertNil(ToolCallDiff.resolve(for: failed), "the requested change never landed")
     }
 
     // MARK: - Bots and the opened body
