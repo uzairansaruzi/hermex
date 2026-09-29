@@ -350,13 +350,79 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         XCTAssertTrue(scheduler.scheduledRequests.isEmpty)
     }
 
-    func testRequestAuthorizationUsesInjectedScheduler() async {
+    // #863: Settings' toggle and the chat's one-time offer share this enable, so the
+    // prompt, the asked-once flag and the stored preference stay in step.
+    @MainActor
+    func testEnableAsksOnceWhenPermissionWasNeverRequested() async throws {
+        let defaults = try makeDefaults()
+        let scheduler = SpyResponseCompletionNotificationScheduler(
+            status: .notDetermined, requestAuthorizationResult: true, statusAfterRequest: .authorized)
+
+        let result = await ResponseCompletionNotificationService.enable(defaults: defaults, scheduler: scheduler)
+
+        XCTAssertEqual(result, .init(isEnabled: true, authorizationStatus: .authorized, message: nil))
+        XCTAssertEqual(scheduler.requestAuthorizationCallCount, 1)
+        XCTAssertTrue(defaults.bool(forKey: ResponseCompletionNotifications.hasRequestedPermissionKey))
+        XCTAssertTrue(defaults.bool(forKey: ResponseCompletionNotifications.isEnabledKey))
+    }
+
+    @MainActor
+    func testEnableStaysOffWhenTheFirstPromptIsRefused() async throws {
+        let defaults = try makeDefaults()
+        let scheduler = SpyResponseCompletionNotificationScheduler(
+            status: .notDetermined, requestAuthorizationResult: false, statusAfterRequest: .denied)
+
+        let result = await ResponseCompletionNotificationService.enable(defaults: defaults, scheduler: scheduler)
+
+        XCTAssertEqual(result, .init(isEnabled: false, authorizationStatus: .denied, message: "iOS notifications disabled."))
+        XCTAssertEqual(scheduler.requestAuthorizationCallCount, 1)
+        XCTAssertTrue(defaults.bool(forKey: ResponseCompletionNotifications.hasRequestedPermissionKey))
+        XCTAssertFalse(defaults.bool(forKey: ResponseCompletionNotifications.isEnabledKey))
+    }
+
+    @MainActor
+    func testEnableNeverAsksTwice() async throws {
+        let defaults = try makeDefaults()
+        defaults.set(true, forKey: ResponseCompletionNotifications.hasRequestedPermissionKey)
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .notDetermined, requestAuthorizationResult: true)
 
-        let granted = await ResponseCompletionNotificationService.requestAuthorization(scheduler: scheduler)
+        let result = await ResponseCompletionNotificationService.enable(defaults: defaults, scheduler: scheduler)
 
-        XCTAssertTrue(granted)
-        XCTAssertEqual(scheduler.requestAuthorizationCallCount, 1)
+        XCTAssertEqual(result, .init(isEnabled: false, authorizationStatus: .notDetermined, message: "Permission not requested."))
+        XCTAssertEqual(scheduler.requestAuthorizationCallCount, 0)
+        XCTAssertFalse(defaults.bool(forKey: ResponseCompletionNotifications.isEnabledKey))
+    }
+
+    @MainActor
+    func testEnableStaysOffWithTheDeniedMessageWhenPermissionIsDenied() async throws {
+        let defaults = try makeDefaults()
+        defaults.set(true, forKey: ResponseCompletionNotifications.isEnabledKey)
+        let scheduler = SpyResponseCompletionNotificationScheduler(status: .denied, requestAuthorizationResult: true)
+
+        let result = await ResponseCompletionNotificationService.enable(defaults: defaults, scheduler: scheduler)
+
+        XCTAssertEqual(result, .init(isEnabled: false, authorizationStatus: .denied, message: "iOS notifications disabled."))
+        XCTAssertEqual(scheduler.requestAuthorizationCallCount, 0)
+        XCTAssertFalse(defaults.bool(forKey: ResponseCompletionNotifications.isEnabledKey))
+    }
+
+    @MainActor
+    func testEnableTurnsOnWithoutAPromptWhenAlreadyAllowed() async throws {
+        let defaults = try makeDefaults()
+        let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)
+
+        let result = await ResponseCompletionNotificationService.enable(defaults: defaults, scheduler: scheduler)
+
+        XCTAssertEqual(result, .init(isEnabled: true, authorizationStatus: .authorized, message: nil))
+        XCTAssertEqual(scheduler.requestAuthorizationCallCount, 0)
+        XCTAssertTrue(defaults.bool(forKey: ResponseCompletionNotifications.isEnabledKey))
+    }
+
+    private func makeDefaults() throws -> UserDefaults {
+        let suiteName = "ResponseCompletionNotificationServiceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        return defaults
     }
 }
 
@@ -398,9 +464,12 @@ final class ResponseCompletionNotificationTrackerTests: XCTestCase {
     }
 }
 
-private final class SpyResponseCompletionNotificationScheduler: ResponseCompletionNotificationScheduling {
-    private let status: UNAuthorizationStatus
+/// Shared with `NotificationOfferTests`.
+final class SpyResponseCompletionNotificationScheduler: ResponseCompletionNotificationScheduling {
+    private var status: UNAuthorizationStatus
     private let requestAuthorizationResult: Bool
+    /// The status iOS reports once the prompt is answered; unchanged when nil.
+    private let statusAfterRequest: UNAuthorizationStatus?
     /// Runs while the permission check is in flight, for work that lands meanwhile.
     private let duringAuthorizationStatus: () -> Void
     private(set) var authorizationStatusCallCount = 0
@@ -410,10 +479,12 @@ private final class SpyResponseCompletionNotificationScheduler: ResponseCompleti
     init(
         status: UNAuthorizationStatus,
         requestAuthorizationResult: Bool = false,
+        statusAfterRequest: UNAuthorizationStatus? = nil,
         duringAuthorizationStatus: @escaping () -> Void = {}
     ) {
         self.status = status
         self.requestAuthorizationResult = requestAuthorizationResult
+        self.statusAfterRequest = statusAfterRequest
         self.duringAuthorizationStatus = duringAuthorizationStatus
     }
 
@@ -425,6 +496,7 @@ private final class SpyResponseCompletionNotificationScheduler: ResponseCompleti
 
     func requestAuthorization() async -> Bool {
         requestAuthorizationCallCount += 1
+        if let statusAfterRequest { status = statusAfterRequest }
         return requestAuthorizationResult
     }
 

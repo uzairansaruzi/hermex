@@ -12,9 +12,11 @@ import SwiftUI
     @State private var preferenceTask: Task<Void, Never>?
     private let sharedSettings: SharedSettings
 
-    init(server: URL, @ViewBuilder sharedSettings: () -> SharedSettings) {
+    /// `startsExpanded` opens the section for the chat's one-time notification offer (#863).
+    init(server: URL, startsExpanded: Bool = false, @ViewBuilder sharedSettings: () -> SharedSettings) {
         self.server = server
         self.sharedSettings = sharedSettings()
+        _isExpanded = State(initialValue: startsExpanded)
         _provisioner = State(initialValue: HermexPushProvisioner(
             server: server, connection: try? BotConnectionStore().load(server: server)))
     }

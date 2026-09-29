@@ -274,6 +274,7 @@
 		531000000000000000000001 /* TipJarPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* TipJarPromptState.swift */; };
 		C09200000000000000000001 /* AppFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000002 /* AppFont.swift */; };
 		1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000101 /* AppTheme.swift */; };
+		863000000000000000000001 /* NotificationOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000002 /* NotificationOffer.swift */; };
 		C012400000000000000002 /* AppIconChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000001 /* AppIconChoice.swift */; };
 		C03120000000000000B001 /* GitWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F001 /* GitWorkspace.swift */; };
 		C03120000000000000B002 /* APIClient+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F002 /* APIClient+Git.swift */; };
@@ -334,6 +335,7 @@
 		C03120000000000000B007 /* GitWorkspaceViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */; };
 		C012400000000000000004 /* AppIconSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000003 /* AppIconSettingsSection.swift */; };
 		1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */; };
+		863000000000000000000003 /* NotificationOfferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000004 /* NotificationOfferTests.swift */; };
 		C012400000000000000006 /* AppIconChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000005 /* AppIconChoiceTests.swift */; };
 		1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */; };
 		1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */; };
@@ -857,6 +859,7 @@
 		531000000000000000000002 /* TipJarPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptState.swift; sourceTree = "<group>"; };
 		C09200000000000000000002 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000101 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		863000000000000000000002 /* NotificationOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOffer.swift; sourceTree = "<group>"; };
 		C012400000000000000001 /* AppIconChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoice.swift; sourceTree = "<group>"; };
 		C03120000000000000F001 /* GitWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspace.swift; sourceTree = "<group>"; };
 		C03120000000000000F002 /* APIClient+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Git.swift"; sourceTree = "<group>"; };
@@ -917,6 +920,7 @@
 		C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspaceViewModelTests.swift; sourceTree = "<group>"; };
 		C012400000000000000003 /* AppIconSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsSection.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppThemeTests.swift; sourceTree = "<group>"; };
+		863000000000000000000004 /* NotificationOfferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOfferTests.swift; sourceTree = "<group>"; };
 		C012400000000000000005 /* AppIconChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoiceTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsViewModel.swift; sourceTree = "<group>"; };
@@ -1354,6 +1358,7 @@
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
 				C86900000000000000000004 /* NetworkPathMonitorTests.swift */,
 				1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */,
+				863000000000000000000004 /* NotificationOfferTests.swift */,
 				C012400000000000000005 /* AppIconChoiceTests.swift */,
 				C03120000000000000F006 /* APIClientGitTests.swift */,
 				C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */,
@@ -1851,6 +1856,7 @@
 				531000000000000000000002 /* TipJarPromptState.swift */,
 				C09200000000000000000002 /* AppFont.swift */,
 				1A2B3C4D5E6F700000000101 /* AppTheme.swift */,
+				863000000000000000000002 /* NotificationOffer.swift */,
 				C012400000000000000001 /* AppIconChoice.swift */,
 			);
 			path = Config;
@@ -2396,6 +2402,7 @@
 				531000000000000000000001 /* TipJarPromptState.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,
+				863000000000000000000001 /* NotificationOffer.swift in Sources */,
 				C012400000000000000002 /* AppIconChoice.swift in Sources */,
 				C09300000000000000000001 /* HapticButton.swift in Sources */,
 				C0FF000000000000000000B1 /* CustomHeadersEditor.swift in Sources */,
@@ -2671,6 +2678,7 @@
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,
 				C86900000000000000000003 /* NetworkPathMonitorTests.swift in Sources */,
 				1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */,
+				863000000000000000000003 /* NotificationOfferTests.swift in Sources */,
 				C012400000000000000006 /* AppIconChoiceTests.swift in Sources */,
 				C03120000000000000B006 /* APIClientGitTests.swift in Sources */,
 				C03120000000000000B007 /* GitWorkspaceViewModelTests.swift in Sources */,

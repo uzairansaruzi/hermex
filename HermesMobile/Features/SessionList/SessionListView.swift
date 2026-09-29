@@ -475,6 +475,8 @@ struct SessionListView: View {
             // Cold launch delivers the link before this view appears; a warm one after.
             .task { showBotsForPendingDestination() }
             .onChange(of: pendingBotDestination) { showBotsForPendingDestination() }
+            // Every chat below inherits this for its one-time notification offer (#863).
+            .openNotificationSettings { selectDestination(.settings(.notifications)) }
     }
 
     /// A bot deep link opens this server's Bots inbox, which owns resolving it. Only
@@ -1746,7 +1748,8 @@ struct PendingNewChatRoute: Identifiable, Hashable {
 
 enum SessionListUtilityDestination: Hashable, Identifiable {
     /// Optional section to scroll to when Settings opens — "Manage Servers"
-    /// passes `.servers`, a plain avatar tap passes `nil` (#283).
+    /// passes `.servers`, a plain avatar tap passes `nil` (#283), and the chat's
+    /// notification offer passes `.notifications` (#863).
     case settings(SettingsScrollAnchor?)
     /// The direct-Hermes Bots inbox, shown while Bot Mode (beta) is on.
     case bots

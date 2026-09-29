@@ -1,7 +1,10 @@
 # Push notifications
 
 Push is optional and off until the user enables it for a server from the Hermes
-connection screen. This page is the map. bots.md owns the protocol detail:
+connection screen. After the first run started from the phone, a one-time offer
+(`NotificationOffer`, #863) only opens Settings → Notifications with the push
+section expanded; setup still waits for its own confirmation there. This page is
+the map. bots.md owns the protocol detail:
 see [Push provisioning](bots.md#push-provisioning) and
 [Push previews and taps](bots.md#push-previews-and-taps).
 

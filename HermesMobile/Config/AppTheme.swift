@@ -721,10 +721,61 @@ enum ResponseCompletionNotificationService {
         await scheduler.authorizationStatus()
     }
 
-    static func requestAuthorization(
+    struct EnableResult: Equatable {
+        let isEnabled: Bool
+        /// The permission once any prompt was answered.
+        let authorizationStatus: UNAuthorizationStatus
+        /// Why the alerts stayed off, for Settings to show; nil when they are on.
+        let message: String?
+    }
+
+    /// Turns Response Complete Alerts on, asking iOS for permission only if Hermex never
+    /// has. Settings' toggle and the chat's one-time offer (#863) both call it, so the
+    /// prompt, the asked-once flag and the stored preference always agree.
+    @MainActor
+    static func enable(
+        defaults: UserDefaults = .standard,
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
-    ) async -> Bool {
-        await scheduler.requestAuthorization()
+    ) async -> EnableResult {
+        var status = await scheduler.authorizationStatus()
+        let isEnabled: Bool
+        let message: String?
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            isEnabled = true
+            message = nil
+        case .notDetermined where defaults.bool(forKey: ResponseCompletionNotifications.hasRequestedPermissionKey):
+            isEnabled = false
+            message = String(localized: "Permission not requested.")
+        case .notDetermined:
+            defaults.set(true, forKey: ResponseCompletionNotifications.hasRequestedPermissionKey)
+            let granted = await scheduler.requestAuthorization()
+            status = await scheduler.authorizationStatus()
+            isEnabled = granted && status.allowsResponseCompletionNotifications
+            message = isEnabled ? nil : permissionLabel(status)
+        case .denied:
+            isEnabled = false
+            message = permissionLabel(status)
+        @unknown default:
+            isEnabled = false
+            message = String(localized: "Notifications unavailable.")
+        }
+        defaults.set(isEnabled, forKey: ResponseCompletionNotifications.isEnabledKey)
+        return EnableResult(isEnabled: isEnabled, authorizationStatus: status, message: message)
+    }
+
+    /// The permission line Settings shows under Response Complete Alerts.
+    static func permissionLabel(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            return String(localized: "iOS notifications allowed.")
+        case .notDetermined:
+            return String(localized: "iOS permission not requested.")
+        case .denied:
+            return String(localized: "iOS notifications disabled.")
+        @unknown default:
+            return String(localized: "Notifications unavailable.")
+        }
     }
 
     /// Both the chat's run end and cold-launch Live Activity reconciliation use this.
