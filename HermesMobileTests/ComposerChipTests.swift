@@ -815,6 +815,26 @@ final class ComposerDropRouteTests: XCTestCase {
     }
 }
 
+final class ComposerTextInputHeightTests: XCTestCase {
+    func testRegularHeightGrowsWithTheTextFromTheMinimum() {
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: .regular), 72)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: .regular), 120)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular), 160)
+    }
+
+    func testCompactHeightStaysAtTheMinimum() {
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: .compact), 72)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: .compact), 72)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .compact), 72)
+    }
+
+    func testAnUnknownSizeClassCountsAsRegular() {
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: nil), 72)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: nil), 120)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: nil), 160)
+    }
+}
+
 @MainActor
 final class ComposerFocusTransitionTests: XCTestCase {
     override class func setUp() {
