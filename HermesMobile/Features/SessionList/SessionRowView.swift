@@ -203,8 +203,10 @@ struct SessionRowView: View {
         if let effectiveAttentionState {
             attentionStateText(effectiveAttentionState)
         } else if Self.lastActivityDate(for: session) != nil {
-            TimelineView(.everyMinute) { context in
-                relativeDateText(Self.relativeDateLabel(for: session, now: context.date) ?? "")
+            // The timeline is only the once-a-minute trigger. `context.date` is the
+            // minute's start, so a mid-minute render would read "in 38s".
+            TimelineView(.everyMinute) { _ in
+                relativeDateText(Self.relativeDateLabel(for: session, now: .now) ?? "")
             }
         }
     }
@@ -376,8 +378,9 @@ struct SessionRowView: View {
         dynamicTypeSize.isAccessibilitySize ? 8 : 7
     }
 
-    /// The row's "2h ago" text measured against `now`: the `TimelineView` tick
-    /// for the visible label, render time for VoiceOver. Nil without a timestamp.
+    /// The row's "2h ago" text measured against `now`: the wall clock at each
+    /// `TimelineView` tick for the visible label, render time for VoiceOver.
+    /// Nil without a timestamp.
     static func relativeDateLabel(for session: SessionSummary, now: Date) -> String? {
         guard let lastActivity = lastActivityDate(for: session) else { return nil }
         return SessionRelativeDateFormatter.shared.localizedString(for: lastActivity, relativeTo: now)
