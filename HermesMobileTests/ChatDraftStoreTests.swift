@@ -754,17 +754,25 @@ final class ChatDraftStoreTests: XCTestCase {
 
     // MARK: - Parking queued messages (#857)
 
+    /// Files without a durable copy go back to the composer but aren't
+    /// recorded: nothing could restore them on reopen.
     func testQueuedMessagesMergeIntoEmptyDraft() async {
         let store = ChatDraftStore(
             persistence: RecordingChatDraftPersistence(),
             debounceDuration: .seconds(10)
         )
         let key = ChatDraftKey(serverID: "https://example.com", context: .session("chat-1"))
-        let photo = makeAttachmentRecord(name: "photo.jpg", file: "a-photo.jpg")
+        let photo = makeQueuedFile("photo.jpg", draftFileName: "a-photo.jpg")
+        let noCopy = makeQueuedFile("voice.m4a", draftFileName: nil)
 
-        let parked = store.parkQueuedMessages(["a", "b"], attachments: [photo], for: key)
+        let parked = store.parkQueuedMessages([
+            QueuedSlashMessage(text: "a", attachments: []),
+            QueuedSlashMessage(text: "b", attachments: [photo, noCopy])
+        ], for: key)
 
-        let expected = ChatDraft(text: "a\n\nb", attachments: [photo])
+        let expected = ChatDraft(text: "a\n\nb", attachments: [
+            ChatDraftAttachment(id: photo.id, name: "photo.jpg", mime: "text/plain", size: 5, isImage: false, file: "a-photo.jpg")
+        ])
         XCTAssertEqual(parked, expected)
         let stored = await store.draft(for: key)
         XCTAssertEqual(stored, expected)
@@ -782,20 +790,21 @@ final class ChatDraftStoreTests: XCTestCase {
         let otherServer = ChatDraftKey(serverID: "https://two.example", context: .session("chat-1"))
         let quote = ComposerQuote(text: "Quoted passage")
         let own = makeAttachmentRecord(name: "own.txt", file: "a-own.txt")
-        let queued = makeAttachmentRecord(name: "queued.txt", file: "b-queued.txt")
+        let ownAgain = makeQueuedFile("own.txt", draftFileName: "a-own.txt", id: own.id)
+        let queued = makeQueuedFile("queued.txt", draftFileName: "b-queued.txt")
         store.setContent(ComposerDraftContent(text: "typed later", quotes: [quote]), for: key)
         store.setAttachments([own], for: key)
         store.setDraft("other server", for: otherServer)
 
-        let parked = try XCTUnwrap(store.parkQueuedMessages(
-            ["> Earlier quote\n\nfirst", "second"],
-            attachments: [own, queued],
-            for: key
-        ))
+        let parked = try XCTUnwrap(store.parkQueuedMessages([
+            QueuedSlashMessage(text: "> Earlier quote\n\nfirst", attachments: [ownAgain]),
+            QueuedSlashMessage(text: "second", attachments: [queued])
+        ], for: key))
 
         XCTAssertEqual(parked.text, "> Earlier quote\n\nfirst\n\nsecond\n\ntyped later")
         XCTAssertEqual(parked.quotes, [quote])
         XCTAssertEqual(parked.attachments.map(\.id), [own.id, queued.id])
+        XCTAssertEqual(parked.attachments.map(\.file), ["a-own.txt", "b-queued.txt"])
         let stored = await store.draft(for: key)
         XCTAssertEqual(stored, parked)
         let untouched = await store.draft(for: otherServer)
@@ -814,15 +823,25 @@ final class ChatDraftStoreTests: XCTestCase {
         store.setDraft("typed", for: key)
         await store.discardDraft(for: key)
 
-        let parked = store.parkQueuedMessages(
-            ["queued"],
-            attachments: [makeAttachmentRecord(name: "photo.jpg", file: "a-photo.jpg")],
-            for: key
-        )
+        let parked = store.parkQueuedMessages([
+            QueuedSlashMessage(text: "queued", attachments: [makeQueuedFile("photo.jpg", draftFileName: "a-photo.jpg")])
+        ], for: key)
 
         XCTAssertNil(parked)
         let stored = await store.draft(for: key)
         XCTAssertNil(stored)
+    }
+
+    private func makeQueuedFile(_ name: String, draftFileName: String?, id: UUID = UUID()) -> PendingAttachment {
+        PendingAttachment(
+            id: id,
+            name: name,
+            path: "/tmp/workspace/\(name)",
+            mime: "text/plain",
+            size: 5,
+            isImage: false,
+            draftFileName: draftFileName
+        )
     }
 
     private func makeAttachmentRecord(name: String, file: String?) -> ChatDraftAttachment {

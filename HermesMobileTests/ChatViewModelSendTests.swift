@@ -9894,6 +9894,15 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.takeQueuedMessages().isEmpty)
         XCTAssertNil(viewModel.queuedMessagesReceipt)
 
+        // ChatView parks the hand-over into the chat's draft, where the file
+        // keeps the durable copy that restores it on reopen.
+        let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("session-abc"))
+        drafts.setDraft("typed", for: key)
+        let parked = drafts.parkQueuedMessages(handedOver, for: key)
+        XCTAssertEqual(parked?.text, "first\n\nsecond\n\ntyped")
+        XCTAssertEqual(parked?.attachments.map(\.file), ["saved-1-notes.txt"])
+
         streamClient.emit(.streamEnd)
         await drainMainActor()
         XCTAssertNil(viewModel.activeStreamID)

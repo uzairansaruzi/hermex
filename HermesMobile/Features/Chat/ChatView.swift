@@ -2407,22 +2407,14 @@ struct ChatView: View {
     /// its next keystroke can't overwrite the stored merge.
     private func parkQueuedMessages() {
         let queued = viewModel.takeQueuedMessages()
-        guard !queued.isEmpty else { return }
-        let queuedAttachments = queued.flatMap(\.attachments)
-        // Only files with a durable copy can be restored on reopen, as in
-        // `syncDraftAttachments`.
-        // Nil when the session was just deleted: there is no draft to show.
-        guard let parked = draftStore.parkQueuedMessages(
-            queued.map(\.text),
-            attachments: queuedAttachments
-                .map(ChatDraftAttachment.init(pending:))
-                .filter { $0.file != nil },
-            for: draftKey
-        ) else { return }
+        guard !queued.isEmpty,
+              // Nil when the session was just deleted: there is no draft to show.
+              let parked = draftStore.parkQueuedMessages(queued, for: draftKey)
+        else { return }
         // Not the user's edit, but a send still in flight must not clear it.
         draftRevision &+= 1
         draftMessage = parked.text
-        viewModel.appendPendingAttachments(queuedAttachments)
+        viewModel.appendPendingAttachments(queued.flatMap(\.attachments))
     }
 
     private func flushDraftsBestEffort() {

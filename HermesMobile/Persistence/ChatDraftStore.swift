@@ -638,21 +638,22 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.attachments = attachments }
     }
 
-    /// Parks the messages queued behind a run in one draft, in one write
-    /// (merge rule: `ChatDraftQueueParking`). Synchronous, so it lands even
-    /// while the chat's view is going away. Returns the merged draft, or nil
-    /// when the chat's session was deleted.
-    func parkQueuedMessages(
-        _ texts: [String],
-        attachments: [ChatDraftAttachment],
-        for key: ChatDraftKey
-    ) -> ChatDraft? {
+    /// Parks the messages queued behind a run in the chat's draft, in one
+    /// write (merge rule: `ChatDraftQueueParking`). ChatView calls it when the
+    /// chat is left mid-run (#857). Only files with a durable copy are
+    /// recorded, as in `ChatView.syncDraftAttachments`: nothing else can be
+    /// restored on reopen. Synchronous, so it lands even while the chat's view
+    /// is going away. Returns the merged draft, or nil when the chat's session
+    /// was deleted.
+    func parkQueuedMessages(_ queued: [QueuedSlashMessage], for key: ChatDraftKey) -> ChatDraft? {
         guard !deletedSessionKeys.contains(key) else { return nil }
         markChangedBeforeLoad(key)
         let merged = ChatDraftQueueParking.merged(
             drafts[key] ?? ChatDraft(),
-            queuedTexts: texts,
-            queuedAttachments: attachments
+            queuedTexts: queued.map(\.text),
+            queuedAttachments: queued.flatMap(\.attachments)
+                .map(ChatDraftAttachment.init(pending:))
+                .filter { $0.file != nil }
         )
         updateDraft(for: key) { $0 = merged }
         return merged
