@@ -1,10 +1,23 @@
 import SwiftUI
 
+/// When a tool group's newest row fades in. Only a live group animates, as a
+/// new call replaces its newest row; history, reloads, and the rows a
+/// reattached stream replays draw in place, and Reduce Motion turns it off.
+/// A group that appears whole (its first call) draws in place too, because
+/// SwiftUI runs a transition only on the view it inserts, not its children.
+enum ToolActivityEntrance {
+    static func animatesNewestRow(isLive: Bool, isReplaying: Bool, reduceMotion: Bool) -> Bool {
+        isLive && !isReplaying && !reduceMotion
+    }
+}
+
 /// A turn's tool calls as a dense log. The last call stays visible while earlier
 /// calls sit behind a `+N previous tool calls` toggle, during and after streaming.
 struct ToolActivityGroupView: View {
     let group: ToolCallGroup
     var isLive = false
+    /// True while a reattached stream replays calls the transcript missed.
+    var isReplaying = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
@@ -39,12 +52,27 @@ struct ToolActivityGroupView: View {
                     }
                 }
 
+                // Row identity is the call's stable id, so a start → complete
+                // update of the same call keeps the row and never replays this.
                 ToolCallLogRowView(entry: lastEntry)
+                    .transition(newestRowTransition)
                     .id(lastEntry.id)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
         }
+    }
+
+    /// The message rows' one-shot entrance: a 0.22 s fade on insertion only.
+    private var newestRowTransition: AnyTransition {
+        guard ToolActivityEntrance.animatesNewestRow(
+            isLive: isLive,
+            isReplaying: isReplaying,
+            reduceMotion: reduceMotion
+        ) else {
+            return .identity
+        }
+        return ChatMotion.freshRowTransition(isUserRow: false, reduceMotion: reduceMotion)
     }
 
     private func toggleExpansion() {

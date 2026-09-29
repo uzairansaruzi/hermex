@@ -36,6 +36,8 @@ struct ChatTranscriptView: View {
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
     let liveToolCalls: [ToolCall]
+    /// True while a reattached stream replays; live tool rows draw in place.
+    let isReplayingLiveToolCalls: Bool
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
     let liveTokensPerSecond: Double?
@@ -316,6 +318,7 @@ struct ChatTranscriptView: View {
                     reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
                     liveReasoningStreamID: isReasoningAnchor ? activeStreamID : nil,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
+                    isReplayingLiveToolCalls: isToolCallAnchor && isReplayingLiveToolCalls,
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
                     liveTokensPerSecond: isStreamingRow ? liveTokensPerSecond : nil,
@@ -468,7 +471,8 @@ struct ChatTranscriptView: View {
                             anchorMessageID: toolCallAnchorMessageID,
                             toolCalls: liveToolCalls
                         ),
-                        isLive: true
+                        isLive: true,
+                        isReplaying: isReplayingLiveToolCalls
                     )
                 }
             }
@@ -579,6 +583,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let reasoningAnchorMessageID: String?
     let liveReasoningStreamID: String?
     let liveToolCalls: [ToolCall]
+    let isReplayingLiveToolCalls: Bool
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
     let liveTokensPerSecond: Double?
@@ -622,6 +627,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.reasoningAnchorMessageID == rhs.reasoningAnchorMessageID &&
             lhs.liveReasoningStreamID == rhs.liveReasoningStreamID &&
             lhs.liveToolCalls == rhs.liveToolCalls &&
+            lhs.isReplayingLiveToolCalls == rhs.isReplayingLiveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
             lhs.streamingAssistantMessageID == rhs.streamingAssistantMessageID &&
             lhs.liveTokensPerSecond == rhs.liveTokensPerSecond &&
@@ -763,7 +769,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     anchorMessageID: toolCallAnchorMessageID,
                     toolCalls: liveToolCalls
                 ),
-                isLive: true
+                isLive: true,
+                isReplaying: isReplayingLiveToolCalls
             )
         }
     }

@@ -25,4 +25,22 @@ final class ChatTranscriptRowEntryTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: .nan, now: now))
         XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: .infinity, now: now))
     }
+
+    // Tool rows: only the newest row of a live group fades in (#873).
+
+    func testALiveGroupsNewestToolRowAnimatesIn() {
+        XCTAssertTrue(ToolActivityEntrance.animatesNewestRow(isLive: true, isReplaying: false, reduceMotion: false))
+    }
+
+    func testASettledGroupsToolRowsDrawInPlace() {
+        XCTAssertFalse(ToolActivityEntrance.animatesNewestRow(isLive: false, isReplaying: false, reduceMotion: false))
+    }
+
+    func testReduceMotionTurnsTheToolRowEntranceOff() {
+        XCTAssertFalse(ToolActivityEntrance.animatesNewestRow(isLive: true, isReplaying: false, reduceMotion: true))
+    }
+
+    func testToolRowsAReattachedStreamReplaysDrawInPlace() {
+        XCTAssertFalse(ToolActivityEntrance.animatesNewestRow(isLive: true, isReplaying: true, reduceMotion: false))
+    }
 }

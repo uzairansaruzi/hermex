@@ -549,7 +549,10 @@ final class ChatViewModel {
     private var backgroundPromptsByTaskID: [String: String] = [:]
     @ObservationIgnored private var backgroundPollTask: Task<Void, Never>?
     private var isRefreshingCompletedResponseTitle = false
-    private var isActiveStreamReplayConnection: Bool { streamCoordinator.isReplayConnection }
+    /// True while a reattached stream replays events the transcript may already
+    /// hold. Clears once replayed text catches up; until then live tool rows
+    /// skip their entrance.
+    var isActiveStreamReplayConnection: Bool { streamCoordinator.isReplayConnection }
     private var activeStreamReplayMatchedPrefixLength = 0
     private var activeStreamReplayMatchedInterimLength = 0
     private var activeStreamReplayMatchedReasoningLength = 0
