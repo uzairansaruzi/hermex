@@ -2102,6 +2102,126 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(viewModel.isUnarchiving)
     }
 
+    /// A `200` whose body says the archive did not happen must not count as
+    /// success: the list would show "Archived · Undo" for a session the server
+    /// kept, or drop the toast for an Undo the server refused (#865). Mirrors
+    /// the Archived screen's unarchive checks.
+    @MainActor
+    func testArchiveOkFalseResponseIsNotTreatedAsSuccess() async throws {
+        let refusals: [(archived: Bool, body: String, message: String)] = [
+            (true, #"{"ok": false}"#, "The server could not archive this session."),
+            (true, #"{"ok": false, "error": "Session not writable"}"#, "Session not writable"),
+            (false, #"{"ok": false}"#, "The server could not unarchive this session."),
+        ]
+        for refusal in refusals {
+            var loadCount = 0
+            let viewModel = try makeViewModel { request in
+                switch request.url?.path {
+                case "/api/sessions":
+                    loadCount += 1
+                    return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+                case "/api/session/archive":
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["archived"] as? Bool, refusal.archived)
+                    return apiTestJSONResponse(refusal.body, for: request)
+                default:
+                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                    throw URLError(.badURL)
+                }
+            }
+
+            await viewModel.load()
+            let session = try XCTUnwrap(viewModel.sessions.first)
+            let didChange: Bool
+            if refusal.archived {
+                didChange = await viewModel.archive(session)
+            } else {
+                didChange = await viewModel.unarchive(session)
+            }
+
+            XCTAssertFalse(didChange, refusal.body)
+            XCTAssertEqual(viewModel.actionErrorMessage, refusal.message, refusal.body)
+            XCTAssertEqual(loadCount, 1, "A refused change must not reload the list")
+            XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-abc"])
+            XCTAssertFalse(viewModel.isMutating(session))
+        }
+    }
+
+    /// Undo from the list's toast restores the session and reloads, so the row
+    /// comes back where it was (#865).
+    @MainActor
+    func testUnarchiveFromListSendsArchivedFalseAndReloadsRows() async throws {
+        var loadCount = 0
+        var archivedValues: [Bool] = []
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                loadCount += 1
+                // The first load follows the archive, so the session is hidden.
+                let json = loadCount == 1 ? #"{"sessions": []}"# : self.sessionListJSON(forLoadCount: 1)
+                return apiTestJSONResponse(json, for: request)
+            case "/api/session/archive":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                archivedValues.append(try XCTUnwrap(body["archived"] as? Bool))
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        await viewModel.load()
+        XCTAssertEqual(viewModel.sessions.count, 0)
+        let archived = try makeSessionSummary(id: "session-abc", title: "Planning", pinned: false, archived: true)
+
+        let didUnarchive = await viewModel.unarchive(archived)
+
+        XCTAssertTrue(didUnarchive)
+        XCTAssertEqual(archivedValues, [false])
+        XCTAssertEqual(loadCount, 2)
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-abc"])
+        XCTAssertNil(viewModel.actionErrorMessage)
+    }
+
+    /// A double tap on Undo sends one `archived: false` request (#865).
+    @MainActor
+    func testUnarchiveWhileSameSessionIsMutatingSendsNothing() async throws {
+        let firstRequestStarted = expectation(description: "first unarchive request started")
+        let releaseFirstRequest = DispatchSemaphore(value: 0)
+        var archivedValues: [Bool] = []
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            case "/api/session/archive":
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                archivedValues.append(try XCTUnwrap(body["archived"] as? Bool))
+                if archivedValues.count == 1 {
+                    firstRequestStarted.fulfill()
+                    releaseFirstRequest.wait()
+                }
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+        let session = try makeSessionSummary(id: "session-abc", title: "Planning", pinned: false, archived: true)
+
+        let firstUndo = Task { @MainActor in await viewModel.unarchive(session) }
+        await fulfillment(of: [firstRequestStarted], timeout: 5)
+        XCTAssertTrue(viewModel.isMutating(session))
+
+        let didSecondUndo = await viewModel.unarchive(session)
+        releaseFirstRequest.signal()
+        let didFirstUndo = await firstUndo.value
+
+        XCTAssertFalse(didSecondUndo)
+        XCTAssertTrue(didFirstUndo)
+        XCTAssertEqual(archivedValues, [false])
+        XCTAssertFalse(viewModel.isMutating(session))
+    }
+
     @MainActor
     func testLoadStoresArchivedCountFromResponseForArchivedEntry() async throws {
         let viewModel = try makeViewModel { request in

@@ -28,6 +28,14 @@ struct SessionListForegroundRefresh: Equatable {
     }
 }
 
+/// Which screen shows the archive Undo toast: the one whose row was archived.
+/// On iPhone the Scheduled screen covers the list; on iPad it fills the detail
+/// column beside the sidebar.
+private enum SessionListToastHost: Equatable {
+    case list
+    case scheduled
+}
+
 @MainActor
 struct SessionListView: View {
     private static let searchChromeIconVisualSize: CGFloat = 36
@@ -82,6 +90,8 @@ struct SessionListView: View {
     @State private var returnRefreshID: UUID?
     /// Set while compact width pops back to the list on the way to Settings → Notifications.
     @State private var opensNotificationSettingsOnReturn = false
+    @State private var actionToast = ActionToastState()
+    @State private var actionToastHost = SessionListToastHost.list
     @FocusState private var searchFieldIsFocused: Bool
     @AppStorage(SessionSidebarDisclosureSettings.profilesAreExpandedKey)
     private var profilesAreExpanded = SessionSidebarDisclosureSettings.defaultProfilesAreExpanded
@@ -358,6 +368,7 @@ struct SessionListView: View {
                 ratingRequestID = nil
                 sessionOpenTask?.cancel()
                 viewModel.invalidateSessionOpening()
+                actionToast.dismiss()
             }
             .onChange(of: viewModel.isLoading) {
                 refreshAfterForegroundReturnIfReady()
@@ -539,12 +550,21 @@ struct SessionListView: View {
 
             content
 
-            if !isSearchingSessions {
-                newSessionButton
-                    .padding(.trailing, 24)
-                    .padding(.bottom, 22)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            // The Undo toast sits 10 pt above the Chat button, as wide as the
+            // column, and grows upward so the button never moves.
+            VStack(alignment: .trailing, spacing: 10) {
+                if actionToastHost == .list {
+                    ActionToastView(state: actionToast)
+                        .padding(.bottom, isSearchingSessions ? 22 : 0)
+                }
+
+                if !isSearchingSessions {
+                    newSessionButton
+                        .padding(.bottom, 22)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .padding(.horizontal, 24)
         }
     }
 
@@ -627,8 +647,14 @@ struct SessionListView: View {
                     selectedSessionID: horizontalSizeClass == .regular
                         ? navigationState.selectedSessionID
                         : nil,
-                    actions: sessionRowActions
+                    actions: sessionRowActions(toastHost: .scheduled),
+                    actionToast: actionToastHost == .scheduled ? actionToast : nil
                 )
+                .onDisappear {
+                    if actionToastHost == .scheduled {
+                        actionToast.dismiss()
+                    }
+                }
             }
         }
         .adaptiveSecondaryNavigationTitle()
@@ -696,7 +722,7 @@ struct SessionListView: View {
                         ? navigationState.selectedSessionID
                         : nil,
                     userIsExpanded: $scheduledSessionsAreExpanded,
-                    actions: sessionRowActions,
+                    actions: sessionRowActions(),
                     viewAll: { selectDestination(.scheduled) }
                 )
             }
@@ -713,7 +739,7 @@ struct SessionListView: View {
                 selectedSessionID: horizontalSizeClass == .regular
                     ? navigationState.selectedSessionID
                     : nil,
-                actions: sessionRowActions,
+                actions: sessionRowActions(),
                 suppressEmptyState: !groups.scheduled.isEmpty
             )
 
@@ -1135,7 +1161,9 @@ struct SessionListView: View {
         )
     }
 
-    private var sessionRowActions: SessionListRowActions {
+    /// `toastHost` names the screen these rows are on, so an archive's Undo
+    /// toast shows where the row was swiped.
+    private func sessionRowActions(toastHost: SessionListToastHost = .list) -> SessionListRowActions {
         SessionListRowActions(
             retryLoad: {
                 Task { await refreshSessionsAndActiveProfile() }
@@ -1150,7 +1178,7 @@ struct SessionListView: View {
                 Task { await togglePinned(session) }
             },
             archive: { session in
-                Task { await archive(session) }
+                Task { await archive(session, toastHost: toastHost) }
             },
             delete: { session in
                 sessionPendingDeletion = session
@@ -1336,7 +1364,7 @@ struct SessionListView: View {
         }
     }
 
-    private func archive(_ session: SessionSummary) async {
+    private func archive(_ session: SessionSummary, toastHost: SessionListToastHost) async {
         let didArchive = await viewModel.archive(
             session,
             modelContext: modelContext,
@@ -1346,6 +1374,44 @@ struct SessionListView: View {
 
         if didArchive {
             removeSessionFromNavigation(session)
+            SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
+            showArchiveUndoToast(for: session, on: toastHost)
+        }
+    }
+
+    /// "Archived · Undo" after the server confirms an archive (#865). A second
+    /// archive replaces the toast; the first session stays in Archived.
+    private func showArchiveUndoToast(for session: SessionSummary, on host: SessionListToastHost) {
+        let message = String(localized: "Archived")
+        actionToastHost = host
+        actionToast.show(
+            ActionToast(
+                message: message,
+                systemImage: "archivebox",
+                accessibilityLabel: String.localizedStringWithFormat(
+                    String(localized: "%@, %@"),
+                    SessionRowView.displayTitle(for: session),
+                    message
+                ),
+                actionTitle: String(localized: "Undo"),
+                action: {
+                    Task { await undoArchive(session) }
+                }
+            )
+        )
+    }
+
+    /// Restores the session in place. It does not reopen a chat the archive
+    /// closed; a failure shows the "Session Action Failed" alert.
+    private func undoArchive(_ session: SessionSummary) async {
+        let didUnarchive = await viewModel.unarchive(
+            session,
+            modelContext: modelContext,
+            animation: SessionListMotion.sessionMutationAnimation(reduceMotion: reduceMotion)
+        )
+        handleLastError()
+
+        if didUnarchive {
             SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
         }
     }

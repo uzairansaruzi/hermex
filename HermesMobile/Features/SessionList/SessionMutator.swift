@@ -14,6 +14,25 @@ struct SessionMoveWhileStreamingError: LocalizedError, Equatable {
     }
 }
 
+/// A `200` from `/api/session/archive` whose body still says the change did not
+/// happen: a non-empty `error` (shown as the server wrote it) or `ok: false`.
+/// A missing `ok` is success, per tolerant decoding. Mirrors the checks in
+/// `ArchivedSessionsViewModel.unarchive` so the list never reports an archive
+/// or an undo the server refused (#865).
+struct SessionArchiveRefusal: LocalizedError, Equatable {
+    let archived: Bool
+    let serverMessage: String?
+
+    var errorDescription: String? {
+        if let serverMessage {
+            return serverMessage
+        }
+        return archived
+            ? String(localized: "The server could not archive this session.")
+            : String(localized: "The server could not unarchive this session.")
+    }
+}
+
 struct SessionMutator {
     let client: APIClient
 
@@ -22,7 +41,23 @@ struct SessionMutator {
     }
 
     func archive(sessionID: String) async throws {
-        _ = try await client.archiveSession(id: sessionID, archived: true)
+        try await setArchived(true, sessionID: sessionID)
+    }
+
+    /// Restores an archived session; the list's Undo toast calls this.
+    func unarchive(sessionID: String) async throws {
+        try await setArchived(false, sessionID: sessionID)
+    }
+
+    private func setArchived(_ archived: Bool, sessionID: String) async throws {
+        let response = try await client.archiveSession(id: sessionID, archived: archived)
+        let serverMessage = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let serverMessage, !serverMessage.isEmpty {
+            throw SessionArchiveRefusal(archived: archived, serverMessage: serverMessage)
+        }
+        if response.ok == false {
+            throw SessionArchiveRefusal(archived: archived, serverMessage: nil)
+        }
     }
 
     func delete(sessionID: String) async throws {

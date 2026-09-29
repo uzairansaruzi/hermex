@@ -948,6 +948,27 @@ final class SessionListViewModel {
         }
     }
 
+    /// Undoes an archive from the list: restores the session, then reloads so
+    /// its row returns to its old place (the server keeps `updated_at`). A second
+    /// call while one is in flight for the same session sends nothing.
+    func unarchive(
+        _ session: SessionSummary,
+        modelContext: ModelContext? = nil,
+        animation: Animation? = nil
+    ) async -> Bool {
+        guard let sessionId = Self.nonEmpty(session.sessionId) else {
+            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            return false
+        }
+
+        guard beginSessionMutation(sessionId) else { return false }
+        defer { endSessionMutation(sessionId) }
+
+        return await mutate(modelContext: modelContext, animation: animation) {
+            try await sessionMutator.unarchive(sessionID: sessionId)
+        }
+    }
+
     func delete(
         _ session: SessionSummary,
         modelContext: ModelContext? = nil,

@@ -797,6 +797,8 @@ struct ScheduledSessionsView: View {
     let showsWorkspace: Bool
     let selectedSessionID: String?
     let actions: SessionListRowActions
+    /// The archive Undo toast, when an archive on this screen owns it (#865).
+    let actionToast: ActionToastState?
 
     @State private var searchText = ""
 
@@ -833,6 +835,14 @@ struct ScheduledSessionsView: View {
         .scrollContentBackground(.hidden)
         .navigationTitle("Scheduled sessions")
         .searchable(text: $searchText, prompt: "Search sessions")
+        .overlay(alignment: .bottom) {
+            if let actionToast {
+                ActionToastView(state: actionToast)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 22)
+            }
+        }
     }
 
     private var sessions: [SessionSummary] {
