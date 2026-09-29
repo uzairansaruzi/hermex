@@ -18,8 +18,18 @@ final class ChatHapticsTests: XCTestCase {
         ChatHaptics.copied(isEnabled: false) { feedback.append($0) }
         ChatHaptics.gitActionFinished(succeeded: true, isEnabled: false) { feedback.append($0) }
         ChatHaptics.streamingPulse(isEnabled: false) { feedback.append($0) }
+        ChatHaptics.autocompleteAccepted(isEnabled: false) { feedback.append($0) }
 
         XCTAssertTrue(feedback.isEmpty)
+    }
+
+    @MainActor
+    func testAutocompleteAcceptedPlaysOneSelectionTick() {
+        var feedback: [ChatHapticFeedback] = []
+
+        ChatHaptics.autocompleteAccepted(isEnabled: true) { feedback.append($0) }
+
+        XCTAssertEqual(feedback, [.selection])
     }
 
     @MainActor

@@ -101,6 +101,7 @@ struct MessageComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var plusIconSize: CGFloat = 20
 
@@ -361,13 +362,21 @@ struct MessageComposerView: View {
         composerSelection = composerSelection.moved(to: completed.selection)
     }
 
+    /// A row the user tapped in the `/` panel: completes it with a selection
+    /// tick. Dismissing the panel calls `applyCompletion` directly, silently.
+    private func pickCompletion(_ replacement: String) {
+        applyCompletion(replacement)
+        ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
+    }
+
     /// Swaps the `@…` at the caret for the picked entry.
     ///
     /// A file finishes the reference: `@path` plus a space, recorded so the
     /// editor draws it as a chip. A folder is a step on the way, so it inserts
     /// with a trailing `/` and no space and the panel stays open listing what is
     /// inside it. Only files are recorded, which is what keeps a folder
-    /// reference from becoming a chip that opens nothing.
+    /// reference from becoming a chip that opens nothing. Either pick plays a
+    /// selection tick, so a folder tap that keeps the panel open still lands.
     private func applyFileCompletion(_ match: ComposerFilePathSearch.Match) {
         guard let trigger = fileTrigger else { return }
 
@@ -381,6 +390,7 @@ struct MessageComposerView: View {
         if !match.isDirectory {
             onSelectFileReference(match.path)
         }
+        ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
     }
 
     private var parsedSlashQuery: ParsedSlashQuery {
@@ -460,19 +470,19 @@ struct MessageComposerView: View {
                             skillsOnly: showsSlashAutocompleteSkillsOnly,
                             selectedReasoningEffort: selectedReasoningEffort,
                             onSelectCommand: { command in
-                                applyCompletion("/\(command.name) ")
+                                pickCompletion("/\(command.name) ")
                             },
                             onSelectSkillCommand: { skill in
-                                applyCompletion("/\(skill.slashName) ")
+                                pickCompletion("/\(skill.slashName) ")
                             },
                             onSelectAgentCommand: { command in
-                                applyCompletion("/\(command.name) ")
+                                pickCompletion("/\(command.name) ")
                             },
                             onSelectSkillSubArg: { skill in
-                                applyCompletion("/skills \(skill.slashName) ")
+                                pickCompletion("/skills \(skill.slashName) ")
                             },
                             onSelectSubArg: { subArg in
-                                applyCompletion("/\(parsedSlashQuery.commandName) \(subArg)")
+                                pickCompletion("/\(parsedSlashQuery.commandName) \(subArg)")
                             },
                             onDismiss: {
                                 applyCompletion("")

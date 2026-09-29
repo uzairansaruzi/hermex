@@ -88,6 +88,13 @@ enum ChatHaptics {
         emit(.selection, isEnabled: isEnabled, performer: performer)
     }
 
+    /// A row the user tapped in a composer's autocomplete panel: a command,
+    /// skill, sub-argument, file, folder, bot or mention. Dismissing the panel
+    /// is not a pick and plays nothing.
+    static func autocompleteAccepted(isEnabled: Bool, performer: Performer? = nil) {
+        emit(.selection, isEnabled: isEnabled, performer: performer)
+    }
+
     static func destructiveConfirmationAccepted(isEnabled: Bool, performer: Performer? = nil) {
         emit(.warning, isEnabled: isEnabled, performer: performer)
     }

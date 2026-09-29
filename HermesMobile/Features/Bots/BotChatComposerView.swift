@@ -19,6 +19,7 @@ struct BotChatComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(BotQuickReplyStore.storageKey) private var storedQuickReplies = ""
     /// Decoded once per storage change, not on every keystroke's body pass.
     @State private var quickReplies: [BotQuickReply] = []
@@ -260,6 +261,7 @@ struct BotChatComposerView: View {
                             let result = trigger.applying("@" + item.tag + " ", to: model.draft)
                             editDraft(result.draft)
                             selection = selection.moved(to: result.selection)
+                            ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
                         },
                         onSelectFile: { match in
                             let result = trigger.applying(
@@ -268,6 +270,7 @@ struct BotChatComposerView: View {
                             editDraft(result.draft)
                             selection = selection.moved(to: result.selection)
                             if !match.isDirectory { model.recordFileChipReference(match.path) }
+                            ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
                         }
                     )
                     .padding(.horizontal, 16).padding(.bottom, 8)
@@ -284,6 +287,7 @@ struct BotChatComposerView: View {
                     let result = trigger.applying("/" + skill.slashName + " ", to: model.draft)
                     editDraft(result.draft)
                     selection = selection.moved(to: result.selection)
+                    ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
                 }
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
