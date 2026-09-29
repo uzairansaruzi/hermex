@@ -109,6 +109,10 @@ final class SessionListViewModel {
     private(set) var remoteContentSearchExcerpts: [String: String] = [:]
     private var activeRemoteSearchQuery: String?
     private var sessionOpenGeneration = 0
+    /// The external session the live `sessionForOpening` is still importing, so
+    /// Next and Previous Chat step past it before navigation lands. Nil once
+    /// that open finishes or a newer open or navigation invalidates it.
+    private(set) var openingSessionID: String?
     private var activeProfileGeneration = 0
 
     private let client: APIClient
@@ -805,6 +809,7 @@ final class SessionListViewModel {
     ) async -> SessionSummary? {
         sessionOpenGeneration &+= 1
         let generation = sessionOpenGeneration
+        openingSessionID = nil
         actionErrorMessage = nil
         lastError = nil
 
@@ -815,6 +820,11 @@ final class SessionListViewModel {
         guard let sessionID = Self.nonEmpty(session.sessionId) else {
             actionErrorMessage = String(localized: "The server did not provide a session ID.")
             return nil
+        }
+
+        openingSessionID = session.sessionId
+        defer {
+            if generation == sessionOpenGeneration { openingSessionID = nil }
         }
 
         do {
@@ -912,6 +922,7 @@ final class SessionListViewModel {
 
     func invalidateSessionOpening() {
         sessionOpenGeneration &+= 1
+        openingSessionID = nil
     }
 
     func setPinned(

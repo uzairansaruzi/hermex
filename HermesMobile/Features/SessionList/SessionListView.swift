@@ -118,8 +118,6 @@ struct SessionListView: View {
     @State private var sessionPendingProjectCreation: SessionSummary?
     @State private var sessionOpenErrorMessage: String?
     @State private var sessionOpenTask: Task<Void, Never>?
-    /// The chat `sessionOpenTask` is opening; nil once it finishes or is cancelled.
-    @State private var openingSessionID: String?
     @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
     @State private var isPresentingAddServer = false
@@ -1304,7 +1302,7 @@ struct SessionListView: View {
     private func openAdjacentChatFromKeyboard(offset: Int) {
         guard let chat = ChatShortcutNavigation.adjacentChat(
             offset: offset,
-            from: openingSessionID ?? navigationState.selectedSessionID,
+            from: viewModel.openingSessionID ?? navigationState.selectedSessionID,
             in: keyboardShortcutChats
         ) else { return }
         startOpeningSession(chat)
@@ -1696,12 +1694,7 @@ struct SessionListView: View {
 
     private func startOpeningSession(_ session: SessionSummary) {
         sessionOpenTask?.cancel()
-        openingSessionID = session.sessionId
-        sessionOpenTask = Task {
-            await openSession(session)
-            // A newer open has already replaced the ID; leave it.
-            if openingSessionID == session.sessionId { openingSessionID = nil }
-        }
+        sessionOpenTask = Task { await openSession(session) }
     }
 
     private func openSession(_ session: SessionSummary) async {

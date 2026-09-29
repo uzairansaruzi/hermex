@@ -2969,6 +2969,53 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testOpeningSessionIDFollowsOnlyTheLiveImport() async throws {
+        let importsStarted = (1...3).map { expectation(description: "import \($0) started") }
+        let releaseImports = (1...3).map { _ in DispatchSemaphore(value: 0) }
+        let importCountLock = NSLock()
+        var importCount = 0
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session/import_cli")
+            let index = importCountLock.withLock {
+                defer { importCount += 1 }
+                return importCount
+            }
+            importsStarted[index].fulfill()
+            releaseImports[index].wait()
+            return apiTestJSONResponse("""
+            {"session": {"session_id": "cli-a", "title": "Imported", "is_cli_session": true}}
+            """, for: request)
+        }
+        let external = SessionSummary(sessionId: "cli-a", title: "CLI", isCliSession: true)
+
+        // Reopening the same chat: the older open finishing must not clear the newer one.
+        let staleOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
+        await fulfillment(of: [importsStarted[0]], timeout: 1)
+        XCTAssertEqual(viewModel.openingSessionID, "cli-a")
+        let liveOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
+        await fulfillment(of: [importsStarted[1]], timeout: 1)
+        releaseImports[0].signal()
+        let staleResult = await staleOpen.value
+        XCTAssertNil(staleResult)
+        XCTAssertEqual(viewModel.openingSessionID, "cli-a")
+        releaseImports[1].signal()
+        let liveResult = await liveOpen.value
+        XCTAssertEqual(liveResult?.sessionId, "cli-a")
+        XCTAssertNil(viewModel.openingSessionID)
+
+        // Navigating elsewhere (New Chat, a utility screen) abandons the import at once.
+        let abandonedOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
+        await fulfillment(of: [importsStarted[2]], timeout: 1)
+        XCTAssertEqual(viewModel.openingSessionID, "cli-a")
+        viewModel.invalidateSessionOpening()
+        XCTAssertNil(viewModel.openingSessionID)
+        releaseImports[2].signal()
+        let abandonedResult = await abandonedOpen.value
+        XCTAssertNil(abandonedResult)
+        XCTAssertNil(viewModel.openingSessionID)
+    }
+
+    @MainActor
     func testOpeningWebUISessionSkipsImportRequest() async throws {
         var requestedPaths: [String] = []
         let viewModel = try makeViewModel { request in
