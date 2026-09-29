@@ -171,10 +171,22 @@ struct AllowsStreamedTextAnimationKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+/// The background a wide markdown table fades its hidden edges into. Defaults
+/// to the transcript background. Grouped lists set their row colour; a host
+/// on a translucent fill sets nil, which turns the fade off.
+struct MarkdownTableEdgeFadeColorKey: EnvironmentKey {
+    static let defaultValue: SwiftUI.Color? = SwiftUI.Color(.systemBackground)
+}
+
 extension EnvironmentValues {
     var allowsStreamedTextAnimation: Bool {
         get { self[AllowsStreamedTextAnimationKey.self] }
         set { self[AllowsStreamedTextAnimationKey.self] = newValue }
+    }
+
+    var markdownTableEdgeFadeColor: SwiftUI.Color? {
+        get { self[MarkdownTableEdgeFadeColorKey.self] }
+        set { self[MarkdownTableEdgeFadeColorKey.self] = newValue }
     }
 }
 
@@ -1415,8 +1427,13 @@ private struct ChatMarkdownTable: View {
     let label: MarkdownUI.BlockConfiguration.Label
     let colorScheme: ColorScheme
 
+    @Environment(\.markdownTableEdgeFadeColor) private var edgeFadeColor
+
+    /// A table wider than its column fades the edge that hides columns, so a
+    /// cut-off column never reads as the whole table.
+    @ViewBuilder
     var body: some View {
-        ScrollView(.horizontal) {
+        let scroller = ScrollView(.horizontal) {
             label
                 .fixedSize(horizontal: true, vertical: true)
                 .markdownTableBorderStyle(.init(color: borderColor))
@@ -1425,6 +1442,12 @@ private struct ChatMarkdownTable: View {
                 )
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+
+        if let edgeFadeColor {
+            scroller.horizontalOverflowFades(.overlay(edgeFadeColor))
+        } else {
+            scroller
+        }
     }
 
     private var backgroundColor: SwiftUI.Color {

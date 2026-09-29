@@ -281,6 +281,8 @@ struct MessageBubbleView: View {
 
             MarkdownRenderer(content: messageText, isStreaming: isStreaming)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // The card's material is translucent, so no solid fade matches it.
+                .environment(\.markdownTableEdgeFadeColor, nil)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)

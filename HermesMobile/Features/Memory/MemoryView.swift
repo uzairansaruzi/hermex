@@ -103,6 +103,8 @@ struct MemoryView: View {
             .refreshable {
                 await loadMemory()
             }
+            // Wide tables fade into the grouped row they sit on.
+            .environment(\.markdownTableEdgeFadeColor, Color(.secondarySystemGroupedBackground))
         }
     }
 

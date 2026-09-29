@@ -285,6 +285,8 @@ private struct BotRoomEventView: View {
                         Text(event.sender(in: room)).font(.caption).foregroundStyle(.secondary)
                         ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
                             MarkdownRenderer(content: messageText)
+                                // The bubble's fill is translucent, so no solid fade matches it.
+                                .environment(\.markdownTableEdgeFadeColor, nil)
                         }
                         .onGeometryChange(for: Bool.self) { geometry in
                             guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }

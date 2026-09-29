@@ -128,6 +128,8 @@ private struct KanbanCardDetailContent: View {
         }
         .refreshable { await state.refresh() }
         .listStyle(.insetGrouped)
+        // Wide tables fade into the grouped row they sit on.
+        .environment(\.markdownTableEdgeFadeColor, Color(.secondarySystemGroupedBackground))
     }
 
     @ViewBuilder
