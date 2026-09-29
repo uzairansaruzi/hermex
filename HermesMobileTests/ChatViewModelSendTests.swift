@@ -9428,6 +9428,141 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(newTurnMessage, "one more thing")
     }
 
+    /// The server says the run ended, but its transcript has no reply yet: the
+    /// live stream still owns the ending, so the run isn't failed early and the
+    /// message waits for the stream's own finish.
+    @MainActor
+    func testRunEndedSteerWithoutReplyWaitsForTheLiveStream() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let newTurn = expectation(description: "Steer text starts a new turn after the stream ends")
+        var chatStartCount = 0
+        var newTurnMessage: String?
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                chatStartCount += 1
+                if chatStartCount == 2 {
+                    let body = try XCTUnwrap(apiTestBodyData(from: request))
+                    newTurnMessage = (try JSONSerialization.jsonObject(with: body) as? [String: Any])?["message"] as? String
+                    newTurn.fulfill()
+                }
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
+                    for: request
+                )
+            case "/api/chat/steer":
+                return apiTestJSONResponse(
+                    #"{"accepted":false,"fallback":"stream_dead","stream_id":null}"#,
+                    for: request
+                )
+            case "/api/chat/stream/status":
+                return apiTestJSONResponse(#"{"active":false,"stream_id":"stream-1"}"#, for: request)
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "title": "Planning",
+                    "messages": [
+                      {"role": "user", "content": "Start a response", "message_id": "user-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a response")
+        XCTAssertTrue(didStart)
+
+        let result = await viewModel.submitStreamingMessage("one more thing", behavior: .steer)
+
+        XCTAssertEqual(result, .executed(message: "Queued, sends when this run finishes"))
+        XCTAssertEqual(viewModel.activeStreamID, "stream-1")
+        XCTAssertEqual(chatStartCount, 1)
+
+        streamClient.emit(.streamEnd)
+        await fulfillment(of: [newTurn], timeout: 5)
+        XCTAssertEqual(newTurnMessage, "one more thing")
+    }
+
+    /// A file staged while a server-queued steer is in flight isn't part of
+    /// that message: it stays in the composer, and the queued send carries
+    /// only the file that was staged when the user tapped Send.
+    @MainActor
+    func testServerQueuedSteerLeavesFilesStagedDuringTheRequest() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let steerStarted = expectation(description: "Steer request started")
+        let releaseSteer = DispatchSemaphore(value: 0)
+        let queuedSend = expectation(description: "Queued message starts a new turn")
+        var uploadCount = 0
+        var chatStartCount = 0
+        var queuedStartBody: [String: Any]?
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/upload":
+                uploadCount += 1
+                if uploadCount == 1 {
+                    return Self.notesUploadResponse(for: request)
+                }
+                return apiTestJSONResponse("""
+                {
+                  "filename": "later.txt",
+                  "path": "/tmp/workspace/later.txt",
+                  "size": 5,
+                  "mime": "text/plain",
+                  "is_image": false
+                }
+                """, for: request)
+            case "/api/chat/start":
+                chatStartCount += 1
+                if chatStartCount == 2 {
+                    let body = try XCTUnwrap(apiTestBodyData(from: request))
+                    queuedStartBody = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                    queuedSend.fulfill()
+                }
+                return apiTestJSONResponse(
+                    #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
+                    for: request
+                )
+            case "/api/chat/steer":
+                steerStarted.fulfill()
+                XCTAssertEqual(releaseSteer.wait(timeout: .now() + .seconds(5)), .success)
+                return apiTestJSONResponse(
+                    #"{"accepted":false,"fallback":"gateway_steer_queued","stream_id":"stream-1"}"#,
+                    for: request
+                )
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Start a response")
+        XCTAssertTrue(didStart)
+        await viewModel.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+
+        let steer = Task { @MainActor in
+            await viewModel.submitStreamingMessage("also read this", behavior: .steer)
+        }
+        defer { releaseSteer.signal() }
+        await fulfillment(of: [steerStarted], timeout: 2)
+        await viewModel.uploadAttachment(data: Data("later".utf8), filename: "later.txt")
+        releaseSteer.signal()
+        let result = await steer.value
+
+        XCTAssertEqual(result, .executed(message: "Queued, sends when this run finishes"))
+        XCTAssertEqual(viewModel.pendingAttachments.map(\.path), ["/tmp/workspace/later.txt"])
+
+        streamClient.emit(.streamEnd)
+        await fulfillment(of: [queuedSend], timeout: 5)
+        let attachments = queuedStartBody?["attachments"] as? [[String: Any]]
+        XCTAssertEqual(attachments?.compactMap { $0["path"] as? String }, ["/tmp/workspace/notes.txt"])
+    }
+
     /// The run ends while the steer is in flight, then the server refuses it:
     /// no "Couldn't steer" on an idle composer, and the message goes out as a
     /// normal new turn.

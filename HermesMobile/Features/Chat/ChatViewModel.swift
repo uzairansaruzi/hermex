@@ -2910,17 +2910,11 @@ final class ChatViewModel {
         case .delivered:
             appendLocalSteerEcho(steerText)
             showSteeringConfirmation(String(localized: "Steering hint delivered."))
-            // Take only the attachments that rode along, keeping any staged
-            // while the steer was in flight, then delete their durable copies
-            // as `sendMessage` does.
-            if !steeredAttachments.isEmpty {
-                let steeredIDs = Set(steeredAttachments.map(\.id))
-                attachmentCoordinator.replacePendingAttachments(
-                    attachmentCoordinator.pendingAttachments.filter { !steeredIDs.contains($0.id) }
-                )
-                for fileName in steeredAttachments.compactMap(\.draftFileName) {
-                    await attachmentCoordinator.deleteDraftCopy(named: fileName)
-                }
+            // Delete the durable copies of the files that rode along, as
+            // `sendMessage` does.
+            takeSteeredAttachments(steeredAttachments)
+            for fileName in steeredAttachments.compactMap(\.draftFileName) {
+                await attachmentCoordinator.deleteDraftCopy(named: fileName)
             }
             return .executed(message: nil)
         case .refused(let transportError):
@@ -2939,23 +2933,16 @@ final class ChatViewModel {
                 sendErrorMessage = transportError.localizedDescription
                 return .notDelivered
             }
-            enqueueQueuedSlashMessage(
-                message,
-                attachments: attachmentCoordinator.consumePendingAttachments(),
-                atFront: true
-            )
+            enqueueQueuedSlashMessage(message, attachments: takeSteeredAttachments(steeredAttachments), atFront: true)
         case .serverQueued:
-            enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments())
+            enqueueQueuedSlashMessage(message, attachments: takeSteeredAttachments(steeredAttachments))
         case .runEnded:
-            // Queue first, then let the coordinator confirm the run is over:
-            // finishing it drains the queue, so the message goes out as a normal
-            // send only once the server has released the session.
-            enqueueQueuedSlashMessage(
-                message,
-                attachments: attachmentCoordinator.consumePendingAttachments(),
-                atFront: true
-            )
-            await streamCoordinator.finalizeRunIfServerReportsEnded(modelContext: nil)
+            // Queue first, then ask the server whether the run is over. When it
+            // is and the transcript has the reply, the coordinator finishes the
+            // run, which drains the queue as a normal send. Otherwise the live
+            // stream still owns the ending, and its own finish drains the queue.
+            enqueueQueuedSlashMessage(message, attachments: takeSteeredAttachments(steeredAttachments), atFront: true)
+            await streamCoordinator.refreshTranscriptIfCompleted(streamID: steeredStreamID)
         }
 
         // The run may have finished while the steer was in flight, after its
@@ -2964,6 +2951,18 @@ final class ChatViewModel {
         return activeStreamID == steeredStreamID
             ? .executed(message: String(localized: "Queued, sends when this run finishes"))
             : .executed(message: nil)
+    }
+
+    /// Takes the files that rode along on a steer out of the composer and
+    /// returns the ones still staged. Files staged while the steer was in
+    /// flight stay for the next message.
+    @discardableResult
+    private func takeSteeredAttachments(_ steered: [PendingAttachment]) -> [PendingAttachment] {
+        guard !steered.isEmpty else { return [] }
+        let steeredIDs = Set(steered.map(\.id))
+        let staged = attachmentCoordinator.pendingAttachments
+        attachmentCoordinator.replacePendingAttachments(staged.filter { !steeredIDs.contains($0.id) })
+        return staged.filter { steeredIDs.contains($0.id) }
     }
 
     /// Clears "Couldn't steer" once the user moves on: the next send, a draft
