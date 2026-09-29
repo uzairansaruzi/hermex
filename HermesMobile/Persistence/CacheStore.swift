@@ -8,6 +8,10 @@ enum CacheStore {
         in context: ModelContext,
         now: Date = Date()
     ) throws -> [SessionSummary] {
+        var rows = 0
+        let signpost = performanceSignposter.beginInterval("Cache Read")
+        defer { performanceSignposter.endInterval("Cache Read", signpost, "rows=\(rows, privacy: .public)") }
+
         let serverURLString = serverURL.absoluteString
         let descriptor = FetchDescriptor<CachedSession>(
             predicate: #Predicate { cachedSession in
@@ -15,9 +19,11 @@ enum CacheStore {
             }
         )
 
-        return try context.fetch(descriptor)
+        let sessions = try context.fetch(descriptor)
             .filter { $0.archived != true && $0.expiresAt > now }
             .map(SessionSummary.init(cachedSession:))
+        rows = sessions.count
+        return sessions
     }
 
     /// One cached session on `serverURL` by id, for a label such as a fork's
@@ -39,6 +45,10 @@ enum CacheStore {
         limit: Int? = nil,
         now: Date = Date()
     ) throws -> [ChatMessage] {
+        var rows = 0
+        let signpost = performanceSignposter.beginInterval("Cache Read")
+        defer { performanceSignposter.endInterval("Cache Read", signpost, "rows=\(rows, privacy: .public)") }
+
         if let limit, limit <= 0 {
             return []
         }
@@ -62,6 +72,7 @@ enum CacheStore {
         }
 
         let cachedMessages = try context.fetch(descriptor)
+        rows = cachedMessages.count
         if limit != nil {
             return cachedMessages.reversed().map(ChatMessage.init(cachedMessage:))
         }
@@ -75,6 +86,9 @@ enum CacheStore {
         in context: ModelContext,
         cachedAt: Date = Date()
     ) throws {
+        let signpost = performanceSignposter.beginInterval("Cache Write")
+        defer { performanceSignposter.endInterval("Cache Write", signpost, "rows=\(sessions.count, privacy: .public)") }
+
         let serverURLString = serverURL.absoluteString
         let cacheableSessions = sessions.filter { $0.archived != true && $0.sessionId != nil }
         let freshKeys = Set(cacheableSessions.compactMap { session -> String? in
@@ -123,6 +137,9 @@ enum CacheStore {
         in context: ModelContext,
         cachedAt: Date = Date()
     ) throws {
+        let signpost = performanceSignposter.beginInterval("Cache Write")
+        defer { performanceSignposter.endInterval("Cache Write", signpost, "rows=1") }
+
         guard let sessionID = session.sessionId else { return }
 
         let serverURLString = serverURL.absoluteString
@@ -149,6 +166,9 @@ enum CacheStore {
         in context: ModelContext,
         cachedAt: Date = Date()
     ) throws {
+        let signpost = performanceSignposter.beginInterval("Cache Write")
+        defer { performanceSignposter.endInterval("Cache Write", signpost, "rows=\(messages.count, privacy: .public)") }
+
         let serverURLString = serverURL.absoluteString
         let freshKeys = Set(messages.enumerated().map { offset, message in
             CachedMessage.cacheKey(

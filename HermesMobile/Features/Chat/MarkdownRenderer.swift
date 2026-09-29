@@ -420,7 +420,12 @@ private struct ChatMarkdownView: View {
     let isStreaming: Bool
 
     var body: some View {
-        Markdown(content)
+        // Parsed here rather than inside `Markdown(_: String)` so the parse alone is timed.
+        let signpost = performanceSignposter.beginInterval("Markdown Parse")
+        let parsedContent = MarkdownContent(content)
+        performanceSignposter.endInterval("Markdown Parse", signpost, "chars=\(content.count, privacy: .public)")
+
+        return Markdown(parsedContent)
             .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
             .markdownTextStyle {
                 ForegroundColor(.primary)

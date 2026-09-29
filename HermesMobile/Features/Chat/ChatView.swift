@@ -1541,6 +1541,9 @@ struct ChatView: View {
         .task(id: session.sessionId) {
             resolveForkOrigin()
         }
+        .onChange(of: viewModel.messages.isEmpty, initial: true) { _, isEmpty in
+            if !isEmpty { endSessionOpenSignpost() }
+        }
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
         .environment(\.chatWorkspaceRoot, session.workspace)
@@ -1829,6 +1832,7 @@ struct ChatView: View {
         if loadsInitialMessages {
             await loadMessages(appliesInitialFocus: false, usesInitialPrefetch: true)
             guard !Task.isCancelled else { return }
+            if viewModel.messages.isEmpty { endSessionOpenSignpost() }
         }
         if initialAttachments.isEmpty {
             isInitialComposerFocusContentReady = true
@@ -1853,6 +1857,16 @@ struct ChatView: View {
         applyInitialComposerFocusPolicyIfNeeded()
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
+        }
+    }
+
+    /// Ends this session's `Session Open` interval on the next main-queue turn, so
+    /// it includes the layout of the first transcript frame (or the empty state).
+    private func endSessionOpenSignpost() {
+        let sessionID = session.sessionId
+        let messages = viewModel.messages.count
+        DispatchQueue.main.async {
+            SessionOpenSignpost.end(sessionID: sessionID, messages: messages)
         }
     }
 

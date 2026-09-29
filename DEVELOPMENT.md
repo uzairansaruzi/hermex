@@ -202,6 +202,46 @@ security add-generic-password -s hermex-bot -a <bot-username> -j <bot-address> -
 
 `hermex-bot` is optional; with it the script also saves the Bot connection and turns Bot Mode on.
 
+## Launch arguments and profiling
+
+Debug builds read these launch arguments; Release builds compile none of them in.
+
+| Argument | What it does |
+|---|---|
+| `--streaming-lab` | Opens the Streaming Lab as the root screen: a canned markdown reply replayed through the real streaming renderer, with the fade knobs exposed (#234). No server needed. |
+| `--rating-prompt-eligible` | Makes this launch eligible for the App Store rating prompt, so its real navigation and stream guards can be exercised. It rewrites the stored rating and tip-jar counters. |
+| `--hitch-meter` | Shows a frame-hitch readout in the top-leading corner, such as `12.4 ms/s · 3 hitches · 60 Hz`: late-frame milliseconds per second, hitch count, and the refresh rate the display link reports, over the last second. It takes no touches, VoiceOver skips it, and it updates at most twice a second. |
+
+```zsh
+xcrun simctl launch <simulator-udid> com.uzairansar.hermesmobile --hitch-meter
+```
+
+The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_PASSWORD`, and `HERMEX_DEV_BOT_ADDRESS`/`_USERNAME`/`_PASSWORD`) sign a Debug build in; `scripts/sim-login` sets them from the macOS Keychain (§ Signing a simulator in).
+
+### Recording signposts
+
+`HermesMobile/Config/PerformanceSignposts.swift` marks six intervals in every build, under the bundle ID as subsystem (`com.uzairansar.hermesmobile`, or `com.uzairansar.hermesmobile.branch` for Hermex Branch) and category `Performance`. Metadata is counts only; never add text, titles, paths, URLs, or IDs.
+
+| Interval | Measures | Metadata |
+|---|---|---|
+| `Session Open` | A session-list open (tap or keyboard) to the first transcript frame, or to the empty state when the transcript is empty | `messages` |
+| `Transcript Apply` | Painting the cached transcript, or applying a reloaded one | `messages` |
+| `Markdown Parse` | Parsing one markdown block | `chars` |
+| `Stream Batch Apply` | Applying one batch of streamed tokens | `mutated` (0 or 1) |
+| `Cache Read` | A SwiftData read of cached sessions or messages | `rows` |
+| `Cache Write` | A SwiftData write of cached sessions or messages | `rows` |
+
+In Xcode: Product → Profile (a Release build), choose the Animation Hitches or Time Profiler template, add the `os_signpost` instrument from the library, and filter it by the subsystem and category `Performance`.
+
+From the command line, with the app running on a simulator (`--attach` takes the app's display name, `Hermex`), then print the recorded intervals as XML:
+
+```zsh
+xcrun xctrace record --template 'Time Profiler' --instrument os_signpost \
+  --device <simulator-udid> --attach Hermex --time-limit 30s --output /tmp/hermex.trace
+xcrun xctrace export --input /tmp/hermex.trace \
+  --xpath '/trace-toc/run[@number="1"]/data/table[@schema="OSSignpostIntervals"][1]'
+```
+
 ## Swift File-Size Policy
 
 `scripts/check-swift-file-sizes` warns on production app Swift files (`HermesMobile/`) over 500 LOC; tests, generated files, preview files, the share extension, and the live activity widget are exempt. It exits successfully even with warnings — it makes drift visible without blocking current work. Override the threshold for local experiments with `HERMES_SWIFT_FILE_SIZE_LIMIT=300 scripts/check-swift-file-sizes`.

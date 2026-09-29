@@ -98,6 +98,12 @@ struct HermesMobileApp: App {
                     // Signs in from `HERMEX_DEV_*` launch environment variables
                     // (`scripts/sim-login`); a no-op when they are absent.
                     .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
+                    .overlay(alignment: .topLeading) {
+                        // `--hitch-meter`: frame-hitch readout for profiling (#870).
+                        if HitchMeter.isEnabled {
+                            HitchMeterOverlay()
+                        }
+                    }
             }
             #else
             ContentView(authManager: authManager)

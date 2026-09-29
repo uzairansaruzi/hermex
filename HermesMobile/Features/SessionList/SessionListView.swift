@@ -1693,6 +1693,7 @@ struct SessionListView: View {
     }
 
     private func startOpeningSession(_ session: SessionSummary) {
+        SessionOpenSignpost.begin(sessionID: session.sessionId)
         sessionOpenTask?.cancel()
         sessionOpenTask = Task { await openSession(session) }
     }
