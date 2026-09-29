@@ -56,8 +56,9 @@ enum UserBubbleFoldPolicy {
         lineCount > maximumUnfoldedLines
     }
 
-    /// The narrowest line a 17 pt body bubble could wrap at, in bytes: about
-    /// a 283 pt text column on the smallest iPhone.
-    private static let bodyBytesPerLine: CGFloat = 30
+    /// The fewest bytes a 17 pt body line can hold: capitals in the narrowest
+    /// text column, 228 pt in a 320 pt window (iPad Slide Over or narrow Split
+    /// View, or Display Zoom on a small iPhone).
+    private static let bodyBytesPerLine: CGFloat = 18
     private static let bodyPointSize: CGFloat = 17
 }

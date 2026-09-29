@@ -23,18 +23,17 @@ final class UserBubbleFoldPolicyTests: XCTestCase {
         XCTAssertTrue(UserBubbleFoldPolicy.folds(lineCount: nineLines))
     }
 
-    func testShortMessageIsNeverMeasuredAtAnyTextSize() {
+    func testShortMessageIsNotMeasuredUpToAX3() {
         let fifty = String(repeating: "Short note. ", count: 5).prefix(50)
 
         XCTAssertFalse(UserBubbleFoldPolicy.mayFold(text: String(fifty), font: body))
-        XCTAssertFalse(UserBubbleFoldPolicy.mayFold(text: String(fifty), font: .systemFont(ofSize: 53)))
+        XCTAssertFalse(UserBubbleFoldPolicy.mayFold(text: String(fifty), font: .systemFont(ofSize: 40)))
     }
 
-    /// The design's AX3 frame: a 168-character message is a short bubble at the
-    /// default size but wraps past eight lines at 40 pt, so it must be measured.
+    /// A 99-character message is a short bubble at the default size but can
+    /// wrap past eight lines at AX3's 40 pt, so there it must be measured.
     func testPreFilterLetsThroughTextThatCanWrapPastEightLines() {
-        let message = "Deploy failed again on staging. Can you find why the migration step times out? "
-            + "It worked yesterday with the same config, and the only change is the new network peering."
+        let message = "Deploy failed again on staging. Can you find why the migration step times out? It worked yesterday."
         let sevenWrappingLines = Array(repeating: String(repeating: "word ", count: 8), count: 7)
             .joined(separator: "\n")
 
@@ -42,6 +41,22 @@ final class UserBubbleFoldPolicyTests: XCTestCase {
         XCTAssertFalse(UserBubbleFoldPolicy.mayFold(text: message, font: body))
         XCTAssertTrue(UserBubbleFoldPolicy.mayFold(text: message, font: .systemFont(ofSize: 40)))
         XCTAssertTrue(UserBubbleFoldPolicy.mayFold(text: sevenWrappingLines, font: body))
+    }
+
+    /// The narrowest text column is 228 pt: a 320 pt window (Slide Over,
+    /// Display Zoom) less the row padding, the gutter and the bubble padding.
+    /// The longest text the pre-filter skips must fit there, capitals included.
+    func testTextThePreFilterSkipsFitsTheNarrowestColumn() {
+        for text in [paragraph, paragraph.uppercased()] {
+            var skipped = ""
+            for character in text {
+                let next = skipped + String(character)
+                if UserBubbleFoldPolicy.mayFold(text: next, font: body) { break }
+                skipped = next
+            }
+
+            XCTAssertLessThanOrEqual(UserBubbleFoldPolicy.lineCount(text: skipped, width: 228, font: body), 8, skipped)
+        }
     }
 
     func testLongParagraphWrapsPastEightLinesAndStopsAtTheLimit() {
