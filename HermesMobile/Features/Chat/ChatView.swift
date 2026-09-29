@@ -715,9 +715,11 @@ struct ChatView: View {
         }
     }
 
-    /// The chat scaffold. Split from `body` so the confirmation-alert chain
-    /// below stays inside the compiler's type-checking budget.
-    private var chatContent: some View {
+    /// The chat scaffold: layout, title, and push presence. `body` is built in
+    /// layers (`chatScaffold`, `chatLifecycle`, `chatContent`, then the alerts in
+    /// `body`) so each chained expression stays inside the compiler's
+    /// type-checking budget; CI's pinned Xcode has less headroom than the newest.
+    private var chatScaffold: some View {
         GeometryReader { viewport in
             let clarificationMaximumHeight = max(
                 0,
@@ -757,10 +759,15 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .pushPresence(viewModel.pushPresence)
-        .task(id: didCompleteInitialAppearance) {
-            await handleInitialAppearanceTask()
-        }
-        .onChange(of: scenePhase) {
+    }
+
+    /// Appearance, scene, network, stream, and draft handlers over `chatScaffold`.
+    private var chatLifecycle: some View {
+        chatScaffold
+            .task(id: didCompleteInitialAppearance) {
+                await handleInitialAppearanceTask()
+            }
+            .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)
             }
             .onChange(of: NetworkPathMonitor.shared.changeCount) {
@@ -833,6 +840,11 @@ struct ChatView: View {
                 handleRunEnd()
             }
             .onChange(of: viewModel.streamingHapticPulseTrigger, handleStreamingHapticPulse)
+    }
+
+    /// Toolbar, navigation, and presentations over `chatLifecycle`.
+    private var chatContent: some View {
+        chatLifecycle
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     ChatToolbarTitleLabel(
