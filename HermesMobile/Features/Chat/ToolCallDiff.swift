@@ -115,13 +115,7 @@ struct ToolCallDiff: Equatable {
             let plainText: String?
             switch parsed {
             case .object(let envelope):
-                // A failed or already-applied edit changed nothing, whatever the args asked for.
-                reportsNoChange = Self.hasValue(envelope["error"])
-                    || envelope["success"] == .bool(false)
-                    || envelope["no_change"] == .bool(true)
-                if case .string(let diff) = envelope["diff"], !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    envelopeDiff = ToolCallDiff.unescaped(diff)
-                }
+                read(envelope)
                 return
             case .string(let string):
                 plainText = ToolCallDiff.unescaped(string)
@@ -134,6 +128,15 @@ struct ToolCallDiff: Equatable {
                 plainText = nil
             }
 
+            // hermes-agent stores its one-line JSON envelope and then appends notes,
+            // such as subdirectory hints, after "\n\n". A reloaded result that no
+            // longer parses whole can still lead with the complete envelope.
+            if let plainText, let envelope = Self.leadingEnvelope(of: plainText) {
+                isCutOff = false
+                read(envelope)
+                return
+            }
+
             if let plainText, ToolCallDiff.looksLikeUnifiedDiff(plainText) {
                 plainDiff = plainText
             } else if !isCutOff {
@@ -141,6 +144,23 @@ struct ToolCallDiff: Equatable {
                 // other complete, non-envelope result means the args did not land.
                 allowsArgumentDiff = false
             }
+        }
+
+        private mutating func read(_ envelope: [String: JSONValue]) {
+            // A failed or already-applied edit changed nothing, whatever the args asked for.
+            reportsNoChange = Self.hasValue(envelope["error"])
+                || envelope["success"] == .bool(false)
+                || envelope["no_change"] == .bool(true)
+            if case .string(let diff) = envelope["diff"], !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                envelopeDiff = ToolCallDiff.unescaped(diff)
+            }
+        }
+
+        private static func leadingEnvelope(of text: String) -> [String: JSONValue]? {
+            guard let lineEnd = text.firstIndex(where: \.isNewline),
+                  case .object(let envelope)? = ToolCallDisplayFormatter.parsedJSONValue(from: String(text[..<lineEnd]))
+            else { return nil }
+            return envelope
         }
 
         private static func hasValue(_ value: JSONValue?) -> Bool {

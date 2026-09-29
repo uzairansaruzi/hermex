@@ -58,15 +58,46 @@ final class ToolCallDiffTests: XCTestCase {
 
     func testEscapedAndDoubleEncodedResultsResolveTheSameDiff() throws {
         let plain = try patchResult(diff: unifiedDiff)
-        let expected = try XCTUnwrap(ToolCallDiff.resolve(for: call("patch", preview: plain, args: [:])))
-
         let escaped = plain.replacingOccurrences(of: "\"", with: #"\""#)
         let doubleEncoded = try json(plain)
         for preview in [escaped, doubleEncoded] {
             let diff = try XCTUnwrap(ToolCallDiff.resolve(for: call("patch", preview: preview, args: [:])), preview)
-            XCTAssertEqual(diff.source, .resultDiff)
-            XCTAssertEqual(diff.document, expected.document)
+            XCTAssertEqual(diff.source, .resultDiff, preview)
+            XCTAssertEqual(diff.counts, ToolCallDiff.Counts(additions: 3, deletions: 1), preview)
+            XCTAssertEqual(
+                diff.document.lines.map(\.kind),
+                [.fileHeader, .fileHeader, .hunk, .context, .context, .removed, .added, .added, .added, .context],
+                preview
+            )
         }
+    }
+
+    /// hermes-agent appends AGENTS.md-style subdirectory hints after "\n\n" to the
+    /// stored result, so a reloaded row's snippet is no longer valid JSON.
+    private func withHints(_ result: String, paddedTo length: Int? = nil) -> String {
+        let hinted = result + "\n\n[Subdirectory context discovered: HermesMobile/AGENTS.md]\n# Agent notes\n"
+        guard let length else { return hinted }
+        let padding = String(repeating: "x", count: length - hinted.unicodeScalars.count)
+        return hinted + padding
+    }
+
+    func testFailedEnvelopeFollowedByHintsResolvesNothing() throws {
+        let failure = try json(["success": false, "error": "Could not find a match for old_string in the file"])
+        let preview = withHints(failure, paddedTo: 4_000)
+        XCTAssertEqual(preview.unicodeScalars.count, 4_000, "the webui snippet cap, so the result reads as cut off")
+
+        XCTAssertNil(
+            ToolCallDiff.resolve(for: call("patch", preview: preview, args: replacementArgs)),
+            "a failed edit never shows its requested args as an applied diff"
+        )
+    }
+
+    func testEnvelopeFollowedByHintsKeepsItsResultDiff() throws {
+        let preview = withHints(try patchResult(diff: unifiedDiff))
+
+        let diff = try XCTUnwrap(ToolCallDiff.resolve(for: call("patch", preview: preview, args: replacementArgs)))
+        XCTAssertEqual(diff.source, .resultDiff)
+        XCTAssertEqual(diff.counts, ToolCallDiff.Counts(additions: 3, deletions: 1))
     }
 
     func testPlainUnifiedDiffResultIsTheSource() throws {
