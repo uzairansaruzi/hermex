@@ -2748,7 +2748,9 @@ struct ChatView: View {
     }
 
     /// Alerts once for a run that completed or failed while the scene was not active,
-    /// then releases the background task that kept the stream alive for it.
+    /// then releases the background task that kept the stream alive for it. A newer
+    /// run end in this chat supersedes one still waiting on its transcript load: the
+    /// newer alert stands, and the newer task releases the background task.
     private func handleRunEnd() {
         guard let runEndContext = responseCompletionNotificationTracker.completionContext(
             runEndTrigger: viewModel.runEndTrigger,
@@ -2757,22 +2759,26 @@ struct ChatView: View {
             return
         }
         let outcome = viewModel.runEndOutcome
+        let runEndTrigger = viewModel.runEndTrigger
 
         Task { @MainActor in
-            defer { endResponseCompletionBackgroundTask() }
-
             if outcome == .completed, viewModel.responseCompletionNeedsTranscriptRefresh {
                 await loadMessages()
             }
 
+            let isLatestRunEnd = { viewModel.runEndTrigger == runEndTrigger }
             await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
                 outcome,
                 sessionID: session.sessionId,
                 title: viewModel.displayTitle,
                 server: server,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
-                sceneIsActive: runEndContext.sceneIsActive
+                sceneIsActive: runEndContext.sceneIsActive,
+                isCurrent: isLatestRunEnd
             )
+            if isLatestRunEnd() {
+                endResponseCompletionBackgroundTask()
+            }
         }
     }
 

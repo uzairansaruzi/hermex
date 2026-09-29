@@ -306,6 +306,31 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
             sessionID: "session-abc", server: serverA, title: "Deploy notes", outcome: .failed)])
     }
 
+    // #862: a chat's alerts share one identifier, so a run end that a newer one
+    // superseded while it waited must not schedule over the newer alert.
+    @MainActor
+    func testSkipsARunEndSupersededWhileItWaited() async {
+        var latestRunEnd = 1
+        let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized) {
+            latestRunEnd = 2
+        }
+
+        let didSchedule = await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
+            .completed,
+            sessionID: "session-abc",
+            title: "Deploy notes",
+            server: serverA,
+            preferenceEnabled: true,
+            sceneIsActive: false,
+            isCurrent: { latestRunEnd == 1 },
+            isPushPaired: { _ in false },
+            scheduler: scheduler
+        )
+
+        XCTAssertFalse(didSchedule)
+        XCTAssertTrue(scheduler.scheduledRequests.isEmpty)
+    }
+
     func testDoesNotScheduleInTheForeground() async {
         let scheduler = SpyResponseCompletionNotificationScheduler(status: .authorized)
 
@@ -376,20 +401,25 @@ final class ResponseCompletionNotificationTrackerTests: XCTestCase {
 private final class SpyResponseCompletionNotificationScheduler: ResponseCompletionNotificationScheduling {
     private let status: UNAuthorizationStatus
     private let requestAuthorizationResult: Bool
+    /// Runs while the permission check is in flight, for work that lands meanwhile.
+    private let duringAuthorizationStatus: () -> Void
     private(set) var authorizationStatusCallCount = 0
     private(set) var requestAuthorizationCallCount = 0
     private(set) var scheduledRequests: [ResponseCompletionNotificationRequest] = []
 
     init(
         status: UNAuthorizationStatus,
-        requestAuthorizationResult: Bool = false
+        requestAuthorizationResult: Bool = false,
+        duringAuthorizationStatus: @escaping () -> Void = {}
     ) {
         self.status = status
         self.requestAuthorizationResult = requestAuthorizationResult
+        self.duringAuthorizationStatus = duringAuthorizationStatus
     }
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         authorizationStatusCallCount += 1
+        duringAuthorizationStatus()
         return status
     }
 

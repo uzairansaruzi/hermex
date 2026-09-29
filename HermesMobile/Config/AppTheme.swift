@@ -728,6 +728,8 @@ enum ResponseCompletionNotificationService {
     }
 
     /// Both the chat's run end and cold-launch Live Activity reconciliation use this.
+    /// `isCurrent` says whether this is still the chat's latest run end: a newer one
+    /// schedules under the same identifier, and this older alert must not replace it.
     @MainActor @discardableResult
     static func scheduleRunEndedIfAllowed(
         _ outcome: ResponseCompletionOutcome,
@@ -736,12 +738,14 @@ enum ResponseCompletionNotificationService {
         server: URL,
         preferenceEnabled: Bool,
         sceneIsActive: Bool,
+        isCurrent: @MainActor () -> Bool = { true },
         isPushPaired: @MainActor (URL) -> Bool = { @MainActor in PushRegistrar.shared?.pairing(for: $0) != nil },
         scheduler: any ResponseCompletionNotificationScheduling = UserNotificationResponseCompletionScheduler()
     ) async -> Bool {
         let status = await authorizationStatus(scheduler: scheduler)
-        // Read after the permission await: pairing can change while it is suspended.
-        // A paired server's relay alerts for it instead.
+        // Read after the permission await: a newer run end or a pairing can arrive
+        // while it is suspended. A paired server's relay alerts for it instead.
+        guard isCurrent() else { return false }
         if isPushPaired(server) { return false }
         guard ResponseCompletionNotificationPolicy.shouldSchedule(
             preferenceEnabled: preferenceEnabled,
