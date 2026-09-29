@@ -1708,6 +1708,10 @@ struct SessionListView: View {
 
         if let sessionToOpen {
             selectSession(sessionToOpen)
+        } else {
+            // No chat will show to end the interval; a cancelled open is ended by
+            // the newer `begin` instead.
+            SessionOpenSignpost.end(sessionID: session.sessionId, messages: nil)
         }
     }
 

@@ -40,11 +40,16 @@ enum SessionOpenSignpost {
         pending = (sessionID, state)
     }
 
-    /// Ends the open of `sessionID` with its transcript size. Does nothing for any
-    /// other session, or once that open has ended.
-    static func end(sessionID: String?, messages: Int) {
+    /// Ends the open of `sessionID` with its transcript size, or with no metadata
+    /// when `messages` is nil because the open failed before a chat showed. Does
+    /// nothing for any other session, or once that open has ended.
+    static func end(sessionID: String?, messages: Int?) {
         guard let pending, pending.sessionID == sessionID else { return }
         self.pending = nil
-        performanceSignposter.endInterval("Session Open", pending.state, "messages=\(messages, privacy: .public)")
+        if let messages {
+            performanceSignposter.endInterval("Session Open", pending.state, "messages=\(messages, privacy: .public)")
+        } else {
+            performanceSignposter.endInterval("Session Open", pending.state)
+        }
     }
 }

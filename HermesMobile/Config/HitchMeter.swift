@@ -104,8 +104,10 @@ final class HitchMeter: NSObject {
 }
 
 /// The debug readout pinned to the top-leading safe area. It never takes a
-/// touch and VoiceOver skips it.
+/// touch and VoiceOver skips it. It stops while the scene is not active, so time
+/// in the background never counts as a hitch.
 struct HitchMeterOverlay: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var meter = HitchMeter()
 
     var body: some View {
@@ -120,6 +122,9 @@ struct HitchMeterOverlay: View {
             .accessibilityHidden(true)
             .onAppear { meter.start() }
             .onDisappear { meter.stop() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { meter.start() } else { meter.stop() }
+            }
     }
 }
 #endif

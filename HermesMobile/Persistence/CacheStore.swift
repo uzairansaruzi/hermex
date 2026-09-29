@@ -137,10 +137,10 @@ enum CacheStore {
         in context: ModelContext,
         cachedAt: Date = Date()
     ) throws {
+        guard let sessionID = session.sessionId else { return }
+
         let signpost = performanceSignposter.beginInterval("Cache Write")
         defer { performanceSignposter.endInterval("Cache Write", signpost, "rows=1") }
-
-        guard let sessionID = session.sessionId else { return }
 
         let serverURLString = serverURL.absoluteString
         let cacheKey = CachedSession.cacheKey(serverURLString: serverURLString, sessionID: sessionID)
