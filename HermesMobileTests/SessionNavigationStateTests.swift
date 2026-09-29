@@ -623,6 +623,34 @@ final class SessionNavigationStateTests: XCTestCase {
             "the first archive's reply landed last"
         )
     }
+
+    func testChatShortcutPositionPicksNthChatOrNothing() {
+        let chats = ["a", "b", "c"].map { SessionSummary(sessionId: $0) }
+
+        XCTAssertEqual(ChatShortcutNavigation.chat(atPosition: 1, in: chats)?.sessionId, "a")
+        XCTAssertEqual(ChatShortcutNavigation.chat(atPosition: 3, in: chats)?.sessionId, "c")
+        XCTAssertNil(ChatShortcutNavigation.chat(atPosition: 4, in: chats))
+        XCTAssertNil(ChatShortcutNavigation.chat(atPosition: 9, in: chats))
+        XCTAssertNil(ChatShortcutNavigation.chat(atPosition: 0, in: chats))
+        XCTAssertNil(ChatShortcutNavigation.chat(atPosition: 1, in: []))
+    }
+
+    func testNextAndPreviousChatWrapAndStartFromTheEndsWithoutSelection() {
+        let chats = ["a", "b", "c"].map { SessionSummary(sessionId: $0) }
+        func adjacent(_ offset: Int, from selectedSessionID: String?) -> String? {
+            ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedSessionID, in: chats)?.sessionId
+        }
+
+        XCTAssertEqual(adjacent(1, from: "a"), "b")
+        XCTAssertEqual(adjacent(-1, from: "b"), "a")
+        XCTAssertEqual(adjacent(1, from: "c"), "a", "next wraps from the last chat to the first")
+        XCTAssertEqual(adjacent(-1, from: "a"), "c", "previous wraps from the first chat to the last")
+        XCTAssertEqual(adjacent(1, from: nil), "a")
+        XCTAssertEqual(adjacent(-1, from: nil), "c")
+        XCTAssertEqual(adjacent(1, from: "filtered-out"), "a")
+        XCTAssertEqual(adjacent(-1, from: "filtered-out"), "c")
+        XCTAssertNil(ChatShortcutNavigation.adjacentChat(offset: 1, from: "a", in: []))
+    }
 }
 
 private enum DestinationReturnEvent: Equatable {

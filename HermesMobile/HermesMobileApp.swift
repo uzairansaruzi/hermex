@@ -5,6 +5,10 @@ struct HermexSceneActions {
     let canCreateNewChat: Bool
     let createNewChat: () -> Void
     let searchSessions: () -> Void
+    /// Opens the chat at a 1-based position in the visible list.
+    let openChat: (_ position: Int) -> Void
+    /// Opens the chat `offset` rows from the selected one, wrapping at the ends.
+    let openAdjacentChat: (_ offset: Int) -> Void
 }
 
 private struct HermexSceneActionsKey: FocusedValueKey {
@@ -35,6 +39,31 @@ struct HermexCommands: Commands {
                 actions?.searchSessions()
             }
             .keyboardShortcut("f", modifiers: .command)
+            .disabled(actions == nil)
+        }
+
+        // View menu, beside Toggle Sidebar. ⌘⇧] and ⌘⇧[ back up ⌃Tab in case
+        // iPadOS or a focused text view takes it first. Out-of-range positions
+        // do nothing rather than grey out: counting rows here would filter and
+        // sort every session on each update.
+        CommandGroup(after: .sidebar) {
+            Group {
+                Button("Next Chat") { actions?.openAdjacentChat(1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button("Previous Chat") { actions?.openAdjacentChat(-1) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                Button("Next Chat") { actions?.openAdjacentChat(1) }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                Button("Previous Chat") { actions?.openAdjacentChat(-1) }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+
+                Divider()
+
+                ForEach(1...9, id: \.self) { position in
+                    Button("Go to Chat \(position)") { actions?.openChat(position) }
+                        .keyboardShortcut(KeyEquivalent(Character(String(position))), modifiers: .command)
+                }
+            }
             .disabled(actions == nil)
         }
     }

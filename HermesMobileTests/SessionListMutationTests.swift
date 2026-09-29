@@ -3378,6 +3378,35 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
+    func testLocalSearchMatchesEveryWordInAnyOrderAcrossFields() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {"session_id": "title-reversed", "title": "Wrangler deploy fix", "workspace": "/src/app", "last_message_at": 20},
+                {"session_id": "title-and-workspace", "title": "Deploy", "workspace": "/src/wrangler", "last_message_at": 30},
+                {"session_id": "deploy-only", "title": "Deploy", "workspace": "/src/app", "last_message_at": 40},
+                {"session_id": "pinned-older", "title": "Notes on deploy and wrangler", "pinned": true, "last_message_at": 10}
+              ]
+            }
+            """, for: request)
+        }
+
+        await viewModel.load()
+
+        let expected = ["pinned-older", "title-and-workspace", "title-reversed"]
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "deploy wrangler", selectedProjectID: nil).compactMap(\.sessionId),
+            expected
+        )
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "  Wrangler   DEPLOY ", selectedProjectID: nil).compactMap(\.sessionId),
+            expected
+        )
+    }
+
+    @MainActor
     func testVisibleSessionsFiltersSubagentsAcrossSearchAndProjects() async throws {
         let viewModel = try makeViewModel { request in
             switch request.url?.path {

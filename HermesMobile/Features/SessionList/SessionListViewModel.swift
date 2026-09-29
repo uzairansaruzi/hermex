@@ -223,14 +223,17 @@ final class SessionListViewModel {
         automatedVisibility: AutomatedSessionVisibility
     ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
+        // Every word must appear somewhere in the row, in any order and field.
+        let searchTerms = query.split(whereSeparator: \.isWhitespace)
         let baseSessions = candidates.filter { automatedVisibility.shows($0) }
         let projectFilteredSessions = baseSessions.filter { session in
             guard let selectedProjectID else { return true }
             return session.projectId == selectedProjectID
         }
         let localMatches = projectFilteredSessions.filter { session in
-            guard !query.isEmpty else { return true }
-            return Self.searchableText(for: session).contains(query)
+            guard !searchTerms.isEmpty else { return true }
+            let searchableText = Self.searchableText(for: session)
+            return searchTerms.allSatisfy { searchableText.contains($0) }
         }
         let sortedLocalMatches = Self.sortedSessions(localMatches)
 
@@ -1441,6 +1444,8 @@ final class SessionListViewModel {
         session.lastMessageAt ?? session.updatedAt ?? session.createdAt ?? 0
     }
 
+    /// Lowercased fields joined by spaces. Search terms hold no spaces, so a
+    /// term found here always sits inside a single field.
     private static func searchableText(for session: SessionSummary) -> String {
         [
             session.title,

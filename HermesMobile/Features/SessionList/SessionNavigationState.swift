@@ -136,6 +136,34 @@ struct SessionNavigationState: Equatable {
     }
 }
 
+/// Resolves the hardware-keyboard chat shortcuts (⌘1–⌘9, Next and Previous
+/// Chat) against the ordinary chat rows in on-screen order.
+enum ChatShortcutNavigation {
+    /// The chat at a 1-based list position, or nil when the list is shorter.
+    static func chat(atPosition position: Int, in chats: [SessionSummary]) -> SessionSummary? {
+        chats.indices.contains(position - 1) ? chats[position - 1] : nil
+    }
+
+    /// The chat `offset` rows from the selection, wrapping at the ends. Without
+    /// a selection in the list, next starts at the first chat and previous at
+    /// the last.
+    static func adjacentChat(
+        offset: Int,
+        from selectedSessionID: String?,
+        in chats: [SessionSummary]
+    ) -> SessionSummary? {
+        guard !chats.isEmpty else { return nil }
+        guard let selectedSessionID,
+              let selectedIndex = chats.firstIndex(where: { $0.sessionId == selectedSessionID })
+        else {
+            return offset > 0 ? chats.first : chats.last
+        }
+
+        let count = chats.count
+        return chats[((selectedIndex + offset) % count + count) % count]
+    }
+}
+
 enum SessionNavigationPersistence {
     private static let keyPrefix = "sessionNavigation.lastSelectedSessionID."
 

@@ -196,18 +196,21 @@ struct SessionRowView: View {
 
     /// One line, one meaning: the attention state when the session wants
     /// something, otherwise the relative time. Never both, so the row keeps its
-    /// height in every state.
+    /// height in every state. Only the time text ticks, once a minute, so an
+    /// idle list stays current without re-rendering whole rows.
     @ViewBuilder
     private var trailingStatusSlot: some View {
         if let effectiveAttentionState {
             attentionStateText(effectiveAttentionState)
-        } else if let relativeDate {
-            relativeDateText(relativeDate)
+        } else if Self.lastActivityDate(for: session) != nil {
+            TimelineView(.everyMinute) { context in
+                relativeDateText(Self.relativeDateLabel(for: session, now: context.date) ?? "")
+            }
         }
     }
 
     private var showsTrailingStatus: Bool {
-        effectiveAttentionState != nil || relativeDate != nil
+        effectiveAttentionState != nil || Self.lastActivityDate(for: session) != nil
     }
 
     private var effectiveAttentionState: SessionRowAttentionState? {
@@ -373,14 +376,17 @@ struct SessionRowView: View {
         dynamicTypeSize.isAccessibilitySize ? 8 : 7
     }
 
-    private var relativeDate: String? {
+    /// The row's "2h ago" text measured against `now`: the `TimelineView` tick
+    /// for the visible label, render time for VoiceOver. Nil without a timestamp.
+    static func relativeDateLabel(for session: SessionSummary, now: Date) -> String? {
+        guard let lastActivity = lastActivityDate(for: session) else { return nil }
+        return SessionRelativeDateFormatter.shared.localizedString(for: lastActivity, relativeTo: now)
+    }
+
+    private static func lastActivityDate(for session: SessionSummary) -> Date? {
         let timestamp = session.lastMessageAt ?? session.updatedAt ?? session.createdAt
         guard let timestamp, timestamp > 0 else { return nil }
-
-        return SessionRelativeDateFormatter.shared.localizedString(
-            for: Date(timeIntervalSince1970: timestamp),
-            relativeTo: Date()
-        )
+        return Date(timeIntervalSince1970: timestamp)
     }
 
     private var accessibilitySummary: String {
@@ -401,7 +407,9 @@ struct SessionRowView: View {
             parts.append(metadataLabel)
         }
 
-        if let relativeDate {
+        // Render time, not the minute tick: the label can lag until the row
+        // next re-renders (#876 Decision 6).
+        if let relativeDate = Self.relativeDateLabel(for: session, now: Date()) {
             parts.append(relativeDate)
         }
 
