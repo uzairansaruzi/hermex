@@ -79,3 +79,9 @@ _Avoid_: Bulk update, batch operation
 **Select Cards**:
 The mode for choosing Cards before applying a Bulk Action.
 _Avoid_: Multi-select, bulk mode
+
+## Chat
+
+**Fork**:
+A chat created from another chat's history by Fork From Here or `/branch` (`/api/session/branch`). The server marks it `session_source: fork` with a `parent_session_id`, and Hermex shows a "Forked from" row that opens the parent. Agent child sessions (subagents, cron, CLI `/new`) also carry a parent but are not Forks.
+_Avoid_: Branch (for the chat), child session

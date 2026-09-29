@@ -979,6 +979,55 @@ final class CacheStoreTests: XCTestCase {
         )
     }
 
+    func testCachedSessionByIDFindsAnExpiredRowForALabel() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        let cachedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let afterExpiry = cachedAt.addingTimeInterval(CachePolicy.ttl + 60)
+        try CacheStore.cacheSessions(
+            [SessionSummary(sessionId: "parent", title: "Design review")],
+            serverURL: serverURL,
+            in: context,
+            cachedAt: cachedAt
+        )
+
+        XCTAssertTrue(try CacheStore.cachedSessions(serverURL: serverURL, in: context, now: afterExpiry).isEmpty)
+        let parent = try CacheStore.cachedSession(id: "parent", serverURL: serverURL, in: context)
+        XCTAssertEqual(parent?.sessionId, "parent")
+        XCTAssertEqual(parent?.title, "Design review")
+    }
+
+    func testCachedSessionByIDMissesAnArchivedSessionBecauseItIsNeverCached() throws {
+        let context = try makeContext()
+        let serverURL = URL(string: "https://example.test")!
+        try CacheStore.cacheSession(
+            SessionSummary(sessionId: "parent", title: "Design review"),
+            serverURL: serverURL,
+            in: context
+        )
+        try CacheStore.cacheSession(
+            SessionSummary(sessionId: "parent", title: "Design review", archived: true),
+            serverURL: serverURL,
+            in: context
+        )
+
+        XCTAssertNil(try CacheStore.cachedSession(id: "parent", serverURL: serverURL, in: context))
+    }
+
+    func testCachedSessionByIDNeverCrossesServers() throws {
+        let context = try makeContext()
+        let serverA = URL(string: "https://a.example.test")!
+        let serverB = URL(string: "https://b.example.test")!
+        try CacheStore.cacheSessions(
+            [SessionSummary(sessionId: "parent", title: "On server A")],
+            serverURL: serverA,
+            in: context
+        )
+
+        XCTAssertNil(try CacheStore.cachedSession(id: "parent", serverURL: serverB, in: context))
+        XCTAssertEqual(try CacheStore.cachedSession(id: "parent", serverURL: serverA, in: context)?.title, "On server A")
+    }
+
     private func makeContext() throws -> ModelContext {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(

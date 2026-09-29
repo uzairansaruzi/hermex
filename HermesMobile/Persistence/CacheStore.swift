@@ -20,6 +20,17 @@ enum CacheStore {
             .map(SessionSummary.init(cachedSession:))
     }
 
+    /// One cached session on `serverURL` by id, for a label such as a fork's
+    /// "Forked from" row. Unlike `cachedSessions`, an expired row still counts
+    /// until the next save purges it: a stale title beats none. Archived
+    /// sessions are never cached, so an archived parent returns nil and the
+    /// caller falls back. Never crosses servers.
+    @MainActor
+    static func cachedSession(id sessionID: String, serverURL: URL, in context: ModelContext) throws -> SessionSummary? {
+        let cacheKey = CachedSession.cacheKey(serverURLString: serverURL.absoluteString, sessionID: sessionID)
+        return try cachedSession(cacheKey: cacheKey, in: context).map(SessionSummary.init(cachedSession:))
+    }
+
     @MainActor
     static func cachedMessages(
         serverURL: URL,

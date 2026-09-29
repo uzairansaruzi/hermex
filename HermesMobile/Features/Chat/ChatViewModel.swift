@@ -4122,6 +4122,39 @@ final class ChatViewModel {
         }
     }
 
+    /// Fetches a fork's parent from the active server so the "Forked from" row
+    /// can open it when the session list never cached it. A parent the server
+    /// no longer shows this profile (deleted: 404; owned by another profile:
+    /// 409 `session_profile_mismatch`) reports that through the message-action
+    /// error; any other failure reports its own message.
+    func loadForkParent(id parentSessionID: String) async -> SessionSummary? {
+        messageActionErrorMessage = nil
+        lastError = nil
+        let missingMessage = String(localized: "The original chat is no longer on this server.")
+
+        do {
+            let response = try await client.session(id: parentSessionID, includeMessages: false, messageLimit: nil)
+            guard let parentDetail = response.session else {
+                messageActionErrorMessage = missingMessage
+                return nil
+            }
+            return SessionSummary(from: parentDetail)
+        } catch {
+            if let apiError = error as? APIError, Self.isMissingForkParent(apiError) {
+                messageActionErrorMessage = missingMessage
+            } else {
+                lastError = error
+                messageActionErrorMessage = error.localizedDescription
+            }
+            return nil
+        }
+    }
+
+    private static func isMissingForkParent(_ error: APIError) -> Bool {
+        guard case .http(let statusCode, _) = error else { return false }
+        return statusCode == 404 || (statusCode == 409 && error.serverCode == "session_profile_mismatch")
+    }
+
     /// Edit a user message: truncate to just before the selected message, then send the edited text.
     func editMessage(_ context: MessageActionContext, newText: String, modelContext: ModelContext? = nil) async -> Bool {
         guard context.role == .user else {

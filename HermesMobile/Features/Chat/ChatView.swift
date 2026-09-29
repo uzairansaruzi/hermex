@@ -313,7 +313,11 @@ struct ChatView: View {
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
-    @State private var forkedSession: SessionSummary?
+    /// A chat pushed on top of this one: a new fork, or this fork's parent.
+    @State private var pushedSession: SessionSummary?
+    /// Set when this chat is a fork; draws the "Forked from" row.
+    @State private var forkOrigin: ForkOrigin?
+    @State private var isOpeningForkParent = false
     @State private var editContext: MessageActionContext?
     @State private var editDraft = ""
     @State private var showEditSheet = false
@@ -864,7 +868,7 @@ struct ChatView: View {
                     }
                 }
             }
-            .navigationDestination(item: $forkedSession) { session in
+            .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
             .sheet(item: $attachmentPreviewItem) { item in
@@ -1482,11 +1486,16 @@ struct ChatView: View {
             },
             onOpenTurnFileDiff: { file in
                 turnDiffPresentation = .turnFiles(turnChangesRecapSummary?.diffFiles ?? [file], initial: file)
-            }
+            },
+            forkOrigin: forkOrigin,
+            onOpenForkParent: openForkParent
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
+        }
+        .task(id: session.sessionId) {
+            resolveForkOrigin()
         }
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
@@ -2065,7 +2074,7 @@ struct ChatView: View {
                 )
             }
         case .openedSession(let session):
-            forkedSession = session
+            pushedSession = session
             if consumesDraft {
                 reconcileConsumedDraft(
                     ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
@@ -2365,7 +2374,40 @@ struct ChatView: View {
         }
 
         if let session {
-            forkedSession = session
+            pushedSession = session
+        }
+    }
+
+    /// Reads the parent's title from the active server's session cache, which
+    /// the session list writes on every load. Only forks do the lookup.
+    private func resolveForkOrigin() {
+        guard let parentID = ForkOrigin.parentSessionID(of: session) else {
+            forkOrigin = nil
+            return
+        }
+        let parent = try? CacheStore.cachedSession(id: parentID, serverURL: server, in: modelContext)
+        forkOrigin = ForkOrigin.resolve(session: session, parent: parent)
+    }
+
+    /// Pushes the fork's parent: the cached one at once, otherwise after
+    /// fetching it. A failed fetch shows the message-action error and stays here.
+    private func openForkParent() {
+        guard let forkOrigin, !isOpeningForkParent else { return }
+        if let parent = forkOrigin.parent {
+            pushedSession = parent
+            return
+        }
+
+        isOpeningForkParent = true
+        Task {
+            let parent = await viewModel.loadForkParent(id: forkOrigin.parentSessionID)
+            isOpeningForkParent = false
+            if let lastError = viewModel.lastError {
+                onAPIError(lastError)
+            }
+            if let parent {
+                pushedSession = parent
+            }
         }
     }
 
@@ -2400,7 +2442,7 @@ struct ChatView: View {
         }
 
         if let session = outcome?.session {
-            forkedSession = session
+            pushedSession = session
         }
     }
 

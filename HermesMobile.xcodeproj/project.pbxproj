@@ -140,6 +140,7 @@
 		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
 		C040F000000000000000003 /* ProviderLogos.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000004 /* ProviderLogos.bundle */; };
 		C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */; };
+		C08730000000000000000B05 /* ForkOrigin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F05 /* ForkOrigin.swift */; };
 		C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */; };
 		C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000004 /* ChatComposerSelectorSheets.swift */; };
 		C04900000000000000000001 /* ChatComposerTextInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04900000000000000000002 /* ChatComposerTextInputView.swift */; };
@@ -314,6 +315,7 @@
 		C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */; };
 		C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */; };
 		C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */; };
+		C08730000000000000000B03 /* ForkOriginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F03 /* ForkOriginTests.swift */; };
 		C08730000000000000000B02 /* ChatReadingWidthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F02 /* ChatReadingWidthTests.swift */; };
 		C0AA05000000000000000B02 /* ChatMessageMetaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */; };
 		C03190000000000000B001 /* AttachmentAudioDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03190000000000000F001 /* AttachmentAudioDetection.swift */; };
@@ -724,6 +726,7 @@
 		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
 		C040F000000000000000004 /* ProviderLogos.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = ProviderLogos.bundle; sourceTree = "<group>"; };
 		C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerToolbarScroller.swift; sourceTree = "<group>"; };
+		C08730000000000000000F05 /* ForkOrigin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForkOrigin.swift; sourceTree = "<group>"; };
 		C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFades.swift; sourceTree = "<group>"; };
 		C042A000000000000000004 /* ChatComposerSelectorSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorSheets.swift; sourceTree = "<group>"; };
 		C04900000000000000000002 /* ChatComposerTextInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerTextInputView.swift; sourceTree = "<group>"; };
@@ -898,6 +901,7 @@
 		C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatterTests.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFoldingTests.swift; sourceTree = "<group>"; };
 		C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptRowEntryTests.swift; sourceTree = "<group>"; };
+		C08730000000000000000F03 /* ForkOriginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForkOriginTests.swift; sourceTree = "<group>"; };
 		C08730000000000000000F02 /* ChatReadingWidthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatReadingWidthTests.swift; sourceTree = "<group>"; };
 		C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageMetaTests.swift; sourceTree = "<group>"; };
 		C03190000000000000F001 /* AttachmentAudioDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentAudioDetection.swift; sourceTree = "<group>"; };
@@ -1380,6 +1384,7 @@
 				C0AA0208000000000000F002 /* ChatMessageActionMenuTests.swift */,
 				C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */,
 				C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */,
+				C08730000000000000000F03 /* ForkOriginTests.swift */,
 				C08730000000000000000F02 /* ChatReadingWidthTests.swift */,
 				C0AA05000000000000000F02 /* ChatMessageMetaTests.swift */,
 				C03190000000000000F003 /* AttachmentAudioDetectionTests.swift */,
@@ -1688,6 +1693,7 @@
 				C042A000000000000000002 /* ChatComposerSelectorControls.swift */,
 				C040F000000000000000002 /* ProviderGlyph.swift */,
 				C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */,
+				C08730000000000000000F05 /* ForkOrigin.swift */,
 				C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */,
 				C042A000000000000000004 /* ChatComposerSelectorSheets.swift */,
 				C0DE20000000000000000002 /* ChatTactileButtonStyle.swift */,
@@ -2431,6 +2437,7 @@
 					C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */,
 					C040F000000000000000001 /* ProviderGlyph.swift in Sources */,
 					C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */,
+					C08730000000000000000B05 /* ForkOrigin.swift in Sources */,
 					C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */,
 					C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */,
 					105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */,
@@ -2698,6 +2705,7 @@
 				C0AA0208000000000000B002 /* ChatMessageActionMenuTests.swift in Sources */,
 				C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */,
 				C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */,
+				C08730000000000000000B03 /* ForkOriginTests.swift in Sources */,
 				C08730000000000000000B02 /* ChatReadingWidthTests.swift in Sources */,
 				C0AA05000000000000000B02 /* ChatMessageMetaTests.swift in Sources */,
 				C03190000000000000B003 /* AttachmentAudioDetectionTests.swift in Sources */,

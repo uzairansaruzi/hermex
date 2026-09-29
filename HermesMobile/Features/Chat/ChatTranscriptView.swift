@@ -112,6 +112,9 @@ struct ChatTranscriptView: View {
     var turnChangesSummary: TurnFileChangeSummary? = nil
     var onOpenTurnDiff: () -> Void = {}
     var onOpenTurnFileDiff: (GitFile) -> Void = { _ in }
+    /// Non-nil draws the "Forked from" row above everything else (#873).
+    var forkOrigin: ForkOrigin? = nil
+    var onOpenForkParent: () -> Void = {}
 
     var body: some View {
         if isLoading && messages.isEmpty {
@@ -280,6 +283,10 @@ struct ChatTranscriptView: View {
         let now = Date()
 
         return VStack(spacing: transcriptSpacing) {
+            if let forkOrigin {
+                ForkOriginRowView(origin: forkOrigin, onOpen: onOpenForkParent)
+            }
+
             olderMessagesButton(proxy: proxy)
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {

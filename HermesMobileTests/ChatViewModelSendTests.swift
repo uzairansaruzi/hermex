@@ -8648,6 +8648,49 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testLoadForkParentOpensTheParentOrSaysItIsGoneWhenDeletedOrOnAnotherProfile() async throws {
+        var requestedIDs: [String] = []
+        let viewModel = try makeViewModel { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(request.url?.path, "/api/session")
+            XCTAssertEqual(query["messages"], "0")
+            requestedIDs.append(query["session_id"] ?? "")
+            switch query["session_id"] {
+            case "parent-1":
+                return apiTestJSONResponse("""
+                {"session": {"session_id": "parent-1", "title": "Design review"}}
+                """, for: request)
+            case "other-profile-parent":
+                // Upstream answers a session owned by another profile with 409.
+                return apiTestJSONResponse("""
+                {"error": "Session belongs to a different profile", "code": "session_profile_mismatch", "session_id": "other-profile-parent", "profile": "work"}
+                """, for: request, status: 409)
+            default:
+                return apiTestJSONResponse("""
+                {"error": "Session not found"}
+                """, for: request, status: 404)
+            }
+        }
+
+        let parent = await viewModel.loadForkParent(id: "parent-1")
+        XCTAssertEqual(parent?.sessionId, "parent-1")
+        XCTAssertEqual(parent?.title, "Design review")
+        XCTAssertNil(viewModel.messageActionErrorMessage)
+
+        let deleted = await viewModel.loadForkParent(id: "deleted-parent")
+        XCTAssertNil(deleted)
+        XCTAssertEqual(viewModel.messageActionErrorMessage, "The original chat is no longer on this server.")
+        XCTAssertNil(viewModel.lastError)
+
+        let elsewhere = await viewModel.loadForkParent(id: "other-profile-parent")
+        XCTAssertNil(elsewhere)
+        XCTAssertEqual(viewModel.messageActionErrorMessage, "The original chat is no longer on this server.")
+        XCTAssertNil(viewModel.lastError)
+        XCTAssertEqual(requestedIDs, ["parent-1", "deleted-parent", "other-profile-parent"])
+    }
+
+    @MainActor
     func testClearSlashCommandEmptiesTranscriptTitleAndCacheAfterServerClear() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
