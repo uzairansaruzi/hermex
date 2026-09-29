@@ -530,7 +530,6 @@ private struct BotConnectionTargetRow: View {
     let isAnswering: Bool
     let onConnection: (BotConnectionOperation.Answer) -> Void
 
-    @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var values: [String: String] = [:]
 
@@ -638,7 +637,8 @@ private struct BotConnectionTargetRow: View {
             if let url = target.linkToOpen {
                 // The browser, not an in-app sheet: the user's saved sign-ins are
                 // there, and the host notices the new account without a callback.
-                Button { openURL(url) } label: {
+                // Opened directly, so the transcript's link router never takes it.
+                Button { UIApplication.shared.open(url) } label: {
                     Label("Open link", systemImage: "safari").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.chatDecision(.primary))

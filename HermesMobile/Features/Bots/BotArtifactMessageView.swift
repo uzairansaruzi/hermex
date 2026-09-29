@@ -15,6 +15,9 @@ struct BotArtifactMessageView: View {
     /// turn-ending replies (`BotTranscriptTimes`). The footer still draws
     /// without one when the row has reactions to show or offer.
     var footerTime: Double? = nil
+    /// BotChatView's `transcriptLinks` router, which opens every link this row
+    /// does not own.
+    @Environment(\.openURL) private var openURL
     @State private var responseIsVisible = false
     @State private var preview: TranscriptMediaPreviewItem?
     @State private var previewContext: BotArtifactContext?
@@ -58,16 +61,19 @@ struct BotArtifactMessageView: View {
                 } action: { responseIsVisible = $0 }
             }
         }
-        // Artifact links can be http(s), so the artifact check runs before
-        // `transcriptLinks` opens other web links in the in-app browser.
-        .transcriptLinks { url in
+        // Artifact links can be http(s), so the row checks them first and hands
+        // the rest to the chat's router. Not `transcriptLinks` here: that would
+        // present the web page from this row, and the live reply's row is
+        // replaced when the reply settles, which would close the page.
+        .environment(\.openURL, OpenURLAction { url in
             guard let path = try? BotArtifactReference.path(url.absoluteString, address: model.connection.address) else {
-                return nil
+                openURL(url)
+                return .handled
             }
             previewContext = model.artifactContext
             preview = TranscriptMediaPreviewItem(reference: TranscriptMediaReference(rawReference: path))
             return .handled
-        }
+        })
         .sheet(item: $preview) { item in
             BotArtifactPreview(reference: item.reference) {
                 guard let context = previewContext else { throw BotFailure.stale }
